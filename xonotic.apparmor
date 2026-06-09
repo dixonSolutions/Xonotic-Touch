@@ -1,0 +1,9 @@
+{
+    "policy_groups": [
+        "audio",
+        "networking",
+        "pulseaudio",
+        "video"
+    ],
+    "policy_version": "$ENV{APPARMOR_POLICY}"
+}

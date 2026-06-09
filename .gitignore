@@ -1,0 +1,9 @@
+# Build artifacts
+build/
+.clickable/
+
+# Xonotic source checkout (build locally with ./all update)
+engine-src/
+
+# Game data is copied from engine-src during build; keep binary tracked separately if needed
+engine/data/

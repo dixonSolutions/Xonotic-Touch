@@ -1,0 +1,15 @@
+{
+    "name": "xonotic.ratrad",
+    "description": "Xonotic for Ubuntu Touch",
+    "architecture": "$ENV{ARCH}",
+    "title": "Xonotic",
+    "hooks": {
+        "xonotic": {
+            "apparmor": "xonotic.apparmor",
+            "desktop": "xonotic.desktop"
+        }
+    },
+    "version": "1.0.0",
+    "maintainer": "ratrad",
+    "framework": "$ENV{CLICK_FRAMEWORK}"
+}
