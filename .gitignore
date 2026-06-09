@@ -6,4 +6,6 @@ build/
 engine-src/
 
 # Game data is copied from engine-src during build; keep binary tracked separately if needed
-engine/data/
+# Ignore all data files but explicitly track our touch config
+engine/data/*
+!engine/data/xonotic.cfg
