@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QProcess>
+#include <QUdpSocket>
 
 class Launcher : public QObject
 {
@@ -11,10 +12,25 @@ class Launcher : public QObject
 public:
     explicit Launcher(QObject *parent = nullptr);
 
-    Q_INVOKABLE bool launch();
+public slots:
+    bool launch();
+    void shoot();
+    void setMove(bool up, bool down, bool left, bool right);
+    void sendLook(float dx, float dy);
+
+signals:
+    void hpChanged(int hp);
+    void ammoChanged(int ammo);
+    void shootingChanged(bool shooting);
 
 private:
-    QProcess m_process;
+    QProcess    m_process;
+    QUdpSocket *m_udpSocket;
+
+    bool m_up    = false;
+    bool m_down  = false;
+    bool m_left  = false;
+    bool m_right = false;
 };
 
 #endif
