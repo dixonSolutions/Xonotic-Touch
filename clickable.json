@@ -1,0 +1,7 @@
+{
+    "minimum_clickable_version": "7.0.0",
+    "framework": "ubuntu-sdk-20.04",
+    "template": "qml",
+    "app_id": "xonotic.ratrad",
+    "default_arch": "arm64"
+}
