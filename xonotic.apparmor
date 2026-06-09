@@ -2,6 +2,7 @@
     "policy_groups": [
         "audio",
         "networking",
+        "opengl",
         "pulseaudio",
         "video"
     ],

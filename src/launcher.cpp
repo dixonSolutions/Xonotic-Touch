@@ -1,6 +1,5 @@
 #include "launcher.h"
 
-#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 
@@ -11,8 +10,12 @@ Launcher::Launcher(QObject *parent)
 
 bool Launcher::launch()
 {
-    const QString appDir = QCoreApplication::applicationDirPath();
-    const QString engineDir = QDir(appDir).filePath("engine");
+    QString appRoot = qgetenv("APP_DIR");
+    if (appRoot.isEmpty()) {
+        appRoot = QDir::currentPath();
+    }
+
+    const QString engineDir = QDir(appRoot).filePath("engine");
     const QString binary = QDir(engineDir).filePath("xonotic");
 
     if (!QFile::exists(binary)) {
@@ -20,7 +23,13 @@ bool Launcher::launch()
     }
 
     m_process.setProgram(binary);
-    m_process.setArguments({"-xonotic", "+vid_fullscreen", "1"});
+    m_process.setArguments({
+        "-xonotic",
+        "+vid_fullscreen", "1",
+        "+vid_width", "1080",
+        "+vid_height", "2340",
+        "+joy_enable", "1",
+    });
     m_process.setWorkingDirectory(engineDir);
     return m_process.startDetached();
 }

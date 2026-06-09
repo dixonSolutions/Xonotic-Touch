@@ -1,6 +1,6 @@
 [Desktop Entry]
 _Name=Xonotic
-Exec=qmlscene %U qml/Main.qml
+Exec=env QML2_IMPORT_PATH=$APP_DIR/lib/@ARCH_TRIPLET@ LD_LIBRARY_PATH=$APP_DIR/lib/@ARCH_TRIPLET@ qmlscene %U $APP_DIR/@PROJECT_NAME@/qml/Main.qml
 Icon=assets/logo.svg
 Terminal=false
 Type=Application
