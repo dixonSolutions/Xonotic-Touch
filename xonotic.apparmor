@@ -1,6 +1,7 @@
 {
     "policy_groups": [
         "audio",
+        "input",
         "networking",
         "opengl",
         "pulseaudio",

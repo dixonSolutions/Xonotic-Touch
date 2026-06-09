@@ -46,9 +46,21 @@ MainView {
                     var dy = mouse.y - lastY
                     lastX = mouse.x
                     lastY = mouse.y
-                    Launcher.sendLook(dx, dy)
+                    InputDevice.sendLook(dx, dy)
                 }
-                onDoubleClicked: Launcher.shoot()
+                onDoubleClicked: {
+                    InputDevice.pressButton(0, true)
+                    flashAnim.restart()
+                    btnReleaseTimer.start()
+                }
+            }
+
+            // Releases BTN_SOUTH after a brief press window
+            Timer {
+                id: btnReleaseTimer
+                interval: 80
+                repeat: false
+                onTriggered: InputDevice.pressButton(0, false)
             }
 
             // ─── CROSSHAIR ────────────────────────────────────────────────
@@ -180,41 +192,50 @@ MainView {
                     minimumTouchPoints: 0
                     maximumTouchPoints: 1
 
+                    /**
+                     * Converts a touch point into normalised analog axis values
+                     * and updates the visual direction indicators.
+                     *
+                     * Axis 0 (ABS_X): horizontal strafe, range [-1, 1]
+                     * Axis 1 (ABS_Y): vertical forward/back, range [-1, 1]
+                     */
                     function processTouch(points) {
                         if (points.length === 0) {
                             dpad.btnUpPressed    = false
                             dpad.btnDownPressed  = false
                             dpad.btnLeftPressed  = false
                             dpad.btnRightPressed = false
-                            Launcher.setMove(false, false, false, false)
+                            InputDevice.setAxis(0, 0.0)
+                            InputDevice.setAxis(1, 0.0)
                             return
                         }
+
                         var pt  = points[0]
                         var cx  = dpad.width  / 2
                         var cy  = dpad.height / 2
-                        var dx  = pt.x - cx
-                        var dy  = pt.y - cy
+
+                        // Normalise displacement to [-1, 1] and clamp to unit circle
+                        var dx  = (pt.x - cx) / cx
+                        var dy  = (pt.y - cy) / cy
                         var mag = Math.sqrt(dx * dx + dy * dy)
-                        if (mag < 10) {
-                            dpad.btnUpPressed    = false
-                            dpad.btnDownPressed  = false
-                            dpad.btnLeftPressed  = false
-                            dpad.btnRightPressed = false
-                            Launcher.setMove(false, false, false, false)
-                            return
+                        if (mag > 1.0) { dx /= mag; dy /= mag; mag = 1.0 }
+
+                        // Update visual highlights using cardinal heading
+                        if (mag < 0.1) {
+                            dpad.btnUpPressed = dpad.btnDownPressed =
+                                dpad.btnLeftPressed = dpad.btnRightPressed = false
+                        } else {
+                            var heading = Math.atan2(dx, -dy) * 180 / Math.PI
+                            if (heading < 0) heading += 360
+                            dpad.btnUpPressed    = (heading >= 315 || heading < 45)
+                            dpad.btnRightPressed = (heading >= 45  && heading < 135)
+                            dpad.btnDownPressed  = (heading >= 135 && heading < 225)
+                            dpad.btnLeftPressed  = (heading >= 225 && heading < 315)
                         }
-                        // heading: 0 = north, clockwise; matches spec UP=-45..45 etc.
-                        var heading = Math.atan2(dx, -dy) * 180 / Math.PI
-                        if (heading < 0) heading += 360
-                        var goUp    = (heading >= 315 || heading < 45)
-                        var goRight = (heading >= 45  && heading < 135)
-                        var goDown  = (heading >= 135 && heading < 225)
-                        var goLeft  = (heading >= 225 && heading < 315)
-                        dpad.btnUpPressed    = goUp
-                        dpad.btnDownPressed  = goDown
-                        dpad.btnLeftPressed  = goLeft
-                        dpad.btnRightPressed = goRight
-                        Launcher.setMove(goUp, goDown, goLeft, goRight)
+
+                        // Send analog values — dx = strafe, dy = forward/back
+                        InputDevice.setAxis(0, dx)
+                        InputDevice.setAxis(1, dy)
                     }
 
                     onTouchUpdated: processTouch(touchPoints)
@@ -223,7 +244,8 @@ MainView {
                         dpad.btnDownPressed  = false
                         dpad.btnLeftPressed  = false
                         dpad.btnRightPressed = false
-                        Launcher.setMove(false, false, false, false)
+                        InputDevice.setAxis(0, 0.0)
+                        InputDevice.setAxis(1, 0.0)
                     }
                 }
             }
@@ -279,13 +301,6 @@ MainView {
                 color: "white"
                 opacity: 0
                 visible: opacity > 0
-
-                Connections {
-                    target: Launcher
-                    onShootingChanged: {
-                        if (shooting) flashAnim.restart()
-                    }
-                }
 
                 SequentialAnimation {
                     id: flashAnim

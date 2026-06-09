@@ -15,7 +15,7 @@ set(FULL_PROJECT_NAME "xonotic.ratrad")
 set(DATA_DIR "share/${PROJECT_NAME}")
 set(DESKTOP_FILE_NAME ${PROJECT_NAME}.desktop)
 
-find_package(Qt5 REQUIRED COMPONENTS Core Qml Quick Network)
+find_package(Qt5 REQUIRED COMPONENTS Core Qml Quick)
 
 configure_file(manifest.json.in ${CMAKE_CURRENT_BINARY_DIR}/manifest.json)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/manifest.json DESTINATION ${CMAKE_INSTALL_PREFIX})
@@ -25,10 +25,11 @@ install(DIRECTORY assets DESTINATION ${DATA_DIR})
 install(DIRECTORY qml    DESTINATION ${DATA_DIR}/xonotic)
 
 add_library(${PROJECT_NAME}backend SHARED
+    src/inputdevice.cpp
     src/launcher.cpp
     src/backend.cpp
 )
-target_link_libraries(${PROJECT_NAME}backend Qt5::Core Qt5::Qml Qt5::Network)
+target_link_libraries(${PROJECT_NAME}backend Qt5::Core Qt5::Qml)
 set_target_properties(${PROJECT_NAME}backend PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib/${ARCH_TRIPLET}/xonotic"
 )
