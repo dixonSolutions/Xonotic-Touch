@@ -1,6 +1,7 @@
 #include "touch_input.qh"
 #include "touch_customize.qh"
 #include "touch_glass.qh"
+#include "touch_hud.qh"
 #include <client/hud/panel/scoreboard.qh>
 #include "../dpdefs/ut_touchfinger.qc"
 
@@ -24,6 +25,7 @@ bool touch_btn_jump;
 bool touch_btn_crouch;
 bool touch_btn_zoom;
 bool touch_btn_dodge;
+bool touch_btn_reload;
 
 bool Touch_Active(void)
 {
@@ -63,6 +65,9 @@ int Touch_AssignRole(vector p)
 	if (Touch_InEdgeDeadzone(p))
 		return TOUCH_SLOT_NONE;
 
+	if (Touch_Hud_HitPanel(p))
+		return TOUCH_SLOT_NONE;
+
 	if (Touch_HitButton(p, autocvar_touch_fire_x, autocvar_touch_fire_y, autocvar_touch_fire_size))
 		return TOUCH_SLOT_FIRE;
 	if (Touch_HitButton(p, autocvar_touch_jump_x, autocvar_touch_jump_y, autocvar_touch_jump_size))
@@ -73,6 +78,8 @@ int Touch_AssignRole(vector p)
 		return 102;
 	if (Touch_HitButton(p, autocvar_touch_zoom_x, autocvar_touch_zoom_y, autocvar_touch_zoom_size))
 		return 103;
+	if (Touch_HitButton(p, autocvar_touch_reload_x, autocvar_touch_reload_y, autocvar_touch_reload_size))
+		return 105;
 	if (autocvar_touch_dodge_visible && Touch_HitButton(p, autocvar_touch_dodge_x, autocvar_touch_dodge_y, autocvar_touch_dodge_size))
 		return 104;
 	if (Touch_HitButton(p, autocvar_touch_move_x, autocvar_touch_move_y, autocvar_touch_move_size))
@@ -205,6 +212,8 @@ void Touch_PollFingers(void)
 				touch_btn_zoom = true;
 			else if (role == 104)
 				touch_btn_dodge = true;
+			else if (role == 105)
+				touch_btn_reload = true;
 		}
 		if (was && !touch_finger_active[i])
 			touch_finger_role[i] = TOUCH_SLOT_NONE;
@@ -297,6 +306,10 @@ void Touch_Frame(void)
 	touch_btn_jump = false;
 	touch_btn_crouch = false;
 	touch_btn_zoom = false;
+
+	if (touch_btn_reload)
+		localcmd("weapon_reload\n");
+	touch_btn_reload = false;
 
 	if (autocvar_touch_scoreboard_gesture && touch_active_finger_count >= 2)
 	{

@@ -13,6 +13,7 @@
 #include <client/touch_customize.qc>
 #include <client/touch_draw.qc>
 #include <client/touch_glass.qc>
+#include <client/touch_hud.qc>
 #include <client/touch_init.qc>
 #include <client/touch_input.qc>
 #include <client/touch_layout.qc>

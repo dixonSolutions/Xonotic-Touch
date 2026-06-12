@@ -55,7 +55,8 @@ Two-thumb layout tuned for Xonotic strafe movement and nine weapons.
 | Fire | Hold (default) | `+attack` |
 | Jump / Crouch | Tap or hold | `+jump`, `+crouch` |
 | Weapon | Tap → wheel (default) | `impulse 1`…`9` or cycle |
-| Zoom | Hold (default) | `+zoom` |
+| Reload | Tap | `weapon_reload` |
+| Mobile HUD | Top-left / top-right | Portrait, HP/AR bars, clip/reserve ammo |
 
 **Avoid as default:** full-screen move + aim stick, pure tap-to-move, fire on the look zone.
 
@@ -389,6 +390,7 @@ Menu actions: Export → share file; Import → validate keys, backup current, `
 | Engine fingers | `engine/darkplaces/vid_sdl.c`, `clvm_cmds.c` | `gettouchfinger` builtin (#643), `DP_UT_TOUCHFINGER` |
 | Constants | `engine/.../qcsrc/common/` | Shared enums, weapon names, gesture thresholds *(pending)* |
 | Settings UI | `engine/.../qcsrc/menu/xonotic/` | Sliders, wizard, touch settings tab |
+| Mobile status HUD | `engine/.../qcsrc/client/touch_hud.qc` | Portrait, HP/AR, ammo readout |
 | User persistence | `~/.xonotic/touch.layout.cfg` | Profile `exec` + registered cvars |
 | SDL fingers | `engine/darkplaces/vid_sdl.c` | SDL multitouch → `gettouchfinger` |
 

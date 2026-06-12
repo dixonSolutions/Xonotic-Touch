@@ -31,7 +31,8 @@ const int TOUCH_WIDGET_CROUCH = 3;
 const int TOUCH_WIDGET_WEAPON = 4;
 const int TOUCH_WIDGET_ZOOM = 5;
 const int TOUCH_WIDGET_DODGE = 6;
-const int TOUCH_WIDGET_COUNT = 7;
+const int TOUCH_WIDGET_RELOAD = 7;
+const int TOUCH_WIDGET_COUNT = 8;
 
 // Glass palette (OpenGL drawfill tints)
 const vector TOUCH_GLASS_TINT = '0.82 0.88 0.95';

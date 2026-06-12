@@ -1,0 +1,5 @@
+#pragma once
+
+bool Touch_Hud_ShouldDraw(void);
+void Touch_Hud_Draw(float alpha);
+bool Touch_Hud_HitPanel(vector p);

@@ -29,6 +29,8 @@ vector Touch_Customize_GetWidgetPos(int wid)
 			return autocvar_touch_weapon_x * eX + autocvar_touch_weapon_y * eY + autocvar_touch_weapon_size * eZ;
 		case TOUCH_WIDGET_ZOOM:
 			return autocvar_touch_zoom_x * eX + autocvar_touch_zoom_y * eY + autocvar_touch_zoom_size * eZ;
+		case TOUCH_WIDGET_RELOAD:
+			return autocvar_touch_reload_x * eX + autocvar_touch_reload_y * eY + autocvar_touch_reload_size * eZ;
 		default:
 			return autocvar_touch_dodge_x * eX + autocvar_touch_dodge_y * eY + autocvar_touch_dodge_size * eZ;
 	}
@@ -52,6 +54,8 @@ void Touch_Customize_SetWidgetPos(int wid, float nx, float ny)
 			cvar_set("touch_weapon_x", ftos(nx)); cvar_set("touch_weapon_y", ftos(ny)); break;
 		case TOUCH_WIDGET_ZOOM:
 			cvar_set("touch_zoom_x", ftos(nx)); cvar_set("touch_zoom_y", ftos(ny)); break;
+		case TOUCH_WIDGET_RELOAD:
+			cvar_set("touch_reload_x", ftos(nx)); cvar_set("touch_reload_y", ftos(ny)); break;
 		default:
 			cvar_set("touch_dodge_x", ftos(nx)); cvar_set("touch_dodge_y", ftos(ny)); break;
 	}
@@ -67,6 +71,7 @@ string Touch_Customize_WidgetLabel(int wid)
 		case TOUCH_WIDGET_CROUCH: return "CR";
 		case TOUCH_WIDGET_WEAPON: return "WEP";
 		case TOUCH_WIDGET_ZOOM: return "ZOOM";
+		case TOUCH_WIDGET_RELOAD: return "R";
 		default: return "DODGE";
 	}
 }

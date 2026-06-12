@@ -34,6 +34,16 @@ void Touch_Init(void)
 	Touch_RegisterCvar("touch_dodge_y", "0.58");
 	Touch_RegisterCvar("touch_dodge_size", "0.10");
 	Touch_RegisterCvar("touch_dodge_visible", "1");
+	Touch_RegisterCvar("touch_reload_x", "0.76");
+	Touch_RegisterCvar("touch_reload_y", "0.58");
+	Touch_RegisterCvar("touch_reload_size", "0.10");
+	Touch_RegisterCvar("touch_mobile_hud", "1");
+	Touch_RegisterCvar("touch_hud_x", "0.02");
+	Touch_RegisterCvar("touch_hud_y", "0.02");
+	Touch_RegisterCvar("touch_hud_maxhealth", "100");
+	Touch_RegisterCvar("touch_hud_maxarmor", "100");
+	Touch_RegisterCvar("touch_ammo_x", "0.02");
+	Touch_RegisterCvar("touch_ammo_y", "0.02");
 	Touch_RegisterCvar("touch_look_zone_left", "0.45");
 	Touch_RegisterCvar("touch_look_zone_right", "1.0");
 	Touch_RegisterCvar("touch_edge_deadzone_px", "16");

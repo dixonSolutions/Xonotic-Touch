@@ -1,5 +1,6 @@
 #include "touch_draw.qh"
 #include "touch_customize.qh"
+#include "touch_hud.qh"
 
 void Touch_DrawLabel(vector center, float size, string label, float theAlpha)
 {
@@ -57,6 +58,7 @@ void Touch_DrawOverlay(float overlayAlpha)
 	Touch_DrawActionButton(autocvar_touch_crouch_x, autocvar_touch_crouch_y, autocvar_touch_crouch_size, "CR", false, overlayAlpha);
 	Touch_DrawActionButton(autocvar_touch_weapon_x, autocvar_touch_weapon_y, autocvar_touch_weapon_size, "WEP", Touch_WeaponWheelOpen(), overlayAlpha);
 	Touch_DrawActionButton(autocvar_touch_zoom_x, autocvar_touch_zoom_y, autocvar_touch_zoom_size, "ZOOM", false, overlayAlpha);
+	Touch_DrawActionButton(autocvar_touch_reload_x, autocvar_touch_reload_y, autocvar_touch_reload_size, "R", false, overlayAlpha);
 	if (autocvar_touch_dodge_visible)
 		Touch_DrawActionButton(autocvar_touch_dodge_x, autocvar_touch_dodge_y, autocvar_touch_dodge_size, "DODGE", false, overlayAlpha);
 
@@ -77,5 +79,6 @@ void Touch_Draw(void)
 		return;
 	}
 
+	Touch_Hud_Draw(overlayAlpha);
 	Touch_DrawOverlay(overlayAlpha);
 }

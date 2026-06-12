@@ -49,6 +49,16 @@ void Touch_SaveLayoutFile(string path)
 	Touch_ConfigWriteFloat(fh, "touch_dodge_y");
 	Touch_ConfigWriteFloat(fh, "touch_dodge_size");
 	Touch_ConfigWriteFloat(fh, "touch_dodge_visible");
+	Touch_ConfigWriteFloat(fh, "touch_reload_x");
+	Touch_ConfigWriteFloat(fh, "touch_reload_y");
+	Touch_ConfigWriteFloat(fh, "touch_reload_size");
+	Touch_ConfigWriteFloat(fh, "touch_mobile_hud");
+	Touch_ConfigWriteFloat(fh, "touch_hud_x");
+	Touch_ConfigWriteFloat(fh, "touch_hud_y");
+	Touch_ConfigWriteFloat(fh, "touch_hud_maxhealth");
+	Touch_ConfigWriteFloat(fh, "touch_hud_maxarmor");
+	Touch_ConfigWriteFloat(fh, "touch_ammo_x");
+	Touch_ConfigWriteFloat(fh, "touch_ammo_y");
 	Touch_ConfigWriteFloat(fh, "touch_look_zone_left");
 	Touch_ConfigWriteFloat(fh, "touch_look_zone_right");
 	Touch_ConfigWriteFloat(fh, "touch_edge_deadzone_px");
