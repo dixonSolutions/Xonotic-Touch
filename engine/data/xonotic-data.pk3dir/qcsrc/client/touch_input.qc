@@ -3,7 +3,6 @@
 #include "touch_glass.qh"
 #include "touch_hud.qh"
 #include <client/hud/panel/scoreboard.qh>
-#include "../dpdefs/ut_touchfinger.qc"
 
 int touch_finger_engine_slot[TOUCH_MAX_FINGERS];
 int touch_finger_role[TOUCH_MAX_FINGERS];
@@ -26,6 +25,16 @@ bool touch_btn_crouch;
 bool touch_btn_zoom;
 bool touch_btn_dodge;
 bool touch_btn_reload;
+
+bool Touch_MouseDown(void)
+{
+	return touch_mouse_down;
+}
+
+void Touch_SetMouseDown(bool down)
+{
+	touch_mouse_down = down;
+}
 
 bool Touch_Active(void)
 {
@@ -333,13 +342,13 @@ bool Touch_InputEvent(float bInputType, float nPrimary, float nSecondary)
 
 	if (bInputType == 0 && nPrimary == K_MOUSE1)
 	{
-		touch_mouse_down = true;
+		Touch_SetMouseDown(true);
 		touch_finger_engine_slot[0] = 0;
 		return true;
 	}
 	if (bInputType == 1 && nPrimary == K_MOUSE1)
 	{
-		touch_mouse_down = false;
+		Touch_SetMouseDown(false);
 		return true;
 	}
 	if (bInputType == 3)
@@ -347,7 +356,7 @@ bool Touch_InputEvent(float bInputType, float nPrimary, float nSecondary)
 		touch_finger_last_pos[0] = nPrimary * eX + nSecondary * eY;
 		return true;
 	}
-	if (bInputType == 2 && touch_mouse_down)
+	if (bInputType == 2 && Touch_MouseDown())
 	{
 		if (Touch_InLookZone(touch_finger_last_pos[0]))
 		{

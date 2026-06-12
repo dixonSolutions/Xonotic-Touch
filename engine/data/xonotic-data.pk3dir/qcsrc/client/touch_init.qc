@@ -89,6 +89,30 @@ void Touch_Init(void)
 	registercommand("touch_customize_save");
 	registercommand("touch_customize_cancel");
 
+	Touch_LoadStartupConfigs();
+}
+
+void Touch_ApplyMobileHudEngineSettings(void)
+{
+	if (!cvar("touch_mobile_hud"))
+		return;
+	cvar_set("hud_panel_healtharmor", "0");
+	cvar_set("hud_panel_ammo", "0");
+	cvar_set("hud_panel_weapons", "0");
+}
+
+void Touch_LoadStartupConfigs(void)
+{
+	if (!cvar("vid_touchscreen"))
+		return;
+	if (whichpack("touch/startup.cfg"))
+		localcmd("exec touch/startup.cfg\n");
+	else
+	{
+		localcmd("exec touch/profiles/standard.cfg\n");
+		localcmd("exec touch/profiles/balanced.cfg\n");
+	}
+	Touch_ApplyMobileHudEngineSettings();
 	Touch_ApplySensitivity();
 }
 

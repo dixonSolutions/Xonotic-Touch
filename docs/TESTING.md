@@ -4,9 +4,22 @@ For **Ubuntu Touch / Clickable community testers** building and installing on de
 
 ## Prerequisites
 
-- [Clickable](https://github.com/ubports/clickable) installed
-- Device with `adb` or Clickable device target
-- Enough disk for SDK container + source (several GB)
+- [Clickable](https://github.com/ubports/clickable) installed (`./scripts/install-clickable.sh`)
+- Device with `adb` or Clickable device target (for `--install`)
+- Enough disk for SDK container + source (several GB) when using container mode
+
+## Script entry points
+
+| Script | Purpose |
+|--------|---------|
+| `./scripts/compile-and-install-deps.sh` | Native apt deps + compile to `build/bin/xonotic` |
+| `./scripts/run-local-no-clickable.sh` | Run on Linux desktop without Clickable (auto-build/deps if needed) |
+| `./scripts/install-clickable.sh --desktop` | Clickable CLI + host toolchain (`--container-mode` builds) |
+| `./scripts/install-clickable.sh --container` | Clickable CLI + Podman/Docker SDK images |
+| `./scripts/run-clickable.sh --desktop` | Build on host, run Clickable desktop sim |
+| `./scripts/run-clickable.sh --container` | Build in SDK container, run desktop sim |
+| `./scripts/run-clickable.sh --container --install` | Build in container and install on device |
+| `./scripts/install-clickable.sh --clean-container` | Prune Podman/buildah after SDK builds |
 
 ## Standard build (UI / control changes)
 
@@ -15,8 +28,28 @@ Uses `code` fetch in prebuild (darkplaces, gmqcc, game QuakeC). Touch changes ar
 ```bash
 git clone <maintainer-repo-url>
 cd Xonotic-Ubuntu-Touch-App
+./scripts/install-clickable.sh --container
+./scripts/run-clickable.sh --container --install
+```
+
+Or manually:
+
+```bash
 clickable build --arch arm64
 clickable install
+```
+
+## Native Linux desktop (no Clickable container)
+
+```bash
+./scripts/run-local-no-clickable.sh --build
+```
+
+Or compile once, then run:
+
+```bash
+./scripts/compile-and-install-deps.sh
+./scripts/run-local-no-clickable.sh
 ```
 
 ## Playable build (maps, music, full data)

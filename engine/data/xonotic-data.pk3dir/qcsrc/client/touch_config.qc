@@ -1,5 +1,6 @@
 #include "touch_config.qh"
 #include "touch_init.qh"
+#include "../dpdefs/ut_touchfinger.qc"
 
 float touch_cmd_argc;
 

@@ -1,6 +1,7 @@
 #pragma once
 
 void Touch_Init(void);
+void Touch_LoadStartupConfigs(void);
 void Touch_ApplySensitivity(void);
 
 #define autocvar_touch_preset cvar_string("touch_preset")

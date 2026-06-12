@@ -24,7 +24,13 @@ FORK_DATA=https://gitlab.com/you/xonotic-data.pk3dir.git \
 ./scripts/prepare-engine-for-git.sh --yes
 git add engine/ && git commit
 
-# Do NOT run compile scripts locally unless you choose to
+# Do NOT run compile scripts locally unless you choose to — use:
+
+```bash
+./scripts/compile-and-install-deps.sh      # native build
+./scripts/run-local-no-clickable.sh        # native run
+./scripts/run-clickable.sh --container     # Clickable SDK build
+```
 
 # Test landscape screen math without compiling:
 ./scripts/test-screen-calc.sh
@@ -40,7 +46,8 @@ git add engine/ && git commit
 | `packaging/` | Click launcher for testers |
 | `build/` | **Never on your machine** — Clickable SDK output only |
 
-Reclaim disk after accidental builds: `./scripts/clean-local-artifacts.sh`
+Reclaim disk after accidental builds: `./scripts/clean-local-artifacts.sh`  
+Reclaim Podman layers after Clickable: `./scripts/install-clickable.sh --clean-container`
 
 ## Clickable testers
 

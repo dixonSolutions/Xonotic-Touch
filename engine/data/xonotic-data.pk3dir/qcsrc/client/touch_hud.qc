@@ -8,6 +8,7 @@
 #include <client/items/items.qh>
 #include <common/items/item.qh>
 #include <common/weapons/all.qh>
+#include <common/wepent.qh>
 
 string touch_hud_portrait_path;
 string touch_hud_portrait_model;
@@ -69,7 +70,6 @@ vector Touch_Hud_StatusPanelSize(void)
 
 vector Touch_Hud_StatusPanelOrigin(void)
 {
-	vector vf = getpropertyvec(VF_SIZE);
 	float pad = Touch_ScreenMin() * autocvar_touch_hud_x;
 	return pad * eX + pad * eY * autocvar_touch_hud_y / max(autocvar_touch_hud_x, 0.01);
 }

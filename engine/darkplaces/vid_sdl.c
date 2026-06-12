@@ -792,8 +792,8 @@ static void IN_Move_TouchScreen_SteelStorm(void)
 	{
 		int x, y;
 		multitouch[MAXFINGERS-1][0] = SDL_GetMouseState(&x, &y) ? 11 : 0;
-		multitouch[MAXFINGERS-1][1] = (float)x / vid.width;
-		multitouch[MAXFINGERS-1][2] = (float)y / vid.height;
+		multitouch[MAXFINGERS-1][1] = (float)x / vid.mode.width;
+		multitouch[MAXFINGERS-1][2] = (float)y / vid.mode.height;
 	}
 	else if (numfingers > 0)
 		multitouch[MAXFINGERS-1][0] = 0;

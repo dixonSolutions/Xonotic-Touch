@@ -8,6 +8,6 @@ CLASS(XonoticSettingsDialog, XonoticDialog)
 	ATTRIB(XonoticSettingsDialog, tooltip, string, _("Change the game settings"));
 	ATTRIB(XonoticSettingsDialog, color, vector, SKINCOLOR_DIALOG_SETTINGS);
 	ATTRIB(XonoticSettingsDialog, intendedWidth, float, 0.96);
-	ATTRIB(XonoticSettingsDialog, rows, float, 18);
+	ATTRIB(XonoticSettingsDialog, rows, float, 19);
 	ATTRIB(XonoticSettingsDialog, columns, float, 6);
 ENDCLASS(XonoticSettingsDialog)

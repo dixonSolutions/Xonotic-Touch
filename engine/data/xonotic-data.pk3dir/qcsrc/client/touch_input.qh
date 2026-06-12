@@ -7,7 +7,8 @@ void Touch_Frame(void);
 bool Touch_InputEvent(float bInputType, float nPrimary, float nSecondary);
 void Touch_ReleaseAll(void);
 
-extern bool touch_mouse_down;
+bool Touch_MouseDown(void);
+void Touch_SetMouseDown(bool down);
 
 vector Touch_GetFinger(int engine_slot);
 vector Touch_MoveStickOffset(void);

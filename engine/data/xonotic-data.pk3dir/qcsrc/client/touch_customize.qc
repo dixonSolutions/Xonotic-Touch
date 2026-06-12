@@ -2,7 +2,6 @@
 #include "touch_config.qh"
 #include "touch_glass.qh"
 #include "touch_input.qh"
-#include "../dpdefs/ut_touchfinger.qc"
 
 int touch_customize_drag_widget;
 vector touch_customize_drag_offset;
@@ -213,7 +212,7 @@ void Touch_Customize_Frame(void)
 	if (!checkextension("DP_UT_TOUCHFINGER"))
 	{
 		vector p = getmousepos();
-		if (touch_mouse_down)
+		if (Touch_MouseDown())
 		{
 			if (!touch_customize_pointer_down)
 			{
@@ -256,7 +255,7 @@ bool Touch_Customize_InputEvent(float bInputType, float nPrimary, float nSeconda
 
 	if (bInputType == 0 && nPrimary == K_MOUSE1)
 	{
-		touch_mouse_down = true;
+		Touch_SetMouseDown(true);
 		vector p = getmousepos();
 		touch_customize_pointer_down = true;
 		Touch_Customize_PointerDown(p);
@@ -264,11 +263,11 @@ bool Touch_Customize_InputEvent(float bInputType, float nPrimary, float nSeconda
 	}
 	if (bInputType == 1 && nPrimary == K_MOUSE1)
 	{
-		touch_mouse_down = false;
+		Touch_SetMouseDown(false);
 		Touch_Customize_PointerUp();
 		return true;
 	}
-	if (bInputType == 3 && touch_mouse_down)
+	if (bInputType == 3 && Touch_MouseDown())
 	{
 		vector p = nPrimary * eX + nSecondary * eY;
 		Touch_Customize_PointerMove(p);

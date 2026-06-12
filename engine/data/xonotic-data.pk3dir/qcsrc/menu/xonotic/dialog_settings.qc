@@ -13,7 +13,7 @@
 
 void XonoticSettingsDialog_fill(entity me)
 {
-	entity mc = makeXonoticTabController(me.rows - 2.5);
+	entity mc = makeXonoticTabController(me.rows - 3.5);
 	me.TR(me);
 		me.TD(me, 1, 2, mc.makeTabButton(mc, _("Video"),    makeXonoticVideoSettingsTab()));
 		me.TD(me, 1, 2, mc.makeTabButton(mc, _("Effects"),  makeXonoticEffectsSettingsTab()));
@@ -26,6 +26,6 @@ void XonoticSettingsDialog_fill(entity me)
 	// XONOTIC_UT_TOUCH_SETTINGS_TAB
 	me.TR(me);
 		me.TD(me, 1, 1.5, mc.makeTabButton(mc, _("Touch"),  makeXonoticTouchSettingsTab()));
-	me.gotoRC(me, 2.5, 0);
-		me.TD(me, me.rows - 2.5, me.columns, mc);
+	me.gotoRC(me, 3.5, 0);
+		me.TD(me, me.rows - 3.5, me.columns, mc);
 }

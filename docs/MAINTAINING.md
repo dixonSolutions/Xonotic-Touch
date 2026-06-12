@@ -9,7 +9,18 @@ This project is designed so **you edit source and others build**. That saves dis
 3. Commit and push your work in this repo.
 4. Ask a Clickable tester to run `clickable build --arch arm64` on your branch.
 
-Do **not** run `scripts/build-engine.sh`, `scripts/compile-for-click.sh`, or `cd engine && ./all compile` unless you explicitly want a local build.
+## Local builds (optional)
+
+Do **not** run `cd engine && ./all compile` unless you explicitly want a raw upstream build.
+
+Native compile and run:
+
+```bash
+./scripts/compile-and-install-deps.sh
+./scripts/run-local-no-clickable.sh
+```
+
+Clickable testers use `./scripts/run-clickable.sh --container --install` (see [TESTING.md](TESTING.md)).
 
 ## Sharing changes
 
