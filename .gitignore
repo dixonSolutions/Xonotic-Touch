@@ -1,5 +1,6 @@
 # Build outputs — never commit
 build/
+build-flatpak/
 .clickable/
 bin/
 
@@ -33,6 +34,12 @@ engine/data/xonotic-data.pk3dir/gfx/
 engine/data/xonotic-data.pk3dir/particles/
 engine/data/xonotic-data.pk3dir/demos/
 engine/data/xonotic-data.pk3dir/cubemaps/
+
+engine/data/xonotic-maps.pk3dir/
+engine/data/xonotic-music.pk3dir/
+engine/data/xonotic-nexcompat.pk3dir/
+engine/data/screen.layout.cfg
+engine/data/touch/
 
 # Runtime data copies at repo root
 data/*

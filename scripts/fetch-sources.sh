@@ -68,6 +68,8 @@ if [ -f "$ROOT/engine/all" ]; then
     echo "engine/ superproject present"
 elif [ -d "$ROOT/engine/.git" ]; then
     echo "engine/ superproject already initialized"
+elif [ -f "$ROOT/engine/darkplaces/makefile.inc" ]; then
+    echo "engine/ source present (vendored in monorepo)"
 else
     echo "Cloning Xonotic superproject into engine/..."
     rm -rf "$ROOT/engine"
@@ -127,4 +129,4 @@ if [ -f "$ROOT/touch/xonotic.cfg" ]; then
     cp -f "$ROOT/touch/xonotic.cfg" "$ROOT/engine/data/xonotic.cfg"
 fi
 
-echo "Source ready under engine/ (Ubuntu Touch changes are integrated in-tree; no compile was run)."
+echo "Source ready under engine/ (touch changes integrated in-tree; large assets download at launch in packages)."

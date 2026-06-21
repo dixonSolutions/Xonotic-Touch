@@ -1,5 +1,5 @@
 [Desktop Entry]
-_Name=Xonotic
+_Name=Xonotic Touch
 Exec=bin/start.sh
 Terminal=false
 Type=Application

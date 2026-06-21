@@ -1,0 +1,47 @@
+app-id: io.github.dixonSolutions.XonoticTouch
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: start.sh
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  - --filesystem=xdg-data/xonotic-touch:create
+  - --filesystem=home/.xonotic:create
+
+build-options:
+  env:
+    XONOTIC_PACKAGE_BUILD: '1'
+  build-args:
+    - --share=network
+
+modules:
+  - name: libxmp
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DBUILD_SHARED=ON
+    sources:
+      - type: archive
+        url: https://github.com/libxmp/libxmp/archive/libxmp-4.6.2.tar.gz
+        sha256: 88c8c68a5e38966c8735b20e63c552ed014ec75dde711dc7549a3eff4e4555cd
+        x-checker-data:
+          type: anitya
+          project-id: 19777
+          stable-only: true
+          url-template: https://github.com/libxmp/libxmp/archive/libxmp-${version}.tar.gz
+
+  - name: xonotic-touch
+    buildsystem: simple
+    build-commands:
+      - bash scripts/fetch-sources.sh code
+      - bash scripts/build.sh
+      - bash scripts/stage-flatpak.sh
+    sources:
+      - type: dir
+        path: ..

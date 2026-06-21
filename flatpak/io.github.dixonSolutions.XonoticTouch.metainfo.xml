@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.dixonSolutions.XonoticTouch</id>
+  <name>Xonotic Touch</name>
+  <summary>Fast-paced arena FPS optimized for touchscreens</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="io.github.dixonSolutions">
+    <name>dixonSolutions</name>
+  </developer>
+  <description>
+    <p>
+      Xonotic Touch is a touch-first port of Xonotic for Linux phones, tablets,
+      and other touch devices. Game assets are downloaded on first launch so
+      installs stay small.
+    </p>
+    <p>
+      Touch controls include virtual joysticks, weapon wheels, and configurable
+      layout presets for casual, competitive, and battery-saving play.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.dixonSolutions.XonoticTouch.desktop</launchable>
+  <url type="homepage">https://github.com/dixonSolutions/Xonotic-Ubuntu-Touch-App</url>
+  <url type="bugtracker">https://github.com/dixonSolutions/Xonotic-Ubuntu-Touch-App/issues</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Xonotic Touch on a touch device</caption>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1">
+    <content_attribute id="violence-fantasy">intense</content_attribute>
+    <content_attribute id="violence-bloodshed">moderate</content_attribute>
+    <content_attribute id="social-chat">intense</content_attribute>
+  </content_rating>
+  <releases>
+    <release version="1.1.0" date="2026-06-21">
+      <description>
+        <p>Pivot to Xonotic Touch: slim packages with runtime asset download, Flatpak and Click builds.</p>
+      </description>
+    </release>
+  </releases>
+</component>

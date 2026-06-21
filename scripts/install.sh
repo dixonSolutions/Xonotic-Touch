@@ -1,5 +1,5 @@
 #!/bin/bash
-# Stage click package from build outputs (binary built during build step).
+# Stage click package from build outputs (slim data; assets fetched on first launch).
 set -euo pipefail
 
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -20,17 +20,12 @@ mkdir -p "$DEST/bin" "$DEST/data" "$DEST/share/xonotic"
 install -m 755 "$BIN" "$DEST/bin/xonotic"
 install -m 755 "$ROOT/packaging/start.sh" "$DEST/bin/start.sh"
 install -m 755 "$ROOT/touch/screen-calc.sh" "$DEST/share/xonotic/screen-calc.sh"
+install -m 755 "$ROOT/scripts/fetch-assets-runtime.sh" "$DEST/share/xonotic/fetch-assets-runtime.sh"
+install -m 755 "$ROOT/scripts/sync-bundle-data.sh" "$DEST/share/xonotic/sync-bundle-data.sh"
+install -m 644 "$ROOT/scripts/lib/asset-fetch.sh" "$DEST/share/xonotic/asset-fetch.sh"
 
-if [ -d "$ROOT/engine/data" ]; then
-    cp -a "$ROOT/engine/data/." "$DEST/data/"
-fi
-if [ -f "$ROOT/data/xonotic.cfg" ]; then
-    install -m 644 "$ROOT/data/xonotic.cfg" "$DEST/data/xonotic.cfg"
-fi
-if [ -d "$ROOT/touch/profiles" ]; then
-    mkdir -p "$DEST/data/touch/profiles"
-    cp -a "$ROOT/touch/profiles/." "$DEST/data/touch/profiles/"
-fi
+bash "$ROOT/scripts/stage-slim-data.sh" "$DEST/data"
+bash "$ROOT/scripts/stage-click-utils.sh" "$DEST"
 
 install -m 644 "$ROOT/xonotic.apparmor" "$DEST/xonotic.apparmor"
 
@@ -42,4 +37,4 @@ sed -e "s/\$ENV{ARCH}/${ARCH}/g" \
 sed "s/@ARCH_TRIPLET@/${ARCH_TRIPLET:-aarch64-linux-gnu}/g" \
     "$ROOT/xonotic.desktop.in" > "$DEST/xonotic.desktop"
 
-echo "Installed click package to $DEST"
+echo "Installed slim click package to $DEST"

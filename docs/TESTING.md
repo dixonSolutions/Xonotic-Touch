@@ -2,6 +2,8 @@
 
 For **Ubuntu Touch / Clickable community testers** building and installing on device.
 
+Packages are **slim** (~60 MB): textures, maps, and music download on **first launch** (network required). See [RELEASES.md](RELEASES.md).
+
 ## Prerequisites
 
 - [Clickable](https://github.com/ubports/clickable) installed (`./scripts/install-clickable.sh`)
@@ -16,6 +18,7 @@ For **Ubuntu Touch / Clickable community testers** building and installing on de
 | `./scripts/run-local-no-clickable.sh` | Run on Linux desktop without Clickable (auto-build/deps if needed) |
 | `./scripts/install-clickable.sh --desktop` | Clickable CLI + host toolchain (`--container-mode` builds) |
 | `./scripts/install-clickable.sh --container` | Clickable CLI + Podman/Docker SDK images |
+| `./scripts/clickable.sh --container --install` | Build and install click package (shortcut) |
 | `./scripts/run-clickable.sh --desktop` | Build on host, run Clickable desktop sim |
 | `./scripts/run-clickable.sh --container` | Build in SDK container, run desktop sim |
 | `./scripts/run-clickable.sh --container --install` | Build in container and install on device |
@@ -54,15 +57,21 @@ Or compile once, then run:
 
 ## Playable build (maps, music, full data)
 
-Source is in git; **binary assets are not**. Before a playable in-game test:
+Click packages no longer bundle large assets. After `clickable install`, launch the app once on a **networked** device — assets download automatically (~3 GB).
+
+For **local desktop testing** without Clickable:
 
 ```bash
-./scripts/fetch-sources.sh assets
-clickable build --arch arm64
-clickable install
+./scripts/compile-and-install-deps.sh
+./scripts/fetch-assets-runtime.sh "$HOME/.local/share/xonotic-touch/data"
+./scripts/run-local-no-clickable.sh
 ```
 
-`assets` downloads textures/models/sound (~3 GB). For the complete upstream `./all update` workflow, use `full` (requires `engine/.git`, not vendored source).
+Maintainers can still prefetch into `engine/data/` for engine development:
+
+```bash
+./scripts/fetch-sources.sh assets   # or full
+```
 
 ## Maintainer forks
 
@@ -78,12 +87,15 @@ clickable build --arch arm64
 ## What gets installed
 
 - `bin/xonotic` — compiled in SDK during `clickable build`
-- `bin/start.sh` — launcher
-- `data/` — from `engine/data` when present + `touch/xonotic.cfg` + `data/touch/profiles/`
+- `bin/start.sh` — launcher (syncs bundle, fetches assets, runs game)
+- `data/` — slim staged data (logic + configs, ~60 MB) + `touch/profiles/`
+- `share/xonotic/` — screen-calc, asset fetch scripts
+
+Package name: `xonotic-touch.ratrad`
 
 ## Troubleshooting
 
-- **Missing textures / pink checkerboard:** run `./scripts/fetch-sources.sh assets` before build.
+- **Missing textures / pink checkerboard:** launch once on Wi‑Fi so assets download; or run `./scripts/fetch-assets-runtime.sh` locally.
 - **Build fails on QuakeC:** ensure `engine/data/xonotic-data.pk3dir/qcsrc/client/touch_*.qc` exists (integrated in repo).
 - **Touch not responding:** verify `vid_touchscreen 1` in `touch/xonotic.cfg` and device has multitouch.
 

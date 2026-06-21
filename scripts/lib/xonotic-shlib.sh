@@ -1,5 +1,5 @@
 #!/bin/bash
-# Shared helpers for Xonotic Ubuntu Touch scripts.
+# Shared helpers for Xonotic Touch scripts.
 set -euo pipefail
 
 xonotic_root() {
@@ -68,6 +68,48 @@ xonotic_apt_packages() {
         zip
 }
 
+xonotic_compiler() {
+    printf '%s' "${CC:-gcc}"
+}
+
+xonotic_compiler_triplet() {
+    local triplet
+    triplet="$("$(xonotic_compiler)" -print-multiarch 2>/dev/null || true)"
+    if [ -n "$triplet" ]; then
+        printf '%s' "$triplet"
+        return 0
+    fi
+    if [ -n "${ARCH_TRIPLET:-}" ]; then
+        printf '%s' "$ARCH_TRIPLET"
+        return 0
+    fi
+    return 1
+}
+
+xonotic_apply_cross_compile_env() {
+    local triplet="${ARCH_TRIPLET:-}"
+    if [ -z "$triplet" ] && [ "${ARCH:-}" = "arm64" ]; then
+        triplet=aarch64-linux-gnu
+    fi
+    if [ -n "$triplet" ] && command -v "${triplet}-gcc" >/dev/null 2>&1; then
+        export CC="${CC:-${triplet}-gcc}"
+        export CXX="${CXX:-${triplet}-g++}"
+        export AR="${AR:-${triplet}-ar}"
+        export PKG_CONFIG="${PKG_CONFIG:-${triplet}-pkg-config}"
+        export PKG_CONFIG_PATH="/usr/lib/${triplet}/pkgconfig:${PKG_CONFIG_PATH:-}"
+        printf 'Cross-compiling for %s (CC=%s)\n' "$triplet" "$CC"
+    fi
+}
+
+xonotic_has_gmp_headers() {
+    local triplet
+    triplet="$(xonotic_compiler_triplet || true)"
+    if [ -n "$triplet" ] && [ -f "/usr/include/${triplet}/gmp.h" ]; then
+        return 0
+    fi
+    test -f /usr/include/gmp.h
+}
+
 xonotic_has_native_build_deps() {
     xonotic_need_cmd gcc || return 1
     xonotic_need_cmd make || return 1
@@ -77,6 +119,57 @@ xonotic_has_native_build_deps() {
     pkg-config --exists libjpeg 2>/dev/null || return 1
     pkg-config --exists libxmp 2>/dev/null || return 1
     pkg-config --exists gmp 2>/dev/null || return 1
+    xonotic_has_gmp_headers || return 1
+}
+
+xonotic_ensure_gmp_headers() {
+    if xonotic_has_gmp_headers; then
+        return 0
+    fi
+
+    printf 'gmp.h missing — installing libgmp-dev...\n' >&2
+    if command -v apt-get >/dev/null 2>&1 && [ "$(id -u)" -eq 0 ]; then
+        env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+        env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgmp-dev
+    elif command -v apt-get >/dev/null 2>&1; then
+        if ! xonotic_maybe_sudo env DEBIAN_FRONTEND=noninteractive apt-get update -qq \
+            || ! xonotic_maybe_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgmp-dev; then
+            printf 'Could not install libgmp-dev (no sudo). Install manually:\n' >&2
+            printf '  sudo apt install libgmp-dev\n' >&2
+            printf 'For cross-builds (Clickable arm64): also install the target arch package.\n' >&2
+        fi
+    fi
+
+    if ! xonotic_has_gmp_headers; then
+        printf 'Warning: gmp.h still missing for %s — d0_blind_id build may fail.\n' "$(xonotic_compiler_triplet 2>/dev/null || echo "$(xonotic_compiler)")" >&2
+        printf 'Clickable: run "clickable clean" once to refresh the SDK image, then rebuild.\n' >&2
+        printf 'Host: sudo apt install libgmp-dev\n' >&2
+    fi
+}
+
+xonotic_gmp_include_flags() {
+    local triplet
+    triplet="$(xonotic_compiler_triplet || true)"
+    if [ -n "$triplet" ] && [ -f "/usr/include/${triplet}/gmp.h" ]; then
+        printf '%s' "-I/usr/include/${triplet}"
+        return 0
+    fi
+    if [ -f /usr/include/gmp.h ]; then
+        return 0
+    fi
+    return 1
+}
+
+xonotic_gmp_libs() {
+    if [ -n "${PKG_CONFIG:-}" ] && "$PKG_CONFIG" --exists gmp 2>/dev/null; then
+        "$PKG_CONFIG" --libs gmp
+        return 0
+    fi
+    if pkg-config --exists gmp 2>/dev/null; then
+        pkg-config --libs gmp
+        return 0
+    fi
+    printf '%s' "-lgmp"
 }
 
 xonotic_install_native_deps() {
@@ -245,7 +338,9 @@ xonotic_compile() {
     qcsrc="$root/engine/data/xonotic-data.pk3dir/qcsrc/Makefile"
 
     xonotic_ensure_game_code
-    xonotic_ensure_game_assets
+    if [ "${XONOTIC_PACKAGE_BUILD:-0}" != "1" ]; then
+        xonotic_ensure_game_assets
+    fi
     mkdir -p "$out_dir"
 
     if [ ! -f "$qcsrc" ]; then
@@ -254,17 +349,39 @@ xonotic_compile() {
     fi
 
     printf 'Compiling QuakeC + engine...\n'
+    xonotic_apply_cross_compile_env
+    xonotic_ensure_gmp_headers
     cd "$root/engine"
     export MAKEFLAGS="${MAKEFLAGS:--j$(nproc)}"
     export QCCFLAGS_WATERMARK="${QCCFLAGS_WATERMARK:-local-dev}"
     export XON_BUILDSYSTEM=1
 
     cd d0_blind_id
+    if [ -n "${ARCH_TRIPLET:-}" ] && [ -f Makefile ]; then
+        rm -f Makefile
+    fi
+    gmp_cflags="$(xonotic_gmp_include_flags || true)"
+    gmp_libs="$(xonotic_gmp_libs)"
+    d0_cflags="-g -O2"
+    d0_cppflags=""
+    d0_ldflags=""
+    if [ -n "$gmp_cflags" ]; then
+        d0_cflags="$d0_cflags $gmp_cflags"
+        d0_cppflags="$gmp_cflags"
+    fi
+    if [ -n "$gmp_libs" ]; then
+        d0_ldflags="$gmp_libs"
+    fi
     if [ ! -f Makefile ]; then
         sh autogen.sh
-        ./configure
+        if [ -n "${ARCH_TRIPLET:-}" ]; then
+            ./configure --host="${ARCH_TRIPLET}" CPPFLAGS="$d0_cppflags" CFLAGS="$d0_cflags" LDFLAGS="$d0_ldflags" LIBS="$gmp_libs"
+        else
+            ./configure CPPFLAGS="$d0_cppflags" CFLAGS="$d0_cflags" LDFLAGS="$d0_ldflags" LIBS="$gmp_libs"
+        fi
     fi
-    make $MAKEFLAGS
+    make $MAKEFLAGS clean >/dev/null 2>&1 || true
+    make $MAKEFLAGS CPPFLAGS="$d0_cppflags" CFLAGS="$d0_cflags" LDFLAGS="$d0_ldflags" LIBS="$gmp_libs"
 
     cd "$root/engine/gmqcc"
     # If a pre-built gmqcc exists but won't run on this environment (e.g. GLIBC

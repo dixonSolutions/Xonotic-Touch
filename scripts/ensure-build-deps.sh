@@ -1,12 +1,9 @@
 #!/bin/bash
-# Clickable build hook (see clickable.json).
+# Install native build headers inside Clickable SDK / local build environments.
 set -euo pipefail
 
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 # shellcheck source=lib/xonotic-shlib.sh
 . "$ROOT/scripts/lib/xonotic-shlib.sh"
 
-export XONOTIC_PACKAGE_BUILD="${XONOTIC_PACKAGE_BUILD:-1}"
-
-xonotic_compile
-xonotic_stage_click_build
+xonotic_ensure_gmp_headers

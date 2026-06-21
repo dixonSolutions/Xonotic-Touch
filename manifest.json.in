@@ -1,16 +1,16 @@
 {
-    "name": "xonotic.ratrad",
-    "description": "Xonotic for Ubuntu Touch",
+    "name": "xonotic-touch.ratrad",
+    "description": "Xonotic Touch — fast-paced arena FPS for touch devices",
     "architecture": "$ENV{ARCH}",
-    "title": "Xonotic",
+    "title": "Xonotic Touch",
     "hooks": {
-        "xonotic": {
+        "xonotic-touch": {
             "apparmor": "xonotic.apparmor",
             "desktop": "xonotic.desktop",
             "orientation": ["landscape", "inverted-landscape"]
         }
     },
-    "version": "1.0.0",
+    "version": "1.1.0",
     "maintainer": "ratrad",
     "framework": "$ENV{CLICK_FRAMEWORK}"
 }

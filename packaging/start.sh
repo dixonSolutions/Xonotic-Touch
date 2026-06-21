@@ -1,27 +1,42 @@
 #!/bin/sh
-# Launch wrapper for the confined click package (binary produced at build time).
+# Launch wrapper for Xonotic Touch (Flatpak, Click, local packages).
 set -e
 
 APP_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DATA_DIR="${APP_ROOT}/data"
+export XONOTIC_TOUCH_APP_ROOT="$APP_ROOT"
+BUNDLE_DATA="${APP_ROOT}/data"
 BIN="${APP_ROOT}/bin/xonotic"
 SCREEN_CALC="${APP_ROOT}/share/xonotic/screen-calc.sh"
-LAYOUT_CFG="${DATA_DIR}/screen.layout.cfg"
+FETCH_ASSETS="${APP_ROOT}/share/xonotic/fetch-assets-runtime.sh"
+SYNC_BUNDLE="${APP_ROOT}/share/xonotic/sync-bundle-data.sh"
+USER_BASE="${XDG_DATA_HOME:-${HOME}/.local/share}/xonotic-touch"
+USER_DATA="${USER_BASE}/data"
+LAYOUT_CFG="${USER_DATA}/screen.layout.cfg"
 TOUCH_PROFILE="${XONOTIC_TOUCH_PROFILE:-standard}"
 TOUCH_PERF_PROFILE="${XONOTIC_TOUCH_PERF_PROFILE:-balanced}"
-TOUCH_PROFILES_DIR="${DATA_DIR}/touch/profiles"
+TOUCH_PROFILES_DIR="${USER_DATA}/touch/profiles"
 USER_TOUCH_LAYOUT="${XONOTIC_TOUCH_LAYOUT:-${HOME}/.xonotic/touch.layout.cfg}"
 
 if [ ! -x "$BIN" ]; then
-    echo "xonotic: engine binary not found at $BIN" >&2
+    echo "xonotic-touch: engine binary not found at $BIN" >&2
     exit 1
 fi
 
-cd "$APP_ROOT"
+mkdir -p "$USER_DATA"
 
-# Detect desktop environment vs real Ubuntu Touch device.
-# Ubuntu Touch uses a Mir display server — no $DISPLAY or $WAYLAND_DISPLAY.
-# On desktop (X11 or Wayland) those vars are set by the compositor.
+if [ -x "$SYNC_BUNDLE" ]; then
+    "$SYNC_BUNDLE" "$BUNDLE_DATA" "$USER_DATA"
+fi
+
+if [ -x "$FETCH_ASSETS" ]; then
+    XONOTIC_TOUCH_DATA_DIR="$USER_DATA" "$FETCH_ASSETS" "$USER_DATA"
+elif [ -f "$APP_ROOT/share/xonotic/fetch-assets-runtime.sh" ]; then
+    sh "$APP_ROOT/share/xonotic/fetch-assets-runtime.sh" "$USER_DATA"
+fi
+
+DATA_DIR="$USER_DATA"
+
+# Detect desktop environment vs confined mobile (Ubuntu Touch Mir has no DISPLAY/WAYLAND).
 if [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
     IS_DESKTOP=1
 else
@@ -51,7 +66,7 @@ elif [ -f "$SCREEN_CALC" ]; then
     . "$SCREEN_CALC"
     xonotic_screen_calc "$LAYOUT_CFG"
 else
-    echo "xonotic: screen-calc missing at $SCREEN_CALC" >&2
+    echo "xonotic-touch: screen-calc missing at $SCREEN_CALC" >&2
     XONOTIC_VID_WIDTH="${XONOTIC_DEFAULT_WIDTH:-1920}"
     XONOTIC_VID_HEIGHT="${XONOTIC_DEFAULT_HEIGHT:-1080}"
     XONOTIC_TOUCH_XDPI="${XONOTIC_TOUCH_XDPI:-320}"
@@ -73,7 +88,6 @@ else
     export LD_LIBRARY_PATH="${APP_ROOT}/lib"
 fi
 
-# Remove stale session lock left by a previous crash or force-kill.
 XONOTIC_LOCK="${HOME}/.xonotic/lock"
 if [ -f "$XONOTIC_LOCK" ]; then
     rm -f "$XONOTIC_LOCK"
@@ -90,7 +104,7 @@ mkdir -p "${DATA_DIR}/touch/profiles"
     if [ -f "${TOUCH_PROFILES_DIR}/${TOUCH_PROFILE}.cfg" ]; then
         echo "exec touch/profiles/${TOUCH_PROFILE}.cfg"
     else
-        echo "xonotic: touch profile missing: ${TOUCH_PROFILES_DIR}/${TOUCH_PROFILE}.cfg" >&2
+        echo "xonotic-touch: touch profile missing: ${TOUCH_PROFILES_DIR}/${TOUCH_PROFILE}.cfg" >&2
     fi
     if [ -f "${TOUCH_PROFILES_DIR}/${TOUCH_PERF_PROFILE}.cfg" ]; then
         echo "exec touch/profiles/${TOUCH_PERF_PROFILE}.cfg"
@@ -100,11 +114,12 @@ mkdir -p "${DATA_DIR}/touch/profiles"
     fi
 } > "$STARTUP_CFG"
 
+cd "$USER_BASE"
+
 # shellcheck disable=SC2086
 exec "$BIN" -xonotic \
     +exec xonotic.cfg \
     +exec screen.layout.cfg \
-    +exec touch/startup.cfg \
     +vid_fullscreen "$FULLSCREEN" \
     +vid_touchscreen 1 \
     +vid_conwidthauto 0 \

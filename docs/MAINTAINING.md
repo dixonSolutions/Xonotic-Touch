@@ -31,7 +31,7 @@ Clickable testers use `./scripts/run-clickable.sh --container --install` (see [T
 | **Commit in this repo** | Default — edit under `engine/`, `git add`, push (run `prepare-engine-for-git.sh` once if nested `.git` dirs remain) |
 | **GitLab fork sub-repos** | Push `engine/darkplaces`, `engine/data/xonotic-data.pk3dir` to your forks; sync upstream with `sync-upstream-fork.sh` |
 
-Large textures/models/sound are **not** in git (~3 GB). Testers fetch them with `./scripts/fetch-sources.sh assets` before a playable build.
+Large textures/models/sound are **not** in git and **not** in release packages. They download on first launch to `~/.local/share/xonotic-touch/`. For engine work without packaging, prefetch with `./scripts/fetch-sources.sh assets`.
 
 ## Fork workflow (pull upstream, keep UT changes)
 

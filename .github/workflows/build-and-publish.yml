@@ -1,0 +1,173 @@
+name: Build and publish
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  FLATPAK_APP_ID: io.github.dixonSolutions.XonoticTouch
+  FLATPAK_REMOTE_NAME: xonotic-touch
+  FLATPAK_REMOTE_URL: https://dixonSolutions.github.io/Xonotic-Ubuntu-Touch-App/flatpak
+
+jobs:
+  flatpak-x86_64:
+    name: Flatpak (x86_64)
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions/freedesktop-24.08:x86_64
+      options: --privileged
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Flatpak
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: XonoticTouch-x86_64.flatpak
+          manifest-path: flatpak/io.github.dixonSolutions.XonoticTouch.yml
+          arch: x86_64
+          cache: true
+
+      - name: Upload Flatpak bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-x86_64
+          path: XonoticTouch-x86_64.flatpak
+
+  flatpak-aarch64:
+    name: Flatpak (aarch64)
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions/freedesktop-24.08:aarch64
+      options: --privileged
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Flatpak
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: XonoticTouch-aarch64.flatpak
+          manifest-path: flatpak/io.github.dixonSolutions.XonoticTouch.yml
+          arch: aarch64
+          cache: true
+
+      - name: Upload Flatpak bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-aarch64
+          path: XonoticTouch-aarch64.flatpak
+
+  click-arm64:
+    name: Click (arm64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Click package
+        run: |
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/mnt" \
+            -w /mnt \
+            -e XONOTIC_PACKAGE_BUILD=1 \
+            clickable/ci-image \
+            clickable build --arch arm64
+
+      - name: Find Click package
+        id: click
+        run: |
+          CLICK_FILE="$(find . -name '*.click' -not -path './.git/*' | head -1)"
+          if [ -z "$CLICK_FILE" ]; then
+            echo "No .click file found" >&2
+            exit 1
+          fi
+          echo "path=$CLICK_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Click package
+        uses: actions/upload-artifact@v4
+        with:
+          name: click-arm64
+          path: ${{ steps.click.outputs.path }}
+
+  publish-flatpak-remote:
+    name: Publish Flatpak remote
+    needs: [flatpak-x86_64, flatpak-aarch64]
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download Flatpak bundles
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Build combined Flatpak repository
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq flatpak
+          mkdir -p combined-repo site/flatpak
+          flatpak build-import-bundle combined-repo \
+            artifacts/flatpak-x86_64/XonoticTouch-x86_64.flatpak
+          flatpak build-import-bundle combined-repo \
+            artifacts/flatpak-aarch64/XonoticTouch-aarch64.flatpak
+          flatpak build-update-repo combined-repo --generate-static-deltas
+          cp -a combined-repo/. site/flatpak/
+          cat > site/flatpak/index.html <<'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head><meta charset="utf-8"><title>Xonotic Touch Flatpak remote</title></head>
+          <body>
+          <h1>Xonotic Touch Flatpak remote</h1>
+          <pre>
+          flatpak remote-add --user --if-not-exists xonotic-touch \
+            https://dixonSolutions.github.io/Xonotic-Ubuntu-Touch-App/flatpak
+          flatpak install --user xonotic-touch io.github.dixonSolutions.XonoticTouch
+          </pre>
+          </body>
+          </html>
+          EOF
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [flatpak-x86_64, flatpak-aarch64, click-arm64]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/flatpak-x86_64/XonoticTouch-x86_64.flatpak
+            release/flatpak-aarch64/XonoticTouch-aarch64.flatpak
+            release/click-arm64/*.click
+          generate_release_notes: true
