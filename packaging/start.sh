@@ -24,9 +24,15 @@ fi
 
 mkdir -p "$USER_DATA"
 
-if [ -x "$SYNC_BUNDLE" ]; then
-    "$SYNC_BUNDLE" "$BUNDLE_DATA" "$USER_DATA"
-fi
+sync_bundle_data() {
+    if [ ! -x "$SYNC_BUNDLE" ]; then
+        return 0
+    fi
+    "$SYNC_BUNDLE" "$BUNDLE_DATA" "$USER_DATA" \
+        || echo "xonotic-touch: bundle sync failed" >&2
+}
+
+sync_bundle_data
 
 if [ -x "$FETCH_ASSETS" ]; then
     XONOTIC_TOUCH_DATA_DIR="$USER_DATA" "$FETCH_ASSETS" "$USER_DATA"
@@ -34,10 +40,13 @@ elif [ -f "$APP_ROOT/share/xonotic/fetch-assets-runtime.sh" ]; then
     sh "$APP_ROOT/share/xonotic/fetch-assets-runtime.sh" "$USER_DATA"
 fi
 
+# Re-apply touch bundle overlay after asset fetch (pk3 downloads must not override fork data).
+sync_bundle_data
+
 DATA_DIR="$USER_DATA"
 
-# Detect desktop environment vs confined mobile (Mir on some phones has no DISPLAY/WAYLAND).
-if [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
+# Desktop dev window is opt-in; real touch devices should use the full touch code path.
+if [ "${XONOTIC_TOUCH_DESKTOP_DEV:-0}" = "1" ]; then
     IS_DESKTOP=1
 else
     IS_DESKTOP=0

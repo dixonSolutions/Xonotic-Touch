@@ -40,4 +40,9 @@ if [ -d "$ROOT/touch/profiles" ]; then
     cp -a "$ROOT/touch/profiles/." "$DEST/touch/profiles/"
 fi
 
+if [ -d "$ROOT/touch/gfx" ]; then
+    mkdir -p "$DEST/xonotic-data.pk3dir/gfx"
+    cp -a "$ROOT/touch/gfx/." "$DEST/xonotic-data.pk3dir/gfx/"
+fi
+
 echo "Staged slim data to $DEST"

@@ -157,53 +157,55 @@ xonotic_download_autobuild_zip() {
 xonotic_extract_autobuild_pk3() {
     local zip_path="$1"
     local data_dir="$2"
+    local extract_dir="$3"
 
     if ! command -v unzip >/dev/null 2>&1; then
         echo "xonotic: unzip required to extract game assets" >&2
         return 1
     fi
 
-    local tmp
-    tmp="$(mktemp -d)"
-    unzip -q "$zip_path" "Xonotic/data/*.pk3" -d "$tmp"
-    mkdir -p "$data_dir"
-    mv "$tmp/Xonotic/data/"*.pk3 "$data_dir/"
-    rm -rf "$tmp"
+    mkdir -p "$extract_dir" "$data_dir"
+    unzip -q "$zip_path" "Xonotic/data/*.pk3" -d "$extract_dir"
+    mv "$extract_dir/Xonotic/data/"*.pk3 "$data_dir/"
+    rm -rf "$extract_dir/Xonotic"
 }
 
 xonotic_fetch_autobuild_assets() {
     local data_dir="$1"
     local tmp
     local zip_path
+    local extract_dir
 
-    tmp="$(mktemp -d)"
+    tmp="$data_dir/.fetch-tmp"
+    mkdir -p "$tmp"
+    trap 'rm -rf "$tmp"' RETURN
+
     zip_path="$tmp/xonotic.zip"
+    extract_dir="$tmp/extract"
 
     if xonotic_asset_dirs_missing "$data_dir"; then
         xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest.zip"
-        xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir"
+        xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir" "$extract_dir"
         rm -f "$zip_path"
     fi
 
     if xonotic_maps_assets_missing "$data_dir"; then
         xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest-mappingsupport.zip"
-        xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir"
+        xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir" "$extract_dir"
         rm -f "$zip_path"
     fi
 
     if xonotic_music_assets_missing "$data_dir"; then
         xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest-high.zip"
-        xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir"
+        xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir" "$extract_dir"
         rm -f "$zip_path"
     fi
 
     if xonotic_nexcompat_assets_missing "$data_dir"; then
         xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest.zip"
-        xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir"
+        xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir" "$extract_dir"
         rm -f "$zip_path"
     fi
-
-    rm -rf "$tmp"
 }
 
 xonotic_fetch_game_assets() {
