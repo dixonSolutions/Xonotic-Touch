@@ -54,7 +54,9 @@ jobs:
           bundle: XonoticTouch-${{ matrix.arch }}.flatpak
           manifest-path: flatpak/io.github.dixonSolutions.XonoticTouch.yml
           arch: ${{ matrix.arch }}
-          cache-key: flatpak-${{ matrix.arch }}
+          keep-build-dirs: true
+          cache-key: xonotic-touch-${{ matrix.arch }}-v1-${{ hashFiles('flatpak/io.github.dixonSolutions.XonoticTouch.yml', 'scripts/**', 'packaging/**', 'touch/**', 'engine/darkplaces/makefile.inc') }}
+          restore-cache: true
 
       - name: Upload Flatpak bundle
         uses: actions/upload-artifact@v4

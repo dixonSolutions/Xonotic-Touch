@@ -172,14 +172,11 @@ xonotic_extract_autobuild_pk3() {
 
 xonotic_fetch_autobuild_assets() {
     local data_dir="$1"
-    local tmp
     local zip_path
     local extract_dir
+    local tmp="$data_dir/.fetch-tmp"
 
-    tmp="$data_dir/.fetch-tmp"
     mkdir -p "$tmp"
-    trap 'rm -rf "$tmp"' RETURN
-
     zip_path="$tmp/xonotic.zip"
     extract_dir="$tmp/extract"
 
@@ -206,6 +203,8 @@ xonotic_fetch_autobuild_assets() {
         xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir" "$extract_dir"
         rm -f "$zip_path"
     fi
+
+    rm -rf "$tmp"
 }
 
 xonotic_fetch_game_assets() {

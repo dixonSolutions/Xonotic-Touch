@@ -217,6 +217,13 @@ xonotic_ensure_game_assets() {
     bash "$root/scripts/fetch-sources.sh" full
 }
 
+xonotic_maybe_make_clean() {
+    if [ "${XONOTIC_PACKAGE_BUILD:-0}" = "1" ]; then
+        return 0
+    fi
+    make clean >/dev/null 2>&1 || true
+}
+
 xonotic_compile_engine_only() {
     local root out_dir out_bin darkplaces
     root="$(xonotic_root)"
@@ -231,7 +238,7 @@ xonotic_compile_engine_only() {
     mkdir -p "$out_dir"
     printf 'Building DarkPlaces for %s...\n' "${ARCH:-host}"
     cd "$darkplaces"
-    make clean >/dev/null 2>&1 || true
+    xonotic_maybe_make_clean
     PATH="/usr/bin:${PATH}" make sdl-release DP_SSE=0 "${MAKEFLAGS:--j$(nproc)}"
     install -m 755 darkplaces-sdl "$out_bin"
     printf 'Built %s (%s)\n' "$out_bin" "$(file -b "$out_bin")"
@@ -288,17 +295,16 @@ xonotic_compile() {
             ./configure CPPFLAGS="$d0_cppflags" CFLAGS="$d0_cflags" LDFLAGS="$d0_ldflags" LIBS="$gmp_libs"
         fi
     fi
-    make $MAKEFLAGS clean >/dev/null 2>&1 || true
     make $MAKEFLAGS CPPFLAGS="$d0_cppflags" CFLAGS="$d0_cflags" LDFLAGS="$d0_ldflags" LIBS="$gmp_libs"
 
     cd "$root/engine/gmqcc"
     # gmqcc must run on the build host to compile QuakeC (arch-neutral output).
     if [ -f gmqcc ] && ! ./gmqcc --version >/dev/null 2>&1; then
         printf 'gmqcc binary incompatible with current environment — rebuilding from source\n'
-        make clean >/dev/null 2>&1 || true
+        xonotic_maybe_make_clean
     fi
     if [ -n "${ARCH_TRIPLET:-}" ]; then
-        make clean >/dev/null 2>&1 || true
+        xonotic_maybe_make_clean
         CC="${HOST_CC:-gcc}" CXX="${HOST_CXX:-g++}" \
             make $MAKEFLAGS STRIP=: gmqcc
     else
@@ -311,7 +317,7 @@ xonotic_compile() {
     make QCC="$gmqcc" XON_BUILDSYSTEM=1 QCCFLAGS_WATERMARK="$QCCFLAGS_WATERMARK" -C qcsrc ../menu.dat
 
     cd "$root/engine/darkplaces"
-    make clean >/dev/null 2>&1 || true
+    xonotic_maybe_make_clean
     # Some SDK images ship a broken sdl2-config — ensure /usr/bin/sdl2-config is found first.
     PATH="/usr/bin:${PATH}" make sdl-release DP_SSE=0 $MAKEFLAGS STRIP=:
     install -m 755 darkplaces-sdl "$out_bin"

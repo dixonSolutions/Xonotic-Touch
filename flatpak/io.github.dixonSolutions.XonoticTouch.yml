@@ -2,6 +2,8 @@ app-id: io.github.dixonSolutions.XonoticTouch
 runtime: org.freedesktop.Platform
 runtime-version: '24.08'
 sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.ccache
 command: start.sh
 
 finish-args:
@@ -15,8 +17,13 @@ finish-args:
   - --filesystem=home/.xonotic:create
 
 build-options:
+  append-path: /usr/lib/sdk/ccache/bin
   env:
     XONOTIC_PACKAGE_BUILD: '1'
+    CCACHE_DIR: /run/build/ccache
+    CCACHE_MAXSIZE: 3G
+    CC: ccache gcc
+    CXX: ccache g++
   build-args:
     - --share=network
 
@@ -39,6 +46,7 @@ modules:
   - name: xonotic-touch
     buildsystem: simple
     build-commands:
+      - mkdir -p /run/build/ccache
       - bash scripts/fetch-sources.sh code
       - bash scripts/build.sh
       - bash scripts/stage-flatpak.sh
