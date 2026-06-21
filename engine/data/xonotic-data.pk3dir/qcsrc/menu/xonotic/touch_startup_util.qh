@@ -1,0 +1,11 @@
+#pragma once
+
+const string TOUCH_ASSET_PROGRESS_FILE = ".asset-fetch-progress";
+const string TOUCH_ASSETS_READY_MARKER = ".assets-ready";
+
+bool TouchStartup_assetsReady();
+bool TouchStartup_assetFetchActive();
+bool TouchStartup_assetFetchDialog_shouldShow();
+bool TouchStartup_userProfileNeeded();
+bool TouchStartup_touchSetupNeeded();
+void TouchStartup_readProgress(string *status, float *percent, string *message);

@@ -73,6 +73,48 @@ xonotic_assets_need_fetch() {
         || xonotic_nexcompat_assets_missing "$data_dir"
 }
 
+xonotic_assets_ready_marker() {
+    local data_dir="$1"
+    echo "$data_dir/.assets-ready"
+}
+
+xonotic_assets_mark_ready() {
+    local data_dir="$1"
+    local marker
+    marker="$(xonotic_assets_ready_marker "$data_dir")"
+    : > "$marker"
+}
+
+xonotic_assets_are_ready() {
+    local data_dir="$1"
+    local marker
+    marker="$(xonotic_assets_ready_marker "$data_dir")"
+    if [ -f "$marker" ]; then
+        return 0
+    fi
+    if ! xonotic_assets_need_fetch "$data_dir"; then
+        xonotic_assets_mark_ready "$data_dir"
+        return 0
+    fi
+    return 1
+}
+
+xonotic_progress_write() {
+    local status="$1"
+    local percent="$2"
+    local message="$3"
+    local file="${XONOTIC_ASSET_FETCH_PROGRESS:-}"
+
+    if [ -z "$file" ]; then
+        return 0
+    fi
+    {
+        printf '%s\n' "$status"
+        printf '%s\n' "$percent"
+        printf '%s\n' "$message"
+    } > "$file"
+}
+
 xonotic_fetch_pk3dir_sparse() {
     local data_dir="$1"
     local data_url="${DATA_URL:-https://gitlab.com/xonotic/xonotic-data.pk3dir.git}"
@@ -125,17 +167,21 @@ xonotic_fetch_git_assets() {
         return 1
     fi
 
+    xonotic_progress_write running 10 "Downloading core game data..."
     xonotic_fetch_pk3dir_sparse "$data_dir" || return 1
 
     if xonotic_maps_assets_missing "$data_dir"; then
+        xonotic_progress_write running 45 "Downloading maps..."
         xonotic_clone_pk3dir_repo "$data_dir" xonotic-maps.pk3dir \
             "${MAPS_URL:-https://gitlab.com/xonotic/xonotic-maps.pk3dir.git}" maps || return 1
     fi
     if xonotic_music_assets_missing "$data_dir"; then
+        xonotic_progress_write running 70 "Downloading music..."
         xonotic_clone_pk3dir_repo "$data_dir" xonotic-music.pk3dir \
             "${MUSIC_URL:-https://gitlab.com/xonotic/xonotic-music.pk3dir.git}" music || return 1
     fi
     if xonotic_nexcompat_assets_missing "$data_dir"; then
+        xonotic_progress_write running 88 "Downloading compatibility pack..."
         xonotic_clone_pk3dir_repo "$data_dir" xonotic-nexcompat.pk3dir \
             "${NEXCOMPAT_URL:-https://gitlab.com/xonotic/xonotic-nexcompat.pk3dir.git}" textures || return 1
     fi
@@ -144,10 +190,15 @@ xonotic_fetch_git_assets() {
 xonotic_download_autobuild_zip() {
     local zip_path="$1"
     local zip_name="$2"
+    local label="$3"
 
     if ! command -v curl >/dev/null 2>&1; then
         echo "xonotic: curl required to download game assets" >&2
         return 1
+    fi
+
+    if [ -n "$label" ]; then
+        xonotic_progress_write running "$label" "Downloading ${zip_name}..."
     fi
 
     curl -fL --user "${XONOTIC_AUTOBUILD_USER}:${XONOTIC_AUTOBUILD_PASS}" \
@@ -181,25 +232,29 @@ xonotic_fetch_autobuild_assets() {
     extract_dir="$tmp/extract"
 
     if xonotic_asset_dirs_missing "$data_dir"; then
-        xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest.zip"
+        xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest.zip" 15
+        xonotic_progress_write running 35 "Installing core game data..."
         xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir" "$extract_dir"
         rm -f "$zip_path"
     fi
 
     if xonotic_maps_assets_missing "$data_dir"; then
-        xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest-mappingsupport.zip"
+        xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest-mappingsupport.zip" 45
+        xonotic_progress_write running 60 "Installing maps..."
         xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir" "$extract_dir"
         rm -f "$zip_path"
     fi
 
     if xonotic_music_assets_missing "$data_dir"; then
-        xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest-high.zip"
+        xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest-high.zip" 70
+        xonotic_progress_write running 85 "Installing music..."
         xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir" "$extract_dir"
         rm -f "$zip_path"
     fi
 
     if xonotic_nexcompat_assets_missing "$data_dir"; then
-        xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest.zip"
+        xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest.zip" 88
+        xonotic_progress_write running 92 "Installing compatibility pack..."
         xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir" "$extract_dir"
         rm -f "$zip_path"
     fi
@@ -212,14 +267,25 @@ xonotic_fetch_game_assets() {
 
     mkdir -p "$data_dir"
 
-    if ! xonotic_assets_need_fetch "$data_dir"; then
+    if xonotic_assets_are_ready "$data_dir"; then
+        xonotic_progress_write done 100 "Game assets ready"
         return 0
     fi
 
+    xonotic_progress_write running 0 "Preparing download..."
     echo "xonotic-touch: downloading game assets (first launch may take several minutes)..."
     if xonotic_fetch_git_assets "$data_dir"; then
+        xonotic_assets_mark_ready "$data_dir"
+        xonotic_progress_write done 100 "Download complete"
         return 0
     fi
 
     xonotic_fetch_autobuild_assets "$data_dir"
+    if xonotic_assets_are_ready "$data_dir"; then
+        xonotic_progress_write done 100 "Download complete"
+        return 0
+    fi
+
+    xonotic_progress_write error 0 "Download failed — check network and retry"
+    return 1
 }

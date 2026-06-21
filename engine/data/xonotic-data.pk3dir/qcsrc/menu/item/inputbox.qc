@@ -18,6 +18,20 @@
 			me.cb_offset = bound(-1, me.cb_offset, 0) * me.cb_width;  // bound to range -1, 0
 			me.keepspaceRight -= me.cb_offset - me.cb_width;
 		}
+		if (me.focused)
+			menu_touch_keyboard_show(me.origin, me.size);
+	}
+
+	void InputBox_focusEnter(entity me)
+	{
+		SUPER(InputBox).focusEnter(me);
+		menu_touch_keyboard_show(me.origin, me.size);
+	}
+
+	void InputBox_focusLeave(entity me)
+	{
+		menu_touch_keyboard_hide();
+		SUPER(InputBox).focusLeave(me);
 	}
 
 	void InputBox_setText(entity me, string txt)

@@ -405,14 +405,14 @@ Menu actions: Export → share file; Import → validate keys, backup current, `
 | Input / multitouch / commands | `touch_input.qc` | **Done** (3-finger slots via `gettouchfinger`) |
 | Overlay draw | `touch_draw.qc` | **Done** |
 | Customize mode | — | *Pending* |
-| Menu / wizard | `qcsrc/menu/` | *Pending* |
+| Menu / wizard | `qcsrc/menu/` | **Done** — startup chain, asset progress, touch setup (`docs/SETUP.md`) |
 
 Build flow: clone repo (integrated `engine/`) → `fetch-sources.sh code` (if needed) → `./scripts/install-flatpak.sh` or `./scripts/run-local.sh`.
 
 ### CSQC skeleton (remaining work)
 
 1. **`touch_customize_*`** — edit mode overlay and save to user path via `cvar_set` flush.
-2. **Menu hooks** — bind sliders to cvars; first-run wizard flag `touch_setup_done`.
+2. **Menu hooks** — bind sliders to cvars; first-run wizard flag `touch_setup_done` (**done** — see [SETUP.md](SETUP.md)).
 3. **`touch_layout_apply_preset(string name)`** — in-game `exec touch/profiles/<name>.cfg` from menu.
 
 ---

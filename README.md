@@ -55,3 +55,4 @@ First launch downloads game data to `~/.local/share/xonotic-touch/data/`. See [d
 - [docs/SOURCES.md](docs/SOURCES.md) — UI and controls source map
 - [docs/SCREEN.md](docs/SCREEN.md) — landscape screen calculation
 - [docs/CONTROLS.md](docs/CONTROLS.md) — touch controls and presets
+- [docs/SETUP.md](docs/SETUP.md) — first-run wizard, download progress, OSK, touch menus

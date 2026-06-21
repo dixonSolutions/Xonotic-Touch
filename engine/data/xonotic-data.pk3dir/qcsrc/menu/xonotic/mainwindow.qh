@@ -7,6 +7,7 @@ CLASS(MainWindow, ModalController)
 	METHOD(MainWindow, draw, void(entity));
 	ATTRIB(MainWindow, ToSDialog, entity);
 	ATTRIB(MainWindow, firstRunDialog, entity);
+	ATTRIB(MainWindow, assetFetchDialog, entity);
 	ATTRIB(MainWindow, touchSetupDialog, entity);
 	ATTRIB(MainWindow, advancedDialog, entity);
 	ATTRIB(MainWindow, mutatorsDialog, entity);

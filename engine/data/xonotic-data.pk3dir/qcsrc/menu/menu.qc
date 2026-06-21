@@ -242,6 +242,42 @@ void m_init_delayed()
 	cvar_set("_menu_initialized", "2");
 }
 
+void menu_touch_keyboard_show(vector absOrigin, vector absSize)
+{
+	if (!cvar("vid_touchscreen"))
+		return;
+	vector g0 = boxToGlobal(absOrigin, draw_shift, draw_scale);
+	vector gs = boxToGlobalSize(absSize, draw_scale);
+	cvar_set("vid_touchscreen_textinput_x", ftos(g0.x));
+	cvar_set("vid_touchscreen_textinput_y", ftos(g0.y));
+	cvar_set("vid_touchscreen_textinput_w", ftos(gs.x));
+	cvar_set("vid_touchscreen_textinput_h", ftos(gs.y));
+	cvar_set("vid_touchscreen_showkeyboard", "1");
+}
+
+void menu_touch_keyboard_hide()
+{
+	if (!cvar("vid_touchscreen"))
+		return;
+	cvar_set("vid_touchscreen_showkeyboard", "0");
+}
+
+void menu_sync_absolute_mousepos()
+{
+	vector rawMousePos = getmousepos();
+	vector newMouse = '0 0 0';
+	if (realconheight > realconwidth)
+	{
+		newMouse.x = rawMousePos.x / max(1, realconwidth);
+		newMouse.y = rawMousePos.y / max(1, realconheight);
+	}
+	else
+		newMouse = globalToBox(rawMousePos, draw_shift, draw_scale);
+	newMouse.x = bound(0, newMouse.x, 1);
+	newMouse.y = bound(0, newMouse.y, 1);
+	menuMousePos = newMouse;
+}
+
 void m_keyup(float key, float ascii)
 {
 	if (!menuInitialized) return;
@@ -250,6 +286,8 @@ void m_keyup(float key, float ascii)
 	main.keyUp(main, key, ascii, menuShiftState);
 	if (key >= K_MOUSE1 && key <= K_MOUSE3)
 	{
+		if (menuMouseMode && cvar("vid_touchscreen"))
+			menu_sync_absolute_mousepos();
 		--mouseButtonsPressed;
 		if (!mouseButtonsPressed) main.mouseRelease(main, menuMousePos);
 		if (mouseButtonsPressed < 0)
@@ -289,7 +327,11 @@ void m_keydown(float key, float ascii)
 	{
 		draw_reset_cropped();
 		if (!mouseButtonsPressed && key >= K_MOUSE1 && key <= K_MOUSE3)
+		{
+			if (menuMouseMode && cvar("vid_touchscreen"))
+				menu_sync_absolute_mousepos();
 			main.mousePress(main, menuMousePos);
+		}
 		if (!main.keyDown(main, key, ascii, menuShiftState))
 		{
 			// disable menu on unhandled ESC
@@ -885,7 +927,7 @@ void m_draw(float width, float height)
 			draw_Fill('0 0 0', '1 1 0', SKINCOLOR_BACKGROUND, 1);
 			drawBackground(SKINGFX_BACKGROUND, bound(0, menuLogoAlpha, 1), SKINALIGN_BACKGROUND, true);
 			draw_reset_cropped();
-			if (menuAlpha <= 0 && SKINALPHA_CURSOR_INTRO > 0)
+			if (menuAlpha <= 0 && SKINALPHA_CURSOR_INTRO > 0 && !cvar("vid_touchscreen"))
 			{
 				draw_alpha = SKINALPHA_CURSOR_INTRO * bound(0, menuLogoAlpha, 1);
 				draw_drawMousePointer(menuMousePos);
@@ -962,7 +1004,8 @@ void m_draw(float width, float height)
 
 	draw_alpha = max(draw_alpha, SKINALPHA_CURSOR_INTRO * bound(0, menuLogoAlpha, 1));
 
-	draw_drawMousePointer(menuMousePos);
+	if (!cvar("vid_touchscreen"))
+		draw_drawMousePointer(menuMousePos);
 
 	draw_reset_cropped();
 	postMenuDraw();
@@ -994,6 +1037,7 @@ void m_hide()
 
 	if (!menuInitialized) return;
 
+	menu_touch_keyboard_hide();
 	main.focusLeave(main);
 	main.hideNotify(main);
 }

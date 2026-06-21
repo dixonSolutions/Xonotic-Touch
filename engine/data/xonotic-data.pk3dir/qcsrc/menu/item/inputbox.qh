@@ -13,6 +13,8 @@ CLASS(InputBox, Label)
 	METHOD(InputBox, mouseDrag, float(entity, vector));
 	METHOD(InputBox, showNotify, void(entity));
 	METHOD(InputBox, resizeNotify, void(entity, vector, vector, vector, vector));
+	METHOD(InputBox, focusEnter, void(entity));
+	METHOD(InputBox, focusLeave, void(entity));
 
 	ATTRIB(InputBox, src, string);
 

@@ -25,7 +25,7 @@ void XonoticTouchSetupDialog_fill(entity me)
 
 	me.TR(me);
 	me.TR(me);
-		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("Welcome! Pick a control preset and handedness. You can drag buttons to reposition them later in Settings → Touch or in-game customize mode.")));
+		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("Welcome to Xonotic Touch! Pick a control preset and handedness. You can drag buttons to reposition them later in Settings → Touch or in-game customize mode.")));
 		e.allowWrap = true;
 		e.allowWrap_spacing = 0.5;
 	me.TR(me);

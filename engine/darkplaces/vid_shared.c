@@ -160,6 +160,10 @@ cvar_t vid_sRGB_fallback = {CF_CLIENT | CF_ARCHIVE, "vid_sRGB_fallback", "0", "d
 cvar_t vid_touchscreen = {CF_CLIENT, "vid_touchscreen", "0", "Use touchscreen-style input (no mouse grab, track mouse motion only while button is down, screen areas for mimicing joystick axes and buttons"};
 cvar_t vid_touchscreen_showkeyboard = {CF_CLIENT, "vid_touchscreen_showkeyboard", "0", "shows the platform's screen keyboard for text entry, can be set by csqc or menu qc if it wants to receive text input, does nothing if the platform has no screen keyboard"};
 cvar_t vid_touchscreen_supportshowkeyboard = {CF_CLIENT | CF_READONLY, "vid_touchscreen_supportshowkeyboard", "0", "indicates if the platform supports a virtual keyboard"};
+cvar_t vid_touchscreen_textinput_x = {CF_CLIENT, "vid_touchscreen_textinput_x", "0", "console X of the focused text field for OSK placement (set by menu QC)"};
+cvar_t vid_touchscreen_textinput_y = {CF_CLIENT, "vid_touchscreen_textinput_y", "0", "console Y of the focused text field for OSK placement (set by menu QC)"};
+cvar_t vid_touchscreen_textinput_w = {CF_CLIENT, "vid_touchscreen_textinput_w", "0", "console width of the focused text field for OSK placement (set by menu QC)"};
+cvar_t vid_touchscreen_textinput_h = {CF_CLIENT, "vid_touchscreen_textinput_h", "0", "console height of the focused text field for OSK placement (set by menu QC)"};
 cvar_t vid_stick_mouse = {CF_CLIENT | CF_ARCHIVE, "vid_stick_mouse", "0", "have the mouse stuck in the center of the screen" };
 cvar_t vid_resizable = {CF_CLIENT | CF_ARCHIVE, "vid_resizable", "1", "0: window not resizable, 1: resizable, 2: window can be resized but the framebuffer isn't adjusted" };
 cvar_t vid_desktopfullscreen = {CF_CLIENT | CF_ARCHIVE, "vid_desktopfullscreen", "1", "force desktop resolution and refresh rate (disable modesetting), also use some OS-dependent tricks for better fullscreen integration; disabling may reveal OS/driver/SDL bugs with multi-monitor configurations"};
@@ -1316,6 +1320,10 @@ void VID_Shared_Init(void)
 	Cvar_RegisterVariable(&vid_touchscreen);
 	Cvar_RegisterVariable(&vid_touchscreen_showkeyboard);
 	Cvar_RegisterVariable(&vid_touchscreen_supportshowkeyboard);
+	Cvar_RegisterVariable(&vid_touchscreen_textinput_x);
+	Cvar_RegisterVariable(&vid_touchscreen_textinput_y);
+	Cvar_RegisterVariable(&vid_touchscreen_textinput_w);
+	Cvar_RegisterVariable(&vid_touchscreen_textinput_h);
 	Cvar_RegisterVariable(&vid_stick_mouse);
 	Cvar_RegisterVariable(&vid_resizable);
 	Cvar_RegisterVariable(&vid_desktopfullscreen);

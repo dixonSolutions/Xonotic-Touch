@@ -340,21 +340,68 @@ qbool VID_HasScreenKeyboardSupport(void)
 	return SDL_HasScreenKeyboardSupport() != SDL_FALSE;
 }
 
-void VID_ShowKeyboard(qbool show)
+static void VID_UpdateTextInputRect(void)
 {
-	if (!SDL_HasScreenKeyboardSupport())
+	SDL_Rect rect;
+	float cx, cy, cw, ch;
+
+	if (!vid_touchscreen.integer)
 		return;
 
-	if (show)
+	cx = vid_touchscreen_textinput_x.value;
+	cy = vid_touchscreen_textinput_y.value;
+	cw = vid_touchscreen_textinput_w.value;
+	ch = vid_touchscreen_textinput_h.value;
+
+	if (cw <= 0 || ch <= 0 || vid_conwidth.value <= 0 || vid_conheight.value <= 0)
 	{
-		if (!SDL_IsTextInputActive())
-			SDL_StartTextInput();
+		// Fallback: lower half of the window (GNOME/Wayland OSK placement hint).
+		rect.x = 0;
+		rect.y = vid.mode.height / 2;
+		rect.w = vid.mode.width;
+		rect.h = vid.mode.height - rect.y;
 	}
 	else
 	{
+		rect.x = (int)(cx * vid.mode.width / vid_conwidth.value);
+		rect.y = (int)(cy * vid.mode.height / vid_conheight.value);
+		rect.w = (int)(cw * vid.mode.width / vid_conwidth.value);
+		rect.h = (int)(ch * vid.mode.height / vid_conheight.value);
+		if (rect.w < 1)
+			rect.w = 1;
+		if (rect.h < 1)
+			rect.h = 1;
+	}
+
+	if (rect.x < 0)
+		rect.x = 0;
+	if (rect.y < 0)
+		rect.y = 0;
+	if (rect.x + rect.w > vid.mode.width)
+		rect.w = vid.mode.width - rect.x;
+	if (rect.y + rect.h > vid.mode.height)
+		rect.h = vid.mode.height - rect.y;
+
+	SDL_SetTextInputRect(&rect);
+}
+
+void VID_ShowKeyboard(qbool show)
+{
+	if (!show)
+	{
 		if (SDL_IsTextInputActive())
 			SDL_StopTextInput();
+		return;
 	}
+
+	// Touch tablets on Linux/Wayland use text-input-v3 for the compositor OSK;
+	// SDL_HasScreenKeyboardSupport() is often false there.
+	if (!SDL_HasScreenKeyboardSupport() && !vid_touchscreen.integer)
+		return;
+
+	VID_UpdateTextInputRect();
+	if (!SDL_IsTextInputActive())
+		SDL_StartTextInput();
 }
 
 qbool VID_ShowingKeyboard(void)
@@ -892,6 +939,20 @@ static void VID_SyncDesktopMouse(void)
 	in_windowmouse_y = y;
 }
 
+static void VID_SyncTouchFinger(void)
+{
+	int i;
+	for (i = 0; i < MAXFINGERS - 1; i++)
+	{
+		if (multitouch[i][0])
+		{
+			in_windowmouse_x = multitouch[i][1] * vid_width.value;
+			in_windowmouse_y = multitouch[i][2] * vid_height.value;
+			return;
+		}
+	}
+}
+
 static void IN_Move_TouchScreen_Xonotic(void)
 {
 	int i, numfingers;
@@ -934,15 +995,16 @@ static void IN_Move_TouchScreen_Xonotic(void)
 	default:
 		if (!VID_TouchscreenHasRealDevices())
 		{
-			// Desktop menu: direct mouse — the touch puck cursor fights SDL motion.
+			// Desktop testing: direct mouse — no on-screen puck.
 			VID_SyncDesktopMouse();
 			Vid_ClearAllTouchscreenAreas(0);
 		}
 		else
 		{
-			// Real touchscreen menu: grab-and-drag puck cursor.
-			VID_TouchscreenCursor((float)in_windowmouse_x/vid_width.value*vid_conwidth.value, (float)in_windowmouse_y/vid_height.value*vid_conheight.value, 192*xscale, 192*yscale, &buttons[0], K_MOUSE1);
+			// Touch-only: tap directly at finger position (no grab-and-drag puck).
+			VID_SyncTouchFinger();
 			Vid_ClearAllTouchscreenAreas(0);
+			VID_TouchscreenArea(0, 0, 0, vid_conwidth.value, vid_conheight.value, NULL, 0.0f, NULL, NULL, &buttons[0], K_MOUSE1, NULL, 0, 0, 0, true);
 		}
 		break;
 	}
@@ -1031,6 +1093,9 @@ void IN_Move( void )
 	keydest_t keydest = (key_consoleactive & KEY_CONSOLEACTIVE_USER) ? key_console : key_dest;
 
 	scr_numtouchscreenareas = 0;
+
+	if (vid_touchscreen.integer && vid_touchscreen_showkeyboard.integer)
+		VID_UpdateTextInputRect();
 
 	// Only apply the new keyboard state if the input changes.
 	if (keydest != oldkeydest || !!vid_touchscreen_showkeyboard.integer != oldshowkeyboard)
@@ -1970,7 +2035,7 @@ qbool VID_InitMode(const viddef_mode_t *mode)
 	if (!SDL_WasInit(SDL_INIT_VIDEO) && SDL_InitSubSystem(SDL_INIT_VIDEO) < 0)
 		Sys_Error ("Failed to init SDL video subsystem: %s", SDL_GetError());
 
-	Cvar_SetValueQuick(&vid_touchscreen_supportshowkeyboard, SDL_HasScreenKeyboardSupport() ? 1 : 0);
+	Cvar_SetValueQuick(&vid_touchscreen_supportshowkeyboard, (SDL_HasScreenKeyboardSupport() || vid_touchscreen.integer) ? 1 : 0);
 	return VID_InitModeGL(mode);
 }
 

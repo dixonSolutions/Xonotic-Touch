@@ -13,8 +13,7 @@ void Close_Clicked(entity btn, entity me)
 	LOG_INFOF("Accepted ToS version %d", _Nex_ExtResponseSystem_NewToS);
 	cvar_set("_termsofservice_accepted", ftos(_Nex_ExtResponseSystem_NewToS));
 	localcmd("saveconfig\n");
-	if (main.firstRunDialog.shouldShow())
-		main.firstDraw = true;
+	main.firstDraw = true;
 	Dialog_Close(btn, me);
 }
 
@@ -73,6 +72,8 @@ void XonoticToSDialog_fill(entity me)
 
 	if (autocvar__termsofservice_accepted > 0)
 		subtitle = _("Terms of Service have been updated. Please read them before continuing:");
+	else if (cvar("vid_touchscreen"))
+		subtitle = _("Welcome to Xonotic Touch! Please read the following Terms of Service:");
 	else
 		subtitle = _("Welcome to Xonotic! Please read the following Terms of Service:");
 

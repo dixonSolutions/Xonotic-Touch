@@ -1,0 +1,20 @@
+#pragma once
+
+#include "rootdialog.qh"
+#include "touch_startup_util.qh"
+
+CLASS(XonoticTouchAssetFetchDialog, XonoticRootDialog)
+	METHOD(XonoticTouchAssetFetchDialog, fill, void(entity));
+	METHOD(XonoticTouchAssetFetchDialog, shouldShow, bool());
+	METHOD(XonoticTouchAssetFetchDialog, draw, void(entity));
+	ATTRIB(XonoticTouchAssetFetchDialog, title, string, _("Xonotic Touch"));
+	ATTRIB(XonoticTouchAssetFetchDialog, color, vector, SKINCOLOR_DIALOG_FIRSTRUN);
+	ATTRIB(XonoticTouchAssetFetchDialog, intendedWidth, float, 0.85);
+	ATTRIB(XonoticTouchAssetFetchDialog, rows, float, 10);
+	ATTRIB(XonoticTouchAssetFetchDialog, columns, float, 6);
+	ATTRIB(XonoticTouchAssetFetchDialog, name, string, "TouchAssetFetch");
+	ATTRIB(XonoticTouchAssetFetchDialog, closable, bool, false);
+	ATTRIB(XonoticTouchAssetFetchDialog, progressPercent, float, 0);
+	ATTRIB(XonoticTouchAssetFetchDialog, progressMessage, string, string_null);
+	ATTRIB(XonoticTouchAssetFetchDialog, statusLabel, entity);
+ENDCLASS(XonoticTouchAssetFetchDialog)

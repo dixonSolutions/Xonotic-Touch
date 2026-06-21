@@ -89,8 +89,10 @@
 #include <menu/xonotic/dialog_singleplayer_winner.qc>
 #include <menu/xonotic/dialog_teamselect.qc>
 #include <menu/xonotic/dialog_termsofservice.qc>
+#include <menu/xonotic/dialog_touch_asset_fetch.qc>
 #include <menu/xonotic/dialog_touch_home.qc>
 #include <menu/xonotic/dialog_touch_wizard.qc>
+#include <menu/xonotic/touch_startup_util.qc>
 #include <menu/xonotic/dialog_uid2name.qc>
 #include <menu/xonotic/dialog_welcome.qc>
 #include <menu/xonotic/gametypelist.qc>

@@ -7,6 +7,7 @@
 #include "dialog_termsofservice.qh"
 #include "dialog_firstrun.qh"
 #include "dialog_touch_wizard.qh"
+#include "dialog_touch_asset_fetch.qh"
 #include "dialog_hudsetup_exit.qh"
 #include "dialog_hudpanel_notification.qh"
 #include "dialog_hudpanel_ammo.qh"
@@ -57,19 +58,35 @@
 #include "dialog_credits.qh"
 #include "dialog_quit.qh"
 
+void MainWindow_tryOpenStartupDialogs(entity me)
+{
+	if (me.ToSDialog.shouldShow())
+	{
+		me.ToSDialog.loadXonoticToS(me.ToSDialog);
+		DialogOpenButton_Click_withCoords(NULL, me.ToSDialog, '0 0 0', eX * conwidth + eY * conheight);
+		return;
+	}
+	if (me.assetFetchDialog.shouldShow())
+	{
+		DialogOpenButton_Click_withCoords(NULL, me.assetFetchDialog, '0 0 0', eX * conwidth + eY * conheight);
+		return;
+	}
+	if (me.firstRunDialog.shouldShow())
+	{
+		DialogOpenButton_Click_withCoords(NULL, me.firstRunDialog, '0 0 0', eX * conwidth + eY * conheight);
+		return;
+	}
+	if (me.touchSetupDialog.shouldShow())
+		DialogOpenButton_Click_withCoords(NULL, me.touchSetupDialog, '0 0 0', eX * conwidth + eY * conheight);
+}
+
 void MainWindow_draw(entity me)
 {
 	SUPER(MainWindow).draw(me);
 
-	if (me.firstDraw) {
-		if (me.ToSDialog.shouldShow())
-		{
-			me.ToSDialog.loadXonoticToS(me.ToSDialog);
-			DialogOpenButton_Click_withCoords(NULL, me.ToSDialog, '0 0 0', eX * conwidth + eY * conheight);
-		}
-		else if(me.firstRunDialog.shouldShow())
-			DialogOpenButton_Click_withCoords(NULL, me.firstRunDialog, '0 0 0', eX * conwidth + eY * conheight);
-
+	if (me.firstDraw)
+	{
+		MainWindow_tryOpenStartupDialogs(me);
 		me.firstDraw = false;
 	}
 }
@@ -96,12 +113,10 @@ void MainWindow_configureMainWindow(entity me)
 	i.configureDialog(i);
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
 
-	// XONOTIC_UT_TOUCH_WIZARD_REG
-	me.touchSetupDialog = i = NEW(XonoticTouchSetupDialog);
+	me.assetFetchDialog = i = NEW(XonoticTouchAssetFetchDialog);
 	i.configureDialog(i);
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
 
-	// XONOTIC_UT_TOUCH_WIZARD
 	me.touchSetupDialog = i = NEW(XonoticTouchSetupDialog);
 	i.configureDialog(i);
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);

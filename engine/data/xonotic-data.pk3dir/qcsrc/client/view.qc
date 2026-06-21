@@ -1057,6 +1057,9 @@ void ViewLocation_Mouse()
 
 void HUD_Cursor_Show()
 {
+	if (cvar("vid_touchscreen"))
+		return;
+
 	float cursor_alpha = 1 - autocvar__menu_alpha;
 	if(cursor_type == CURSOR_NORMAL)
 		draw_cursor_normal(mousepos, '1 1 1', cursor_alpha);

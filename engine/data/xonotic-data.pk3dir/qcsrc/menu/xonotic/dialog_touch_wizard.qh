@@ -4,7 +4,7 @@
 CLASS(XonoticTouchSetupDialog, XonoticRootDialog)
 	METHOD(XonoticTouchSetupDialog, fill, void(entity));
 	METHOD(XonoticTouchSetupDialog, shouldShow, bool());
-	ATTRIB(XonoticTouchSetupDialog, title, string, _("Touch setup"));
+	ATTRIB(XonoticTouchSetupDialog, title, string, _("Xonotic Touch setup"));
 	ATTRIB(XonoticTouchSetupDialog, color, vector, SKINCOLOR_DIALOG_FIRSTRUN);
 	ATTRIB(XonoticTouchSetupDialog, intendedWidth, float, 0.85);
 	ATTRIB(XonoticTouchSetupDialog, rows, float, 14);

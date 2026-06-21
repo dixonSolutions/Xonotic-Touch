@@ -18,8 +18,9 @@ Native C + QuakeC touch port for Linux touch tablets and phones. **Slim Flatpak 
 | Touch defaults | `touch/xonotic.cfg` |
 | Touch presets | `touch/profiles/*.cfg` |
 | Screen layout | `touch/screen-calc.sh` |
-| Launcher | `packaging/start.sh` — sync bundle, fetch assets, launch |
-| Runtime assets | `scripts/fetch-assets-runtime.sh` |
+| Launcher | `packaging/start.sh` — sync bundle, background asset fetch, launch |
+| Runtime assets | `scripts/fetch-assets-runtime.sh`, `scripts/lib/asset-fetch.sh` |
+| First-run UX | In-game wizard chain + download progress — [SETUP.md](SETUP.md) |
 | Flatpak | `flatpak/io.github.dixonSolutions.XonoticTouch.yml` |
 
 ## 3. Repository layout
@@ -39,11 +40,14 @@ scripts/             # build, stage-slim-data, fetch-assets-runtime, installers
 flowchart TD
   A[start.sh] --> B[Sync slim bundle to user data dir]
   B --> C{Assets present?}
-  C -->|no| D[fetch-assets-runtime.sh]
+  C -->|no| D[Background fetch + progress file]
   C -->|yes| E[Write screen layout + touch startup]
-  D --> E
-  E --> F[exec xonotic -xonotic]
+  D --> F[exec xonotic -xonotic]
+  E --> F
+  F --> G[Menu startup chain: ToS → download UI → profile → touch setup]
 ```
+
+Asset download runs in parallel with the game when needed; progress is shown in `XonoticTouchAssetFetchDialog`. See [SETUP.md](SETUP.md).
 
 ## 5. Packaging
 
@@ -61,3 +65,4 @@ Public Flatpak remote: GitHub Pages OSTree repo (see [RELEASES.md](RELEASES.md))
 - [SOURCES.md](SOURCES.md)
 - [SCREEN.md](SCREEN.md)
 - [CONTROLS.md](CONTROLS.md)
+- [SETUP.md](SETUP.md) — first-run wizard, asset progress, touch menus, OSK

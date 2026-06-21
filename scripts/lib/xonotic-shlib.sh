@@ -396,6 +396,32 @@ xonotic_preflight_run() {
     fi
 }
 
+xonotic_touch_begin_asset_fetch() {
+    local data_dir asset_lib progress_file
+    data_dir="$(xonotic_data_dir)"
+    asset_lib="$(xonotic_root)/scripts/lib/asset-fetch.sh"
+    progress_file="$data_dir/.asset-fetch-progress"
+
+    if [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" = "1" ] || [ ! -f "$asset_lib" ]; then
+        printf '0 0\n'
+        return 0
+    fi
+
+    # shellcheck source=/dev/null
+    . "$asset_lib"
+    if xonotic_assets_are_ready "$data_dir"; then
+        printf '0 1\n'
+        return 0
+    fi
+
+    export XONOTIC_ASSET_FETCH_PROGRESS="$progress_file"
+    rm -f "$progress_file"
+    (
+        xonotic_fetch_game_assets "$data_dir"
+    ) &
+    printf '1 0\n'
+}
+
 xonotic_run_native() {
     local root base_dir bin touch_profile touch_perf fullscreen
     root="$(xonotic_root)"
@@ -409,6 +435,12 @@ xonotic_run_native() {
     xonotic_stage_touch_runtime
     xonotic_write_screen_layout
 
+    local asset_fetch_active=0
+    local touch_assets_ready=0
+    if read -r asset_fetch_active touch_assets_ready < <(xonotic_touch_begin_asset_fetch); then
+        :
+    fi
+
     cd "$base_dir"
 
     printf 'Launching with basedir %s (gamedir data/)\n' "$base_dir"
@@ -419,8 +451,11 @@ xonotic_run_native() {
     printf '\n'
 
     exec "$bin" -xonotic \
+        -customgamename "Xonotic Touch" \
         +exec xonotic.cfg \
         +exec screen.layout.cfg \
+        +set _touch_asset_fetch_active "$asset_fetch_active" \
+        +set _touch_assets_ready "$touch_assets_ready" \
         +vid_fullscreen "$fullscreen" \
         +vid_touchscreen 1 \
         +cl_movement 1 \

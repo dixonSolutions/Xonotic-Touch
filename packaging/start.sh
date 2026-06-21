@@ -34,14 +34,30 @@ sync_bundle_data() {
 
 sync_bundle_data
 
-if [ -x "$FETCH_ASSETS" ]; then
-    XONOTIC_TOUCH_DATA_DIR="$USER_DATA" "$FETCH_ASSETS" "$USER_DATA"
-elif [ -f "$APP_ROOT/share/xonotic/fetch-assets-runtime.sh" ]; then
-    sh "$APP_ROOT/share/xonotic/fetch-assets-runtime.sh" "$USER_DATA"
+ASSET_FETCH_ACTIVE=0
+TOUCH_ASSETS_READY=0
+PROGRESS_FILE="$USER_DATA/.asset-fetch-progress"
+ASSET_FETCH_LIB="$(dirname "$FETCH_ASSETS")/asset-fetch.sh"
+
+if [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" != "1" ] && [ -f "$ASSET_FETCH_LIB" ]; then
+	# shellcheck source=/dev/null
+	. "$ASSET_FETCH_LIB"
+	if xonotic_assets_are_ready "$USER_DATA"; then
+		TOUCH_ASSETS_READY=1
+	else
+		ASSET_FETCH_ACTIVE=1
+		export XONOTIC_ASSET_FETCH_PROGRESS="$PROGRESS_FILE"
+		rm -f "$PROGRESS_FILE"
+		(
+			xonotic_fetch_game_assets "$USER_DATA"
+			sync_bundle_data
+		) &
+	fi
+elif [ -f "$USER_DATA/.assets-ready" ]; then
+	TOUCH_ASSETS_READY=1
 fi
 
-# Re-apply touch bundle overlay after asset fetch (pk3 downloads must not override fork data).
-sync_bundle_data
+# Do not block launch on asset download — the in-game setup wizard shows progress.
 
 DATA_DIR="$USER_DATA"
 
@@ -127,8 +143,11 @@ cd "$USER_BASE"
 
 # shellcheck disable=SC2086
 exec "$BIN" -xonotic \
+    -customgamename "Xonotic Touch" \
     +exec xonotic.cfg \
     +exec screen.layout.cfg \
+    +set _touch_asset_fetch_active "$ASSET_FETCH_ACTIVE" \
+    +set _touch_assets_ready "$TOUCH_ASSETS_READY" \
     +vid_fullscreen "$FULLSCREEN" \
     +vid_touchscreen 1 \
     +vid_conwidthauto 0 \
