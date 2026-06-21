@@ -133,7 +133,11 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p release/upload
-          find release -type f -name '*.flatpak' -exec cp -t release/upload {} +
+          for arch in x86_64 aarch64; do
+            bundle="$(find "release/flatpak-${arch}" -type f -name '*.flatpak' | head -1)"
+            test -n "$bundle" || { echo "Missing flatpak bundle for ${arch}" >&2; exit 1; }
+            cp "$bundle" "release/upload/XonoticTouch-${arch}.flatpak"
+          done
           ls -la release/upload/
 
       - name: Remove previous continuous release
