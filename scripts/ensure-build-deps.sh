@@ -1,5 +1,5 @@
 #!/bin/bash
-# Install native build headers inside Clickable SDK / local build environments.
+# Install native build headers inside Flatpak builder / local build environments.
 set -euo pipefail
 
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"

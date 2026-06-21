@@ -1,8 +1,6 @@
 # Releases and packaging
 
-**Xonotic Touch** is distributed primarily as **Flatpak** for Linux (desktops and tablets). Packages are slim: compiled game logic and touch configs ship in the app; **textures, maps, and music download on first launch**.
-
-Ubuntu Touch **Click** packaging remains in the repo (`clickable.json`, `scripts/clickable.sh`) for local builds but is **not** produced by CI today.
+**Xonotic Touch** is distributed as **Flatpak** for Linux touch tablets and phones. Packages are slim: compiled game logic and touch configs ship in the app; **textures, maps, and music download on first launch**.
 
 All Flatpak builds and publishing run through [GitHub Actions](.github/workflows/build-and-publish.yml).
 
@@ -14,13 +12,13 @@ After each push to `main`, CI publishes an OSTree repository:
 
 | | |
 |---|---|
-| **Remote URL** | `https://dixonSolutions.github.io/Xonotic-Ubuntu-Touch-App/flatpak` |
+| **Remote URL** | `https://dixonSolutions.github.io/Xonotic-Touch/flatpak` |
 | **Remote name** | `xonotic-touch` |
 | **App ID** | `io.github.dixonSolutions.XonoticTouch` |
 
 ```bash
 flatpak remote-add --user --if-not-exists xonotic-touch \
-  https://dixonSolutions.github.io/Xonotic-Ubuntu-Touch-App/flatpak
+  https://dixonSolutions.github.io/Xonotic-Touch/flatpak
 
 flatpak install --user xonotic-touch io.github.dixonSolutions.XonoticTouch
 
@@ -40,7 +38,7 @@ Each push to `main` creates or updates the **`continuous`** release with:
 - `XonoticTouch-x86_64.flatpak`
 - `XonoticTouch-aarch64.flatpak`
 
-Download from: https://github.com/dixonSolutions/Xonotic-Ubuntu-Touch-App/releases/tag/continuous
+Download from: https://github.com/dixonSolutions/Xonotic-Touch/releases/tag/continuous
 
 Offline install:
 
@@ -83,13 +81,3 @@ On first launch, `fetch-assets-runtime.sh` tries:
 ./scripts/install-flatpak.sh
 ./scripts/install-flatpak.sh --from-remote --run
 ```
-
-## Local Click build (optional)
-
-Not built in CI. For Ubuntu Touch devices:
-
-```bash
-./scripts/clickable.sh --container --setup --install
-```
-
-Package ID: `xonotic-touch.ratrad`. See [TESTING.md](TESTING.md).

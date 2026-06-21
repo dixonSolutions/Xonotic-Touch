@@ -1,6 +1,6 @@
 # Xonotic Touch: Technical Architecture
 
-Native C + QuakeC touch port for Linux. **Slim Flatpak packages** ship compiled logic and touch configs; large game assets download on first launch into `~/.local/share/xonotic-touch/`.
+Native C + QuakeC touch port for Linux touch tablets and phones. **Slim Flatpak packages** ship compiled logic and touch configs; large game assets download on first launch into `~/.local/share/xonotic-touch/`.
 
 ## 1. Roles
 
@@ -8,7 +8,6 @@ Native C + QuakeC touch port for Linux. **Slim Flatpak packages** ship compiled 
 |------|-----------|---------|
 | Maintainer | Optional | Edit `engine/`, push; CI builds Flatpak on `main` |
 | User / tester | No | Install from Flatpak remote or GitHub Releases |
-| Click tester (optional) | Yes (Clickable) | Local `scripts/clickable.sh` — not in CI |
 
 ## 2. Core architecture
 
@@ -22,7 +21,6 @@ Native C + QuakeC touch port for Linux. **Slim Flatpak packages** ship compiled 
 | Launcher | `packaging/start.sh` — sync bundle, fetch assets, launch |
 | Runtime assets | `scripts/fetch-assets-runtime.sh` |
 | Flatpak | `flatpak/io.github.dixonSolutions.XonoticTouch.yml` |
-| Click (optional) | `clickable.json` → `scripts/install.sh` |
 
 ## 3. Repository layout
 
@@ -52,7 +50,6 @@ flowchart TD
 | Format | ID | CI |
 |--------|-----|-----|
 | Flatpak | `io.github.dixonSolutions.XonoticTouch` | Yes — every `main` push |
-| Click | `xonotic-touch.ratrad` | Local only (`scripts/clickable.sh`) |
 
 Public Flatpak remote: GitHub Pages OSTree repo (see [RELEASES.md](RELEASES.md)).
 

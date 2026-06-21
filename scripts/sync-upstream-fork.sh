@@ -1,6 +1,6 @@
 #!/bin/bash
 # Merge upstream Xonotic sub-repos into your fork under engine/.
-# Ubuntu Touch changes live directly in engine/ — resolve merge conflicts there.
+# Touch port changes live directly in engine/ — resolve merge conflicts there.
 set -euo pipefail
 
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -52,7 +52,7 @@ ensure_repo_git() {
         echo "Initializing git in $dir from current tree..."
         git init -q
         git add -A
-        git commit -q -m "Ubuntu Touch port baseline (integrated touch changes)"
+        git commit -q -m "Xonotic Touch port baseline (integrated touch changes)"
     fi
 
     git remote remove upstream 2>/dev/null || true

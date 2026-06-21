@@ -1,55 +1,39 @@
 # Testing
 
-Primary distribution is **Flatpak** (built automatically on each `main` push). For day-to-day testing on a Linux tablet or desktop:
+Primary distribution is **Flatpak** (built automatically on each `main` push). For day-to-day testing on a Linux touch tablet:
 
 ```bash
 ./scripts/install-flatpak.sh --from-remote --run
 ```
 
-Or install bundles from the [continuous release](https://github.com/dixonSolutions/Xonotic-Ubuntu-Touch-App/releases/tag/continuous).
+Or install bundles from the [continuous release](https://github.com/dixonSolutions/Xonotic-Touch/releases/tag/continuous).
 
 Packages are **slim** (~60 MB): textures, maps, and music download on **first launch** (network required). See [RELEASES.md](RELEASES.md).
 
----
-
-## Optional: Ubuntu Touch (Click)
-
-Click packaging is **not built in CI** but remains available for local/device testing via Clickable.
-
-### Prerequisites
-
-- [Clickable](https://github.com/ubports/clickable) (`./scripts/install-clickable.sh`)
-- Device with `adb` or Clickable device target (for `--install`)
-
-### Script entry points
-
-| Script | Purpose |
-|--------|---------|
-| `./scripts/clickable.sh --container --install` | Build and install click package (shortcut) |
-| `./scripts/install-clickable.sh --container` | Clickable CLI + SDK container setup |
-| `./scripts/run-clickable.sh --container --install` | Alternative full wrapper |
-| `./scripts/compile-and-install-deps.sh` | Native apt deps + compile |
-| `./scripts/run-local-no-clickable.sh` | Run on Linux desktop without Clickable |
-
-### Standard Click build
+## Local Flatpak build
 
 ```bash
-./scripts/clickable.sh --container --setup --install
+./scripts/install-flatpak.sh
+./scripts/install-flatpak.sh --run
 ```
 
-Package ID: `xonotic-touch.ratrad`
+Launch once on a **networked** device so assets download automatically (~3 GB).
 
-### Playable build
+## Native Linux (dev only)
 
-After `clickable install`, launch once on a **networked** device — assets download automatically (~3 GB).
-
-For local desktop testing without Clickable:
+For engine work on a desktop without Flatpak — mouse emulates touch when `vid_touchscreen=1`:
 
 ```bash
 ./scripts/compile-and-install-deps.sh
 ./scripts/fetch-assets-runtime.sh "$HOME/.local/share/xonotic-touch/data"
-./scripts/run-local-no-clickable.sh
+./scripts/run-local.sh
 ```
+
+| Script | Purpose |
+|--------|---------|
+| `./scripts/install-flatpak.sh` | Build or install Flatpak |
+| `./scripts/compile-and-install-deps.sh` | Native apt deps + compile |
+| `./scripts/run-local.sh` | Run compiled binary on host Linux |
 
 ### Troubleshooting
 

@@ -2,7 +2,7 @@
 <component type="desktop-application">
   <id>io.github.dixonSolutions.XonoticTouch</id>
   <name>Xonotic Touch</name>
-  <summary>Fast-paced arena FPS built for touchscreens on Linux</summary>
+  <summary>Touch-only arena FPS for Linux tablets and phones</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <developer id="io.github.dixonSolutions">
@@ -11,8 +11,9 @@
   <description>
     <p>
       Xonotic Touch brings the fast-paced arena shooter Xonotic to Linux
-      phones, tablets, and touch PCs. Virtual joysticks, weapon wheels, and
-      layout presets are tuned for two-thumb play in landscape.
+      touch tablets and phones. Virtual joysticks, weapon wheels, and
+      layout presets are tuned for two-thumb play in landscape. A touchscreen
+      is required; this build is not intended for keyboard-and-mouse play.
     </p>
     <p>
       The Flatpak is small at install (~60 MB). Textures, maps, and music
@@ -20,8 +21,8 @@
     </p>
   </description>
   <launchable type="desktop-id">io.github.dixonSolutions.XonoticTouch.desktop</launchable>
-  <url type="homepage">https://github.com/dixonSolutions/Xonotic-Ubuntu-Touch-App</url>
-  <url type="bugtracker">https://github.com/dixonSolutions/Xonotic-Ubuntu-Touch-App/issues</url>
+  <url type="homepage">https://github.com/dixonSolutions/Xonotic-Touch</url>
+  <url type="bugtracker">https://github.com/dixonSolutions/Xonotic-Touch/issues</url>
   <screenshots>
     <screenshot type="default">
       <caption>Xonotic Touch on a touch device</caption>

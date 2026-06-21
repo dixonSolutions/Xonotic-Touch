@@ -1,6 +1,6 @@
 #pragma once
 
-// Ubuntu Touch port — touch control layer (see docs/CONTROLS.md)
+// Xonotic Touch — touch control layer (see docs/CONTROLS.md)
 
 const int TOUCH_MAX_FINGERS = 3;
 const int TOUCH_ENGINE_SLOTS = 10;

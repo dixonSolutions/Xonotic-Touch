@@ -10,7 +10,7 @@ No binaries in this repo. Clone this repo to get the full `engine/` fork (~70 MB
 | `engine/data/xonotic-data.pk3dir/qcsrc/menu/` | [xonotic-data.pk3dir](https://gitlab.com/xonotic/xonotic-data.pk3dir) | Touch menus, wizard, settings tab |
 | `engine/data/xonotic-data.pk3dir/qcsrc/client/` | same | `touch_*.qc` HUD, sticks, multitouch input |
 | `engine/data/xonotic-data.pk3dir/qcsrc/common/` | same | Shared input / constants |
-| `engine/gmqcc/` | [gmqcc](https://gitlab.com/xonotic/gmqcc) | QuakeC compiler (testers build this) |
+| `engine/gmqcc/` | [gmqcc](https://gitlab.com/xonotic/gmqcc) | QuakeC compiler |
 
 ## Fetch modes (maintainers)
 
@@ -23,16 +23,16 @@ No binaries in this repo. Clone this repo to get the full `engine/` fork (~70 MB
 
 ## Building
 
-**Maintainers:** do not compile locally — see [MAINTAINING.md](MAINTAINING.md).
+**Maintainers:** do not compile locally unless needed — see [MAINTAINING.md](MAINTAINING.md).
 
-**Testers:** `clickable build --arch arm64` — see [TESTING.md](TESTING.md).
+**Testers:** `./scripts/install-flatpak.sh` or `./scripts/run-local.sh` — see [TESTING.md](TESTING.md).
 
 ## Port-specific files (this repo)
 
 - `touch/xonotic.cfg` — gameplay / graphics cvars
 - `touch/profiles/*.cfg` — control layout, feel, and performance presets ([CONTROLS.md](CONTROLS.md))
 - `touch/screen-calc.sh` — landscape resolution and DPI ([SCREEN.md](SCREEN.md))
-- `packaging/start.sh` — click launcher
+- `packaging/start.sh` — Flatpak launcher
 
 All QuakeC and engine touch changes are **in `engine/`** — edit there directly.
 

@@ -17,7 +17,7 @@ concurrency:
 env:
   FLATPAK_APP_ID: io.github.dixonSolutions.XonoticTouch
   FLATPAK_REMOTE_NAME: xonotic-touch
-  FLATPAK_REMOTE_URL: https://dixonSolutions.github.io/Xonotic-Ubuntu-Touch-App/flatpak
+  FLATPAK_REMOTE_URL: https://dixonSolutions.github.io/Xonotic-Touch/flatpak
 
 jobs:
   flatpak:
@@ -98,7 +98,7 @@ jobs:
           <h1>Xonotic Touch Flatpak remote</h1>
           <pre>
           flatpak remote-add --user --if-not-exists xonotic-touch \
-            https://dixonSolutions.github.io/Xonotic-Ubuntu-Touch-App/flatpak
+            https://dixonSolutions.github.io/Xonotic-Touch/flatpak
           flatpak install --user xonotic-touch io.github.dixonSolutions.XonoticTouch
           </pre>
           </body>
@@ -133,11 +133,7 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p release/upload
-          for arch in x86_64 aarch64; do
-            bundle="$(find "release/flatpak-${arch}" -type f -name '*.flatpak' | head -1)"
-            test -n "$bundle" || { echo "Missing flatpak bundle for ${arch}" >&2; exit 1; }
-            cp "$bundle" "release/upload/XonoticTouch-${arch}.flatpak"
-          done
+          find release -type f -name '*.flatpak' -exec cp -t release/upload {} +
           ls -la release/upload/
 
       - name: Remove previous continuous release

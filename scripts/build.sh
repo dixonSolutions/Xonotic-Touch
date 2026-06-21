@@ -1,5 +1,5 @@
 #!/bin/bash
-# Clickable build hook (see clickable.json).
+# Compile engine + QuakeC for Flatpak and local native runs.
 set -euo pipefail
 
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -9,4 +9,3 @@ ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 export XONOTIC_PACKAGE_BUILD="${XONOTIC_PACKAGE_BUILD:-1}"
 
 xonotic_compile
-xonotic_stage_click_build

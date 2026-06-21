@@ -1,6 +1,6 @@
 # Touch controls layer
 
-Landscape-first **two-thumb arena** controls for touch play on Linux (Flatpak, Click, or native). Ship defaults live in **`touch/xonotic.cfg`** and **`touch/profiles/`**; per-player overrides persist on device. CSQC implementation targets `engine/data/xonotic-data.pk3dir/qcsrc/client/` (see [SOURCES.md](SOURCES.md)).
+Landscape-first **two-thumb arena** controls for touch-only play on Linux tablets and phones (Flatpak). Ship defaults live in **`touch/xonotic.cfg`** and **`touch/profiles/`**; per-player overrides persist on device. CSQC implementation targets `engine/data/xonotic-data.pk3dir/qcsrc/client/` (see [SOURCES.md](SOURCES.md)).
 
 Related: [SCREEN.md](SCREEN.md) (resolution / DPI), [ARCHITECTURE.md](ARCHITECTURE.md) (repo layout).
 
@@ -12,7 +12,7 @@ Related: [SCREEN.md](SCREEN.md) (resolution / DPI), [ARCHITECTURE.md](ARCHITECTU
 2. [Config layering](#config-layering) · [Cvar schema](#cvar-schema)
 3. [Presets](#preset-bundles-touchprofiles) · [Settings UI](#settings-ui-intent-groups)
 4. [Session flow](#session-flow-menus) · [In-game UX](#in-game-ux-beyond-overlay)
-5. [Platform / online](#ubuntu-touch-platform) · [Export/import](#export--import)
+5. [Platform / online](#platform) · [Export/import](#export--import)
 6. [Implementation map](#implementation-map)
 
 ---
@@ -342,7 +342,7 @@ Set via menu defaults + cfg (not a full game rewrite):
 
 ---
 
-## Platform (Flatpak, Click, confined mobile)
+## Platform
 
 | Concern | Where |
 |---------|-------|
@@ -367,7 +367,7 @@ Set via menu defaults + cfg (not a full game rewrite):
 Format: plain QuakeC `exec` text (`.cfg`), same keys as schema above.
 
 ```
-// Xonotic UT touch profile — exported 2026-06-12
+// Xonotic Touch profile — exported 2026-06-12
 touch_preset "casual"
 touch_sens_base 2.8
 touch_move_x 0.10
@@ -407,7 +407,7 @@ Menu actions: Export → share file; Import → validate keys, backup current, `
 | Customize mode | — | *Pending* |
 | Menu / wizard | `qcsrc/menu/` | *Pending* |
 
-Build flow: clone repo (integrated `engine/`) → `fetch-sources.sh code` (if needed) → `clickable build`.
+Build flow: clone repo (integrated `engine/`) → `fetch-sources.sh code` (if needed) → `./scripts/install-flatpak.sh` or `./scripts/run-local.sh`.
 
 ### CSQC skeleton (remaining work)
 

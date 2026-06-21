@@ -1,5 +1,5 @@
 #!/bin/bash
-# Clone the full Xonotic project into engine/ (fork-style), then apply Ubuntu Touch overlays.
+# Clone the full Xonotic project into engine/ (fork-style). Touch port changes live in-tree.
 # Set XONOTIC_URL to your GitLab/GitHub fork to push engine changes upstream later.
 set -euo pipefail
 
@@ -71,7 +71,7 @@ fi
 
 du -sh "$ROOT/engine"
 echo
-echo "Full Xonotic tree ready under engine/ (Ubuntu Touch changes integrated in-tree)."
+echo "Full Xonotic tree ready under engine/ (touch port changes integrated in-tree)."
 echo "  Edit engine/ directly — touch CSQC, menus, and darkplaces patches are committed here."
 echo "  Pull upstream: ./scripts/sync-upstream-fork.sh --init-git  (once), then ./scripts/sync-upstream-fork.sh"
 echo "  Monorepo commit: ./scripts/prepare-engine-for-git.sh --yes && git add engine/"

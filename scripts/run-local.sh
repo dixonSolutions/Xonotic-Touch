@@ -1,5 +1,5 @@
 #!/bin/bash
-# Compile (if needed) and run Xonotic natively on Linux — no Clickable container.
+# Compile (if needed) and run Xonotic natively on Linux (mouse-as-touch for dev).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

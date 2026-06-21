@@ -8,7 +8,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 FLATPAK_APP_ID="${FLATPAK_APP_ID:-io.github.dixonSolutions.XonoticTouch}"
 FLATPAK_REMOTE_NAME="${FLATPAK_REMOTE_NAME:-xonotic-touch}"
-FLATPAK_REMOTE_URL="${FLATPAK_REMOTE_URL:-https://dixonSolutions.github.io/Xonotic-Ubuntu-Touch-App/flatpak}"
+FLATPAK_REMOTE_URL="${FLATPAK_REMOTE_URL:-https://dixonSolutions.github.io/Xonotic-Touch/flatpak}"
 FLATPAK_MANIFEST="${FLATPAK_MANIFEST:-flatpak/io.github.dixonSolutions.XonoticTouch.yml}"
 FLATPAK_BUILD_DIR="${FLATPAK_BUILD_DIR:-build-flatpak}"
 

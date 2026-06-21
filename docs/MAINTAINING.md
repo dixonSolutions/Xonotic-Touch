@@ -1,23 +1,22 @@
 # Maintainer guide
 
-**Xonotic Touch** — touch-first Xonotic for Linux. CI builds **Flatpak** on every push to `main` (remote + GitHub Release `continuous`). You edit source; GitHub Actions packages it.
+**Xonotic Touch** — touch-only Xonotic for Linux tablets and phones. CI builds **Flatpak** on every push to `main` (remote + GitHub Release `continuous`). You edit source; GitHub Actions packages it.
 
 ## Daily workflow
 
 1. Clone this repo — `engine/` contains the Xonotic fork with touch changes integrated in-tree.
 2. Edit files under `engine/` directly (see [SOURCES.md](SOURCES.md)).
 3. Commit and push to `main` — CI produces Flatpak bundles automatically.
-4. Optional: ask a Clickable tester for Ubuntu Touch (`scripts/clickable.sh`) — not built in CI.
 
 ## Local builds (optional)
 
 Do **not** run `cd engine && ./all compile` unless you explicitly want a raw upstream build.
 
-Native compile and run:
+Native compile and run (mouse-as-touch for desktop dev):
 
 ```bash
 ./scripts/compile-and-install-deps.sh
-./scripts/run-local-no-clickable.sh
+./scripts/run-local.sh
 ```
 
 Flatpak local build:
@@ -25,8 +24,6 @@ Flatpak local build:
 ```bash
 ./scripts/install-flatpak.sh
 ```
-
-Optional Click builds: `./scripts/clickable.sh --container --install` (see [TESTING.md](TESTING.md)).
 
 ## Sharing changes
 
@@ -58,7 +55,7 @@ FORK_DATA=https://gitlab.com/you/xonotic-data.pk3dir.git \
   ./scripts/sync-upstream-fork.sh
 ```
 
-Resolve merge conflicts in `engine/` — UT-specific files include `touch_*.qc`, menu touch dialogs, and darkplaces multitouch builtins.
+Resolve merge conflicts in `engine/` — touch port files include `touch_*.qc`, menu touch dialogs, and darkplaces multitouch builtins.
 
 4. Re-vendor for monorepo commit if needed:
 
@@ -101,5 +98,5 @@ grep -E '^touch_' touch/profiles/standard.cfg
 
 ## What testers need
 
-- **Compile + UI changes**: `code` fetch (default in `clickable.json` prebuild).
-- **Play in-game on device**: `assets` fetch before build, or ship map pk3s separately.
+- **Compile + UI changes**: `code` fetch before local or Flatpak build.
+- **Play in-game on device**: `assets` fetch before build, or let first launch download assets on device.

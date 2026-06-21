@@ -136,13 +136,12 @@ xonotic_ensure_gmp_headers() {
             || ! xonotic_maybe_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgmp-dev; then
             printf 'Could not install libgmp-dev (no sudo). Install manually:\n' >&2
             printf '  sudo apt install libgmp-dev\n' >&2
-            printf 'For cross-builds (Clickable arm64): also install the target arch package.\n' >&2
+            printf 'For cross-builds: also install the target arch libgmp-dev package.\n' >&2
         fi
     fi
 
     if ! xonotic_has_gmp_headers; then
         printf 'Warning: gmp.h still missing for %s — d0_blind_id build may fail.\n' "$(xonotic_compiler_triplet 2>/dev/null || echo "$(xonotic_compiler)")" >&2
-        printf 'Clickable: run "clickable clean" once to refresh the SDK image, then rebuild.\n' >&2
         printf 'Host: sudo apt install libgmp-dev\n' >&2
     fi
 }
@@ -192,79 +191,6 @@ xonotic_install_native_deps() {
     xonotic_has_native_build_deps || xonotic_usage 'Dependency install finished but checks still fail.' 1
 }
 
-xonotic_has_clickable() {
-    command -v clickable >/dev/null 2>&1
-}
-
-xonotic_install_clickable_cli() {
-    if xonotic_has_clickable; then
-        printf 'Clickable already installed: %s\n' "$(command -v clickable)"
-        return 0
-    fi
-
-    printf 'Installing Clickable CLI...\n'
-    if command -v pipx >/dev/null 2>&1; then
-        pipx install clickable
-    elif command -v pip3 >/dev/null 2>&1; then
-        pip3 install --user clickable
-        export PATH="${HOME}/.local/bin:${PATH}"
-    elif command -v apt-get >/dev/null 2>&1; then
-        xonotic_maybe_sudo env DEBIAN_FRONTEND=noninteractive apt-get update -qq
-        xonotic_maybe_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq pipx python3-pip
-        pipx ensurepath 2>/dev/null || true
-        pipx install clickable
-    else
-        xonotic_usage 'Install Clickable manually: pipx install clickable' 1
-    fi
-
-    xonotic_has_clickable || xonotic_usage 'Clickable install failed.' 1
-}
-
-xonotic_has_container_runtime() {
-    command -v docker >/dev/null 2>&1 || command -v podman >/dev/null 2>&1
-}
-
-xonotic_install_container_runtime() {
-    if xonotic_has_container_runtime; then
-        printf 'Container runtime already present.\n'
-        return 0
-    fi
-
-    if ! command -v apt-get >/dev/null 2>&1; then
-        xonotic_usage 'Install Docker or Podman manually for Clickable container builds.' 1
-    fi
-
-    printf 'Installing Podman for Clickable container builds...\n'
-    xonotic_maybe_sudo env DEBIAN_FRONTEND=noninteractive apt-get update -qq
-    xonotic_maybe_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-        podman podman-docker fuse-overlayfs slirp4netns
-
-    xonotic_has_container_runtime || xonotic_usage 'Container runtime install failed.' 1
-}
-
-xonotic_clean_container_artifacts() {
-    printf 'Cleaning Clickable/Podman build artifacts...\n'
-    buildah rm -a 2>/dev/null || true
-    podman container prune -f 2>/dev/null || true
-    podman image prune -f 2>/dev/null || true
-    if [ -d "${HOME}/.local/share/containers/storage" ]; then
-        printf 'Podman storage: %s\n' "$(du -sh "${HOME}/.local/share/containers/storage" | cut -f1)"
-    fi
-}
-
-xonotic_clickable_setup_container() {
-    xonotic_install_clickable_cli
-    xonotic_install_container_runtime
-    if xonotic_has_clickable; then
-        clickable setup docker 2>/dev/null || clickable setup 2>/dev/null || true
-    fi
-}
-
-xonotic_clickable_setup_desktop() {
-    xonotic_install_clickable_cli
-    xonotic_install_native_deps
-}
-
 xonotic_ensure_game_code() {
     local root
     root="$(xonotic_root)"
@@ -289,24 +215,6 @@ xonotic_ensure_game_assets() {
     fi
     printf 'Game assets missing — fetching full game data (this only runs once)...\n'
     bash "$root/scripts/fetch-sources.sh" full
-}
-
-xonotic_clickable_build_args() {
-    local mode="$1"
-    local arch="${XONOTIC_CLICKABLE_ARCH:-}"
-    case "$mode" in
-        desktop)
-            arch="${arch:-amd64}"
-            printf '%s\n' --container-mode --arch "$arch"
-            ;;
-        container)
-            arch="${arch:-arm64}"
-            printf '%s\n' --arch "$arch"
-            ;;
-        *)
-            xonotic_usage "Unknown Clickable mode: $mode" 1
-            ;;
-    esac
 }
 
 xonotic_compile_engine_only() {
@@ -404,8 +312,7 @@ xonotic_compile() {
 
     cd "$root/engine/darkplaces"
     make clean >/dev/null 2>&1 || true
-    # The Clickable SDK places a broken sdl2-config at /usr/local/bin that has
-    # prefix=/. — ensure the real /usr/bin/sdl2-config is found first.
+    # Some SDK images ship a broken sdl2-config — ensure /usr/bin/sdl2-config is found first.
     PATH="/usr/bin:${PATH}" make sdl-release DP_SSE=0 $MAKEFLAGS STRIP=:
     install -m 755 darkplaces-sdl "$out_bin"
 
@@ -427,7 +334,7 @@ xonotic_stage_touch_runtime() {
     cp -a "$root/touch/profiles/." "$data_dir/touch/profiles/"
 
     {
-        echo '// Generated by run-local-no-clickable.sh'
+        echo '// Generated by run-local.sh'
         if [ -f "$data_dir/touch/profiles/${touch_profile}.cfg" ]; then
             echo "exec touch/profiles/${touch_profile}.cfg"
         fi
@@ -513,38 +420,4 @@ xonotic_run_native() {
         +cl_movement 1 \
         +con_closeontoggle 1 \
         "$@"
-}
-
-xonotic_stage_click_build() {
-    local root
-    root="$(xonotic_root)"
-
-    test -x "$(xonotic_bin)" || xonotic_usage 'Build failed: build/bin/xonotic missing' 1
-    test -f "$root/packaging/start.sh" || xonotic_usage 'Missing packaging/start.sh' 1
-    test -f "$root/touch/xonotic.cfg" || xonotic_usage 'Missing touch/xonotic.cfg' 1
-    test -f "$root/touch/screen-calc.sh" || xonotic_usage 'Missing touch/screen-calc.sh' 1
-    test -f "$root/touch/profiles/standard.cfg" || xonotic_usage 'Missing touch/profiles/standard.cfg' 1
-
-    mkdir -p "$root/data"
-    cp -f "$root/touch/xonotic.cfg" "$root/data/xonotic.cfg"
-    printf 'Click package build ready for %s\n' "${ARCH:-unknown}"
-}
-
-xonotic_ensure_clickable_ready() {
-    local mode="$1"
-    local root
-    root="$(xonotic_root)"
-
-    if ! xonotic_has_clickable; then
-        printf 'Clickable not found — running install-clickable.sh --%s\n' "$mode"
-        bash "$root/scripts/install-clickable.sh" "--$mode"
-    fi
-    if [ "$mode" = container ] && ! xonotic_has_container_runtime; then
-        printf 'Container runtime missing — running install-clickable.sh --container\n'
-        bash "$root/scripts/install-clickable.sh" --container
-    fi
-    if [ "$mode" = desktop ] && ! xonotic_has_native_build_deps; then
-        printf 'Native build deps missing — running install-clickable.sh --desktop\n'
-        bash "$root/scripts/install-clickable.sh" --desktop
-    fi
 }

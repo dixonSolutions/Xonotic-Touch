@@ -10,12 +10,9 @@ Landscape-first display sizing for touch devices. Implemented in **`touch/screen
 4. **DPI** — from physical mm when `mirout` reports them; else 320 dpi default.
 5. **Apply** — writes `data/screen.layout.cfg` and passes `+vid_*` cvars at launch.
 
-## Shell orientation lock
+## Landscape orientation
 
-- `manifest.json.in` — `orientation`: landscape + inverted-landscape
-- `xonotic.desktop.in` — `X-Ubuntu-Supported-Orientations=landscape,inverted-landscape`
-
-Portrait is not allowed; both horizontal holds work.
+Xonotic Touch is **landscape-only** (including inverted landscape). `touch/screen-calc.sh` always maps the long edge to `vid_width`. Portrait is not supported.
 
 ## Testing without a phone
 
