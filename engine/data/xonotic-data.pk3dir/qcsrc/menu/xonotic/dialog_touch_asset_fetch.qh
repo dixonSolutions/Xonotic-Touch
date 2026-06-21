@@ -14,6 +14,7 @@ CLASS(XonoticTouchAssetFetchDialog, XonoticRootDialog)
 	ATTRIB(XonoticTouchAssetFetchDialog, columns, float, 6);
 	ATTRIB(XonoticTouchAssetFetchDialog, name, string, "TouchAssetFetch");
 	ATTRIB(XonoticTouchAssetFetchDialog, closable, bool, false);
+	ATTRIB(XonoticTouchAssetFetchDialog, progressStatus, string, "running");
 	ATTRIB(XonoticTouchAssetFetchDialog, progressPercent, float, 0);
 	ATTRIB(XonoticTouchAssetFetchDialog, progressMessage, string, string_null);
 	ATTRIB(XonoticTouchAssetFetchDialog, statusLabel, entity);

@@ -8,4 +8,4 @@ bool TouchStartup_assetFetchActive();
 bool TouchStartup_assetFetchDialog_shouldShow();
 bool TouchStartup_userProfileNeeded();
 bool TouchStartup_touchSetupNeeded();
-void TouchStartup_readProgress(string *status, float *percent, string *message);
+void TouchStartup_readProgress(entity dlg);

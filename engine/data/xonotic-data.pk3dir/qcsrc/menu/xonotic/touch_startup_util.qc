@@ -33,14 +33,14 @@ bool TouchStartup_touchSetupNeeded()
 	return cvar("vid_touchscreen") && !cvar("touch_setup_done");
 }
 
-void TouchStartup_readProgress(string *status, float *percent, string *message)
+void TouchStartup_readProgress(entity dlg)
 {
 	float fh = fopen(TOUCH_ASSET_PROGRESS_FILE, FILE_READ);
 	if (fh < 0)
 	{
-		*status = "running";
-		*percent = 0;
-		*message = _("Preparing download...");
+		dlg.progressStatus = "running";
+		dlg.progressPercent = 0;
+		dlg.progressMessage = _("Preparing download...");
 		return;
 	}
 
@@ -50,13 +50,13 @@ void TouchStartup_readProgress(string *status, float *percent, string *message)
 	fclose(fh);
 	if (line == string_null || line == "")
 	{
-		*status = "running";
-		*percent = 0;
-		*message = _("Preparing download...");
+		dlg.progressStatus = "running";
+		dlg.progressPercent = 0;
+		dlg.progressMessage = _("Preparing download...");
 		return;
 	}
 
-	*status = line;
-	*percent = stof(line2);
-	*message = (line3 != string_null) ? line3 : "";
+	dlg.progressStatus = line;
+	dlg.progressPercent = stof(line2);
+	dlg.progressMessage = (line3 != string_null) ? line3 : "";
 }

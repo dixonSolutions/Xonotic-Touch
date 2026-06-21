@@ -13,26 +13,21 @@ void TouchAssetFetch_finish(entity me)
 
 void XonoticTouchAssetFetchDialog_draw(entity me)
 {
-	string status;
-	float percent;
-	string message;
-
-	TouchStartup_readProgress(&status, &percent, &message);
-	me.progressPercent = bound(0, percent, 100);
-	me.progressMessage = message;
+	TouchStartup_readProgress(me);
+	me.progressPercent = bound(0, me.progressPercent, 100);
 	if (me.statusLabel)
-		me.statusLabel.setText(me.statusLabel, message);
+		me.statusLabel.setText(me.statusLabel, me.progressMessage);
 
-	if (status == "error")
+	if (me.progressStatus == "error")
 	{
 		me.progressPercent = 0;
 		if (me.statusLabel)
-			me.statusLabel.setText(me.statusLabel, strcat(_("Download failed: "), message));
+			me.statusLabel.setText(me.statusLabel, strcat(_("Download failed: "), me.progressMessage));
 		SUPER(XonoticTouchAssetFetchDialog).draw(me);
 		return;
 	}
 
-	if (status == "done" || (TouchStartup_assetsReady() && me.progressPercent >= 100))
+	if (me.progressStatus == "done" || (TouchStartup_assetsReady() && me.progressPercent >= 100))
 	{
 		TouchAssetFetch_finish(me);
 		return;
@@ -40,8 +35,8 @@ void XonoticTouchAssetFetchDialog_draw(entity me)
 
 	SUPER(XonoticTouchAssetFetchDialog).draw(me);
 
-	draw_Fill('0.08 0.72', '0.84 0.06', '0.15 0.15 0.2', 0.85);
-	draw_Fill('0.08 0.72', eX * (0.84 * me.progressPercent / 100) + eY * 0.06, '0.35 0.75 0.45', 0.95);
+	draw_Fill('0.08 0.72 0', '0.84 0.06 0', '0.15 0.15 0.2', 0.85);
+	draw_Fill('0.08 0.72 0', eX * (0.84 * me.progressPercent / 100) + eY * 0.06, '0.35 0.75 0.45', 0.95);
 }
 
 bool XonoticTouchAssetFetchDialog_shouldShow()
