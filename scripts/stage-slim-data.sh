@@ -15,11 +15,14 @@ fi
 
 mkdir -p "$DEST"
 
-rsync -a \
-    --exclude 'xonotic-maps.pk3dir' \
-    --exclude 'xonotic-music.pk3dir' \
-    --exclude 'xonotic-nexcompat.pk3dir' \
-  "$SRC/" "$DEST/"
+(
+    cd "$SRC"
+    tar cf - \
+        --exclude='xonotic-maps.pk3dir' \
+        --exclude='xonotic-music.pk3dir' \
+        --exclude='xonotic-nexcompat.pk3dir' \
+        .
+) | (cd "$DEST" && tar xf -)
 
 for dir in "${PK3DIR_ASSET_DIRS[@]}"; do
     rm -rf "$DEST/xonotic-data.pk3dir/$dir"

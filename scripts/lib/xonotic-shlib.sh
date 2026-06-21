@@ -391,7 +391,7 @@ xonotic_compile() {
         printf 'gmqcc binary incompatible with current environment — rebuilding from source\n'
         make clean >/dev/null 2>&1 || true
     fi
-    make $MAKEFLAGS gmqcc
+    make $MAKEFLAGS STRIP=: gmqcc
 
     cd "$root/engine/data/xonotic-data.pk3dir"
     make QCC="$gmqcc" XON_BUILDSYSTEM=1 QCCFLAGS_WATERMARK="$QCCFLAGS_WATERMARK" $MAKEFLAGS

@@ -10,11 +10,14 @@ PK3DIR_ASSET_DIRS=(textures models gfx sound particles demos cubemaps maps)
 
 mkdir -p "$USER_DIR"
 
-rsync -a \
-    --exclude 'xonotic-maps.pk3dir' \
-    --exclude 'xonotic-music.pk3dir' \
-    --exclude 'xonotic-nexcompat.pk3dir' \
-    "$BUNDLE_DIR/" "$USER_DIR/"
+(
+    cd "$BUNDLE_DIR"
+    tar cf - \
+        --exclude='xonotic-maps.pk3dir' \
+        --exclude='xonotic-music.pk3dir' \
+        --exclude='xonotic-nexcompat.pk3dir' \
+        .
+) | (cd "$USER_DIR" && tar xf -)
 
 for dir in "${PK3DIR_ASSET_DIRS[@]}"; do
     if [ -d "$USER_DIR/xonotic-data.pk3dir/$dir" ]; then
@@ -29,5 +32,5 @@ fi
 
 if [ -d "$ROOT/touch/profiles" ]; then
     mkdir -p "$USER_DIR/touch/profiles"
-    rsync -a "$ROOT/touch/profiles/." "$USER_DIR/touch/profiles/"
+    cp -a "$ROOT/touch/profiles/." "$USER_DIR/touch/profiles/"
 fi

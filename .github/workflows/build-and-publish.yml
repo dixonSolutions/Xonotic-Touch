@@ -72,6 +72,8 @@ jobs:
 
       - name: Build Click package
         uses: tuxecure/clickable@v2
+        env:
+          XONOTIC_PACKAGE_BUILD: '1'
         with:
           image: clickable/ci-20.04-arm64
           run: clickable build --arch arm64 --skip-review
