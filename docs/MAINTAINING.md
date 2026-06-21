@@ -1,13 +1,13 @@
-# Maintainer guide (no local compile)
+# Maintainer guide
 
-This project is designed so **you edit source and others build**. That saves disk, CPU, and time on your machine.
+**Xonotic Touch** — touch-first Xonotic for Linux. CI builds **Flatpak** on every push to `main` (remote + GitHub Release `continuous`). You edit source; GitHub Actions packages it.
 
 ## Daily workflow
 
-1. Clone this repo — `engine/` already contains the full Xonotic fork with Ubuntu Touch changes integrated.
+1. Clone this repo — `engine/` contains the Xonotic fork with touch changes integrated in-tree.
 2. Edit files under `engine/` directly (see [SOURCES.md](SOURCES.md)).
-3. Commit and push your work in this repo.
-4. Ask a Clickable tester to run `clickable build --arch arm64` on your branch.
+3. Commit and push to `main` — CI produces Flatpak bundles automatically.
+4. Optional: ask a Clickable tester for Ubuntu Touch (`scripts/clickable.sh`) — not built in CI.
 
 ## Local builds (optional)
 
@@ -20,7 +20,13 @@ Native compile and run:
 ./scripts/run-local-no-clickable.sh
 ```
 
-Clickable testers use `./scripts/run-clickable.sh --container --install` (see [TESTING.md](TESTING.md)).
+Flatpak local build:
+
+```bash
+./scripts/install-flatpak.sh
+```
+
+Optional Click builds: `./scripts/clickable.sh --container --install` (see [TESTING.md](TESTING.md)).
 
 ## Sharing changes
 
@@ -33,9 +39,9 @@ Clickable testers use `./scripts/run-clickable.sh --container --install` (see [T
 
 Large textures/models/sound are **not** in git and **not** in release packages. They download on first launch to `~/.local/share/xonotic-touch/`. For engine work without packaging, prefetch with `./scripts/fetch-sources.sh assets`.
 
-## Fork workflow (pull upstream, keep UT changes)
+## Fork workflow (pull upstream, keep touch changes)
 
-Ubuntu Touch patches live **in the codebase** under `engine/` — not as separate overlay dirs or patch files.
+Touch-specific changes live **in the codebase** under `engine/` — not as separate overlay dirs or patch files.
 
 1. Fork on GitLab: [xonotic](https://gitlab.com/xonotic/xonotic), [darkplaces](https://gitlab.com/xonotic/darkplaces), [xonotic-data.pk3dir](https://gitlab.com/xonotic/xonotic-data.pk3dir).
 2. Initialize git in sub-repos (once, if vendored without `.git`):

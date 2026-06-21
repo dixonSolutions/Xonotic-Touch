@@ -1,5 +1,5 @@
 #!/bin/sh
-# Screen calculation layer — landscape dimensions and touch DPI for Ubuntu Touch.
+# Screen calculation layer — landscape dimensions and touch DPI for Xonotic Touch.
 # Sourced by packaging/start.sh (not executed directly).
 #
 # Override for testing:

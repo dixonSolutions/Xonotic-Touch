@@ -1,38 +1,38 @@
 # Xonotic Touch: Technical Architecture
 
-Native C + QuakeC touch port. **Slim packages** ship compiled logic and touch configs; large game assets download on first launch into `~/.local/share/xonotic-touch/`.
+Native C + QuakeC touch port for Linux. **Slim Flatpak packages** ship compiled logic and touch configs; large game assets download on first launch into `~/.local/share/xonotic-touch/`.
 
 ## 1. Roles
 
 | Role | Compiles? | Actions |
 |------|-----------|---------|
-| Maintainer | Optional | Edit `engine/`, push; CI builds packages |
-| Tester (Flatpak) | No | Install from public Flatpak remote or release bundle |
-| Tester (UT) | Yes (Clickable) | `clickable build --arch arm64`, `clickable install` |
+| Maintainer | Optional | Edit `engine/`, push; CI builds Flatpak on `main` |
+| User / tester | No | Install from Flatpak remote or GitHub Releases |
+| Click tester (optional) | Yes (Clickable) | Local `scripts/clickable.sh` — not in CI |
 
 ## 2. Core architecture
 
 | Component | Location |
 |-----------|----------|
-| Engine | `engine/darkplaces/` (`gettouchfinger`, `DP_UT_TOUCHFINGER`) |
+| Engine | `engine/darkplaces/` (`gettouchfinger`, touch input) |
 | Menus / HUD / controls | `engine/data/xonotic-data.pk3dir/qcsrc/` |
 | Touch defaults | `touch/xonotic.cfg` |
 | Touch presets | `touch/profiles/*.cfg` |
 | Screen layout | `touch/screen-calc.sh` |
 | Launcher | `packaging/start.sh` — sync bundle, fetch assets, launch |
-| Runtime assets | `scripts/fetch-assets-runtime.sh` → user data dir |
+| Runtime assets | `scripts/fetch-assets-runtime.sh` |
 | Flatpak | `flatpak/io.github.dixonSolutions.XonoticTouch.yml` |
-| Click | `clickable.json` → `scripts/install.sh` |
+| Click (optional) | `clickable.json` → `scripts/install.sh` |
 
 ## 3. Repository layout
 
 ```
-engine/              # Full Xonotic fork; touch changes integrated in-tree
+engine/              # Xonotic fork; touch changes integrated in-tree
 touch/               # xonotic.cfg, screen-calc.sh, profiles/
 packaging/           # start.sh
 flatpak/             # Flatpak manifest + metadata
-scripts/             # build, stage-slim-data, fetch-assets-runtime
-.github/workflows/   # Flatpak + Click CI, Pages remote, releases
+scripts/             # build, stage-slim-data, fetch-assets-runtime, installers
+.github/workflows/   # Flatpak CI, Pages remote, GitHub Releases
 ```
 
 ## 4. Launch flow
@@ -47,16 +47,12 @@ flowchart TD
   E --> F[exec xonotic -xonotic]
 ```
 
-Bundled data (in package): compiled QuakeC, configs, fonts, touch profiles.
-
-User cache (`$XDG_DATA_HOME/xonotic-touch/data/`): textures, models, gfx, sound, maps, music (downloaded once).
-
 ## 5. Packaging
 
-| Format | ID | CI job |
-|--------|-----|--------|
-| Flatpak | `io.github.dixonSolutions.XonoticTouch` | `flatpak-x86_64`, `flatpak-aarch64` |
-| Click | `xonotic-touch.ratrad` | `click-arm64` |
+| Format | ID | CI |
+|--------|-----|-----|
+| Flatpak | `io.github.dixonSolutions.XonoticTouch` | Yes — every `main` push |
+| Click | `xonotic-touch.ratrad` | Local only (`scripts/clickable.sh`) |
 
 Public Flatpak remote: GitHub Pages OSTree repo (see [RELEASES.md](RELEASES.md)).
 

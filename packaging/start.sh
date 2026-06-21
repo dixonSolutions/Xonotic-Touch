@@ -36,7 +36,7 @@ fi
 
 DATA_DIR="$USER_DATA"
 
-# Detect desktop environment vs confined mobile (Ubuntu Touch Mir has no DISPLAY/WAYLAND).
+# Detect desktop environment vs confined mobile (Mir on some phones has no DISPLAY/WAYLAND).
 if [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
     IS_DESKTOP=1
 else

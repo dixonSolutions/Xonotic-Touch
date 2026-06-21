@@ -1,6 +1,6 @@
 # Touch controls layer
 
-Landscape-first **two-thumb arena** controls for Ubuntu Touch. Ship defaults live in **`touch/xonotic.cfg`** and **`touch/profiles/`**; per-player overrides persist on device. CSQC implementation targets `engine/data/xonotic-data.pk3dir/qcsrc/client/` (see [SOURCES.md](SOURCES.md)).
+Landscape-first **two-thumb arena** controls for touch play on Linux (Flatpak, Click, or native). Ship defaults live in **`touch/xonotic.cfg`** and **`touch/profiles/`**; per-player overrides persist on device. CSQC implementation targets `engine/data/xonotic-data.pk3dir/qcsrc/client/` (see [SOURCES.md](SOURCES.md)).
 
 Related: [SCREEN.md](SCREEN.md) (resolution / DPI), [ARCHITECTURE.md](ARCHITECTURE.md) (repo layout).
 
@@ -342,7 +342,7 @@ Set via menu defaults + cfg (not a full game rewrite):
 
 ---
 
-## Ubuntu Touch platform
+## Platform (Flatpak, Click, confined mobile)
 
 | Concern | Where |
 |---------|-------|

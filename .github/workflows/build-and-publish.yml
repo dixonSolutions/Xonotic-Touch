@@ -3,7 +3,6 @@ name: Build and publish
 on:
   push:
     branches: [main, master]
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -63,29 +62,9 @@ jobs:
           name: flatpak-${{ matrix.arch }}
           path: XonoticTouch-${{ matrix.arch }}.flatpak
 
-  click-arm64:
-    name: Click (arm64)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build Click package
-        uses: tuxecure/clickable@v2
-        env:
-          XONOTIC_PACKAGE_BUILD: '1'
-        with:
-          image: clickable/ci-20.04-arm64
-          run: clickable build --arch arm64 --skip-review
-
-      - name: Upload Click package
-        uses: actions/upload-artifact@v4
-        with:
-          name: click-arm64
-          path: build/*/app/*.click
-
   publish-flatpak-remote:
     name: Publish Flatpak remote
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     needs: [flatpak]
     runs-on: ubuntu-latest
     environment:
@@ -142,20 +121,31 @@ jobs:
 
   release:
     name: GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [flatpak, click-arm64]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    needs: [flatpak]
     runs-on: ubuntu-latest
     steps:
-      - name: Download artifacts
+      - name: Download Flatpak bundles
         uses: actions/download-artifact@v4
         with:
           path: release
 
-      - name: Create release
+      - name: Prepare release files
+        run: |
+          mkdir -p release/upload
+          find release -name '*.flatpak' -exec cp -t release/upload {} +
+          ls -la release/upload/
+
+      - name: Remove previous continuous release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete continuous --yes 2>/dev/null || true
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            release/flatpak-x86_64/*.flatpak
-            release/flatpak-aarch64/*.flatpak
-            release/click-arm64/*.click
+          tag_name: continuous
+          name: Xonotic Touch (latest)
+          files: release/upload/*
           generate_release_notes: true
+          make_latest: true

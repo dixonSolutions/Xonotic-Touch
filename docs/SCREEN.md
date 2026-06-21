@@ -1,6 +1,6 @@
 # Screen calculation layer
 
-Landscape-first display sizing for Ubuntu Touch. Implemented in **`touch/screen-calc.sh`** (no compile required).
+Landscape-first display sizing for touch devices. Implemented in **`touch/screen-calc.sh`** (no compile required).
 
 ## Behaviour
 

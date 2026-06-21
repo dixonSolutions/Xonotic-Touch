@@ -1,6 +1,6 @@
 {
     "name": "xonotic-touch.ratrad",
-    "description": "Xonotic Touch — fast-paced arena FPS for touch devices",
+    "description": "Xonotic Touch — fast-paced arena FPS for touch devices (slim package, assets on first launch)",
     "architecture": "$ENV{ARCH}",
     "title": "Xonotic Touch",
     "hooks": {
