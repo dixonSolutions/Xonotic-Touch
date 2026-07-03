@@ -12,6 +12,14 @@ else
     . "$ROOT/scripts/lib/asset-fetch.sh"
 fi
 
+if [ -f "$SCRIPT_DIR/asset-discover.sh" ]; then
+    # shellcheck source=asset-discover.sh
+    . "$SCRIPT_DIR/asset-discover.sh"
+elif [ -f "${ROOT:-}/scripts/lib/asset-discover.sh" ]; then
+    # shellcheck source=lib/asset-discover.sh
+    . "${ROOT}/scripts/lib/asset-discover.sh"
+fi
+
 DATA_DIR="${1:-${XONOTIC_TOUCH_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/xonotic-touch/data}}"
 
 if [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" = "1" ]; then

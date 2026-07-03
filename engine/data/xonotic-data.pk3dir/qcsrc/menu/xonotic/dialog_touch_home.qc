@@ -3,12 +3,18 @@
 #include <common/gametypes/_mod.qh>
 #include <common/mapinfo.qh>
 #include "bigbutton.qh"
-#include "commandbutton.qh"
+#include "touchbutton.qh"
 #include "textlabel.qh"
 #include "mainwindow.qh"
+#include "touch_startup_util.qh"
 
 void TouchHome_PlayNow(entity btn, entity dummy)
 {
+	if (!TouchStartup_assetsReady())
+	{
+		DialogOpenButton_Click_withCoords(NULL, main.assetFetchDialog, '0 0 0', eX * conwidth + eY * conheight);
+		return;
+	}
 	cvar_set("timelimit_override", "10");
 	MapInfo_SwitchGameType(MAPINFO_TYPE_DEATHMATCH);
 	MapInfo_FilterGametype(MapInfo_CurrentGametype(), MapInfo_CurrentFeatures(), MapInfo_RequiredFlags(), MapInfo_ForbiddenFlags(), 0);
@@ -42,7 +48,7 @@ void XonoticTouchHomeDialog_fill(entity me)
 		e.allowWrap = true;
 	me.TR(me);
 	me.TR(me);
-		me.TD(me, 1, 2, e = makeXonoticCommandButton(_("Touch setup"), '0 0 0', "menu_cmd directmenu TouchSetup", 0));
-		me.TD(me, 1, 2, e = makeXonoticCommandButton(_("Touch controls"), '0 0 0', "menu_cmd directmenu touchsettings", 0));
-		me.TD(me, 1, 2, e = makeXonoticCommandButton(_("Settings"), '0 0 0', "menu_cmd directmenu settings", 0));
+		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Touch setup"), '0 0 0', "menu_cmd directmenu TouchSetup", 0));
+		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Touch controls"), '0 0 0', "menu_cmd directmenu touchsettings", 0));
+		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Settings"), '0 0 0', "menu_cmd directmenu settings", 0));
 }

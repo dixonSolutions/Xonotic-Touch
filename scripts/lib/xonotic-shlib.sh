@@ -397,9 +397,10 @@ xonotic_preflight_run() {
 }
 
 xonotic_touch_begin_asset_fetch() {
-    local data_dir asset_lib progress_file
+    local data_dir asset_lib discover_lib progress_file
     data_dir="$(xonotic_data_dir)"
     asset_lib="$(xonotic_root)/scripts/lib/asset-fetch.sh"
+    discover_lib="$(xonotic_root)/scripts/lib/asset-discover.sh"
     progress_file="$data_dir/.asset-fetch-progress"
 
     if [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" = "1" ] || [ ! -f "$asset_lib" ]; then
@@ -409,6 +410,12 @@ xonotic_touch_begin_asset_fetch() {
 
     # shellcheck source=/dev/null
     . "$asset_lib"
+    if [ -f "$discover_lib" ]; then
+        # shellcheck source=/dev/null
+        . "$discover_lib"
+        export XONOTIC_ASSET_FETCH_PROGRESS="$progress_file"
+        xonotic_try_discover_assets "$data_dir" || true
+    fi
     if xonotic_assets_are_ready "$data_dir"; then
         printf '0 1\n'
         return 0

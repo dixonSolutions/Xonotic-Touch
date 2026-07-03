@@ -1,10 +1,9 @@
 #include "dialog_touch_wizard.qh"
 
 #include "touch_menu_layout.qh"
+#include "touchbutton.qh"
 #include "textlabel.qh"
-#include "commandbutton.qh"
 #include "checkbox.qh"
-#include "button.qh"
 
 bool XonoticTouchSetupDialog_shouldShow()
 {
@@ -32,12 +31,12 @@ void XonoticTouchSetupDialog_fill(entity me)
 	me.TR(me);
 		me.TD(me, 1, 6, e = makeXonoticHeaderLabel(_("Choose a preset")));
 	me.TR(me);
-		me.TD(me, 1, 2, e = makeXonoticCommandButton(_("Standard"), '0 0 0', "exec touch/profiles/standard.cfg; menu_cmd sync", 0));
-		me.TD(me, 1, 2, e = makeXonoticCommandButton(_("Casual"), '0 0 0', "exec touch/profiles/casual.cfg; menu_cmd sync", 0));
-		me.TD(me, 1, 2, e = makeXonoticCommandButton(_("Competitive"), '0 0 0', "exec touch/profiles/competitive.cfg; menu_cmd sync", 0));
+		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Standard"), '0 0 0', "exec touch/profiles/standard.cfg; menu_cmd sync", 0));
+		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Casual"), '0 0 0', "exec touch/profiles/casual.cfg; menu_cmd sync", 0));
+		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Competitive"), '0 0 0', "exec touch/profiles/competitive.cfg; menu_cmd sync", 0));
 	me.TR(me);
-		me.TD(me, 1, 3, e = makeXonoticCommandButton(_("Left-handed"), '0 0 0', "exec touch/profiles/left.cfg; menu_cmd sync", 0));
-		me.TD(me, 1, 3, e = makeXonoticCommandButton(_("Minimal"), '0 0 0', "exec touch/profiles/minimal.cfg; menu_cmd sync", 0));
+		me.TD(me, 2, 3, e = makeXonoticTouchCommandButton(_("Left-handed"), '0 0 0', "exec touch/profiles/left.cfg; menu_cmd sync", 0));
+		me.TD(me, 2, 3, e = makeXonoticTouchCommandButton(_("Minimal"), '0 0 0', "exec touch/profiles/minimal.cfg; menu_cmd sync", 0));
 	me.TR(me);
 	me.TR(me);
 		me.TD(me, 1, 6, e = makeXonoticCheckBox_T(0, "touch_handedness", _("Left-handed (mirror layout)"), string_null));
@@ -47,7 +46,7 @@ void XonoticTouchSetupDialog_fill(entity me)
 	me.TR(me);
 	me.TR(me);
 	me.gotoRC(me, me.rows - 1, 0);
-		me.TD(me, 1, 6, e = makeXonoticButton(_("Save & continue"), '0 0 0'));
+		me.TD(me, 2, 6, e = makeXonoticTouchButton(_("Save & continue"), '0 0 0'));
 			e.onClick = TouchSetup_Finish_Click;
 			e.onClickEntity = me;
 }

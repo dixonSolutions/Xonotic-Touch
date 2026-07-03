@@ -964,8 +964,10 @@ void m_draw(float width, float height)
 
 	if (menuMouseMode)
 	{
+		if (cvar("vid_touchscreen"))
+			menu_sync_absolute_mousepos();
 		vector rawMousePos = getmousepos();
-		vector newMouse = '0 0 0';
+		vector newMouse = menuMousePos;
 		if (realconheight > realconwidth)
 		{
 			// Portrait: map console pixels directly (no letterbox transform).
@@ -976,7 +978,7 @@ void m_draw(float width, float height)
 			newMouse = globalToBox(rawMousePos, draw_shift, draw_scale);
 		newMouse.x = bound(0, newMouse.x, 1);
 		newMouse.y = bound(0, newMouse.y, 1);
-		if (rawMousePos != '0 0 0' && newMouse != menuMousePos)
+		if (newMouse != menuMousePos)
 		{
 			menuMousePos = newMouse;
 			if (mouseButtonsPressed) main.mouseDrag(main, menuMousePos);

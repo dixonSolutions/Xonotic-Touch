@@ -1,0 +1,19 @@
+#pragma once
+
+#include "button.qh"
+#include "commandbutton.qh"
+
+CLASS(XonoticTouchButton, XonoticButton)
+	ATTRIB(XonoticTouchButton, fontSize, float, SKINFONTSIZE_NORMAL * 1.35);
+	ATTRIB(XonoticTouchButton, image, string, SKINGFX_BUTTON_BIG);
+	ATTRIB(XonoticTouchButton, grayImage, string, SKINGFX_BUTTON_BIG_GRAY);
+ENDCLASS(XonoticTouchButton)
+
+CLASS(XonoticTouchCommandButton, XonoticCommandButton)
+	ATTRIB(XonoticTouchCommandButton, fontSize, float, SKINFONTSIZE_NORMAL * 1.35);
+	ATTRIB(XonoticTouchCommandButton, image, string, SKINGFX_BUTTON_BIG);
+	ATTRIB(XonoticTouchCommandButton, grayImage, string, SKINGFX_BUTTON_BIG_GRAY);
+ENDCLASS(XonoticTouchCommandButton)
+
+entity makeXonoticTouchButton(string theText, vector theColor);
+entity makeXonoticTouchCommandButton(string theText, vector theColor, string theCommand, int theFlags);

@@ -946,11 +946,25 @@ static void VID_SyncTouchFinger(void)
 	{
 		if (multitouch[i][0])
 		{
-			in_windowmouse_x = multitouch[i][1] * vid_width.value;
-			in_windowmouse_y = multitouch[i][2] * vid_height.value;
+			in_windowmouse_x = multitouch[i][1] * vid.mode.width;
+			in_windowmouse_y = multitouch[i][2] * vid.mode.height;
 			return;
 		}
 	}
+}
+
+static void VID_TouchMenuFingerEvent(qbool down, float nx, float ny)
+{
+	keydest_t keydest = (key_consoleactive & KEY_CONSOLEACTIVE_USER) ? key_console : key_dest;
+
+	if (!vid_touchscreen.integer || !VID_TouchscreenHasRealDevices())
+		return;
+	if (keydest != key_menu && keydest != key_menu_grabbed)
+		return;
+
+	in_windowmouse_x = nx * vid.mode.width;
+	in_windowmouse_y = ny * vid.mode.height;
+	Key_Event(K_MOUSE1, 0, down);
 }
 
 static void IN_Move_TouchScreen_Xonotic(void)
@@ -1001,10 +1015,10 @@ static void IN_Move_TouchScreen_Xonotic(void)
 		}
 		else
 		{
-			// Touch-only: tap directly at finger position (no grab-and-drag puck).
-			VID_SyncTouchFinger();
+			// Touch-only: finger position synced each frame; K_MOUSE1 comes from SDL finger events.
+			if (numfingers > 0)
+				VID_SyncTouchFinger();
 			Vid_ClearAllTouchscreenAreas(0);
-			VID_TouchscreenArea(0, 0, 0, vid_conwidth.value, vid_conheight.value, NULL, 0.0f, NULL, NULL, &buttons[0], K_MOUSE1, NULL, 0, 0, 0, true);
 		}
 		break;
 	}
@@ -1461,6 +1475,7 @@ void Sys_SDL_HandleEvents(void)
 						multitouch[i][0] = event.tfinger.fingerId + 1;
 						multitouch[i][1] = event.tfinger.x;
 						multitouch[i][2] = event.tfinger.y;
+						VID_TouchMenuFingerEvent(true, event.tfinger.x, event.tfinger.y);
 						// TODO: use event.tfinger.pressure?
 						break;
 					}
@@ -1476,6 +1491,7 @@ void Sys_SDL_HandleEvents(void)
 				{
 					if (multitouch[i][0] == event.tfinger.fingerId + 1)
 					{
+						VID_TouchMenuFingerEvent(false, event.tfinger.x, event.tfinger.y);
 						multitouch[i][0] = 0;
 						break;
 					}
@@ -1493,6 +1509,15 @@ void Sys_SDL_HandleEvents(void)
 					{
 						multitouch[i][1] = event.tfinger.x;
 						multitouch[i][2] = event.tfinger.y;
+						if (vid_touchscreen.integer)
+						{
+							keydest_t keydest = (key_consoleactive & KEY_CONSOLEACTIVE_USER) ? key_console : key_dest;
+							if (keydest == key_menu || keydest == key_menu_grabbed)
+							{
+								in_windowmouse_x = event.tfinger.x * vid.mode.width;
+								in_windowmouse_y = event.tfinger.y * vid.mode.height;
+							}
+						}
 						break;
 					}
 				}

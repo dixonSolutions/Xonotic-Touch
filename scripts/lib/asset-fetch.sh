@@ -262,11 +262,29 @@ xonotic_fetch_autobuild_assets() {
     rm -rf "$tmp"
 }
 
+_xonotic_asset_discover_lib() {
+    local here
+    here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [ -f "$here/asset-discover.sh" ]; then
+        # shellcheck source=asset-discover.sh
+        . "$here/asset-discover.sh"
+    fi
+}
+
 xonotic_fetch_game_assets() {
     local data_dir="$1"
 
     mkdir -p "$data_dir"
 
+    if xonotic_assets_are_ready "$data_dir"; then
+        xonotic_progress_write done 100 "Game assets ready"
+        return 0
+    fi
+
+    _xonotic_asset_discover_lib
+    if declare -F xonotic_try_discover_assets >/dev/null 2>&1; then
+        xonotic_try_discover_assets "$data_dir" || true
+    fi
     if xonotic_assets_are_ready "$data_dir"; then
         xonotic_progress_write done 100 "Game assets ready"
         return 0

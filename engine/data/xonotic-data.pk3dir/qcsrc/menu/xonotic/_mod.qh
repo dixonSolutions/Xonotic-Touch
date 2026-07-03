@@ -89,6 +89,7 @@
 #include <menu/xonotic/dialog_singleplayer_winner.qh>
 #include <menu/xonotic/dialog_teamselect.qh>
 #include <menu/xonotic/dialog_termsofservice.qh>
+#include <menu/xonotic/dialog_touch_asset_fetch.qh>
 #include <menu/xonotic/dialog_touch_home.qh>
 #include <menu/xonotic/dialog_touch_wizard.qh>
 #include <menu/xonotic/dialog_uid2name.qh>
@@ -129,6 +130,8 @@
 #include <menu/xonotic/textlabel.qh>
 #include <menu/xonotic/textslider.qh>
 #include <menu/xonotic/touch_menu_layout.qh>
+#include <menu/xonotic/touch_startup_util.qh>
+#include <menu/xonotic/touchbutton.qh>
 #include <menu/xonotic/util.qh>
 #include <menu/xonotic/weaponarenacheckbox.qh>
 #include <menu/xonotic/weaponslist.qh>

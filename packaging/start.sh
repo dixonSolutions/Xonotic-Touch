@@ -38,10 +38,18 @@ ASSET_FETCH_ACTIVE=0
 TOUCH_ASSETS_READY=0
 PROGRESS_FILE="$USER_DATA/.asset-fetch-progress"
 ASSET_FETCH_LIB="$(dirname "$FETCH_ASSETS")/asset-fetch.sh"
+ASSET_DISCOVER_LIB="$(dirname "$FETCH_ASSETS")/asset-discover.sh"
 
 if [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" != "1" ] && [ -f "$ASSET_FETCH_LIB" ]; then
 	# shellcheck source=/dev/null
 	. "$ASSET_FETCH_LIB"
+	if [ -f "$ASSET_DISCOVER_LIB" ]; then
+		# shellcheck source=/dev/null
+		. "$ASSET_DISCOVER_LIB"
+		export XONOTIC_ASSET_FETCH_PROGRESS="$PROGRESS_FILE"
+		xonotic_try_discover_assets "$USER_DATA" || true
+		sync_bundle_data
+	fi
 	if xonotic_assets_are_ready "$USER_DATA"; then
 		TOUCH_ASSETS_READY=1
 	else
@@ -57,7 +65,7 @@ elif [ -f "$USER_DATA/.assets-ready" ]; then
 	TOUCH_ASSETS_READY=1
 fi
 
-# Do not block launch on asset download — the in-game setup wizard shows progress.
+# Gameplay stays blocked in-menu until assets are ready (asset-fetch dialog).
 
 DATA_DIR="$USER_DATA"
 
