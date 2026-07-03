@@ -13,6 +13,9 @@ finish-args:
   - --device=dri
   - --filesystem=xdg-data/xonotic-touch:create
   - --filesystem=home/.xonotic:create
+  - --filesystem=home/.var/app/org.xonotic.Xonotic:ro
+  - --filesystem=/usr/share/games/xonotic:ro
+  - --filesystem=/usr/share/xonotic:ro
 
 build-options:
   env:

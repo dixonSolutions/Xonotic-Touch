@@ -38,27 +38,44 @@ After ToS accept or asset download completes, `main.firstDraw = true` re-runs th
 
 ## Asset download (first launch)
 
+### Local install discovery
+
+Before downloading, `scripts/lib/asset-discover.sh` searches for an existing **Xonotic** data directory and imports `.pk3` packs (hardlink when possible, copy otherwise):
+
+| Source | Path |
+|--------|------|
+| User data | `~/.xonotic/data` |
+| Flatpak user data | `~/.var/app/org.xonotic.Xonotic/.xonotic/data` |
+| Flatpak app files | `flatpak info --show-location org.xonotic.Xonotic` → `files/share/xonotic/data` |
+| Debian / native | `/usr/share/games/xonotic/data`, `/usr/share/xonotic/data`, `dpkg -L xonotic` |
+| Flatpak system/user installs | `/var/lib/flatpak/app/org.xonotic.Xonotic/...`, `~/.local/share/flatpak/app/...` |
+
+Discovery runs **synchronously** in `packaging/start.sh` before the engine starts. The setup dialog shows discovery status (`discover` phase in `.asset-fetch-progress`), then a download progress bar if packs are still missing.
+
+Gameplay (e.g. **Play now**) stays blocked until `.assets-ready` exists.
+
 ### Launcher behavior
 
 `packaging/start.sh` (and dev `xonotic_touch_begin_asset_fetch()` in `scripts/lib/xonotic-shlib.sh`):
 
 1. Sync slim bundle into the user data directory.
-2. If assets are **missing**, start `xonotic_fetch_game_assets` in a **background** shell job (game launches immediately).
-3. Pass engine flags: `_touch_asset_fetch_active`, `_touch_assets_ready`.
+2. **Discover** assets from existing local Xonotic installs.
+3. If assets are still **missing**, start `xonotic_fetch_game_assets` in a background job and show the blocking in-menu progress dialog.
+4. Pass engine flags: `_touch_asset_fetch_active`, `_touch_assets_ready`.
 
-The game is **not** blocked on a terminal download anymore.
+The engine launches for the setup UI, but **Play** and other game actions wait until assets are ready.
 
 ### Progress file
 
 While downloading, the shell writes `data/.asset-fetch-progress` (three lines):
 
 ```
-running|done|error
+discover|running|done|error
 0–100
 Human-readable status message
 ```
 
-Menu QC polls this file each frame in `XonoticTouchAssetFetchDialog` and draws a progress bar.
+The `discover` phase is shown while searching/importing from Flatpak, Debian, or `~/.xonotic`. The green progress bar appears for the `running` download phase.
 
 ### Ready marker
 
@@ -112,6 +129,8 @@ Cvars (menu sets position when focusing inputs):
 | Profile wizard | `qcsrc/menu/xonotic/dialog_firstrun.qc` |
 | Touch wizard | `qcsrc/menu/xonotic/dialog_touch_wizard.qc` |
 | Asset fetch + progress | `scripts/lib/asset-fetch.sh` |
+| Local install discovery | `scripts/lib/asset-discover.sh` |
+| Touch-friendly menu buttons | `qcsrc/menu/xonotic/touchbutton.qc` |
 | Packaged launcher | `packaging/start.sh` |
 | Dev launcher | `scripts/lib/xonotic-shlib.sh` (`xonotic_run_native`) |
 | Touch input / keyboard | `engine/darkplaces/vid_sdl.c` |

@@ -24,6 +24,7 @@ install -m 755 "$ROOT/touch/screen-calc.sh" "$DEST/share/xonotic/screen-calc.sh"
 install -m 755 "$ROOT/scripts/fetch-assets-runtime.sh" "$DEST/share/xonotic/fetch-assets-runtime.sh"
 install -m 755 "$ROOT/scripts/sync-bundle-data.sh" "$DEST/share/xonotic/sync-bundle-data.sh"
 install -m 644 "$ROOT/scripts/lib/asset-fetch.sh" "$DEST/share/xonotic/asset-fetch.sh"
+install -m 644 "$ROOT/scripts/lib/asset-discover.sh" "$DEST/share/xonotic/asset-discover.sh"
 
 bash "$ROOT/scripts/stage-slim-data.sh" "$DEST/data"
 

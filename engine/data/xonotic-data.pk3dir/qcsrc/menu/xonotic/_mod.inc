@@ -92,7 +92,6 @@
 #include <menu/xonotic/dialog_touch_asset_fetch.qc>
 #include <menu/xonotic/dialog_touch_home.qc>
 #include <menu/xonotic/dialog_touch_wizard.qc>
-#include <menu/xonotic/touch_startup_util.qc>
 #include <menu/xonotic/dialog_uid2name.qc>
 #include <menu/xonotic/dialog_welcome.qc>
 #include <menu/xonotic/gametypelist.qc>
@@ -131,6 +130,8 @@
 #include <menu/xonotic/textlabel.qc>
 #include <menu/xonotic/textslider.qc>
 #include <menu/xonotic/touch_menu_layout.qc>
+#include <menu/xonotic/touch_startup_util.qc>
+#include <menu/xonotic/touchbutton.qc>
 #include <menu/xonotic/util.qc>
 #include <menu/xonotic/weaponarenacheckbox.qc>
 #include <menu/xonotic/weaponslist.qc>
