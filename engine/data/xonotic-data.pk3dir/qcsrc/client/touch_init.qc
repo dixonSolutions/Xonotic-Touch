@@ -66,7 +66,7 @@ void Touch_Init(void)
 	// Sheet itself blocks gameplay input; enable freeze for singleplayer preference.
 	Touch_RegisterCvar("touch_pause_freeze", "0");
 	Touch_RegisterCvar("touch_pause_quit_confirm_ms", "3000");
-	Touch_RegisterCvar("touch_menu_resume_bar", "1");
+	Touch_RegisterCvar("touch_menu_resume_bar", "0");
 	Touch_RegisterCvar("touch_mobile_hud", "0");
 	Touch_RegisterCvar("touch_hud_x", "0.02");
 	Touch_RegisterCvar("touch_hud_y", "0.02");

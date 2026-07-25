@@ -41,7 +41,7 @@ void XonoticTouchSetupDialog_fill(entity me)
 	me.TR(me);
 		me.TD(me, 1, 6, e = makeXonoticCheckBox_T(0, "touch_handedness", _("Left-handed (mirror layout)"), string_null));
 	me.TR(me);
-		me.TD(me, 1, 6, e = makeXonoticTextLabel(0.5, _("Tip: use Play now for a quick bot match, then Pause → Touch controls to fine-tune.")));
+		me.TD(me, 1, 6, e = makeXonoticTextLabel(0.5, _("Tip: use Singleplayer or Multiplayer like desktop Xonotic. Pause → Touch controls to fine-tune the HUD.")));
 		e.allowWrap = true;
 	me.TR(me);
 	me.TR(me);

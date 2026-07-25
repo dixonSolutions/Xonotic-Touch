@@ -324,27 +324,12 @@ void MainWindow_configureMainWindow(entity me)
 		}
 	*/
 
-		// Touch home owns the primary nexposee slot on touch devices.
-		// Singleplayer is still created (for Campaign via directmenu) but must
-		// not share the same nexposee position — that overwrote Play before.
-		if (cvar("vid_touchscreen"))
-		{
-			i = NEW(XonoticTouchHomeDialog);
-			i.configureDialog(i);
-			n.addItemCentered(n, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
-			n.setNexposee(n, i, SKINPOSITION_DIALOG_SINGLEPLAYER, SKINALPHAS_MAINMENU_x, SKINALPHAS_MAINMENU_y);
-
-			i = NEW(XonoticSingleplayerDialog);
-			i.configureDialog(i);
-			me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
-		}
-		else
-		{
-			i = NEW(XonoticSingleplayerDialog);
-			i.configureDialog(i);
-			n.addItemCentered(n, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
-			n.setNexposee(n, i, SKINPOSITION_DIALOG_SINGLEPLAYER, SKINALPHAS_MAINMENU_x, SKINALPHAS_MAINMENU_y);
-		}
+		// Stock Xonotic nexposee (Singleplayer / Multiplayer / …). Touch-specific
+		// entry points live under Settings → Touch controls, not a custom Play card.
+		i = NEW(XonoticSingleplayerDialog);
+		i.configureDialog(i);
+		n.addItemCentered(n, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
+		n.setNexposee(n, i, SKINPOSITION_DIALOG_SINGLEPLAYER, SKINALPHAS_MAINMENU_x, SKINALPHAS_MAINMENU_y);
 
 		i = NEW(XonoticMultiplayerDialog);
 		i.configureDialog(i);
