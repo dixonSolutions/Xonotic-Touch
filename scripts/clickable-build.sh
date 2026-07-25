@@ -3,6 +3,9 @@
 # Clickable runs the YAML build: block through shlex.split.
 set -eux
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
 export XONOTIC_PACKAGE_BUILD=1
 
 if [ -f click/.ci-name ]; then

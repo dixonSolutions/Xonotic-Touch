@@ -26,5 +26,6 @@ dependencies_target:
   - libxmp-dev
   - libgmp-dev
 
-# Must stay a single simple command — Clickable runs this through shlex.split.
-build: bash scripts/clickable-build.sh
+# Clickable runs this from build_dir via shlex.split + bash -c.
+# SRC_DIR is set in the build container to the project root.
+build: bash $SRC_DIR/scripts/clickable-build.sh
