@@ -64,7 +64,7 @@ string Touch_Hud_ResolvePortrait(void)
 
 vector Touch_Hud_StatusPanelSize(void)
 {
-	float u = Touch_ScreenMin() * 0.42 * Touch_WidgetScale();
+	float u = Touch_ScreenMin() * 0.28 * Touch_WidgetScale();
 	return u * eX + u * 0.38 * eY;
 }
 

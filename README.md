@@ -8,6 +8,10 @@
 | **Platforms** | Linux x86_64 and aarch64 touch devices (Wayland/X11) |
 | **Input** | Touchscreen required — mouse-as-touch only for local dev |
 
+![Touch HUD preview — MOVE / FIRE / JUMP / CONSOLE plus stock weapons strip](docs/assets/touch-hud-preview.png)
+
+In-game: glass MOVE stick and FIRE / JUMP / crouch, top **CONSOLE** pill, and the stock **right-side weapons strip** (tap an icon to switch — no separate WEP button).
+
 ## Install (Flatpak)
 
 ```bash

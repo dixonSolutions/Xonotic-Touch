@@ -1,6 +1,10 @@
 #pragma once
-#include "touch_init.qh"
 
 void Touch_Look_Reset(void);
 void Touch_Look_ApplyDelta(float dx, float dy);
-void Touch_Look_Frame(void);
+void Touch_Look_Update(vector raw_px, float dt);
+void Touch_Look_Frame(vector accum_px, vector last_pos, bool first_frame, bool active);
+void Touch_Look_BeginGesture(vector down_pos);
+void Touch_Look_EndGesture(void);
+void Touch_Look_SetOwnership(bool own);
+bool Touch_Look_BlocksMouse(void);

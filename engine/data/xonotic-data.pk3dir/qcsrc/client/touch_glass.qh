@@ -1,6 +1,10 @@
 #pragma once
 #include "touch_defs.qh"
 
+void Touch_Glass_Fill(vector pos, vector sz, vector rgb, float alpha);
+void Touch_Glass_Frame(vector pos, vector sz, vector rgb, float alpha, float t);
+void Touch_Glass_DrawWidget(vector center, float w, float h, vector tint, float alpha, bool pressed);
+void Touch_Glass_DrawBar(vector center, float w, float h, vector tint, float alpha, bool pressed);
 void Touch_Glass_DrawCircle(vector center, float radius, vector tint, float alpha);
 void Touch_Glass_DrawCircleOutline(vector center, float radius, vector tint, float alpha, float thickness);
 void Touch_Glass_DrawDisc(vector center, float radius, vector tint, float alpha);

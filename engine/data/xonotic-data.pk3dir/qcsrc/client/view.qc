@@ -1,4 +1,5 @@
 #include "view.qh"
+#include <client/touch_look.qh>
 
 #include <client/announcer.qh>
 #include <client/csqcmodel_hooks.qh>
@@ -566,7 +567,9 @@ vector GetCurrentFov(float fov)
 	else
 		current_zoomfraction = (current_viewzoom - 1) / (1/zoomfactor - 1);
 
-	if(zoomsensitivity < 1)
+	if (Touch_Look_BlocksMouse())
+		setsensitivityscale(0);
+	else if(zoomsensitivity < 1)
 		setsensitivityscale(current_viewzoom ** (1 - zoomsensitivity));
 	else
 		setsensitivityscale(1);
@@ -1717,6 +1720,9 @@ void CSQC_UpdateView(entity this, float w, float h, bool notmenu)
 
 	WaypointSprite_Load();
 
+	// Look input must run before the camera (TOUCH_LAYOUT_SPEC D17).
+	Touch_Frame();
+
 	CSQCPlayer_SetCamera();
 
 	if(player_localentnum <= maxclients) // is it a client?
@@ -1874,12 +1880,7 @@ void CSQC_UpdateView(entity this, float w, float h, bool notmenu)
 
 	HUD_Draw(this); // this parameter for deep vehicle function
 
-	// XONOTIC_UT_TOUCH_DRAW
-	Touch_Frame();
-	Touch_Draw();
-
-	// XONOTIC_UT_TOUCH
-	Touch_Frame();
+	// Draw once after HUD; input already ran before SetCamera.
 	Touch_Draw();
 
 	if(NextFrameCommand)

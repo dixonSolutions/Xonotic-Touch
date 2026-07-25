@@ -20,7 +20,7 @@ On the first main-menu frame, dialogs open **in order**; each step is skipped wh
 |------|--------|-------------------|
 | 1 | Terms of Service | `_termsofservice_accepted` &lt; server ToS version |
 | 2 | Asset download | Touch + assets not ready (see below) |
-| 3 | Profile setup (`FirstRun`) | `_cl_name` still default (empty) |
+| 3 | Profile setup (`FirstRun`) | `touch_profile_done` is `0` and name/stats incomplete |
 | 4 | Touch setup (`TouchSetup`) | `vid_touchscreen` and `touch_setup_done` is `0` |
 
 Implementation: `MainWindow_tryOpenStartupDialogs()` in `qcsrc/menu/xonotic/mainwindow.qc`.
@@ -32,7 +32,7 @@ After ToS accept or asset download completes, `main.firstDraw = true` re-runs th
 | User state | Skipped steps |
 |------------|----------------|
 | Assets already on disk | Asset download dialog |
-| Player name saved (`_cl_name` non-empty) | Profile setup |
+| `touch_profile_done 1` (or legacy: custom name + stats Yes/No) | Profile setup |
 | `touch_setup_done 1` in config / `touch.layout.cfg` | Touch setup |
 | ToS already accepted | ToS dialog |
 
@@ -53,6 +53,10 @@ Before downloading, `scripts/lib/asset-discover.sh` searches for an existing **X
 Discovery runs **synchronously** in `packaging/start.sh` before the engine starts. The setup dialog shows discovery status (`discover` phase in `.asset-fetch-progress`), then a download progress bar if packs are still missing.
 
 Gameplay (e.g. **Play now**) stays blocked until `.assets-ready` exists.
+
+### Profile persistence
+
+The packaged launcher re-execs `config.cfg` / `autoexec.cfg` **after** `xonotic.cfg`. Without that, `xonotic-client.cfg`’s `_cl_name ""` would clear the saved name on every start and reopen the profile wizard. Saving profile settings also sets `touch_profile_done 1`.
 
 ### Launcher behavior
 

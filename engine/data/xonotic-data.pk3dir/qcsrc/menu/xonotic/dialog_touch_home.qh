@@ -5,9 +5,9 @@ CLASS(XonoticTouchHomeDialog, XonoticDialog)
 	METHOD(XonoticTouchHomeDialog, fill, void(entity));
 	ATTRIB(XonoticTouchHomeDialog, title, string, _("Play"));
 	ATTRIB(XonoticTouchHomeDialog, name, string, "touchhome");
-	ATTRIB(XonoticTouchHomeDialog, tooltip, string, _("Quick play and touch controls"));
+	ATTRIB(XonoticTouchHomeDialog, tooltip, string, _("Quick play, campaign, multiplayer, and touch controls"));
 	ATTRIB(XonoticTouchHomeDialog, color, vector, SKINCOLOR_DIALOG_SINGLEPLAYER);
 	ATTRIB(XonoticTouchHomeDialog, intendedWidth, float, 0.92);
-	ATTRIB(XonoticTouchHomeDialog, rows, float, 14);
+	ATTRIB(XonoticTouchHomeDialog, rows, float, 12);
 	ATTRIB(XonoticTouchHomeDialog, columns, float, 6);
 ENDCLASS(XonoticTouchHomeDialog)

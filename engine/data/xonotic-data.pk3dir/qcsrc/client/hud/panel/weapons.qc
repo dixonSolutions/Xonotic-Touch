@@ -1,4 +1,5 @@
 #include "weapons.qh"
+#include <client/touch_weapons.qh>
 
 #include <client/draw.qh>
 #include <client/view.qh>
@@ -469,6 +470,9 @@ void Weapons_Draw(
 	if (autocvar_hud_panel_weapons_accuracy)
 		Accuracy_LoadColors();
 
+	// Touch: rebuild hit slots for this frame (tap icons to switch).
+	Touch_Weapons_BeginFrame();
+
 	// draw items
 	vector label_size = '1 1 0' * min(weapon_size.x, weapon_size.y) * bound(0, autocvar_hud_panel_weapons_label_scale, 1);
 	vector noncurrent_size = weapon_size * bound(0.01, autocvar_hud_panel_weapons_noncurrent_scale, 1);
@@ -565,7 +569,13 @@ void Weapons_Draw(
 		weapon_pos_real.y = weapon_pos.y + (weapon_size.y - weapon_size_real.y) * 0.5;
 
 		// drawing all the weapon items
+		bool owned = false;
 		if (weapons_stat & WepSet_FromWeapon(it))
+			owned = true;
+		// Register full cell rect (not scaled icon) so taps match the strip.
+		Touch_Weapons_AddSlot(weapon_pos, weapon_size, weapon_id, owned);
+
+		if (owned)
 		{
 			// draw the weapon image
 			drawpic_aspect_skin(weapon_pos_real, it.model2, weapon_size_real, '1 1 1', weapon_alpha_real, DRAWFLAG_NORMAL);

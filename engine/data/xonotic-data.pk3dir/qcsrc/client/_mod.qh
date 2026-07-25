@@ -10,6 +10,7 @@
 #include <client/spawnpoints.qh>
 #include <client/teamradar.qh>
 #include <client/touch_config.qh>
+#include <client/touch_console.qh>
 #include <client/touch_customize.qh>
 #include <client/touch_draw.qh>
 #include <client/touch_glass.qh>
@@ -18,6 +19,7 @@
 #include <client/touch_input.qh>
 #include <client/touch_layout.qh>
 #include <client/touch_look.qh>
+#include <client/touch_weapons.qh>
 #include <client/view.qh>
 
 #include <client/command/_mod.qh>

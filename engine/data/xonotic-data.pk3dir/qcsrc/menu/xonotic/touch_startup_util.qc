@@ -25,7 +25,21 @@ bool TouchStartup_assetFetchDialog_shouldShow()
 
 bool TouchStartup_userProfileNeeded()
 {
-	return cvar_string("_cl_name") == cvar_defstring("_cl_name");
+	// Explicit flag set by FirstRun "Save settings".
+	if (cvar("touch_profile_done"))
+		return false;
+
+	string name = cvar_string("_cl_name");
+	// Legacy migrate: a real name + stats choice means profile was finished
+	// before touch_profile_done existed — do not force the wizard again.
+	if (name != cvar_defstring("_cl_name")
+		&& name != ""
+		&& name != "player"
+		&& name != "Player"
+		&& cvar_string("cl_allow_uid2name") != "-1")
+		return false;
+
+	return true;
 }
 
 bool TouchStartup_touchSetupNeeded()

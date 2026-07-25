@@ -1,0 +1,9 @@
+#pragma once
+
+// Hit slots for the stock HUD weapons strip (tap to switch).
+
+void Touch_Weapons_BeginFrame(void);
+void Touch_Weapons_AddSlot(vector pos, vector size, float impulse, bool owned);
+bool Touch_Weapons_Hit(vector p);
+float Touch_Weapons_HitImpulse(vector p);
+void Touch_Weapons_SelectImpulse(float impulse);

@@ -2,6 +2,7 @@
 #include "touch_config.qh"
 #include "touch_glass.qh"
 #include "touch_input.qh"
+#include "touch_defs.qh"
 
 int touch_customize_drag_widget;
 vector touch_customize_drag_offset;

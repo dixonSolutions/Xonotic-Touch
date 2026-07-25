@@ -1,0 +1,16 @@
+#pragma once
+
+void Touch_Console_InitDefaults(void);
+void Touch_Console_Frame(void);
+bool Touch_Console_Hit(vector p);
+int Touch_Console_OnDown(vector p);
+void Touch_Console_OnMove(vector p);
+void Touch_Console_OnUp(vector p);
+void Touch_Console_Draw(float alpha);
+float Touch_Console_X(void);
+float Touch_Console_Y(void);
+bool Touch_Console_Dragging(void);
+bool Touch_Console_Arming(void);
+bool Touch_Console_Busy(void);
+void Touch_Console_Reset(void);
+void Touch_Console_PromoteHold(void);

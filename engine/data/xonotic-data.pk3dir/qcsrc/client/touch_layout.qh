@@ -1,13 +1,19 @@
 #pragma once
 #include "touch_init.qh"
 
+vector Touch_UISize(void);
 float Touch_ScreenMin(void);
 float Touch_WidgetScale(void);
 vector Touch_WidgetCenter(float nx, float ny, float nsize);
 float Touch_WidgetRadius(float nsize);
+vector Touch_WidgetHalfExtents(float nsize, float aspect);
 bool Touch_PointInCircle(vector p, vector center, float radius);
+bool Touch_HitCircle(vector p, float nx, float ny, float nsize, float grab);
+bool Touch_HitRect(vector p, float nx, float ny, float nsize, float aspect, float grab);
 bool Touch_PointInNormRect(vector p, float nx, float ny, float nsize);
 bool Touch_InLookZone(vector p);
+bool Touch_InMoveZone(vector p);
 bool Touch_InEdgeDeadzone(vector p);
-float Touch_MirrorX(float nx, float nsize);
+float Touch_MirrorX(float nx);
 bool Touch_WidgetVisible(float nx, float ny);
+vector Touch_NormalizeInput(vector p);

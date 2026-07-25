@@ -7,29 +7,28 @@
 #include "colorpicker.qh"
 #include "charmap.qh"
 #include "commandbutton.qh"
+#include "touch_startup_util.qh"
 
 bool XonoticFirstRunDialog_shouldShow()
 {
-    return cvar_string("_cl_name") == cvar_defstring("_cl_name");
+	return TouchStartup_userProfileNeeded();
 }
 
 float CheckFirstRunButton(entity me)
 {
-	if(cvar_string("_cl_name") != cvar_defstring("_cl_name"))
-		return 1;
-
-	if(cvar_string("_menu_prvm_language") != prvm_language)
-		return 1; // OK will then reopen the dialog in another language
-
-	if(cvar_string("cl_allow_uid2name") != "-1")
-		return 1;
-
-	return 0;
+	// Require a real player name (not engine/QC default) and a stats choice.
+	if (cvar_string("_cl_name") == cvar_defstring("_cl_name"))
+		return 0;
+	if (cvar_string("_cl_name") == "" || cvar_string("_cl_name") == "player" || cvar_string("_cl_name") == "Player")
+		return 0;
+	if (cvar_string("cl_allow_uid2name") == "-1")
+		return 0;
+	return 1;
 }
 
 void firstRun_setLanguage(entity me)
 {
-	if(prvm_language != cvar_string("_menu_prvm_language"))
+	if (prvm_language != cvar_string("_menu_prvm_language"))
 		localcmd("\nprvm_language \"$_menu_prvm_language\"; saveconfig; menu_restart\n");
 }
 
@@ -91,8 +90,11 @@ void XonoticFirstRunDialog_fill(entity me)
 	me.TR(me);
 	me.TD(me, 1, me.columns, e = makeXonoticTextLabel(0.5, _("Player statistics are enabled by default, you can change this in the Profile menu")));
 
-	// because of the language selector, this is a menu_restart!
+	// Persist an explicit done flag so profile setup does not reappear every launch
+	// when the name was left at the engine default ("player") after only picking stats.
 	me.gotoRC(me, me.rows - 1, 0);
-	me.TD(me, 1, me.columns, e = makeXonoticCommandButton(_("Save settings"), '0 0 0', "prvm_language \"$_menu_prvm_language\"; saveconfig; menu_restart", COMMANDBUTTON_APPLY));
+	me.TD(me, 1, me.columns, e = makeXonoticCommandButton(_("Save settings"), '0 0 0',
+		"seta touch_profile_done 1; name \"$_cl_name\"; prvm_language \"$_menu_prvm_language\"; saveconfig; menu_restart",
+		COMMANDBUTTON_APPLY));
 		setDependentWeird(e, CheckFirstRunButton);
 }

@@ -1,14 +1,29 @@
 #pragma once
 
-// Xonotic Touch — touch control layer (see docs/CONTROLS.md)
+// Xonotic Touch — touch control layer (see docs/TOUCH_LAYOUT_SPEC.md)
 
-const int TOUCH_MAX_FINGERS = 3;
+const int TOUCH_MAX_FINGERS = 4;
 const int TOUCH_ENGINE_SLOTS = 10;
+const int TOUCH_SRC_POINTER = 10;
 
-const int TOUCH_SLOT_NONE = -1;
-const int TOUCH_SLOT_MOVE = 0;
-const int TOUCH_SLOT_LOOK = 1;
-const int TOUCH_SLOT_FIRE = 2;
+const int TOUCH_ROLE_NONE = -1;
+const int TOUCH_ROLE_IGNORED = -2;
+const int TOUCH_ROLE_MOVE = 0;
+const int TOUCH_ROLE_LOOK = 1;
+const int TOUCH_ROLE_FIRE = 2;
+const int TOUCH_ROLE_JUMP = 100;
+const int TOUCH_ROLE_CROUCH = 101;
+const int TOUCH_ROLE_WEAPON = 102;
+const int TOUCH_ROLE_ZOOM = 103;
+const int TOUCH_ROLE_DODGE = 104;
+const int TOUCH_ROLE_RELOAD = 105;
+const int TOUCH_ROLE_CON = 106;
+
+// Legacy aliases used by older call sites
+const int TOUCH_SLOT_NONE = TOUCH_ROLE_NONE;
+const int TOUCH_SLOT_MOVE = TOUCH_ROLE_MOVE;
+const int TOUCH_SLOT_LOOK = TOUCH_ROLE_LOOK;
+const int TOUCH_SLOT_FIRE = TOUCH_ROLE_FIRE;
 
 const int TOUCH_WEAPON_WHEEL = 0;
 const int TOUCH_WEAPON_3SLOT = 1;
@@ -23,6 +38,11 @@ const int TOUCH_ZOOM_TOGGLE = 1;
 const int TOUCH_DODGE_BUTTON = 0;
 const int TOUCH_DODGE_DOUBLETAP = 1;
 
+const int TOUCH_CON_IDLE = 0;
+const int TOUCH_CON_ARMING = 1;
+const int TOUCH_CON_DRAGGING = 2;
+
+// Customize-mode widget ids
 const int TOUCH_WIDGET_NONE = -1;
 const int TOUCH_WIDGET_MOVE = 0;
 const int TOUCH_WIDGET_FIRE = 1;
@@ -30,12 +50,16 @@ const int TOUCH_WIDGET_JUMP = 2;
 const int TOUCH_WIDGET_CROUCH = 3;
 const int TOUCH_WIDGET_WEAPON = 4;
 const int TOUCH_WIDGET_ZOOM = 5;
-const int TOUCH_WIDGET_DODGE = 6;
-const int TOUCH_WIDGET_RELOAD = 7;
+const int TOUCH_WIDGET_RELOAD = 6;
+const int TOUCH_WIDGET_DODGE = 7;
 const int TOUCH_WIDGET_COUNT = 8;
 
-// Glass palette (OpenGL drawfill tints)
-const vector TOUCH_GLASS_TINT = '0.82 0.88 0.95';
+const float TOUCH_LOOK_DEG_PER_PX = 0.18;
+const float TOUCH_LOOK_REF_WIDTH = 960;
+
+// Glass palette — slightly brighter so panels read on dark maps
+const vector TOUCH_GLASS_TINT = '0.78 0.86 0.96';
 const vector TOUCH_GLASS_HIGHLIGHT = '1 1 1';
-const vector TOUCH_GLASS_SHADOW = '0.05 0.08 0.12';
-const vector TOUCH_GLASS_ACCENT = '0.45 0.72 1.0';
+const vector TOUCH_GLASS_SHADOW = '0.02 0.04 0.08';
+const vector TOUCH_GLASS_ACCENT = '0.35 0.78 1.0';
+const vector TOUCH_GLASS_DANGER = '1.0 0.32 0.22';

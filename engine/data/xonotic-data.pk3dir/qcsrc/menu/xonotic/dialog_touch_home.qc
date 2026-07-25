@@ -34,21 +34,49 @@ void TouchHome_PlayNow(entity btn, entity dummy)
 	cvar_set("lastlevel", "1");
 }
 
+void TouchHome_OpenCampaign(entity btn, entity dummy)
+{
+	if (!TouchStartup_assetsReady())
+	{
+		DialogOpenButton_Click_withCoords(NULL, main.assetFetchDialog, '0 0 0', eX * conwidth + eY * conheight);
+		return;
+	}
+	localcmd("menu_cmd directmenu Singleplayer\n");
+}
+
+void TouchHome_OpenMultiplayer(entity btn, entity dummy)
+{
+	if (!TouchStartup_assetsReady())
+	{
+		DialogOpenButton_Click_withCoords(NULL, main.assetFetchDialog, '0 0 0', eX * conwidth + eY * conheight);
+		return;
+	}
+	localcmd("menu_cmd directmenu Multiplayer\n");
+}
+
 void XonoticTouchHomeDialog_fill(entity me)
 {
 	entity e;
 
 	me.TR(me);
-		me.TDempty(me, (me.columns - 3) * 0.5);
-		me.TD(me, 2, 3, e = makeXonoticBigButton(_("Play now"), '0 0 0'));
+		me.TDempty(me, (me.columns - 4) * 0.5);
+		me.TD(me, 2, 4, e = makeXonoticBigButton(_("Play now"), '0 0 0'));
 			e.onClick = TouchHome_PlayNow;
 			e.onClickEntity = NULL;
 	me.TR(me);
-		me.TD(me, 1, 6, e = makeXonoticTextLabel(0.5, _("Offline deathmatch with bots — one tap to jump in.")));
+		me.TD(me, 1, me.columns, e = makeXonoticTextLabel(0.5, _("Offline deathmatch with bots — one tap to jump in.")));
 		e.allowWrap = true;
 	me.TR(me);
 	me.TR(me);
-		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Touch setup"), '0 0 0', "menu_cmd directmenu TouchSetup", 0));
-		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Touch controls"), '0 0 0', "menu_cmd directmenu touchsettings", 0));
-		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Settings"), '0 0 0', "menu_cmd directmenu settings", 0));
+		me.TD(me, 2, 3, e = makeXonoticBigButton(_("Campaign"), '0 0 0'));
+			e.onClick = TouchHome_OpenCampaign;
+			e.onClickEntity = NULL;
+		me.TD(me, 2, 3, e = makeXonoticBigButton(_("Multiplayer"), '0 0 0'));
+			e.onClick = TouchHome_OpenMultiplayer;
+			e.onClickEntity = NULL;
+	me.TR(me);
+	me.TR(me);
+		me.TD(me, 1.5, 2, e = makeXonoticTouchCommandButton(_("Profile"), '0 0 0', "menu_cmd directmenu profile", 0));
+		me.TD(me, 1.5, 2, e = makeXonoticTouchCommandButton(_("Controls"), '0 0 0', "menu_cmd directmenu touchsettings", 0));
+		me.TD(me, 1.5, 2, e = makeXonoticTouchCommandButton(_("Settings"), '0 0 0', "menu_cmd directmenu settings", 0));
 }
