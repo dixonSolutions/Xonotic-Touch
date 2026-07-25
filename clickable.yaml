@@ -26,36 +26,5 @@ dependencies_target:
   - libxmp-dev
   - libgmp-dev
 
-build: |
-  set -eux
-  export XONOTIC_PACKAGE_BUILD=1
-  if [ -f click/.ci-name ]; then export CLICK_NAME="$(tr -d '\n' < click/.ci-name)"; fi
-  if [ -f click/.ci-version ]; then export CLICK_VERSION="$(tr -d '\n' < click/.ci-version)"; fi
-  if [ -f click/.ci-framework ]; then export CLICK_FRAMEWORK="$(tr -d '\n' < click/.ci-framework)"; fi
-  export CLICK_NAME="${CLICK_NAME:-xonotictouch.dixonsolutions}"
-  export CLICK_VERSION="${CLICK_VERSION:-1.1.1}"
-  export CLICK_FRAMEWORK="${CLICK_FRAMEWORK:-ubuntu-touch-24.04-1.x}"
-  export CLICK_ARCH="${ARCH}"
-  export DEST="${INSTALL_DIR}"
-  # Preserve Clickable's ARCH for packaging after our compile step.
-  CLICKABLE_ARCH="${ARCH}"
-
-  case "${CLICKABLE_ARCH}" in
-    arm64)
-      export ARCH=arm64
-      export ARCH_TRIPLET="${ARCH_TRIPLET:-aarch64-linux-gnu}"
-      ;;
-    armhf)
-      export ARCH=armhf
-      export ARCH_TRIPLET="${ARCH_TRIPLET:-arm-linux-gnueabihf}"
-      ;;
-    amd64)
-      # Native host build — clear cross-compile hints for scripts/build.sh.
-      unset ARCH ARCH_TRIPLET || true
-      ;;
-  esac
-
-  bash scripts/fetch-sources.sh code
-  bash scripts/build.sh
-  bash scripts/stage-click.sh
-  export ARCH="${CLICKABLE_ARCH}"
+# Must stay a single simple command — Clickable runs this through shlex.split.
+build: bash scripts/clickable-build.sh
