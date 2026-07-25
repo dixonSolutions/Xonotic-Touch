@@ -6,6 +6,7 @@ bool Touch_Active(void);
 void Touch_Frame(void);
 bool Touch_InputEvent(float bInputType, float nPrimary, float nSecondary);
 void Touch_ReleaseAll(void);
+void Touch_SetKey(string key, bool down);
 
 bool Touch_MouseDown(void);
 void Touch_SetMouseDown(bool down);

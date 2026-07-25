@@ -1,0 +1,16 @@
+#pragma once
+
+void Touch_Pause_InitDefaults(void);
+void Touch_Pause_Reset(void);
+bool Touch_Pause_SheetOpen(void);
+bool Touch_Pause_PillHit(vector p);
+bool Touch_Pause_Busy(void);
+int Touch_Pause_OnDown(vector p);
+void Touch_Pause_OnMove(vector p);
+void Touch_Pause_OnUp(vector p);
+void Touch_Pause_Enter(void);
+void Touch_Pause_Exit(void);
+void Touch_Pause_Frame(void);
+void Touch_Pause_DrawPill(float alpha);
+void Touch_Pause_DrawSheet(float alpha);
+int Touch_Pause_SheetOpenInt(void);

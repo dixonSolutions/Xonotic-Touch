@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Xonotic Touch
+Comment=Touch-only arena FPS for Ubuntu Touch
+Exec=bin/start.sh
+Icon=xonotic.png
+Terminal=false
+Type=Application
+X-Ubuntu-Touch=true
+X-Ubuntu-Supported-Orientations=landscape
+Keywords=game;fps;xonotic;shooter;

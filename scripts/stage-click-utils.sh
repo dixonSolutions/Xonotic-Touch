@@ -23,7 +23,8 @@ copy_binary_with_libs() {
         case "$lib" in
             linux-vdso.so.*|not\ a\ dynamic\ executable|'')
                 continue
-            esac
+                ;;
+        esac
         if [ -f "$lib" ]; then
             install -m 755 "$lib" "$LIB_DIR/"
         fi

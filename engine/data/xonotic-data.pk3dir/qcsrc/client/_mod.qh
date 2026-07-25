@@ -19,6 +19,7 @@
 #include <client/touch_input.qh>
 #include <client/touch_layout.qh>
 #include <client/touch_look.qh>
+#include <client/touch_pause.qh>
 #include <client/touch_weapons.qh>
 #include <client/view.qh>
 

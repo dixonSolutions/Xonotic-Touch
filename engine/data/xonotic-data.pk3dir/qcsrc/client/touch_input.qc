@@ -3,6 +3,7 @@
 #include "touch_glass.qh"
 #include "touch_hud.qh"
 #include "touch_console.qh"
+#include "touch_pause.qh"
 #include "touch_look.qh"
 #include "touch_layout.qh"
 #include "touch_init.qh"
@@ -151,6 +152,7 @@ void Touch_ReleaseAll(void)
 		touch_finger_lost_time[i] = 0;
 	}
 	Touch_Console_Reset();
+	Touch_Pause_Reset();
 	Touch_Look_EndGesture();
 	Touch_Look_SetOwnership(false);
 }
@@ -189,8 +191,15 @@ bool Touch_RoleOwned(int role)
 
 int Touch_AssignRole(vector p)
 {
+	// Modal pause sheet owns every contact.
+	if (Touch_Pause_SheetOpen())
+		return TOUCH_ROLE_SHEET;
+
 	if (Touch_Console_Hit(p))
 		return TOUCH_ROLE_CON;
+
+	if (Touch_Pause_PillHit(p))
+		return TOUCH_ROLE_PAUSE;
 
 	// Stock vertical weapons strip — tap icon to switch (replaces WEP button).
 	if (Touch_Weapons_Hit(p))
@@ -258,6 +267,8 @@ int Touch_ClaimFinger(int src, vector pos)
 		touch_finger_role[i] = Touch_AssignRole(pos);
 		if (touch_finger_role[i] == TOUCH_ROLE_CON)
 			Touch_Console_OnDown(pos);
+		else if (touch_finger_role[i] == TOUCH_ROLE_PAUSE || touch_finger_role[i] == TOUCH_ROLE_SHEET)
+			Touch_Pause_OnDown(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_LOOK)
 			Touch_Look_BeginGesture(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_WEAPON)
@@ -372,11 +383,19 @@ void Touch_PollFingers(void)
 		else if (i == 3) seen = seen3;
 		if (seen)
 			continue;
-		// CON must not use grace: hold timer + Frame promote after lift caused
-		// phantom drops (B4). End on first missed sample.
+		// CON / PAUSE / SHEET must not use grace (B4 + pause realtime).
 		if (touch_finger_role[i] == TOUCH_ROLE_CON)
 		{
 			Touch_Console_OnUp(touch_finger_last_pos[i]);
+			touch_finger_used[i] = false;
+			touch_finger_role[i] = TOUCH_ROLE_NONE;
+			touch_finger_live[i] = false;
+			touch_finger_lost_time[i] = 0;
+			continue;
+		}
+		if (touch_finger_role[i] == TOUCH_ROLE_PAUSE || touch_finger_role[i] == TOUCH_ROLE_SHEET)
+		{
+			Touch_Pause_OnUp(touch_finger_last_pos[i]);
 			touch_finger_used[i] = false;
 			touch_finger_role[i] = TOUCH_ROLE_NONE;
 			touch_finger_live[i] = false;
@@ -405,6 +424,7 @@ void Touch_EnsureReady(void)
 		return;
 	Touch_Look_Reset();
 	Touch_Console_InitDefaults();
+	Touch_Pause_InitDefaults();
 	Touch_ApplyTouchWeaponsStrip();
 	// Migrate legacy simple_draw → glass_quality once.
 	if (cvar("touch_simple_draw") && !cvar("touch_glass_quality"))
@@ -448,15 +468,36 @@ void Touch_Frame(void)
 		Touch_Customize_Frame();
 		return;
 	}
-	if (!Touch_Active())
+	if (!Touch_Active() && !Touch_Pause_SheetOpen())
 	{
 		Touch_ReleaseAll();
 		return;
 	}
 
-	Touch_Look_SetOwnership(true);
+	Touch_Look_SetOwnership(Touch_Active());
 	Touch_PollFingers();
 	Touch_Console_Frame();
+	Touch_Pause_Frame();
+
+	if (Touch_Pause_SheetOpen())
+	{
+		int pi;
+		for (pi = 0; pi < TOUCH_MAX_FINGERS; ++pi)
+		{
+			if (!touch_finger_used[pi] || !touch_finger_live[pi])
+				continue;
+			if (touch_finger_role[pi] == TOUCH_ROLE_SHEET || touch_finger_role[pi] == TOUCH_ROLE_PAUSE)
+				Touch_Pause_OnMove(touch_finger_last_pos[pi]);
+			touch_finger_first[pi] = false;
+		}
+		return;
+	}
+
+	if (!Touch_Active())
+	{
+		Touch_ReleaseAll();
+		return;
+	}
 
 	if (autocvar_touch_fire_mode != touch_last_fire_mode)
 	{
@@ -489,6 +530,8 @@ void Touch_Frame(void)
 			Touch_Console_PromoteHold();
 			Touch_Console_OnMove(pos);
 		}
+		else if (role == TOUCH_ROLE_PAUSE)
+			Touch_Pause_OnMove(pos);
 		else if (role == TOUCH_ROLE_MOVE)
 		{
 			move_active = true;
@@ -528,12 +571,14 @@ void Touch_Frame(void)
 		touch_finger_first[i] = false;
 	}
 
-	// Demote cancelled CON fingers (ARMING→CANCEL→IDLE while finger still live)
+	// Demote cancelled CON / PAUSE fingers (ARMING→CANCEL→IDLE while finger still live)
 	for (i = 0; i < TOUCH_MAX_FINGERS; ++i)
 	{
-		if (!touch_finger_used[i] || touch_finger_role[i] != TOUCH_ROLE_CON)
+		if (!touch_finger_used[i])
 			continue;
-		if (!Touch_Console_Busy())
+		if (touch_finger_role[i] == TOUCH_ROLE_CON && !Touch_Console_Busy())
+			touch_finger_role[i] = TOUCH_ROLE_IGNORED;
+		if (touch_finger_role[i] == TOUCH_ROLE_PAUSE && !Touch_Pause_Busy())
 			touch_finger_role[i] = TOUCH_ROLE_IGNORED;
 	}
 
@@ -662,6 +707,8 @@ string Touch_DebugRoleName(int role)
 	if (role == TOUCH_ROLE_DODGE) return "DODGE";
 	if (role == TOUCH_ROLE_RELOAD) return "R";
 	if (role == TOUCH_ROLE_CON) return "CON";
+	if (role == TOUCH_ROLE_PAUSE) return "PAUSE";
+	if (role == TOUCH_ROLE_SHEET) return "SHEET";
 	if (role == TOUCH_ROLE_IGNORED) return "IGN";
 	return "-";
 }

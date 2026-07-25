@@ -1,12 +1,12 @@
 # Maintainer guide
 
-**Xonotic Touch** — touch-only Xonotic for Linux tablets and phones. CI builds **Flatpak** on every push to `main` (remote + GitHub Release `continuous`). You edit source; GitHub Actions packages it.
+**Xonotic Touch** — touch-only Xonotic for Linux tablets and phones. CI builds **Flatpak** (`x86_64`/`aarch64`) and Ubuntu Touch **`.click`** (`arm64`/`armhf`) on every push to `main` (versioned GitHub Releases + Pages OSTree remote with history). You edit source; GitHub Actions packages it.
 
 ## Daily workflow
 
 1. Clone this repo — `engine/` contains the Xonotic fork with touch changes integrated in-tree.
 2. Edit files under `engine/` directly (see [SOURCES.md](SOURCES.md)).
-3. Commit and push to `main` — CI produces Flatpak bundles automatically.
+3. Commit and push to `main` — CI produces Flatpak + Click packages automatically.
 
 ## Local builds (optional)
 
@@ -23,6 +23,14 @@ Flatpak local build:
 
 ```bash
 ./scripts/install-flatpak.sh
+```
+
+Ubuntu Touch click (needs [Clickable](https://clickable-ut.dev/) or `click` + toolchain):
+
+```bash
+clickable build --arch arm64
+# or
+./scripts/build-click.sh --arch arm64 --install-deps
 ```
 
 ## Sharing changes

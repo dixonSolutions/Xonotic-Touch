@@ -1,0 +1,15 @@
+{
+    "name": "@CLICK_NAME@",
+    "title": "Xonotic Touch",
+    "version": "@CLICK_VERSION@",
+    "maintainer": "dixonSolutions <noreply@github.com>",
+    "architecture": "@CLICK_ARCH@",
+    "description": "Touch-only arena FPS for Ubuntu Touch. Slim package; textures, maps, and music download on first launch.",
+    "framework": "@CLICK_FRAMEWORK@",
+    "hooks": {
+        "xonotic": {
+            "apparmor": "xonotic.apparmor",
+            "desktop": "xonotic.desktop"
+        }
+    }
+}

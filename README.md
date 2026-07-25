@@ -1,11 +1,11 @@
 # Xonotic Touch
 
-**Xonotic Touch** is a touch-only build of [Xonotic](https://xonotic.org) for Linux tablets and phones. Virtual sticks, weapon wheels, and layout presets are tuned for two-thumb play in landscape. Ships as a slim **Flatpak** (~60 MB); textures, maps, and music download on first launch (~3 GB). Native C + QuakeC — no Qt shell.
+**Xonotic Touch** is a touch-only build of [Xonotic](https://xonotic.org) for Linux tablets and phones. Virtual sticks, weapon wheels, and layout presets are tuned for two-thumb play in landscape. Ships as a slim **Flatpak** or Ubuntu Touch **`.click`** (~60 MB); textures, maps, and music download on first launch (~3 GB). Native C + QuakeC — no Qt shell.
 
 | | |
 |---|---|
-| **Install** | Flatpak remote + GitHub Releases (auto-built on each `main` push) |
-| **Platforms** | Linux x86_64 and aarch64 touch devices (Wayland/X11) |
+| **Install** | Flatpak remote, Ubuntu Touch `.click`, and versioned GitHub Releases (each `main` push) |
+| **Platforms** | Flatpak: Linux `x86_64` + `aarch64` (Wayland/X11). Click: Ubuntu Touch `arm64` + `armhf` |
 | **Input** | Touchscreen required — mouse-as-touch only for local dev |
 
 <img width="1954" height="1302" alt="image" src="https://github.com/user-attachments/assets/cf918732-3540-4fd4-a9f9-b7550dc1b6d2" />
@@ -22,7 +22,20 @@ flatpak install --user xonotic-touch io.github.dixonSolutions.XonoticTouch
 flatpak run io.github.dixonSolutions.XonoticTouch
 ```
 
-Or download offline bundles from [GitHub Releases](https://github.com/dixonSolutions/Xonotic-Touch/releases) (`continuous` tag, updated on each `main` build).
+Or download offline bundles from [GitHub Releases](https://github.com/dixonSolutions/Xonotic-Touch/releases/latest) (new `v1.2.*` tag per build; older tags kept).
+
+### Ubuntu Touch (.click)
+
+```bash
+# Always-latest from the Pages download remote:
+wget https://dixonSolutions.github.io/Xonotic-Touch/click/latest-arm64.click
+pkcon install-local --allow-untrusted latest-arm64.click
+```
+
+Or grab a versioned `.click` from [GitHub Releases](https://github.com/dixonSolutions/Xonotic-Touch/releases/latest). Index: https://dixonSolutions.github.io/Xonotic-Touch/click/
+
+Local build with [Clickable](https://clickable-ut.dev/): `clickable build --arch arm64`  
+Or: `./scripts/build-click.sh --arch arm64`
 
 First launch downloads game data to `~/.local/share/xonotic-touch/data/`. See [docs/RELEASES.md](docs/RELEASES.md).
 
@@ -38,6 +51,10 @@ First launch downloads game data to `~/.local/share/xonotic-touch/data/`. See [d
 # Local Flatpak build and install:
 ./scripts/install-flatpak.sh
 
+# Ubuntu Touch click (arm64 / armhf):
+./scripts/build-click.sh --arch arm64
+# or: clickable build --arch arm64
+
 # Optional native run (assets download on launch, like packages):
 ./scripts/compile-and-install-deps.sh
 ./scripts/run-local.sh
@@ -49,11 +66,13 @@ First launch downloads game data to `~/.local/share/xonotic-touch/data/`. See [d
 | `touch/` | Defaults, screen math, layout/performance presets |
 | `packaging/start.sh` | Launcher: sync bundle, fetch assets, run game |
 | `flatpak/` | Flatpak manifest, metainfo, desktop entry |
+| `click/` | Ubuntu Touch click metadata (manifest, desktop, AppArmor) |
+| `clickable.yaml` | Clickable build entry for UT `.click` packages |
 | `scripts/` | Build, staging, runtime asset fetch, local installers |
 
 ## Docs
 
-- [docs/RELEASES.md](docs/RELEASES.md) — Flatpak remote, CI, GitHub Releases
+- [docs/RELEASES.md](docs/RELEASES.md) — Flatpak + Click, CI, GitHub Releases
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — technical overview
 - [docs/MAINTAINING.md](docs/MAINTAINING.md) — source maintainer guide
 - [docs/TESTING.md](docs/TESTING.md) — Flatpak and local testing

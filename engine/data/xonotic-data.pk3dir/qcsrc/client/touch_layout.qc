@@ -65,14 +65,20 @@ bool Touch_HitCircle(vector p, float nx, float ny, float nsize, float grab)
 	return Touch_PointInCircle(p, c, Touch_WidgetRadius(nsize) * max(1.0, grab));
 }
 
-bool Touch_HitRect(vector p, float nx, float ny, float nsize, float aspect, float grab)
+bool Touch_HitRectPx(vector p, vector centre, vector half, float grab)
 {
 	vector ui = Touch_UISize();
-	vector c = Touch_WidgetCenter(nx, ny, nsize);
-	vector half = Touch_WidgetHalfExtents(nsize, aspect) * max(1.0, grab);
-	return p.x >= c.x - half.x && p.x <= c.x + half.x
-		&& p.y >= c.y - half.y && p.y <= c.y + half.y
+	vector h = half * max(1.0, grab);
+	return p.x >= centre.x - h.x && p.x <= centre.x + h.x
+		&& p.y >= centre.y - h.y && p.y <= centre.y + h.y
 		&& p.x >= 0 && p.y >= 0 && p.x <= ui.x && p.y <= ui.y;
+}
+
+bool Touch_HitRect(vector p, float nx, float ny, float nsize, float aspect, float grab)
+{
+	vector c = Touch_WidgetCenter(nx, ny, nsize);
+	vector half = Touch_WidgetHalfExtents(nsize, aspect);
+	return Touch_HitRectPx(p, c, half, grab);
 }
 
 bool Touch_PointInNormRect(vector p, float nx, float ny, float nsize)

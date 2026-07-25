@@ -18,6 +18,17 @@ const int TOUCH_ROLE_ZOOM = 103;
 const int TOUCH_ROLE_DODGE = 104;
 const int TOUCH_ROLE_RELOAD = 105;
 const int TOUCH_ROLE_CON = 106;
+const int TOUCH_ROLE_PAUSE = 107;
+const int TOUCH_ROLE_SHEET = 108;
+
+const int TOUCH_PAUSE_IDLE = 0;
+const int TOUCH_PAUSE_ARMING = 1;
+
+const int TOUCH_PAUSE_BTN_NONE = -1;
+const int TOUCH_PAUSE_BTN_RESUME = 0;
+const int TOUCH_PAUSE_BTN_MENU = 1;
+const int TOUCH_PAUSE_BTN_LEAVE = 2;
+const int TOUCH_PAUSE_BTN_QUIT = 3;
 
 // Legacy aliases used by older call sites
 const int TOUCH_SLOT_NONE = TOUCH_ROLE_NONE;

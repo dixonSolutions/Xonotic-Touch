@@ -1,4 +1,5 @@
 #include "touch_config.qh"
+#include "touch_pause.qh"
 #include "touch_init.qh"
 #include "../dpdefs/ut_touchfinger.qc"
 
@@ -71,6 +72,15 @@ void Touch_SaveLayoutFile(string path)
 	Touch_ConfigWriteFloat(fh, "touch_con_snap");
 	Touch_ConfigWriteFloat(fh, "touch_con_margin_px");
 	Touch_ConfigWriteFloat(fh, "touch_con_lock");
+	Touch_ConfigWriteFloat(fh, "touch_pause_x");
+	Touch_ConfigWriteFloat(fh, "touch_pause_y");
+	Touch_ConfigWriteFloat(fh, "touch_pause_size");
+	Touch_ConfigWriteFloat(fh, "touch_pause_aspect");
+	Touch_ConfigWriteFloat(fh, "touch_pause_visible");
+	Touch_ConfigWriteFloat(fh, "touch_pause_slop_px");
+	Touch_ConfigWriteFloat(fh, "touch_pause_freeze");
+	Touch_ConfigWriteFloat(fh, "touch_pause_quit_confirm_ms");
+	Touch_ConfigWriteFloat(fh, "touch_menu_resume_bar");
 	Touch_ConfigWriteFloat(fh, "touch_mobile_hud");
 	Touch_ConfigWriteFloat(fh, "touch_hud_x");
 	Touch_ConfigWriteFloat(fh, "touch_hud_y");
@@ -232,6 +242,16 @@ bool Touch_ConsoleCommand(string s, int argc)
 	if (s == "touch_customize_cancel")
 	{
 		Touch_CmdCustomizeCancel();
+		return true;
+	}
+	if (s == "touch_pause")
+	{
+		Touch_Pause_Enter();
+		return true;
+	}
+	if (s == "touch_pause_exit")
+	{
+		Touch_Pause_Exit();
 		return true;
 	}
 	return false;

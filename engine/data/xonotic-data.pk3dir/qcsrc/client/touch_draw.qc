@@ -3,6 +3,7 @@
 #include "touch_hud.qh"
 #include "touch_glass.qh"
 #include "touch_console.qh"
+#include "touch_pause.qh"
 #include "touch_init.qh"
 #include "touch_input.qh"
 #include "touch_defs.qh"
@@ -141,13 +142,17 @@ void Touch_DrawDebugLine(void)
 	line = strcat(line, strcat(" cmd/s ", ftos(Touch_DebugCmdsPerSec())));
 	line = strcat(line, strcat(" con ", ftos(autocvar_touch_con_x)));
 	line = strcat(line, strcat(",", ftos(autocvar_touch_con_y)));
+	line = strcat(line, strcat(" pause ", ftos(Touch_Pause_SheetOpenInt())));
 	drawstring_builtin('8 8 0', line, '1 1 0' * 10, TOUCH_GLASS_HIGHLIGHT, 0.85, 0);
 }
 
 void Touch_DrawOverlay(float overlayAlpha)
 {
+	Touch_Pause_DrawPill(overlayAlpha);
 	Touch_Console_Draw(overlayAlpha);
 	Touch_DebugAddFills(Touch_Console_Dragging() ? 4 : 3);
+	if (Touch_Pause_SheetOpen())
+		Touch_DebugAddFills(1);
 
 	if (autocvar_touch_move_visible || autocvar_touch_debug)
 		Touch_DrawMoveStick(overlayAlpha);
@@ -183,7 +188,9 @@ void Touch_DrawOverlay(float overlayAlpha)
 
 void Touch_Draw(void)
 {
-	if (!Touch_Active())
+	// Pause sheet must draw even if the normal overlay is hidden under a menu.
+	bool sheet = Touch_Pause_SheetOpen();
+	if (!Touch_Active() && !sheet)
 		return;
 
 	// HUD panels may leave a clip rect / dynamic scale armed — clear before glass.
@@ -199,7 +206,11 @@ void Touch_Draw(void)
 		return;
 	}
 
-	if (autocvar_touch_mobile_hud && autocvar_touch_glass_quality >= 1)
-		Touch_Hud_Draw(overlayAlpha);
-	Touch_DrawOverlay(overlayAlpha);
+	if (Touch_Active())
+	{
+		if (autocvar_touch_mobile_hud && autocvar_touch_glass_quality >= 1)
+			Touch_Hud_Draw(overlayAlpha);
+		Touch_DrawOverlay(overlayAlpha);
+	}
+	Touch_Pause_DrawSheet(overlayAlpha);
 }

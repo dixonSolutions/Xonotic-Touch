@@ -38,6 +38,9 @@ void XonoticGameMenuDialog_fill(entity me)
 	cvar_set("_menu_gamemenu_dialog_available", "1");
 
 	entity e;
+	// Always first — Escape equivalent for touch (and harmless with a keyboard).
+	me.TR(me);
+		me.TD(me, 1, 1, e = makeXonoticCommandButton(_("Resume"), '0 0 0', "togglemenu 0", COMMANDBUTTON_CLOSE));
 	me.TR(me);
 		me.TD(me, 1, 1, e = makeXonoticCommandButton(_("Main menu"), '0 0 0', "menu_cmd nexposee", 0));
 		// NOTE these buttons use directmenu so that the menu will be hidden when these dialogs are closed
@@ -50,14 +53,6 @@ void XonoticGameMenuDialog_fill(entity me)
 	me.TR(me);
 		me.TDempty(me, 0.1);
 		me.TD(me, 1, 0.8, e = makeXonoticCommandButton(_("Settings"), '0 0 0', "menu_cmd directmenu settings", 0));
-	me.TR(me);
-		me.TDempty(me, 0.1);
-		// XONOTIC_UT_TOUCH_GAMEMENU
-		me.TD(me, 1, 0.8, e = makeXonoticCommandButton(_("Touch controls"), '0 0 0', "menu_cmd directmenu touchsettings", 0));
-	me.TR(me);
-		me.TDempty(me, 0.1);
-		// XONOTIC_UT_TOUCH_GAMEMENU
-		me.TD(me, 1, 0.8, e = makeXonoticCommandButton(_("Touch controls"), '0 0 0', "menu_cmd directmenu touchsettings", 0));
 	me.TR(me);
 		me.TDempty(me, 0.1);
 		// XONOTIC_UT_TOUCH_GAMEMENU

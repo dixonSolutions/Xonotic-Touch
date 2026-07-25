@@ -330,6 +330,13 @@ void m_keydown(float key, float ascii)
 		{
 			if (menuMouseMode && cvar("vid_touchscreen"))
 				menu_sync_absolute_mousepos();
+			// Touch Escape equivalent — close menu before dialog hit-testing.
+			if (key == K_MOUSE1 && Menu_TouchResumeBarHit(menuMousePos))
+			{
+				m_hide();
+				++mouseButtonsPressed;
+				return;
+			}
 			main.mousePress(main, menuMousePos);
 		}
 		if (!main.keyDown(main, key, ascii, menuShiftState))

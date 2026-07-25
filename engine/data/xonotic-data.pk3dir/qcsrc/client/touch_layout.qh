@@ -10,6 +10,7 @@ vector Touch_WidgetHalfExtents(float nsize, float aspect);
 bool Touch_PointInCircle(vector p, vector center, float radius);
 bool Touch_HitCircle(vector p, float nx, float ny, float nsize, float grab);
 bool Touch_HitRect(vector p, float nx, float ny, float nsize, float aspect, float grab);
+bool Touch_HitRectPx(vector p, vector centre, vector half, float grab);
 bool Touch_PointInNormRect(vector p, float nx, float ny, float nsize);
 bool Touch_InLookZone(vector p);
 bool Touch_InMoveZone(vector p);

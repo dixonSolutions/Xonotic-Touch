@@ -10,18 +10,38 @@ permissions:
   pages: write
   id-token: write
 
+# Do not cancel in-flight publishes — each run creates an immutable version.
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: build-and-publish-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   FLATPAK_APP_ID: io.github.dixonSolutions.XonoticTouch
   FLATPAK_REMOTE_NAME: xonotic-touch
   FLATPAK_REMOTE_URL: https://dixonSolutions.github.io/Xonotic-Touch/flatpak
+  CLICK_NAME: xonotictouch.dixonsolutions
+  CLICK_FRAMEWORK: ubuntu-touch-24.04-1.x
+  CLICK_REMOTE_URL: https://dixonSolutions.github.io/Xonotic-Touch/click
 
 jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.stamp.outputs.version }}
+      tag: ${{ steps.stamp.outputs.tag }}
+    steps:
+      - name: Compute version
+        id: stamp
+        run: |
+          VERSION="1.2.${{ github.run_number }}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Package version: ${VERSION}"
+
   flatpak:
     name: Flatpak (${{ matrix.arch }})
+    needs: [version]
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
@@ -33,6 +53,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Stamp package version
+        run: bash scripts/set-package-version.sh "${{ needs.version.outputs.version }}"
 
       - name: Install Docker for QEMU
         if: matrix.arch != 'x86_64'
@@ -51,7 +74,7 @@ jobs:
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
-          bundle: XonoticTouch-${{ matrix.arch }}.flatpak
+          bundle: XonoticTouch-${{ needs.version.outputs.version }}-${{ matrix.arch }}.flatpak
           manifest-path: flatpak/io.github.dixonSolutions.XonoticTouch.yml
           arch: ${{ matrix.arch }}
           keep-build-dirs: true
@@ -62,49 +85,107 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: flatpak-${{ matrix.arch }}
-          path: XonoticTouch-${{ matrix.arch }}.flatpak
+          path: XonoticTouch-${{ needs.version.outputs.version }}-${{ matrix.arch }}.flatpak
 
-  publish-flatpak-remote:
-    name: Publish Flatpak remote
+  click:
+    name: Click (${{ matrix.arch }})
+    needs: [version]
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, armhf]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Click package
+        uses: tuxecure/clickable@v2
+        with:
+          image: clickable/ci-ut24.04-1.x-${{ matrix.arch }}
+          run: |
+            printf '%s\n' "${{ needs.version.outputs.version }}" > click/.ci-version
+            printf '%s\n' "${{ env.CLICK_NAME }}" > click/.ci-name
+            printf '%s\n' "${{ env.CLICK_FRAMEWORK }}" > click/.ci-framework
+            clickable build --arch ${{ matrix.arch }} --skip-review --verbose
+
+      - name: Collect Click artifact
+        run: |
+          mkdir -p click-out
+          mapfile -t clicks < <(find . -name '*.click' -type f | head -20)
+          if [ "${#clicks[@]}" -eq 0 ]; then
+            echo "No .click artifact produced" >&2
+            find . -maxdepth 4 -type d -name build -o -name '*.click' | head -50 >&2 || true
+            exit 1
+          fi
+          cp -v "${clicks[@]}" click-out/
+          ls -lah click-out/
+
+      - name: Upload Click package
+        uses: actions/upload-artifact@v4
+        with:
+          name: click-${{ matrix.arch }}
+          path: click-out/*.click
+          if-no-files-found: error
+
+  publish-pages:
+    name: Publish Pages (Flatpak + Click remotes)
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-    needs: [flatpak]
+    needs: [version, flatpak, click]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Download Flatpak bundles
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Build combined Flatpak repository
+      - name: Build Flatpak OSTree + Click download remote
+        env:
+          PACKAGE_VERSION: ${{ needs.version.outputs.version }}
+          FLATPAK_REMOTE_URL: ${{ env.FLATPAK_REMOTE_URL }}
+          CLICK_REMOTE_URL: ${{ env.CLICK_REMOTE_URL }}
+          CLICK_NAME: ${{ env.CLICK_NAME }}
+          PRUNE_DEPTH: '40'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq flatpak ostree
-          mkdir -p combined-repo site/flatpak
+          chmod +x scripts/publish-flatpak-remote.sh scripts/publish-click-remote.sh
+          mkdir -p site
           X86_BUNDLE="$(find artifacts/flatpak-x86_64 -name '*.flatpak' | head -1)"
           A64_BUNDLE="$(find artifacts/flatpak-aarch64 -name '*.flatpak' | head -1)"
-          test -n "$X86_BUNDLE" || { echo "Missing x86_64 flatpak bundle" >&2; exit 1; }
-          test -n "$A64_BUNDLE" || { echo "Missing aarch64 flatpak bundle" >&2; exit 1; }
-          ostree init --repo=combined-repo --mode=archive-z2
-          flatpak build-import-bundle combined-repo "$X86_BUNDLE"
-          flatpak build-import-bundle combined-repo "$A64_BUNDLE"
-          flatpak build-update-repo combined-repo --generate-static-deltas
-          cp -a combined-repo/. site/flatpak/
-          cat > site/flatpak/index.html <<'EOF'
+          ARM64_CLICK="$(find artifacts/click-arm64 -name '*.click' | head -1)"
+          ARMHF_CLICK="$(find artifacts/click-armhf -name '*.click' | head -1)"
+          test -n "$X86_BUNDLE" || { echo "Missing x86_64 flatpak" >&2; exit 1; }
+          test -n "$A64_BUNDLE" || { echo "Missing aarch64 flatpak" >&2; exit 1; }
+          test -n "$ARM64_CLICK" || { echo "Missing arm64 click" >&2; exit 1; }
+          test -n "$ARMHF_CLICK" || { echo "Missing armhf click" >&2; exit 1; }
+          bash scripts/publish-flatpak-remote.sh \
+            --x86 "$X86_BUNDLE" \
+            --aarch64 "$A64_BUNDLE" \
+            --version "$PACKAGE_VERSION"
+          bash scripts/publish-click-remote.sh \
+            --arm64 "$ARM64_CLICK" \
+            --armhf "$ARMHF_CLICK" \
+            --version "$PACKAGE_VERSION"
+          cat > site/index.html <<EOF
           <!DOCTYPE html>
-          <html lang="en">
-          <head><meta charset="utf-8"><title>Xonotic Touch Flatpak remote</title></head>
+          <html lang="en"><head><meta charset="utf-8"><title>Xonotic Touch packages</title></head>
           <body>
-          <h1>Xonotic Touch Flatpak remote</h1>
-          <pre>
-          flatpak remote-add --user --if-not-exists xonotic-touch \
-            https://dixonSolutions.github.io/Xonotic-Touch/flatpak
-          flatpak install --user xonotic-touch io.github.dixonSolutions.XonoticTouch
-          </pre>
-          </body>
-          </html>
+          <h1>Xonotic Touch packages</h1>
+          <ul>
+            <li><a href="flatpak/">Flatpak remote</a> (Linux x86_64 + aarch64)</li>
+            <li><a href="click/">Ubuntu Touch .click downloads</a> (arm64 + armhf)</li>
+            <li><a href="https://github.com/dixonSolutions/Xonotic-Touch/releases/latest">GitHub Releases (latest)</a></li>
+          </ul>
+          <p>Build ${PACKAGE_VERSION}</p>
+          </body></html>
           EOF
 
       - name: Setup Pages
@@ -124,31 +205,100 @@ jobs:
   release:
     name: GitHub Release
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-    needs: [flatpak]
+    needs: [version, flatpak, click]
     runs-on: ubuntu-latest
     steps:
-      - name: Download Flatpak bundles
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           path: release
 
       - name: Prepare release files
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           mkdir -p release/upload
           cp release/flatpak-x86_64/*.flatpak release/upload/
           cp release/flatpak-aarch64/*.flatpak release/upload/
+          cp release/click-arm64/*.click release/upload/
+          cp release/click-armhf/*.click release/upload/
           ls -la release/upload/
+          {
+            echo "## Xonotic Touch ${VERSION}"
+            echo
+            echo "Immutable release — previous tags are kept."
+            echo
+            echo "### Flatpak (Linux)"
+            echo '```bash'
+            echo "flatpak remote-add --user --if-not-exists xonotic-touch \\"
+            echo "  https://dixonSolutions.github.io/Xonotic-Touch/flatpak"
+            echo "flatpak install --user xonotic-touch io.github.dixonSolutions.XonoticTouch"
+            echo '```'
+            echo
+            echo "### Ubuntu Touch (.click)"
+            echo "Stable downloads (always latest):"
+            echo "- https://dixonSolutions.github.io/Xonotic-Touch/click/latest-arm64.click"
+            echo "- https://dixonSolutions.github.io/Xonotic-Touch/click/latest-armhf.click"
+            echo
+            echo '```bash'
+            echo "wget https://dixonSolutions.github.io/Xonotic-Touch/click/latest-arm64.click"
+            echo "pkcon install-local --allow-untrusted latest-arm64.click"
+            echo '```'
+            echo
+            echo "Offline Flatpak + Click bundles are attached below."
+            echo
+            echo "Commit: \`${GITHUB_SHA}\`"
+          } > release/notes.md
 
-      - name: Remove previous continuous release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release delete continuous --yes 2>/dev/null || true
-
-      - name: Create GitHub Release
+      - name: Create versioned GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: continuous
-          name: Xonotic Touch (latest)
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: Xonotic Touch ${{ needs.version.outputs.version }}
+          body_path: release/notes.md
           files: release/upload/*
-          generate_release_notes: true
+          fail_on_unmatched_files: true
           make_latest: true
+          target_commitish: ${{ github.sha }}
+
+  # Optional OpenStore upload when OPENSTORE_API_KEY repo secret is set.
+  openstore:
+    name: OpenStore (optional)
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    needs: [version, click]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Click artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish to OpenStore when API key present
+        env:
+          OPENSTORE_API_KEY: ${{ secrets.OPENSTORE_API_KEY }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          if [ -z "${OPENSTORE_API_KEY:-}" ]; then
+            echo "OPENSTORE_API_KEY not set — skipping OpenStore publish."
+            echo "Click packages are still on GitHub Releases + Pages /click/."
+            exit 0
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-pip git
+          pip3 install --user clickable-ut
+          export PATH="$HOME/.local/bin:$PATH"
+          mkdir -p openstore-upload
+          cp artifacts/click-arm64/*.click openstore-upload/
+          cp artifacts/click-armhf/*.click openstore-upload/
+          cd openstore-upload
+          for f in *.click; do
+            echo "Publishing $f to OpenStore..."
+            clickable publish "Xonotic Touch ${VERSION}" --apikey "$OPENSTORE_API_KEY" "$f" \
+              || clickable publish "Xonotic Touch ${VERSION}" --apikey "$OPENSTORE_API_KEY"
+          done

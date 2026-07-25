@@ -88,10 +88,14 @@ xonotic_compiler_triplet() {
 
 xonotic_apply_cross_compile_env() {
     local triplet="${ARCH_TRIPLET:-}"
-    if [ -z "$triplet" ] && [ "${ARCH:-}" = "arm64" ]; then
-        triplet=aarch64-linux-gnu
+    if [ -z "$triplet" ]; then
+        case "${ARCH:-}" in
+            arm64|aarch64) triplet=aarch64-linux-gnu ;;
+            armhf|armv7l) triplet=arm-linux-gnueabihf ;;
+        esac
     fi
     if [ -n "$triplet" ] && command -v "${triplet}-gcc" >/dev/null 2>&1; then
+        export ARCH_TRIPLET="$triplet"
         export CC="${CC:-${triplet}-gcc}"
         export CXX="${CXX:-${triplet}-g++}"
         export AR="${AR:-${triplet}-ar}"

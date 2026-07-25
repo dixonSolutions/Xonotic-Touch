@@ -56,6 +56,8 @@ Two-thumb layout tuned for Xonotic strafe movement and nine weapons.
 | Jump / Crouch | Tap or hold | `+jump`, `+crouch` |
 | Weapon | Tap → wheel (default) | `impulse 1`…`9` or cycle |
 | Reload | Tap | `weapon_reload` |
+| **PAUSE** (top row) | Tap → pause sheet | Resume / Menu / Leave / Quit — see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md) |
+| **CONSOLE** (top row) | Tap | `toggleconsole` |
 | Mobile HUD | Top-left / top-right | Portrait, HP/AR bars, clip/reserve ammo |
 
 **Avoid as default:** full-screen move + aim stick, pure tap-to-move, fire on the look zone.

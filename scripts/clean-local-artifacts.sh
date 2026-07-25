@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 
-rm -rf "$ROOT/build" "$ROOT/bin"
+rm -rf "$ROOT/build" "$ROOT/bin" "$ROOT/build-clickable"
 
 if [ -d "$ROOT/engine/darkplaces/build-obj" ]; then
     rm -rf "$ROOT/engine/darkplaces/build-obj"

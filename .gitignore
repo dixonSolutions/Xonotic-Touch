@@ -1,8 +1,17 @@
 # Build outputs — never commit
 build/
 build-flatpak/
+build-clickable/
 .clickable/
 bin/
+click/.ci-version
+click/.ci-name
+click/.ci-framework
+site/
+combined-repo/
+docs/test-runs/**/screenshots/
+docs/test-runs/**/*.tga
+docs/test-runs/**/*.log
 
 # Engine compile artifacts only (full Xonotic tree under engine/ is tracked)
 engine/darkplaces/build-obj/

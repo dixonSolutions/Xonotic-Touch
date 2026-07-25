@@ -1,13 +1,13 @@
 # Xonotic Touch: Technical Architecture
 
-Native C + QuakeC touch port for Linux touch tablets and phones. **Slim Flatpak packages** ship compiled logic and touch configs; large game assets download on first launch into `~/.local/share/xonotic-touch/`.
+Native C + QuakeC touch port for Linux touch tablets and phones. **Slim Flatpak and Ubuntu Touch click packages** ship compiled logic and touch configs; large game assets download on first launch into `~/.local/share/xonotic-touch/`.
 
 ## 1. Roles
 
 | Role | Compiles? | Actions |
 |------|-----------|---------|
-| Maintainer | Optional | Edit `engine/`, push; CI builds Flatpak on `main` |
-| User / tester | No | Install from Flatpak remote or GitHub Releases |
+| Maintainer | Optional | Edit `engine/`, push; CI builds Flatpak + Click on `main` |
+| User / tester | No | Install from Flatpak remote, `.click`, or GitHub Releases |
 
 ## 2. Core architecture
 
@@ -22,6 +22,7 @@ Native C + QuakeC touch port for Linux touch tablets and phones. **Slim Flatpak 
 | Runtime assets | `scripts/fetch-assets-runtime.sh`, `scripts/lib/asset-fetch.sh` |
 | First-run UX | In-game wizard chain + download progress — [SETUP.md](SETUP.md) |
 | Flatpak | `flatpak/io.github.dixonSolutions.XonoticTouch.yml` |
+| Click | `click/`, `clickable.yaml`, `scripts/build-click.sh` |
 
 ## 3. Repository layout
 
@@ -30,8 +31,10 @@ engine/              # Xonotic fork; touch changes integrated in-tree
 touch/               # xonotic.cfg, screen-calc.sh, profiles/
 packaging/           # start.sh
 flatpak/             # Flatpak manifest + metadata
-scripts/             # build, stage-slim-data, fetch-assets-runtime, installers
-.github/workflows/   # Flatpak CI, Pages remote, GitHub Releases
+click/               # Ubuntu Touch manifest, desktop, AppArmor
+clickable.yaml       # Clickable entrypoint for .click builds
+scripts/             # build, stage-slim-data, stage-click, fetch-assets-runtime, installers
+.github/workflows/   # Flatpak + Click CI, Pages remote, GitHub Releases
 ```
 
 ## 4. Launch flow
@@ -51,11 +54,12 @@ Asset download runs in parallel with the game when needed; progress is shown in 
 
 ## 5. Packaging
 
-| Format | ID | CI |
-|--------|-----|-----|
-| Flatpak | `io.github.dixonSolutions.XonoticTouch` | Yes — every `main` push |
+| Format | ID | Architectures | CI |
+|--------|-----|---------------|-----|
+| Flatpak | `io.github.dixonSolutions.XonoticTouch` | `x86_64`, `aarch64` | Yes — every `main` push |
+| Click | `xonotictouch.dixonsolutions` | `arm64`, `armhf` | Yes — every `main` push |
 
-Public Flatpak remote: GitHub Pages OSTree repo (see [RELEASES.md](RELEASES.md)).
+Public Flatpak remote: GitHub Pages OSTree repo with retained commit history. Click + offline Flatpak bundles attach to each versioned GitHub Release (see [RELEASES.md](RELEASES.md)).
 
 ## 6. Docs
 

@@ -56,6 +56,17 @@ void Touch_Init(void)
 	Touch_RegisterCvar("touch_con_snap", "0.005");
 	Touch_RegisterCvar("touch_con_margin_px", "4");
 	Touch_RegisterCvar("touch_con_lock", "0");
+	Touch_RegisterCvar("touch_pause_x", "0.300");
+	Touch_RegisterCvar("touch_pause_y", "0.050");
+	Touch_RegisterCvar("touch_pause_size", "0.058");
+	Touch_RegisterCvar("touch_pause_aspect", "2.2");
+	Touch_RegisterCvar("touch_pause_visible", "1");
+	Touch_RegisterCvar("touch_pause_slop_px", "10");
+	// Default off: engine pause can composite over CSQC and hide the sheet.
+	// Sheet itself blocks gameplay input; enable freeze for singleplayer preference.
+	Touch_RegisterCvar("touch_pause_freeze", "0");
+	Touch_RegisterCvar("touch_pause_quit_confirm_ms", "3000");
+	Touch_RegisterCvar("touch_menu_resume_bar", "1");
 	Touch_RegisterCvar("touch_mobile_hud", "0");
 	Touch_RegisterCvar("touch_hud_x", "0.02");
 	Touch_RegisterCvar("touch_hud_y", "0.02");
@@ -119,6 +130,8 @@ void Touch_Init(void)
 	// touch_customize is a cvar; toggle via "touch_customize 1" / ConsoleCommand handler.
 	registercommand("touch_customize_save");
 	registercommand("touch_customize_cancel");
+	registercommand("touch_pause");
+	registercommand("touch_pause_exit");
 
 	Touch_LoadStartupConfigs();
 }

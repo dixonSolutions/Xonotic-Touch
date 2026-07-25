@@ -535,7 +535,44 @@ float preMenuInit()
 
 string campaign_name_previous;
 float campaign_won_previous;
-void postMenuDraw() {}
+
+// Top-left touch "◀ RESUME" — Escape equivalent while connected (see docs/TOUCH_PAUSE_SPEC.md).
+const float MENU_TOUCH_RESUME_X = 0.02;
+const float MENU_TOUCH_RESUME_Y = 0.02;
+const float MENU_TOUCH_RESUME_W = 0.24;
+const float MENU_TOUCH_RESUME_H = 0.075;
+
+bool Menu_TouchResumeBarEnabled(void)
+{
+	if (!cvar("vid_touchscreen"))
+		return false;
+	if (!cvar("touch_menu_resume_bar"))
+		return false;
+	if (!(gamestatus & (GAME_ISSERVER | GAME_CONNECTED)))
+		return false;
+	return true;
+}
+
+bool Menu_TouchResumeBarHit(vector p)
+{
+	if (!Menu_TouchResumeBarEnabled())
+		return false;
+	return p.x >= MENU_TOUCH_RESUME_X && p.x <= MENU_TOUCH_RESUME_X + MENU_TOUCH_RESUME_W
+		&& p.y >= MENU_TOUCH_RESUME_Y && p.y <= MENU_TOUCH_RESUME_Y + MENU_TOUCH_RESUME_H;
+}
+
+void postMenuDraw()
+{
+	if (!Menu_TouchResumeBarEnabled())
+		return;
+	vector origin = MENU_TOUCH_RESUME_X * eX + MENU_TOUCH_RESUME_Y * eY;
+	vector sz = MENU_TOUCH_RESUME_W * eX + MENU_TOUCH_RESUME_H * eY;
+	draw_Fill(origin, sz, '0.08 0.14 0.22', 0.82);
+	draw_Fill(origin + '0.004 0.006 0', sz - '0.008 0.012 0', '0.28 0.62 0.88', 0.55);
+	vector fs = '0.028 0.028 0';
+	draw_CenterText(origin + 0.5 * sz, _("◀ RESUME"), fs, '1 1 1', 1, 0);
+}
+
 void DialogOpenButton_Click_withCoords(entity button, entity tab, vector theOrigin, vector theSize);
 .entity winnerDialog;
 void preMenuDraw()
