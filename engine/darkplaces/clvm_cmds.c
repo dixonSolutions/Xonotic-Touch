@@ -2287,6 +2287,12 @@ static void VM_CL_gettouchfinger(prvm_prog_t *prog)
 	int slot, active;
 	float nx, ny;
 	VM_SAFEPARMCOUNT(1, VM_CL_gettouchfinger);
+	// Console owns the screen — CSQC HUD / sticks must not see fingers.
+	if (key_consoleactive)
+	{
+		VectorSet(PRVM_G_VECTOR(OFS_RETURN), 0, 0, 0);
+		return;
+	}
 	slot = (int)PRVM_G_FLOAT(OFS_PARM0);
 	VID_GetTouchFinger(slot, &active, &nx, &ny);
 	VectorSet(PRVM_G_VECTOR(OFS_RETURN), nx * vid_conwidth.integer, ny * vid_conheight.integer, active);

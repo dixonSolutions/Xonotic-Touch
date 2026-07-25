@@ -56,8 +56,8 @@ Two-thumb layout tuned for Xonotic strafe movement and nine weapons.
 | Jump / Crouch | Tap or hold | `+jump`, `+crouch` |
 | Weapon | Tap → wheel (default) | `impulse 1`…`9` or cycle |
 | Reload | Tap | `weapon_reload` |
-| **PAUSE** (top row) | Tap → pause sheet | Resume / Menu / Leave / Quit — see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md) |
-| **CONSOLE** (top row) | Tap | `toggleconsole` |
+| **PAUSE** (top row) | Tap → Escape / GameMenu | Native Xonotic pause menu — see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md) |
+| **CONSOLE** (top row) | Tap → `toggleconsole` | **CLOSE CONSOLE** + in-engine keyboard (+ platform OSK) |
 | Mobile HUD | Top-left / top-right | Portrait, HP/AR bars, clip/reserve ammo |
 
 **Avoid as default:** full-screen move + aim stick, pure tap-to-move, fire on the look zone.
@@ -308,13 +308,11 @@ Pause sub-tabs: Preset · Look · Move · Buttons · Layout · Advanced (export/
 
 ## Session flow (menus)
 
-Target `qcsrc/menu/` redesign for short mobile sessions:
+Main menu is stock Xonotic (Singleplayer / Multiplayer / Media / Settings / …). Touch-specific UI stays under Settings → Touch controls (and first-run wizard).
 
-- **Play now** — offline bots or last mode/map in one tap.
-- **Touch setup** — first-run: preset → handedness → 30 s test range → save.
-- **Server browser** — ping, players, mode filters first; details collapsed.
-- **Chat** — large input + quick phrases (`gg`, `need health`).
-- **Pause** — clear resume; avoid accidental app switch during combat (UT lifecycle).
+- **Touch setup** — first-run: preset → handedness → save.
+- **Server browser** — stock Multiplayer browser.
+- **Pause** — Escape / GameMenu Resume (see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md)).
 
 ---
 

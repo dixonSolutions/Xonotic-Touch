@@ -344,6 +344,7 @@ static void VID_UpdateTextInputRect(void)
 {
 	SDL_Rect rect;
 	float cx, cy, cw, ch;
+	keydest_t keydest;
 
 	if (!vid_touchscreen.integer)
 		return;
@@ -352,14 +353,27 @@ static void VID_UpdateTextInputRect(void)
 	cy = vid_touchscreen_textinput_y.value;
 	cw = vid_touchscreen_textinput_w.value;
 	ch = vid_touchscreen_textinput_h.value;
+	keydest = (key_consoleactive & KEY_CONSOLEACTIVE_USER) ? key_console : key_dest;
 
 	if (cw <= 0 || ch <= 0 || vid_conwidth.value <= 0 || vid_conheight.value <= 0)
 	{
-		// Fallback: lower half of the window (GNOME/Wayland OSK placement hint).
-		rect.x = 0;
-		rect.y = vid.mode.height / 2;
-		rect.w = vid.mode.width;
-		rect.h = vid.mode.height - rect.y;
+		if (keydest == key_console || keydest == key_message)
+		{
+			// Console / chat caret is in the upper half; keep OSK hint above the
+			// on-screen keyboard so GNOME and Ubuntu Touch place the OSK at bottom.
+			rect.x = 0;
+			rect.y = vid.mode.height / 10;
+			rect.w = vid.mode.width;
+			rect.h = max(32, vid.mode.height / 8);
+		}
+		else
+		{
+			// Fallback: lower half of the window (GNOME/Wayland OSK placement hint).
+			rect.x = 0;
+			rect.y = vid.mode.height / 2;
+			rect.w = vid.mode.width;
+			rect.h = vid.mode.height - rect.y;
+		}
 	}
 	else
 	{
@@ -395,13 +409,25 @@ void VID_ShowKeyboard(qbool show)
 	}
 
 	// Touch tablets on Linux/Wayland use text-input-v3 for the compositor OSK;
-	// SDL_HasScreenKeyboardSupport() is often false there.
+	// SDL_HasScreenKeyboardSupport() is often false there (GNOME, Ubuntu Touch).
 	if (!SDL_HasScreenKeyboardSupport() && !vid_touchscreen.integer)
 		return;
 
 	VID_UpdateTextInputRect();
 	if (!SDL_IsTextInputActive())
 		SDL_StartTextInput();
+}
+
+// Re-request compositor OSK (mutter/lomiri may ignore a sticky enable).
+static void VID_PulseKeyboard(void)
+{
+	if (!vid_touchscreen.integer && !SDL_HasScreenKeyboardSupport())
+		return;
+	if (SDL_IsTextInputActive())
+		SDL_StopTextInput();
+	VID_UpdateTextInputRect();
+	SDL_StartTextInput();
+	VID_UpdateTextInputRect();
 }
 
 qbool VID_ShowingKeyboard(void)
@@ -967,6 +993,133 @@ static void VID_TouchMenuFingerEvent(qbool down, float nx, float ny)
 	Key_Event(K_MOUSE1, 0, down);
 }
 
+// In-engine console keyboard — one character per finger-down (no hold repeat).
+static void VID_TouchConsoleKeyboard(qbool *buttons)
+{
+	static const char *rows[] = {
+		"1234567890",
+		"qwertyuiop",
+		"asdfghjkl",
+		"zxcvbnm./-",
+	};
+	enum { CONKB_MAX = 48 };
+	typedef struct conkey_s {
+		float x, y, w, h;
+		char ch;       // 0 = action key
+		keynum_t key;  // K_SPACE / K_BACKSPACE / K_ENTER / 0
+		const char *label;
+	} conkey_t;
+	static conkey_t keys[CONKB_MAX];
+	static char keychars[CONKB_MAX][8];
+	static unsigned int typed_mask; // bit i set => finger slot i already emitted this down
+	static const char *alabel[3] = { "SPACE", "BKSP", "ENTER" };
+	static const keynum_t akey[3] = { K_SPACE, K_BACKSPACE, K_ENTER };
+	float w, h, kb_top, kb_h, row_h, gap, th;
+	float key_w, y, kh, aw, fx, fy;
+	int nkeys, r, c, n, i, k, bi;
+	int hit[MAXFINGERS];
+	conkey_t *ck;
+
+	w = vid_conwidth.value;
+	h = vid_conheight.value;
+	kb_top = h * 0.52f;
+	kb_h = h - kb_top - bound(8.0f, h * 0.02f, 20.0f);
+	row_h = kb_h / 5.0f;
+	gap = bound(4.0f, w * 0.006f, 10.0f);
+	th = bound(16.0f, row_h * 0.42f, 28.0f);
+
+	nkeys = 0;
+	for (r = 0; r < 4; r++)
+	{
+		n = (int)strlen(rows[r]);
+		key_w = (w - gap * (float)(n + 1)) / (float)n;
+		y = kb_top + (float)r * row_h + gap;
+		kh = row_h - gap * 2.0f;
+		for (c = 0; c < n && nkeys < CONKB_MAX; c++)
+		{
+			ck = &keys[nkeys];
+			ck->x = gap + (float)c * (key_w + gap);
+			ck->y = y;
+			ck->w = key_w;
+			ck->h = kh;
+			ck->ch = rows[r][c];
+			ck->key = (keynum_t)0;
+			keychars[nkeys][0] = rows[r][c];
+			keychars[nkeys][1] = 0;
+			ck->label = keychars[nkeys];
+			nkeys++;
+		}
+	}
+	y = kb_top + 4.0f * row_h + gap;
+	kh = row_h - gap * 2.0f;
+	aw = (w - gap * 4.0f) / 3.0f;
+	for (i = 0; i < 3 && nkeys < CONKB_MAX; i++)
+	{
+		ck = &keys[nkeys];
+		ck->x = gap * (float)(i + 1) + aw * (float)i;
+		ck->y = y;
+		ck->w = aw;
+		ck->h = kh;
+		ck->ch = 0;
+		ck->key = akey[i];
+		ck->label = alabel[i];
+		nkeys++;
+	}
+
+	for (i = 0; i < MAXFINGERS; i++)
+		hit[i] = -1;
+	for (i = 0; i < MAXFINGERS; i++)
+	{
+		if (!multitouch[i][0])
+			continue;
+		fx = multitouch[i][1] * w;
+		fy = multitouch[i][2] * h;
+		for (k = 0; k < nkeys; k++)
+		{
+			ck = &keys[k];
+			if (fx >= ck->x && fy >= ck->y && fx < ck->x + ck->w && fy < ck->y + ck->h)
+			{
+				hit[i] = k;
+				break;
+			}
+		}
+	}
+
+	// One emit per finger-down. Hold and slide do not repeat.
+	for (i = 0; i < MAXFINGERS; i++)
+	{
+		if (!multitouch[i][0])
+		{
+			typed_mask &= ~(1u << i);
+			continue;
+		}
+		if ((typed_mask & (1u << i)) != 0 || hit[i] < 0)
+			continue;
+		ck = &keys[hit[i]];
+		typed_mask |= (1u << i);
+		if (ck->ch)
+		{
+			Key_Event(K_TEXT, (unsigned int)(unsigned char)ck->ch, true);
+			Key_Event(K_TEXT, (unsigned int)(unsigned char)ck->ch, false);
+		}
+		else if ((int)ck->key > 0)
+		{
+			Key_Event(ck->key, 0, true);
+			Key_Event(ck->key, 0, false);
+		}
+	}
+
+	// Visual keys + exclusive finger claim (no key/typedtext — already emitted).
+	bi = 20;
+	for (k = 0; k < nkeys && bi < 120; k++, bi++)
+	{
+		ck = &keys[k];
+		VID_TouchscreenArea(0, ck->x, ck->y, ck->w, ck->h,
+			NULL, th, ck->label,
+			NULL, &buttons[bi], (keynum_t)0, NULL, 0, 0, 0, true);
+	}
+}
+
 static void IN_Move_TouchScreen_Xonotic(void)
 {
 	int i, numfingers;
@@ -998,7 +1151,27 @@ static void IN_Move_TouchScreen_Xonotic(void)
 	switch(keydest)
 	{
 	case key_console:
-		Vid_ClearAllTouchscreenAreas(14);
+		// Only CLOSE CONSOLE + in-engine keyboard are interactive. Shade absorbs
+		// everything else so HUD / menu / CSQC cannot be reached. Platform OSK
+		// is also requested in IN_Move (GNOME / Ubuntu Touch text-input).
+		{
+			float w = vid_conwidth.value;
+			float h = vid_conheight.value;
+			float bw = bound(240.0f, w * 0.55f, 480.0f);
+			float bh = bound(48.0f, h * 0.07f, 72.0f);
+			float bx = (w - bw) * 0.5f;
+			float by = h * 0.42f;
+			float th = bound(18.0f, bh * 0.42f, 28.0f);
+			// Close first (highest priority), then key caps, then shade absorber.
+			// Do NOT zero buttons[] each frame — that re-fires every held frame.
+			Vid_ClearAllTouchscreenAreas(14);
+			VID_TouchscreenArea(0, bx, by, bw, bh,
+				NULL, th, "CLOSE CONSOLE",
+				NULL, &buttons[14], K_ESCAPE, NULL, 0, 0, 0, true);
+			VID_TouchConsoleKeyboard(buttons);
+			VID_TouchscreenArea(0, 0, 0, w, h,
+				NULL, 0, NULL, NULL, &buttons[13], (keynum_t)0, NULL, 0, 0, 0, true);
+		}
 		if (!VID_TouchscreenHasRealDevices())
 			VID_SyncDesktopMouse();
 		break;
@@ -1108,7 +1281,15 @@ void IN_Move( void )
 
 	scr_numtouchscreenareas = 0;
 
-	if (vid_touchscreen.integer && vid_touchscreen_showkeyboard.integer)
+	// Console / chat: keep compositor OSK up (GNOME Screen Keyboard + Ubuntu Touch
+	// lomiri-keyboard via Wayland text-input). Re-assert if the user dismissed it.
+	if (vid_touchscreen.integer && (keydest == key_console || keydest == key_message))
+	{
+		VID_UpdateTextInputRect();
+		if (!VID_ShowingKeyboard())
+			VID_ShowKeyboard(true);
+	}
+	else if (vid_touchscreen.integer && vid_touchscreen_showkeyboard.integer)
 		VID_UpdateTextInputRect();
 
 	// Only apply the new keyboard state if the input changes.
@@ -1116,9 +1297,14 @@ void IN_Move( void )
 	{
 		switch(keydest)
 		{
-			case key_console: VID_ShowKeyboard(true);break;
-			case key_message: VID_ShowKeyboard(true);break;
-			default: VID_ShowKeyboard(!!vid_touchscreen_showkeyboard.integer); break;
+			case key_console:
+			case key_message:
+				// Pulse so the compositor actually presents the OSK on enter.
+				VID_PulseKeyboard();
+				break;
+			default:
+				VID_ShowKeyboard(!!vid_touchscreen_showkeyboard.integer);
+				break;
 		}
 	}
 	oldkeydest = keydest;

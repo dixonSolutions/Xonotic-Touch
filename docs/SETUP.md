@@ -52,7 +52,7 @@ Before downloading, `scripts/lib/asset-discover.sh` searches for an existing **X
 
 Discovery runs **synchronously** in `packaging/start.sh` before the engine starts. The setup dialog shows discovery status (`discover` phase in `.asset-fetch-progress`), then a download progress bar if packs are still missing.
 
-Gameplay (e.g. **Play now**) stays blocked until `.assets-ready` exists.
+Gameplay stays blocked until `.assets-ready` exists.
 
 ### Profile persistence
 
@@ -107,13 +107,15 @@ Config: `menu_mouse_absolute 1` in `touch/xonotic.cfg`.
 
 ## On-screen keyboard (GNOME / Wayland)
 
-When a menu **input box** is focused:
+When a menu **input box** is focused, or the **console / chat** is open:
 
-- `vid_touchscreen_showkeyboard` is set to `1`.
-- Engine calls `SDL_StartTextInput()` and `SDL_SetTextInputRect()` from the field’s screen rect (even when `SDL_HasScreenKeyboardSupport()` is false — required on many Linux compositors).
-- On focus leave or menu hide, keyboard is dismissed.
+- Menu focus sets `vid_touchscreen_showkeyboard` to `1`; console/chat pulse `SDL_StartTextInput()` on enter and keep it active.
+- Console also draws an **in-engine keyboard** (letters/digits/SPACE/BKSP/ENTER) so typing works even when the compositor OSK is suppressed (common on GNOME when a virtual hardware keyboard such as `keyd` is present).
+- Engine calls `SDL_SetTextInputRect()` for platform OSK placement (GNOME / Ubuntu Touch).
 
-**GNOME:** Enable **Settings → Accessibility → Typing → Screen Keyboard** (or equivalent) so the compositor shows the OSK when text input is active.
+**GNOME (Ultramarine):** Enable **Settings → Accessibility → Typing → Screen Keyboard**. Platform OSK may still stay hidden if a hardware/virtual keyboard is attached — use the in-engine console keyboard.
+
+**Ubuntu Touch:** lomiri-keyboard via Wayland text-input; in-engine keyboard is always available as fallback.
 
 Cvars (menu sets position when focusing inputs):
 
@@ -144,7 +146,7 @@ Cvars (menu sets position when focusing inputs):
 
 1. **Clean install (no assets):** Flatpak launch → ToS (if needed) → download dialog with moving progress → profile → touch preset → main menu.
 2. **Assets present:** No download dialog; only missing profile/touch steps.
-3. **Fully configured user:** Only ToS if version bumped; otherwise straight to touch home.
+3. **Fully configured user:** Only ToS if version bumped; otherwise straight to the stock Xonotic main menu.
 4. **Input field:** Tap name field → GNOME OSK appears; typed text enters the box.
 5. **Menu navigation:** No puck cursor; taps hit buttons directly.
 

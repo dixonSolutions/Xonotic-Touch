@@ -191,10 +191,6 @@ bool Touch_RoleOwned(int role)
 
 int Touch_AssignRole(vector p)
 {
-	// Modal pause sheet owns every contact.
-	if (Touch_Pause_SheetOpen())
-		return TOUCH_ROLE_SHEET;
-
 	if (Touch_Console_Hit(p))
 		return TOUCH_ROLE_CON;
 
@@ -267,7 +263,7 @@ int Touch_ClaimFinger(int src, vector pos)
 		touch_finger_role[i] = Touch_AssignRole(pos);
 		if (touch_finger_role[i] == TOUCH_ROLE_CON)
 			Touch_Console_OnDown(pos);
-		else if (touch_finger_role[i] == TOUCH_ROLE_PAUSE || touch_finger_role[i] == TOUCH_ROLE_SHEET)
+		else if (touch_finger_role[i] == TOUCH_ROLE_PAUSE)
 			Touch_Pause_OnDown(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_LOOK)
 			Touch_Look_BeginGesture(pos);
@@ -393,7 +389,7 @@ void Touch_PollFingers(void)
 			touch_finger_lost_time[i] = 0;
 			continue;
 		}
-		if (touch_finger_role[i] == TOUCH_ROLE_PAUSE || touch_finger_role[i] == TOUCH_ROLE_SHEET)
+		if (touch_finger_role[i] == TOUCH_ROLE_PAUSE)
 		{
 			Touch_Pause_OnUp(touch_finger_last_pos[i]);
 			touch_finger_used[i] = false;
@@ -468,7 +464,7 @@ void Touch_Frame(void)
 		Touch_Customize_Frame();
 		return;
 	}
-	if (!Touch_Active() && !Touch_Pause_SheetOpen())
+	if (!Touch_Active())
 	{
 		Touch_ReleaseAll();
 		return;
@@ -478,26 +474,6 @@ void Touch_Frame(void)
 	Touch_PollFingers();
 	Touch_Console_Frame();
 	Touch_Pause_Frame();
-
-	if (Touch_Pause_SheetOpen())
-	{
-		int pi;
-		for (pi = 0; pi < TOUCH_MAX_FINGERS; ++pi)
-		{
-			if (!touch_finger_used[pi] || !touch_finger_live[pi])
-				continue;
-			if (touch_finger_role[pi] == TOUCH_ROLE_SHEET || touch_finger_role[pi] == TOUCH_ROLE_PAUSE)
-				Touch_Pause_OnMove(touch_finger_last_pos[pi]);
-			touch_finger_first[pi] = false;
-		}
-		return;
-	}
-
-	if (!Touch_Active())
-	{
-		Touch_ReleaseAll();
-		return;
-	}
 
 	if (autocvar_touch_fire_mode != touch_last_fire_mode)
 	{
