@@ -7,7 +7,7 @@ ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 . "$ROOT/scripts/lib/xonotic-shlib.sh"
 
 DEST="${DEST:-${DESTDIR:-$ROOT/build/click}}"
-CLICK_NAME="${CLICK_NAME:-xonotictouch}"
+CLICK_NAME="${CLICK_NAME:-xonotictouch.dixonsolutions}"
 CLICK_VERSION="${CLICK_VERSION:-1.1.1}"
 CLICK_FRAMEWORK="${CLICK_FRAMEWORK:-ubuntu-touch-24.04-1.x}"
 CLICK_ARCH="${CLICK_ARCH:-}"
@@ -114,13 +114,24 @@ install -m 644 "$ICON_SRC" "$DEST/xonotic.png"
 
 install -m 644 "$ROOT/click/xonotic.desktop" "$DEST/xonotic.desktop"
 if [ -f "$ROOT/click/xonotic.apparmor" ]; then
-    # Prefer clickable ENV substitution when present; otherwise keep concrete policy.
-    if [ -n "${APPARMOR_POLICY:-}" ]; then
-        sed "s/\"policy_version\": \"[^\"]*\"/\"policy_version\": \"${APPARMOR_POLICY}\"/" \
-            "$ROOT/click/xonotic.apparmor" > "$DEST/xonotic.apparmor"
-    else
-        install -m 644 "$ROOT/click/xonotic.apparmor" "$DEST/xonotic.apparmor"
-    fi
+    # click-review requires policy_version as a JSON number (e.g. 2404.1), not a string.
+    # Clickable may export APPARMOR_POLICY=2404.1 for ubuntu-touch-24.04-1.x.
+    python3 - "$ROOT/click/xonotic.apparmor" "$DEST/xonotic.apparmor" "${APPARMOR_POLICY:-}" <<'PY'
+import json, sys
+src, dest, policy = sys.argv[1], sys.argv[2], sys.argv[3]
+data = json.load(open(src))
+if policy:
+    data["policy_version"] = float(policy)
+elif isinstance(data.get("policy_version"), str):
+    data["policy_version"] = float(data["policy_version"])
+# OpenStore rejects warnings too — omit redundant default template.
+data.pop("template", None)
+# 24.04 click-review: unsupported policy_group 'opengl'
+groups = [g for g in data.get("policy_groups", []) if g != "opengl"]
+data["policy_groups"] = groups
+json.dump(data, open(dest, "w"), indent=4)
+open(dest, "a").write("\n")
+PY
 fi
 
 sed \

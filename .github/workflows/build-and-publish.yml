@@ -20,7 +20,8 @@ env:
   FLATPAK_REMOTE_NAME: xonotic-touch
   FLATPAK_REMOTE_URL: https://dixonSolutions.github.io/Xonotic-Touch/flatpak
   # Must match OpenStore app id exactly (createRevisionFromClick rejects mismatches).
-  CLICK_NAME: xonotictouch
+  # Click package ids require a namespace: appname.developer
+  CLICK_NAME: xonotictouch.dixonsolutions
   CLICK_FRAMEWORK: ubuntu-touch-24.04-1.x
   CLICK_REMOTE_URL: https://dixonSolutions.github.io/Xonotic-Touch/click
 
@@ -280,6 +281,21 @@ jobs:
         with:
           path: artifacts
 
+      - name: click-review packages (must be clean)
+        run: |
+          set -euo pipefail
+          mapfile -t CLICKS < <(find artifacts/click-arm64 artifacts/click-armhf -name '*.click' -type f | sort)
+          test "${#CLICKS[@]}" -ge 2
+          # OpenStore rejects both click-review errors and warnings.
+          docker run --rm \
+            -v "$PWD/artifacts:/artifacts:ro" \
+            -v "$PWD/scripts/click-review-clean.py:/review-clean.py:ro" \
+            clickable/ci-ut24.04-1.x-amd64 \
+            bash -lc 'set -euo pipefail
+              for f in /artifacts/click-arm64/*.click /artifacts/click-armhf/*.click; do
+                echo "click-review $f"
+                click-review --json "$f" | python3 /review-clean.py
+              done'
       - name: Publish revisions to OpenStore
         env:
           OPENSTORE_API_KEY: ${{ secrets.OPENSTORE_API_KEY }}

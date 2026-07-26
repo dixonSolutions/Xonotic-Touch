@@ -57,7 +57,7 @@ Asset download runs in parallel with the game when needed; progress is shown in 
 | Format | ID | Architectures | CI |
 |--------|-----|---------------|-----|
 | Flatpak | `io.github.dixonSolutions.XonoticTouch` | `x86_64`, `aarch64` | Yes — every `main` push |
-| Click | `xonotictouch` | `arm64`, `armhf` | Yes — every `main` push |
+| Click | `xonotictouch.dixonsolutions` | `arm64`, `armhf` | Yes — every `main` push |
 
 Public Flatpak remote: GitHub Pages OSTree repo with retained commit history. Click + offline Flatpak bundles attach to each versioned GitHub Release (see [RELEASES.md](RELEASES.md)).
 

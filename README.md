@@ -33,7 +33,7 @@ pkcon install-local --allow-untrusted latest-arm64.click
 ```
 
 Or grab a versioned `.click` from [GitHub Releases](https://github.com/dixonSolutions/Xonotic-Touch/releases/latest). Index: https://dixonSolutions.github.io/Xonotic-Touch/click/  
-OpenStore (Ubuntu Touch): https://open-store.io/app/xonotictouch (after the listing is published).
+OpenStore (Ubuntu Touch): https://open-store.io/app/xonotictouch.dixonsolutions (after the listing is published).
 
 Local build with [Clickable](https://clickable-ut.dev/): `clickable build --arch arm64`  
 Or: `./scripts/build-click.sh --arch arm64`

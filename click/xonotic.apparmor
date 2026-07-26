@@ -5,9 +5,7 @@
         "keep-display-on",
         "microphone",
         "networking",
-        "opengl",
         "video"
     ],
-    "policy_version": "24.04",
-    "template": "default"
+    "policy_version": 2404.1
 }

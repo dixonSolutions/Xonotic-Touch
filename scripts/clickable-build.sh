@@ -21,7 +21,7 @@ if [ -f click/.ci-framework ]; then
     export CLICK_FRAMEWORK
 fi
 
-export CLICK_NAME="${CLICK_NAME:-xonotictouch}"
+export CLICK_NAME="${CLICK_NAME:-xonotictouch.dixonsolutions}"
 export CLICK_VERSION="${CLICK_VERSION:-1.1.1}"
 export CLICK_FRAMEWORK="${CLICK_FRAMEWORK:-ubuntu-touch-24.04-1.x}"
 
