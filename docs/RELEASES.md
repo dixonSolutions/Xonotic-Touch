@@ -54,9 +54,9 @@ User config and touch layout overrides remain in `~/.xonotic/`.
 
 ## Ubuntu Touch (.click)
 
-Click packages target Ubuntu Touch devices (ARM). App ID: `xonotictouch.dixonsolutions`.
+Click packages target Ubuntu Touch devices (ARM). App ID: `xonotictouch` (must match the [OpenStore](https://open-store.io/app/xonotictouch) listing).
 
-There is no OSTree/apt remote for `.click` like Flatpak — instead each `main` push publishes a **stable download remote** on GitHub Pages (always-latest URLs) plus versioned files and GitHub Release attachments. Optional OpenStore upload runs when the `OPENSTORE_API_KEY` repository secret is set.
+There is no OSTree/apt remote for `.click` like Flatpak — instead each `main` push publishes a **stable download remote** on GitHub Pages (always-latest URLs) plus versioned files and GitHub Release attachments. The `openstore` CI job uploads arm64 + armhf revisions when the `OPENSTORE_API_KEY` repository secret is set (required for that job to pass).
 
 ### Public download remote (GitHub Pages)
 
@@ -75,11 +75,11 @@ pkcon install-local --allow-untrusted latest-arm64.click
 ### Install from GitHub Releases
 
 1. Open the [latest release](https://github.com/dixonSolutions/Xonotic-Touch/releases/latest) (or any older `v1.2.*` tag).
-2. Download `xonotictouch.dixonsolutions_*_arm64.click` (or `_armhf.click`).
+2. Download `xonotictouch_*_arm64.click` (or `_armhf.click`).
 3. On the device:
 
 ```bash
-pkcon install-local --allow-untrusted xonotictouch.dixonsolutions_*_arm64.click
+pkcon install-local --allow-untrusted xonotictouch_*_arm64.click
 ```
 
 ### Local Click build
@@ -108,8 +108,8 @@ Attached assets:
 
 - `XonoticTouch-<version>-x86_64.flatpak`
 - `XonoticTouch-<version>-aarch64.flatpak`
-- `xonotictouch.dixonsolutions_<version>_arm64.click`
-- `xonotictouch.dixonsolutions_<version>_armhf.click`
+- `xonotictouch_<version>_arm64.click`
+- `xonotictouch_<version>_armhf.click`
 
 Browse all versions: https://github.com/dixonSolutions/Xonotic-Touch/releases  
 Latest: https://github.com/dixonSolutions/Xonotic-Touch/releases/latest
@@ -131,7 +131,21 @@ flatpak install --user XonoticTouch-1.2.<N>-x86_64.flatpak
 | `click` (matrix `arm64`, `armhf`) | push to `main` | Versioned `.click` packages |
 | `publish-pages` | push to `main` | GitHub Pages: Flatpak OSTree + Click downloads |
 | `release` | push to `main` | New GitHub Release tag (old tags kept) |
-| `openstore` | push to `main` | Optional OpenStore upload (needs `OPENSTORE_API_KEY`) |
+| `openstore` | push to `main` | OpenStore revision upload (`OPENSTORE_API_KEY` required) |
+
+### OpenStore
+
+| | |
+|---|---|
+| **App id** | `xonotictouch` |
+| **Title** | Xonotic Touch |
+| **Manage** | https://open-store.io/manage/xonotictouch |
+| **Public page** | https://open-store.io/app/xonotictouch (after Publish=Yes) |
+| **Secret** | Repo secret `OPENSTORE_API_KEY` |
+| **Icon** | Official `engine/misc/logos/icons_png/xonotic_256.png` inside the `.click` (extracted on revision upload) |
+| **Changelog** | Leave the general store changelog blank; each CI upload sets a **revision** changelog (`Xonotic Touch <version>: …`) |
+
+After the first successful `openstore` job, open the manage page and set **Published = Yes** once automated review passes.
 
 ### GitHub Pages setup
 

@@ -19,7 +19,8 @@ env:
   FLATPAK_APP_ID: io.github.dixonSolutions.XonoticTouch
   FLATPAK_REMOTE_NAME: xonotic-touch
   FLATPAK_REMOTE_URL: https://dixonSolutions.github.io/Xonotic-Touch/flatpak
-  CLICK_NAME: xonotictouch.dixonsolutions
+  # Must match OpenStore app id exactly (createRevisionFromClick rejects mismatches).
+  CLICK_NAME: xonotictouch
   CLICK_FRAMEWORK: ubuntu-touch-24.04-1.x
   CLICK_REMOTE_URL: https://dixonSolutions.github.io/Xonotic-Touch/click
 
@@ -264,9 +265,9 @@ jobs:
           make_latest: true
           target_commitish: ${{ github.sha }}
 
-  # Optional OpenStore upload when OPENSTORE_API_KEY repo secret is set.
+  # Upload arm64 + armhf revisions to OpenStore (requires OPENSTORE_API_KEY).
   openstore:
-    name: OpenStore (optional)
+    name: OpenStore
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     needs: [version, click]
     runs-on: ubuntu-latest
@@ -279,26 +280,49 @@ jobs:
         with:
           path: artifacts
 
-      - name: Publish to OpenStore when API key present
+      - name: Publish revisions to OpenStore
         env:
           OPENSTORE_API_KEY: ${{ secrets.OPENSTORE_API_KEY }}
           VERSION: ${{ needs.version.outputs.version }}
+          CLICK_NAME: ${{ env.CLICK_NAME }}
         run: |
+          set -euo pipefail
           if [ -z "${OPENSTORE_API_KEY:-}" ]; then
-            echo "OPENSTORE_API_KEY not set — skipping OpenStore publish."
-            echo "Click packages are still on GitHub Releases + Pages /click/."
-            exit 0
+            echo "OPENSTORE_API_KEY secret is missing — cannot publish to OpenStore." >&2
+            exit 1
           fi
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq python3-pip git
-          pip3 install --user clickable-ut
-          export PATH="$HOME/.local/bin:$PATH"
-          mkdir -p openstore-upload
-          cp artifacts/click-arm64/*.click openstore-upload/
-          cp artifacts/click-armhf/*.click openstore-upload/
-          cd openstore-upload
-          for f in *.click; do
-            echo "Publishing $f to OpenStore..."
-            clickable publish "Xonotic Touch ${VERSION}" --apikey "$OPENSTORE_API_KEY" "$f" \
-              || clickable publish "Xonotic Touch ${VERSION}" --apikey "$OPENSTORE_API_KEY"
+
+          # General app changelog stays blank on the store page; revision changelog is set per upload.
+          REVISION_CHANGELOG="Xonotic Touch ${VERSION}: touch HUD, map-vote input, and packaging updates."
+
+          mapfile -t CLICKS < <(find artifacts/click-arm64 artifacts/click-armhf -name '*.click' -type f | sort)
+          if [ "${#CLICKS[@]}" -lt 2 ]; then
+            echo "Expected arm64 + armhf .click artifacts, found ${#CLICKS[@]}" >&2
+            find artifacts -type f | head -50 >&2 || true
+            exit 1
+          fi
+
+          for f in "${CLICKS[@]}"; do
+            echo "Publishing $(basename "$f") → OpenStore app ${CLICK_NAME} (channel=focal)..."
+            # Same endpoint as clickable publish; direct upload so CI does not need a local build tree.
+            http_code="$(
+              curl -sS -o /tmp/openstore-resp.json -w '%{http_code}' \
+                --connect-timeout 30 --max-time 900 \
+                -X POST \
+                -F "file=@${f}" \
+                -F "channel=focal" \
+                -F "changelog=${REVISION_CHANGELOG}" \
+                "https://open-store.io/api/v3/manage/${CLICK_NAME}/revision?apikey=${OPENSTORE_API_KEY}"
+            )"
+            echo "HTTP ${http_code}"
+            python3 -c 'import json,sys; d=json.load(open("/tmp/openstore-resp.json")); print(json.dumps({"success": d.get("success"), "message": d.get("message")}, indent=2)); sys.exit(0 if d.get("success") else 1)' \
+              || { echo "OpenStore response:"; cat /tmp/openstore-resp.json; exit 1; }
+            if [ "$http_code" != "200" ]; then
+              echo "OpenStore upload failed for $f" >&2
+              cat /tmp/openstore-resp.json >&2 || true
+              exit 1
+            fi
           done
+
+          echo "OpenStore revisions uploaded for ${CLICK_NAME} ${VERSION}."
+          echo "Mark the app Published=Yes on https://open-store.io/manage/${CLICK_NAME} after review passes."

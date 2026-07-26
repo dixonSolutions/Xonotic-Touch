@@ -7,7 +7,7 @@ ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 . "$ROOT/scripts/lib/xonotic-shlib.sh"
 
 DEST="${DEST:-${DESTDIR:-$ROOT/build/click}}"
-CLICK_NAME="${CLICK_NAME:-xonotictouch.dixonsolutions}"
+CLICK_NAME="${CLICK_NAME:-xonotictouch}"
 CLICK_VERSION="${CLICK_VERSION:-1.1.1}"
 CLICK_FRAMEWORK="${CLICK_FRAMEWORK:-ubuntu-touch-24.04-1.x}"
 CLICK_ARCH="${CLICK_ARCH:-}"
@@ -104,10 +104,13 @@ bash "$ROOT/scripts/stage-slim-data.sh" "$DEST/data"
 bash "$ROOT/scripts/stage-click-utils.sh" "$DEST"
 copy_shared_libs "$DEST/bin/xonotic" "$DEST/lib"
 
+# Official Xonotic icon — OpenStore extracts this from the click on revision upload.
 ICON_SRC="$ROOT/engine/misc/logos/icons_png/xonotic_256.png"
-if [ -f "$ICON_SRC" ]; then
-    install -m 644 "$ICON_SRC" "$DEST/xonotic.png"
-fi
+test -f "$ICON_SRC" || {
+    echo "Missing official icon: $ICON_SRC" >&2
+    exit 1
+}
+install -m 644 "$ICON_SRC" "$DEST/xonotic.png"
 
 install -m 644 "$ROOT/click/xonotic.desktop" "$DEST/xonotic.desktop"
 if [ -f "$ROOT/click/xonotic.apparmor" ]; then

@@ -7,7 +7,7 @@ ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 SITE_CLICK="${SITE_CLICK:-$ROOT/site/click}"
 CLICK_REMOTE_URL="${CLICK_REMOTE_URL:-https://dixonSolutions.github.io/Xonotic-Touch/click}"
 PACKAGE_VERSION="${PACKAGE_VERSION:-}"
-CLICK_NAME="${CLICK_NAME:-xonotictouch.dixonsolutions}"
+CLICK_NAME="${CLICK_NAME:-xonotictouch}"
 ARM64_CLICK="${ARM64_CLICK:-}"
 ARMHF_CLICK="${ARMHF_CLICK:-}"
 

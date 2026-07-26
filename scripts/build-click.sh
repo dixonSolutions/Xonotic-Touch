@@ -7,7 +7,7 @@ ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 . "$ROOT/scripts/lib/xonotic-shlib.sh"
 
 CLICK_ARCH="${CLICK_ARCH:-arm64}"
-CLICK_NAME="${CLICK_NAME:-xonotictouch.dixonsolutions}"
+CLICK_NAME="${CLICK_NAME:-xonotictouch}"
 CLICK_VERSION="${CLICK_VERSION:-1.1.1}"
 CLICK_FRAMEWORK="${CLICK_FRAMEWORK:-ubuntu-touch-24.04-1.x}"
 STAGE_ONLY=0

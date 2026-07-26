@@ -9,6 +9,8 @@
 #include "touch_init.qh"
 #include "touch_defs.qh"
 #include "touch_weapons.qh"
+#include <client/mapvoting.qh>
+#include <client/hud/panel/scoreboard.qh>
 
 bool touch_finger_used[TOUCH_MAX_FINGERS];
 int touch_finger_src[TOUCH_MAX_FINGERS];
@@ -75,6 +77,10 @@ bool Touch_Active(void)
 	if (Touch_CustomizeActive())
 		return true;
 	if (!cvar("vid_touchscreen"))
+		return false;
+	// TOUCH_LAYOUT_SPEC R7: hard-release during vote / intermission / team UI so
+	// MapVote and scoreboard receive pointer events (Touch_InputEvent runs first).
+	if (mv_active || intermission || scoreboard_ui_enabled)
 		return false;
 	// Normal: hide under full menu. Debug keeps overlay visible for remote verification.
 	if (autocvar_touch_debug)
