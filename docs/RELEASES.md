@@ -135,7 +135,7 @@ flatpak install --user XonoticTouch-1.2.<N>-x86_64.flatpak
 
 ### OpenStore
 
-<a href="https://open-store.io/app/xonotictouch.dixonsolutions"><img src="https://open-store.io/badges/en_US.svg" alt="OpenStore" /></a>
+<a href="https://open-store.io/app/xonotictouch.dixonsolutions"><img src="https://open-store.io/badges/en_US.svg" alt="OpenStore" width="200" /></a>
 
 | | |
 |---|---|

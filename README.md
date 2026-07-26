@@ -28,7 +28,7 @@ Or download offline bundles from [GitHub Releases](https://github.com/dixonSolut
 
 Preferred: install from OpenStore on the device.
 
-<a href="https://open-store.io/app/xonotictouch.dixonsolutions"><img src="https://open-store.io/badges/en_US.svg" alt="OpenStore" /></a>
+<a href="https://open-store.io/app/xonotictouch.dixonsolutions"><img src="https://open-store.io/badges/en_US.svg" alt="OpenStore" width="200" /></a>
 
 Sideload (Pages download remote):
 
