@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Install** | Flatpak remote, Ubuntu Touch `.click`, and versioned GitHub Releases (each `main` push) |
+| **Install** | Flatpak remote, [OpenStore](https://open-store.io/app/xonotictouch.dixonsolutions) / Ubuntu Touch `.click`, and versioned GitHub Releases (each `main` push) |
 | **Platforms** | Flatpak: Linux `x86_64` + `aarch64` (Wayland/X11). Click: Ubuntu Touch `arm64` + `armhf` |
 | **Input** | Touchscreen required — mouse-as-touch only for local dev |
 
@@ -26,14 +26,18 @@ Or download offline bundles from [GitHub Releases](https://github.com/dixonSolut
 
 ### Ubuntu Touch (.click)
 
+Preferred: install from OpenStore on the device.
+
+<a href="https://open-store.io/app/xonotictouch.dixonsolutions"><img src="https://open-store.io/badges/en_US.svg" alt="OpenStore" /></a>
+
+Sideload (Pages download remote):
+
 ```bash
-# Always-latest from the Pages download remote:
 wget https://dixonSolutions.github.io/Xonotic-Touch/click/latest-arm64.click
 pkcon install-local --allow-untrusted latest-arm64.click
 ```
 
-Or grab a versioned `.click` from [GitHub Releases](https://github.com/dixonSolutions/Xonotic-Touch/releases/latest). Index: https://dixonSolutions.github.io/Xonotic-Touch/click/  
-OpenStore (Ubuntu Touch): https://open-store.io/app/xonotictouch.dixonsolutions (after the listing is published).
+Or grab a versioned `.click` from [GitHub Releases](https://github.com/dixonSolutions/Xonotic-Touch/releases/latest). Index: https://dixonSolutions.github.io/Xonotic-Touch/click/
 
 Local build with [Clickable](https://clickable-ut.dev/): `clickable build --arch arm64`  
 Or: `./scripts/build-click.sh --arch arm64`

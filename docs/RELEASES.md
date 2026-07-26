@@ -135,12 +135,14 @@ flatpak install --user XonoticTouch-1.2.<N>-x86_64.flatpak
 
 ### OpenStore
 
+<a href="https://open-store.io/app/xonotictouch.dixonsolutions"><img src="https://open-store.io/badges/en_US.svg" alt="OpenStore" /></a>
+
 | | |
 |---|---|
 | **App id** | `xonotictouch.dixonsolutions` |
 | **Title** | Xonotic Touch |
 | **Manage** | https://open-store.io/manage/xonotictouch.dixonsolutions |
-| **Public page** | https://open-store.io/app/xonotictouch.dixonsolutions (after Publish=Yes) |
+| **Public page** | https://open-store.io/app/xonotictouch.dixonsolutions |
 | **Secret** | Repo secret `OPENSTORE_API_KEY` |
 | **Icon** | Official `engine/misc/logos/icons_png/xonotic_256.png` inside the `.click` (extracted on revision upload) |
 | **Changelog** | Leave the general store changelog blank; each CI upload sets a **revision** changelog (`Xonotic Touch <version>: …`) |

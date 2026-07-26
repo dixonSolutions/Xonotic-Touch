@@ -241,7 +241,12 @@ jobs:
             echo '```'
             echo
             echo "### Ubuntu Touch (.click)"
-            echo "Stable downloads (always latest):"
+            echo
+            echo '<a href="https://open-store.io/app/xonotictouch.dixonsolutions"><img src="https://open-store.io/badges/en_US.svg" alt="OpenStore" /></a>'
+            echo
+            echo "OpenStore: https://open-store.io/app/xonotictouch.dixonsolutions"
+            echo
+            echo "Stable sideload downloads (always latest):"
             echo "- https://dixonSolutions.github.io/Xonotic-Touch/click/latest-arm64.click"
             echo "- https://dixonSolutions.github.io/Xonotic-Touch/click/latest-armhf.click"
             echo
