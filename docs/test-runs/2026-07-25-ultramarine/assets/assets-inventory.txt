@@ -1,0 +1,39 @@
+# Asset inventory 2026-07-25T01:31:34-04:00
+assets-ready: YES
+1.2G	/home/borysthebear/.local/share/xonotic-touch/data
+pk3 files:
+-rw-rw-r--. 1 borysthebear borysthebear 2.8M Jun 18 16:46 /home/borysthebear/.local/share/xonotic-touch/data/font-unifont-20260618.pk3
+-rw-rw-r--. 1 borysthebear borysthebear 168K Jun 18 16:46 /home/borysthebear/.local/share/xonotic-touch/data/font-xolonium-20260618.pk3
+-rw-rw-r--. 1 borysthebear borysthebear 306M Jun 18 10:49 /home/borysthebear/.local/share/xonotic-touch/data/xonotic-20260618-data.pk3
+-rw-rw-r--. 1 borysthebear borysthebear 597M Jun 18 10:56 /home/borysthebear/.local/share/xonotic-touch/data/xonotic-20260618-maps.pk3
+-rw-rw-r--. 1 borysthebear borysthebear 106M Jun 18 11:02 /home/borysthebear/.local/share/xonotic-touch/data/xonotic-20260618-music.pk3
+-rw-rw-r--. 1 borysthebear borysthebear 120M Jun 18 11:04 /home/borysthebear/.local/share/xonotic-touch/data/xonotic-20260618-nexcompat.pk3
+-rw-rw-r--. 1 borysthebear borysthebear 2.3M Jun 18 11:06 /home/borysthebear/.local/share/xonotic-touch/data/xonotic-20260618-xoncompat.pk3
+pk3dirs:
+/home/borysthebear/.local/share/xonotic-touch/data/font-dejavu.pk3dir
+/home/borysthebear/.local/share/xonotic-touch/data/font-nimbussansl.pk3dir
+/home/borysthebear/.local/share/xonotic-touch/data/font-unifont.pk3dir
+/home/borysthebear/.local/share/xonotic-touch/data/font-xolonium.pk3dir
+/home/borysthebear/.local/share/xonotic-touch/data/xonotic-data.pk3dir
+flatpak:
+
+Xonotic Touch - Touch-only arena FPS for Linux tablets and phones
+
+            ID: io.github.dixonSolutions.XonoticTouch
+           Ref: app/io.github.dixonSolutions.XonoticTouch/x86_64/master
+          Arch: x86_64
+        Branch: master
+       Version: 1.1.1
+       License: GPL-3.0-or-later
+        Origin: xonotic-touch
+    Collection: 
+  Installation: user
+Installed Size: 71.6 MB
+       Runtime: org.freedesktop.Platform/x86_64/24.08
+           Sdk: org.freedesktop.Sdk/x86_64/24.08
+
+        Commit: 2fd8833384eb72f7fdfb938554ab1380db0092e6e61b4e7c21ff25df5675bab0
+       Subject: Built from 3125de8418083f036c42aa8493284420d437ed05
+          Date: 2026-07-03 04:46:57 +0000
+display: 2880x1920 scale 2 -> game 1440x960
+vid_touchscreen=1 touch_setup_done=1

@@ -4,6 +4,7 @@
 CLASS(XonoticTouchSettingsTab, XonoticTab)
 	METHOD(XonoticTouchSettingsTab, fill, void(entity));
 	ATTRIB(XonoticTouchSettingsTab, intendedWidth, float, 0.9);
+	// Must equal Settings TabController height (settings.rows - 3.5 = 15.5).
 	ATTRIB(XonoticTouchSettingsTab, rows, float, 15.5);
 	ATTRIB(XonoticTouchSettingsTab, columns, float, 6);
 	ATTRIB(XonoticTouchSettingsTab, name, string, "touchsettings");

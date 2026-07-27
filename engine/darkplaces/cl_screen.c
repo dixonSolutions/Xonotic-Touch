@@ -8,6 +8,7 @@
 #include "libcurl.h"
 #include "csprogs.h"
 #include "r_stats.h"
+#include "touch_ui.h"
 #ifdef CONFIG_VIDEO_CAPTURE
 #include "cap_avi.h"
 #include "cap_ogg.h"
@@ -881,6 +882,8 @@ void CL_Screen_Init(void)
 	Cvar_RegisterVariable(&timedemo_screenshotframelist);
 	Cvar_RegisterVariable(&vid_touchscreen_outlinealpha);
 	Cvar_RegisterVariable(&vid_touchscreen_overlayalpha);
+	TouchUI_RegisterCvars();
+	TouchUI_Init();
 	Cvar_RegisterVariable(&r_speeds_graph);
 	for (i = 0;i < (int)(sizeof(r_speeds_graph_filter)/sizeof(r_speeds_graph_filter[0]));i++)
 		Cvar_RegisterVariable(&r_speeds_graph_filter[i]);
@@ -1509,12 +1512,36 @@ static void SCR_DrawTouchscreenOverlay(void)
 	int i;
 	scr_touchscreenarea_t *a;
 	cachepic_t *pic;
-	// Console has no CSQC HUD — dim the world so the close control is obvious.
-	if (key_consoleactive & KEY_CONSOLEACTIVE_USER)
-		DrawQ_Fill(0, 0, vid_conwidth.integer, vid_conheight.integer, 0.02f, 0.04f, 0.08f, 0.62f, 0);
+	touchui_item_t item;
+	float shade;
+	keydest_t kd = (key_consoleactive & KEY_CONSOLEACTIVE_USER) ? key_console : key_dest;
+
+	// Settings live preview — menu item publishes rect via _touch_kb_preview_* cvars.
+	if (_touch_kb_preview.integer
+		&& (kd == key_menu || kd == key_menu_grabbed)
+		&& _touch_kb_preview_w.value > 8.0f && _touch_kb_preview_h.value > 8.0f)
+	{
+		TouchUI_DrawPreview(_touch_kb_preview_x.value, _touch_kb_preview_y.value,
+			_touch_kb_preview_w.value, _touch_kb_preview_h.value);
+		Cvar_SetValueQuick(&_touch_kb_preview, 0);
+	}
+
+	// Console / chat sheet shade (cvar-driven).
+	if (kd == key_console)
+	{
+		shade = TouchUI_GetShadeAlpha();
+		DrawQ_Fill(0, 0, vid_conwidth.integer, vid_conheight.integer, 0.02f, 0.04f, 0.08f, shade, 0);
+	}
+	else if (kd == key_message)
+	{
+		shade = TouchUI_GetShadeAlpha() * 0.55f;
+		DrawQ_Fill(0, 0, vid_conwidth.integer, vid_conheight.integer, 0.02f, 0.04f, 0.08f, shade, 0);
+	}
+
 	for (i = 0, a = scr_touchscreenareas;i < scr_numtouchscreenareas;i++, a++)
 	{
-		if (vid_touchscreen_outlinealpha.value > 0 && a->rect[0] >= 0 && a->rect[1] >= 0 && a->rect[2] >= 4 && a->rect[3] >= 4)
+		if (vid_touchscreen_outlinealpha.value > 0 && a->rect[0] >= 0 && a->rect[1] >= 0 && a->rect[2] >= 4 && a->rect[3] >= 4
+			&& a->style == 0)
 		{
 			DrawQ_Fill(a->rect[0] +              2, a->rect[1]                 , a->rect[2] - 4,          1    , 1, 1, 1, vid_touchscreen_outlinealpha.value * (0.5f + 0.5f * a->active), 0);
 			DrawQ_Fill(a->rect[0] +              1, a->rect[1] +              1, a->rect[2] - 2,          1    , 1, 1, 1, vid_touchscreen_outlinealpha.value * (0.5f + 0.5f * a->active), 0);
@@ -1528,18 +1555,22 @@ static void SCR_DrawTouchscreenOverlay(void)
 			DrawQ_Pic(a->rect[0], a->rect[1], pic, a->rect[2], a->rect[3], 1, 1, 1, vid_touchscreen_overlayalpha.value * (0.5f + 0.5f * a->active), 0);
 		else if (a->text && a->text[0] && a->rect[2] >= 4 && a->rect[3] >= 4)
 		{
-			// Text-only control (e.g. CLOSE CONSOLE) — solid glass plate so it reads on the shade.
-			float pressed = a->active ? 1.0f : 0.0f;
-			DrawQ_Fill(a->rect[0], a->rect[1], a->rect[2], a->rect[3],
-				0.08f + 0.10f * pressed, 0.28f + 0.20f * pressed, 0.48f + 0.25f * pressed,
-				0.92f, 0);
-			DrawQ_Fill(a->rect[0] + 3, a->rect[1] + 3, a->rect[2] - 6, a->rect[3] - 6,
-				0.12f, 0.40f, 0.70f, 0.55f + 0.25f * pressed, 0);
+			memset(&item, 0, sizeof(item));
+			item.x = a->rect[0];
+			item.y = a->rect[1];
+			item.w = a->rect[2];
+			item.h = a->rect[3];
+			item.textheight = a->textheight * (a->fontscale > 0 ? a->fontscale : 1.0f);
+			item.style = (touchui_style_t)a->style;
+			dp_strlcpy(item.label, a->text, sizeof(item.label));
+			TouchUI_DrawGlassItem(&item, a->active ? 1.0f : 0.0f,
+				a->active ? a->activealpha : a->inactivealpha);
 		}
-		if (a->text && a->text[0])
+		else if (a->text && a->text[0])
 		{
-			int textwidth = DrawQ_TextWidth(a->text, 0, a->textheight, a->textheight, false, FONT_CHAT);
-			DrawQ_String(a->rect[0] + (a->rect[2] - textwidth) * 0.5f, a->rect[1] + (a->rect[3] - a->textheight) * 0.5f, a->text, 0, a->textheight, a->textheight, 1.0f, 1.0f, 1.0f, 1.0f, 0, NULL, false, FONT_CHAT);
+			float th = a->textheight * (a->fontscale > 0 ? a->fontscale : 1.0f);
+			int textwidth = DrawQ_TextWidth(a->text, 0, th, th, false, FONT_CHAT);
+			DrawQ_String(a->rect[0] + (a->rect[2] - textwidth) * 0.5f, a->rect[1] + (a->rect[3] - th) * 0.5f, a->text, 0, th, th, 1.0f, 1.0f, 1.0f, 1.0f, 0, NULL, false, FONT_CHAT);
 		}
 	}
 }

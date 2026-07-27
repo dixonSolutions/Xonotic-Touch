@@ -158,6 +158,8 @@ void GameCommand(string theCommand)
 		case "settings":         m_goto("settings", false); return;
 		case "inputsettings":    m_goto("inputsettings", false); return;
 		case "videosettings":    m_goto("videosettings", false); return;
+		case "touchsettings":    m_goto("touchsettings", false); return;
+		case "guide":            m_goto("guide", false); return;
 	}
 
 	if (argv(0) == "dumptree")

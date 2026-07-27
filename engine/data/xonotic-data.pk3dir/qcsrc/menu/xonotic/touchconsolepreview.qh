@@ -1,0 +1,9 @@
+#pragma once
+
+#include "../item.qh"
+CLASS(XonoticTouchConsolePreview, MenuItem)
+	METHOD(XonoticTouchConsolePreview, configureXonoticTouchConsolePreview, void(entity));
+	METHOD(XonoticTouchConsolePreview, draw, void(entity));
+	METHOD(XonoticTouchConsolePreview, hideNotify, void(entity));
+ENDCLASS(XonoticTouchConsolePreview)
+entity makeXonoticTouchConsolePreview();

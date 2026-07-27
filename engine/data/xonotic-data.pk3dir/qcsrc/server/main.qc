@@ -361,7 +361,10 @@ void StartFrame()
 	CheckRules_World();
 
 	// after CheckRules_World() as it may set intermission_running, and after RedirectionThink() in case listen server is closing
-	if (autocvar_sv_autopause && !autocvar_sv_dedicated && !intermission_running)
+	// Listen/local: also autopause during intermission so opening the menu (pause / main menu /
+	// settings) cannot let the scoreboard timer advance into the next map/campaign level.
+	// Dedicated servers keep rotating maps even if the only player has console open.
+	if (autocvar_sv_autopause && !autocvar_sv_dedicated)
 		Pause_TryPause();
 
 	if (warmup_stage && !game_stopped && warmup_limit > 0 && time - game_starttime >= warmup_limit) {
