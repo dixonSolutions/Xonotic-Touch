@@ -12,11 +12,11 @@
 #include <client/hud/panel/radar.qh>
 #include <client/hud/panel/scoreboard.qh>
 #include <client/hud/panel/vote.qh>
-#include <client/mapvoting.qh>
 #include <client/mutators/_mod.qh>
 #include <client/view.qh>
 #include <common/command/_mod.qh>
 #include <common/mapinfo.qh>
+#include <common/mapvoting/_mod.qh>
 #include <common/minigames/cl_minigames_hud.qh>
 
 void DrawDebugModel(entity this)
@@ -663,7 +663,7 @@ bool CSQC_ConsoleCommand(string command)
 	int argc = tokenize_console(command);
 	string s = strtolower(argv(0));
 	// Return value should be true if CSQC handled the command, otherwise return false to have the engine handle it.
-	return Touch_ConsoleCommand(s, argc) // // XONOTIC_UT_TOUCH_CMD
+	return Touch_ConsoleCommand(s, argc) // XONOTIC_UT_TOUCH_CMD
 	       || ConsoleCommand_macro_normal(s, argc)
 	       || ConsoleCommand_macro_movement(s, argc)
 	;

@@ -295,7 +295,7 @@ Implement in `qcsrc/menu/` — shallow tree for phone sessions (Hick’s Law).
 
 | Menu group | Contents |
 |------------|----------|
-| **Controls** | Preset, look sliders, move stick, gesture toggles, layout customize entry |
+| **Touch controls** | Presets, look sensitivity (`touch_sens_base` / `touch_sens_y_mult` / invert Y), opacity/scale, customize/save |
 | **Performance** | Battery / Balanced / Quality, FPS cap, picmip, particles |
 | **Audio** | Master / SFX / music; speaker vs headphone profile |
 | **Network** | Mobile-data mode, download limits, `cl_curl` |

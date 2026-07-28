@@ -81,7 +81,7 @@ MACRO_END
 
 	entity(entity start, .float fld, float match) _findflags = #449;
 	entity(.float fld, float match, .entity tofield) _findchainflags_tofield = #450;
-#elif defined(SVQC)
+#elifdef SVQC
 	entity(entity start, .string fld, string match) _findstring = #18;
 	entity(.string fld, string match, .entity tofield) _findchainstring_tofield = #402;
 
@@ -93,7 +93,7 @@ MACRO_END
 
 	entity(entity start, .float fld, float match) _findflags = #449;
 	entity(.float fld, float match, .entity tofield) _findchainflags_tofield = #450;
-#elif defined(MENUQC)
+#elifdef MENUQC
 	entity(entity start, .string fld, string match) _findstring = #24;
 	entity(.string fld, string match, .entity tofield) _findchainstring_tofield = #26;
 

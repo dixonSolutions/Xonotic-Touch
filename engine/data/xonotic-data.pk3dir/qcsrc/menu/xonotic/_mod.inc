@@ -14,7 +14,6 @@
 #include <menu/xonotic/credits.qc>
 #include <menu/xonotic/crosshairpicker.qc>
 #include <menu/xonotic/crosshairpreview.qc>
-#include <menu/xonotic/touchconsolepreview.qc>
 #include <menu/xonotic/cvarlist.qc>
 #include <menu/xonotic/datasource.qc>
 #include <menu/xonotic/demolist.qc>

@@ -27,10 +27,10 @@ MACRO_END
 #ifdef CSQC
 string al_ftos(float f) = #26;
 float al_stof(string s) = #81;
-#elif defined(SVQC)
+#elifdef SVQC
 string al_ftos(float f) = #26;
 float al_stof(string s) = #81;
-#elif defined(MENUQC)
+#elifdef MENUQC
 string al_ftos(float f) = #17;
 float al_stof(string s) = #21;
 #endif
@@ -42,10 +42,10 @@ float al_stof(string s) = #21;
 #ifdef CSQC
 int al_etof(entity e) = #512;
 entity al_ftoe(int i) = #459;
-#elif defined(SVQC)
+#elifdef SVQC
 int al_etof(entity e) = #512;
 entity al_ftoe(int i) = #459;
-#elif defined(MENUQC)
+#elifdef MENUQC
 int al_etof(entity e) = #79;
 entity al_ftoe(int i) = #80;
 #endif

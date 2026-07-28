@@ -48,14 +48,18 @@ Large textures/models/sound are **not** in git and **not** in release packages. 
 
 Touch-specific changes live **in the codebase** under `engine/` — not as separate overlay dirs or patch files.
 
+**Preferred (monorepo):** overlay upstream tips, restore Touch-only files, re-port shared hotspots. Record SHAs in [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md).
+
+**Optional nested-git / GitLab forks:**
+
 1. Fork on GitLab: [xonotic](https://gitlab.com/xonotic/xonotic), [darkplaces](https://gitlab.com/xonotic/darkplaces), [xonotic-data.pk3dir](https://gitlab.com/xonotic/xonotic-data.pk3dir).
 2. Initialize git in sub-repos (once, if vendored without `.git`):
 
 ```bash
-./scripts/sync-upstream-fork.sh --init-git
+./scripts/sync-upstream-fork.sh --init-git --allow-unrelated
 ```
 
-3. Merge upstream and push to your forks:
+3. Merge upstream (push only if `FORK_*` is set):
 
 ```bash
 FORK_DARKPLACES=https://gitlab.com/you/darkplaces.git \

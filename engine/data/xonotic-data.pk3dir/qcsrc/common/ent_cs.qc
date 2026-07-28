@@ -3,7 +3,7 @@
 #ifdef CSQC
 	#include <common/gametypes/_mod.qh>
 	#include <common/resources/resources.qh>
-#elif defined(SVQC)
+#elifdef SVQC
 	#include <common/gametypes/_mod.qh>
 	#include <common/resources/resources.qh>
 	#include <common/resources/sv_resources.qh>
@@ -80,7 +80,7 @@ void entcs_force_origin(entity player)
 	} \
 	_ENTCS_PROP(id, ispublic, checkprop, checkprop_pl, setprop, svsend, clreceive)
 
-#elif defined(CSQC)
+#elifdef CSQC
 #define ENTCS_PROP(id, ispublic, checkprop, checkprop_pl, setprop, svsend, clreceive) \
 	void id##_receive(entity ent) \
 	{ \
@@ -117,7 +117,7 @@ void entcs_force_origin(entity player)
 		this.m_set = id##_set; \
 		this.m_send = id##_send; \
 	}
-#elif defined(CSQC)
+#elifdef CSQC
 #define ENTCS_PROP_RESOURCE(id, ispublic, checkprop, setprop, decfactor, svsend, clreceive) \
 	void id##_receive(entity ent) \
 	{ \
@@ -294,7 +294,7 @@ ENTCS_PROP(SOLID, true, sv_solid, solid, ENTCS_SET_NORMAL,
 		CS(player).entcs = NULL;
 	}
 
-#elif defined(CSQC)
+#elifdef CSQC
 
 	void Ent_RemoveEntCS(entity this)
 	{

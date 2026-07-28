@@ -13,12 +13,6 @@ cvar_t touch_kb_split = {CF_CLIENT | CF_ARCHIVE, "touch_kb_split", "0", "1 = spl
 cvar_t touch_kb_minkey_px = {CF_CLIENT | CF_ARCHIVE, "touch_kb_minkey_px", "36", "warn when a key's smaller dimension is below this (device pixels)"};
 cvar_t touch_conui_shade = {CF_CLIENT | CF_ARCHIVE, "touch_conui_shade", "0.62", "console sheet background shade alpha"};
 cvar_t touch_conui_palette_file = {CF_CLIENT | CF_ARCHIVE, "touch_conui_palette_file", "touch/console_palette.txt", "file of preset console commands for the COMMANDS tab"};
-cvar_t _touch_kb_preview = {CF_CLIENT, "_touch_kb_preview", "0", "internal: menu preview active this frame"};
-cvar_t _touch_kb_preview_x = {CF_CLIENT, "_touch_kb_preview_x", "0", "internal: preview cell x"};
-cvar_t _touch_kb_preview_y = {CF_CLIENT, "_touch_kb_preview_y", "0", "internal: preview cell y"};
-cvar_t _touch_kb_preview_w = {CF_CLIENT, "_touch_kb_preview_w", "0", "internal: preview cell w"};
-cvar_t _touch_kb_preview_h = {CF_CLIENT, "_touch_kb_preview_h", "0", "internal: preview cell h"};
-
 #define TOUCHUI_MAX_FINGERS 11
 
 static touchui_tab_t touchui_tab = TOUCHUI_TAB_KEYS;
@@ -57,11 +51,6 @@ void TouchUI_RegisterCvars(void)
 	Cvar_RegisterVariable(&touch_kb_minkey_px);
 	Cvar_RegisterVariable(&touch_conui_shade);
 	Cvar_RegisterVariable(&touch_conui_palette_file);
-	Cvar_RegisterVariable(&_touch_kb_preview);
-	Cvar_RegisterVariable(&_touch_kb_preview_x);
-	Cvar_RegisterVariable(&_touch_kb_preview_y);
-	Cvar_RegisterVariable(&_touch_kb_preview_w);
-	Cvar_RegisterVariable(&_touch_kb_preview_h);
 }
 
 void TouchUI_Init(void)
@@ -709,40 +698,4 @@ void TouchUI_DrawGlassItem(const touchui_item_t *it, float pressed, float opacit
 		DrawQ_String(it->x + (it->w - tw) * 0.5f, it->y + (it->h - th) * 0.5f,
 			it->label, 0, th, th, 1, 1, 1, 1, 0, NULL, false, FONT_CHAT);
 	}
-}
-
-void TouchUI_DrawPreview(float cell_x, float cell_y, float cell_w, float cell_h)
-{
-	float screen_w = vid_conwidth.value;
-	float screen_h = vid_conheight.value;
-	float aspect, fit_w, fit_h, ox, oy;
-	float shade;
-	touchui_item_t items[TOUCHUI_MAX_ITEMS];
-	int n, i;
-	float opacity;
-
-	if (cell_w < 8.0f || cell_h < 8.0f || screen_w < 1.0f || screen_h < 1.0f)
-		return;
-
-	aspect = screen_w / screen_h;
-	if (cell_w / cell_h > aspect)
-	{
-		fit_h = cell_h;
-		fit_w = fit_h * aspect;
-	}
-	else
-	{
-		fit_w = cell_w;
-		fit_h = fit_w / aspect;
-	}
-	ox = cell_x + (cell_w - fit_w) * 0.5f;
-	oy = cell_y + (cell_h - fit_h) * 0.5f;
-
-	shade = TouchUI_GetShadeAlpha();
-	DrawQ_Fill(ox, oy, fit_w, fit_h, 0.02f, 0.04f, 0.08f, shade, 0);
-
-	n = TouchUI_LayoutSheet(TOUCHUI_SHEET_PREVIEW, ox, oy, fit_w, fit_h, items, TOUCHUI_MAX_ITEMS);
-	opacity = TouchUI_GetKeyOpacity();
-	for (i = 0; i < n; i++)
-		TouchUI_DrawGlassItem(&items[i], 0.0f, opacity);
 }

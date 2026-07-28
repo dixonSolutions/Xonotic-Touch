@@ -1,6 +1,6 @@
 # Touch console / chat sheet
 
-Keyboard-free text entry for the engine console and chat, with a no-typing command palette and a live settings preview.
+Keyboard-free text entry for the engine console and chat, with a no-typing command palette.
 
 ## UX
 
@@ -11,8 +11,8 @@ Keyboard-free text entry for the engine console and chat, with a no-typing comma
    - **KEYS** tab: layered QWERTY with SHIFT / ?123, TAB completion, HIST, caret, SPACE, ENTER, hold-repeat BKSP
    - **COMMANDS** tab: file-driven preset grid (`touch/console_palette.txt`)
 3. Chat (`messagemode` / `key_message`): compact sheet with quick-phrase strip + same keyboard.
-4. Settings → Touch controls → **Console & chat**: optional live preview (toggle) painted by the
-   **same engine `TouchUI` sheet** as in-game. Sliders update it every frame.
+4. Keyboard height / opacity / shade are engine cvars (`touch_kb_*` / `touch_conui_*`), tunable via cfg/console.
+   Settings → Touch controls covers presets, look sensitivity, opacity, and scale (no live preview panel).
 
 ## Layout (960×640 reference)
 
@@ -36,8 +36,6 @@ Optional `touch_kb_split 1` places left/right halves under both thumbs in landsc
 | `touch_kb_minkey_px` | `36` | Warn when keys shrink below this |
 | `touch_conui_shade` | `0.62` | Console background dim |
 | `touch_conui_palette_file` | `touch/console_palette.txt` | Preset commands file |
-| `touch_kb_preview_show` | `1` | Show live console preview in Touch settings |
-| `_touch_kb_preview*` | — | Internal menu→engine preview handshake |
 
 ## Files
 
@@ -45,9 +43,8 @@ Optional `touch_kb_split 1` places left/right halves under both thumbs in landsc
 |------|------|
 | Layout / keyboard / palette | `engine/darkplaces/touch_ui.c` / `.h` |
 | Input wiring | `engine/darkplaces/vid_sdl.c` |
-| Glass draw + preview | `engine/darkplaces/cl_screen.c` |
+| Glass draw | `engine/darkplaces/cl_screen.c` |
 | Settings UI | `menu/xonotic/dialog_settings_touch.qc` |
-| Preview item | `menu/xonotic/touchconsolepreview.qc` |
 | Palette defaults | `touch/console_palette.txt` |
 | Preset defaults | `touch/profiles/standard.cfg`, `left.cfg` |
 
@@ -63,6 +60,4 @@ Optional `touch_kb_split 1` places left/right halves under both thumbs in landsc
 | C6 | Hold BKSP deletes repeatedly |
 | C7 | COMMANDS tab runs a preset (e.g. screenshot) |
 | C8 | Chat sheet appears for `say` / messagemode without relying on compositor OSK |
-| C9 | Settings preview updates live when dragging keyboard height / opacity / shade |
-| C10 | Preview disappears when leaving the Touch controls tab |
-| C11 | Real console matches what the preview showed |
+| C9 | Console sheet still respects `touch_kb_*` / `touch_conui_*` cvars from cfg |

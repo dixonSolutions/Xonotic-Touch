@@ -8,19 +8,19 @@ QCCFLAGS_WATERMARK ?= $(shell git describe --tags --dirty='~')
 VER = $(subst *,\*,$(QCCFLAGS_WATERMARK))
 
 ifndef ZIP
-ifneq ($(shell which zip 2>/dev/null),)
-ZIP := zip -9mD
-endif
-ifneq ($(shell which 7z 2>/dev/null),)
-ZIP := 7z a -tzip -mx=9 -sdel
-endif
-ifneq ($(shell which 7za 2>/dev/null),)
-ZIP := 7za a -tzip -mx=9 -sdel
-endif
-ifndef ZIP
-$(warning "No zip / 7z / 7za in ($(PATH))")
-ZIP := : zip_not_found
-endif
+	ifneq ($(shell which zip 2>/dev/null),)
+		ZIP := zip -9mD
+	endif
+	ifneq ($(shell which 7z 2>/dev/null),)
+		ZIP := 7z a -tzip -mx=9 -sdel
+	endif
+	ifneq ($(shell which 7za 2>/dev/null),)
+		ZIP := 7za a -tzip -mx=9 -sdel
+	endif
+	ifndef ZIP
+		$(warning "No zip / 7z / 7za in ($(PATH))")
+		ZIP := : zip_not_found
+	endif
 endif
 
 

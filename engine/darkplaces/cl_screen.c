@@ -1516,16 +1516,6 @@ static void SCR_DrawTouchscreenOverlay(void)
 	float shade;
 	keydest_t kd = (key_consoleactive & KEY_CONSOLEACTIVE_USER) ? key_console : key_dest;
 
-	// Settings live preview — menu item publishes rect via _touch_kb_preview_* cvars.
-	if (_touch_kb_preview.integer
-		&& (kd == key_menu || kd == key_menu_grabbed)
-		&& _touch_kb_preview_w.value > 8.0f && _touch_kb_preview_h.value > 8.0f)
-	{
-		TouchUI_DrawPreview(_touch_kb_preview_x.value, _touch_kb_preview_y.value,
-			_touch_kb_preview_w.value, _touch_kb_preview_h.value);
-		Cvar_SetValueQuick(&_touch_kb_preview, 0);
-	}
-
 	// Console / chat sheet shade (cvar-driven).
 	if (kd == key_console)
 	{

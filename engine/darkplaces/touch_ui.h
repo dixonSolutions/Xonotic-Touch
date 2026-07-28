@@ -1,6 +1,6 @@
 /*
- * Shared touch text-sheet layout for console, chat, and settings preview.
- * Layout takes a target rect so the real sheet and the preview share one path.
+ * Shared touch text-sheet layout for console and chat.
+ * Layout takes a target rect so callers can place the sheet in any region.
  */
 #ifndef TOUCH_UI_H
 #define TOUCH_UI_H
@@ -88,12 +88,6 @@ extern struct cvar_s touch_kb_split;
 extern struct cvar_s touch_kb_minkey_px;
 extern struct cvar_s touch_conui_shade;
 extern struct cvar_s touch_conui_palette_file;
-/* Preview handshake (not archived) */
-extern struct cvar_s _touch_kb_preview;
-extern struct cvar_s _touch_kb_preview_x;
-extern struct cvar_s _touch_kb_preview_y;
-extern struct cvar_s _touch_kb_preview_w;
-extern struct cvar_s _touch_kb_preview_h;
 
 void TouchUI_Init(void);
 void TouchUI_RegisterCvars(void);
@@ -126,12 +120,6 @@ qbool TouchUI_ProcessFinger(int finger, float fx, float fy, qbool finger_down,
 
 /* Reset per-finger emit masks (call when sheet closes). */
 void TouchUI_ResetInputState(void);
-
-/*
- * Draw a non-interactive glass sheet (settings preview / sample content).
- * Uses DrawQ_* ; letterboxes to screen aspect inside the given cell.
- */
-void TouchUI_DrawPreview(float cell_x, float cell_y, float cell_w, float cell_h);
 
 /* Glass colour constants matching CSQC touch_defs.qh */
 #define TOUCHUI_GLASS_R   0.78f

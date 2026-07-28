@@ -117,7 +117,7 @@ int g_magic_stats_hole = 0;
 				CAT(_STAT(id), _prev) = */ _STAT(id) = it; \
 		}
 	#define REGISTER_STAT_3(id, T, expr) REGISTER_STAT_2(id, T)
-#elif defined(SVQC)
+#elifdef SVQC
 	/// Internal use only
 	entity STATS;
 	/// Add all registered stats, access with `STAT(ID, player)` or `.type stat = _STAT(ID); player.stat`

@@ -40,8 +40,12 @@ QuakeC HUD layout should use `vid_width`, `vid_height`, and touch DPI cvars set 
 
 ## Syncing upstream
 
+Preferred for this monorepo: overlay GitLab tips and re-port Touch hotspots — see [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md).
+
+Optional nested-git / fork path:
+
 ```bash
-./scripts/sync-upstream-fork.sh --init-git   # once
+./scripts/sync-upstream-fork.sh --init-git --allow-unrelated   # once
 FORK_DARKPLACES=… FORK_DATA=… ./scripts/sync-upstream-fork.sh
 ```
 
