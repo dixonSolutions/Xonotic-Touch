@@ -242,6 +242,7 @@ void m_init_delayed()
 	cvar_set("_menu_initialized", "2");
 }
 
+
 void menu_touch_keyboard_show(vector absOrigin, vector absSize)
 {
 	if (!cvar("vid_touchscreen"))
@@ -330,13 +331,6 @@ void m_keydown(float key, float ascii)
 		{
 			if (menuMouseMode && cvar("vid_touchscreen"))
 				menu_sync_absolute_mousepos();
-			// Touch Escape equivalent — close menu before dialog hit-testing.
-			if (key == K_MOUSE1 && Menu_TouchResumeBarHit(menuMousePos))
-			{
-				m_hide();
-				++mouseButtonsPressed;
-				return;
-			}
 			main.mousePress(main, menuMousePos);
 		}
 		if (!main.keyDown(main, key, ascii, menuShiftState))
@@ -937,7 +931,8 @@ void m_draw(float width, float height)
 			if (menuAlpha <= 0 && SKINALPHA_CURSOR_INTRO > 0 && !cvar("vid_touchscreen"))
 			{
 				draw_alpha = SKINALPHA_CURSOR_INTRO * bound(0, menuLogoAlpha, 1);
-				draw_drawMousePointer(menuMousePos);
+				if (!cvar("vid_touchscreen"))
+		draw_drawMousePointer(menuMousePos);
 				draw_alpha = 1;
 			}
 		}

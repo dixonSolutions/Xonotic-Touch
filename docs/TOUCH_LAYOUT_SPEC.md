@@ -548,6 +548,7 @@ Setup: `touch_debug 1`, `showfps 1`, load `courtfun` (or any loaded map), join.
 | T10 | SPACE hold | Holding SPACE gives repeated/held jumps (bunny-hop viable); tap gives exactly one jump; a physical spacebar still jumps while the touch layer is active |
 | T11 | Console tap | Short tap on the top-middle handle toggles the console; `con_closeontoggle 1` closes it on the next tap |
 | T12 | Console swipe immunity | A fast look swipe across the top-centre (through the handle) does **not** toggle the console (ARMING→CANCEL) |
+| T17 | Console sheet | Opened console shows glass KEYS / COMMANDS sheet; type `touch_con_x 0.4` (needs SHIFT / ?123); see [TOUCH_CONSOLE_SPEC.md](TOUCH_CONSOLE_SPEC.md) |
 | T13 | Console hold-drag | Hold 350 ms (handle brightens) then drag to bottom-right; handle follows the finger; release snaps to the grid and flashes accent |
 | T14 | Console clamp | Attempt to drag off each of the 4 edges: the whole bar stays on screen with ≥ 4 px margin; attempt to drop on FIRE: nudged clear or rejected with a red flash |
 | T15 | Console persistence | After the drop, `~/.xonotic/data/touch.layout.cfg` contains `seta touch_con_x/…_y`; quit; relaunch via `packaging/start.sh`; handle reappears at the dragged position (this is the D14 regression test) |

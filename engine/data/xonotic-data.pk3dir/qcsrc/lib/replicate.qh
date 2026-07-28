@@ -5,7 +5,7 @@
 	const int REPLICATEVARS_CHECK     = 0;  ///< check if any cvar has changed and sync it with the server
 	const int REPLICATEVARS_DESTROY   = 1;  ///< destroy data associated with cvars (shutdown)
 	#define REPLICATE_INIT(type, name) type name
-#elif defined(SVQC)
+#elifdef SVQC
 	#define REPLICATE_INIT(type, name) .type name
 #endif
 
@@ -39,7 +39,7 @@
 			if (thisname == var) \
 				LAMBDA(ApplyChange_code) \
 		}
-	#elif defined(CSQC)
+	#elifdef CSQC
 	noref float ReplicateVars_time;
 	ACCUMULATE void ReplicateVars(int mode)
 	{
@@ -98,7 +98,7 @@
 				} \
 				store.fld = field; \
 			}
-	#elif defined(CSQC)
+	#elifdef CSQC
 		#define REPLICATE_vector(fld, var, func) REPLICATE_7(fld, vector, var, func, fld != stov(cvar_string(var)), fld = stov(cvar_string(var)), )
 		#define REPLICATE_string(fld, var, func) REPLICATE_7(fld, float,  var, func, fld != cvar_string(var), strcpy(fld, cvar_string(var)), strfree(fld))
 		#define REPLICATE_float(fld, var, func)  REPLICATE_7(fld, float,  var, func, fld != cvar(var), fld = cvar(var), )

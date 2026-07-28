@@ -1,11 +1,5 @@
 #include "leavematchbutton.qh"
 
-// resets g_campaign and updates menu items to reflect cvar values that may have been restored after leaving the campaign
-// the delay is for allowing listening to the button sound (if enabled), since the disconnect command stops all sounds
-// menu_sync is also useful when leaving Instant Action mode
-// see also m_draw
-const string LEAVEMATCH_CMD = "defer 0.4 disconnect; defer 0.4 wait; defer 0.4 \"g_campaign 0\"; defer 0.4 menu_sync";
-
 string leaveMatchButton_getText(entity me)
 {
 	if (me.disabled)

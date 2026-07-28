@@ -9,7 +9,7 @@
 #include "touch_init.qh"
 #include "touch_defs.qh"
 #include "touch_weapons.qh"
-#include <client/mapvoting.qh>
+#include <common/mapvoting/_mod.qh>
 #include <client/hud/panel/scoreboard.qh>
 
 bool touch_finger_used[TOUCH_MAX_FINGERS];

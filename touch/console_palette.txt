@@ -1,0 +1,20 @@
+# Touch console COMMANDS tab — "Label" "command"
+# One nesting level is ignored; use categories as comments.
+
+"disconnect" "disconnect"
+"reconnect" "reconnect"
+"screenshot" "screenshot"
+"status" "status"
+"name" "name"
+"timelimit" "timelimit"
+"ready" "ready"
+"spectate" "spectate"
+"join" "join"
+
+"gg" "say good game"
+"hi" "say hi / good luck"
+"nice" "say :-) / nice one"
+"oops" "say oops"
+"thanks" "say thanks"
+"help" "say need help"
+"push" "say push!"

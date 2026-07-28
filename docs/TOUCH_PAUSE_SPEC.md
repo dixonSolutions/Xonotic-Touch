@@ -8,9 +8,15 @@ Keyboard-free escape from gameplay and the console.
 2. Tap (drag-cancel, same as CONSOLE) fires the same path as **Escape**:
    - In-game → Xonotic **GameMenu** (`menu_showgamemenudialog`)
    - Otherwise → `togglemenu 1`
-3. Local games auto-pause while the menu or console is open (engine behaviour).
+3. Local/listen games auto-pause while the menu or console is open — including during
+   intermission, so a paused scoreboard cannot advance into the next map/campaign level.
 4. GameMenu **Resume** closes the menu and returns to play. No duplicate custom pause sheet.
-5. While the **console** is open, the screen is dimmed. Only **CLOSE CONSOLE** and the in-engine keyboard receive taps (HUD/menu absorbed). The engine also requests the platform OSK (`SDL_StartTextInput` — GNOME / Ubuntu Touch).
+5. GameMenu **Main menu** (and **Leave …**) **disconnect** and open Welcome — they must not
+   `m_hide()` while still connected (that drops you straight back into the match) and must not
+   leave a paused listen server in the background.
+6. GameMenu **Settings / Servers / …** use `menu_cmd <name>` (not `directmenu`) so closing those
+   panels returns to GameMenu instead of unpausing into the match.
+7. While the **console** is open, the screen is dimmed. Only **CLOSE CONSOLE** and the in-engine keyboard receive taps (HUD/menu absorbed). The engine also requests the platform OSK (`SDL_StartTextInput` — GNOME / Ubuntu Touch).
 
 The old top-left `◀ RESUME` overlay is **removed** — use GameMenu **Resume** only.
 
@@ -42,3 +48,6 @@ The old top-left `◀ RESUME` overlay is **removed** — use GameMenu **Resume**
 | P3 | Tap CONSOLE → console opens |
 | P4 | Tap CLOSE CONSOLE → console closes |
 | P5 | No custom RESUME/LEAVE/QUIT sheet overlay |
+| P6 | GameMenu **Main menu** disconnects to Welcome; no match stays in the background |
+| P6b | GameMenu → Settings → close returns to GameMenu (not straight into the match) |
+| P7 | During campaign/match intermission, opening GameMenu freezes the scoreboard (no next-level load until Resume or leave) |

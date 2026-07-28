@@ -273,7 +273,7 @@ void W_Arc_Beam_Think(entity this)
 	float heat_speed = (burst ? WEP_CVAR(WEP_ARC, burst_heat) : WEP_CVAR(WEP_ARC, beam_heat));
 	this.beam_heat = min(WEP_CVAR(WEP_ARC, overheat_max), this.beam_heat + heat_speed * frametime);
 
-	makevectors(own.v_angle);
+	makevectors(own.v_angle); // W_SetupShot_Range uses v_forward
 
 	W_SetupShot_Range(
 		own,
@@ -1033,16 +1033,7 @@ void Draw_ArcBeam(entity this)
 			i / segments
 		);
 
-		WarpZone_TraceBox_ThroughZone(
-			last_origin,
-			'0 0 0',
-			'0 0 0',
-			new_origin,
-			MOVE_NORMAL,
-			NULL,
-			NULL,
-			Draw_ArcBeam_callback
-		);
+		WarpZone_TraceLine_ThroughZone(last_origin, new_origin, MOVE_NORMAL, NULL, NULL, Draw_ArcBeam_callback);
 
 		last_origin = trace_endpos;
 

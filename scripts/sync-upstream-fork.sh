@@ -1,6 +1,13 @@
 #!/bin/bash
-# Merge upstream Xonotic sub-repos into your fork under engine/.
-# Touch port changes live directly in engine/ — resolve merge conflicts there.
+# Merge upstream Xonotic sub-repos into engine/ while keeping Touch port changes.
+#
+# Preferred monorepo workflow (no nested .git required):
+#   See docs/UPSTREAM_SYNC.md — overlay upstream tips, restore Touch-only files,
+#   then re-port shared hotspots (vid_sdl.c, GameMenu, client/view.qc, …).
+#
+# Nested-git / fork workflow (optional):
+#   ./scripts/sync-upstream-fork.sh --init-git
+#   FORK_DARKPLACES=… FORK_DATA=… ./scripts/sync-upstream-fork.sh
 set -euo pipefail
 
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -12,19 +19,23 @@ FORK_DATA="${FORK_DATA:-${DATA_URL:-}}"
 FORK_GMQCC="${FORK_GMQCC:-${GMQCC_URL:-}}"
 
 usage() {
-    echo "Usage: $0 [--init-git] [darkplaces|data|gmqcc|all]" >&2
-    echo "  Merges upstream GitLab into fork remotes under engine/ sub-repos." >&2
-    echo "  --init-git  create .git in sub-repos from current vendored tree (once)" >&2
-    echo "  Set fork URLs: FORK_DARKPLACES=… FORK_DATA=… FORK_GMQCC=…" >&2
+    echo "Usage: $0 [--init-git] [--allow-unrelated] [darkplaces|data|gmqcc|all]" >&2
+    echo "  Merges upstream GitLab into nested git under engine/ sub-repos." >&2
+    echo "  --init-git         create .git in sub-repos from current vendored tree (once)" >&2
+    echo "  --allow-unrelated  allow first merge when histories do not share a base" >&2
+    echo "  Fork push only when FORK_DARKPLACES / FORK_DATA / FORK_GMQCC are set." >&2
+    echo "  For vendored monorepo sync without nested git, see docs/UPSTREAM_SYNC.md." >&2
     exit 1
 }
 
 INIT_GIT=0
+ALLOW_UNRELATED=0
 TARGET="all"
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --init-git) INIT_GIT=1 ;;
+        --allow-unrelated) ALLOW_UNRELATED=1 ;;
         darkplaces|data|gmqcc|all) TARGET="$1" ;;
         -h|--help) usage ;;
         *) echo "Unknown option: $1" >&2; usage ;;
@@ -46,13 +57,16 @@ ensure_repo_git() {
 
     if [ ! -d .git ]; then
         if [ "$INIT_GIT" -ne 1 ]; then
-            echo "$dir has no .git — re-run with --init-git once, or use ./scripts/init-xonotic-fork.sh" >&2
+            echo "$dir has no .git — re-run with --init-git once, or use the overlay" >&2
+            echo "workflow in docs/UPSTREAM_SYNC.md (recommended for this monorepo)." >&2
             exit 1
         fi
         echo "Initializing git in $dir from current tree..."
         git init -q
         git add -A
         git commit -q -m "Xonotic Touch port baseline (integrated touch changes)"
+        # First merge against GitLab will almost always be unrelated.
+        ALLOW_UNRELATED=1
     fi
 
     git remote remove upstream 2>/dev/null || true
@@ -73,18 +87,28 @@ ensure_repo_git() {
     branch="$(git remote show upstream 2>/dev/null | awk '/HEAD branch/ {print $NF}')"
     branch="${branch:-master}"
 
+    local merge_args=(--no-edit)
+    if [ "$ALLOW_UNRELATED" -eq 1 ]; then
+        merge_args+=(--allow-unrelated-histories)
+    fi
+
     echo "Merging upstream/$branch into $(basename "$dir") ..."
-    if ! git merge --no-edit "upstream/$branch"; then
+    if ! git merge "${merge_args[@]}" "upstream/$branch"; then
         echo
-        echo "Merge conflict in $dir — resolve files, then:"
+        echo "Merge conflict in $dir — resolve Touch hotspots carefully, then:"
         echo "  cd $dir && git add -A && git commit"
-        echo "  git push origin HEAD   # if fork remote is set"
+        if [ -n "$fork" ]; then
+            echo "  git push origin HEAD"
+        fi
+        echo "See docs/UPSTREAM_SYNC.md for Touch-only paths and shared hotspots."
         exit 1
     fi
 
     if [ -n "$fork" ]; then
         echo "Pushing merged $dir to fork ..."
         git push -u origin HEAD
+    else
+        echo "No FORK_* URL set — skipped push for $(basename "$dir")."
     fi
 }
 

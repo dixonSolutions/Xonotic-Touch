@@ -57,7 +57,7 @@ Two-thumb layout tuned for Xonotic strafe movement and nine weapons.
 | Weapon | Tap → wheel (default) | `impulse 1`…`9` or cycle |
 | Reload | Tap | `weapon_reload` |
 | **PAUSE** (top row) | Tap → Escape / GameMenu | Native Xonotic pause menu — see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md) |
-| **CONSOLE** (top row) | Tap → `toggleconsole` | **CLOSE CONSOLE** + in-engine keyboard (+ platform OSK) |
+| **CONSOLE** (top row) | Tap → `toggleconsole` | Glass text sheet: layered keyboard, COMMANDS palette, chat sheet — see [TOUCH_CONSOLE_SPEC.md](TOUCH_CONSOLE_SPEC.md) |
 | Mobile HUD | Top-left / top-right | Portrait, HP/AR bars, clip/reserve ammo |
 
 **Avoid as default:** full-screen move + aim stick, pure tap-to-move, fire on the look zone.
@@ -191,6 +191,14 @@ Engine movement (already in `touch/xonotic.cfg`):
 | `touch_dodge_mode` | int | 0=button, 1=double-tap | `0` | Competitive preset may use `1` |
 | `touch_scoreboard_gesture` | int | 0=edge btn, 1=two-finger tap | `1` | |
 | `touch_chat_mode` | int | 0=pause only, 1=quick phrases | `1` | |
+| `touch_kb_height` | float | 0.28–0.70 | `0.46` | Keyboard fraction of console sheet |
+| `touch_kb_gap` | float | | `0.008` | Key spacing (fraction of width) |
+| `touch_kb_opacity` | float | 0.3–1 | `0.92` | Glass key opacity |
+| `touch_kb_layout` | int | 0=QWERTY, 1=compact | `0` | |
+| `touch_kb_split` | int | 0/1 | `0` | Split keyboard under both thumbs |
+| `touch_kb_minkey_px` | float | | `36` | Warn when keys shrink below this |
+| `touch_conui_shade` | float | 0–1 | `0.62` | Console background dim |
+| `touch_conui_palette_file` | string | path | `touch/console_palette.txt` | COMMANDS tab presets |
 | `touch_minimal_more` | int | 0/1 | `0` | Minimal preset: secondary panel for crouch/zoom/dodge |
 | `touch_setup_done` | int | 0/1 | `0` | First-run wizard completed; skip on next launch |
 
@@ -287,7 +295,7 @@ Implement in `qcsrc/menu/` — shallow tree for phone sessions (Hick’s Law).
 
 | Menu group | Contents |
 |------------|----------|
-| **Controls** | Preset, look sliders, move stick, gesture toggles, layout customize entry |
+| **Touch controls** | Presets, look sensitivity (`touch_sens_base` / `touch_sens_y_mult` / invert Y), opacity/scale, customize/save |
 | **Performance** | Battery / Balanced / Quality, FPS cap, picmip, particles |
 | **Audio** | Master / SFX / music; speaker vs headphone profile |
 | **Network** | Mobile-data mode, download limits, `cl_curl` |

@@ -21,7 +21,6 @@ void XonoticInputBox_configureXonoticInputBox(entity me, bool doEditColorCodes, 
 }
 void XonoticInputBox_focusLeave(entity me)
 {
-	SUPER(XonoticInputBox).focusLeave(me);
 	me.saveCvars(me);
 }
 void XonoticInputBox_setText(entity me, string val)

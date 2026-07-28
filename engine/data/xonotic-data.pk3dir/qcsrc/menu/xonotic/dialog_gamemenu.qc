@@ -42,27 +42,30 @@ void XonoticGameMenuDialog_fill(entity me)
 	me.TR(me);
 		me.TD(me, 1, 1, e = makeXonoticCommandButton(_("Resume"), '0 0 0', "togglemenu 0", COMMANDBUTTON_CLOSE));
 	me.TR(me);
-		me.TD(me, 1, 1, e = makeXonoticCommandButton(_("Main menu"), '0 0 0', "menu_cmd nexposee", 0));
-		// NOTE these buttons use directmenu so that the menu will be hidden when these dialogs are closed
+		// Leave the match — never COMMANDBUTTON_CLOSE (that m_hide()s while still
+		// connected and dumps the player back into the live/paused game).
+		me.TD(me, 1, 1, e = makeXonoticCommandButton(_("Main menu"), '0 0 0', LEAVEMATCH_CMD, 0));
+		// Mid-match tweaks: use menu_cmd <name> (hideMenuOnClose=false) so closing
+		// Settings/etc returns to GameMenu instead of unpausing into the match.
 	me.TR(me);
 		me.TDempty(me, 0.1);
-		me.TD(me, 1, 0.8, e = makeXonoticCommandButton(_("Servers"), '0 0 0', "menu_cmd directmenu servers", 0));
+		me.TD(me, 1, 0.8, e = makeXonoticCommandButton(_("Servers"), '0 0 0', "menu_cmd servers", 0));
 	me.TR(me);
 		me.TDempty(me, 0.1);
-		me.TD(me, 1, 0.8, e = makeXonoticCommandButton(_("Profile"), '0 0 0', "menu_cmd directmenu profile", 0));
+		me.TD(me, 1, 0.8, e = makeXonoticCommandButton(_("Profile"), '0 0 0', "menu_cmd profile", 0));
 	me.TR(me);
 		me.TDempty(me, 0.1);
-		me.TD(me, 1, 0.8, e = makeXonoticCommandButton(_("Settings"), '0 0 0', "menu_cmd directmenu settings", 0));
+		me.TD(me, 1, 0.8, e = makeXonoticCommandButton(_("Settings"), '0 0 0', "menu_cmd settings", 0));
 	me.TR(me);
 		me.TDempty(me, 0.1);
 		// XONOTIC_UT_TOUCH_GAMEMENU
-		me.TD(me, 1, 0.8, e = makeXonoticCommandButton(_("Touch controls"), '0 0 0', "menu_cmd directmenu touchsettings", 0));
+		me.TD(me, 1, 0.8, e = makeXonoticCommandButton(_("Touch controls"), '0 0 0', "menu_cmd touchsettings", 0));
 	me.TR(me);
 		me.TDempty(me, 0.1);
-		me.TD(me, 1, 0.8, e = makeXonoticCommandButton(_("Input"), '0 0 0', "menu_cmd directmenu inputsettings", 0));
+		me.TD(me, 1, 0.8, e = makeXonoticCommandButton(_("Input"), '0 0 0', "menu_cmd inputsettings", 0));
 	me.TR(me);
 		me.TDempty(me, 0.1);
-		me.TD(me, 1, 0.8, e = makeXonoticCommandButton(_("Guide"), '0 0 0', "menu_cmd directmenu guide", 0));
+		me.TD(me, 1, 0.8, e = makeXonoticCommandButton(_("Guide"), '0 0 0', "menu_cmd guide", 0));
 	me.TR(me);
 		me.TD(me, 1, 1, e = makeXonoticCommandButton(_("Quick menu"), '0 0 0', "quickmenu", COMMANDBUTTON_CLOSE));
 	me.TR(me);
@@ -72,7 +75,7 @@ void XonoticGameMenuDialog_fill(entity me)
 		me.TD(me, 1, 1, e = makeXonoticCommandButton(_("Spectate"), '0 0 0', "spec", COMMANDBUTTON_CLOSE));
 	me.TR(me);
 	me.TR(me);
-		me.TD(me, 1, 1, e = makeXonoticLeaveMatchButton('0 0 0', COMMANDBUTTON_CLOSE));
+		me.TD(me, 1, 1, e = makeXonoticLeaveMatchButton('0 0 0', 0));
 	me.TR(me);
 	me.TR(me);
 		me.TD(me, 1, 1, e = makeXonoticCommandButton(_("Quit"), '1 0 0', "menu_showquitdialog", 0));

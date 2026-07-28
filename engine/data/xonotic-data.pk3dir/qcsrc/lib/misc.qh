@@ -24,10 +24,10 @@
 #ifdef CSQC
 	#define etof(e) num_for_edict(e)
 	#define ftoe(i) entitybyindex(i)
-#elif defined(SVQC)
+#elifdef SVQC
 	#define etof(e) num_for_edict(e)
 	#define ftoe(i) edict_num(i)
-#elif defined(MENUQC)
+#elifdef MENUQC
 	// already defined
 #endif
 

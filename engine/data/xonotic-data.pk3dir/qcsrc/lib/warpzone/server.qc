@@ -168,7 +168,7 @@ float WarpZone_Teleport(entity wz, entity player, float f0, float f1)
 		ts.effects = EF_NODEPTHTEST;
 		ts.angles = wz.warpzone_transform;
 	}
-	#elif defined(CSQC)
+	#elifdef CSQC
 	setproperty(VF_CL_VIEWANGLES, WarpZone_TransformVAngles(wz, getpropertyvec(VF_CL_VIEWANGLES)));
 	//if (checkextension("DP_CSQC_ROTATEMOVES"))
 		//CL_RotateMoves(wz.warpzone_transform);

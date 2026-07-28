@@ -84,6 +84,8 @@ typedef struct scr_touchscreenarea_s
 	float active;
 	float activealpha;
 	float inactivealpha;
+	int style;      /* touchui_style_t: glass / accent / danger / dim / text */
+	float fontscale; /* 1 = default; multiplies textheight when > 0 */
 }
 scr_touchscreenarea_t;
 

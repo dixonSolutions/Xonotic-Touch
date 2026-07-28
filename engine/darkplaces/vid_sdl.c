@@ -23,6 +23,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "image.h"
 #include "utf8lib.h"
+#include "touch_ui.h"
+#include "screen.h"
 
 #ifndef __IPHONEOS__
 #ifdef MACOSX
@@ -621,6 +623,8 @@ static qbool VID_TouchscreenArea(int corner, float px, float py, float pwidth, f
 			// the pics may have alpha too.
 			scr_touchscreenareas[scr_numtouchscreenareas].activealpha = 1.f;
 			scr_touchscreenareas[scr_numtouchscreenareas].inactivealpha = 0.95f;
+			scr_touchscreenareas[scr_numtouchscreenareas].style = 0;
+			scr_touchscreenareas[scr_numtouchscreenareas].fontscale = 1.0f;
 			scr_numtouchscreenareas++;
 		}
 	}
@@ -994,129 +998,50 @@ static void VID_TouchMenuFingerEvent(qbool down, float nx, float ny)
 }
 
 // In-engine console keyboard — one character per finger-down (no hold repeat).
-static void VID_TouchConsoleKeyboard(qbool *buttons)
+/* Shared console / chat sheet driven by touch_ui.c */
+static void VID_TouchTextSheet(touchui_sheet_t kind, qbool *buttons)
 {
-	static const char *rows[] = {
-		"1234567890",
-		"qwertyuiop",
-		"asdfghjkl",
-		"zxcvbnm./-",
-	};
-	enum { CONKB_MAX = 48 };
-	typedef struct conkey_s {
-		float x, y, w, h;
-		char ch;       // 0 = action key
-		keynum_t key;  // K_SPACE / K_BACKSPACE / K_ENTER / 0
-		const char *label;
-	} conkey_t;
-	static conkey_t keys[CONKB_MAX];
-	static char keychars[CONKB_MAX][8];
-	static unsigned int typed_mask; // bit i set => finger slot i already emitted this down
-	static const char *alabel[3] = { "SPACE", "BKSP", "ENTER" };
-	static const keynum_t akey[3] = { K_SPACE, K_BACKSPACE, K_ENTER };
-	float w, h, kb_top, kb_h, row_h, gap, th;
-	float key_w, y, kh, aw, fx, fy;
-	int nkeys, r, c, n, i, k, bi;
-	int hit[MAXFINGERS];
-	conkey_t *ck;
+	static touchui_item_t items[TOUCHUI_MAX_ITEMS];
+	static char item_labels[TOUCHUI_MAX_ITEMS][TOUCHUI_LABEL_LEN];
+	float w = vid_conwidth.value;
+	float h = vid_conheight.value;
+	float fx, fy;
+	int n, i, bi, area_i;
 
-	w = vid_conwidth.value;
-	h = vid_conheight.value;
-	kb_top = h * 0.52f;
-	kb_h = h - kb_top - bound(8.0f, h * 0.02f, 20.0f);
-	row_h = kb_h / 5.0f;
-	gap = bound(4.0f, w * 0.006f, 10.0f);
-	th = bound(16.0f, row_h * 0.42f, 28.0f);
+	n = TouchUI_LayoutSheet(kind, 0, 0, w, h, items, TOUCHUI_MAX_ITEMS);
+	for (i = 0; i < n; i++)
+		dp_strlcpy(item_labels[i], items[i].label, TOUCHUI_LABEL_LEN);
 
-	nkeys = 0;
-	for (r = 0; r < 4; r++)
-	{
-		n = (int)strlen(rows[r]);
-		key_w = (w - gap * (float)(n + 1)) / (float)n;
-		y = kb_top + (float)r * row_h + gap;
-		kh = row_h - gap * 2.0f;
-		for (c = 0; c < n && nkeys < CONKB_MAX; c++)
-		{
-			ck = &keys[nkeys];
-			ck->x = gap + (float)c * (key_w + gap);
-			ck->y = y;
-			ck->w = key_w;
-			ck->h = kh;
-			ck->ch = rows[r][c];
-			ck->key = (keynum_t)0;
-			keychars[nkeys][0] = rows[r][c];
-			keychars[nkeys][1] = 0;
-			ck->label = keychars[nkeys];
-			nkeys++;
-		}
-	}
-	y = kb_top + 4.0f * row_h + gap;
-	kh = row_h - gap * 2.0f;
-	aw = (w - gap * 4.0f) / 3.0f;
-	for (i = 0; i < 3 && nkeys < CONKB_MAX; i++)
-	{
-		ck = &keys[nkeys];
-		ck->x = gap * (float)(i + 1) + aw * (float)i;
-		ck->y = y;
-		ck->w = aw;
-		ck->h = kh;
-		ck->ch = 0;
-		ck->key = akey[i];
-		ck->label = alabel[i];
-		nkeys++;
-	}
-
-	for (i = 0; i < MAXFINGERS; i++)
-		hit[i] = -1;
 	for (i = 0; i < MAXFINGERS; i++)
 	{
 		if (!multitouch[i][0])
+		{
+			TouchUI_ProcessFinger(i, 0, 0, false, items, n, host.realtime);
 			continue;
+		}
 		fx = multitouch[i][1] * w;
 		fy = multitouch[i][2] * h;
-		for (k = 0; k < nkeys; k++)
-		{
-			ck = &keys[k];
-			if (fx >= ck->x && fy >= ck->y && fx < ck->x + ck->w && fy < ck->y + ck->h)
-			{
-				hit[i] = k;
-				break;
-			}
-		}
+		TouchUI_ProcessFinger(i, fx, fy, true, items, n, host.realtime);
 	}
 
-	// One emit per finger-down. Hold and slide do not repeat.
-	for (i = 0; i < MAXFINGERS; i++)
-	{
-		if (!multitouch[i][0])
-		{
-			typed_mask &= ~(1u << i);
-			continue;
-		}
-		if ((typed_mask & (1u << i)) != 0 || hit[i] < 0)
-			continue;
-		ck = &keys[hit[i]];
-		typed_mask |= (1u << i);
-		if (ck->ch)
-		{
-			Key_Event(K_TEXT, (unsigned int)(unsigned char)ck->ch, true);
-			Key_Event(K_TEXT, (unsigned int)(unsigned char)ck->ch, false);
-		}
-		else if ((int)ck->key > 0)
-		{
-			Key_Event(ck->key, 0, true);
-			Key_Event(ck->key, 0, false);
-		}
-	}
-
-	// Visual keys + exclusive finger claim (no key/typedtext — already emitted).
+	/* Visual plates — exclusive so shade absorber below does not steal hits */
 	bi = 20;
-	for (k = 0; k < nkeys && bi < 120; k++, bi++)
+	for (i = 0; i < n && bi < 120; i++, bi++)
 	{
-		ck = &keys[k];
-		VID_TouchscreenArea(0, ck->x, ck->y, ck->w, ck->h,
-			NULL, th, ck->label,
-			NULL, &buttons[bi], (keynum_t)0, NULL, 0, 0, 0, true);
+		if (items[i].w < 1.0f || items[i].h < 1.0f)
+			continue;
+		area_i = scr_numtouchscreenareas;
+		VID_TouchscreenArea(0, items[i].x, items[i].y, items[i].w, items[i].h,
+			NULL, items[i].textheight, item_labels[i],
+			NULL, &buttons[bi], (keynum_t)0, NULL, 0, 0, 0,
+			items[i].action != TOUCHUI_ACT_NONE);
+		if (area_i < scr_numtouchscreenareas)
+		{
+			scr_touchscreenareas[area_i].style = items[i].style;
+			scr_touchscreenareas[area_i].fontscale = 1.0f;
+			scr_touchscreenareas[area_i].activealpha = TouchUI_GetKeyOpacity();
+			scr_touchscreenareas[area_i].inactivealpha = TouchUI_GetKeyOpacity() * 0.95f;
+		}
 	}
 }
 
@@ -1151,24 +1076,27 @@ static void IN_Move_TouchScreen_Xonotic(void)
 	switch(keydest)
 	{
 	case key_console:
-		// Only CLOSE CONSOLE + in-engine keyboard are interactive. Shade absorbs
-		// everything else so HUD / menu / CSQC cannot be reached. Platform OSK
-		// is also requested in IN_Move (GNOME / Ubuntu Touch text-input).
+		// Shared touch text sheet: header + layered keyboard / command palette.
+		// Shade absorber last so keys claim fingers first. Platform OSK is also
+		// requested in IN_Move (GNOME / Ubuntu Touch text-input).
 		{
 			float w = vid_conwidth.value;
 			float h = vid_conheight.value;
-			float bw = bound(240.0f, w * 0.55f, 480.0f);
-			float bh = bound(48.0f, h * 0.07f, 72.0f);
-			float bx = (w - bw) * 0.5f;
-			float by = h * 0.42f;
-			float th = bound(18.0f, bh * 0.42f, 28.0f);
-			// Close first (highest priority), then key caps, then shade absorber.
-			// Do NOT zero buttons[] each frame — that re-fires every held frame.
 			Vid_ClearAllTouchscreenAreas(14);
-			VID_TouchscreenArea(0, bx, by, bw, bh,
-				NULL, th, "CLOSE CONSOLE",
-				NULL, &buttons[14], K_ESCAPE, NULL, 0, 0, 0, true);
-			VID_TouchConsoleKeyboard(buttons);
+			VID_TouchTextSheet(TOUCHUI_SHEET_CONSOLE, buttons);
+			VID_TouchscreenArea(0, 0, 0, w, h,
+				NULL, 0, NULL, NULL, &buttons[13], (keynum_t)0, NULL, 0, 0, 0, true);
+		}
+		if (!VID_TouchscreenHasRealDevices())
+			VID_SyncDesktopMouse();
+		break;
+	case key_message:
+		// Compact chat sheet — same keyboard, quick phrases, lighter use of shade.
+		{
+			float w = vid_conwidth.value;
+			float h = vid_conheight.value;
+			Vid_ClearAllTouchscreenAreas(14);
+			VID_TouchTextSheet(TOUCHUI_SHEET_CHAT, buttons);
 			VID_TouchscreenArea(0, 0, 0, w, h,
 				NULL, 0, NULL, NULL, &buttons[13], (keynum_t)0, NULL, 0, 0, 0, true);
 		}
@@ -1301,9 +1229,12 @@ void IN_Move( void )
 			case key_message:
 				// Pulse so the compositor actually presents the OSK on enter.
 				VID_PulseKeyboard();
+				TouchUI_ResetInputState();
 				break;
 			default:
 				VID_ShowKeyboard(!!vid_touchscreen_showkeyboard.integer);
+				if (oldkeydest == key_console || oldkeydest == key_message)
+					TouchUI_ResetInputState();
 				break;
 		}
 	}

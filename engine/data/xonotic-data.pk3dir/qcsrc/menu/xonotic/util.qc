@@ -535,23 +535,7 @@ float preMenuInit()
 
 string campaign_name_previous;
 float campaign_won_previous;
-
-// Hardcoded top-left "◀ RESUME" overlay removed — stock GameMenu Resume + PAUSE→Escape
-// cover that. Kept stubs so menu.qc hit-test call sites stay valid.
-bool Menu_TouchResumeBarEnabled(void)
-{
-	return false;
-}
-
-bool Menu_TouchResumeBarHit(vector p)
-{
-	return false;
-}
-
-void postMenuDraw()
-{
-}
-
+void postMenuDraw() {}
 void DialogOpenButton_Click_withCoords(entity button, entity tab, vector theOrigin, vector theSize);
 .entity winnerDialog;
 void preMenuDraw()

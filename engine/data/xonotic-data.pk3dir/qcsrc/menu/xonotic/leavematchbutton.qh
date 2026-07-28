@@ -1,6 +1,14 @@
 #pragma once
 
 #include "commandbutton.qh"
+
+// Shared leave path: tear down listen/remote match and land on Welcome.
+// Do NOT pair with COMMANDBUTTON_CLOSE — RootDialog_close → m_goto("") hides the
+// menu while still connected and drops the player straight back into the match
+// (especially painful on touch). Open Welcome explicitly; m_draw also handles
+// disconnect → Welcome as a fallback (see MIN_DISCONNECTION_TIME).
+#define LEAVEMATCH_CMD "disconnect; g_campaign 0; menu_cmd sync; menu_cmd directmenu Welcome RESET"
+
 CLASS(XonoticLeaveMatchButton, XonoticCommandButton)
 	METHOD(XonoticLeaveMatchButton, draw, void(entity));
 	METHOD(XonoticLeaveMatchButton, configureXonoticLeaveMatchButton, void(entity, vector, int));

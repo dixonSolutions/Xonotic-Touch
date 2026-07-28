@@ -24,8 +24,10 @@ Tracked size is ~60–80 MB (source + fonts). Textures/models/sound (~3 GB) stay
 
 ## Updates from upstream
 
+See [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md) for the overlay workflow and last synced SHAs.
+
 ```bash
-./scripts/sync-upstream-fork.sh --init-git   # once, if engine/ has no nested .git
+./scripts/sync-upstream-fork.sh --init-git --allow-unrelated   # optional nested-git path
 FORK_DARKPLACES=… FORK_DATA=… ./scripts/sync-upstream-fork.sh
 ./scripts/prepare-engine-for-git.sh --yes    # before monorepo commit
 ```

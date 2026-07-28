@@ -40,6 +40,11 @@ if [ -d "$ROOT/touch/profiles" ]; then
     cp -a "$ROOT/touch/profiles/." "$DEST/touch/profiles/"
 fi
 
+if [ -f "$ROOT/touch/console_palette.txt" ]; then
+    mkdir -p "$DEST/touch"
+    install -m 644 "$ROOT/touch/console_palette.txt" "$DEST/touch/console_palette.txt"
+fi
+
 if [ -d "$ROOT/touch/gfx" ]; then
     mkdir -p "$DEST/xonotic-data.pk3dir/gfx"
     cp -a "$ROOT/touch/gfx/." "$DEST/xonotic-data.pk3dir/gfx/"

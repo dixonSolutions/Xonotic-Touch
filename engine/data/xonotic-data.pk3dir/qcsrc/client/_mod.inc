@@ -4,11 +4,6 @@
 #include <client/csqcmodel_hooks.qc>
 #include <client/draw.qc>
 #include <client/main.qc>
-#include <client/mapvoting.qc>
-#include <client/player_skeleton.qc>
-#include <client/shownames.qc>
-#include <client/spawnpoints.qc>
-#include <client/teamradar.qc>
 #include <client/touch_config.qc>
 #include <client/touch_console.qc>
 #include <client/touch_customize.qc>
@@ -21,6 +16,10 @@
 #include <client/touch_look.qc>
 #include <client/touch_pause.qc>
 #include <client/touch_weapons.qc>
+#include <client/player_skeleton.qc>
+#include <client/shownames.qc>
+#include <client/spawnpoints.qc>
+#include <client/teamradar.qc>
 #include <client/view.qc>
 
 #include <client/command/_mod.inc>
