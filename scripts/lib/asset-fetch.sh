@@ -192,17 +192,28 @@ xonotic_download_autobuild_zip() {
     local zip_name="$2"
     local label="$3"
 
-    if ! command -v curl >/dev/null 2>&1; then
-        echo "xonotic: curl required to download game assets" >&2
-        return 1
-    fi
-
     if [ -n "$label" ]; then
         xonotic_progress_write running "$label" "Downloading ${zip_name}..."
     fi
 
-    curl -fL --user "${XONOTIC_AUTOBUILD_USER}:${XONOTIC_AUTOBUILD_PASS}" \
-        -o "$zip_path" "${XONOTIC_AUTOBUILD_URL}/${zip_name}"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fL --user "${XONOTIC_AUTOBUILD_USER}:${XONOTIC_AUTOBUILD_PASS}" \
+            -o "$zip_path" "${XONOTIC_AUTOBUILD_URL}/${zip_name}"
+        return
+    fi
+
+    # Ubuntu Touch clicks ship busybox wget instead of curl (no --user support,
+    # so the credentials go into the URL userinfo).
+    if command -v wget >/dev/null 2>&1; then
+        local scheme="${XONOTIC_AUTOBUILD_URL%%://*}"
+        local host_path="${XONOTIC_AUTOBUILD_URL#*://}"
+        wget -O "$zip_path" \
+            "${scheme}://${XONOTIC_AUTOBUILD_USER}:${XONOTIC_AUTOBUILD_PASS}@${host_path}/${zip_name}"
+        return
+    fi
+
+    echo "xonotic: curl or wget required to download game assets" >&2
+    return 1
 }
 
 xonotic_extract_autobuild_pk3() {

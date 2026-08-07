@@ -1,13 +1,68 @@
 #!/bin/sh
 # Launch wrapper for Xonotic Touch (Flatpak, Click, local packages).
+#
+# On Ubuntu Touch this script runs inside AppArmor click confinement, which
+# denies exec of host binaries outside the click tree (see
+# docs/UBUNTU_TOUCH_LAUNCH.md). Everything above the "tool bootstrap" section
+# below must therefore use shell builtins only — no dirname, no coreutils.
 set -e
 
-APP_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+xonotic_log() {
+    echo "xonotic-touch: $*" >&2
+}
+
+# `cd` + $PWD instead of `pwd`/`realpath`: builtins always work when confined.
+xonotic_resolve_dir() {
+    CDPATH='' cd -P -- "$1" 2>/dev/null && echo "$PWD"
+}
+
+xonotic_parent_dir() {
+    case "$1" in
+        */*) echo "${1%/*}" ;;
+        *) echo "." ;;
+    esac
+}
+
+# The desktop hook launches us as a relative path (Exec=bin/start.sh), so $0
+# alone is not enough; APP_DIR is exported by lomiri-app-launch on the device.
+APP_ROOT=""
+for xonotic_root_candidate in \
+    "${XONOTIC_TOUCH_APP_ROOT:-}" \
+    "$(xonotic_parent_dir "$0")/.." \
+    "${APP_DIR:-}"; do
+    [ -n "$xonotic_root_candidate" ] || continue
+    xonotic_root_resolved="$(xonotic_resolve_dir "$xonotic_root_candidate")" || continue
+    if [ -n "$xonotic_root_resolved" ] && [ -x "$xonotic_root_resolved/bin/xonotic" ]; then
+        APP_ROOT="$xonotic_root_resolved"
+        break
+    fi
+done
+
+if [ -z "$APP_ROOT" ]; then
+    xonotic_log "engine binary not found (script=$0 APP_DIR=${APP_DIR:-unset})"
+    exit 1
+fi
+
 export XONOTIC_TOUCH_APP_ROOT="$APP_ROOT"
+
+# The asset helpers need bash (arrays, process substitution). Prefer it when the
+# confinement allows exec'ing it, but keep running under /bin/sh otherwise.
+if [ -z "${BASH_VERSION:-}" ] && [ "${XONOTIC_TOUCH_NO_BASH:-0}" != "1" ]; then
+    for xonotic_bash in "$APP_ROOT/bin/bash" /bin/bash /usr/bin/bash; do
+        [ -x "$xonotic_bash" ] || continue
+        # Probe first: a failing `exec` would kill this shell.
+        if "$xonotic_bash" -c ':' 2>/dev/null; then
+            exec "$xonotic_bash" "$0" "$@"
+        fi
+    done
+    xonotic_log "bash unavailable — asset discovery and download are disabled"
+fi
+
 BUNDLE_DATA="${APP_ROOT}/data"
 BIN="${APP_ROOT}/bin/xonotic"
 SCREEN_CALC="${APP_ROOT}/share/xonotic/screen-calc.sh"
 FETCH_ASSETS="${APP_ROOT}/share/xonotic/fetch-assets-runtime.sh"
+FETCH_ASSETS_POSIX="${APP_ROOT}/share/xonotic/fetch-assets-posix.sh"
 SYNC_BUNDLE="${APP_ROOT}/share/xonotic/sync-bundle-data.sh"
 # Always use the host xdg-data path. Flatpak sets XDG_DATA_HOME to
 # ~/.var/app/<app>/data, which would fork assets/config away from the
@@ -25,18 +80,43 @@ USER_TOUCH_LAYOUT="${XONOTIC_TOUCH_LAYOUT:-${HOME}/.xonotic/data/touch.layout.cf
 USER_TOUCH_LAYOUT_LEGACY="${HOME}/.xonotic/touch.layout.cfg"
 
 if [ ! -x "$BIN" ]; then
-    echo "xonotic-touch: engine binary not found at $BIN" >&2
+    xonotic_log "engine binary not found at $BIN"
     exit 1
 fi
 
-mkdir -p "$USER_DATA"
+# --- tool bootstrap -----------------------------------------------------------
+# Confined click apps may not exec host coreutils, so the package ships busybox
+# applets in bin/. Host tools stay first on PATH where they actually run, so
+# desktop and Flatpak installs keep using GNU behaviour.
+xonotic_host_tools_usable() {
+    mkdir -p "$USER_DATA" 2>/dev/null || return 1
+    echo x | grep -q x 2>/dev/null || return 1
+    sed '' /dev/null >/dev/null 2>&1 || return 1
+    awk 'BEGIN { exit 0 }' >/dev/null 2>&1 || return 1
+    cp /dev/null "$USER_DATA/.tool-probe" 2>/dev/null || return 1
+    rm -f "$USER_DATA/.tool-probe" 2>/dev/null || return 1
+    return 0
+}
+
+if xonotic_host_tools_usable; then
+    export PATH="${PATH}:${APP_ROOT}/bin"
+else
+    export PATH="${APP_ROOT}/bin:${PATH}"
+    if xonotic_host_tools_usable; then
+        xonotic_log "using bundled busybox utilities (host binaries are confined)"
+    else
+        xonotic_log "no usable shell utilities — data sync and downloads will be skipped"
+    fi
+fi
+
+mkdir -p "$USER_DATA" 2>/dev/null || xonotic_log "cannot create $USER_DATA"
 
 sync_bundle_data() {
     if [ ! -x "$SYNC_BUNDLE" ]; then
         return 0
     fi
     "$SYNC_BUNDLE" "$BUNDLE_DATA" "$USER_DATA" \
-        || echo "xonotic-touch: bundle sync failed" >&2
+        || xonotic_log "bundle sync failed"
 }
 
 sync_bundle_data
@@ -44,10 +124,13 @@ sync_bundle_data
 ASSET_FETCH_ACTIVE=0
 TOUCH_ASSETS_READY=0
 PROGRESS_FILE="$USER_DATA/.asset-fetch-progress"
-ASSET_FETCH_LIB="$(dirname "$FETCH_ASSETS")/asset-fetch.sh"
-ASSET_DISCOVER_LIB="$(dirname "$FETCH_ASSETS")/asset-discover.sh"
+ASSET_FETCH_LIB="${FETCH_ASSETS%/*}/asset-fetch.sh"
+ASSET_DISCOVER_LIB="${FETCH_ASSETS%/*}/asset-discover.sh"
 
-if [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" != "1" ] && [ -f "$ASSET_FETCH_LIB" ]; then
+# The asset libraries are bash-only; sourcing them from dash is a syntax error.
+# Confined clicks usually cannot exec host bash, so fall back to the POSIX
+# autobuild downloader (busybox wget/unzip).
+if [ -n "${BASH_VERSION:-}" ] && [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" != "1" ] && [ -f "$ASSET_FETCH_LIB" ]; then
 	# shellcheck source=/dev/null
 	. "$ASSET_FETCH_LIB"
 	if [ -f "$ASSET_DISCOVER_LIB" ]; then
@@ -70,6 +153,14 @@ if [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" != "1" ] && [ -f "$ASSET_FETCH_LIB" ]; the
 	fi
 elif [ -f "$USER_DATA/.assets-ready" ]; then
 	TOUCH_ASSETS_READY=1
+elif [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" != "1" ] && [ -x "$FETCH_ASSETS_POSIX" ]; then
+	ASSET_FETCH_ACTIVE=1
+	export XONOTIC_ASSET_FETCH_PROGRESS="$PROGRESS_FILE"
+	rm -f "$PROGRESS_FILE"
+	(
+		"$FETCH_ASSETS_POSIX" "$USER_DATA"
+		sync_bundle_data
+	) &
 fi
 
 # Gameplay stays blocked in-menu until assets are ready (asset-fetch dialog).
@@ -90,7 +181,7 @@ if [ "$IS_DESKTOP" = "1" ]; then
     XONOTIC_TOUCH_XDPI="${XONOTIC_TOUCH_XDPI:-429}"
     XONOTIC_TOUCH_YDPI="${XONOTIC_TOUCH_YDPI:-429}"
     XONOTIC_TOUCH_DENSITY="${XONOTIC_TOUCH_DENSITY:-2.625}"
-    cat > "$LAYOUT_CFG" <<EOF
+    cat > "$LAYOUT_CFG" <<EOF || xonotic_log "cannot write $LAYOUT_CFG"
 // Generated by packaging/start.sh (desktop portrait test window)
 vid_width ${XONOTIC_VID_WIDTH}
 vid_height ${XONOTIC_VID_HEIGHT}
@@ -118,15 +209,15 @@ elif [ -f "$SCREEN_CALC" ]; then
     . "$SCREEN_CALC"
     # Fanless default unless explicitly overridden.
     XONOTIC_RENDER_MAX_EDGE="${XONOTIC_RENDER_MAX_EDGE:-960}"
-    xonotic_screen_calc "$LAYOUT_CFG"
+    xonotic_screen_calc "$LAYOUT_CFG" || xonotic_log "screen calc failed — using defaults"
 else
-    echo "xonotic-touch: screen-calc missing at $SCREEN_CALC" >&2
+    xonotic_log "screen-calc missing at $SCREEN_CALC"
     XONOTIC_VID_WIDTH="${XONOTIC_DEFAULT_WIDTH:-1920}"
     XONOTIC_VID_HEIGHT="${XONOTIC_DEFAULT_HEIGHT:-1080}"
     XONOTIC_TOUCH_XDPI="${XONOTIC_TOUCH_XDPI:-320}"
     XONOTIC_TOUCH_YDPI="${XONOTIC_TOUCH_YDPI:-320}"
     XONOTIC_TOUCH_DENSITY="${XONOTIC_TOUCH_DENSITY:-2.0}"
-    cat > "$LAYOUT_CFG" <<EOF
+    cat > "$LAYOUT_CFG" <<EOF || xonotic_log "cannot write $LAYOUT_CFG"
 // Fallback layout (screen-calc.sh not installed)
 vid_width ${XONOTIC_VID_WIDTH}
 vid_height ${XONOTIC_VID_HEIGHT}
@@ -136,6 +227,13 @@ vid_touchscreen_density ${XONOTIC_TOUCH_DENSITY}
 EOF
 fi
 
+# A partial screen probe must never hand empty cvar values to the engine.
+XONOTIC_VID_WIDTH="${XONOTIC_VID_WIDTH:-${XONOTIC_DEFAULT_WIDTH:-1920}}"
+XONOTIC_VID_HEIGHT="${XONOTIC_VID_HEIGHT:-${XONOTIC_DEFAULT_HEIGHT:-1080}}"
+XONOTIC_TOUCH_XDPI="${XONOTIC_TOUCH_XDPI:-320}"
+XONOTIC_TOUCH_YDPI="${XONOTIC_TOUCH_YDPI:-320}"
+XONOTIC_TOUCH_DENSITY="${XONOTIC_TOUCH_DENSITY:-2.0}"
+
 if [ -n "${LD_LIBRARY_PATH:-}" ]; then
     export LD_LIBRARY_PATH="${APP_ROOT}/lib:${LD_LIBRARY_PATH}"
 else
@@ -144,7 +242,7 @@ fi
 
 XONOTIC_LOCK="${HOME}/.xonotic/lock"
 if [ -f "$XONOTIC_LOCK" ]; then
-    rm -f "$XONOTIC_LOCK"
+    rm -f "$XONOTIC_LOCK" 2>/dev/null || true
 fi
 
 if [ "$IS_DESKTOP" != "1" ]; then
@@ -152,7 +250,7 @@ if [ "$IS_DESKTOP" != "1" ]; then
 fi
 
 STARTUP_CFG="${DATA_DIR}/touch/startup.cfg"
-mkdir -p "${DATA_DIR}/touch/profiles"
+mkdir -p "${DATA_DIR}/touch/profiles" 2>/dev/null || true
 {
     echo "// Generated by packaging/start.sh"
     # Kill leftover QC statement tracing / developer spam (was causing huge lag).
@@ -174,9 +272,10 @@ mkdir -p "${DATA_DIR}/touch/profiles"
     elif [ -f "$USER_TOUCH_LAYOUT_LEGACY" ]; then
         echo "exec ${USER_TOUCH_LAYOUT_LEGACY}"
     fi
-} > "$STARTUP_CFG"
+} > "$STARTUP_CFG" || xonotic_log "cannot write $STARTUP_CFG"
 
-cd "$USER_BASE"
+# The engine resolves -xonotic gamedirs relative to the cwd.
+cd "$USER_BASE" 2>/dev/null || xonotic_log "cannot enter $USER_BASE — engine may not find game data"
 
 # Re-exec user config AFTER xonotic.cfg: the default chain (xonotic-client.cfg)
 # sets `_cl_name ""` which would wipe the archived player name every launch and
@@ -193,8 +292,7 @@ exec "$BIN" -xonotic \
     +set _touch_assets_ready "$TOUCH_ASSETS_READY" \
     +vid_fullscreen "$FULLSCREEN" \
     +vid_touchscreen 1 \
-    +vid_conwidthauto 0 \
-    +vid_conwidth "$XONOTIC_VID_WIDTH" \
+    +vid_conwidthauto 1 \
     +vid_conheight "$XONOTIC_VID_HEIGHT" \
     +vid_width "$XONOTIC_VID_WIDTH" \
     +vid_height "$XONOTIC_VID_HEIGHT" \

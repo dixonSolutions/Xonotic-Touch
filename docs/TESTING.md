@@ -32,6 +32,20 @@ Quick checks:
 | Returning user (name + `touch_setup_done`) | No profile/touch dialogs |
 | Menu text field tap | System keyboard (GNOME: Accessibility → Screen Keyboard) |
 
+## Ubuntu Touch confinement
+
+Click apps cannot exec host binaries, so the launcher and its helpers must work
+with the bundled busybox applets only. Run this before shipping any change to
+`packaging/start.sh`, `touch/screen-calc.sh`, `scripts/sync-bundle-data.sh`, or
+the click staging scripts:
+
+```bash
+./scripts/test-confined-launch.sh
+```
+
+It launches a fake click tree with `PATH=/nonexistent`, both with and without
+bash. See [UBUNTU_TOUCH_LAUNCH.md](UBUNTU_TOUCH_LAUNCH.md) for the full contract.
+
 ## Native Linux (dev only)
 
 For engine work on a desktop without Flatpak — mouse emulates touch when `vid_touchscreen=1`:

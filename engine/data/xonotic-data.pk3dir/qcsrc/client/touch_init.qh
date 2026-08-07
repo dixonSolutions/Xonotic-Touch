@@ -1,6 +1,7 @@
 #pragma once
 
 void Touch_Init(void);
+void Touch_EnforceSquare2D(void);
 void Touch_LoadStartupConfigs(void);
 void Touch_ApplySensitivity(void);
 void Touch_ApplyTouchWeaponsStrip(void);

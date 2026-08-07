@@ -19,6 +19,7 @@ Native C + QuakeC touch port for Linux touch tablets and phones. **Slim Flatpak 
 | Touch presets | `touch/profiles/*.cfg` |
 | Screen layout | `touch/screen-calc.sh` |
 | Launcher | `packaging/start.sh` — sync bundle, background asset fetch, launch |
+| Click confinement rules | [UBUNTU_TOUCH_LAUNCH.md](UBUNTU_TOUCH_LAUNCH.md) — bundled busybox, POSIX launch path |
 | Runtime assets | `scripts/fetch-assets-runtime.sh`, `scripts/lib/asset-fetch.sh` |
 | First-run UX | In-game wizard chain + download progress — [SETUP.md](SETUP.md) |
 | Flatpak | `flatpak/io.github.dixonSolutions.XonoticTouch.yml` |
@@ -70,3 +71,4 @@ Public Flatpak remote: GitHub Pages OSTree repo with retained commit history. Cl
 - [SCREEN.md](SCREEN.md)
 - [CONTROLS.md](CONTROLS.md)
 - [SETUP.md](SETUP.md) — first-run wizard, asset progress, touch menus, OSK
+- [UBUNTU_TOUCH_LAUNCH.md](UBUNTU_TOUCH_LAUNCH.md) — AppArmor click confinement contract

@@ -133,7 +133,23 @@ void Touch_Init(void)
 	registercommand("touch_pause");
 	registercommand("touch_pause_exit");
 
+	Touch_EnforceSquare2D();
 	Touch_LoadStartupConfigs();
+}
+
+void Touch_EnforceSquare2D(void)
+{
+	if (!cvar("vid_touchscreen"))
+		return;
+	// Touch geometry assumes 2D space has the same aspect as the display: a
+	// circle must be round and a hit box must sit under what you can see.
+	// The launcher can only guess the panel size (gdctl and /sys are outside
+	// the Flatpak sandbox) and Wayland grants whatever fullscreen surface it
+	// likes, so a pinned vid_conwidth ends up describing the wrong screen —
+	// a 16:9 console on this 3:2 tablet stretched every control. With
+	// vid_conwidthauto the engine derives conwidth from the real surface each
+	// frame, so 2D stays square no matter what the launcher guessed.
+	cvar_set("vid_conwidthauto", "1");
 }
 
 void Touch_ApplyTouchWeaponsStrip(void)

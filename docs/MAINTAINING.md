@@ -98,6 +98,10 @@ XONOTIC_SCREEN_WIDTH=1224 XONOTIC_SCREEN_HEIGHT=2700 ./scripts/test-screen-calc.
 
 See [SCREEN.md](SCREEN.md). QuakeC HUD should use `vid_width` / `vid_height` cvars, not hardcoded pixels.
 
+Screen detection runs inside click confinement, so it may only use bundled
+busybox applets. Verify with `./scripts/test-confined-launch.sh`
+([UBUNTU_TOUCH_LAUNCH.md](UBUNTU_TOUCH_LAUNCH.md)).
+
 ## Touch controls
 
 Edit **`touch/profiles/*.cfg`** for preset bundles (no compile). Full cvar schema and CSQC checklist: [CONTROLS.md](CONTROLS.md).

@@ -96,12 +96,13 @@ install -m 755 "$BIN" "$DEST/bin/xonotic"
 install -m 755 "$ROOT/packaging/start.sh" "$DEST/bin/start.sh"
 install -m 755 "$ROOT/touch/screen-calc.sh" "$DEST/share/xonotic/screen-calc.sh"
 install -m 755 "$ROOT/scripts/fetch-assets-runtime.sh" "$DEST/share/xonotic/fetch-assets-runtime.sh"
+install -m 755 "$ROOT/scripts/fetch-assets-posix.sh" "$DEST/share/xonotic/fetch-assets-posix.sh"
 install -m 755 "$ROOT/scripts/sync-bundle-data.sh" "$DEST/share/xonotic/sync-bundle-data.sh"
 install -m 644 "$ROOT/scripts/lib/asset-fetch.sh" "$DEST/share/xonotic/asset-fetch.sh"
 install -m 644 "$ROOT/scripts/lib/asset-discover.sh" "$DEST/share/xonotic/asset-discover.sh"
 
 bash "$ROOT/scripts/stage-slim-data.sh" "$DEST/data"
-bash "$ROOT/scripts/stage-click-utils.sh" "$DEST"
+CLICK_ARCH="$CLICK_ARCH" bash "$ROOT/scripts/stage-click-utils.sh" "$DEST"
 copy_shared_libs "$DEST/bin/xonotic" "$DEST/lib"
 
 # Official Xonotic icon — OpenStore extracts this from the click on revision upload.
