@@ -277,8 +277,16 @@ void Touch_Shape_RRectRing(vector center, vector half, float radius, float thick
 // Text
 // ---------------------------------------------------------------------------
 
+// The font's own metric, not a per-character estimate. The estimate assumed every
+// glyph took the same advance, so a right-aligned "100" and a right-aligned "0"
+// landed on columns a few pixels apart — visible once three readouts were stacked
+// in one group. The constant survives only as a fallback for the frames before the
+// font is resident, where the builtin reports 0.
 float Touch_Shape_LabelWidth(float fontsize, string label)
 {
+	float w = stringwidth_builtin(label, false, '1 1 0' * fontsize);
+	if (w > 0)
+		return w;
 	return strlen(label) * fontsize * TOUCH_FONT_ADVANCE;
 }
 

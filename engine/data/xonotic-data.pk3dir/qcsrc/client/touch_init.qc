@@ -134,20 +134,20 @@ void Touch_DefineCvars(void)
 	// had no vitals readout at all.
 	Touch_RegisterCvar("touch_mobile_hud", "1");
 	// Top-left: first place the eye lands, never under a thumb, and outside both
-	// the move zone (needs y > 0.42) and the look zone (starts at x 0.32).
+	// the move zone (needs y > 0.42) and the look zone (starts at x 0.32). The
+	// anchor is the group's centre, so y has to clear half its height: three rows
+	// are 0.19 of the screen, and at the old two-row 0.075 the health row hung off
+	// the top edge.
 	Touch_RegisterCvar("touch_hud_x", "0.150");
-	Touch_RegisterCvar("touch_hud_y", "0.075");
+	Touch_RegisterCvar("touch_hud_y", "0.115");
 	Touch_RegisterCvar("touch_hud_maxhealth", "100");
 	Touch_RegisterCvar("touch_hud_maxarmor", "100");
-	// Ammo belongs to FIRE, so it sits in the gap between FIRE and HOP on the
-	// same centre line — below the weapons strip, which ends at y 0.76.
-	Touch_RegisterCvar("touch_ammo_x", "0.855");
-	Touch_RegisterCvar("touch_ammo_y", "0.795");
-	// Right edge, mid-height: clear of the scores above and FIRE below, and on the
-	// same side as the hand that switches weapons. It is a readout, so sitting
-	// inside the look zone costs nothing.
+	// Right edge, upper-middle: on the same side as the hand that switches
+	// weapons, and centred high enough that a full nine-weapon inventory — 0.43 of
+	// the screen height — still stops short of FIRE. At 0.430 it did not: the
+	// bottom of a full strip landed on the FIRE ring.
 	Touch_RegisterCvar("touch_weplist_x", "0.962");
-	Touch_RegisterCvar("touch_weplist_y", "0.430");
+	Touch_RegisterCvar("touch_weplist_y", "0.360");
 	Touch_RegisterCvar("touch_weplist_visible", "1");
 	Touch_RegisterCvar("touch_move_zone_w", "0.32");
 	Touch_RegisterCvar("touch_look_zone_left", "0.32");
@@ -365,8 +365,11 @@ void Touch_ApplyNotifyPanel(void)
 	if (!cvar("vid_touchscreen"))
 		return;
 	cvar_set("hud_panel_notify", "1");
-	localcmd("seta hud_panel_notify_pos \"0.620 0.140\"\n");
-	localcmd("seta hud_panel_notify_size \"0.360 0.190\"\n");
+	// Stops at x 0.90, short of the weapons strip's column: a full inventory
+	// reaches up into this band, and a frag line running under the icons would
+	// have made both unreadable.
+	localcmd("seta hud_panel_notify_pos \"0.520 0.140\"\n");
+	localcmd("seta hud_panel_notify_size \"0.380 0.190\"\n");
 	localcmd("seta hud_panel_notify_bg 0\n");
 	// Newest at the top, next to where the eye already goes for the scores.
 	cvar_set("hud_panel_notify_flip", "1");
@@ -386,10 +389,12 @@ void Touch_ApplyChatFeedSettings(void)
 	if (!cvar("vid_touchscreen"))
 		return;
 	cvar_set("hud_panel_chat", "1");
-	// Left band above the move stick: outside the look zone (x < 0.32) and above
-	// the move zone (y < 0.42), so the feed sits in genuinely spare screen.
-	localcmd("seta hud_panel_chat_pos \"0.020 0.150\"\n");
-	localcmd("seta hud_panel_chat_size \"0.290 0.250\"\n");
+	// Left band between the vitals and the move stick: outside the look zone
+	// (x < 0.32) and above the move zone (y < 0.42), so the feed sits in genuinely
+	// spare screen. It starts at 0.23 because the vitals group now ends at 0.21 —
+	// at 0.15 the first chat line ran through the ammo row.
+	localcmd("seta hud_panel_chat_pos \"0.020 0.230\"\n");
+	localcmd("seta hud_panel_chat_size \"0.290 0.190\"\n");
 	localcmd("seta hud_panel_chat_bg 0\n");
 	// 14 console units is 4.7 mm on the 13" target, against the 8-unit default's
 	// 2.7 mm. con_chat (line count) is derived from this by the stock panel.

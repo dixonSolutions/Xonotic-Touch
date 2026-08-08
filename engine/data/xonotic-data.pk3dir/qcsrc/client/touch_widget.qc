@@ -11,8 +11,12 @@
 float Touch_Widget_LabelSize(vector half, string label)
 {
 	float by_height = half.y * TOUCH_FONT_FIT_H;
-	float chars = max(1, strlen(label));
-	float by_width = (half.x * 2 * TOUCH_FONT_FIT_W) / (chars * TOUCH_FONT_ADVANCE);
+	// Text width scales linearly with font size, so one measurement at unit size
+	// converts the available width straight into a font size. Measured rather than
+	// counted, because "MENU" and "1111" have the same length and not the same
+	// width, and it was the widest label in a set that used to overflow.
+	float unit = max(0.01, Touch_Shape_LabelWidth(1, label));
+	float by_width = (half.x * 2 * TOUCH_FONT_FIT_W) / unit;
 	return bound(TOUCH_FONT_MIN, min(by_height, by_width), TOUCH_FONT_MAX);
 }
 

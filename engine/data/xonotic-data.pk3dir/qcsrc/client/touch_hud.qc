@@ -93,11 +93,17 @@ float Touch_Hud_U(float authored)
 	return authored * Touch_Hud_Scale();
 }
 
+// Three rows: health, armour, ammo. Ammo used to be its own free-floating anchor
+// out by FIRE, which put it in the strip of screen the right thumb crosses on its
+// way between FIRE and HOP — the number was both under the thumb and, having no
+// backing, unreadable whenever a bright wall passed behind it. It is the same kind
+// of number as the other two, so it reads as one group with them (Similarity) in
+// one place the eye already visits.
 vector Touch_Hud_StatusSize(void)
 {
 	float w = Touch_Hud_U(TOUCH_HUD_ICON + TOUCH_SPACE_1 + TOUCH_HUD_NUM_SLOT
 		+ TOUCH_SPACE_2 + TOUCH_HUD_BAR_W);
-	float h = Touch_Hud_U(TOUCH_HUD_ROW_H * 2 + TOUCH_HUD_ROW_GAP);
+	float h = Touch_Hud_U(TOUCH_HUD_ROW_H * 3 + TOUCH_HUD_ROW_GAP * 2);
 	return w * eX + h * eY;
 }
 
@@ -105,11 +111,6 @@ vector Touch_Hud_StatusSize(void)
 vector Touch_Hud_StatusCenter(void)
 {
 	return Touch_WidgetCenter(autocvar_touch_hud_x, autocvar_touch_hud_y, 0);
-}
-
-vector Touch_Hud_AmmoCenter(void)
-{
-	return Touch_WidgetCenter(autocvar_touch_ammo_x, autocvar_touch_ammo_y, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +151,8 @@ void Touch_Hud_DrawBar(vector left_mid, float width, float height, float frac,
 	else if (frac > 0.001)
 		Touch_Shape_Disc(left_mid + eX * half.y, half.y, fill_color, alpha * 0.92);
 }
+
+void Touch_Hud_DrawAmmoRow(vector origin, float alpha);
 
 // icon + right-aligned value + bar, on one baseline. Right-aligning the value
 // means the bar never shifts as the number goes from 100 to 99.
@@ -197,6 +200,14 @@ void Touch_Hud_DrawStatus(float alpha)
 	int health = max(0, STAT(HEALTH));
 	int armor = max(0, STAT(ARMOR));
 
+	// No plate behind the rows, unlike the weapons strip. One was tried at surface
+	// alpha and measured: it darkened a dark background from 57 to 30 and a sunlit
+	// wall from 255 to about 175, so it neither disappeared nor guaranteed
+	// contrast — it only smudged a corner of the scene for nine draw calls. The
+	// contrast is carried by the labels' own outline, which is why the numbers are
+	// legible over bright geometry here. The strip keeps its plate because a plate
+	// is what makes nine loose icons read as one inventory; three aligned rows with
+	// bars already read as one readout.
 	Touch_Hud_DrawStatRow(origin, "health", "HP", health,
 		max(100, autocvar_touch_hud_maxhealth), alpha);
 	// Armour is dimmed rather than hidden at zero: a row that disappears would
@@ -205,13 +216,14 @@ void Touch_Hud_DrawStatus(float alpha)
 	// "no armour readout" looked the same.
 	Touch_Hud_DrawStatRow(origin + eY * row_pitch, "armor", "AR", armor,
 		max(100, autocvar_touch_hud_maxarmor), armor > 0 ? alpha : alpha * 0.7);
+	Touch_Hud_DrawAmmoRow(origin + eY * row_pitch * 2, alpha);
 }
 
 // ---------------------------------------------------------------------------
 // Ammo
 // ---------------------------------------------------------------------------
 
-void Touch_Hud_DrawAmmo(float alpha)
+void Touch_Hud_DrawAmmoRow(vector origin, float alpha)
 {
 	entity wepent = viewmodels[0];
 	Weapon wep = wepent.switchweapon;
@@ -229,7 +241,7 @@ void Touch_Hud_DrawAmmo(float alpha)
 	if (infinite)
 		text = "\xE2\x88\x9E"; // U+221E
 	else if (clipped)
-		text = strcat(ftos(clip), " / ", ftos(reserve));
+		text = ftos(clip);
 	else
 		text = ftos(reserve);
 
@@ -249,41 +261,36 @@ void Touch_Hud_DrawAmmo(float alpha)
 			col = TOUCH_C_WARNING;
 	}
 
-	// Laid out exactly like a vitals row — icon in a fixed slot, then the value
-	// right-aligned in a fixed slot — for two reasons. It is the same kind of
-	// readout, so it should have the same shape; and the number is anchored
-	// instead of centred, so going 100 → 99 → 9 does not walk the whole group
-	// sideways. Centring it is what made a glanceable readout move under the eye.
+	// Same three columns as a vitals row — icon slot, right-aligned number, then
+	// the wide slot the bars occupy — so the three numbers form one column and
+	// none of them moves as its value changes digits.
+	float icon_sz = Touch_Hud_U(TOUCH_HUD_ICON);
+	float num_slot = Touch_Hud_U(TOUCH_HUD_NUM_SLOT);
 	float fs = Touch_Hud_U(TOUCH_FONT_READOUT);
-	float gap = Touch_Hud_U(TOUCH_SPACE_1);
-	// 1.3x the vitals icon box: the ammo pics carry more internal padding, so at
-	// the same box size they render visibly smaller than the health cross.
-	float icon_h = Touch_Hud_U(TOUCH_HUD_ICON) * 1.3;
+	float mid_y = origin.y + Touch_Hud_U(TOUCH_HUD_ROW_H) * 0.5;
+
 	// The ammo *type* icon, not the weapon icon: which gun is up is already told
 	// by the weapons strip, whereas shells-vs-cells is what this number counts.
 	// Same choice the stock panel makes.
 	string icon = infinite ? "" : wep.ammo_type.m_icon;
-	// A fixed square slot, centred, rather than one sized to the fitted pic. The
-	// ammo pics carry different amounts of transparent padding — the shells pic is
-	// mostly padding — so a slot measured from the fit put a 4-unit glyph 24 units
-	// away from its number, and the gap changed with the weapon.
-	float icon_slot = (icon != "") ? icon_h : 0;
-	vector icon_box = '1 1 0' * icon_h;
-	// A clipped weapon shows "12 / 140", so its slot has to hold both numbers.
-	float num_slot = Touch_Shape_LabelWidth(fs, clipped ? "000 / 000" : "000");
-	float total = num_slot + (icon_slot > 0 ? icon_slot + gap : 0);
+	// Drawn 1.3x its slot: the ammo pics carry much more transparent padding than
+	// the health cross, so at an equal box they render visibly smaller. The slot
+	// itself keeps the vitals width, so the column holds either way.
+	if (icon != "")
+		Touch_Hud_DrawSkinPicFit(eX * (origin.x + icon_sz * 0.5) + eY * mid_y,
+			'1 1 0' * icon_sz * 1.3, icon, alpha * TOUCH_A_INK);
 
-	vector center = Touch_Hud_AmmoCenter();
-	float left = center.x - total * 0.5;
+	float num_right = origin.x + icon_sz + Touch_Hud_U(TOUCH_SPACE_1) + num_slot;
+	Touch_Shape_LabelAligned(eX * num_right + eY * mid_y, fs, text, 1, col,
+		alpha * TOUCH_A_INK);
 
-	if (icon_slot > 0)
-	{
-		Touch_Hud_DrawSkinPicFit(eX * (left + icon_slot * 0.5) + eY * center.y,
-			icon_box, icon, alpha * TOUCH_A_INK);
-		left += icon_slot + gap;
-	}
-	Touch_Shape_LabelAligned(eX * (left + num_slot) + eY * center.y, fs, text, 1,
-		col, alpha * TOUCH_A_INK);
+	// Reserve rounds go where the bars go, at label weight, and only for weapons
+	// that reload. What is in the gun is the number you act on; the reserve is
+	// context, so it is not allowed to compete with it for the number column.
+	if (clipped)
+		Touch_Shape_LabelAligned(eX * (num_right + Touch_Hud_U(TOUCH_SPACE_2))
+			+ eY * mid_y, Touch_Hud_U(TOUCH_FONT_READOUT_SM),
+			strcat("/ ", ftos(reserve)), -1, TOUCH_C_INK, alpha * TOUCH_A_INK * 0.8);
 }
 
 // ---------------------------------------------------------------------------
@@ -316,20 +323,30 @@ int Touch_Hud_OwnedWeaponCount(void)
 	return n;
 }
 
-// One row of the list: icon, plus the impulse key as a small badge. The impulse
-// is what a player with a keyboard attached presses and is how the stock panel
-// labels slots, but it is reference rather than the point of the row, so it stays
-// out of the icon's way and well under its weight.
+// Two columns: the impulse key, then the icon. The impulse is what a player with
+// a keyboard attached presses and is how the stock panel labels slots, but it is
+// reference rather than the point of the row, so it stays small and dim.
+//
+// It was drawn as a corner badge first. A row is 26 units and the digit is 10, so
+// there is no corner to sit in — it landed just above centre, overlapping the
+// icon's box and looking misplaced rather than deliberate. As a column it aligns
+// down the whole strip and the icon gets the space that is left.
 void Touch_Hud_DrawWeaponRow(vector center, vector half, Weapon wep, bool current,
 	float alpha)
 {
-	Touch_Hud_DrawSkinPicFit(center, half * 1.3, wep.model2,
-		alpha * (current ? TOUCH_A_INK : TOUCH_A_INK * 0.55));
-
+	float pad = Touch_Hud_U(TOUCH_HUD_WEP_PAD);
 	float num = Touch_Hud_U(TOUCH_FONT_READOUT_SM) * 0.8;
-	Touch_Shape_LabelAligned(center - half + '1 1 0' * Touch_Hud_U(TOUCH_SPACE_1)
-		+ eY * num * 0.5, num, ftos(wep.impulse), 0, TOUCH_C_INK,
-		alpha * TOUCH_A_INK * 0.7);
+	float num_slot = Touch_Shape_LabelWidth(num, "9");
+	float left = center.x - half.x + pad;
+
+	Touch_Shape_LabelAligned(eX * (left + num_slot) + eY * center.y, num,
+		ftos(wep.impulse), 1, TOUCH_C_INK, alpha * TOUCH_A_INK * 0.7);
+
+	float icon_left = left + num_slot + pad;
+	float icon_right = center.x + half.x - pad;
+	Touch_Hud_DrawSkinPicFit(eX * ((icon_left + icon_right) * 0.5) + eY * center.y,
+		eX * (icon_right - icon_left) + eY * (half.y * 2 - pad * 2), wep.model2,
+		alpha * (current ? TOUCH_A_INK : TOUCH_A_INK * 0.55));
 }
 
 void Touch_Hud_DrawWeapons(float alpha)
@@ -389,6 +406,5 @@ void Touch_Hud_Draw(float alpha)
 		return;
 
 	Touch_Hud_DrawStatus(alpha);
-	Touch_Hud_DrawAmmo(alpha);
 	Touch_Hud_DrawWeapons(alpha);
 }

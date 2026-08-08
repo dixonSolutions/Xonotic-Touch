@@ -158,6 +158,19 @@ without changing opacity between them.
 Chrome pills deliberately skip both the shadow and the contour. That is the
 cheaper path *and* the correct one: chrome should recede.
 
+### 5.1.1 Text is measured, not estimated
+
+`Touch_Shape_LabelWidth` asks the engine for the string's width
+(`stringwidth_builtin`) instead of multiplying character count by a nominal
+advance. The estimate is fine for a label centred in a button and wrong everywhere
+alignment matters: with a proportional font, "100" and "0" right-aligned to the
+same edge landed on columns a few pixels apart, which is visible the moment three
+readouts are stacked in one group. Fitting a label to a box uses the same measure
+at unit size, since text width scales linearly with font size — so a wide label and
+a long one are no longer assumed to be the same thing. The old constant survives
+only as a fallback for frames before the font is resident, where the builtin
+reports 0.
+
 ### 5.2 Measured cost
 
 **78 draw calls** for the controls alone, from the `fills` field of the
@@ -344,10 +357,37 @@ palette from the controls. They are now rounded-rect surfaces from the same
 tokens, with capsule stat bars whose track stays visible at ghost alpha so the
 bar is readable by *length* even when the value is low.
 
-Health and armour sit top-left, ammo under FIRE — it belongs to the trigger, and
-anchoring the number in a fixed slot rather than centring it means 100 → 99 → 9
-does not walk the group sideways under the eye. Both are readouts and neither
-claims input, so neither can put a dead patch in the aim area.
+Health, armour and ammo are **one group of three rows** in the top-left corner,
+sharing an icon column and a right-aligned number column. Anchoring each number
+at the right of a fixed slot rather than centring it means 100 → 99 → 9 does not
+walk the group sideways under the eye. All three are readouts and none claims
+input, so none can put a dead patch in the aim area.
+
+Ammo was originally given its own anchor beside FIRE, on the theory that the count
+belongs to the trigger. On device that put it in the one strip of screen the right
+thumb crosses on its way between FIRE and HOP: the number was under the thumb
+exactly when it was being spent, and having no backing it also sat over whatever
+the level happened to put there. It is the same kind of number as the other two,
+so it now reads as one group with them (Law of Similarity) in a corner the eye
+already visits. `touch_ammo_x` / `touch_ammo_y` are retired
+(`TOUCH_LAYOUT_VERSION 4`).
+
+Only the rows that have a genuine maximum get a bar. Reserve ammo has none, so
+its row leaves the bar column empty rather than inventing a full-scale value; for
+weapons that reload, that column carries the reserve at label weight next to the
+clip count, because what is in the gun is the number you act on.
+
+The group draws **no plate**. One was tried at surface alpha and measured: it took
+a dark background from 57 to 30 and a sunlit wall from 255 to about 175, so it
+neither disappeared nor guaranteed contrast — it only smudged a corner of the scene
+for nine draw calls. Legibility here comes from the labels' own 1 px outline, which
+is what already lets the numbers read over bright terrain. The weapons strip keeps
+its plate because a plate is what makes nine loose icons read as one inventory,
+where three aligned rows with bars already read as one readout.
+
+Both left-band neighbours had to move for it. Three rows are 0.19 of the screen
+height, so at the old two-row anchor the health row hung off the top edge, and the
+chat feed's band started at 0.15 — the first chat line ran through the ammo row.
 
 The weapons strip is also ours now. The stock `hud_panel_weapons` drew the held
 weapon on the skin's `weapon_current_bg` — an opaque chamfered plate — which made
@@ -357,8 +397,12 @@ to study. That brightness is in the asset, so no cvar could tone it down, and
 
 The replacement is a **list**, not a row of buttons: one rounded region on the
 right edge holding what you own, with the held weapon washed in the accent colour
-the way a list view marks a selected row, and the impulse number as a corner
-badge. Two reasons it is one region rather than a plate per weapon. It is a single
+the way a list view marks a selected row. Each row is two columns — impulse key,
+then icon. The key started as a corner badge, but a row is 26 units and the digit
+is 10, so there is no corner for it to sit in: it landed just above centre,
+overlapping the icon's box and reading as a mistake rather than a decision. As a
+column it aligns down the whole strip. Two reasons it is one region rather than a
+plate per weapon. It is a single
 inventory, so it should read as one object (Law of Common Region). And a rounded
 rect is nine draws, so per-slot plates put the overlay at 175 draw calls, where
 the list is a fixed ~18 no matter how many weapons you hold.
@@ -379,8 +423,8 @@ somewhere that a touch layout cannot afford:
 
 | Feed | Was | Now |
 |---|---|---|
-| Kill notifications | bottom-right, printing lines across FIRE, HOP and DUCK | right band under the chrome pills, above the weapons strip |
-| Chat | bottom-left at 2.7 mm type, under the move stick | left band above the stick, 4.7 mm |
+| Kill notifications | bottom-right, printing lines across FIRE, HOP and DUCK | right band under the chrome pills, stopping short of the weapons strip's column |
+| Chat | bottom-left at 2.7 mm type, under the move stick | left band between the vitals and the stick, 4.7 mm |
 | Match clock | crowded against the chrome pills | centre of the top band, which the pills vacated |
 
 Their content stays with the stock panels — warmup, overtime and round rules are

@@ -37,20 +37,27 @@ Two-thumb layout tuned for Xonotic strafe movement and nine weapons.
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  ✚ 100 ▬▬▬▬   14:31        [scores]                     │
-│  ⛊   5 ▬              MENU     CHAT      [weapons]      │
+│  ⛊   5 ▬              MENU     CHAT                     │
+│  ▮  28                    [kill feed]      1 ▰          │
+│  [chat feed]                               2 ▰          │
 │                              RIGHT ~68% = look (drag)   │
-│                              tap = fire, drag = look    │
-│   ╭──────╮                         ╭───────╮            │
-│   │ MOVE │                         │ FIRE  │            │
-│   ╰──────╯                          ▪ 28                │
+│   ╭──────╮                   tap = fire, drag = look    │
+│   │ MOVE │                         ╭───────╮            │
+│   ╰──────╯                         │ FIRE  │            │
 │  (CONSOLE)              (DUCK)   (═══HOP═══)            │
 └─────────────────────────────────────────────────────────┘
 ```
 
-The top band is split into thirds: vitals left, match clock centre, scores right,
-with MENU and CHAT beneath the scores. CONSOLE sits alone in the bottom-left —
-three pills do not fit beside two readouts on a 3:2 panel, and CONSOLE is the one
+The top band is split into thirds: player state left, match clock centre, scores
+right, with MENU and CHAT beneath the scores. CONSOLE sits alone in the bottom-left
+— three pills do not fit beside two readouts on a 3:2 panel, and CONSOLE is the one
 a player does not reach for mid-match.
+
+Health, armour and ammo are one group of three rows in the top-left corner, sharing
+an icon column and a right-aligned number column. Ammo used to sit out by FIRE, on
+the strip of screen the right thumb crosses between FIRE and HOP, where the thumb
+covered it. The weapons strip holds the right edge on its own, above FIRE; the kill
+feed and the chat feed each get a band that touches neither.
 
 | Zone | Input | Engine / QC binding |
 |------|-------|---------------------|
@@ -65,7 +72,7 @@ a player does not reach for mid-match.
 | **MENU** (top row) | Tap → Escape / GameMenu | Native Xonotic pause menu — see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md) |
 | **CONSOLE** (bottom-left) | Tap → `toggleconsole`, drag to reposition | Text sheet: layered keyboard, COMMANDS palette — see [TOUCH_CONSOLE_SPEC.md](TOUCH_CONSOLE_SPEC.md) |
 | **CHAT** (top-right) | Tap → modal chat sheet: backlog, field, on-screen QWERTY | `say` / `say_team`; also the `touch_chat [team]` command for a hardware key |
-| Mobile HUD | Vitals top-left, ammo under FIRE | Health and armour readouts with bars, clip/reserve ammo |
+| Mobile HUD | Health, armour and ammo as one group, top-left | Bars for the two that have a maximum; reserve rounds beside the clip for weapons that reload |
 
 Geometry, sizing rationale and the input model are specified in
 [TOUCH_UX_REDESIGN.md](TOUCH_UX_REDESIGN.md); the coordinate contract is in
@@ -435,7 +442,7 @@ Menu actions: Export → share file; Import → validate keys, backup current, `
 | Engine fingers | `engine/darkplaces/vid_sdl.c`, `clvm_cmds.c` | `gettouchfinger` builtin (#643), `DP_UT_TOUCHFINGER` |
 | Constants | `engine/.../qcsrc/common/` | Shared enums, weapon names, gesture thresholds *(pending)* |
 | Settings UI | `engine/.../qcsrc/menu/xonotic/` | Sliders, wizard, touch settings tab |
-| Mobile status HUD | `engine/.../qcsrc/client/touch_hud.qc` | Portrait, HP/AR, ammo readout |
+| Mobile status HUD | `engine/.../qcsrc/client/touch_hud.qc` | Health / armour / ammo group, weapons strip |
 | User persistence | `~/.xonotic/touch.layout.cfg` | Profile `exec` + registered cvars |
 | SDL fingers | `engine/darkplaces/vid_sdl.c` | SDL multitouch → `gettouchfinger` |
 
