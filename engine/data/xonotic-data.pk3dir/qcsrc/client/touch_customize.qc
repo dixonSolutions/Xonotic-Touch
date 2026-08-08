@@ -1,12 +1,22 @@
 #include "touch_customize.qh"
 #include "touch_config.qh"
-#include "touch_glass.qh"
+#include "touch_widget.qh"
 #include "touch_input.qh"
 #include "touch_defs.qh"
 
 int touch_customize_drag_widget;
 vector touch_customize_drag_offset;
 bool touch_customize_pointer_down;
+int touch_customize_hot_action;
+
+// QC globals start at 0, which is a valid widget id and a valid toolbar action,
+// so "nothing selected" has to be set explicitly before the first frame.
+void Touch_Customize_Reset(void)
+{
+	touch_customize_drag_widget = TOUCH_WIDGET_NONE;
+	touch_customize_hot_action = -1;
+	touch_customize_pointer_down = false;
+}
 
 float Touch_Customize_Snap(float v)
 {
@@ -65,14 +75,16 @@ string Touch_Customize_WidgetLabel(int wid)
 {
 	switch (wid)
 	{
+		// Must match the in-game glyphs in touch_draw.qc, or edit mode would
+		// label a control differently from the control itself.
 		case TOUCH_WIDGET_MOVE: return "MOVE";
 		case TOUCH_WIDGET_FIRE: return "FIRE";
-		case TOUCH_WIDGET_JUMP: return "JUMP";
-		case TOUCH_WIDGET_CROUCH: return "CR";
+		case TOUCH_WIDGET_JUMP: return "HOP";
+		case TOUCH_WIDGET_CROUCH: return "DUCK";
 		case TOUCH_WIDGET_WEAPON: return "WEP";
 		case TOUCH_WIDGET_ZOOM: return "ZOOM";
-		case TOUCH_WIDGET_RELOAD: return "R";
-		default: return "DODGE";
+		case TOUCH_WIDGET_RELOAD: return "RLD";
+		default: return "DASH";
 	}
 }
 
@@ -88,48 +100,88 @@ int Touch_Customize_HitWidget(vector p)
 		if (!Touch_WidgetVisible(nx, ny))
 			continue;
 		vector c = Touch_WidgetCenter(nx, ny, nsize);
-		float r = Touch_WidgetRadius(nsize) * 1.35;
-		if (Touch_PointInCircle(p, c, r))
+		if (wid == TOUCH_WIDGET_JUMP)
+		{
+			// Match the drawn capsule, or the ends of the bar are not grabbable.
+			if (Touch_HitRectPx(p, c, Touch_WidgetHalfExtents(nsize, autocvar_touch_jump_aspect), 1.20))
+				return wid;
+		}
+		else if (Touch_PointInCircle(p, c, Touch_WidgetRadius(nsize) * 1.35))
 			return wid;
 	}
 	return TOUCH_WIDGET_NONE;
 }
 
-bool Touch_Customize_HitToolbar(vector p, string action)
+// Toolbar geometry has one definition, used by both the hit test and the draw
+// pass — they used to compute it separately and disagreed about button widths.
+vector Touch_Customize_ToolbarHalf(void)
 {
-	vector vf = getpropertyvec(VF_SIZE);
-	float bar_h = min(vf.x, vf.y) * 0.08;
-	if (p.y > bar_h)
-		return false;
-	float btn_w = vf.x / 3.0;
-	float idx = floor(p.x / btn_w);
-	if (action == "save" && idx == 0)
-		return true;
-	if (action == "cancel" && idx == 1)
-		return true;
-	if (action == "reset" && idx == 2)
-		return true;
-	return false;
+	float h = Touch_MMToUnits(TOUCH_MM_COMFORT) * 0.5;
+	return eX * (h * 2.6) + eY * h;
 }
 
-vector Touch_Customize_NormFromScreen(vector p)
+vector Touch_Customize_ToolbarCenter(int idx)
 {
-	vector vf = getpropertyvec(VF_SIZE);
-	return p.x / vf.x * eX + p.y / vf.y * eY;
+	vector ui = Touch_UISize();
+	vector half = Touch_Customize_ToolbarHalf();
+	float gap = TOUCH_SPACE_2 * Touch_UIScale();
+	float pitch = half.x * 2 + gap;
+	// Inset from the top edge: GNOME reserves top-edge drags for the shell, so a
+	// flush bar would fight the compositor.
+	float y = half.y + TOUCH_SPACE_4 * Touch_UIScale();
+	return eX * (ui.x * 0.5 + (idx - 1) * pitch) + eY * y;
+}
+
+int Touch_Customize_HitToolbarIndex(vector p)
+{
+	int i;
+	for (i = 0; i < TOUCH_CUSTOMIZE_ACTIONS; i += 1)
+	{
+		if (Touch_HitRectPx(p, Touch_Customize_ToolbarCenter(i), Touch_Customize_ToolbarHalf(), 1.15))
+			return i;
+	}
+	return -1;
+}
+
+string Touch_Customize_ActionLabel(int idx)
+{
+	// Serial position effect: the destructive action goes last, never first.
+	if (idx == TOUCH_CUSTOMIZE_SAVE)
+		return "SAVE";
+	if (idx == TOUCH_CUSTOMIZE_CANCEL)
+		return "CANCEL";
+	return "RESET";
+}
+
+vector Touch_Customize_ActionAccent(int idx)
+{
+	if (idx == TOUCH_CUSTOMIZE_SAVE)
+		return TOUCH_C_SUCCESS;
+	if (idx == TOUCH_CUSTOMIZE_RESET)
+		return TOUCH_C_DANGER;
+	return TOUCH_C_ACCENT;
 }
 
 void Touch_Customize_DrawToolbar(float alpha)
 {
-	vector vf = getpropertyvec(VF_SIZE);
-	float bar_h = min(vf.x, vf.y) * 0.08;
-	drawfill_builtin('0 0 0', vf.x * eX + bar_h * eY, TOUCH_GLASS_SHADOW, alpha * 0.55, DRAWFLAG_NORMAL);
-	float btn_w = vf.x / 3.0;
-	vector sz = '1 1 0' * bar_h * 0.28;
-	drawstring_builtin('0 0 0' + eX * (btn_w * 0.5 - bar_h * 0.5) + eY * (bar_h * 0.35), "SAVE", sz, TOUCH_GLASS_HIGHLIGHT, alpha, 0);
-	drawstring_builtin('0 0 0' + eX * (btn_w * 1.5 - bar_h * 0.55) + eY * (bar_h * 0.35), "CANCEL", sz, TOUCH_GLASS_HIGHLIGHT, alpha, 0);
-	drawstring_builtin('0 0 0' + eX * (btn_w * 2.5 - bar_h * 0.45) + eY * (bar_h * 0.35), "RESET", sz, TOUCH_GLASS_HIGHLIGHT, alpha, 0);
+	int i;
+	for (i = 0; i < TOUCH_CUSTOMIZE_ACTIONS; i += 1)
+	{
+		vector center = Touch_Customize_ToolbarCenter(i);
+		vector half = Touch_Customize_ToolbarHalf();
+		vector accent = Touch_Customize_ActionAccent(i);
+		Touch_Widget_Capsule(center, half, Touch_Customize_ActionLabel(i),
+			touch_customize_hot_action == i, false, max(0.9, alpha), accent);
+		// RESET discards the player's whole layout, so it carries its colour at
+		// rest rather than only while pressed — by then the decision is made.
+		if (i == TOUCH_CUSTOMIZE_RESET && Touch_Shape_Ready())
+			Touch_Widget_CapsuleRim(center, half, accent, max(0.9, alpha) * TOUCH_A_RIM_ACTIVE);
+	}
 }
 
+// In edit mode the widget is the handle: the real control is drawn beneath at
+// reduced alpha, and this adds an accent ring plus its name, so the player edits
+// what they will actually play with.
 void Touch_Customize_DrawHandle(int wid, float alpha)
 {
 	vector wp = Touch_Customize_GetWidgetPos(wid);
@@ -139,17 +191,35 @@ void Touch_Customize_DrawHandle(int wid, float alpha)
 	vector c = Touch_WidgetCenter(nx, ny, nsize);
 	float r = Touch_WidgetRadius(nsize);
 	bool active = touch_customize_drag_widget == wid;
-	Touch_Glass_DrawCircleOutline(c, r + 4, TOUCH_GLASS_ACCENT, alpha * (active ? 0.95 : 0.65), 3);
-	string label = Touch_Customize_WidgetLabel(wid);
-	vector sz = '1 1 0' * r * 0.35;
-	drawstring_builtin(c - eX * (strlen(label) * r * 0.08) - eY * (r * 0.12), label, sz, TOUCH_GLASS_HIGHLIGHT, alpha * 0.9, 0);
+	float pad = TOUCH_SPACE_1 * Touch_UIScale();
+	float a_ring = alpha * (active ? TOUCH_A_RIM_ACTIVE : TOUCH_A_RIM);
+
+	if (Touch_Shape_Ready())
+	{
+		if (active)
+			Touch_Shape_Glow(c, r * 1.5, TOUCH_C_ACCENT, alpha * TOUCH_A_GLOW);
+		if (wid == TOUCH_WIDGET_JUMP)
+		{
+			// The hop bar is a capsule; a circular handle around it would claim
+			// the wrong bounds and misreport what is being moved.
+			vector half = Touch_WidgetHalfExtents(nsize, autocvar_touch_jump_aspect);
+			Touch_Widget_CapsuleRim(c, half + '1 1 0' * pad, TOUCH_C_ACCENT, a_ring);
+		}
+		else
+		{
+			Touch_Widget_Rim(c, r + pad, TOUCH_C_ACCENT, a_ring);
+		}
+	}
+	Touch_Shape_Label(c, Touch_Widget_FontSize(r), Touch_Customize_WidgetLabel(wid),
+		TOUCH_C_INK, alpha * TOUCH_A_INK);
 }
 
 void Touch_Customize_Draw(void)
 {
-	vector vf = getpropertyvec(VF_SIZE);
+	vector ui = Touch_UISize();
 	float alpha = bound(0.45, autocvar_touch_opacity + 0.15, 1.0);
-	drawfill_builtin('0 0 0', vf, TOUCH_GLASS_SHADOW, 0.25, DRAWFLAG_NORMAL);
+	// Scrim: edit mode is modal, and the dim is what says so.
+	drawfill_builtin('0 0 0', ui, TOUCH_C_SURFACE, 0.45, DRAWFLAG_NORMAL);
 
 	int wid;
 	for (wid = 0; wid < TOUCH_WIDGET_COUNT; wid += 1)
@@ -159,27 +229,21 @@ void Touch_Customize_Draw(void)
 		Touch_Customize_DrawHandle(wid, alpha);
 	}
 	Touch_Customize_DrawToolbar(alpha);
-	vector hint_sz = '1 1 0' * min(vf.x, vf.y) * 0.028;
-	drawstring_builtin(eX * (vf.x * 0.02) + eY * (vf.y * 0.92), "Drag handles to reposition — SAVE writes touch.layout.cfg", hint_sz, TOUCH_GLASS_HIGHLIGHT, alpha * 0.75, 0);
+
+	float hint = bound(TOUCH_FONT_MIN, min(ui.x, ui.y) * 0.028, TOUCH_FONT_MAX);
+	Touch_Shape_Label(eX * (ui.x * 0.5) + eY * (ui.y - hint * 2),
+		hint, "Drag a control to move it — SAVE writes touch.layout.cfg",
+		TOUCH_C_INK, alpha * 0.85);
 }
 
 void Touch_Customize_PointerDown(vector p)
 {
-	if (Touch_Customize_HitToolbar(p, "save"))
-	{
-		Touch_CmdCustomizeSave();
+	// Toolbar actions fire on release, not on touch: a mistap on RESET is
+	// unrecoverable, and press-then-slide-off must be an escape hatch.
+	touch_customize_hot_action = Touch_Customize_HitToolbarIndex(p);
+	if (touch_customize_hot_action >= 0)
 		return;
-	}
-	if (Touch_Customize_HitToolbar(p, "cancel"))
-	{
-		Touch_CmdCustomizeCancel();
-		return;
-	}
-	if (Touch_Customize_HitToolbar(p, "reset"))
-	{
-		Touch_ResetPreset();
-		return;
-	}
+
 	touch_customize_drag_widget = Touch_Customize_HitWidget(p);
 	if (touch_customize_drag_widget != TOUCH_WIDGET_NONE)
 	{
@@ -192,17 +256,31 @@ void Touch_Customize_PointerDown(vector p)
 
 void Touch_Customize_PointerMove(vector p)
 {
+	if (touch_customize_hot_action >= 0)
+	{
+		if (Touch_Customize_HitToolbarIndex(p) != touch_customize_hot_action)
+			touch_customize_hot_action = -1;
+		return;
+	}
 	if (touch_customize_drag_widget == TOUCH_WIDGET_NONE)
 		return;
-	vector vf = getpropertyvec(VF_SIZE);
+	// Console space, matching Touch_WidgetCenter — VF_SIZE here made handles
+	// jump away from the finger whenever the surface and console sizes differed.
+	vector ui = Touch_UISize();
 	vector adj = p + touch_customize_drag_offset;
-	float nx = adj.x / vf.x;
-	float ny = adj.y / vf.y;
-	Touch_Customize_SetWidgetPos(touch_customize_drag_widget, nx, ny);
+	float nx = Touch_MirrorX(adj.x / ui.x);
+	Touch_Customize_SetWidgetPos(touch_customize_drag_widget, nx, adj.y / ui.y);
 }
 
 void Touch_Customize_PointerUp(void)
 {
+	if (touch_customize_hot_action == TOUCH_CUSTOMIZE_SAVE)
+		Touch_CmdCustomizeSave();
+	else if (touch_customize_hot_action == TOUCH_CUSTOMIZE_CANCEL)
+		Touch_CmdCustomizeCancel();
+	else if (touch_customize_hot_action == TOUCH_CUSTOMIZE_RESET)
+		Touch_ResetPreset();
+	touch_customize_hot_action = -1;
 	touch_customize_drag_widget = TOUCH_WIDGET_NONE;
 	touch_customize_pointer_down = false;
 }

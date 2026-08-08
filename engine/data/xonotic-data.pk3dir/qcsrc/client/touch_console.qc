@@ -1,6 +1,6 @@
 #include "touch_console.qh"
 #include "touch_layout.qh"
-#include "touch_glass.qh"
+#include "touch_widget.qh"
 #include "touch_init.qh"
 #include "touch_config.qh"
 #include "touch_defs.qh"
@@ -198,20 +198,16 @@ void Touch_Console_Draw(float alpha)
 	vector c = Touch_Console_CenterPx();
 	vector half = Touch_Console_Half();
 	bool pressed = (touch_con_state == TOUCH_CON_ARMING || touch_con_state == TOUCH_CON_DRAGGING);
-	vector tint = TOUCH_GLASS_TINT;
-	if (touch_con_state == TOUCH_CON_ARMING)
-		tint = TOUCH_GLASS_ACCENT;
+	vector accent = TOUCH_C_ACCENT;
 	if (time < touch_con_flash_until)
 	{
+		// Post-drag confirmation: the pill itself is the only affordance that
+		// moved, so it has to acknowledge the move.
+		pressed = true;
 		if (touch_con_flash_danger)
-			tint = TOUCH_GLASS_DANGER;
-		else
-			tint = TOUCH_GLASS_ACCENT;
+			accent = TOUCH_C_DANGER;
 	}
-	// Wide top pill — readable “Console” control, not a faint CON chip.
-	Touch_Glass_DrawBar(c, half.x * 2, half.y * 2, tint, max(0.75, alpha), pressed);
-	float fs = bound(12, half.y * 0.85, 18);
-	string label = "CONSOLE";
-	float tw = strlen(label) * fs * 0.55;
-	drawstring_builtin(c - eX * (tw * 0.5) - eY * (fs * 0.35), label, '1 1 0' * fs, TOUCH_GLASS_HIGHLIGHT, 1, 0);
+	// While dragging, show where it will land rather than where it was.
+	Touch_Widget_ChromePill(c, half, (Touch_Console_Dragging() ? "MOVE" : "CONSOLE"),
+		pressed, alpha, accent);
 }

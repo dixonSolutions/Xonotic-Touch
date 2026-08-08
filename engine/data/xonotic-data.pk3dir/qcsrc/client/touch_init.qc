@@ -9,26 +9,35 @@ void Touch_RegisterCvar(string name, string value)
 
 void Touch_Init(void)
 {
-	// Layout — defaults match docs/TOUCH_LAYOUT_SPEC.md §3.1
+	// Layout — sizes are millimetre-grounded, see docs/TOUCH_UX_REDESIGN.md §3
+	// and §7. nsize = mm / 183.2 on the 13" 3:2 reference panel.
 	Touch_RegisterCvar("touch_preset", "standard");
 	Touch_RegisterCvar("touch_scale", "1.0");
 	Touch_RegisterCvar("touch_opacity", "0.90");
-	Touch_RegisterCvar("touch_move_x", "0.165");
+	// MOVE and FIRE share a centre line: the old layout put them 0.04 apart,
+	// which is exactly the misalignment §1 of the redesign doc complains about.
+	Touch_RegisterCvar("touch_move_x", "0.170");
 	Touch_RegisterCvar("touch_move_y", "0.680");
-	Touch_RegisterCvar("touch_move_size", "0.250");
+	Touch_RegisterCvar("touch_move_size", "0.229"); // 42 mm — spans the thumb arc
 	Touch_RegisterCvar("touch_move_visible", "1");
-	Touch_RegisterCvar("touch_fire_x", "0.860");
-	Touch_RegisterCvar("touch_fire_y", "0.640");
-	Touch_RegisterCvar("touch_fire_size", "0.200");
+	Touch_RegisterCvar("touch_fire_x", "0.855");
+	Touch_RegisterCvar("touch_fire_y", "0.680");
+	Touch_RegisterCvar("touch_fire_size", "0.140"); // 26 mm — hot button
 	Touch_RegisterCvar("touch_fire_visible", "1");
-	Touch_RegisterCvar("touch_jump_x", "0.860");
-	Touch_RegisterCvar("touch_jump_y", "0.860");
-	Touch_RegisterCvar("touch_jump_size", "0.110");
+	// Second fire button for claw grips: costs pixels, not fingers. Off by
+	// default so the resting layout stays sparse.
+	Touch_RegisterCvar("touch_fire2_x", "0.135");
+	Touch_RegisterCvar("touch_fire2_y", "0.240");
+	Touch_RegisterCvar("touch_fire2_size", "0.120");
+	Touch_RegisterCvar("touch_fire2_visible", "0");
+	Touch_RegisterCvar("touch_jump_x", "0.855");
+	Touch_RegisterCvar("touch_jump_y", "0.885");
+	Touch_RegisterCvar("touch_jump_size", "0.072"); // 13 mm tall capsule
 	Touch_RegisterCvar("touch_jump_aspect", "2.6");
 	Touch_RegisterCvar("touch_jump_visible", "1");
 	Touch_RegisterCvar("touch_crouch_x", "0.700");
-	Touch_RegisterCvar("touch_crouch_y", "0.860");
-	Touch_RegisterCvar("touch_crouch_size", "0.100");
+	Touch_RegisterCvar("touch_crouch_y", "0.885"); // shares the JUMP baseline
+	Touch_RegisterCvar("touch_crouch_size", "0.066"); // 12 mm
 	Touch_RegisterCvar("touch_crouch_visible", "1");
 	Touch_RegisterCvar("touch_weapon_x", "0.540");
 	Touch_RegisterCvar("touch_weapon_y", "0.860");
@@ -47,8 +56,8 @@ void Touch_Init(void)
 	Touch_RegisterCvar("touch_reload_size", "0.100");
 	Touch_RegisterCvar("touch_reload_visible", "0");
 	Touch_RegisterCvar("touch_con_x", "0.500");
-	Touch_RegisterCvar("touch_con_y", "0.050");
-	Touch_RegisterCvar("touch_con_size", "0.058");
+	Touch_RegisterCvar("touch_con_y", "0.045");
+	Touch_RegisterCvar("touch_con_size", "0.040");
 	Touch_RegisterCvar("touch_con_aspect", "4.2");
 	Touch_RegisterCvar("touch_con_visible", "1");
 	Touch_RegisterCvar("touch_con_hold_ms", "350");
@@ -56,9 +65,9 @@ void Touch_Init(void)
 	Touch_RegisterCvar("touch_con_snap", "0.005");
 	Touch_RegisterCvar("touch_con_margin_px", "4");
 	Touch_RegisterCvar("touch_con_lock", "0");
-	Touch_RegisterCvar("touch_pause_x", "0.300");
-	Touch_RegisterCvar("touch_pause_y", "0.050");
-	Touch_RegisterCvar("touch_pause_size", "0.058");
+	Touch_RegisterCvar("touch_pause_x", "0.320");
+	Touch_RegisterCvar("touch_pause_y", "0.045");
+	Touch_RegisterCvar("touch_pause_size", "0.040");
 	Touch_RegisterCvar("touch_pause_aspect", "2.2");
 	Touch_RegisterCvar("touch_pause_visible", "1");
 	Touch_RegisterCvar("touch_pause_slop_px", "10");
@@ -86,6 +95,15 @@ void Touch_Init(void)
 	Touch_RegisterCvar("touch_invert_y", "0");
 	Touch_RegisterCvar("touch_look_smoothing", "1");
 	Touch_RegisterCvar("touch_look_deadzone_px", "4");
+	// 1 euro filter: adaptive cutoff, so slow thumb movement is de-jittered and
+	// fast movement stays lag-free. fcmin governs slow-speed jitter in Hz, beta
+	// governs high-speed lag. 2 restores the old fixed exponential smoother.
+	Touch_RegisterCvar("touch_look_filter", "1");
+	Touch_RegisterCvar("touch_look_fcmin", "1.5");
+	Touch_RegisterCvar("touch_look_beta", "0.03");
+	// A tap in the look zone that never becomes a drag fires one shot.
+	Touch_RegisterCvar("touch_look_tap_fire", "1");
+	Touch_RegisterCvar("touch_look_tap_ms", "200");
 	Touch_RegisterCvar("touch_look_escape_carry", "0.5");
 	Touch_RegisterCvar("touch_look_max_deg_per_s", "900");
 	Touch_RegisterCvar("touch_look_owns_view", "1");
@@ -101,6 +119,12 @@ void Touch_Init(void)
 	// Behavior
 	Touch_RegisterCvar("touch_fire_mode", "0");
 	Touch_RegisterCvar("touch_fire_slide_release", "0");
+	// Sliding off FIRE keeps shooting and starts aiming, so shoot-while-aiming is
+	// one finger instead of two (docs/TOUCH_UX_REDESIGN.md §6.2).
+	Touch_RegisterCvar("touch_fire_drag_look", "1");
+	// Jump is a held modifier in this game; latch it instead of parking a finger
+	// on the bar. 0 hold, 1 latch, 2 auto-while-moving.
+	Touch_RegisterCvar("touch_hop_mode", "1");
 	Touch_RegisterCvar("touch_zoom_mode", "0");
 	Touch_RegisterCvar("touch_weapon_mode", "2");
 	Touch_RegisterCvar("touch_weapon_slot1", "Laser");

@@ -2,113 +2,113 @@
 #include "touch_customize.qh"
 #include "touch_hud.qh"
 #include "touch_glass.qh"
+#include "touch_shape.qh"
+#include "touch_theme.qh"
+#include "touch_widget.qh"
 #include "touch_console.qh"
 #include "touch_pause.qh"
 #include "touch_init.qh"
 #include "touch_input.qh"
 #include "touch_defs.qh"
 
-void Touch_DrawLabel(vector center, float size, string label, float theAlpha)
+// Pressed and latched visuals cannot be reached from a screenshot harness: a
+// virtual uinput touchscreen is not routed to the game window, so the only way
+// to review them is to ask for them. touch_debug 3 forces every control into its
+// active state.
+bool Touch_PreviewStates(void)
 {
-	// Cap font: size used to be widget diameter → huge overlapping text at the bezel.
-	float fs = bound(11, size * 0.14, 18);
-	vector sz = '1 1 0' * fs;
-	float tw = strlen(label) * fs * 0.55;
-	vector pos = center - eX * (tw * 0.5) - eY * (fs * 0.35);
-	pos.z = 0;
-	drawstring_builtin(pos, label, sz, TOUCH_GLASS_HIGHLIGHT, theAlpha, 0);
+	return autocvar_touch_debug >= 3;
 }
 
-void Touch_DrawGlassCircle(float nx, float ny, float nsize, string label, bool pressed, float theAlpha, vector tint)
+void Touch_DrawCircleWidget(float nx, float ny, float nsize, string label, bool pressed,
+	float theAlpha, vector accent)
 {
-	vector c = Touch_WidgetCenter(nx, ny, nsize);
-	float r = Touch_WidgetRadius(nsize);
-	int q = autocvar_touch_glass_quality;
-	if (q <= 0)
-	{
-		vector pos = c - eX * r - eY * r;
-		Touch_Glass_Fill(pos + '1 2 0', eX * (r * 2) + eY * (r * 2), TOUCH_GLASS_SHADOW, theAlpha * 0.45);
-		Touch_Glass_Fill(pos, eX * (r * 2) + eY * (r * 2), tint, theAlpha * 0.70);
-		Touch_Glass_Frame(pos, eX * (r * 2) + eY * (r * 2), TOUCH_GLASS_HIGHLIGHT, theAlpha * 0.65, 2);
-		Touch_DebugAddFills(3);
-	}
-	else
-	{
-		Touch_Glass_DrawRoundedButton(c, r * 2, tint, theAlpha, pressed);
-		Touch_DebugAddFills(pressed ? 6 : 5);
-	}
-	Touch_DrawLabel(c, r * 2, label, theAlpha * 0.9);
+	Touch_Widget_Button(Touch_WidgetCenter(nx, ny, nsize), Touch_WidgetRadius(nsize),
+		label, pressed || Touch_PreviewStates(), theAlpha, accent);
 }
 
-void Touch_DrawSpaceBar(float theAlpha)
+void Touch_DrawHopBar(float theAlpha)
 {
 	vector c = Touch_WidgetCenter(autocvar_touch_jump_x, autocvar_touch_jump_y, autocvar_touch_jump_size);
 	vector half = Touch_WidgetHalfExtents(autocvar_touch_jump_size, autocvar_touch_jump_aspect);
-	bool pressed = Touch_JumpHeld();
-	vector tint = TOUCH_GLASS_TINT;
-	if (pressed)
-		tint = TOUCH_GLASS_ACCENT;
-	int q = autocvar_touch_glass_quality;
-	if (q <= 0)
-	{
-		vector pos = c - eX * half.x - eY * half.y;
-		Touch_Glass_Fill(pos + '1 2 0', eX * (half.x * 2) + eY * (half.y * 2), TOUCH_GLASS_SHADOW, theAlpha * 0.45);
-		Touch_Glass_Fill(pos, eX * (half.x * 2) + eY * (half.y * 2), tint, theAlpha * 0.75);
-		Touch_Glass_Frame(pos, eX * (half.x * 2) + eY * (half.y * 2), TOUCH_GLASS_HIGHLIGHT, theAlpha * 0.70, 2);
-		Touch_DebugAddFills(3);
-	}
-	else
-	{
-		Touch_Glass_DrawBar(c, half.x * 2, half.y * 2, tint, theAlpha, pressed);
-		Touch_DebugAddFills(pressed ? 4 : 3);
-	}
-	Touch_DrawLabel(c, half.y * 2, "JUMP", theAlpha * 0.95);
+	Touch_Widget_Capsule(c, half, "HOP", Touch_JumpHeld(),
+		Touch_HopLatched() || Touch_PreviewStates(), theAlpha, TOUCH_C_ACCENT);
 }
 
+// Concentric rings are the universal joystick idiom (Jakob's law), so the stick
+// carries no label — the shape already says what it is, and a word under the
+// thumb would only be clutter.
 void Touch_DrawMoveStick(float theAlpha)
 {
-	vector move_c = Touch_WidgetCenter(autocvar_touch_move_x, autocvar_touch_move_y, autocvar_touch_move_size);
-	float move_r = Touch_WidgetRadius(autocvar_touch_move_size);
-	vector knob_off = Touch_MoveStickOffset() * move_r * 0.55;
-	bool active = vlen(Touch_MoveStickOffset()) > autocvar_touch_stick_deadzone;
-	int q = autocvar_touch_glass_quality;
+	vector base = Touch_WidgetCenter(autocvar_touch_move_x, autocvar_touch_move_y, autocvar_touch_move_size);
+	float r = Touch_WidgetRadius(autocvar_touch_move_size);
+	if (r < 4)
+		return;
 
-	if (q <= 0)
+	vector off = Touch_MoveStickOffset();
+	if (Touch_PreviewStates())
+		off = '-0.55 -0.62 0';
+	bool active = vlen(off) > autocvar_touch_stick_deadzone;
+	float knob_r = r * 0.34;
+	vector knob_c = base + off * (r - knob_r);
+
+	if (!Touch_Shape_Ready())
 	{
-		vector pos = move_c - eX * move_r - eY * move_r;
-		Touch_Glass_Fill(pos, eX * (move_r * 2) + eY * (move_r * 2), TOUCH_GLASS_SHADOW, theAlpha * 0.50);
-		Touch_Glass_Fill(pos + '3 3 0', eX * (move_r * 2 - 6) + eY * (move_r * 2 - 6), TOUCH_GLASS_TINT, theAlpha * 0.70);
-		Touch_Glass_Frame(pos, eX * (move_r * 2) + eY * (move_r * 2), TOUCH_GLASS_HIGHLIGHT, theAlpha * 0.65, 2);
-		float kr = move_r * 0.38;
-		vector kc = move_c + knob_off;
-		vector kpos = kc - eX * kr - eY * kr;
-		vector ktint = TOUCH_GLASS_HIGHLIGHT;
-		if (active)
-			ktint = TOUCH_GLASS_ACCENT;
-		Touch_Glass_Fill(kpos, eX * (kr * 2) + eY * (kr * 2), ktint, theAlpha * 0.85);
-		Touch_DebugAddFills(4);
+		Touch_Glass_DrawJoystickBase(base, r, theAlpha);
+		Touch_Glass_DrawJoystickKnob(base, r, off * (r * 0.55), theAlpha, active);
+		return;
 	}
-	else
+
+	// The base stays quieter than the buttons: it is the largest object on
+	// screen, and at button opacity it would dominate the view.
+	Touch_Shape_Shadow(base + eY * Touch_Widget_Elevation(r), r * 1.06, theAlpha * TOUCH_A_SHADOW * 0.6);
+	Touch_Shape_Disc(base, r, TOUCH_C_SURFACE, theAlpha * TOUCH_A_SURFACE * 0.75);
+	Touch_Widget_Rim(base, r, TOUCH_C_RIM, theAlpha * TOUCH_A_RIM * 0.85);
+
+	vector knob_rgb = TOUCH_C_RIM;
+	float knob_a = TOUCH_A_SURFACE_ACTIVE;
+	if (active)
 	{
-		Touch_Glass_DrawJoystickBase(move_c, move_r, theAlpha);
-		Touch_Glass_DrawJoystickKnob(move_c, move_r, knob_off, theAlpha, active);
-		Touch_DebugAddFills(10);
+		knob_rgb = TOUCH_C_ACCENT_LIGHT;
+		knob_a = TOUCH_A_RIM_ACTIVE;
+		Touch_Shape_Glow(knob_c, knob_r * 1.6, TOUCH_C_ACCENT, theAlpha * TOUCH_A_GLOW);
 	}
-	Touch_DrawLabel(move_c - eY * (move_r * 0.92), move_r, "MOVE", theAlpha * 0.95);
+	Touch_Shape_Shadow(knob_c + eY * Touch_Widget_Elevation(knob_r), knob_r * 1.20, theAlpha * TOUCH_A_SHADOW);
+	Touch_Shape_Disc(knob_c, knob_r, knob_rgb, theAlpha * knob_a);
+	Touch_Widget_Rim(knob_c, knob_r, TOUCH_C_RIM, theAlpha * TOUCH_A_RIM_ACTIVE);
+}
+
+void Touch_DrawFireButton(float theAlpha)
+{
+	vector c = Touch_WidgetCenter(autocvar_touch_fire_x, autocvar_touch_fire_y, autocvar_touch_fire_size);
+	float r = Touch_WidgetRadius(autocvar_touch_fire_size);
+	bool held = Touch_FireHeld() || Touch_PreviewStates();
+	Touch_Widget_Button(c, r, "FIRE", held, theAlpha, TOUCH_C_DANGER);
+
+	// While a drag off FIRE is steering the view, echo the reticle idea on the
+	// button so the merged gesture is discoverable instead of a hidden trick.
+	if (held && Touch_Shape_Ready() && (Touch_Look_Escaped() || Touch_PreviewStates()))
+		Touch_Shape_Ring(c, r * 0.55, TOUCH_W_RING_THIN, TOUCH_C_INK, theAlpha * TOUCH_A_GHOST * 2);
 }
 
 void Touch_DrawWeaponWheel(float theAlpha)
 {
 	if (!Touch_WeaponWheelOpen())
 		return;
-	if (autocvar_touch_glass_quality < 2)
-		return;
 	vector ui = Touch_UISize();
 	vector center = ui.x * 0.5 * eX + ui.y * 0.45 * eY;
 	float radius = min(ui.x, ui.y) * 0.22;
-	Touch_Glass_DrawCircle(center, radius, TOUCH_GLASS_TINT, theAlpha * 0.55);
-	Touch_Glass_DrawCircleOutline(center, radius, TOUCH_GLASS_HIGHLIGHT, theAlpha * 0.4, 2);
-	Touch_DebugAddFills(9);
+	if (!Touch_Shape_Ready())
+	{
+		if (autocvar_touch_glass_quality < 2)
+			return;
+		Touch_Glass_DrawCircle(center, radius, TOUCH_C_SURFACE, theAlpha * 0.55);
+		Touch_Glass_DrawCircleOutline(center, radius, TOUCH_C_RIM, theAlpha * 0.4, 2);
+		return;
+	}
+	Touch_Shape_Shadow(center + eY * Touch_Widget_Elevation(radius), radius * 1.06, theAlpha * TOUCH_A_SHADOW);
+	Touch_Shape_Disc(center, radius, TOUCH_C_SURFACE, theAlpha * TOUCH_A_SURFACE_ACTIVE);
+	Touch_Widget_Rim(center, radius, TOUCH_C_RIM, theAlpha * TOUCH_A_RIM);
 }
 
 void Touch_DrawDebugProbes(void)
@@ -140,45 +140,54 @@ void Touch_DrawDebugLine(void)
 	line = strcat(line, strcat(" f3:", Touch_DebugRoleName(Touch_DebugFingerRole(3))));
 	line = strcat(line, strcat(" fills ", ftos(Touch_DebugFills())));
 	line = strcat(line, strcat(" cmd/s ", ftos(Touch_DebugCmdsPerSec())));
-	line = strcat(line, strcat(" con ", ftos(autocvar_touch_con_x)));
-	line = strcat(line, strcat(",", ftos(autocvar_touch_con_y)));
-	drawstring_builtin('8 8 0', line, '1 1 0' * 10, TOUCH_GLASS_HIGHLIGHT, 0.85, 0);
+	line = strcat(line, strcat(" mm/r ", ftos(floor(Touch_UnitsToMM(Touch_WidgetRadius(autocvar_touch_fire_size)) * 10) / 10)));
+	line = strcat(line, strcat(" shape ", Touch_Shape_Ready() ? "tga" : "flat"));
+	drawstring_builtin('8 8 0', line, '1 1 0' * 10, TOUCH_C_INK, 0.85, 0);
 }
 
 void Touch_DrawOverlay(float overlayAlpha)
 {
-	Touch_Pause_DrawPill(overlayAlpha);
-	Touch_Console_Draw(overlayAlpha);
-	Touch_DebugAddFills(Touch_Console_Dragging() ? 4 : 3);
+	// Edit mode owns the top bar for its SAVE/CANCEL/RESET row, and neither pill
+	// does anything while editing, so they would only collide with it.
+	if (!Touch_CustomizeActive())
+	{
+		Touch_Pause_DrawPill(overlayAlpha);
+		Touch_Console_Draw(overlayAlpha);
+	}
 
 	if (autocvar_touch_move_visible || autocvar_touch_debug)
 		Touch_DrawMoveStick(overlayAlpha);
 
 	if (autocvar_touch_fire_visible || autocvar_touch_debug)
-	{
-		vector fire_tint = TOUCH_GLASS_TINT;
-		if (Touch_FireHeld())
-			fire_tint = TOUCH_GLASS_DANGER;
-		Touch_DrawGlassCircle(autocvar_touch_fire_x, autocvar_touch_fire_y, autocvar_touch_fire_size, "FIRE", Touch_FireHeld(), overlayAlpha, fire_tint);
-	}
+		Touch_DrawFireButton(overlayAlpha);
+
+	if (autocvar_touch_fire2_visible)
+		Touch_DrawCircleWidget(autocvar_touch_fire2_x, autocvar_touch_fire2_y,
+			autocvar_touch_fire2_size, "ALT", Touch_Fire2Held(), overlayAlpha, TOUCH_C_DANGER);
 
 	if (autocvar_touch_jump_visible || autocvar_touch_debug)
-		Touch_DrawSpaceBar(overlayAlpha);
+		Touch_DrawHopBar(overlayAlpha);
 
 	if (autocvar_touch_crouch_visible || autocvar_touch_debug)
-		Touch_DrawGlassCircle(autocvar_touch_crouch_x, autocvar_touch_crouch_y, autocvar_touch_crouch_size, "CR", Touch_CrouchHeld(), overlayAlpha, TOUCH_GLASS_TINT);
+		Touch_DrawCircleWidget(autocvar_touch_crouch_x, autocvar_touch_crouch_y,
+			autocvar_touch_crouch_size, "DUCK", Touch_CrouchHeld(), overlayAlpha, TOUCH_C_ACCENT);
 	if (autocvar_touch_weapon_visible || autocvar_touch_debug)
-		Touch_DrawGlassCircle(autocvar_touch_weapon_x, autocvar_touch_weapon_y, autocvar_touch_weapon_size, "WEP", Touch_WeaponWheelOpen(), overlayAlpha, TOUCH_GLASS_TINT);
+		Touch_DrawCircleWidget(autocvar_touch_weapon_x, autocvar_touch_weapon_y,
+			autocvar_touch_weapon_size, "WEP", Touch_WeaponWheelOpen(), overlayAlpha, TOUCH_C_ACCENT);
 	if (autocvar_touch_zoom_visible)
-		Touch_DrawGlassCircle(autocvar_touch_zoom_x, autocvar_touch_zoom_y, autocvar_touch_zoom_size, "ZOOM", false, overlayAlpha, TOUCH_GLASS_TINT);
+		Touch_DrawCircleWidget(autocvar_touch_zoom_x, autocvar_touch_zoom_y,
+			autocvar_touch_zoom_size, "ZOOM", false, overlayAlpha, TOUCH_C_ACCENT);
 	if (autocvar_touch_reload_visible)
-		Touch_DrawGlassCircle(autocvar_touch_reload_x, autocvar_touch_reload_y, autocvar_touch_reload_size, "R", false, overlayAlpha, TOUCH_GLASS_TINT);
+		Touch_DrawCircleWidget(autocvar_touch_reload_x, autocvar_touch_reload_y,
+			autocvar_touch_reload_size, "RLD", false, overlayAlpha, TOUCH_C_ACCENT);
 	if (autocvar_touch_dodge_visible)
-		Touch_DrawGlassCircle(autocvar_touch_dodge_x, autocvar_touch_dodge_y, autocvar_touch_dodge_size, "DODGE", false, overlayAlpha, TOUCH_GLASS_TINT);
+		Touch_DrawCircleWidget(autocvar_touch_dodge_x, autocvar_touch_dodge_y,
+			autocvar_touch_dodge_size, "DASH", false, overlayAlpha, TOUCH_C_ACCENT);
 
 	Touch_DrawWeaponWheel(overlayAlpha);
-	// Probes only at touch_debug >= 2 (keep mid-game HUD clean).
-	if (autocvar_touch_debug >= 2)
+	// Probes are level 2 exactly: they are opaque blocks over the controls, so at
+	// level 3 they would hide the very states that level is for.
+	if (autocvar_touch_debug == 2)
 		Touch_DrawDebugProbes();
 	Touch_DrawDebugLine();
 }

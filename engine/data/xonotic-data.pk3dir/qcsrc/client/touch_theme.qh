@@ -1,0 +1,109 @@
+#pragma once
+
+// Design tokens for the touch overlay — see docs/TOUCH_UX_REDESIGN.md §4.
+//
+// Every colour, alpha, radius and target size used by the overlay is named here
+// so the controls stay consistent with each other and with GNOME. Widgets must
+// not invent literals; add a token instead.
+
+// ---------------------------------------------------------------------------
+// Palette
+// ---------------------------------------------------------------------------
+// libadwaita colours converted to QC 0..1 vectors, so the overlay matches the
+// platform instead of inventing a palette. Hex values in the comments are the
+// upstream tokens from the libadwaita CSS variables reference.
+
+const vector TOUCH_C_SURFACE      = '0.07 0.08 0.10'; // dark scrim, cf. --view-bg-color #1d1d20
+const vector TOUCH_C_RIM          = '1 1 1';
+const vector TOUCH_C_INK          = '1 1 1';
+const vector TOUCH_C_INK_SHADOW   = '0 0 0';
+const vector TOUCH_C_SHADOW       = '0 0 0';
+const vector TOUCH_C_ACCENT       = '0.208 0.518 0.894'; // #3584e4 accent blue
+const vector TOUCH_C_ACCENT_LIGHT = '0.506 0.816 1.0';   // #81d0ff dark-mode standalone
+const vector TOUCH_C_DANGER       = '0.902 0.176 0.259'; // #e62d42
+const vector TOUCH_C_SUCCESS      = '0.227 0.580 0.290'; // #3a944a
+const vector TOUCH_C_WARNING      = '0.784 0.533 0.000'; // #c88800
+
+// ---------------------------------------------------------------------------
+// Alpha scale — all multiplied by touch_opacity at the call site
+// ---------------------------------------------------------------------------
+// A dark low-alpha fill plus a bright rim plus a stroked label stays legible
+// over both white skyboxes and black corridors. 20-40% is the documented
+// backing-panel band for overlay text legibility over arbitrary content.
+
+const float TOUCH_A_SURFACE        = 0.34;
+const float TOUCH_A_SURFACE_ACTIVE = 0.58;
+const float TOUCH_A_RIM            = 0.62;
+const float TOUCH_A_RIM_ACTIVE     = 0.95;
+// The dark contour just outside the bright rim is what makes a control hold its
+// shape over a white skybox, where a white rim alone vanishes. Same trick as the
+// label's stroke, applied to geometry.
+const float TOUCH_A_CONTOUR        = 0.50;
+const float TOUCH_A_SHADOW         = 0.36;
+const float TOUCH_A_INK            = 0.95;
+const float TOUCH_A_INK_SHADOW     = 0.75;
+const float TOUCH_A_GHOST          = 0.16; // hint geometry
+const float TOUCH_A_GLOW           = 0.30;
+// System affordances (console, pause) rest dimmer than gameplay controls: they
+// used to draw brighter, which inverted their importance.
+const float TOUCH_A_CHROME_REST    = 0.55;
+
+// ---------------------------------------------------------------------------
+// Stroke weights, as a fraction of the shape's radius
+// ---------------------------------------------------------------------------
+// These match scripts/gen-touch-shapes.py so a ring drawn at radius r has a
+// predictable stroke of weight * r pixels.
+const float TOUCH_W_RING_THIN  = 0.035;
+const float TOUCH_W_RING       = 0.065;
+const float TOUCH_W_RING_THICK = 0.130;
+
+// How far inside the contour the bright rim sits, as a fraction of the radius.
+// Large enough that the two strokes read as a pair, small enough that the pair
+// still reads as one edge.
+const float TOUCH_W_CONTOUR_INSET = 0.030;
+
+// ---------------------------------------------------------------------------
+// Geometry
+// ---------------------------------------------------------------------------
+// Radii follow libadwaita's 6/9/12/15 px scale and its 6 px spacing increment.
+// Both are authored against a 540-unit short axis and scaled by Touch_UIScale().
+const float TOUCH_UI_REF_SHORT_AXIS = 540;
+
+const float TOUCH_R_SM = 6;
+const float TOUCH_R_MD = 12;
+const float TOUCH_R_LG = 15;
+
+const float TOUCH_SPACE_1 = 6;
+const float TOUCH_SPACE_2 = 12;
+const float TOUCH_SPACE_3 = 18;
+const float TOUCH_SPACE_4 = 24;
+
+// Elevation: a small offset keeps the shadow readable without smearing.
+const float TOUCH_ELEVATION_Y = 0.045; // fraction of the widget radius
+
+// ---------------------------------------------------------------------------
+// Touch target sizes, in millimetres
+// ---------------------------------------------------------------------------
+// Floors from Material (48 dp ~ 9 mm) and Microsoft; the 22 mm hot-button and
+// 42 mm stick figures come from the Game Accessibility Guidelines' 24 mm ideal
+// and the 27.5-41.3 mm thumb arc. See docs/TOUCH_UX_REDESIGN.md §3.
+const float TOUCH_MM_MIN     = 9;
+const float TOUCH_MM_COMFORT = 12;
+const float TOUCH_MM_HOT     = 22;
+const float TOUCH_MM_STICK   = 42;
+
+// Fallback panel size used when the engine reports no usable touch DPI. The
+// Flatpak sandbox cannot reach gdctl or fb0, so this is the measured Surface
+// Pro 9 short edge rather than a guess.
+const float TOUCH_MM_SHORT_EDGE_FALLBACK = 183.2;
+
+// ---------------------------------------------------------------------------
+// Typography
+// ---------------------------------------------------------------------------
+// Labels are sized from the widget so they scale with touch_scale, but clamped:
+// uncapped sizing is what produced text piling out past the bezel.
+const float TOUCH_FONT_MIN   = 9;
+const float TOUCH_FONT_MAX   = 16;
+const float TOUCH_FONT_RATIO = 0.20; // of widget radius
+// drawstring advances roughly this fraction of the font size per character.
+const float TOUCH_FONT_ADVANCE = 0.55;

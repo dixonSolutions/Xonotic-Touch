@@ -1,6 +1,6 @@
 #include "touch_pause.qh"
 #include "touch_layout.qh"
-#include "touch_glass.qh"
+#include "touch_widget.qh"
 #include "touch_init.qh"
 #include "touch_defs.qh"
 #include "touch_input.qh"
@@ -129,25 +129,12 @@ void Touch_Pause_Frame(void)
 {
 }
 
-void Touch_Pause_DrawLabel(vector c, string label, float fs, vector rgb, float alpha)
-{
-	float tw = strlen(label) * fs * 0.55;
-	drawstring_builtin(c - eX * (tw * 0.5) - eY * (fs * 0.35), label, '1 1 0' * fs, rgb, alpha, 0);
-}
-
 void Touch_Pause_DrawPill(float alpha)
 {
 	if (!autocvar_touch_pause_visible)
 		return;
-	vector c = Touch_Pause_PillCenter();
-	vector half = Touch_Pause_PillHalf();
-	bool pressed = (touch_pause_pill_state == TOUCH_PAUSE_ARMING);
-	vector tint = TOUCH_GLASS_TINT;
-	if (pressed)
-		tint = TOUCH_GLASS_ACCENT;
-	Touch_Glass_DrawBar(c, half.x * 2, half.y * 2, tint, max(0.75, alpha), pressed);
-	float fs = bound(12, half.y * 0.85, 18);
-	Touch_Pause_DrawLabel(c, "PAUSE", fs, TOUCH_GLASS_HIGHLIGHT, 1);
+	Touch_Widget_ChromePill(Touch_Pause_PillCenter(), Touch_Pause_PillHalf(), "MENU",
+		touch_pause_pill_state == TOUCH_PAUSE_ARMING, alpha, TOUCH_C_ACCENT);
 }
 
 void Touch_Pause_DrawSheet(float alpha)

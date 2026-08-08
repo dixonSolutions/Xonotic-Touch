@@ -26,6 +26,35 @@ float Touch_WidgetScale(void)
 	return max(0.01, autocvar_touch_scale);
 }
 
+float Touch_UIScale(void)
+{
+	// Radii, strokes and spacing are authored against a 540-unit short axis, so
+	// scale them with the real console size to hold their proportions.
+	return Touch_ScreenMin() / TOUCH_UI_REF_SHORT_AXIS;
+}
+
+float Touch_MMToUnits(float mm)
+{
+	// Console units per millimetre along the short axis. vid_touchscreen_ydpi is
+	// only meaningful when screen detection actually found the panel; inside the
+	// Flatpak sandbox it is a 160 placeholder, so fall back to the measured
+	// short edge instead of trusting it.
+	float short_mm = TOUCH_MM_SHORT_EDGE_FALLBACK;
+	float dpi = cvar("vid_touchscreen_ydpi");
+	float vh = cvar("vid_height");
+	if (dpi > 1 && dpi != 160 && vh > 1)
+		short_mm = (vh / dpi) * 25.4;
+	return mm * (Touch_ScreenMin() / max(short_mm, 1));
+}
+
+float Touch_UnitsToMM(float units)
+{
+	float per_mm = Touch_MMToUnits(1);
+	if (per_mm <= 0)
+		return 0;
+	return units / per_mm;
+}
+
 float Touch_MirrorX(float nx)
 {
 	if (!autocvar_touch_handedness)

@@ -16,6 +16,8 @@ bool Touch_FireHeld(void);
 bool Touch_WeaponWheelOpen(void);
 bool Touch_JumpHeld(void);
 bool Touch_CrouchHeld(void);
+bool Touch_HopLatched(void);
+bool Touch_Fire2Held(void);
 
 // Debug counters for touch_debug overlay
 int Touch_DebugFills(void);

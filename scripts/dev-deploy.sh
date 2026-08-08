@@ -53,7 +53,25 @@ run_ssh() {
 # scp needs absolute remote paths; resolve $HOME once instead of quoting it
 # through every call site.
 REMOTE_HOME="$(run_ssh 'echo $HOME')"
-REMOTE_DATA="$REMOTE_HOME/.local/share/xonotic-touch/data"
+# Data location must match packaging/start.sh: a Flatpak install keeps packs
+# under the sandbox data dir so "Delete app data" wipes them, and only a
+# non-Flatpak install uses the legacy host path. Deploying to the wrong one
+# silently does nothing, so pick whichever actually holds the game packs.
+FLATPAK_DATA="$REMOTE_HOME/.var/app/io.github.dixonSolutions.XonoticTouch/data/xonotic-touch/data"
+LEGACY_DATA="$REMOTE_HOME/.local/share/xonotic-touch/data"
+REMOTE_DATA="$(run_ssh "if ls '$FLATPAK_DATA'/xonotic-*-data.pk3 >/dev/null 2>&1; then \
+                            echo '$FLATPAK_DATA'; \
+                        elif ls '$LEGACY_DATA'/xonotic-*-data.pk3 >/dev/null 2>&1; then \
+                            echo '$LEGACY_DATA'; \
+                        else echo ''; fi")"
+[ -n "$REMOTE_DATA" ] || {
+    echo "no game data found on '$GDR_DEVICE' — looked in:" >&2
+    echo "  $FLATPAK_DATA" >&2
+    echo "  $LEGACY_DATA" >&2
+    echo "run the app once to download assets before deploying." >&2
+    exit 1
+}
+REMOTE_BASE="$(dirname "$REMOTE_DATA")"
 REMOTE_OVERLAY="$REMOTE_DATA/zzzz-touch-dev.pk3dir"
 # Engine userdir: where config.cfg, screenshots, and the winning autoexec live.
 REMOTE_USERDIR="$REMOTE_HOME/.xonotic/data"
@@ -76,7 +94,7 @@ if [ "$DO_BUILD" = 1 ]; then
     grep -E '^\s+(size|crc):' /tmp/xt-qc-build.log | tail -4 || true
 fi
 
-log "staging overlay on $GDR_DEVICE"
+log "staging overlay on $GDR_DEVICE ($REMOTE_DATA)"
 # Stale zzz*-touch-fix trees from older manual test runs shadow the new build
 # (docs/test-runs/.../FINDINGS-pause.md), so clear them every deploy.
 run_ssh "rm -rf $REMOTE_DATA/zzz-touch-fix.pk3dir $REMOTE_DATA/zzzz-touch-fix.pk3dir \
@@ -91,9 +109,16 @@ log "uploading progs + gfx"
 copy_to "$TMPSTAGE/." "$REMOTE_OVERLAY/"
 
 log "uploading touch configs"
-run_ssh "mkdir -p '$REMOTE_DATA/touch/profiles'"
-copy_to "$ROOT/touch/profiles/." "$REMOTE_DATA/touch/profiles/"
+# Into the engine *userdir*, which is the highest-priority search path. The
+# gamedir copy is not usable for development: the launcher runs
+# sync-bundle-data.sh on every boot, which does `cp -a` from the read-only
+# Flatpak bundle over data/touch/profiles and silently reverts every deploy.
+run_ssh "mkdir -p '$REMOTE_USERDIR/touch/profiles' '$REMOTE_DATA/touch/profiles'"
+copy_to "$ROOT/touch/profiles/." "$REMOTE_USERDIR/touch/profiles/"
 copy_to "$ROOT/touch/xonotic.cfg" "$REMOTE_DATA/xonotic.cfg"
+# Keep the gamedir copy in step too, so a launch that skips the sync (or a
+# manual run without the dev overlay) does not fall back to stale layout values.
+copy_to "$ROOT/touch/profiles/." "$REMOTE_DATA/touch/profiles/"
 
 # Test binds let scripts/dev-test.sh drive the game with single keypresses
 # instead of navigating the desktop-oriented menus by touch.
@@ -133,21 +158,42 @@ if [ "$DO_RESTART" = 1 ]; then
     # setsid detaches from the ssh session: without it the game is killed as
     # soon as this connection closes. `pgrep -x` avoids matching our own
     # command line, which contains the pattern.
+    # The tray relaunches the engine when it sees it exit, which races our own
+    # launch and loses the "session lock" fight, so stop the tray first and boot
+    # without one. Killing the engine also strands two locks: the launcher's
+    # instance.lock (start.sh then hands off to the tray instead of booting) and
+    # DarkPlaces' ~/.xonotic/lock (aborts the new process with an error box).
     run_ssh "export XDG_RUNTIME_DIR=/run/user/\$(id -u); \
              export DBUS_SESSION_BUS_ADDRESS=unix:path=\$XDG_RUNTIME_DIR/bus; \
              export WAYLAND_DISPLAY=wayland-0; \
-             pkill -x xonotic 2>/dev/null; sleep 1; \
-             setsid nohup flatpak run io.github.dixonSolutions.XonoticTouch \
+             [ -f '$REMOTE_BASE/tray.pid' ] \
+               && kill \"\$(cat '$REMOTE_BASE/tray.pid')\" 2>/dev/null; \
+             pkill -x xonotic 2>/dev/null; sleep 2; \
+             rm -f '$REMOTE_BASE/instance.lock' '$REMOTE_BASE/tray.lock' \
+                   '$REMOTE_BASE/tray.pid' \"\$HOME/.xonotic/lock\"; \
+             XONOTIC_TOUCH_NO_TRAY=1 setsid nohup \
+             flatpak run io.github.dixonSolutions.XonoticTouch -condebug \
              >/tmp/xonotic-dev.log 2>&1 </dev/null & \
              sleep ${XT_BOOT_WAIT:-20}; pgrep -x xonotic >/dev/null \
              && echo 'game running' || echo 'GAME FAILED TO START'"
 fi
 
 if [ -n "$SHOT_NAME" ]; then
-    OUT="$ROOT/docs/test-runs/current/$SHOT_NAME.png"
+    OUT="$ROOT/docs/test-runs/current/$SHOT_NAME.jpg"
     mkdir -p "$(dirname "$OUT")"
     log "screenshot -> $OUT"
-    gdr --dev="$GDR_DEVICE" screenshot -o "$OUT" >/dev/null
+    # Ask the *engine* to capture (F12 is bound to `screenshot` above). The
+    # compositor capture cannot be trusted here: during a live match it keeps
+    # handing back the loading plaque frame, because the game renders directly
+    # and GNOME's screencast copy is not refreshed.
+    run_ssh "rm -f '$REMOTE_USERDIR/xt-shot.jpg'"
+    gdr --dev="$GDR_DEVICE" key 88 >/dev/null   # 88 = F12
+    sleep 2
+    SSHPASS="$SSH_PASS" sshpass -e scp -q -o StrictHostKeyChecking=no \
+        "$SSH_TARGET:$REMOTE_USERDIR/xt-shot.jpg" "$OUT" || {
+        echo "engine screenshot missing — is the game past the menu?" >&2
+        exit 1
+    }
 fi
 
 log "done"

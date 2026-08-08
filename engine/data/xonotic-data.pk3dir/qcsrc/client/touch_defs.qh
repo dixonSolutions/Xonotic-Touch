@@ -11,6 +11,8 @@ const int TOUCH_ROLE_IGNORED = -2;
 const int TOUCH_ROLE_MOVE = 0;
 const int TOUCH_ROLE_LOOK = 1;
 const int TOUCH_ROLE_FIRE = 2;
+// Secondary fire sits under the other hand, so it must not also drive look.
+const int TOUCH_ROLE_FIRE2 = 3;
 const int TOUCH_ROLE_JUMP = 100;
 const int TOUCH_ROLE_CROUCH = 101;
 const int TOUCH_ROLE_WEAPON = 102;
@@ -43,6 +45,19 @@ const int TOUCH_WEAPON_CYCLE = 2;
 const int TOUCH_FIRE_HOLD = 0;
 const int TOUCH_FIRE_TOGGLE = 1;
 
+// Bunny-hopping in Xonotic means holding jump, not tapping it, so the default is
+// a latch: a held state needs a toggle, not a dedicated finger.
+// See docs/TOUCH_UX_REDESIGN.md §6.1.
+const int TOUCH_HOP_HOLD  = 0;
+const int TOUCH_HOP_LATCH = 1;
+const int TOUCH_HOP_AUTO  = 2;
+
+// Look filtering. The fixed exponential smoother costs latency at every speed;
+// the 1 euro filter adapts its cutoff to thumb speed instead.
+const int TOUCH_LOOK_FILTER_OFF   = 0;
+const int TOUCH_LOOK_FILTER_1EURO = 1;
+const int TOUCH_LOOK_FILTER_EMA   = 2;
+
 const int TOUCH_ZOOM_HOLD = 0;
 const int TOUCH_ZOOM_TOGGLE = 1;
 
@@ -64,6 +79,12 @@ const int TOUCH_WIDGET_ZOOM = 5;
 const int TOUCH_WIDGET_RELOAD = 6;
 const int TOUCH_WIDGET_DODGE = 7;
 const int TOUCH_WIDGET_COUNT = 8;
+
+// Customize-mode toolbar actions, in on-screen order left to right.
+const int TOUCH_CUSTOMIZE_SAVE = 0;
+const int TOUCH_CUSTOMIZE_CANCEL = 1;
+const int TOUCH_CUSTOMIZE_RESET = 2;
+const int TOUCH_CUSTOMIZE_ACTIONS = 3;
 
 const float TOUCH_LOOK_DEG_PER_PX = 0.18;
 const float TOUCH_LOOK_REF_WIDTH = 960;

@@ -15,7 +15,9 @@
 #include <client/touch_layout.qc>
 #include <client/touch_look.qc>
 #include <client/touch_pause.qc>
+#include <client/touch_shape.qc>
 #include <client/touch_weapons.qc>
+#include <client/touch_widget.qc>
 #include <client/player_skeleton.qc>
 #include <client/shownames.qc>
 #include <client/spawnpoints.qc>

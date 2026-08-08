@@ -36,31 +36,38 @@ Two-thumb layout tuned for Xonotic strafe movement and nine weapons.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  [HP/armor]  [ammo/weapon]                              │
+│  [HP/armor]  MENU  CONSOLE      [ammo/weapon]           │
 │                                                         │
-│                              RIGHT ~60% = look (drag)   │
-│                              (no buttons except edges)  │
+│                              RIGHT ~68% = look (drag)   │
+│                              tap = fire, drag = look    │
 │                                                         │
-│   ┌──────┐                         ┌───────┐            │
+│   ╭──────╮                         ╭───────╮            │
 │   │ MOVE │                         │ FIRE  │            │
-│   │ stick│              [JUMP][CR][WEAP][ZOOM] (hold)   │
-│   └──────┘                         └───────┘            │
+│   ╰──────╯              (DUCK)   (═══HOP═══)            │
 └─────────────────────────────────────────────────────────┘
 ```
 
 | Zone | Input | Engine / QC binding |
 |------|-------|---------------------|
-| Left stick | Analog move | `+forward`, `+back`, `+moveleft`, `+moveright` |
-| Right ~60% | Drag = look | Mouse delta → yaw/pitch (`sensitivity`, `m_pitch`, `m_yaw`) |
-| Fire | Hold (default) | `+attack` |
-| Jump / Crouch | Tap or hold | `+jump`, `+crouch` |
-| Weapon | Tap → wheel (default) | `impulse 1`…`9` or cycle |
-| Reload | Tap | `weapon_reload` |
-| **PAUSE** (top row) | Tap → Escape / GameMenu | Native Xonotic pause menu — see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md) |
-| **CONSOLE** (top row) | Tap → `toggleconsole` | Glass text sheet: layered keyboard, COMMANDS palette, chat sheet — see [TOUCH_CONSOLE_SPEC.md](TOUCH_CONSOLE_SPEC.md) |
+| Left stick | Analog move; floats to the touch-down point | `+forward`, `+back`, `+moveleft`, `+moveright` |
+| Right ~68% | Drag = look | Mouse delta → yaw/pitch (`sensitivity`, `m_pitch`, `m_yaw`) |
+| Look zone | Short tap = fire | `+attack` for one frame |
+| Fire | Hold; sliding off keeps firing and steers | `+attack` (+ look delta) |
+| **HOP** | Tap = one jump, hold = latch (keeps hopping hands-free) | `+jump` |
+| DUCK | Tap or hold | `+crouch` |
+| Weapon | HUD weapon strip; button hidden by default | `impulse 1`…`9` or cycle |
+| Reload | Tap; hidden by default | `weapon_reload` |
+| **MENU** (top row) | Tap → Escape / GameMenu | Native Xonotic pause menu — see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md) |
+| **CONSOLE** (top row) | Tap → `toggleconsole`, drag to reposition | Text sheet: layered keyboard, COMMANDS palette, chat sheet — see [TOUCH_CONSOLE_SPEC.md](TOUCH_CONSOLE_SPEC.md) |
 | Mobile HUD | Top-left / top-right | Portrait, HP/AR bars, clip/reserve ammo |
 
-**Avoid as default:** full-screen move + aim stick, pure tap-to-move, fire on the look zone.
+Geometry, sizing rationale and the input model are specified in
+[TOUCH_UX_REDESIGN.md](TOUCH_UX_REDESIGN.md); the coordinate contract is in
+[TOUCH_LAYOUT_SPEC.md](TOUCH_LAYOUT_SPEC.md).
+
+**Avoid as default:** full-screen move + aim stick, pure tap-to-move, *holding*
+fire on the look zone (a short tap is fine, and is how the thumb already there
+shoots without moving).
 
 ---
 
@@ -104,43 +111,48 @@ All `touch_*` cvars are **port extensions**. Register in CSQC with `registercomm
 
 ### Layout (geometry)
 
-Normalized coordinates use **fractions of `vid_width` / `vid_height`** (0.0–1.0), origin top-left, landscape long edge = width.
+Each widget has `touch_<name>_x`, `_y`, `_size` and `_visible`. `_x` / `_y` are
+the widget's **centre** as a fraction of the console draw space, origin
+top-left. `_size` is the **radius** as a fraction of the short axis, so a widget
+keeps its physical size across aspect ratios — `mm = _size × 183.2` on the
+13" 3:2 target.
 
-| Cvar | Type | Range | Default (Standard) | Notes |
-|------|------|-------|-------------------|-------|
+| Widget | Cvar prefix | Extra | Visible by default |
+|--------|-------------|-------|--------------------|
+| Move stick | `touch_move_` | — | yes |
+| Fire | `touch_fire_` | — | yes |
+| Second fire (claw) | `touch_fire2_` | — | no |
+| Hop | `touch_jump_` | `touch_jump_aspect` (capsule width ÷ height) | yes |
+| Duck | `touch_crouch_` | — | yes |
+| Weapon | `touch_weapon_` | — | no (HUD strip switches weapons) |
+| Zoom | `touch_zoom_` | — | no |
+| Dash | `touch_dodge_` | — | no |
+| Reload | `touch_reload_` | — | no |
+
+Shipped values live in `touch/profiles/standard.cfg` and are registered as
+defaults in `touch_init.qc`; the rationale for each is tabulated in
+[TOUCH_UX_REDESIGN.md §7](TOUCH_UX_REDESIGN.md). They are deliberately *not*
+duplicated here — three copies of a coordinate is two too many.
+
+| Cvar | Type | Range | Default | Notes |
+|------|------|-------|---------|-------|
 | `touch_preset` | string | — | `"standard"` | Active preset id; shown in UI |
 | `touch_scale` | float | 0.8–1.3 | `1.0` | Multiplier on `vid_touchscreen_density` for all widgets |
 | `touch_opacity` | float | 0.3–1.0 | `0.65` | Overlay alpha |
-| `touch_move_x` | float | 0–1 | `0.12` | Move stick center X |
-| `touch_move_y` | float | 0–1 | `0.72` | Move stick center Y |
-| `touch_move_size` | float | 0.05–0.25 | `0.18` | Stick radius as fraction of min(vid_w, vid_h) |
-| `touch_fire_x` | float | 0–1 | `0.88` | Fire button center X |
-| `touch_fire_y` | float | 0–1 | `0.72` | Fire button center Y |
-| `touch_fire_size` | float | 0.08–0.20 | `0.14` | Fire hit target size |
-| `touch_jump_x` | float | 0–1 | `0.72` | |
-| `touch_jump_y` | float | 0–1 | `0.82` | |
-| `touch_jump_size` | float | | `0.11` | Slightly larger (Fitts) |
-| `touch_crouch_x` | float | 0–1 | `0.62` | |
-| `touch_crouch_y` | float | 0–1 | `0.82` | |
-| `touch_crouch_size` | float | | `0.10` | |
-| `touch_weapon_x` | float | 0–1 | `0.52` | |
-| `touch_weapon_y` | float | 0–1 | `0.82` | |
-| `touch_weapon_size` | float | | `0.11` | |
-| `touch_zoom_x` | float | 0–1 | `0.42` | |
-| `touch_zoom_y` | float | 0–1 | `0.82` | |
-| `touch_zoom_size` | float | | `0.10` | |
-| `touch_dodge_x` | float | 0–1 | `0.12` | Optional; near move stick |
-| `touch_dodge_y` | float | 0–1 | `0.58` | |
-| `touch_dodge_size` | float | | `0.10` | |
-| `touch_dodge_visible` | int | 0/1 | `1` | Mobile default: dodge **button on** |
-| `touch_look_zone_left` | float | 0–1 | `0.45` | Left edge of look drag region |
+| `touch_move_zone_w` | float | 0–1 | `0.32` | Left band where a touch grabs the move stick |
+| `touch_look_zone_left` | float | 0–1 | `0.32` | Left edge of look drag region |
 | `touch_look_zone_right` | float | 0–1 | `1.0` | Right edge (usually full width) |
-| `touch_edge_deadzone_px` | int | 8–24 | `16` | Ignore touches near bezels (UT edge gestures) |
+| `touch_edge_deadzone_px` | int | 8–24 | `16` | Ignore touches near bezels (GNOME edge gestures) |
 | `touch_handedness` | int | 0/1 | `0` | `0` = right-hand look zone; `1` = mirrored |
 
-**Left-handed mirror:** for each widget, `x' = 1.0 - touch_*_x - touch_*_size` (CSQC applies when `touch_handedness 1` or load `left.cfg`).
+**Left-handed mirror:** `x' = 1.0 - touch_*_x` about the widget centre (`Touch_MirrorX`),
+applied when `touch_handedness 1` or `left.cfg` is loaded. The look and move
+zones swap with it.
 
-**Customize mode (CSQC):** semi-transparent overlay, drag handles, snap to corners, actions: Reset preset, Save → `touch.layout.cfg`, Test range (30 s sandbox).
+**Customize mode (CSQC):** dim overlay, drag handles on every widget, snap to a
+grid, and a bottom toolbar — SAVE writes `touch.layout.cfg`, CANCEL restores,
+RESET returns to the preset. Actions commit on release, so a mistap slides off
+harmlessly.
 
 ### Feel (aim & movement)
 
@@ -149,9 +161,14 @@ Normalized coordinates use **fractions of `vid_width` / `vid_height`** (0.0–1.
 | `touch_sens_base` | float | 1.5–5.0 | `3.5` | UI “Medium”; DPI-normalized before `sensitivity` |
 | `touch_sens_y_mult` | float | 0.5–1.5 | `1.0` | Vertical look multiplier vs horizontal |
 | `touch_invert_y` | int | 0/1 | `0` | Flip pitch |
-| `touch_look_smoothing` | int | 0–2 | `1` | 0=off, 1=low, 2=med (average last N deltas) |
-| `touch_look_deadzone_px` | int | 0–20 | `8` | Ignore micro-jitter on glass |
-| `touch_stick_deadzone` | float | 0–0.35 | `0.15` | Analog move drift prevention |
+| `touch_look_smoothing` | int | 0–2 | `1` | Fallback averaging when the 1€ filter is off |
+| `touch_look_filter` | int | 0/1 | `1` | 1€ adaptive filter: smooths slow aim, stays lag-free on flicks |
+| `touch_look_fcmin` | float | 0.5–5 | `1.5` | 1€ minimum cutoff (Hz) — lower = smoother at rest |
+| `touch_look_beta` | float | 0–0.2 | `0.03` | 1€ speed coefficient — higher = less lag when fast |
+| `touch_look_deadzone_px` | int | 0–20 | `4` | Ignore micro-jitter on glass |
+| `touch_look_max_deg_per_s` | float | | `900` | Clamp against contact-jump spikes |
+| `touch_look_escape_carry` | float | 0–1 | `0.5` | Momentum kept when a drag leaves the look zone |
+| `touch_stick_deadzone` | float | 0–0.35 | `0.18` | Analog move drift prevention |
 | `touch_stick_range` | float | 0.5–1.0 | `1.0` | Max deflection → max speed |
 | `touch_aim_assist` | int | 0–2 | `0` | 0=off, 1=light, 2=strong (CSQC magnetism) |
 | `touch_gyro_enabled` | int | 0/1 | `0` | SDL sensor → yaw/pitch (optional) |
@@ -182,8 +199,13 @@ Engine movement (already in `touch/xonotic.cfg`):
 | Cvar | Type | Values | Default | Notes |
 |------|------|--------|---------|-------|
 | `touch_fire_mode` | int | 0=hold, 1=toggle | `0` | Hold for arena FPS |
+| `touch_fire_drag_look` | int | 0/1 | `1` | Sliding off FIRE keeps firing and steers — one thumb aims and shoots |
+| `touch_fire_slide_release` | int | 0/1 | `0` | Legacy: treat sliding off FIRE as release |
+| `touch_hop_mode` | int | 0=tap only, 1=tap + hold-to-latch, 2=always | `1` | Bunny-hop is a *held* key in Xonotic; the latch frees the thumb |
+| `touch_look_tap_fire` | int | 0/1 | `1` | Short tap in the look zone fires |
+| `touch_look_tap_ms` | int | | `200` | Longest tap still counted as a shot |
 | `touch_zoom_mode` | int | 0=hold, 1=toggle | `0` | |
-| `touch_weapon_mode` | int | 0=wheel, 1=3slot, 2=cycle | `0` | Competitive → `1` |
+| `touch_weapon_mode` | int | 0=wheel, 1=3slot, 2=cycle | `2` | Cycle; the HUD strip is the primary switcher |
 | `touch_weapon_slot1` | string | weapon name | `"Laser"` | 3-slot favorites |
 | `touch_weapon_slot2` | string | | `"Shotgun"` | |
 | `touch_weapon_slot3` | string | | `"Grenade Launcher"` | |
@@ -216,19 +238,25 @@ Engine movement (already in `touch/xonotic.cfg`):
 | Gesture | Maps to | Preset bias |
 |---------|---------|-------------|
 | Swipe on weapon button | Next/prev weapon | Competitive cycle |
-| Hold fire + drag look | ADS-style zoom weapons | Hold zoom default |
-| Double-tap move stick dir | Dodge | Competitive (`touch_dodge_mode 1`) |
+| Hold fire + drag | Fire while steering (`touch_fire_drag_look`) | On by default |
+| Hold HOP | Latch bunny-hop until tapped again | On by default (`touch_hop_mode 1`) |
+| Double-tap move stick dir | Dash | Competitive (`touch_dodge_mode 1`) |
 | Two-finger tap | Scoreboard | Standard (`touch_scoreboard_gesture 1`) |
 
 ### Multitouch (CSQC contract)
 
 Implement once in `qcsrc/client/touch_input.qc` (or equivalent):
 
-1. Finger on move stick → movement only.
-2. Finger in look zone → look only (ignore if on a button hit box).
-3. Fire uses its own touch id; may overlap look (fire while turning).
-4. **Max 3** simultaneous: move + look + fire; drop extra touches.
-5. **Palm rejection:** ignore contacts with area &gt; threshold if SDL exposes it (`SDL_FINGER` normalized or engine touch API).
+1. Finger on move stick → movement only. The stick re-centres on the touch-down
+   point, so the thumb never has to find it.
+2. Finger in look zone → look; a release under `touch_look_tap_ms` also fires.
+3. Fire uses its own touch id, may overlap look, and keeps firing while it drags
+   (`touch_fire_drag_look`) so aim and attack share one thumb.
+4. **Max 4** simultaneous (`TOUCH_MAX_FINGERS`): move + look + fire + one more
+   for claw grips; extra contacts are dropped.
+5. A finger keeps its role for the whole contact. Reassigning mid-drag turns a
+   turn into a strafe.
+6. **Palm rejection:** ignore contacts with area &gt; threshold if SDL exposes it (`SDL_FINGER` normalized or engine touch API).
 
 Document for testers: feel bugs vs layout bugs use different cvars.
 
@@ -239,7 +267,8 @@ Independent of layout preset; safe to `exec` after a control preset.
 | Cvar | battery | balanced | quality |
 |------|---------|----------|---------|
 | `touch_performance_profile` | `"battery"` | `"balanced"` | `"quality"` |
-| `fps_max` | `30` | `60` | `0` (uncapped) |
+| `cl_maxfps` | `30` | `60` | `0` (uncapped) |
+| `cl_maxidlefps` | `15` | `30` | `30` |
 | `r_picmipworld` | `2` | `1` | `0` |
 | `r_picmipsprites` | `2` | `1` | `0` |
 | `r_shadow_realtime_world` | `0` | `0` | `1` |
@@ -248,6 +277,11 @@ Independent of layout preset; safe to `exec` after a control preset.
 | `r_motionblur` | `0` | `0` | `0` |
 | `gl_texturecompression` | `1` | `1` | `0` |
 | `r_particles` | `0` | `1` | `1` |
+
+The frame cap cvar is **`cl_maxfps`**, not `fps_max`. The engine silently
+accepts an unknown cvar name and creates a dud, so a `fps_max` line looks
+correct and caps nothing — every profile carried that bug until 2026-08.
+`thermal.cfg` (30 fps) is the one that matters on a fanless tablet.
 
 Advanced panel (testers): show `fps` / frame time from `cl_stats` or CSQC timer for bug reports with numbers.
 
@@ -278,13 +312,14 @@ Uses engine volume cvars; port adds an output profile for phone speaker vs headp
 
 | File | Audience | Summary |
 |------|----------|---------|
-| `standard.cfg` | Most players | Arena two-thumb; dodge button; weapon wheel |
-| `casual.cfg` | New to touch / Xonotic | Larger widgets, light aim assist, lower sens |
-| `competitive.cfg` | Experienced | Smaller HUD, no assist, higher sens, 3-slot weapons, double-tap dodge |
-| `left.cfg` | Left-handed | Mirrored Standard geometry |
-| `minimal.cfg` | Small phones | 3 weapons, hidden crouch/zoom/dodge until “more” panel |
+| `standard.cfg` | Most players | The layout. Every other control preset `exec`s it and overrides only what differs |
+| `casual.cfg` | New to touch / Xonotic | Larger widgets, light aim assist, lower sens, auto-hop |
+| `competitive.cfg` | Experienced | Smaller widgets, no assist, higher sens, second fire button on (claw grip), snappier look filter, 3-slot weapons, double-tap dash |
+| `left.cfg` | Left-handed | `touch_handedness 1` — the mirror is computed, not a second copy of the geometry |
+| `minimal.cfg` | Small phones | Fewest controls; auto-hop so nothing but move, look and fire is needed |
 | `battery.cfg` | Long sessions | Performance row only |
 | `balanced.cfg` | Default thermal | Matches `touch/xonotic.cfg` graphics |
+| `thermal.cfg` | Fanless tablets | 30 fps cap; the largest power win available |
 | `quality.cfg` | Plugged in / cool device | Higher picmip / shadows |
 
 ---
@@ -407,21 +442,24 @@ Menu actions: Export → share file; Import → validate keys, backup current, `
 | Module | File | Status |
 |--------|------|--------|
 | Cvar registration + DPI sens | `touch_init.qc` | **Done** |
-| OpenGL glass UI (joystick, buttons) | `touch_glass.qc` | **Done** |
+| Design tokens | `touch_theme.qh` | **Done** — colours, alphas, radii, spacing |
+| Shape primitives | `touch_shape.qc` | **Done** — disc / ring / capsule / rrect / shadow from baked masks |
+| Composed widgets | `touch_widget.qc` | **Done** — the only draw API the rest of the layer uses |
+| Rectangle fallback | `touch_glass.qc` | **Done** — used only when the masks fail to load |
 | Layout / hit tests | `touch_layout.qc` | **Done** |
-| Look pipeline | `touch_look.qc` | **Done** |
-| Input / multitouch / commands | `touch_input.qc` | **Done** (3-finger slots via `gettouchfinger`) |
+| Look pipeline (1€ filter) | `touch_look.qc` | **Done** |
+| Input / multitouch / commands | `touch_input.qc` | **Done** (4-finger slots via `gettouchfinger`) |
 | Overlay draw | `touch_draw.qc` | **Done** |
-| Customize mode | — | *Pending* |
+| Customize mode | `touch_customize.qc` | **Done** — drag handles, grid snap, save/cancel/reset |
 | Menu / wizard | `qcsrc/menu/` | **Done** — startup chain, asset progress, touch setup (`docs/SETUP.md`) |
 
 Build flow: clone repo (integrated `engine/`) → `fetch-sources.sh code` (if needed) → `./scripts/install-flatpak.sh` or `./scripts/run-local.sh`.
 
-### CSQC skeleton (remaining work)
+### Remaining work
 
-1. **`touch_customize_*`** — edit mode overlay and save to user path via `cvar_set` flush.
-2. **Menu hooks** — bind sliders to cvars; first-run wizard flag `touch_setup_done` (**done** — see [SETUP.md](SETUP.md)).
-3. **`touch_layout_apply_preset(string name)`** — in-game `exec touch/profiles/<name>.cfg` from menu.
+1. **`touch_layout_apply_preset(string name)`** — in-game `exec touch/profiles/<name>.cfg` from the menu, so presets are switchable without the console.
+2. **Menu sliders for the new feel cvars** — `touch_hop_mode`, `touch_look_filter` and the 1€ pair are console-only today.
+3. **Hands-on validation of the input model** — the hop latch, fire-drag-look and tap-to-fire are implemented and compile-clean but have only been verified by forced state preview, not by two thumbs. See [TOUCH_UX_REDESIGN.md §11](TOUCH_UX_REDESIGN.md).
 
 ---
 
@@ -429,8 +467,9 @@ Build flow: clone repo (integrated `engine/`) → `fetch-sources.sh code` (if ne
 
 | Action | Touch mapping | Setting |
 |--------|---------------|---------|
-| Dodge | Dodge button (default) or double-tap move dir | `touch_dodge_mode` |
-| Weapon switch | Wheel / 3-slot / cycle | `touch_weapon_mode` |
+| Bunny-hop | Hold HOP to latch; tap to cancel | `touch_hop_mode` |
+| Dash | Double-tap move dir (button available but hidden) | `touch_dodge_mode`, `touch_dodge_visible` |
+| Weapon switch | HUD strip; wheel / 3-slot / cycle button optional | `touch_weapon_mode`, `touch_weapon_visible` |
 | Zoom | Hold near fire | `touch_zoom_mode` |
 | Use / E | Small button or long-press context | Hide in DM if unused |
 | Scoreboard | Two-finger tap or edge button | `touch_scoreboard_gesture` |
@@ -471,6 +510,9 @@ XONOTIC_SCREEN_WIDTH=1224 XONOTIC_SCREEN_HEIGHT=2700 ./scripts/test-screen-calc.
 | `packaging/start.sh` | Launch `exec` chain |
 | `engine/data/xonotic-data.pk3dir/qcsrc/client/touch_*.qc` | CSQC touch layer |
 | `engine/darkplaces/` | Engine multitouch builtins |
+| `touch/gfx/touch/*.tga` | Baked antialiased shape masks (`scripts/gen-touch-shapes.py`) |
 | `scripts/sync-upstream-fork.sh` | Merge upstream into fork sub-repos |
 | `docs/CONTROLS.md` | This document |
+| `docs/TOUCH_UX_REDESIGN.md` | Visual system, input model, research and measurements |
+| `docs/TOUCH_LAYOUT_SPEC.md` | Coordinate contract |
 | `docs/SCREEN.md` | Display layer |

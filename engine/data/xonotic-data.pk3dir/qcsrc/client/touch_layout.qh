@@ -1,9 +1,13 @@
 #pragma once
 #include "touch_init.qh"
+#include "touch_theme.qh"
 
 vector Touch_UISize(void);
 float Touch_ScreenMin(void);
 float Touch_WidgetScale(void);
+float Touch_UIScale(void);
+float Touch_MMToUnits(float mm);
+float Touch_UnitsToMM(float units);
 vector Touch_WidgetCenter(float nx, float ny, float nsize);
 float Touch_WidgetRadius(float nsize);
 vector Touch_WidgetHalfExtents(float nsize, float aspect);

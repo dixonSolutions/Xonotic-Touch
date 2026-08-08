@@ -15,7 +15,10 @@
 #include <client/touch_layout.qh>
 #include <client/touch_look.qh>
 #include <client/touch_pause.qh>
+#include <client/touch_shape.qh>
+#include <client/touch_theme.qh>
 #include <client/touch_weapons.qh>
+#include <client/touch_widget.qh>
 #include <client/player_skeleton.qh>
 #include <client/shownames.qh>
 #include <client/spawnpoints.qh>

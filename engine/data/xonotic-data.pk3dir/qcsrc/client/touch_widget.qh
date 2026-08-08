@@ -1,0 +1,27 @@
+#pragma once
+#include "touch_theme.qh"
+#include "touch_shape.qh"
+#include "touch_layout.qh"
+
+// Composed controls built from the shape primitives. Every visible touch
+// control goes through one of these so the overlay stays one coherent system
+// instead of per-file variations — see docs/TOUCH_UX_REDESIGN.md §5.
+
+float Touch_Widget_FontSize(float radius);
+float Touch_Widget_Elevation(float radius);
+
+// Paired dark-outside / bright-inside edge stroke. Use this rather than a bare
+// Touch_Shape_Ring for anything that must stay visible over live gameplay.
+void Touch_Widget_Rim(vector center, float radius, vector rgb, float alpha);
+void Touch_Widget_CapsuleRim(vector center, vector half, vector rgb, float alpha);
+
+void Touch_Widget_Button(vector center, float radius, string label, bool pressed,
+	float alpha, vector accent);
+void Touch_Widget_Capsule(vector center, vector half, string label, bool pressed,
+	bool latched, float alpha, vector accent);
+
+// Top-bar chrome (console, pause): same language as the action controls but
+// quieter at rest, because these are rarely-used utilities that must not
+// compete with the crosshair.
+void Touch_Widget_ChromePill(vector center, vector half, string label, bool pressed,
+	float alpha, vector accent);

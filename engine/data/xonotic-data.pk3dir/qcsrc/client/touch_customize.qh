@@ -1,6 +1,7 @@
 #pragma once
 
 bool Touch_CustomizeActive(void);
+void Touch_Customize_Reset(void);
 void Touch_Customize_Frame(void);
 void Touch_Customize_Draw(void);
 bool Touch_Customize_InputEvent(float bInputType, float nPrimary, float nSecondary);

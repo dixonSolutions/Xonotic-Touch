@@ -1,0 +1,24 @@
+#pragma once
+
+// Antialiased shape primitives for the touch overlay.
+// See docs/TOUCH_UX_REDESIGN.md §5.
+
+// True when the baked masks in gfx/touch/ loaded. Callers must fall back to the
+// legacy rectangle glass when this is false, otherwise drawpic would render
+// notexture checkerboards.
+bool Touch_Shape_Ready(void);
+void Touch_Shape_Probe(void);
+
+void Touch_Shape_Disc(vector center, float radius, vector rgb, float alpha);
+void Touch_Shape_Glow(vector center, float radius, vector rgb, float alpha);
+void Touch_Shape_Ring(vector center, float radius, float weight, vector rgb, float alpha);
+void Touch_Shape_Shadow(vector center, float radius, float alpha);
+
+void Touch_Shape_Capsule(vector center, vector half, vector rgb, float alpha);
+void Touch_Shape_CapsuleRing(vector center, vector half, float weight, vector rgb, float alpha);
+void Touch_Shape_CapsuleShadow(vector center, vector half, float alpha);
+
+void Touch_Shape_RRect(vector center, vector half, float radius, vector rgb, float alpha);
+
+void Touch_Shape_Label(vector center, float fontsize, string label, vector rgb, float alpha);
+float Touch_Shape_LabelWidth(float fontsize, string label);

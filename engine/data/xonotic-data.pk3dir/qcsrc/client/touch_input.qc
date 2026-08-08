@@ -23,6 +23,9 @@ float touch_finger_down_time[TOUCH_MAX_FINGERS];
 float touch_finger_lost_time[TOUCH_MAX_FINGERS];
 bool touch_finger_first[TOUCH_MAX_FINGERS];
 bool touch_finger_live[TOUCH_MAX_FINGERS];
+// Set once a FIRE finger has slid far enough to also steer the view, so the
+// promotion is sticky for the rest of the gesture.
+bool touch_finger_draglook[TOUCH_MAX_FINGERS];
 
 vector touch_move_offset;
 bool touch_fire_down;
@@ -30,6 +33,11 @@ bool touch_fire_edge;
 bool touch_fire_toggle_state;
 bool touch_zoom_edge;
 bool touch_zoom_toggle_state;
+bool touch_jump_edge;
+bool touch_hop_latched;
+// A tap in the look zone fires one shot; hold attack briefly so a single frame's
+// press cannot be swallowed between +attack and -attack.
+float touch_tapfire_until;
 bool touch_weapon_wheel;
 bool touch_mouse_down;
 vector touch_pointer_pos;
@@ -150,12 +158,18 @@ void Touch_ReleaseAll(void)
 	touch_mouse_down = false;
 	touch_active_finger_count = 0;
 	touch_two_finger_time = 0;
+	// The hop latch must not survive into a menu or across a map change, or the
+	// player would spawn already holding jump with nothing on screen saying so.
+	touch_hop_latched = false;
+	touch_jump_edge = false;
+	touch_tapfire_until = 0;
 	for (i = 0; i < TOUCH_MAX_FINGERS; ++i)
 	{
 		touch_finger_used[i] = false;
 		touch_finger_role[i] = TOUCH_ROLE_NONE;
 		touch_finger_live[i] = false;
 		touch_finger_lost_time[i] = 0;
+		touch_finger_draglook[i] = false;
 	}
 	Touch_Console_Reset();
 	Touch_Pause_Reset();
@@ -215,6 +229,8 @@ int Touch_AssignRole(vector p)
 
 	if (autocvar_touch_fire_visible && Touch_HitCircle(p, autocvar_touch_fire_x, autocvar_touch_fire_y, autocvar_touch_fire_size, 1.15))
 		return TOUCH_ROLE_FIRE;
+	if (autocvar_touch_fire2_visible && Touch_HitCircle(p, autocvar_touch_fire2_x, autocvar_touch_fire2_y, autocvar_touch_fire2_size, 1.15))
+		return TOUCH_ROLE_FIRE2;
 	if (autocvar_touch_jump_visible && Touch_HitRect(p, autocvar_touch_jump_x, autocvar_touch_jump_y, autocvar_touch_jump_size, autocvar_touch_jump_aspect, 1.10))
 		return TOUCH_ROLE_JUMP;
 	if (autocvar_touch_crouch_visible && Touch_HitCircle(p, autocvar_touch_crouch_x, autocvar_touch_crouch_y, autocvar_touch_crouch_size, 1.10))
@@ -266,6 +282,7 @@ int Touch_ClaimFinger(int src, vector pos)
 		touch_finger_lost_time[i] = 0;
 		touch_finger_first[i] = true;
 		touch_finger_live[i] = true;
+		touch_finger_draglook[i] = false;
 		touch_finger_role[i] = Touch_AssignRole(pos);
 		if (touch_finger_role[i] == TOUCH_ROLE_CON)
 			Touch_Console_OnDown(pos);
@@ -413,10 +430,21 @@ void Touch_PollFingers(void)
 			continue;
 		}
 		if (touch_finger_role[i] == TOUCH_ROLE_LOOK)
+		{
+			// A look gesture that never escaped the deadzone and lifted quickly
+			// was a tap, not an aim: fire one shot. This is the right thumb's
+			// fallback when it is away from the FIRE disc. We deliberately do not
+			// aim at the touched point — a fingertip fully occludes its target.
+			if (autocvar_touch_look_tap_fire && !Touch_Look_Escaped()
+				&& touch_finger_lost_time[i] - touch_finger_down_time[i]
+					<= autocvar_touch_look_tap_ms / 1000.0)
+				touch_tapfire_until = time + 0.06;
 			Touch_Look_EndGesture();
+		}
 		touch_finger_used[i] = false;
 		touch_finger_role[i] = TOUCH_ROLE_NONE;
 		touch_finger_live[i] = false;
+		touch_finger_draglook[i] = false;
 	}
 }
 
@@ -427,6 +455,7 @@ void Touch_EnsureReady(void)
 	Touch_Look_Reset();
 	Touch_Console_InitDefaults();
 	Touch_Pause_InitDefaults();
+	Touch_Customize_Reset();
 	Touch_ApplyTouchWeaponsStrip();
 	// Migrate legacy simple_draw → glass_quality once.
 	if (cvar("touch_simple_draw") && !cvar("touch_glass_quality"))
@@ -535,6 +564,34 @@ void Touch_Frame(void)
 			look_first = touch_finger_first[i];
 		}
 		else if (role == TOUCH_ROLE_FIRE)
+		{
+			fire_count += 1;
+			// CoD Mobile's "R-Fire BTN for camera rotation": the fire button is
+			// also an aim surface, so shoot-while-aiming is one finger instead of
+			// two. Fire is not released when the drag starts. A dedicated look
+			// finger keeps priority.
+			if (autocvar_touch_fire_drag_look && !look_active)
+			{
+				vector from_down = pos - touch_finger_down_pos[i];
+				from_down.z = 0;
+				if (!touch_finger_draglook[i]
+					&& vlen(from_down) >= autocvar_touch_look_deadzone_px)
+				{
+					touch_finger_draglook[i] = true;
+					// Start already escaped: the finger has demonstrably moved,
+					// so re-running the deadzone would waste a frame of aim.
+					Touch_Look_BeginGestureEscaped(pos);
+				}
+				if (touch_finger_draglook[i])
+				{
+					look_active = true;
+					look_accum = touch_finger_accum[i];
+					look_last = pos;
+					look_first = false;
+				}
+			}
+		}
+		else if (role == TOUCH_ROLE_FIRE2)
 			fire_count += 1;
 		else if (role == TOUCH_ROLE_JUMP)
 			jump_down = true;
@@ -573,21 +630,42 @@ void Touch_Frame(void)
 	Touch_Look_Frame(look_accum, look_last, look_first, look_active);
 
 	bool pressed_fire = fire_count > 0;
+	bool tap_fire = time < touch_tapfire_until;
 	if (autocvar_touch_fire_mode == TOUCH_FIRE_TOGGLE)
 	{
 		if (pressed_fire && !touch_fire_edge)
 			touch_fire_toggle_state = !touch_fire_toggle_state;
 		touch_fire_edge = pressed_fire;
-		Touch_SetKey("attack", touch_fire_toggle_state || autocvar_touch_auto_fire);
+		Touch_SetKey("attack", touch_fire_toggle_state || tap_fire || autocvar_touch_auto_fire);
 	}
 	else
 	{
 		touch_fire_edge = pressed_fire;
-		Touch_SetKey("attack", pressed_fire || autocvar_touch_auto_fire);
+		Touch_SetKey("attack", pressed_fire || tap_fire || autocvar_touch_auto_fire);
 	}
 	touch_fire_down = pressed_fire;
 
-	Touch_SetKey("jump", jump_down);
+	// Jump is a held modifier in this game, not a discrete action: Xonotic's own
+	// guide says to keep it pressed while moving. So the default is a latch,
+	// which frees the finger that would otherwise be stuck on the bar.
+	if (autocvar_touch_hop_mode == TOUCH_HOP_LATCH)
+	{
+		if (jump_down && !touch_jump_edge)
+			touch_hop_latched = !touch_hop_latched;
+		Touch_SetKey("jump", touch_hop_latched);
+	}
+	else if (autocvar_touch_hop_mode == TOUCH_HOP_AUTO)
+	{
+		touch_hop_latched = vlen(touch_move_offset) >= autocvar_touch_stick_deadzone;
+		Touch_SetKey("jump", jump_down || touch_hop_latched);
+	}
+	else
+	{
+		touch_hop_latched = false;
+		Touch_SetKey("jump", jump_down);
+	}
+	touch_jump_edge = jump_down;
+
 	Touch_SetKey("crouch", crouch_down);
 
 	if (autocvar_touch_zoom_mode == TOUCH_ZOOM_TOGGLE)
@@ -657,6 +735,16 @@ bool Touch_JumpHeld(void)
 	return touch_key_jump;
 }
 
+bool Touch_HopLatched(void)
+{
+	return touch_hop_latched && autocvar_touch_hop_mode != TOUCH_HOP_HOLD;
+}
+
+bool Touch_Fire2Held(void)
+{
+	return Touch_RoleOwned(TOUCH_ROLE_FIRE2);
+}
+
 bool Touch_CrouchHeld(void)
 {
 	return touch_key_crouch;
@@ -682,7 +770,8 @@ string Touch_DebugRoleName(int role)
 	if (role == TOUCH_ROLE_MOVE) return "MOVE";
 	if (role == TOUCH_ROLE_LOOK) return "LOOK";
 	if (role == TOUCH_ROLE_FIRE) return "FIRE";
-	if (role == TOUCH_ROLE_JUMP) return "SPACE";
+	if (role == TOUCH_ROLE_FIRE2) return "FIRE2";
+	if (role == TOUCH_ROLE_JUMP) return "HOP";
 	if (role == TOUCH_ROLE_CROUCH) return "CR";
 	if (role == TOUCH_ROLE_WEAPON) return "WEP";
 	if (role == TOUCH_ROLE_ZOOM) return "ZOOM";

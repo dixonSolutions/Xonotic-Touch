@@ -37,6 +37,10 @@ void Touch_SaveLayoutFile(string path)
 	Touch_ConfigWriteFloat(fh, "touch_fire_y");
 	Touch_ConfigWriteFloat(fh, "touch_fire_size");
 	Touch_ConfigWriteFloat(fh, "touch_fire_visible");
+	Touch_ConfigWriteFloat(fh, "touch_fire2_x");
+	Touch_ConfigWriteFloat(fh, "touch_fire2_y");
+	Touch_ConfigWriteFloat(fh, "touch_fire2_size");
+	Touch_ConfigWriteFloat(fh, "touch_fire2_visible");
 	Touch_ConfigWriteFloat(fh, "touch_jump_x");
 	Touch_ConfigWriteFloat(fh, "touch_jump_y");
 	Touch_ConfigWriteFloat(fh, "touch_jump_size");
@@ -98,6 +102,11 @@ void Touch_SaveLayoutFile(string path)
 	Touch_ConfigWriteFloat(fh, "touch_invert_y");
 	Touch_ConfigWriteFloat(fh, "touch_look_smoothing");
 	Touch_ConfigWriteFloat(fh, "touch_look_deadzone_px");
+	Touch_ConfigWriteFloat(fh, "touch_look_filter");
+	Touch_ConfigWriteFloat(fh, "touch_look_fcmin");
+	Touch_ConfigWriteFloat(fh, "touch_look_beta");
+	Touch_ConfigWriteFloat(fh, "touch_look_tap_fire");
+	Touch_ConfigWriteFloat(fh, "touch_look_tap_ms");
 	Touch_ConfigWriteFloat(fh, "touch_look_escape_carry");
 	Touch_ConfigWriteFloat(fh, "touch_look_max_deg_per_s");
 	Touch_ConfigWriteFloat(fh, "touch_look_owns_view");
@@ -106,6 +115,8 @@ void Touch_SaveLayoutFile(string path)
 	Touch_ConfigWriteFloat(fh, "touch_stick_range");
 	Touch_ConfigWriteFloat(fh, "touch_aim_assist");
 	Touch_ConfigWriteFloat(fh, "touch_fire_mode");
+	Touch_ConfigWriteFloat(fh, "touch_fire_drag_look");
+	Touch_ConfigWriteFloat(fh, "touch_hop_mode");
 	Touch_ConfigWriteFloat(fh, "touch_zoom_mode");
 	Touch_ConfigWriteFloat(fh, "touch_weapon_mode");
 	Touch_ConfigWriteString(fh, "touch_weapon_slot1");
