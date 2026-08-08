@@ -104,6 +104,8 @@ Metadata lives under `click/` (`manifest.json.in`, desktop hook, AppArmor). Fram
 
 Each push to `main` publishes a **new** release tag `v1.2.<run_number>` (marked latest). Previous tags stay available.
 
+Requires **Settings → Actions → General → Workflow permissions → Read and write permissions** (otherwise `release` fails with `403 Resource not accessible by integration`).
+
 Attached assets:
 
 - `XonoticTouch-<version>-x86_64.flatpak`
