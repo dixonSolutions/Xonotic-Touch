@@ -412,7 +412,10 @@ xonotic_touch_begin_asset_fetch() {
     data_dir="$(xonotic_data_dir)"
     asset_lib="$(xonotic_root)/scripts/lib/asset-fetch.sh"
     discover_lib="$(xonotic_root)/scripts/lib/asset-discover.sh"
-    progress_file="$data_dir/.asset-fetch-progress"
+    # Plain name under touch/: DarkPlaces rejects dot-prefixed paths, so a
+    # progress file the engine cannot open would leave the wizard blank.
+    progress_file="$data_dir/touch/asset-progress.txt"
+    mkdir -p "$data_dir/touch"
 
     if [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" = "1" ] || [ ! -f "$asset_lib" ]; then
         printf '0 0\n'
@@ -424,18 +427,27 @@ xonotic_touch_begin_asset_fetch() {
     if [ -f "$discover_lib" ]; then
         # shellcheck source=/dev/null
         . "$discover_lib"
-        export XONOTIC_ASSET_FETCH_PROGRESS="$progress_file"
-        xonotic_try_discover_assets "$data_dir" || true
     fi
+    export XONOTIC_ASSET_FETCH_PROGRESS="$progress_file"
+
+    # Fast sync only: ready? → no wizard. Otherwise fullscreen wizard + background.
     if xonotic_assets_are_ready "$data_dir"; then
         printf '0 1\n'
         return 0
     fi
 
-    export XONOTIC_ASSET_FETCH_PROGRESS="$progress_file"
-    rm -f "$progress_file"
+    {
+        printf '%s\n' discover
+        printf '%s\n' 5
+        printf '%s\n' "Checking your game data..."
+    } > "$progress_file"
+
     (
-        xonotic_fetch_game_assets "$data_dir"
+        if declare -F xonotic_resolve_missing_assets >/dev/null 2>&1; then
+            xonotic_resolve_missing_assets "$data_dir"
+        else
+            xonotic_fetch_game_assets "$data_dir"
+        fi
     ) &
     printf '1 0\n'
 }
@@ -459,6 +471,14 @@ xonotic_run_native() {
         :
     fi
 
+    # Mirrors packaging/start.sh: the download wizard asks for a relaunch so the
+    # engine picks up packs that appeared after it built its search path.
+    local restart_marker restart_marker_home status
+    restart_marker="$(xonotic_data_dir)/touch/relaunch-request.txt"
+    restart_marker_home="${HOME}/.xonotic/data/touch/relaunch-request.txt"
+    rm -f "$restart_marker" "$restart_marker_home"
+    status=0
+
     cd "$base_dir"
 
     printf 'Launching with basedir %s (gamedir data/)\n' "$base_dir"
@@ -468,19 +488,33 @@ xonotic_run_native() {
         "${XONOTIC_VID_WIDTH:-?}" "${XONOTIC_VID_HEIGHT:-?}"
     printf '\n'
 
-    exec "$bin" -xonotic \
-        -customgamename "Xonotic Touch" \
-        +exec xonotic.cfg \
-        +exec screen.layout.cfg \
-        +exec config.cfg \
-        +exec autoexec.cfg \
-        +exec touch/startup.cfg \
-        +set _touch_asset_fetch_active "$asset_fetch_active" \
-        +set _touch_assets_ready "$touch_assets_ready" \
-        +vid_fullscreen "$fullscreen" \
-        +vid_touchscreen 1 \
-        +cl_movement 1 \
-        +con_closeontoggle 1 \
-        +developer 0 \
-        "$@"
+    while :; do
+        "$bin" -xonotic \
+            -customgamename "Xonotic Touch" \
+            +exec xonotic.cfg \
+            +exec screen.layout.cfg \
+            +exec config.cfg \
+            +exec autoexec.cfg \
+            +exec touch/startup.cfg \
+            +set _touch_asset_fetch_active "$asset_fetch_active" \
+            +set _touch_assets_ready "$touch_assets_ready" \
+            +vid_fullscreen "$fullscreen" \
+            +vid_touchscreen 1 \
+            +cl_movement 1 \
+            +con_closeontoggle 1 \
+            +developer 0 \
+            "$@" || status=$?
+
+        if [ ! -f "$restart_marker" ] && [ ! -f "$restart_marker_home" ]; then
+            break
+        fi
+        rm -f "$restart_marker" "$restart_marker_home"
+        printf 'Relaunching engine so downloaded game data is loaded\n'
+        if read -r asset_fetch_active touch_assets_ready < <(xonotic_touch_begin_asset_fetch); then
+            :
+        fi
+        status=0
+    done
+
+    return "$status"
 }

@@ -42,16 +42,21 @@ scripts/             # build, stage-slim-data, stage-click, fetch-assets-runtime
 
 ```mermaid
 flowchart TD
-  A[start.sh] --> B[Sync slim bundle to user data dir]
-  B --> C{Assets present?}
-  C -->|no| D[Background fetch + progress file]
-  C -->|yes| E[Write screen layout + touch startup]
-  D --> F[exec xonotic -xonotic]
-  E --> F
-  F --> G[Menu startup chain: ToS → download UI → profile → touch setup]
+  A[start.sh] --> B[Sync slim bundle to our user data dir]
+  B --> C{Our app assets ready?}
+  C -->|yes| E[Normal menu]
+  C -->|no| W[Fullscreen setup wizard]
+  W --> BG[Background: Flatpak copy or download]
+  BG --> R[Relaunch when ready]
+  E --> F[exec xonotic]
+  W --> F
 ```
 
-Asset download runs in parallel with the game when needed; progress is shown in `XonoticTouchAssetFetchDialog`. See [SETUP.md](SETUP.md).
+Fast ready-check before launch. Flatpak copy / download run in the **background** and drive a **fullscreen** wizard — the main menu must not show through. Our app owns all user data and packs; Flatpak `org.xonotic.Xonotic` is copy-only. See [SETUP.md](SETUP.md).
+
+The wizard is engine UI, so the package cannot be asset-free: `scripts/fetch-boot-assets.sh` stages the menu skin and console graphics (~31 MB) that the first screen is drawn from, and `scripts/stage-slim-data.sh` calls it after stripping the large media directories. Setup precedes the terms-of-service dialog in the startup chain, because the ToS arrives asynchronously and would otherwise land on top of a download in progress.
+
+Engine-visible handshake files live under `data/touch/` with plain names (`asset-progress.txt`, `relaunch-request.txt`): DarkPlaces' `FS_CheckNastyPath` refuses any path with a leading dot, so the shell-side `.assets-ready` marker reaches the menu as the `_touch_assets_ready` cvar instead. Finished downloads go back through the launcher rather than hot-loading, because packs added after startup are not in the engine's search path.
 
 ## 5. Packaging
 

@@ -3,19 +3,32 @@
 #include "rootdialog.qh"
 #include "touch_startup_util.qh"
 
+// First-launch setup wizard: the package ships boot assets only, so this dialog
+// owns the screen until the game data it is downloading is usable.
 CLASS(XonoticTouchAssetFetchDialog, XonoticRootDialog)
 	METHOD(XonoticTouchAssetFetchDialog, fill, void(entity));
 	METHOD(XonoticTouchAssetFetchDialog, shouldShow, bool());
 	METHOD(XonoticTouchAssetFetchDialog, draw, void(entity));
 	ATTRIB(XonoticTouchAssetFetchDialog, title, string, _("Xonotic Touch"));
-	ATTRIB(XonoticTouchAssetFetchDialog, color, vector, SKINCOLOR_DIALOG_FIRSTRUN);
-	ATTRIB(XonoticTouchAssetFetchDialog, intendedWidth, float, 0.85);
-	ATTRIB(XonoticTouchAssetFetchDialog, rows, float, 10);
+	ATTRIB(XonoticTouchAssetFetchDialog, color, vector, '0.06 0.07 0.1');
+	// Edge-to-edge setup screen — the broken main menu must never show through.
+	ATTRIB(XonoticTouchAssetFetchDialog, intendedWidth, float, 1);
+	ATTRIB(XonoticTouchAssetFetchDialog, rows, float, 12);
 	ATTRIB(XonoticTouchAssetFetchDialog, columns, float, 6);
 	ATTRIB(XonoticTouchAssetFetchDialog, name, string, "TouchAssetFetch");
 	ATTRIB(XonoticTouchAssetFetchDialog, closable, bool, false);
-	ATTRIB(XonoticTouchAssetFetchDialog, progressStatus, string, "running");
+	// Progress file mirror; all three are owned by strcpy (never a constant).
+	ATTRIB(XonoticTouchAssetFetchDialog, progressStatus, string, string_null);
 	ATTRIB(XonoticTouchAssetFetchDialog, progressPercent, float, 0);
 	ATTRIB(XonoticTouchAssetFetchDialog, progressMessage, string, string_null);
+	ATTRIB(XonoticTouchAssetFetchDialog, headlineLabel, entity);
 	ATTRIB(XonoticTouchAssetFetchDialog, statusLabel, entity);
+	ATTRIB(XonoticTouchAssetFetchDialog, hintLabel, entity);
+	ATTRIB(XonoticTouchAssetFetchDialog, progressBar, entity);
+	// Set once the download reported success, to hold the finished state on
+	// screen for a beat before the relaunch takes the window away.
+	ATTRIB(XonoticTouchAssetFetchDialog, completedTime, float, 0);
+	// "Try again" could not hand back to the launcher, so the user has to
+	// restart the app by hand.
+	ATTRIB(XonoticTouchAssetFetchDialog, relaunchFailed, bool, false);
 ENDCLASS(XonoticTouchAssetFetchDialog)

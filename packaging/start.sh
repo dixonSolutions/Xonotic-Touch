@@ -123,45 +123,87 @@ sync_bundle_data
 
 ASSET_FETCH_ACTIVE=0
 TOUCH_ASSETS_READY=0
-PROGRESS_FILE="$USER_DATA/.asset-fetch-progress"
+# Files the engine has to read or write live under touch/ with plain names:
+# DarkPlaces' FS_CheckNastyPath refuses every path with a leading dot, so QC
+# cannot see a `.asset-fetch-progress` at all (verified against fs.c). The
+# shell-only `.assets-ready` marker keeps its name.
+mkdir -p "$USER_DATA/touch" 2>/dev/null || xonotic_log "cannot create $USER_DATA/touch"
+PROGRESS_FILE="$USER_DATA/touch/asset-progress.txt"
 ASSET_FETCH_LIB="${FETCH_ASSETS%/*}/asset-fetch.sh"
 ASSET_DISCOVER_LIB="${FETCH_ASSETS%/*}/asset-discover.sh"
 
-# The asset libraries are bash-only; sourcing them from dash is a syntax error.
-# Confined clicks usually cannot exec host bash, so fall back to the POSIX
-# autobuild downloader (busybox wget/unzip).
-if [ -n "${BASH_VERSION:-}" ] && [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" != "1" ] && [ -f "$ASSET_FETCH_LIB" ]; then
-	# shellcheck source=/dev/null
-	. "$ASSET_FETCH_LIB"
-	if [ -f "$ASSET_DISCOVER_LIB" ]; then
-		# shellcheck source=/dev/null
-		. "$ASSET_DISCOVER_LIB"
-		export XONOTIC_ASSET_FETCH_PROGRESS="$PROGRESS_FILE"
-		xonotic_try_discover_assets "$USER_DATA" || true
-		sync_bundle_data
-	fi
-	if xonotic_assets_are_ready "$USER_DATA"; then
-		TOUCH_ASSETS_READY=1
-	else
-		ASSET_FETCH_ACTIVE=1
-		export XONOTIC_ASSET_FETCH_PROGRESS="$PROGRESS_FILE"
-		rm -f "$PROGRESS_FILE"
-		(
-			xonotic_fetch_game_assets "$USER_DATA"
-			sync_bundle_data
-		) &
-	fi
-elif [ -f "$USER_DATA/.assets-ready" ]; then
-	TOUCH_ASSETS_READY=1
-elif [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" != "1" ] && [ -x "$FETCH_ASSETS_POSIX" ]; then
-	ASSET_FETCH_ACTIVE=1
-	export XONOTIC_ASSET_FETCH_PROGRESS="$PROGRESS_FILE"
-	rm -f "$PROGRESS_FILE"
-	(
-		"$FETCH_ASSETS_POSIX" "$USER_DATA"
-		sync_bundle_data
-	) &
-fi
+# The download wizard asks for a relaunch by creating this file, either after a
+# successful download (packs added to a running engine are not in its search
+# path) or when the user taps "Try again" after a failure. The engine's write
+# directory is either the gamedir or ~/.xonotic/data depending on how DarkPlaces
+# resolves the user path, so both are checked (same split as touch.layout.cfg).
+RESTART_MARKER="$USER_DATA/touch/relaunch-request.txt"
+RESTART_MARKER_HOME="${HOME}/.xonotic/data/touch/relaunch-request.txt"
+
+restart_requested() {
+    [ -f "$RESTART_MARKER" ] || [ -f "$RESTART_MARKER_HOME" ]
+}
+
+clear_restart_request() {
+    rm -f "$RESTART_MARKER" "$RESTART_MARKER_HOME" 2>/dev/null || true
+}
+
+# Asset resolution:
+#   Sync:  our USER_DATA already ready? → no wizard
+#   Else:  show fullscreen wizard; background does Flatpak copy → else download
+# Never block launch on Flatpak/network — that was freezing "detection".
+prepare_assets() {
+    ASSET_FETCH_ACTIVE=0
+    TOUCH_ASSETS_READY=0
+
+    # The asset libraries are bash-only; sourcing them from dash is a syntax
+    # error. Confined clicks usually cannot exec host bash, so fall back to the
+    # POSIX autobuild downloader (busybox wget/unzip).
+    if [ -n "${BASH_VERSION:-}" ] && [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" != "1" ] && [ -f "$ASSET_FETCH_LIB" ]; then
+        # shellcheck source=/dev/null
+        . "$ASSET_FETCH_LIB"
+        if [ -f "$ASSET_DISCOVER_LIB" ]; then
+            # shellcheck source=/dev/null
+            . "$ASSET_DISCOVER_LIB"
+        fi
+        export XONOTIC_ASSET_FETCH_PROGRESS="$PROGRESS_FILE"
+        if xonotic_assets_are_ready "$USER_DATA"; then
+            TOUCH_ASSETS_READY=1
+        else
+            ASSET_FETCH_ACTIVE=1
+            # Seed progress before the engine opens so the wizard is never blank.
+            {
+                printf '%s\n' discover
+                printf '%s\n' 5
+                printf '%s\n' "Checking your game data..."
+            } > "$PROGRESS_FILE"
+            (
+                if declare -F xonotic_resolve_missing_assets >/dev/null 2>&1; then
+                    xonotic_resolve_missing_assets "$USER_DATA"
+                else
+                    xonotic_fetch_game_assets "$USER_DATA"
+                fi
+                sync_bundle_data
+            ) &
+        fi
+    elif [ -f "$USER_DATA/.assets-ready" ]; then
+        TOUCH_ASSETS_READY=1
+    elif [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" != "1" ] && [ -x "$FETCH_ASSETS_POSIX" ]; then
+        ASSET_FETCH_ACTIVE=1
+        # Same file the wizard polls; without this the POSIX downloader reports
+        # nowhere and setup sits on its opening message for the whole download.
+        export XONOTIC_ASSET_FETCH_PROGRESS="$PROGRESS_FILE"
+        {
+            printf '%s\n' discover
+            printf '%s\n' 5
+            printf '%s\n' "Checking your game data..."
+        } > "$PROGRESS_FILE"
+        (
+            "$FETCH_ASSETS_POSIX" "$USER_DATA"
+            sync_bundle_data
+        ) &
+    fi
+}
 
 # Gameplay stays blocked in-menu until assets are ready (asset-fetch dialog).
 
@@ -280,29 +322,45 @@ cd "$USER_BASE" 2>/dev/null || xonotic_log "cannot enter $USER_BASE — engine m
 # Re-exec user config AFTER xonotic.cfg: the default chain (xonotic-client.cfg)
 # sets `_cl_name ""` which would wipe the archived player name every launch and
 # force the FirstRun wizard again. config.cfg / autoexec restore user prefs.
-# shellcheck disable=SC2086
-exec "$BIN" -xonotic \
-    -customgamename "Xonotic Touch" \
-    +exec xonotic.cfg \
-    +exec screen.layout.cfg \
-    +exec config.cfg \
-    +exec autoexec.cfg \
-    +exec touch/startup.cfg \
-    +set _touch_asset_fetch_active "$ASSET_FETCH_ACTIVE" \
-    +set _touch_assets_ready "$TOUCH_ASSETS_READY" \
-    +vid_fullscreen "$FULLSCREEN" \
-    +vid_touchscreen 1 \
-    +vid_conwidthauto 1 \
-    +vid_conheight "$XONOTIC_VID_HEIGHT" \
-    +vid_width "$XONOTIC_VID_WIDTH" \
-    +vid_height "$XONOTIC_VID_HEIGHT" \
-    +vid_touchscreen_xdpi "$XONOTIC_TOUCH_XDPI" \
-    +vid_touchscreen_ydpi "$XONOTIC_TOUCH_YDPI" \
-    +vid_touchscreen_density "$XONOTIC_TOUCH_DENSITY" \
-    +cl_movement 1 \
-    +con_closeontoggle 1 \
-    +scr_screenshot_jpeg 0 \
-    +developer 0 \
-    +prvm_traceqc 0 \
-    +prvm_statementprofiling 0 \
-    +prvm_timeprofiling 0
+run_engine() {
+    "$BIN" -xonotic \
+        -customgamename "Xonotic Touch" \
+        +exec xonotic.cfg \
+        +exec screen.layout.cfg \
+        +exec config.cfg \
+        +exec autoexec.cfg \
+        +exec touch/startup.cfg \
+        +set _touch_asset_fetch_active "$ASSET_FETCH_ACTIVE" \
+        +set _touch_assets_ready "$TOUCH_ASSETS_READY" \
+        +vid_fullscreen "$FULLSCREEN" \
+        +vid_touchscreen 1 \
+        +vid_conwidthauto 1 \
+        +vid_conheight "$XONOTIC_VID_HEIGHT" \
+        +vid_width "$XONOTIC_VID_WIDTH" \
+        +vid_height "$XONOTIC_VID_HEIGHT" \
+        +vid_touchscreen_xdpi "$XONOTIC_TOUCH_XDPI" \
+        +vid_touchscreen_ydpi "$XONOTIC_TOUCH_YDPI" \
+        +vid_touchscreen_density "$XONOTIC_TOUCH_DENSITY" \
+        +cl_movement 1 \
+        +con_closeontoggle 1 \
+        +scr_screenshot_jpeg 0 \
+        +developer 0 \
+        +prvm_traceqc 0 \
+        +prvm_statementprofiling 0 \
+        +prvm_timeprofiling 0
+}
+
+# A stale marker from a killed session must not relaunch this one.
+clear_restart_request
+
+ENGINE_STATUS=0
+while :; do
+    prepare_assets
+    run_engine || ENGINE_STATUS=$?
+    restart_requested || break
+    clear_restart_request
+    xonotic_log "relaunching engine so downloaded game data is loaded"
+    ENGINE_STATUS=0
+done
+
+exit "$ENGINE_STATUS"

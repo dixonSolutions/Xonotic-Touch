@@ -1,0 +1,24 @@
+#pragma once
+
+#include "../item.qh"
+
+// Progress bar drawn from plain fills, with no skin image behind it: the first
+// user of this widget is the first-launch download wizard, which runs before
+// the game's own art has been downloaded.
+CLASS(XonoticProgressBar, MenuItem)
+	METHOD(XonoticProgressBar, draw, void(entity));
+	METHOD(XonoticProgressBar, setProgress, void(entity, float));
+	ATTRIB(XonoticProgressBar, progress, float, 0);          // 0..1
+	// Sweeps a highlight instead of filling: use while the length of the work
+	// is still unknown, so the UI never looks frozen.
+	ATTRIB(XonoticProgressBar, indeterminate, bool, false);
+	// Matches scr_loadingscreen_barcolor so the wizard and the engine's own
+	// loading bar read as the same progress language.
+	ATTRIB(XonoticProgressBar, color, vector, '0 0.5 1');
+	ATTRIB(XonoticProgressBar, colorTrack, vector, '1 1 1');
+	ATTRIB(XonoticProgressBar, alphaBar, float, 0.9);
+	ATTRIB(XonoticProgressBar, alphaTrack, float, 0.15);
+	ATTRIB(XonoticProgressBar, barHeight, float, 0.5);       // fraction of the cell
+ENDCLASS(XonoticProgressBar)
+
+entity makeXonoticProgressBar();

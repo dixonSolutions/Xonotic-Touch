@@ -1,7 +1,21 @@
 #pragma once
 
-const string TOUCH_ASSET_PROGRESS_FILE = ".asset-fetch-progress";
-const string TOUCH_ASSETS_READY_MARKER = ".assets-ready";
+// DarkPlaces' FS_CheckNastyPath rejects every path with a leading dot, so the
+// engine-visible half of the launcher handshake cannot use the shell's
+// `.assets-ready` / `.asset-fetch-progress` names. Readiness reaches the menu
+// as a cvar instead, and these two files carry the rest.
+const string TOUCH_ASSET_PROGRESS_FILE = "touch/asset-progress.txt";
+// Read by packaging/start.sh after the engine exits: the launcher owns both the
+// downloader and the engine's search path, so anything that needs new packs
+// loaded (or a failed download retried) has to go back through it.
+const string TOUCH_RELAUNCH_MARKER = "touch/relaunch-request.txt";
+
+// First line of the progress file, written by scripts/lib/asset-fetch.sh,
+// scripts/lib/asset-discover.sh and scripts/fetch-assets-posix.sh.
+const string TOUCH_FETCH_DISCOVER = "discover";
+const string TOUCH_FETCH_RUNNING = "running";
+const string TOUCH_FETCH_DONE = "done";
+const string TOUCH_FETCH_ERROR = "error";
 
 bool TouchStartup_assetsReady();
 bool TouchStartup_assetFetchActive();
@@ -9,3 +23,4 @@ bool TouchStartup_assetFetchDialog_shouldShow();
 bool TouchStartup_userProfileNeeded();
 bool TouchStartup_touchSetupNeeded();
 void TouchStartup_readProgress(entity dlg);
+bool TouchStartup_requestRelaunch();

@@ -110,6 +110,7 @@
 #include <menu/xonotic/playerlist.qc>
 #include <menu/xonotic/playermodel.qc>
 #include <menu/xonotic/playlist.qc>
+#include <menu/xonotic/progressbar.qc>
 #include <menu/xonotic/radiobutton.qc>
 #include <menu/xonotic/rootdialog.qc>
 #include <menu/xonotic/screenshotimage.qc>

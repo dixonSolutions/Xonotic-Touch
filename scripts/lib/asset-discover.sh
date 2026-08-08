@@ -1,5 +1,13 @@
 #!/bin/bash
-# Discover Xonotic game assets from existing local installs (Flatpak, Debian, user data).
+# Resolve game assets for Xonotic Touch into OUR user data directory only.
+#
+# Sync (before launch): only ask "is our data already ready?"
+# Background (decides wizard content): Flatpak copy → else download.
+#
+# Order (stop at first success):
+#   1. Assets already in our app data → use them (no import, no download)
+#   2. Original Flatpak org.xonotic.Xonotic → full copy into our data
+#   3. Otherwise download via the in-game wizard
 set -euo pipefail
 
 XONOTIC_DISCOVERY_PK3_PATTERNS=(
@@ -9,12 +17,22 @@ XONOTIC_DISCOVERY_PK3_PATTERNS=(
     'xonotic-*-nexcompat.pk3'
 )
 
+XONOTIC_DISCOVERY_PK3DIR_TREES=(
+    'xonotic-data.pk3dir'
+    'xonotic-maps.pk3dir'
+    'xonotic-music.pk3dir'
+    'xonotic-nexcompat.pk3dir'
+)
+
 XONOTIC_DISCOVERY_PK3DIR_MARKERS=(
     'xonotic-data.pk3dir/textures'
     'xonotic-maps.pk3dir/maps'
     'xonotic-music.pk3dir/music'
     'xonotic-nexcompat.pk3dir/textures'
 )
+
+# Never block the UI forever on a wedged flatpak helper.
+XONOTIC_FLATPAK_INFO_TIMEOUT_SEC="${XONOTIC_FLATPAK_INFO_TIMEOUT_SEC:-4}"
 
 xonotic_discovery_progress_write() {
     local status="$1"
@@ -32,9 +50,23 @@ xonotic_discovery_progress_write() {
     } > "$file"
 }
 
+# Cheap non-empty dir check — never `ls -A` huge texture trees (that hung detection).
+xonotic_discovery_dir_nonempty() {
+    local dir="$1"
+    local entry
+
+    [ -d "$dir" ] || return 1
+    for entry in "$dir"/* "$dir"/.[!.]* "$dir"/..?*; do
+        if [ -e "$entry" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 xonotic_discovery_source_has_assets() {
     local source_dir="$1"
-    local pattern
+    local pattern marker
 
     if [ ! -d "$source_dir" ]; then
         return 1
@@ -47,7 +79,7 @@ xonotic_discovery_source_has_assets() {
     done
 
     for marker in "${XONOTIC_DISCOVERY_PK3DIR_MARKERS[@]}"; do
-        if [ -d "$source_dir/$marker" ] && [ -n "$(ls -A "$source_dir/$marker" 2>/dev/null)" ]; then
+        if xonotic_discovery_dir_nonempty "$source_dir/$marker"; then
             return 0
         fi
     done
@@ -55,140 +87,141 @@ xonotic_discovery_source_has_assets() {
     return 1
 }
 
-xonotic_discovery_collect_candidate_dirs() {
-    local -a candidates=()
+xonotic_discovery_find_flatpak_xonotic_data() {
     local home="${HOME:-}"
-    local path flatpak_root dir
-
-    if [ -n "$home" ]; then
-        candidates+=(
-            "$home/.xonotic/data"
-            "$home/.var/app/org.xonotic.Xonotic/.xonotic/data"
-        )
-    fi
+    local flatpak_root dir
 
     if command -v flatpak >/dev/null 2>&1; then
-        flatpak_root="$(flatpak info --show-location org.xonotic.Xonotic 2>/dev/null || true)"
-        if [ -n "$flatpak_root" ] && [ -d "$flatpak_root/files/share/xonotic/data" ]; then
-            candidates+=("$flatpak_root/files/share/xonotic/data")
+        flatpak_root="$(
+            timeout "$XONOTIC_FLATPAK_INFO_TIMEOUT_SEC" \
+                flatpak info --show-location org.xonotic.Xonotic 2>/dev/null || true
+        )"
+        if [ -n "$flatpak_root" ] && xonotic_discovery_source_has_assets "$flatpak_root/files/share/xonotic/data"; then
+            printf '%s\n' "$flatpak_root/files/share/xonotic/data"
+            return 0
         fi
     fi
 
-    for path in \
+    # Avoid unquoted globs exploding into a multi-minute walk; expand carefully.
+    shopt -s nullglob
+    for dir in \
         /var/lib/flatpak/app/org.xonotic.Xonotic/*/files/share/xonotic/data \
-        "$home/.local/share/flatpak/app/org.xonotic.Xonotic"/*/files/share/xonotic/data \
-        /usr/share/games/xonotic/data \
-        /usr/share/xonotic/data \
-        /usr/local/share/games/xonotic/data \
-        /usr/local/share/xonotic/data; do
-        for dir in $path; do
-            [ -d "$dir" ] && candidates+=("$dir")
-        done
+        "${home}/.local/share/flatpak/app/org.xonotic.Xonotic"/*/files/share/xonotic/data; do
+        if xonotic_discovery_source_has_assets "$dir"; then
+            shopt -u nullglob
+            printf '%s\n' "$dir"
+            return 0
+        fi
     done
+    shopt -u nullglob
 
-    if command -v dpkg >/dev/null 2>&1 && dpkg -s xonotic >/dev/null 2>&1; then
-        while IFS= read -r dir; do
-            [ -n "$dir" ] && [ -d "$dir" ] && candidates+=("$dir")
-        done <<EOF
-$(dpkg -L xonotic 2>/dev/null | while IFS= read -r file; do
-    case "$file" in
-        *.pk3) dirname "$file" ;;
-        */data) printf '%s\n' "$file" ;;
-    esac
-done | sort -u)
-EOF
+    if [ -n "$home" ] && xonotic_discovery_source_has_assets "$home/.var/app/org.xonotic.Xonotic/.xonotic/data"; then
+        printf '%s\n' "$home/.var/app/org.xonotic.Xonotic/.xonotic/data"
+        return 0
     fi
 
-    printf '%s\n' "${candidates[@]}" | awk '!seen[$0]++'
+    return 1
 }
 
-xonotic_discovery_import_pk3() {
+# Duplicate packs into our app. Always copy — never hardlink/symlink/use source in place.
+xonotic_discovery_copy_assets_from() {
     local source_dir="$1"
     local target_dir="$2"
-    local pattern file base
+    local pattern file base tree
+    local trees_total=0 trees_done=0 percent
+
+    mkdir -p "$target_dir"
+
+    xonotic_discovery_progress_write discover 45 "Copying packages from Flatpak Xonotic..."
 
     for pattern in "${XONOTIC_DISCOVERY_PK3_PATTERNS[@]}"; do
         for file in "$source_dir"/$pattern; do
             [ -f "$file" ] || continue
             base="$(basename "$file")"
-            if [ -f "$target_dir/$base" ]; then
+            if [ -e "$target_dir/$base" ]; then
                 continue
             fi
-            if ln "$file" "$target_dir/$base" 2>/dev/null; then
-                :
-            else
-                cp -a "$file" "$target_dir/$base"
-            fi
+            xonotic_discovery_progress_write discover 50 "Copying ${base}..."
+            cp -a "$file" "$target_dir/$base"
         done
     done
-}
 
-xonotic_discovery_import_pk3dir_tree() {
-    local source_dir="$1"
-    local target_dir="$2"
-    local tree marker
+    for tree in "${XONOTIC_DISCOVERY_PK3DIR_TREES[@]}"; do
+        if [ -d "$source_dir/$tree" ]; then
+            trees_total=$((trees_total + 1))
+        fi
+    done
 
-    for tree in xonotic-data.pk3dir xonotic-maps.pk3dir xonotic-music.pk3dir xonotic-nexcompat.pk3dir; do
+    for tree in "${XONOTIC_DISCOVERY_PK3DIR_TREES[@]}"; do
         if [ ! -d "$source_dir/$tree" ]; then
             continue
         fi
+        trees_done=$((trees_done + 1))
+        if [ "$trees_total" -gt 0 ]; then
+            percent=$((55 + trees_done * 35 / trees_total))
+        else
+            percent=90
+        fi
+        xonotic_discovery_progress_write discover "$percent" "Copying ${tree} into Xonotic Touch..."
         mkdir -p "$target_dir/$tree"
-        rsync -a --ignore-existing "$source_dir/$tree/" "$target_dir/$tree/"
+        if command -v rsync >/dev/null 2>&1; then
+            rsync -a --ignore-existing "$source_dir/$tree/" "$target_dir/$tree/"
+        else
+            cp -a "$source_dir/$tree/." "$target_dir/$tree/" 2>/dev/null || true
+        fi
     done
 }
 
+# Fast path used before the engine starts. Never touches Flatpak or the network.
 xonotic_try_discover_assets() {
     local target_dir="$1"
-    local source label
-    local -a sources=()
-    local total=0
-    local index=0
-    local percent
 
     mkdir -p "$target_dir"
 
-    xonotic_discovery_progress_write discover 0 "Searching for an existing Xonotic install..."
-
-    while IFS= read -r source; do
-        [ -n "$source" ] || continue
-        if xonotic_discovery_source_has_assets "$source"; then
-            sources+=("$source")
-        fi
-    done < <(xonotic_discovery_collect_candidate_dirs)
-
-    total="${#sources[@]}"
-    if [ "$total" -eq 0 ]; then
-        xonotic_discovery_progress_write discover 100 "No local Xonotic install found — download required."
-        return 1
+    if declare -F xonotic_assets_are_ready >/dev/null 2>&1 && xonotic_assets_are_ready "$target_dir"; then
+        return 0
     fi
+    return 1
+}
 
-    for source in "${sources[@]}"; do
-        index=$((index + 1))
-        percent=$((index * 100 / total))
-        case "$source" in
-            *org.xonotic.Xonotic*)
-                label="Flatpak Xonotic"
-                ;;
-            */usr/share/*|*/usr/games/*)
-                label="System package (Debian/native)"
-                ;;
-            */.xonotic/data)
-                label="User Xonotic data (~/.xonotic)"
-                ;;
-            *)
-                label="Local Xonotic data"
-                ;;
-        esac
-        xonotic_discovery_progress_write discover "$percent" "Found $label — importing game assets..."
-        xonotic_discovery_import_pk3 "$source" "$target_dir"
-        xonotic_discovery_import_pk3dir_tree "$source" "$target_dir"
-    done
+# Background resolver: updates the progress file that drives the fullscreen wizard.
+# Call only when our data is not ready yet.
+xonotic_resolve_missing_assets() {
+    local target_dir="$1"
+    local source
+
+    mkdir -p "$target_dir"
+    # Plain name under touch/: the engine cannot open dot-prefixed files.
+    export XONOTIC_ASSET_FETCH_PROGRESS="${XONOTIC_ASSET_FETCH_PROGRESS:-$target_dir/touch/asset-progress.txt}"
+    mkdir -p "$(dirname "$XONOTIC_ASSET_FETCH_PROGRESS")"
+
+    xonotic_discovery_progress_write discover 5 "Checking Xonotic Touch game data..."
 
     if declare -F xonotic_assets_are_ready >/dev/null 2>&1 && xonotic_assets_are_ready "$target_dir"; then
-        xonotic_discovery_progress_write discover 100 "Reused assets from an existing Xonotic install."
+        xonotic_discovery_progress_write "done" 100 "Using game assets already in Xonotic Touch."
         return 0
     fi
 
-    xonotic_discovery_progress_write discover 100 "Existing installs found but some packs are still missing."
+    xonotic_discovery_progress_write discover 20 "Looking for original Xonotic Flatpak..."
+
+    if source="$(xonotic_discovery_find_flatpak_xonotic_data)"; then
+        xonotic_discovery_progress_write discover 40 "Found Flatpak Xonotic — copying into this app..."
+        xonotic_discovery_copy_assets_from "$source" "$target_dir"
+
+        if declare -F xonotic_assets_are_ready >/dev/null 2>&1 && xonotic_assets_are_ready "$target_dir"; then
+            xonotic_discovery_progress_write "done" 100 "Copied game assets from Flatpak Xonotic."
+            return 0
+        fi
+        xonotic_discovery_progress_write discover 92 "Flatpak copy incomplete — downloading the rest..."
+    else
+        xonotic_discovery_progress_write discover 30 "No Flatpak Xonotic — starting download..."
+    fi
+
+    if declare -F xonotic_fetch_game_assets >/dev/null 2>&1; then
+        xonotic_fetch_game_assets "$target_dir"
+        return $?
+    fi
+
+    xonotic_discovery_progress_write error 0 "Asset download helper is missing."
     return 1
 }

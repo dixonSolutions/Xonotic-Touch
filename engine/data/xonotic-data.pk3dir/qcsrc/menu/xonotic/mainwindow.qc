@@ -60,15 +60,19 @@
 
 void MainWindow_tryOpenStartupDialogs(entity me)
 {
+	// Setup runs ahead of the terms of service: the ToS arrives asynchronously
+	// from the update server, so leaving it first lets it appear on top of a
+	// download in progress, over a main menu that cannot be used yet. It is
+	// still shown, just on the relaunch that follows a finished setup.
+	if (me.assetFetchDialog.shouldShow())
+	{
+		DialogOpenButton_Click_withCoords(NULL, me.assetFetchDialog, '0 0 0', eX * conwidth + eY * conheight);
+		return;
+	}
 	if (me.ToSDialog.shouldShow())
 	{
 		me.ToSDialog.loadXonoticToS(me.ToSDialog);
 		DialogOpenButton_Click_withCoords(NULL, me.ToSDialog, '0 0 0', eX * conwidth + eY * conheight);
-		return;
-	}
-	if (me.assetFetchDialog.shouldShow())
-	{
-		DialogOpenButton_Click_withCoords(NULL, me.assetFetchDialog, '0 0 0', eX * conwidth + eY * conheight);
 		return;
 	}
 	if (me.firstRunDialog.shouldShow())
@@ -88,7 +92,15 @@ void MainWindow_draw(entity me)
 	{
 		MainWindow_tryOpenStartupDialogs(me);
 		me.firstDraw = false;
+		return;
 	}
+
+	// Nothing behind the setup wizard is safe while the game data is missing:
+	// the stock menu would happily start a map that is not on disk. Re-running
+	// the chain keeps the wizard in front — opening an already open dialog is a
+	// no-op in ModalController, so this costs nothing once it is up.
+	if (me.assetFetchDialog.shouldShow())
+		MainWindow_tryOpenStartupDialogs(me);
 }
 
 void DemoButton_Click(entity me, entity other)

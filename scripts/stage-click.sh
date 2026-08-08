@@ -101,6 +101,8 @@ install -m 755 "$ROOT/scripts/sync-bundle-data.sh" "$DEST/share/xonotic/sync-bun
 install -m 644 "$ROOT/scripts/lib/asset-fetch.sh" "$DEST/share/xonotic/asset-fetch.sh"
 install -m 644 "$ROOT/scripts/lib/asset-discover.sh" "$DEST/share/xonotic/asset-discover.sh"
 
+# Slim data + boot assets (menu skin, console, loading screen) so the engine can
+# show the download wizard instead of a missing-texture menu.
 bash "$ROOT/scripts/stage-slim-data.sh" "$DEST/data"
 CLICK_ARCH="$CLICK_ARCH" bash "$ROOT/scripts/stage-click-utils.sh" "$DEST"
 copy_shared_libs "$DEST/bin/xonotic" "$DEST/lib"

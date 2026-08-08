@@ -1,12 +1,13 @@
 #include "touch_startup_util.qh"
 
+/** The launcher checks `.assets-ready` before exec and passes the answer in.
+ *
+ * The menu cannot re-check that file itself (leading dot), so the wizard's own
+ * completion is the only other thing that flips this cvar.
+ */
 bool TouchStartup_assetsReady()
 {
-	if (cvar("_touch_assets_ready"))
-		return true;
-	if (fexists(TOUCH_ASSETS_READY_MARKER))
-		return true;
-	return false;
+	return cvar("_touch_assets_ready");
 }
 
 bool TouchStartup_assetFetchActive()
@@ -20,7 +21,12 @@ bool TouchStartup_assetFetchDialog_shouldShow()
 		return false;
 	if (TouchStartup_assetsReady())
 		return false;
-	return TouchStartup_assetFetchActive() || !fexists(TOUCH_ASSETS_READY_MARKER);
+	// Only when the launcher started background resolution (or a progress file
+	// already exists). Bare engine launches without the helper must not sit on
+	// a forever "Checking..." screen with no worker behind it.
+	if (TouchStartup_assetFetchActive())
+		return true;
+	return fexists(TOUCH_ASSET_PROGRESS_FILE);
 }
 
 bool TouchStartup_userProfileNeeded()
@@ -52,25 +58,45 @@ void TouchStartup_readProgress(entity dlg)
 	float fh = fopen(TOUCH_ASSET_PROGRESS_FILE, FILE_READ);
 	if (fh < 0)
 	{
-		dlg.progressStatus = "running";
+		// Launcher seeds this file before exec; missing means the worker has
+		// not published a tick yet — keep the indeterminate checking state.
+		strcpy(dlg.progressStatus, TOUCH_FETCH_DISCOVER);
 		dlg.progressPercent = 0;
-		dlg.progressMessage = _("Preparing download...");
+		strcpy(dlg.progressMessage, _("Checking your game data..."));
 		return;
 	}
 
-	string line = fgets(fh);
-	string line2 = fgets(fh);
-	string line3 = fgets(fh);
+	string status = fgets(fh);
+	string percent = fgets(fh);
+	string message = fgets(fh);
 	fclose(fh);
-	if (line == string_null || line == "")
+
+	if (status == string_null || status == "")
 	{
-		dlg.progressStatus = "running";
+		strcpy(dlg.progressStatus, TOUCH_FETCH_DISCOVER);
 		dlg.progressPercent = 0;
-		dlg.progressMessage = _("Preparing download...");
+		strcpy(dlg.progressMessage, _("Checking your game data..."));
 		return;
 	}
 
-	dlg.progressStatus = line;
-	dlg.progressPercent = stof(line2);
-	dlg.progressMessage = (line3 != string_null) ? line3 : "";
+	strcpy(dlg.progressStatus, status);
+	dlg.progressPercent = bound(0, stof(percent), 100);
+	strcpy(dlg.progressMessage, (message != string_null) ? message : "");
+}
+
+/** Ask packaging/start.sh to run the engine again.
+ *
+ * Returns false when the marker cannot be written; the caller then has to stay
+ * in-process, because quitting without a marker would just close the app.
+ */
+bool TouchStartup_requestRelaunch()
+{
+	float fh = fopen(TOUCH_RELAUNCH_MARKER, FILE_WRITE);
+	if (fh < 0)
+		return false;
+
+	fputs(fh, "requested by the Xonotic Touch setup wizard\n");
+	fclose(fh);
+	localcmd("quit\n");
+	return true;
 }
