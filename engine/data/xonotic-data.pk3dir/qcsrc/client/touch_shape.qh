@@ -19,6 +19,12 @@ void Touch_Shape_CapsuleRing(vector center, vector half, float weight, vector rg
 void Touch_Shape_CapsuleShadow(vector center, vector half, float alpha);
 
 void Touch_Shape_RRect(vector center, vector half, float radius, vector rgb, float alpha);
+// thickness is in units, not a fraction of the radius — see touch_shape.qc.
+void Touch_Shape_RRectRing(vector center, vector half, float radius, float thickness,
+	vector rgb, float alpha);
 
 void Touch_Shape_Label(vector center, float fontsize, string label, vector rgb, float alpha);
+// align: -1 left edge at `at`, 0 centred, +1 right edge at `at`.
+void Touch_Shape_LabelAligned(vector at, float fontsize, string label, float align,
+	vector rgb, float alpha);
 float Touch_Shape_LabelWidth(float fontsize, string label);

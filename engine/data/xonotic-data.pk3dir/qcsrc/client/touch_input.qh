@@ -11,6 +11,10 @@ void Touch_SetKey(string key, bool down);
 bool Touch_MouseDown(void);
 void Touch_SetMouseDown(bool down);
 
+// One reader for engine contacts, shared with the modal sheets' pointer, so both
+// agree on which slots exist and where a contact is.
+vector Touch_SampleEngineFinger(int src);
+
 vector Touch_MoveStickOffset(void);
 bool Touch_FireHeld(void);
 bool Touch_WeaponWheelOpen(void);

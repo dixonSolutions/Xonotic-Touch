@@ -197,12 +197,20 @@ state needs a latch, not a finger.
 | Value | Behaviour |
 |---|---|
 | 0 | Legacy hold — `+jump` only while the bar is touched |
-| 1 | **Latch (default)** — tap toggles continuous `+jump`; tap again to release |
+| 1 | **Latch (default)** — tap jumps once; hold past `touch_hop_latch_ms` latches continuous `+jump`; tap again to release |
 | 2 | Auto — `+jump` is held whenever the move stick is deflected past its deadzone |
 
-In latch and auto modes the JUMP bar keeps its accent rim lit so the armed state
-is never ambiguous, and the latch is dropped on death, level change and
-`Touch_ReleaseAll` so it cannot leak across lives.
+Mode 1 is a button first and a latch second. It jumps on press like any button —
+a single jump clears a step or a gap and is the more common of the two actions —
+and only latches if the finger stays down. A pure toggle would be cheaper and was
+what shipped first, but it took the single jump away entirely.
+
+In latch and auto modes the HOP bar fills with the accent colour and shows an "on"
+pip, so the armed state is never ambiguous; at rest it is a ghost capsule matching
+DUCK. The latch is dropped on death, level change, `Touch_ReleaseAll`, **and any
+change to `touch_hop_mode`** — auto-hop sets the latch from stick displacement, so
+switching from auto to latch used to leave jump held down forever with no finger
+on the bar.
 
 The precedent is `cl_autojump`, which Quake-family mobile ports ship defaulted
 **on** for exactly this reason. Terraria's mobile jump options (double-tap-up /
@@ -424,6 +432,36 @@ scripts/dev-deploy.sh --shot NAME   # compile QC, upload, restart, screenshot
 scripts/dev-shot.sh NAME            # join a bot match and capture in-game
 ```
 
+### 9.5 Taps do reach the game — in physical pixels
+
+§9.4 concluded that synthetic touch could not be delivered. That was a coordinate
+error, not a limitation. Three spaces are in play and no two of them match:
+
+| Space | Size here | What uses it |
+|---|---|---|
+| Console (2D) | 810 × 540 | all overlay drawing and hit-testing, `Touch_UISize()` |
+| Video | 1440 × 960 | engine `screenshot`, `VF_SIZE` |
+| Physical | 2880 × 1920 | `gdr click`, `gdr screenshot` |
+
+`gdr click` wants **physical** pixels, so a control located in an engine
+screenshot needs its coordinates doubled. Taps aimed with screenshot coordinates
+land in the wrong quadrant and do nothing, which is what made the input path look
+dead. Console size is derived from the surface each frame
+(`vid_conwidthauto 1`), so read it rather than assume it.
+
+Residual harness limit: a synthetic click's press and release can fall inside one
+engine frame, so the finger is never observed and about one tap in three is lost.
+A real finger holds for 50–100 ms. Space scripted taps ≥ 1 s apart.
+
+### 9.6 Read the engine's state instead of inferring it
+
+`cvarlist <prefix>` is the only way to get a value out of a running engine over
+SSH; `echo` does not expand cvars. `scripts/dev-deploy.sh` writes `xt-probe.cfg`,
+bound to **F8**, which dumps `vid_con*`, `con_chat*`, `hud_panel_chat*`,
+`hud_panel_weapons*`, `touch_hop*`, `touch_mobile_hud` and
+`touch_layout_version` to `/tmp/xonotic-dev.log`. Several rounds of layout
+debugging were spent guessing at values this prints in one keypress.
+
 ## 10. Performance
 
 Every performance preset set `fps_max`, which is not a Xonotic cvar. The engine
@@ -451,8 +489,16 @@ Screenshots in [`docs/test-runs/2026-08-08-touch-ux/shots/`](test-runs/2026-08-0
 | Overlay cost | 78 draw calls, 30 fps cap sustained |
 | Edit mode | handles track the finger; hop bar grabbable end to end |
 | Presets | load from the userdir copy; `cl_maxfps` applies |
+| Vitals | health, armour and ammo draw live and track values |
+| Chat | CHAT pill opens the sheet; keys type; SEND reaches the server; the sent line comes back into the backlog |
+| Chrome pills | legible over a sunlit white wall after the plate fix |
 
-Not yet verified, and not verifiable this way: everything in §6 that depends on
-concurrent fingers — the hop latch, fire-drag-look, tap-to-fire, and whether the
-1€ filter defaults feel right while aiming. Those need hands on the tablet, and
-that is the next thing to do.
+Single-finger interaction is now verified by driving real taps (§9.5): the chat
+composer was typed and sent from the on-screen keyboard, which is what exposed the
+four defects in
+[FINDINGS-chat-verification.md](test-runs/2026-08-08-touch-ux/FINDINGS-chat-verification.md).
+
+Still not verifiable this way: everything in §6 that depends on *concurrent*
+fingers — the hop latch, fire-drag-look, tap-to-fire, and whether the 1€ filter
+defaults feel right while aiming. Those need hands on the tablet, and that is the
+next thing to do.

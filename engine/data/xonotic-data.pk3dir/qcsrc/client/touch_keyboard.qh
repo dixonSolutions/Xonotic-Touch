@@ -1,0 +1,48 @@
+#pragma once
+
+// On-screen keyboard for touch-only devices. There is no system OSK for a
+// fullscreen SDL surface on Linux, so without this the player cannot type at
+// all — no chat, no console, no name change.
+//
+// Geometry has exactly one definition (the Cell* functions below), used by both
+// the draw pass and the hit test. Edit mode's toolbar previously computed its
+// bounds twice and the two disagreed, which is a bug worth not repeating.
+
+// Actions returned by Touch_Kb_CellAction. 0 means an ordinary character key,
+// whose inserted text comes from Touch_Kb_CellText.
+const int TOUCH_KB_CHAR      = 0;
+const int TOUCH_KB_SHIFT     = 1;
+const int TOUCH_KB_BACKSPACE = 2;
+const int TOUCH_KB_LAYER     = 3;
+const int TOUCH_KB_SEND      = 4;
+const int TOUCH_KB_CANCEL    = 5;
+
+const int TOUCH_KB_ROWS = 4;
+
+void Touch_Kb_Reset(void);
+bool Touch_Kb_Shifted(void);
+
+// The keyboard occupies the bottom touch_kb_height of the screen. `Touch_Kb_Top`
+// is what a sheet uses to lay out whatever sits above it.
+float Touch_Kb_Top(void);
+
+int Touch_Kb_RowCells(int row);
+vector Touch_Kb_CellCenter(int row, int cell);
+vector Touch_Kb_CellHalf(int row, int cell);
+string Touch_Kb_CellLabel(int row, int cell);
+string Touch_Kb_CellText(int row, int cell);
+int Touch_Kb_CellAction(int row, int cell);
+
+// Returns true and fills touch_kb_hit_row / touch_kb_hit_cell when p lands on a
+// key. Returns false for a touch inside the keyboard but between keys, which
+// must be swallowed rather than falling through to whatever is behind.
+bool Touch_Kb_Hit(vector p);
+int Touch_Kb_HitRow(void);
+int Touch_Kb_HitCell(void);
+
+// Applies a key to `text` and returns the new string (not zoned — the caller
+// owns storage). Action keys other than character insertion and backspace leave
+// the text alone; the caller handles those.
+string Touch_Kb_Apply(string text, int row, int cell);
+
+void Touch_Kb_Draw(float alpha, int hot_row, int hot_cell);

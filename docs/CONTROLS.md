@@ -36,16 +36,21 @@ Two-thumb layout tuned for Xonotic strafe movement and nine weapons.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  [HP/armor]  MENU  CONSOLE      [ammo/weapon]           │
-│                                                         │
+│  ✚ 100 ▬▬▬▬   14:31        [scores]                     │
+│  ⛊   5 ▬              MENU     CHAT      [weapons]      │
 │                              RIGHT ~68% = look (drag)   │
 │                              tap = fire, drag = look    │
-│                                                         │
 │   ╭──────╮                         ╭───────╮            │
 │   │ MOVE │                         │ FIRE  │            │
-│   ╰──────╯              (DUCK)   (═══HOP═══)            │
+│   ╰──────╯                          ▪ 28                │
+│  (CONSOLE)              (DUCK)   (═══HOP═══)            │
 └─────────────────────────────────────────────────────────┘
 ```
+
+The top band is split into thirds: vitals left, match clock centre, scores right,
+with MENU and CHAT beneath the scores. CONSOLE sits alone in the bottom-left —
+three pills do not fit beside two readouts on a 3:2 panel, and CONSOLE is the one
+a player does not reach for mid-match.
 
 | Zone | Input | Engine / QC binding |
 |------|-------|---------------------|
@@ -58,8 +63,9 @@ Two-thumb layout tuned for Xonotic strafe movement and nine weapons.
 | Weapon | HUD weapon strip; button hidden by default | `impulse 1`…`9` or cycle |
 | Reload | Tap; hidden by default | `weapon_reload` |
 | **MENU** (top row) | Tap → Escape / GameMenu | Native Xonotic pause menu — see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md) |
-| **CONSOLE** (top row) | Tap → `toggleconsole`, drag to reposition | Text sheet: layered keyboard, COMMANDS palette, chat sheet — see [TOUCH_CONSOLE_SPEC.md](TOUCH_CONSOLE_SPEC.md) |
-| Mobile HUD | Top-left / top-right | Portrait, HP/AR bars, clip/reserve ammo |
+| **CONSOLE** (bottom-left) | Tap → `toggleconsole`, drag to reposition | Text sheet: layered keyboard, COMMANDS palette — see [TOUCH_CONSOLE_SPEC.md](TOUCH_CONSOLE_SPEC.md) |
+| **CHAT** (top-right) | Tap → modal chat sheet: backlog, field, on-screen QWERTY | `say` / `say_team`; also the `touch_chat [team]` command for a hardware key |
+| Mobile HUD | Vitals top-left, ammo under FIRE | Health and armour readouts with bars, clip/reserve ammo |
 
 Geometry, sizing rationale and the input model are specified in
 [TOUCH_UX_REDESIGN.md](TOUCH_UX_REDESIGN.md); the coordinate contract is in
@@ -212,13 +218,9 @@ Engine movement (already in `touch/xonotic.cfg`):
 | `touch_auto_fire` | int | 0/1 | `0` | Off by default |
 | `touch_dodge_mode` | int | 0=button, 1=double-tap | `0` | Competitive preset may use `1` |
 | `touch_scoreboard_gesture` | int | 0=edge btn, 1=two-finger tap | `1` | |
-| `touch_chat_mode` | int | 0=pause only, 1=quick phrases | `1` | |
-| `touch_kb_height` | float | 0.28–0.70 | `0.46` | Keyboard fraction of console sheet |
-| `touch_kb_gap` | float | | `0.008` | Key spacing (fraction of width) |
-| `touch_kb_opacity` | float | 0.3–1 | `0.92` | Glass key opacity |
-| `touch_kb_layout` | int | 0=QWERTY, 1=compact | `0` | |
-| `touch_kb_split` | int | 0/1 | `0` | Split keyboard under both thumbs |
-| `touch_kb_minkey_px` | float | | `36` | Warn when keys shrink below this |
+| `touch_chat_mode` | int | 0=pause only, 1=quick phrases | `1` | Pause-menu chat entry; the CHAT sheet is always available |
+| `touch_kb_height` | float | 0.28–0.70 | `0.38` | On-screen keyboard height, fraction of screen |
+| `touch_kb_maxlen` | int | | `120` | Longest message the composer accepts |
 | `touch_conui_shade` | float | 0–1 | `0.62` | Console background dim |
 | `touch_conui_palette_file` | string | path | `touch/console_palette.txt` | COMMANDS tab presets |
 | `touch_minimal_more` | int | 0/1 | `0` | Minimal preset: secondary panel for crouch/zoom/dodge |

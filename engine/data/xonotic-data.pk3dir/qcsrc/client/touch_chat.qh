@@ -1,0 +1,29 @@
+#pragma once
+
+// Chat for a touch-only session: a readable feed during play, and a modal sheet
+// to read the backlog and compose a message.
+//
+// The transient feed is drawn by the *engine* (con_chat*), not here — the engine
+// already classifies which prints are chat, and reimplementing that in QC would
+// duplicate it badly. This module owns the backlog and the composer.
+
+const int TOUCH_CHAT_HISTORY = 16;
+
+void Touch_Chat_Reset(void);
+
+// Hooked into CSQC_Parse_Print. Keeps the lines the engine would route to the
+// chat box, using the engine's own rule for what counts as chat.
+void Touch_Chat_Capture(string msg);
+
+bool Touch_Chat_Active(void);
+void Touch_Chat_Open(bool team);
+void Touch_Chat_Close(void);
+
+// Pill in the top bar, alongside MENU and CONSOLE.
+vector Touch_Chat_PillCenter(void);
+vector Touch_Chat_PillHalf(void);
+bool Touch_Chat_PillHit(vector p);
+void Touch_Chat_DrawPill(float alpha);
+
+void Touch_Chat_Frame(void);
+void Touch_Chat_Draw(void);

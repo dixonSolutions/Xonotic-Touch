@@ -33,6 +33,10 @@ const vector TOUCH_C_WARNING      = '0.784 0.533 0.000'; // #c88800
 
 const float TOUCH_A_SURFACE        = 0.34;
 const float TOUCH_A_SURFACE_ACTIVE = 0.58;
+// A latched control is on with nobody touching it, so it has to announce itself
+// from peripheral vision — clearly filled, but below a live press so the two
+// states stay distinct.
+const float TOUCH_A_SURFACE_LATCH  = 0.46;
 const float TOUCH_A_RIM            = 0.62;
 const float TOUCH_A_RIM_ACTIVE     = 0.95;
 // The dark contour just outside the bright rim is what makes a control hold its
@@ -47,6 +51,21 @@ const float TOUCH_A_GLOW           = 0.30;
 // System affordances (console, pause) rest dimmer than gameplay controls: they
 // used to draw brighter, which inverted their importance.
 const float TOUCH_A_CHROME_REST    = 0.55;
+// Chrome is a plate, not glass. A gameplay control is translucent because the
+// thumb already knows where it is and what is behind it matters; a chrome pill is
+// read, and at glass weight (~0.46 effective) white-on-dark over a sunlit white
+// wall came out around 3:1 — MENU was unreadable against a pillar. Nearly solid
+// puts it past 4.5:1 on any background, and three pills at the screen edge hide
+// nothing worth seeing.
+const float TOUCH_A_CHROME_FILL    = 0.88;
+// A modal sheet is two layers: a scrim that dims the game behind it, and an
+// almost-solid surface carrying the content. The surface has to be near-opaque
+// because what it covers can be a screenful of white scoreboard text, which read
+// straight through the scrim alone.
+// The surface is all but opaque, like a GNOME dialog: at 0.94 the dead player's
+// scoreboard still ghosted through the backlog as legible white text.
+const float TOUCH_A_SCRIM          = 0.78;
+const float TOUCH_A_SHEET          = 0.98;
 
 // ---------------------------------------------------------------------------
 // Stroke weights, as a fraction of the shape's radius
@@ -61,6 +80,11 @@ const float TOUCH_W_RING_THICK = 0.130;
 // Large enough that the two strokes read as a pair, small enough that the pair
 // still reads as one edge.
 const float TOUCH_W_CONTOUR_INSET = 0.030;
+
+// Stroke thickness for rounded rectangles, in authored units rather than as a
+// fraction of a radius: a key's 6-unit corner and a sheet's 12-unit corner should
+// have the same hairline, not strokes that differ by a factor of two.
+const float TOUCH_W_STROKE = 1.5;
 
 // ---------------------------------------------------------------------------
 // Geometry
@@ -100,10 +124,23 @@ const float TOUCH_MM_SHORT_EDGE_FALLBACK = 183.2;
 // ---------------------------------------------------------------------------
 // Typography
 // ---------------------------------------------------------------------------
-// Labels are sized from the widget so they scale with touch_scale, but clamped:
-// uncapped sizing is what produced text piling out past the bezel.
+// Labels are sized to fit their control, then clamped: uncapped sizing is what
+// produced text piling out past the bezel.
+//
+// A label is constrained by two things, and which one binds depends on the
+// shape. In a thin bar it is the height; in a disc holding a four-letter word it
+// is the width. Sizing off the radius alone (the previous TOUCH_FONT_RATIO 0.20)
+// put every label in the overlay on the 9-unit floor, so nothing had any
+// hierarchy — a 26 mm FIRE button and a 12 mm DUCK button drew identical type.
 const float TOUCH_FONT_MIN   = 9;
-const float TOUCH_FONT_MAX   = 16;
-const float TOUCH_FONT_RATIO = 0.20; // of widget radius
+const float TOUCH_FONT_MAX   = 20;
+const float TOUCH_FONT_FIT_H = 0.75; // of the control's half-height
+const float TOUCH_FONT_FIT_W = 0.70; // of the control's full width
 // drawstring advances roughly this fraction of the font size per character.
 const float TOUCH_FONT_ADVANCE = 0.55;
+
+// HUD readouts are glanced at from peripheral vision rather than read under a
+// thumb, so they size independently of the control labels and above their cap.
+// 24 units is 8.1 mm on the 13" target — large enough to read without looking.
+const float TOUCH_FONT_READOUT    = 24;
+const float TOUCH_FONT_READOUT_SM = 12;

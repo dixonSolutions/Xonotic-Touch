@@ -1,5 +1,7 @@
 #pragma once
 
+// Vitals readouts. Deliberately no hit test: these are readouts, not controls,
+// and blocking input over them put a dead patch in the aim area.
+
 bool Touch_Hud_ShouldDraw(void);
 void Touch_Hud_Draw(float alpha);
-bool Touch_Hud_HitPanel(vector p);

@@ -4,6 +4,7 @@
 #include <client/csqcmodel_hooks.qh>
 #include <client/draw.qh>
 #include <client/main.qh>
+#include <client/touch_chat.qh>
 #include <client/touch_config.qh>
 #include <client/touch_console.qh>
 #include <client/touch_customize.qh>
@@ -12,9 +13,11 @@
 #include <client/touch_hud.qh>
 #include <client/touch_init.qh>
 #include <client/touch_input.qh>
+#include <client/touch_keyboard.qh>
 #include <client/touch_layout.qh>
 #include <client/touch_look.qh>
 #include <client/touch_pause.qh>
+#include <client/touch_pointer.qh>
 #include <client/touch_shape.qh>
 #include <client/touch_theme.qh>
 #include <client/touch_weapons.qh>

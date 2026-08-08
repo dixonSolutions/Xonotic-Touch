@@ -10,6 +10,9 @@ click/.ci-framework
 site/
 combined-repo/
 docs/test-runs/**/screenshots/
+# Scratch captures from scripts/dev-shot.sh. Anything worth keeping is copied
+# into the dated run folder alongside the findings that cite it.
+docs/test-runs/current/
 docs/test-runs/**/*.tga
 docs/test-runs/**/*.log
 

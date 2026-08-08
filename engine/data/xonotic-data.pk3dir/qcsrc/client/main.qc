@@ -1000,6 +1000,10 @@ void CSQC_Parse_StuffCmd(string strMessage)
 void CSQC_Parse_Print(string strMessage)
 {
 	if (autocvar_developer_csqcentities) LOG_INFOF("CSQC_Parse_Print(\"%s\")", strMessage);
+	// The touch chat sheet keeps its own backlog: the engine's chat lines expire
+	// on con_chattime, so by the time a player opens the sheet to reply the
+	// message they are replying to is usually gone.
+	Touch_Chat_Capture(strMessage);
 	print(ColorTranslateRGB(strMessage));
 }
 

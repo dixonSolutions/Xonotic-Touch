@@ -1,0 +1,19 @@
+#pragma once
+
+// One pointer, from whichever source the platform offers: a real finger via
+// gettouchfinger, or the SDL mouse when the touch extension is missing.
+//
+// Modal sheets (edit mode, chat) need exactly this and nothing more — they are
+// single-pointer UIs, unlike gameplay which needs four concurrent fingers. Both
+// sheets had grown their own copy of this state machine.
+//
+// Call Touch_Pointer_Frame() once per frame while a sheet is modal, then read
+// the edges. Pressed and Released are true for exactly one frame.
+
+void Touch_Pointer_Frame(void);
+void Touch_Pointer_Clear(void);
+
+bool Touch_Pointer_IsDown(void);
+bool Touch_Pointer_Pressed(void);
+bool Touch_Pointer_Released(void);
+vector Touch_Pointer_Pos(void);

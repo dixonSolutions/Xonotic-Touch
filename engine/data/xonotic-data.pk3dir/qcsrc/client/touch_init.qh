@@ -1,10 +1,27 @@
 #pragma once
 
 void Touch_Init(void);
+
+// One table of touch settings and their defaults, walked in three modes — see
+// touch_init.qc. The mode is private to that file; these are the three doors in.
+void Touch_DefineCvars(void);
+void Touch_ResetDefaults(void);
+void Touch_WriteAllCvars(float fh);
+
+// Bump when a default changes in a way that a previously saved layout would
+// wrongly override.
+//   2 = two-thumb redesign (new baseline, chrome pills, chat button, mobile HUD)
+//   3 = top band split into thirds; CONSOLE moved to the bottom-left corner
+const float TOUCH_LAYOUT_VERSION = 3;
+void Touch_MigrateLayout(void);
+
 void Touch_EnforceSquare2D(void);
 void Touch_LoadStartupConfigs(void);
 void Touch_ApplySensitivity(void);
 void Touch_ApplyTouchWeaponsStrip(void);
+void Touch_ApplyMobileHudEngineSettings(void);
+void Touch_ApplyChatFeedSettings(void);
+void Touch_ApplyTimerPanel(void);
 
 #define autocvar_touch_preset cvar_string("touch_preset")
 #define autocvar_touch_scale cvar("touch_scale")
@@ -91,6 +108,7 @@ void Touch_ApplyTouchWeaponsStrip(void);
 #define autocvar_touch_fire_slide_release cvar("touch_fire_slide_release")
 #define autocvar_touch_fire_drag_look cvar("touch_fire_drag_look")
 #define autocvar_touch_hop_mode cvar("touch_hop_mode")
+#define autocvar_touch_hop_latch_ms cvar("touch_hop_latch_ms")
 #define autocvar_touch_zoom_mode cvar("touch_zoom_mode")
 #define autocvar_touch_weapon_mode cvar("touch_weapon_mode")
 #define autocvar_touch_weapon_slot1 cvar_string("touch_weapon_slot1")
@@ -116,3 +134,10 @@ void Touch_ApplyTouchWeaponsStrip(void);
 #define autocvar_touch_hud_maxarmor cvar("touch_hud_maxarmor")
 #define autocvar_touch_ammo_x cvar("touch_ammo_x")
 #define autocvar_touch_ammo_y cvar("touch_ammo_y")
+#define autocvar_touch_chat_x cvar("touch_chat_x")
+#define autocvar_touch_chat_y cvar("touch_chat_y")
+#define autocvar_touch_chat_size cvar("touch_chat_size")
+#define autocvar_touch_chat_aspect cvar("touch_chat_aspect")
+#define autocvar_touch_chat_visible cvar("touch_chat_visible")
+#define autocvar_touch_kb_height cvar("touch_kb_height")
+#define autocvar_touch_kb_maxlen cvar("touch_kb_maxlen")

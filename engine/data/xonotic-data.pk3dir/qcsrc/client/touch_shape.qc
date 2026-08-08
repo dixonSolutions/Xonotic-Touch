@@ -221,6 +221,58 @@ void Touch_Shape_RRect(vector center, vector half, float radius, vector rgb, flo
 		Touch_Shape_Pic(TOUCH_PIC_WHITE, pos + eX * r + eY * r, eX * midw + eY * midh, rgb, alpha);
 }
 
+// The outline of a rounded rectangle. Callers used to approximate this by
+// drawing a second filled RRect in the rim colour, which is a tint rather than a
+// stroke: harmless at ghost alpha on a key, but it turned the message field into
+// a solid blue slab, because a "rim" at 0.62 alpha covered the whole box.
+//
+// The corners come from the same quarter-arcs the circular ring pics are made
+// of, so a rounded rectangle's stroke has the antialiasing of every other stroke
+// in the overlay.
+//
+// `thickness` is in units, unlike the circular rings' fraction-of-radius weight,
+// and that difference is the whole point. A ring pic's stroke is a fraction of
+// the *pic's* diameter, so squeezing one into a 6-unit corner made a 0.4-unit
+// arc while the straight edges were a whole unit: keys drew with corner brackets
+// that visibly failed to meet their sides. Here the pic is chosen to match the
+// asked-for thickness at this radius, and the edges then take whatever thickness
+// that pic actually produces, so the two always agree.
+void Touch_Shape_RRectRing(vector center, vector half, float radius, float thickness,
+	vector rgb, float alpha)
+{
+	if (half.x < 1 || half.y < 1 || alpha <= 0)
+		return;
+	float r = bound(1, radius, min(half.x, half.y));
+	float want = max(1, thickness) / (r * 2);
+	string pic = Touch_Shape_RingPic(want);
+	float t = max(1, Touch_Shape_RingWeight(want) * r * 2);
+	vector pos = center - half;
+	vector sz = half * 2;
+	float midw = sz.x - r * 2;
+	float midh = sz.y - r * 2;
+	vector cr = eX * r + eY * r;
+
+	// Each corner is one quadrant of the ring.
+	Touch_Shape_Pic_Sub(pic, pos, cr, '0 0 0', '0.5 0.5 0', rgb, alpha);
+	Touch_Shape_Pic_Sub(pic, pos + eX * (sz.x - r), cr, '0.5 0 0', '0.5 0.5 0', rgb, alpha);
+	Touch_Shape_Pic_Sub(pic, pos + eY * (sz.y - r), cr, '0 0.5 0', '0.5 0.5 0', rgb, alpha);
+	Touch_Shape_Pic_Sub(pic, pos + eX * (sz.x - r) + eY * (sz.y - r), cr,
+		'0.5 0.5 0', '0.5 0.5 0', rgb, alpha);
+
+	if (midw > 0)
+	{
+		Touch_Shape_Pic(TOUCH_PIC_WHITE, pos + eX * r, eX * midw + eY * t, rgb, alpha);
+		Touch_Shape_Pic(TOUCH_PIC_WHITE, pos + eX * r + eY * (sz.y - t),
+			eX * midw + eY * t, rgb, alpha);
+	}
+	if (midh > 0)
+	{
+		Touch_Shape_Pic(TOUCH_PIC_WHITE, pos + eY * r, eX * t + eY * midh, rgb, alpha);
+		Touch_Shape_Pic(TOUCH_PIC_WHITE, pos + eX * (sz.x - t) + eY * r,
+			eX * t + eY * midh, rgb, alpha);
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Text
 // ---------------------------------------------------------------------------
@@ -230,12 +282,17 @@ float Touch_Shape_LabelWidth(float fontsize, string label)
 	return strlen(label) * fontsize * TOUCH_FONT_ADVANCE;
 }
 
-void Touch_Shape_Label(vector center, float fontsize, string label, vector rgb, float alpha)
+// `align` shifts the text relative to `at`: -1 puts its left edge there, 0
+// centres it, +1 puts its right edge there. Numeric readouts want +1, so the
+// value grows leftwards and whatever follows it never shifts.
+void Touch_Shape_LabelAligned(vector at, float fontsize, string label, float align,
+	vector rgb, float alpha)
 {
 	if (label == "" || alpha <= 0)
 		return;
 	vector sz = '1 1 0' * fontsize;
-	vector pos = center - eX * (Touch_Shape_LabelWidth(fontsize, label) * 0.5) - eY * (fontsize * 0.5);
+	float w = Touch_Shape_LabelWidth(fontsize, label);
+	vector pos = at - eX * (w * (align + 1) * 0.5) - eY * (fontsize * 0.5);
 	pos.z = 0;
 	// A dark 1 px stroke is the single largest legibility win over arbitrary game
 	// content: without it white text vanishes into bright terrain.
@@ -247,4 +304,9 @@ void Touch_Shape_Label(vector center, float fontsize, string label, vector rgb, 
 	drawstring_builtin(pos + eY * s, label, sz, TOUCH_C_INK_SHADOW, sa, 0);
 	drawstring_builtin(pos, label, sz, rgb, alpha, 0);
 	Touch_DebugAddFills(5);
+}
+
+void Touch_Shape_Label(vector center, float fontsize, string label, vector rgb, float alpha)
+{
+	Touch_Shape_LabelAligned(center, fontsize, label, 0, rgb, alpha);
 }

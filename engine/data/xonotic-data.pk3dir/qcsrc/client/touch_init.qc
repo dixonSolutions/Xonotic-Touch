@@ -2,12 +2,37 @@
 #include "touch_config.qh"
 #include "touch_look.qh"
 
+// One table, three jobs.
+//
+// Registering the defaults, resetting to them, and saving the current values
+// used to be three separate lists of the same ~100 cvars — here, in
+// touch/profiles/standard.cfg, and in Touch_SaveLayoutFile. They drifted, and
+// because the profile is exec'd *after* registration it silently won: the
+// profile still carried pre-redesign geometry, so changing a default here did
+// nothing at all on a real device. Now the list exists once and the mode
+// globals below decide what walking it does. They stay private to this file;
+// Touch_ResetDefaults and Touch_WriteAllCvars are the only way to set them.
+float touch_def_fh = -1;  // >= 0 while saving a layout file
+bool touch_def_force;     // true while resetting to defaults
+
 void Touch_RegisterCvar(string name, string value)
+{
+	registercvar(name, value);
+	if (touch_def_force)
+		cvar_set(name, value);
+	if (touch_def_fh >= 0)
+		fputs(touch_def_fh, strcat("seta ", name, " \"", cvar_string(name), "\"\n"));
+}
+
+// Session state, not preference: registered so the code can read it, but never
+// written to a layout file and never reset, because it has no meaningful default
+// to go back to.
+void Touch_RegisterTransientCvar(string name, string value)
 {
 	registercvar(name, value);
 }
 
-void Touch_Init(void)
+void Touch_DefineCvars(void)
 {
 	// Layout — sizes are millimetre-grounded, see docs/TOUCH_UX_REDESIGN.md §3
 	// and §7. nsize = mm / 183.2 on the 13" 3:2 reference panel.
@@ -55,34 +80,69 @@ void Touch_Init(void)
 	Touch_RegisterCvar("touch_reload_y", "0.480");
 	Touch_RegisterCvar("touch_reload_size", "0.100");
 	Touch_RegisterCvar("touch_reload_visible", "0");
-	Touch_RegisterCvar("touch_con_x", "0.500");
-	Touch_RegisterCvar("touch_con_y", "0.045");
-	Touch_RegisterCvar("touch_con_size", "0.040");
-	Touch_RegisterCvar("touch_con_aspect", "4.2");
+	// Top band, left to right: vitals (0.02–0.37), match clock (centre), scores
+	// (right), chrome pills under the scores.
+	//
+	// The three pills used to be one centred row spanning 0.44–0.98, which left
+	// no centre for the clock and jammed CONSOLE against the score panel — four
+	// unrelated things in one 11 mm strip. Three pills of this size simply do not
+	// fit beside two readouts on a 3:2 panel, so the rare one moved out: MENU and
+	// CHAT are what a player reaches for mid-match, while CONSOLE is a
+	// power-user tool and now sits alone in the empty bottom-left corner.
+	// Same size and shape as MENU and CHAT even though it sits apart: it is the
+	// same kind of control, and the corner it moved to has the room. Position is
+	// what de-emphasises it, not a different silhouette.
+	Touch_RegisterCvar("touch_con_x", "0.090");
+	Touch_RegisterCvar("touch_con_y", "0.948");
+	Touch_RegisterCvar("touch_con_size", "0.060");
+	Touch_RegisterCvar("touch_con_aspect", "2.9");
 	Touch_RegisterCvar("touch_con_visible", "1");
 	Touch_RegisterCvar("touch_con_hold_ms", "350");
 	Touch_RegisterCvar("touch_con_tap_slop_px", "10");
 	Touch_RegisterCvar("touch_con_snap", "0.005");
 	Touch_RegisterCvar("touch_con_margin_px", "4");
 	Touch_RegisterCvar("touch_con_lock", "0");
-	Touch_RegisterCvar("touch_pause_x", "0.320");
-	Touch_RegisterCvar("touch_pause_y", "0.045");
-	Touch_RegisterCvar("touch_pause_size", "0.040");
-	Touch_RegisterCvar("touch_pause_aspect", "2.2");
+	// MENU and CHAT are a pair: same size and shape because they are the same
+	// kind of thing (Law of Similarity), adjacent because they belong together
+	// (Law of Proximity), and 0.060 puts them at 11 mm tall — the old 0.040 was
+	// 7.3 mm, under the 9 mm minimum, on controls at the far edge of thumb reach
+	// where Fitts argues for the opposite.
+	Touch_RegisterCvar("touch_pause_x", "0.680");
+	Touch_RegisterCvar("touch_pause_y", "0.088");
+	Touch_RegisterCvar("touch_pause_size", "0.060");
+	Touch_RegisterCvar("touch_pause_aspect", "2.9");
 	Touch_RegisterCvar("touch_pause_visible", "1");
 	Touch_RegisterCvar("touch_pause_slop_px", "10");
+	// Outermost, because it is the one that matters in a match and the edge is
+	// the easiest target to hit without looking.
+	Touch_RegisterCvar("touch_chat_x", "0.862");
+	Touch_RegisterCvar("touch_chat_y", "0.088");
+	Touch_RegisterCvar("touch_chat_size", "0.060");
+	Touch_RegisterCvar("touch_chat_aspect", "2.9");
+	Touch_RegisterCvar("touch_chat_visible", "1");
+	// Keyboard: 0.38 of the height gives 4 rows of ~15 mm keys, well over the
+	// 9 mm floor, while leaving room for the backlog above it.
+	Touch_RegisterCvar("touch_kb_height", "0.38");
+	Touch_RegisterCvar("touch_kb_maxlen", "120");
 	// Default off: engine pause can composite over CSQC and hide the sheet.
 	// Sheet itself blocks gameplay input; enable freeze for singleplayer preference.
 	Touch_RegisterCvar("touch_pause_freeze", "0");
 	Touch_RegisterCvar("touch_pause_quit_confirm_ms", "3000");
 	Touch_RegisterCvar("touch_menu_resume_bar", "0");
-	Touch_RegisterCvar("touch_mobile_hud", "0");
-	Touch_RegisterCvar("touch_hud_x", "0.02");
-	Touch_RegisterCvar("touch_hud_y", "0.02");
+	// On by default. The shipped config disables the stock healtharmor and ammo
+	// panels because this replaces them, so shipping this off meant the player
+	// had no vitals readout at all.
+	Touch_RegisterCvar("touch_mobile_hud", "1");
+	// Top-left: first place the eye lands, never under a thumb, and outside both
+	// the move zone (needs y > 0.42) and the look zone (starts at x 0.32).
+	Touch_RegisterCvar("touch_hud_x", "0.150");
+	Touch_RegisterCvar("touch_hud_y", "0.075");
 	Touch_RegisterCvar("touch_hud_maxhealth", "100");
 	Touch_RegisterCvar("touch_hud_maxarmor", "100");
-	Touch_RegisterCvar("touch_ammo_x", "0.02");
-	Touch_RegisterCvar("touch_ammo_y", "0.02");
+	// Ammo belongs to FIRE, so it sits in the gap between FIRE and HOP on the
+	// same centre line — below the weapons strip, which ends at y 0.76.
+	Touch_RegisterCvar("touch_ammo_x", "0.855");
+	Touch_RegisterCvar("touch_ammo_y", "0.795");
 	Touch_RegisterCvar("touch_move_zone_w", "0.32");
 	Touch_RegisterCvar("touch_look_zone_left", "0.32");
 	Touch_RegisterCvar("touch_look_zone_right", "1.0");
@@ -122,9 +182,12 @@ void Touch_Init(void)
 	// Sliding off FIRE keeps shooting and starts aiming, so shoot-while-aiming is
 	// one finger instead of two (docs/TOUCH_UX_REDESIGN.md §6.2).
 	Touch_RegisterCvar("touch_fire_drag_look", "1");
-	// Jump is a held modifier in this game; latch it instead of parking a finger
-	// on the bar. 0 hold, 1 latch, 2 auto-while-moving.
+	// 0 plain button, 1 button that latches when held, 2 auto-hop while moving.
 	Touch_RegisterCvar("touch_hop_mode", "1");
+	// How long the bar must be held before it latches. Long enough that a jump
+	// never latches by accident, short enough to feel like a decision rather
+	// than a wait. Below a hop cycle (~400 ms) so holding for two hops latches.
+	Touch_RegisterCvar("touch_hop_latch_ms", "350");
 	Touch_RegisterCvar("touch_zoom_mode", "0");
 	Touch_RegisterCvar("touch_weapon_mode", "2");
 	Touch_RegisterCvar("touch_weapon_slot1", "Laser");
@@ -141,10 +204,65 @@ void Touch_Init(void)
 	Touch_RegisterCvar("touch_performance_profile", "thermal");
 	Touch_RegisterCvar("touch_simple_draw", "0");
 	Touch_RegisterCvar("touch_glass_quality", "1");
-	Touch_RegisterCvar("touch_debug", "0");
-	Touch_RegisterCvar("touch_customize", "0");
-	Touch_RegisterCvar("touch_layout_file", "touch.layout.cfg");
-	Touch_RegisterCvar("touch_autoscreenshot", "0");
+
+	Touch_RegisterTransientCvar("touch_debug", "0");
+	Touch_RegisterTransientCvar("touch_customize", "0");
+	Touch_RegisterTransientCvar("touch_layout_file", "touch.layout.cfg");
+	Touch_RegisterTransientCvar("touch_autoscreenshot", "0");
+	// Registered here so a saved layout can carry it, but written by
+	// Touch_WriteAllCvars rather than from the table — its value is the schema's,
+	// not a preference, and resetting it would defeat the migration check.
+	registercvar("touch_layout_version", "0");
+}
+
+void Touch_ResetDefaults(void)
+{
+	touch_def_force = true;
+	Touch_DefineCvars();
+	touch_def_force = false;
+}
+
+// Writes every persistent setting's *current* value as a seta line. Transient
+// cvars are skipped by construction, since they are registered through the other
+// door and a saved layout that restored them would resurrect a stale session.
+void Touch_WriteAllCvars(float fh)
+{
+	fputs(fh, strcat("seta touch_layout_version ", ftos(TOUCH_LAYOUT_VERSION), "\n"));
+	touch_def_fh = fh;
+	Touch_DefineCvars();
+	touch_def_fh = -1;
+}
+
+// A saved layout is exec'd last in the startup chain, so every seta in it
+// outranks the defaults above — including settings the player never touched. A
+// layout written before this redesign therefore pinned the old geometry forever,
+// and no amount of changing a default here could be seen on a device that had
+// ever pressed Save. Once the schema moves on, the stale file is backed up and
+// the defaults are taken instead.
+//
+// This runs from Touch_EnsureReady, not Touch_Init: localcmd queues, so at init
+// time the layout file has not been exec'd yet and its version is not readable.
+void Touch_MigrateLayout(void)
+{
+	if (!cvar("vid_touchscreen"))
+		return;
+	float saved = cvar("touch_layout_version");
+	if (saved >= TOUCH_LAYOUT_VERSION)
+		return;
+
+	print("Touch: layout file is schema ", ftos(saved), ", this build wants ",
+		ftos(TOUCH_LAYOUT_VERSION), " — backing it up and taking the new defaults.\n");
+	Touch_SaveLayoutFile("touch.layout.bak");
+	Touch_ResetDefaults();
+	cvar_set("touch_layout_version", ftos(TOUCH_LAYOUT_VERSION));
+	// Re-stating the chosen preset keeps a player who picked "competitive" on it.
+	localcmd(strcat("exec touch/profiles/", autocvar_touch_preset, ".cfg\n"));
+	Touch_SaveLayoutFile(autocvar_touch_layout_file);
+}
+
+void Touch_Init(void)
+{
+	Touch_DefineCvars();
 
 	registercommand("touch_save");
 	registercommand("touch_export");
@@ -156,6 +274,7 @@ void Touch_Init(void)
 	registercommand("touch_customize_cancel");
 	registercommand("touch_pause");
 	registercommand("touch_pause_exit");
+	registercommand("touch_chat");
 
 	Touch_EnforceSquare2D();
 	Touch_LoadStartupConfigs();
@@ -193,12 +312,58 @@ void Touch_ApplyTouchWeaponsStrip(void)
 	localcmd("seta hud_panel_weapons_bg_alpha 0.35\n");
 }
 
+// The touch readouts and the stock panels are alternatives, so decide between
+// them here rather than trusting a shipped config to agree with a cvar default.
+// Previously touch/xonotic.cfg disabled the stock panels and touch_mobile_hud
+// defaulted off, which left the player with no health readout whatsoever.
 void Touch_ApplyMobileHudEngineSettings(void)
 {
-	if (!cvar("touch_mobile_hud"))
+	bool touch_hud = boolean(cvar("touch_mobile_hud"));
+	cvar_set("hud_panel_healtharmor", touch_hud ? "0" : "1");
+	cvar_set("hud_panel_ammo", touch_hud ? "0" : "1");
+}
+
+// The match clock keeps the centre of the top band now that the chrome pills
+// have moved off it. Its logic (warmup, overtime, rounds, timeouts) stays in the
+// stock panel rather than being reimplemented here — that would be a second copy
+// of rules that already exist and would drift from them. Only its placement and
+// weight are ours.
+void Touch_ApplyTimerPanel(void)
+{
+	if (!cvar("vid_touchscreen"))
 		return;
-	cvar_set("hud_panel_healtharmor", "0");
-	cvar_set("hud_panel_ammo", "0");
+	cvar_set("hud_panel_timer", "1");
+	// Centred on the screen's vertical axis, at the very top edge: match state,
+	// symmetric, and clear of both the vitals on the left and the scores on the
+	// right (rule of thirds — one thing per third).
+	localcmd("seta hud_panel_timer_pos \"0.440 0.004\"\n");
+	localcmd("seta hud_panel_timer_size \"0.120 0.052\"\n");
+	// The stock plate is fully opaque black with hard corners, which is exactly
+	// the look the touch overlay moved away from. Matching the weapons strip's
+	// alpha lets it read as the same family without losing the contrast that
+	// keeps white numerals legible over a bright skybox.
+	localcmd("seta hud_panel_timer_bg_alpha 0.35\n");
+}
+
+// The transient chat feed is drawn by the engine, and the stock HUD_Chat panel
+// translates its own pos/size into con_chatrect for it. So the feed is fixed
+// with geometry rather than code — but it does have to be told where to go:
+// it shipped at 2.7 mm type, bottom-left, directly under the move stick, where
+// the player's own thumb covered it.
+void Touch_ApplyChatFeedSettings(void)
+{
+	if (!cvar("vid_touchscreen"))
+		return;
+	cvar_set("hud_panel_chat", "1");
+	// Left band above the move stick: outside the look zone (x < 0.32) and above
+	// the move zone (y < 0.42), so the feed sits in genuinely spare screen.
+	localcmd("seta hud_panel_chat_pos \"0.020 0.150\"\n");
+	localcmd("seta hud_panel_chat_size \"0.290 0.250\"\n");
+	localcmd("seta hud_panel_chat_bg 0\n");
+	// 14 console units is 4.7 mm on the 13" target, against the 8-unit default's
+	// 2.7 mm. con_chat (line count) is derived from this by the stock panel.
+	cvar_set("con_chatsize", "14");
+	cvar_set("con_chattime", "12");
 }
 
 void Touch_LoadStartupConfigs(void)
@@ -212,9 +377,11 @@ void Touch_LoadStartupConfigs(void)
 		localcmd("exec touch/profiles/standard.cfg\n");
 		localcmd("exec touch/profiles/battery.cfg\n");
 	}
-	Touch_ApplyMobileHudEngineSettings();
 	Touch_ApplyTouchWeaponsStrip();
 	Touch_ApplySensitivity();
+	// Anything *derived* from a touch cvar is applied from Touch_EnsureReady
+	// instead of here. localcmd queues, so the execs above have not run yet at
+	// this point and would be read before they happened.
 }
 
 void Touch_ApplySensitivity(void)

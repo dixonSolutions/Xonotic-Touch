@@ -35,16 +35,19 @@ bool touch_zoom_edge;
 bool touch_zoom_toggle_state;
 bool touch_jump_edge;
 bool touch_hop_latched;
+float touch_hop_press_time;
+bool touch_hop_cancelling;
+int touch_last_hop_mode = -1;
 // A tap in the look zone fires one shot; hold attack briefly so a single frame's
 // press cannot be swallowed between +attack and -attack.
 float touch_tapfire_until;
 bool touch_weapon_wheel;
 bool touch_mouse_down;
-vector touch_pointer_pos;
 float touch_two_finger_time;
 int touch_active_finger_count;
 bool touch_ready;
 int touch_last_fire_mode;
+int touch_last_mobile_hud;
 bool touch_autoscreenshot_done;
 int touch_autoscreenshot_frames;
 
@@ -82,7 +85,7 @@ void Touch_SetMouseDown(bool down)
 
 bool Touch_Active(void)
 {
-	if (Touch_CustomizeActive())
+	if (Touch_CustomizeActive() || Touch_Chat_Active())
 		return true;
 	if (!cvar("vid_touchscreen"))
 		return false;
@@ -162,6 +165,7 @@ void Touch_ReleaseAll(void)
 	// player would spawn already holding jump with nothing on screen saying so.
 	touch_hop_latched = false;
 	touch_jump_edge = false;
+	touch_hop_cancelling = false;
 	touch_tapfire_until = 0;
 	for (i = 0; i < TOUCH_MAX_FINGERS; ++i)
 	{
@@ -217,14 +221,14 @@ int Touch_AssignRole(vector p)
 	if (Touch_Pause_PillHit(p))
 		return TOUCH_ROLE_PAUSE;
 
+	if (Touch_Chat_PillHit(p))
+		return TOUCH_ROLE_CHAT;
+
 	// Stock vertical weapons strip — tap icon to switch (replaces WEP button).
 	if (Touch_Weapons_Hit(p))
 		return TOUCH_ROLE_WEAPON;
 
 	if (Touch_InEdgeDeadzone(p))
-		return TOUCH_ROLE_IGNORED;
-
-	if (Touch_Hud_HitPanel(p))
 		return TOUCH_ROLE_IGNORED;
 
 	if (autocvar_touch_fire_visible && Touch_HitCircle(p, autocvar_touch_fire_x, autocvar_touch_fire_y, autocvar_touch_fire_size, 1.15))
@@ -288,6 +292,8 @@ int Touch_ClaimFinger(int src, vector pos)
 			Touch_Console_OnDown(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_PAUSE)
 			Touch_Pause_OnDown(pos);
+		else if (touch_finger_role[i] == TOUCH_ROLE_CHAT)
+			Touch_Chat_OnDown(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_LOOK)
 			Touch_Look_BeginGesture(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_WEAPON)
@@ -402,19 +408,19 @@ void Touch_PollFingers(void)
 		else if (i == 3) seen = seen3;
 		if (seen)
 			continue;
-		// CON / PAUSE / SHEET must not use grace (B4 + pause realtime).
-		if (touch_finger_role[i] == TOUCH_ROLE_CON)
+		// Top-bar pills must not use the lost-finger grace (B4 + pause realtime):
+		// a pill is a discrete tap that commits on release, and keeping the
+		// finger alive past the release would re-fire it on the next frame.
+		int role = touch_finger_role[i];
+		if (role == TOUCH_ROLE_CON || role == TOUCH_ROLE_PAUSE || role == TOUCH_ROLE_CHAT)
 		{
-			Touch_Console_OnUp(touch_finger_last_pos[i]);
-			touch_finger_used[i] = false;
-			touch_finger_role[i] = TOUCH_ROLE_NONE;
-			touch_finger_live[i] = false;
-			touch_finger_lost_time[i] = 0;
-			continue;
-		}
-		if (touch_finger_role[i] == TOUCH_ROLE_PAUSE)
-		{
-			Touch_Pause_OnUp(touch_finger_last_pos[i]);
+			vector up = touch_finger_last_pos[i];
+			if (role == TOUCH_ROLE_CON)
+				Touch_Console_OnUp(up);
+			else if (role == TOUCH_ROLE_PAUSE)
+				Touch_Pause_OnUp(up);
+			else
+				Touch_Chat_OnUp(up);
 			touch_finger_used[i] = false;
 			touch_finger_role[i] = TOUCH_ROLE_NONE;
 			touch_finger_live[i] = false;
@@ -456,7 +462,16 @@ void Touch_EnsureReady(void)
 	Touch_Console_InitDefaults();
 	Touch_Pause_InitDefaults();
 	Touch_Customize_Reset();
+	Touch_Chat_Reset();
+	Touch_Kb_Reset();
+	// Before anything reads a touch cvar: a stale saved layout is still in force
+	// at this point, and the migration is what replaces it with the new defaults.
+	Touch_MigrateLayout();
 	Touch_ApplyTouchWeaponsStrip();
+	Touch_ApplyChatFeedSettings();
+	Touch_ApplyTimerPanel();
+	Touch_ApplyMobileHudEngineSettings();
+	touch_last_mobile_hud = autocvar_touch_mobile_hud;
 	// Migrate legacy simple_draw → glass_quality once.
 	if (cvar("touch_simple_draw") && !cvar("touch_glass_quality"))
 		cvar_set("touch_glass_quality", "0");
@@ -499,6 +514,11 @@ void Touch_Frame(void)
 		Touch_Customize_Frame();
 		return;
 	}
+	if (Touch_Chat_Active())
+	{
+		Touch_Chat_Frame();
+		return;
+	}
 	if (!Touch_Active())
 	{
 		Touch_ReleaseAll();
@@ -515,6 +535,14 @@ void Touch_Frame(void)
 		if (autocvar_touch_fire_mode == TOUCH_FIRE_HOLD)
 			touch_fire_toggle_state = false;
 		touch_last_fire_mode = autocvar_touch_fire_mode;
+	}
+
+	// Turning the touch readouts off has to hand health and ammo back to the
+	// stock panels, or the player is left with neither.
+	if (autocvar_touch_mobile_hud != touch_last_mobile_hud)
+	{
+		Touch_ApplyMobileHudEngineSettings();
+		touch_last_mobile_hud = autocvar_touch_mobile_hud;
 	}
 
 	touch_move_offset = '0 0 0';
@@ -543,6 +571,8 @@ void Touch_Frame(void)
 		}
 		else if (role == TOUCH_ROLE_PAUSE)
 			Touch_Pause_OnMove(pos);
+		else if (role == TOUCH_ROLE_CHAT)
+			Touch_Chat_OnMove(pos);
 		else if (role == TOUCH_ROLE_MOVE)
 		{
 			move_active = true;
@@ -645,14 +675,46 @@ void Touch_Frame(void)
 	}
 	touch_fire_down = pressed_fire;
 
-	// Jump is a held modifier in this game, not a discrete action: Xonotic's own
-	// guide says to keep it pressed while moving. So the default is a latch,
-	// which frees the finger that would otherwise be stuck on the bar.
+	// Jump is two different actions on this game. A single jump clears a gap or
+	// a step, and needs to happen the instant the finger lands. Bunny-hopping
+	// needs the key *held*, which on a tablet would cost one of only two thumbs.
+	//
+	// So the bar is a button first and a latch second: it jumps on press like
+	// any button, and only latches if the finger stays down past
+	// touch_hop_latch_ms. Tapping while latched stops the hop. A pure toggle
+	// would be cheaper but takes the single jump away, which is the more common
+	// of the two actions.
+	// In latch mode the only thing that clears the latch is a deliberate tap, so a
+	// latch set under a different mode would otherwise survive the switch and hold
+	// jump down forever — a profile change mid-session left the player hopping with
+	// no finger on the bar and no way to stop but another profile change.
+	if (autocvar_touch_hop_mode != touch_last_hop_mode)
+	{
+		touch_last_hop_mode = autocvar_touch_hop_mode;
+		touch_hop_latched = false;
+		touch_hop_cancelling = false;
+	}
+
 	if (autocvar_touch_hop_mode == TOUCH_HOP_LATCH)
 	{
 		if (jump_down && !touch_jump_edge)
-			touch_hop_latched = !touch_hop_latched;
-		Touch_SetKey("jump", touch_hop_latched);
+		{
+			if (touch_hop_latched)
+			{
+				// This press means "stop". It must not also read as a jump, and
+				// a lingering thumb must not immediately re-latch.
+				touch_hop_latched = false;
+				touch_hop_cancelling = true;
+			}
+			else
+				touch_hop_press_time = time;
+		}
+		if (!jump_down)
+			touch_hop_cancelling = false;
+		if (jump_down && !touch_hop_cancelling && !touch_hop_latched
+			&& time - touch_hop_press_time >= autocvar_touch_hop_latch_ms * 0.001)
+			touch_hop_latched = true;
+		Touch_SetKey("jump", touch_hop_latched || (jump_down && !touch_hop_cancelling));
 	}
 	else if (autocvar_touch_hop_mode == TOUCH_HOP_AUTO)
 	{
@@ -695,8 +757,17 @@ bool Touch_InputEvent(float bInputType, float nPrimary, float nSecondary)
 	if (!Touch_Active() || Touch_CustomizeActive())
 		return false;
 
+	// The chat sheet is modal and covers the controls, so Escape has to close it
+	// rather than fall through and open the game menu behind it.
+	if (Touch_Chat_Active() && bInputType == 0 && nPrimary == K_ESCAPE)
+	{
+		Touch_Chat_Close();
+		return true;
+	}
+
 	// Consume MOUSE1 symmetrically so engine +attack/-attack cannot desync (B2).
-	// Positions come from gettouchfinger(10) in Touch_PollFingers, not getmousepos.
+	// Positions come from gettouchfinger(10) in Touch_PollFingers, or getmousepos
+	// in Touch_Pointer_Frame for the modal sheets — never from the event itself.
 	if (bInputType == 0 && nPrimary == K_MOUSE1)
 	{
 		Touch_SetMouseDown(true);
@@ -708,10 +779,7 @@ bool Touch_InputEvent(float bInputType, float nPrimary, float nSecondary)
 		return true;
 	}
 	if (bInputType == 3)
-	{
-		touch_pointer_pos = Touch_NormalizeInput(nPrimary * eX + nSecondary * eY);
 		return true;
-	}
 	return false;
 }
 

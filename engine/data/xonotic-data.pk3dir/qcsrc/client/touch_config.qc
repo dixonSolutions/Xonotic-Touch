@@ -1,20 +1,16 @@
 #include "touch_config.qh"
+#include "touch_chat.qh"
 #include "touch_pause.qh"
 #include "touch_init.qh"
 #include "../dpdefs/ut_touchfinger.qc"
 
 float touch_cmd_argc;
 
-void Touch_ConfigWriteFloat(float fh, string key)
-{
-	fputs(fh, strcat("seta ", key, " ", ftos(cvar(key)), "\n"));
-}
-
-void Touch_ConfigWriteString(float fh, string key)
-{
-	fputs(fh, strcat("seta ", key, " \"", cvar_string(key), "\"\n"));
-}
-
+// Walks the same table Touch_Init registers from, writing each setting's
+// current value. It used to be a hand-maintained list of ~100 fputs calls that
+// had to agree with the registration list and with the profile files; it did
+// not, and the disagreement was invisible until a default stopped taking
+// effect.
 void Touch_SaveLayoutFile(string path)
 {
 	float fh = fopen(path, FILE_WRITE);
@@ -25,115 +21,7 @@ void Touch_SaveLayoutFile(string path)
 	}
 
 	fputs(fh, "// Xonotic Touch layout — saved by touch_save (seta for archive)\n");
-
-	Touch_ConfigWriteString(fh, "touch_preset");
-	Touch_ConfigWriteFloat(fh, "touch_scale");
-	Touch_ConfigWriteFloat(fh, "touch_opacity");
-	Touch_ConfigWriteFloat(fh, "touch_move_x");
-	Touch_ConfigWriteFloat(fh, "touch_move_y");
-	Touch_ConfigWriteFloat(fh, "touch_move_size");
-	Touch_ConfigWriteFloat(fh, "touch_move_visible");
-	Touch_ConfigWriteFloat(fh, "touch_fire_x");
-	Touch_ConfigWriteFloat(fh, "touch_fire_y");
-	Touch_ConfigWriteFloat(fh, "touch_fire_size");
-	Touch_ConfigWriteFloat(fh, "touch_fire_visible");
-	Touch_ConfigWriteFloat(fh, "touch_fire2_x");
-	Touch_ConfigWriteFloat(fh, "touch_fire2_y");
-	Touch_ConfigWriteFloat(fh, "touch_fire2_size");
-	Touch_ConfigWriteFloat(fh, "touch_fire2_visible");
-	Touch_ConfigWriteFloat(fh, "touch_jump_x");
-	Touch_ConfigWriteFloat(fh, "touch_jump_y");
-	Touch_ConfigWriteFloat(fh, "touch_jump_size");
-	Touch_ConfigWriteFloat(fh, "touch_jump_aspect");
-	Touch_ConfigWriteFloat(fh, "touch_jump_visible");
-	Touch_ConfigWriteFloat(fh, "touch_crouch_x");
-	Touch_ConfigWriteFloat(fh, "touch_crouch_y");
-	Touch_ConfigWriteFloat(fh, "touch_crouch_size");
-	Touch_ConfigWriteFloat(fh, "touch_crouch_visible");
-	Touch_ConfigWriteFloat(fh, "touch_weapon_x");
-	Touch_ConfigWriteFloat(fh, "touch_weapon_y");
-	Touch_ConfigWriteFloat(fh, "touch_weapon_size");
-	Touch_ConfigWriteFloat(fh, "touch_weapon_visible");
-	Touch_ConfigWriteFloat(fh, "touch_zoom_x");
-	Touch_ConfigWriteFloat(fh, "touch_zoom_y");
-	Touch_ConfigWriteFloat(fh, "touch_zoom_size");
-	Touch_ConfigWriteFloat(fh, "touch_zoom_visible");
-	Touch_ConfigWriteFloat(fh, "touch_dodge_x");
-	Touch_ConfigWriteFloat(fh, "touch_dodge_y");
-	Touch_ConfigWriteFloat(fh, "touch_dodge_size");
-	Touch_ConfigWriteFloat(fh, "touch_dodge_visible");
-	Touch_ConfigWriteFloat(fh, "touch_reload_x");
-	Touch_ConfigWriteFloat(fh, "touch_reload_y");
-	Touch_ConfigWriteFloat(fh, "touch_reload_size");
-	Touch_ConfigWriteFloat(fh, "touch_reload_visible");
-	Touch_ConfigWriteFloat(fh, "touch_con_x");
-	Touch_ConfigWriteFloat(fh, "touch_con_y");
-	Touch_ConfigWriteFloat(fh, "touch_con_size");
-	Touch_ConfigWriteFloat(fh, "touch_con_aspect");
-	Touch_ConfigWriteFloat(fh, "touch_con_visible");
-	Touch_ConfigWriteFloat(fh, "touch_con_hold_ms");
-	Touch_ConfigWriteFloat(fh, "touch_con_tap_slop_px");
-	Touch_ConfigWriteFloat(fh, "touch_con_snap");
-	Touch_ConfigWriteFloat(fh, "touch_con_margin_px");
-	Touch_ConfigWriteFloat(fh, "touch_con_lock");
-	Touch_ConfigWriteFloat(fh, "touch_pause_x");
-	Touch_ConfigWriteFloat(fh, "touch_pause_y");
-	Touch_ConfigWriteFloat(fh, "touch_pause_size");
-	Touch_ConfigWriteFloat(fh, "touch_pause_aspect");
-	Touch_ConfigWriteFloat(fh, "touch_pause_visible");
-	Touch_ConfigWriteFloat(fh, "touch_pause_slop_px");
-	Touch_ConfigWriteFloat(fh, "touch_pause_freeze");
-	Touch_ConfigWriteFloat(fh, "touch_pause_quit_confirm_ms");
-	Touch_ConfigWriteFloat(fh, "touch_menu_resume_bar");
-	Touch_ConfigWriteFloat(fh, "touch_mobile_hud");
-	Touch_ConfigWriteFloat(fh, "touch_hud_x");
-	Touch_ConfigWriteFloat(fh, "touch_hud_y");
-	Touch_ConfigWriteFloat(fh, "touch_hud_maxhealth");
-	Touch_ConfigWriteFloat(fh, "touch_hud_maxarmor");
-	Touch_ConfigWriteFloat(fh, "touch_ammo_x");
-	Touch_ConfigWriteFloat(fh, "touch_ammo_y");
-	Touch_ConfigWriteFloat(fh, "touch_move_zone_w");
-	Touch_ConfigWriteFloat(fh, "touch_look_zone_left");
-	Touch_ConfigWriteFloat(fh, "touch_look_zone_right");
-	Touch_ConfigWriteFloat(fh, "touch_edge_deadzone_px");
-	Touch_ConfigWriteFloat(fh, "touch_handedness");
-	Touch_ConfigWriteFloat(fh, "touch_sens_base");
-	Touch_ConfigWriteFloat(fh, "touch_sens_y_mult");
-	Touch_ConfigWriteFloat(fh, "touch_invert_y");
-	Touch_ConfigWriteFloat(fh, "touch_look_smoothing");
-	Touch_ConfigWriteFloat(fh, "touch_look_deadzone_px");
-	Touch_ConfigWriteFloat(fh, "touch_look_filter");
-	Touch_ConfigWriteFloat(fh, "touch_look_fcmin");
-	Touch_ConfigWriteFloat(fh, "touch_look_beta");
-	Touch_ConfigWriteFloat(fh, "touch_look_tap_fire");
-	Touch_ConfigWriteFloat(fh, "touch_look_tap_ms");
-	Touch_ConfigWriteFloat(fh, "touch_look_escape_carry");
-	Touch_ConfigWriteFloat(fh, "touch_look_max_deg_per_s");
-	Touch_ConfigWriteFloat(fh, "touch_look_owns_view");
-	Touch_ConfigWriteFloat(fh, "touch_look_glide");
-	Touch_ConfigWriteFloat(fh, "touch_stick_deadzone");
-	Touch_ConfigWriteFloat(fh, "touch_stick_range");
-	Touch_ConfigWriteFloat(fh, "touch_aim_assist");
-	Touch_ConfigWriteFloat(fh, "touch_fire_mode");
-	Touch_ConfigWriteFloat(fh, "touch_fire_drag_look");
-	Touch_ConfigWriteFloat(fh, "touch_hop_mode");
-	Touch_ConfigWriteFloat(fh, "touch_zoom_mode");
-	Touch_ConfigWriteFloat(fh, "touch_weapon_mode");
-	Touch_ConfigWriteString(fh, "touch_weapon_slot1");
-	Touch_ConfigWriteString(fh, "touch_weapon_slot2");
-	Touch_ConfigWriteString(fh, "touch_weapon_slot3");
-	Touch_ConfigWriteFloat(fh, "touch_auto_fire");
-	Touch_ConfigWriteFloat(fh, "touch_dodge_mode");
-	Touch_ConfigWriteFloat(fh, "touch_scoreboard_gesture");
-	Touch_ConfigWriteFloat(fh, "touch_chat_mode");
-	Touch_ConfigWriteFloat(fh, "touch_minimal_more");
-	Touch_ConfigWriteFloat(fh, "touch_hud_scale");
-	Touch_ConfigWriteFloat(fh, "touch_glass_quality");
-	Touch_ConfigWriteFloat(fh, "touch_finger_grace_ms");
-	Touch_ConfigWriteString(fh, "touch_performance_profile");
-	Touch_ConfigWriteFloat(fh, "touch_setup_done");
-	Touch_ConfigWriteFloat(fh, "touch_profile_done");
-
+	Touch_WriteAllCvars(fh);
 	fclose(fh);
 }
 
@@ -153,10 +41,15 @@ void Touch_ImportLayout(string path)
 	print("Touch: imported ", path, "\n");
 }
 
+// Reset to the code defaults first, then let the profile state only what it
+// changes. Without the reset, switching from a profile that enables something to
+// one that does not would leave the setting enabled, because a profile can only
+// override what it mentions.
 void Touch_ApplyPreset(string name)
 {
 	if (name == "")
 		return;
+	Touch_ResetDefaults();
 	localcmd(strcat("exec touch/profiles/", name, ".cfg\n"));
 	cvar_set("touch_preset", name);
 	Touch_ApplySensitivity();
@@ -263,6 +156,14 @@ bool Touch_ConsoleCommand(string s, int argc)
 	if (s == "touch_pause_exit")
 	{
 		Touch_Pause_Exit();
+		return true;
+	}
+	// The sheet is reachable by pressing the CHAT pill, but a command is what
+	// lets a player bind it to a hardware key when the tablet has a keyboard
+	// attached, and it is the only way to reach it from the console.
+	if (s == "touch_chat")
+	{
+		Touch_Chat_Open(argc >= 2 && argv(1) == "team");
 		return true;
 	}
 	return false;

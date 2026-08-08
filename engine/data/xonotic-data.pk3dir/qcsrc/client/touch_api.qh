@@ -5,3 +5,6 @@ void Touch_Init(void);
 void Touch_Frame(void);
 void Touch_Draw(void);
 bool Touch_InputEvent(float bInputType, float nPrimary, float nSecondary);
+// Called from CSQC_Parse_Print so the chat sheet can keep a backlog that
+// outlives the engine feed's con_chattime expiry.
+void Touch_Chat_Capture(string msg);

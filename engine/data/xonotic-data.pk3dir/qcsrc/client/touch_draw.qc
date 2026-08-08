@@ -147,11 +147,12 @@ void Touch_DrawDebugLine(void)
 
 void Touch_DrawOverlay(float overlayAlpha)
 {
-	// Edit mode owns the top bar for its SAVE/CANCEL/RESET row, and neither pill
-	// does anything while editing, so they would only collide with it.
+	// Edit mode owns the top bar for its SAVE/CANCEL/RESET row, and none of the
+	// pills do anything while editing, so they would only collide with it.
 	if (!Touch_CustomizeActive())
 	{
 		Touch_Pause_DrawPill(overlayAlpha);
+		Touch_Chat_DrawPill(overlayAlpha);
 		Touch_Console_Draw(overlayAlpha);
 	}
 
@@ -207,6 +208,14 @@ void Touch_Draw(void)
 	{
 		Touch_DrawOverlay(overlayAlpha * 0.45);
 		Touch_Customize_Draw();
+		return;
+	}
+
+	// The chat sheet is modal: drawing the controls under it would invite the
+	// player to press something that is not listening.
+	if (Touch_Chat_Active())
+	{
+		Touch_Chat_Draw();
 		return;
 	}
 

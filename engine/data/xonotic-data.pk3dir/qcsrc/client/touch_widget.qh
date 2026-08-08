@@ -7,6 +7,9 @@
 // control goes through one of these so the overlay stays one coherent system
 // instead of per-file variations — see docs/TOUCH_UX_REDESIGN.md §5.
 
+// Label type is fitted to the control's box rather than derived from its radius,
+// so a thin bar and a wide disc both get type proportionate to what holds it.
+float Touch_Widget_LabelSize(vector half, string label);
 float Touch_Widget_FontSize(float radius);
 float Touch_Widget_Elevation(float radius);
 
@@ -19,6 +22,18 @@ void Touch_Widget_Button(vector center, float radius, string label, bool pressed
 	float alpha, vector accent);
 void Touch_Widget_Capsule(vector center, vector half, string label, bool pressed,
 	bool latched, float alpha, vector accent);
+
+// Keyboard key. A rounded rect rather than a capsule, because a grid of
+// capsules reads as a row of pills instead of a keyboard, and because square-ish
+// keys tile without wasted gaps. `on` is a sticky state (shift, layer);
+// `emphasis` gives the one consequential key in a grid its accent at rest.
+void Touch_Widget_Key(vector center, vector half, string label, bool pressed,
+	bool on, bool emphasis, float alpha, vector accent);
+
+// Text input field. Draws the caret itself, since the engine's text input is not
+// reachable from a touch-only session.
+void Touch_Widget_Field(vector center, vector half, string text, string placeholder,
+	float alpha, vector accent);
 
 // Top-bar chrome (console, pause): same language as the action controls but
 // quieter at rest, because these are rarely-used utilities that must not

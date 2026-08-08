@@ -2,11 +2,11 @@
 #include "touch_config.qh"
 #include "touch_widget.qh"
 #include "touch_input.qh"
+#include "touch_pointer.qh"
 #include "touch_defs.qh"
 
 int touch_customize_drag_widget;
 vector touch_customize_drag_offset;
-bool touch_customize_pointer_down;
 int touch_customize_hot_action;
 
 // QC globals start at 0, which is a valid widget id and a valid toolbar action,
@@ -15,7 +15,7 @@ void Touch_Customize_Reset(void)
 {
 	touch_customize_drag_widget = TOUCH_WIDGET_NONE;
 	touch_customize_hot_action = -1;
-	touch_customize_pointer_down = false;
+	Touch_Pointer_Clear();
 }
 
 float Touch_Customize_Snap(float v)
@@ -210,7 +210,8 @@ void Touch_Customize_DrawHandle(int wid, float alpha)
 			Touch_Widget_Rim(c, r + pad, TOUCH_C_ACCENT, a_ring);
 		}
 	}
-	Touch_Shape_Label(c, Touch_Widget_FontSize(r), Touch_Customize_WidgetLabel(wid),
+	string wlabel = Touch_Customize_WidgetLabel(wid);
+	Touch_Shape_Label(c, Touch_Widget_LabelSize('1 1 0' * r, wlabel), wlabel,
 		TOUCH_C_INK, alpha * TOUCH_A_INK);
 }
 
@@ -282,51 +283,22 @@ void Touch_Customize_PointerUp(void)
 		Touch_ResetPreset();
 	touch_customize_hot_action = -1;
 	touch_customize_drag_widget = TOUCH_WIDGET_NONE;
-	touch_customize_pointer_down = false;
 }
 
 void Touch_Customize_Frame(void)
 {
 	Touch_ReleaseAll();
-	if (!checkextension("DP_UT_TOUCHFINGER"))
-	{
-		vector p = getmousepos();
-		if (Touch_MouseDown())
-		{
-			if (!touch_customize_pointer_down)
-			{
-				touch_customize_pointer_down = true;
-				Touch_Customize_PointerDown(p);
-			}
-			else
-				Touch_Customize_PointerMove(p);
-		}
-		else if (touch_customize_pointer_down)
-			Touch_Customize_PointerUp();
-		return;
-	}
-
-	int slot;
-	for (slot = 0; slot < TOUCH_ENGINE_SLOTS; slot += 1)
-	{
-		vector f = gettouchfinger(slot);
-		if (f.z <= 0)
-			continue;
-		vector p = f;
-		p.z = 0;
-		if (!touch_customize_pointer_down)
-		{
-			touch_customize_pointer_down = true;
-			Touch_Customize_PointerDown(p);
-		}
-		else
-			Touch_Customize_PointerMove(p);
-		return;
-	}
-	if (touch_customize_pointer_down)
+	Touch_Pointer_Frame();
+	if (Touch_Pointer_Pressed())
+		Touch_Customize_PointerDown(Touch_Pointer_Pos());
+	else if (Touch_Pointer_Released())
 		Touch_Customize_PointerUp();
+	else if (Touch_Pointer_IsDown())
+		Touch_Customize_PointerMove(Touch_Pointer_Pos());
 }
 
+// Only the mouse-button state is taken from the event stream; positions and
+// edges come from Touch_Pointer_Frame, so touch and mouse follow one path.
 bool Touch_Customize_InputEvent(float bInputType, float nPrimary, float nSecondary)
 {
 	if (!autocvar_touch_customize || !cvar("vid_touchscreen"))
@@ -335,23 +307,15 @@ bool Touch_Customize_InputEvent(float bInputType, float nPrimary, float nSeconda
 	if (bInputType == 0 && nPrimary == K_MOUSE1)
 	{
 		Touch_SetMouseDown(true);
-		vector p = getmousepos();
-		touch_customize_pointer_down = true;
-		Touch_Customize_PointerDown(p);
 		return true;
 	}
 	if (bInputType == 1 && nPrimary == K_MOUSE1)
 	{
 		Touch_SetMouseDown(false);
-		Touch_Customize_PointerUp();
 		return true;
 	}
-	if (bInputType == 3 && Touch_MouseDown())
-	{
-		vector p = nPrimary * eX + nSecondary * eY;
-		Touch_Customize_PointerMove(p);
+	if (bInputType == 3)
 		return true;
-	}
 	return false;
 }
 

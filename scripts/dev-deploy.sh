@@ -129,7 +129,25 @@ bind F9  "exec xt-match.cfg"
 bind F10 "toggle touch_debug 0 1"
 bind F7  "cmd join"
 bind F8  "exec xt-probe.cfg"
+bind F6  "touch_chat"
+bind F5  "toggle touch_customize 0 1"
 BINDS
+# F8 dumps the state that this overlay derives at runtime, to stdout and so to
+# /tmp/xonotic-dev.log. `cvarlist <prefix>` is the only way to read a value back
+# out of a running engine over SSH — `echo` does not expand cvars — and guessing
+# at these instead of reading them is what made several rounds of layout
+# debugging chase the wrong cause.
+cat > "$TMPSTAGE/xt-probe.cfg" <<'PROBE'
+echo "===== xt-probe begin ====="
+cvarlist vid_con
+cvarlist con_chat
+cvarlist hud_panel_chat
+cvarlist hud_panel_weapons
+cvarlist touch_hop
+cvarlist touch_mobile_hud
+cvarlist touch_layout_version
+echo "===== xt-probe end ====="
+PROBE
 cat > "$TMPSTAGE/xt-match.cfg" <<'MATCH'
 // One-key jump into a live bot deathmatch for touch testing.
 // cl_welcome 0 skips the join/spectate dialog, which cannot be dismissed by
@@ -146,8 +164,18 @@ sed -i "s|\${XT_TEST_MAP}|${XT_TEST_MAP:-solarium}|" "$TMPSTAGE/xt-match.cfg"
 # gamedir for `exec`, so an autoexec.cfg written to the gamedir is never seen.
 copy_to "$TMPSTAGE/xt-devbinds.cfg" "$REMOTE_USERDIR/xt-devbinds.cfg"
 copy_to "$TMPSTAGE/xt-match.cfg" "$REMOTE_USERDIR/xt-match.cfg"
+copy_to "$TMPSTAGE/xt-probe.cfg" "$REMOTE_USERDIR/xt-probe.cfg"
 # autoexec.cfg is on the launcher's +exec chain, so chain the binds from there.
+#
+# It also accumulates one-off overrides typed during earlier debugging sessions,
+# and those outlive the session that wanted them: a stray `touch_mobile_hud 0`
+# left here is why a deploy could look like the new defaults had no effect. So
+# the known harness leavings are stripped on every deploy — a setting under test
+# belongs in the repo's profiles, not pinned on one device.
+STALE_AUTOEXEC='touch_mobile_hud|touch_simple_draw|fps_max|touch_glass_quality|touch_debug'
 run_ssh "touch '$REMOTE_USERDIR/autoexec.cfg'; \
+         sed -i -E '/^[[:space:]]*($STALE_AUTOEXEC)[[:space:]]/d' \
+             '$REMOTE_USERDIR/autoexec.cfg'; \
          grep -q xt-devbinds '$REMOTE_USERDIR/autoexec.cfg' \
          || echo 'exec xt-devbinds.cfg' >> '$REMOTE_USERDIR/autoexec.cfg'"
 
