@@ -31,7 +31,7 @@ void Touch_DrawHopBar(float theAlpha)
 {
 	vector c = Touch_WidgetCenter(autocvar_touch_jump_x, autocvar_touch_jump_y, autocvar_touch_jump_size);
 	vector half = Touch_WidgetHalfExtents(autocvar_touch_jump_size, autocvar_touch_jump_aspect);
-	Touch_Widget_Capsule(c, half, "HOP", Touch_JumpHeld(),
+	Touch_Widget_Capsule(c, half, TOUCH_LABEL_JUMP, Touch_JumpHeld(),
 		Touch_HopLatched() || Touch_PreviewStates(), theAlpha, TOUCH_C_ACCENT);
 }
 
@@ -83,7 +83,7 @@ void Touch_DrawFireButton(float theAlpha)
 	vector c = Touch_WidgetCenter(autocvar_touch_fire_x, autocvar_touch_fire_y, autocvar_touch_fire_size);
 	float r = Touch_WidgetRadius(autocvar_touch_fire_size);
 	bool held = Touch_FireHeld() || Touch_PreviewStates();
-	Touch_Widget_Button(c, r, "FIRE", held, theAlpha, TOUCH_C_DANGER);
+	Touch_Widget_Button(c, r, TOUCH_LABEL_FIRE, held, theAlpha, TOUCH_C_DANGER);
 
 	// While a drag off FIRE is steering the view, echo the reticle idea on the
 	// button so the merged gesture is discoverable instead of a hidden trick.
@@ -165,26 +165,26 @@ void Touch_DrawOverlay(float overlayAlpha)
 
 	if (autocvar_touch_fire2_visible)
 		Touch_DrawCircleWidget(autocvar_touch_fire2_x, autocvar_touch_fire2_y,
-			autocvar_touch_fire2_size, "ALT", Touch_Fire2Held(), overlayAlpha, TOUCH_C_DANGER);
+			autocvar_touch_fire2_size, TOUCH_LABEL_FIRE2, Touch_Fire2Held(), overlayAlpha, TOUCH_C_DANGER);
 
 	if (autocvar_touch_jump_visible || autocvar_touch_debug)
 		Touch_DrawHopBar(overlayAlpha);
 
 	if (autocvar_touch_crouch_visible || autocvar_touch_debug)
 		Touch_DrawCircleWidget(autocvar_touch_crouch_x, autocvar_touch_crouch_y,
-			autocvar_touch_crouch_size, "DUCK", Touch_CrouchHeld(), overlayAlpha, TOUCH_C_ACCENT);
+			autocvar_touch_crouch_size, TOUCH_LABEL_CROUCH, Touch_CrouchHeld(), overlayAlpha, TOUCH_C_ACCENT);
 	if (autocvar_touch_weapon_visible || autocvar_touch_debug)
 		Touch_DrawCircleWidget(autocvar_touch_weapon_x, autocvar_touch_weapon_y,
-			autocvar_touch_weapon_size, "WEP", Touch_WeaponWheelOpen(), overlayAlpha, TOUCH_C_ACCENT);
+			autocvar_touch_weapon_size, TOUCH_LABEL_WEAPON, Touch_WeaponWheelOpen(), overlayAlpha, TOUCH_C_ACCENT);
 	if (autocvar_touch_zoom_visible)
 		Touch_DrawCircleWidget(autocvar_touch_zoom_x, autocvar_touch_zoom_y,
 			autocvar_touch_zoom_size, "ZOOM", false, overlayAlpha, TOUCH_C_ACCENT);
 	if (autocvar_touch_reload_visible)
 		Touch_DrawCircleWidget(autocvar_touch_reload_x, autocvar_touch_reload_y,
-			autocvar_touch_reload_size, "RLD", false, overlayAlpha, TOUCH_C_ACCENT);
+			autocvar_touch_reload_size, TOUCH_LABEL_RELOAD, false, overlayAlpha, TOUCH_C_ACCENT);
 	if (autocvar_touch_dodge_visible)
 		Touch_DrawCircleWidget(autocvar_touch_dodge_x, autocvar_touch_dodge_y,
-			autocvar_touch_dodge_size, "DASH", false, overlayAlpha, TOUCH_C_ACCENT);
+			autocvar_touch_dodge_size, TOUCH_LABEL_DODGE, false, overlayAlpha, TOUCH_C_ACCENT);
 
 	Touch_DrawWeaponWheel(overlayAlpha);
 	// Probes are level 2 exactly: they are opaque blocks over the controls, so at

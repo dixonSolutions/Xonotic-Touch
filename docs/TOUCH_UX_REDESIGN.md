@@ -192,6 +192,14 @@ not transfer: it was measured for `drawfill` rectangle stacks, whereas these are
 tinted textured quads sharing one texture per shape. The number that mattered on
 this device was the frame cap, not the overlay — see §10.
 
+The finished layer settles at **183 fills**, and that number was A/B'd rather than
+worried about. With the whole overlay switched off (`vid_touchscreen 0`) the same
+scene on the same device still reports **30 fps**; with all 183 fills drawing it
+also reports 30. So the overlay costs nothing measurable here and the 30 is the
+scene, not us. Worth doing again if the layer grows another readout, but the count
+on its own is not evidence of a problem — the A/B is one probe cfg and two
+screenshots.
+
 **Fallback is mandatory.** If the masks are missing (partial package, stale
 overlay) `drawpic` would render notexture checkerboards, which is worse than the
 squares. `Touch_Shape_Ready()` probes `drawgetimagesize("gfx/touch/disc")` once
@@ -460,6 +468,39 @@ untouched. Placement follows from frequency: the corner readout already covers t
 glance, and the whole board is something you stop to read, which is what the
 bottom-left is for.
 
+### 7.2.3 The game was telling players to press keys they don't have
+
+Dying printed **"You are dead, press SPACE to respawn"** on a device with no SPACE.
+The same applies to joining ("Press SPACE to join"), spectating ("Press primary
+fire to spectate") and the campaign hint: stock panels build these prompts from the
+key currently bound to a command, and every one of them names hardware the player
+is not holding. Tapping HOP did respawn — the action was reachable all along — but
+the only instruction on screen pointed somewhere else, which is the worst case for
+a player who has no manual to fall back on (Paradox of the Active User).
+
+The fix is one hook, not one edit per message. All of these strings go through
+`_getcommandkey(cmd_name, command)`, so the touch layer answers there:
+`Touch_CommandLabel` maps a command to the on-screen control that performs it and
+returns "" for everything else, leaving non-touch sessions and unmapped commands
+exactly as they were. "You are dead, press **HOP** to respawn" comes out of the same
+`sprintf` and stays translated.
+
+Three rules it follows, each of which was a way to get this wrong:
+
+* **Only visible controls answer.** Naming a button the player has switched off is
+  worse than naming a key, because they will go looking for it. `+fire2` answers
+  with ALT only when the second fire button is on.
+* **Gated on `vid_touchscreen`, not `Touch_Active()`.** The overlay stands down at
+  intermission and mapvote, and those are precisely where the join prompts appear.
+* **The label has one home.** The same word is drawn on the button, shown on the
+  edit-mode handle, and now substituted into these prompts — so `TOUCH_LABEL_JUMP`
+  and friends live in `touch_defs.qh` and all three read from there. Three copies of
+  `"HOP"` meant a rename could leave the game naming a button that no longer exists.
+
+Prompts for commands with no touch control — `+show_info` for gametype info — still
+name their key, which is honest: inventing a label for a control the player cannot
+press would only move the dead end.
+
 ### 7.3 Presets
 
 `standard.cfg` is the layout, and `left`, `casual`, `competitive` and `minimal`
@@ -541,6 +582,13 @@ the engine's own `screenshot` command (F12) and are pulled from the userdir.
 One note for anyone driving this device: `gdr key` needs numeric evdev keycodes,
 not names. `88`, not `F12`.
 
+The inverse also happens, so neither capture path is *the* one. In some states —
+around death and level transitions — the engine writes an all-black frame
+(`mean=0 max=0`, and the pulled file is byte-identical to the one on device, so it is
+not a transfer race), while `gdr screenshot` of the same moment is correct. The
+respawn-prompt fix was verified that way. Rule: a black frame means try the other
+path, not that the game drew nothing worth seeing.
+
 ### 9.4 State preview instead of synthetic multi-touch
 
 Pressed, latched and drag-look states only exist while fingers are down, and
@@ -620,12 +668,15 @@ Screenshots in [`docs/test-runs/2026-08-08-touch-ux/shots/`](test-runs/2026-08-0
 | Legibility | holds over both dark geometry and a bright skybox |
 | FIRE size | 12.8 mm radius = 25.6 mm across, matching the 26 mm target |
 | MOVE / FIRE alignment | shared centre line |
-| Overlay cost | 78 draw calls, 30 fps cap sustained |
+| Overlay cost | 183 draw calls in a live frame; 30 fps with the overlay on *and* off, so free at this scale |
 | Edit mode | handles track the finger; hop bar grabbable end to end |
 | Presets | load from the userdir copy; `cl_maxfps` applies |
 | Vitals | health, armour and ammo draw live and track values |
 | Chat | CHAT pill opens the sheet; keys type; SEND reaches the server; the sent line comes back into the backlog |
 | Chrome pills | legible over a sunlit white wall after the plate fix |
+| Scoreboard | SCORE opens and clears the board; controls stay live and on top of it |
+| Respawn | tapping HOP respawns; the prompt names HOP, and the join prompt does too |
+| Held input | `touch_debug` reports no live finger at rest, so nothing is stuck |
 
 Single-finger interaction is now verified by driving real taps (§9.5): the chat
 composer was typed and sent from the on-screen keyboard, which is what exposed the

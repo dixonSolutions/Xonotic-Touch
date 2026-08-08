@@ -1505,6 +1505,14 @@ NET_HANDLE(TE_CSQC_SERVERWELCOME, bool isNew)
 
 string _getcommandkey(string cmd_name, string command, bool forcename)
 {
+	// A key name is no use to a player with no keyboard, so in a touch session the
+	// touch layer names its own control for the commands it puts on screen. Checked
+	// before hud_showbinds, because that cvar chooses between two things a touch
+	// player cannot press: the key and the abstract action name.
+	string touch_label = Touch_CommandLabel(command);
+	if (touch_label != "")
+		return touch_label;
+
 	if (!autocvar_hud_showbinds)
 		return cmd_name;
 

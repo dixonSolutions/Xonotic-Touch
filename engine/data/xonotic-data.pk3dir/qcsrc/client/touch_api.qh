@@ -8,3 +8,7 @@ bool Touch_InputEvent(float bInputType, float nPrimary, float nSecondary);
 // Called from CSQC_Parse_Print so the chat sheet can keep a backlog that
 // outlives the engine feed's con_chattime expiry.
 void Touch_Chat_Capture(string msg);
+// Called from _getcommandkey so prompts naming a key ("press SPACE to respawn")
+// name the on-screen control instead in a touch session. Returns "" when the
+// touch layer has nothing on screen for that command.
+string Touch_CommandLabel(string command);

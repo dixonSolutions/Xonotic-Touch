@@ -75,6 +75,12 @@ feed and the chat feed each get a band that touches neither.
 | **CHAT** (top-right) | Tap → modal chat sheet: backlog, field, on-screen QWERTY | `say` / `say_team`; also the `touch_chat [team]` command for a hardware key |
 | **SCORE** (bottom-left) | Tap → full scoreboard, tap again to clear; Escape also clears | `+showscores` / `-showscores`; also the `touch_scores` command |
 | Mobile HUD | Health, armour and ammo as one group, top-left | Bars for the two that have a maximum; reserve rounds beside the clip for weapons that reload |
+| Respawn / join | Tap **HOP** | `+jump`; the prompts name the button, not a key — see below |
+
+Prompts that would normally name a key name the on-screen control instead in a touch
+session: "You are dead, press **HOP** to respawn", "Press **HOP** to join", "Press
+**FIRE** to spectate". Only controls that are actually visible get named, and
+commands with no touch control (gametype info) keep their key name.
 
 Geometry, sizing rationale and the input model are specified in
 [TOUCH_UX_REDESIGN.md](TOUCH_UX_REDESIGN.md); the coordinate contract is in

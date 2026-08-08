@@ -98,6 +98,34 @@ bool Touch_Active(void)
 	return autocvar__menu_alpha < 1;
 }
 
+// Stock panels build their prompts out of key binds — "You are dead, press SPACE to
+// respawn", "Press primary fire to spectate" — which on a touch-only device names a
+// key the player has no way to press. Where the touch layer puts that command on
+// screen, it answers with the control's own label instead, so the prompt names
+// something the player can see and reach.
+//
+// Gated on vid_touchscreen rather than Touch_Active: the overlay stands down during
+// intermission and mapvote, but the session is still a touch session and the prompts
+// shown there are exactly the ones that need answering.
+//
+// Only *visible* controls answer. Naming a button that is switched off would be
+// worse than naming a key, because the player would go looking for it.
+string Touch_CommandLabel(string command)
+{
+	if (!cvar("vid_touchscreen"))
+		return "";
+	if (command == "+jump" && autocvar_touch_jump_visible)
+		return TOUCH_LABEL_JUMP;
+	// Xonotic's own binds use +fire; +attack is the engine name underneath it.
+	if ((command == "+fire" || command == "+attack") && autocvar_touch_fire_visible)
+		return TOUCH_LABEL_FIRE;
+	if (command == "+fire2" && autocvar_touch_fire2_visible)
+		return TOUCH_LABEL_FIRE2;
+	if (command == "+crouch" && autocvar_touch_crouch_visible)
+		return TOUCH_LABEL_CROUCH;
+	return "";
+}
+
 void Touch_SetKey(string key, bool down)
 {
 	if (key == "forward")
@@ -864,6 +892,8 @@ string Touch_DebugRoleName(int role)
 	if (role == TOUCH_ROLE_RELOAD) return "R";
 	if (role == TOUCH_ROLE_CON) return "CON";
 	if (role == TOUCH_ROLE_PAUSE) return "PAUSE";
+	if (role == TOUCH_ROLE_CHAT) return "CHAT";
+	if (role == TOUCH_ROLE_SCORES) return "SCORE";
 	if (role == TOUCH_ROLE_SHEET) return "SHEET";
 	if (role == TOUCH_ROLE_IGNORED) return "IGN";
 	return "-";

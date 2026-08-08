@@ -25,6 +25,19 @@ const int TOUCH_ROLE_SHEET = 108;
 const int TOUCH_ROLE_CHAT = 109;
 const int TOUCH_ROLE_SCORES = 110;
 
+// One name per control. Three places have to agree on it: the drawn label, the
+// handle in edit mode, and the prompts the stock panels build out of key binds
+// ("press HOP to respawn"). Held as literals in each, a rename would have to be
+// found in all three, and the one that got missed would be the one telling the
+// player to press a button that no longer exists.
+const string TOUCH_LABEL_FIRE = "FIRE";
+const string TOUCH_LABEL_FIRE2 = "ALT";
+const string TOUCH_LABEL_JUMP = "HOP";
+const string TOUCH_LABEL_CROUCH = "DUCK";
+const string TOUCH_LABEL_WEAPON = "WEP";
+const string TOUCH_LABEL_RELOAD = "RLD";
+const string TOUCH_LABEL_DODGE = "DASH";
+
 const int TOUCH_PAUSE_IDLE = 0;
 const int TOUCH_PAUSE_ARMING = 1;
 

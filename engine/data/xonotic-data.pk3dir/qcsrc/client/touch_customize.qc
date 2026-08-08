@@ -78,13 +78,13 @@ string Touch_Customize_WidgetLabel(int wid)
 		// Must match the in-game glyphs in touch_draw.qc, or edit mode would
 		// label a control differently from the control itself.
 		case TOUCH_WIDGET_MOVE: return "MOVE";
-		case TOUCH_WIDGET_FIRE: return "FIRE";
-		case TOUCH_WIDGET_JUMP: return "HOP";
-		case TOUCH_WIDGET_CROUCH: return "DUCK";
-		case TOUCH_WIDGET_WEAPON: return "WEP";
+		case TOUCH_WIDGET_FIRE: return TOUCH_LABEL_FIRE;
+		case TOUCH_WIDGET_JUMP: return TOUCH_LABEL_JUMP;
+		case TOUCH_WIDGET_CROUCH: return TOUCH_LABEL_CROUCH;
+		case TOUCH_WIDGET_WEAPON: return TOUCH_LABEL_WEAPON;
 		case TOUCH_WIDGET_ZOOM: return "ZOOM";
-		case TOUCH_WIDGET_RELOAD: return "RLD";
-		default: return "DASH";
+		case TOUCH_WIDGET_RELOAD: return TOUCH_LABEL_RELOAD;
+		default: return TOUCH_LABEL_DODGE;
 	}
 }
 
