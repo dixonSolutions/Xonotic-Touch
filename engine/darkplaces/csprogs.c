@@ -999,21 +999,26 @@ void CL_VM_Init (void)
 		return;
 
 	// see if the requested csprogs.dat file matches the requested crc
-	if (!cls.demoplayback || csqc_usedemoprogs.integer)
+	// Xonotic Touch: cl_csqc_download 0 skips dlcache so stock server CSQC
+	// cannot replace the local Touch HUD / Console.
 	{
-		csprogsfn = va(vabuf, sizeof(vabuf), "dlcache/%s.%i.%i", csqc_progname.string, requiredsize, requiredcrc);
-		if(cls.caughtcsprogsdata && cls.caughtcsprogsdatasize == requiredsize && CRC_Block(cls.caughtcsprogsdata, (size_t)cls.caughtcsprogsdatasize) == requiredcrc)
+		extern cvar_t cl_csqc_download;
+		if (cl_csqc_download.integer && (!cls.demoplayback || csqc_usedemoprogs.integer))
 		{
-			Con_DPrintf("Using buffered \"%s\"\n", csprogsfn);
-			csprogsdata = cls.caughtcsprogsdata;
-			csprogsdatasize = cls.caughtcsprogsdatasize;
-			cls.caughtcsprogsdata = NULL;
-			cls.caughtcsprogsdatasize = 0;
-		}
-		else
-		{
-			Con_DPrintf("Not using buffered \"%s\" (buffered: %p, %d)\n", csprogsfn, (void *)cls.caughtcsprogsdata, (int) cls.caughtcsprogsdatasize);
-			csprogsdata = FS_LoadFile(csprogsfn, tempmempool, true, &csprogsdatasize);
+			csprogsfn = va(vabuf, sizeof(vabuf), "dlcache/%s.%i.%i", csqc_progname.string, requiredsize, requiredcrc);
+			if(cls.caughtcsprogsdata && cls.caughtcsprogsdatasize == requiredsize && CRC_Block(cls.caughtcsprogsdata, (size_t)cls.caughtcsprogsdatasize) == requiredcrc)
+			{
+				Con_DPrintf("Using buffered \"%s\"\n", csprogsfn);
+				csprogsdata = cls.caughtcsprogsdata;
+				csprogsdatasize = cls.caughtcsprogsdatasize;
+				cls.caughtcsprogsdata = NULL;
+				cls.caughtcsprogsdatasize = 0;
+			}
+			else
+			{
+				Con_DPrintf("Not using buffered \"%s\" (buffered: %p, %d)\n", csprogsfn, (void *)cls.caughtcsprogsdata, (int) cls.caughtcsprogsdatasize);
+				csprogsdata = FS_LoadFile(csprogsfn, tempmempool, true, &csprogsdatasize);
+			}
 		}
 	}
 	if (!csprogsdata)
@@ -1026,6 +1031,7 @@ void CL_VM_Init (void)
 		csprogsdatacrc = CRC_Block(csprogsdata, (size_t)csprogsdatasize);
 		if (csprogsdatacrc != requiredcrc || csprogsdatasize != requiredsize)
 		{
+			extern cvar_t cl_csqc_download;
 			if (cls.demoplayback)
 			{
 				Con_Printf(CON_WARN "Warning: Your %s is not the same version as the demo was recorded with (CRC/size are %i/%i but should be %i/%i)\n", csqc_progname.string, csprogsdatacrc, (int)csprogsdatasize, requiredcrc, requiredsize);
@@ -1033,6 +1039,11 @@ void CL_VM_Init (void)
 				// return;
 				// We WANT to continue here, and play the demo with different csprogs!
 				// After all, this is just a warning. Sure things may go wrong from here.
+			}
+			else if (!cl_csqc_download.integer)
+			{
+				// Xonotic Touch: keep local CSQC (touch HUD) on stock servers.
+				Con_Printf(CON_WARN "Warning: Using local %s (CRC/size %i/%i; server wants %i/%i) because cl_csqc_download is 0\n", csqc_progname.string, csprogsdatacrc, (int)csprogsdatasize, requiredcrc, requiredsize);
 			}
 			else
 			{

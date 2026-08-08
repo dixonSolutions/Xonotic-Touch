@@ -187,6 +187,9 @@ cvar_t cl_sound_r_exp3 = {CF_CLIENT, "cl_sound_r_exp3", "weapons/r_exp3.wav", "s
 cvar_t snd_cdautopause = {CF_CLIENT | CF_ARCHIVE, "snd_cdautopause", "1", "pause the CD track while the game is paused"};
 
 cvar_t cl_serverextension_download = {CF_CLIENT, "cl_serverextension_download", "0", "indicates whether the server supports the download command"};
+// Xonotic Touch: keep local Touch CSQC (virtual sticks / Console) instead of
+// replacing it with a stock server's csprogs.dat from dlcache.
+cvar_t cl_csqc_download = {CF_CLIENT | CF_ARCHIVE, "cl_csqc_download", "1", "download CSQC from servers when CRC differs (0 = always keep local csprogs.dat; needed for touch controls on public servers)"};
 cvar_t cl_joinbeforedownloadsfinish = {CF_CLIENT | CF_ARCHIVE, "cl_joinbeforedownloadsfinish", "1", "if non-zero the game will begin after the map is loaded before other downloads finish"};
 cvar_t cl_nettimesyncfactor = {CF_CLIENT | CF_ARCHIVE, "cl_nettimesyncfactor", "0", "rate at which client time adapts to match server time, 1 = instantly, 0.125 = slowly, 0 = not at all (only applied in bound modes 0, 1, 2, 3)"};
 cvar_t cl_nettimesyncboundmode = {CF_CLIENT | CF_ARCHIVE, "cl_nettimesyncboundmode", "6", "method of restricting client time to valid values, 0 = no correction, 1 = tight bounding (jerky with packet loss), 2 = loose bounding (corrects it if out of bounds), 3 = leniant bounding (ignores temporary errors due to varying framerate), 4 = slow adjustment method from Quake3, 5 = slightly nicer version of Quake3 method, 6 = tight bounding + mode 5, 7 = jitter compensated dynamic adjustment rate"};
@@ -1119,6 +1122,7 @@ static void CL_BeginDownloads(qbool aborteddownload)
 		 && csqc_progname.string[0]
 		 && csqc_progcrc.integer >= 0
 		 && cl_serverextension_download.integer
+		 && cl_csqc_download.integer
 		 && (FS_CRCFile(csqc_progname.string, &progsize) != csqc_progcrc.integer || ((int)progsize != csqc_progsize.integer && csqc_progsize.integer != -1))
 		 && !FS_FileExists(va(vabuf, sizeof(vabuf), "dlcache/%s.%i.%i", csqc_progname.string, csqc_progsize.integer, csqc_progcrc.integer)))
 		{
@@ -1129,6 +1133,11 @@ static void CL_BeginDownloads(qbool aborteddownload)
 				CL_ForwardToServer(va(vabuf, sizeof(vabuf), "download %s", csqc_progname.string));
 			return;
 		}
+		else if (!cl_csqc_download.integer
+			&& csqc_progcrc.integer >= 0
+			&& (FS_CRCFile(csqc_progname.string, &progsize) != csqc_progcrc.integer
+				|| ((int)progsize != csqc_progsize.integer && csqc_progsize.integer != -1)))
+			Con_Printf("Keeping local %s (cl_csqc_download 0) — touch controls stay available\n", csqc_progname.string);
 	}
 
 	if (cl.loadmodel_current < cl.loadmodel_total)
@@ -4341,6 +4350,7 @@ void CL_Parse_Init(void)
 	Cvar_RegisterVariable(&snd_cdautopause);
 
 	Cvar_RegisterVariable(&cl_joinbeforedownloadsfinish);
+	Cvar_RegisterVariable(&cl_csqc_download);
 
 	// server extension cvars set by commands issued from the server during connect
 	Cvar_RegisterVariable(&cl_serverextension_download);

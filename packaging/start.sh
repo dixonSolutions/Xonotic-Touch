@@ -210,6 +210,13 @@ quarantine_stale_touch_menu_overrides() {
 sync_bundle_data
 quarantine_stale_touch_menu_overrides
 
+# Stock multiplayer servers push their csprogs into dlcache and wipe Touch HUD /
+# Console. Drop those caches each launch; cl_csqc_download 0 (engine) prevents
+# re-download once the Flatpak ships that cvar.
+if [ -d "${HOME}/.xonotic/data/dlcache" ]; then
+    rm -f "${HOME}/.xonotic/data/dlcache"/csprogs.dat.* 2>/dev/null || true
+fi
+
 
 
 ASSET_FETCH_ACTIVE=0
