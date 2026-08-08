@@ -24,6 +24,7 @@ CLASS(XonoticTouchAssetFetchDialog, XonoticRootDialog)
 	ATTRIB(XonoticTouchAssetFetchDialog, headlineLabel, entity);
 	ATTRIB(XonoticTouchAssetFetchDialog, statusLabel, entity);
 	ATTRIB(XonoticTouchAssetFetchDialog, hintLabel, entity);
+	ATTRIB(XonoticTouchAssetFetchDialog, percentLabel, entity);
 	ATTRIB(XonoticTouchAssetFetchDialog, progressBar, entity);
 	// Set once the download reported success, to hold the finished state on
 	// screen for a beat before the relaunch takes the window away.

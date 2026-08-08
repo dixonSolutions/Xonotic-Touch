@@ -14,6 +14,7 @@ const string TOUCH_RELAUNCH_MARKER = "touch/relaunch-request.txt";
 // scripts/lib/asset-discover.sh and scripts/fetch-assets-posix.sh.
 const string TOUCH_FETCH_DISCOVER = "discover";
 const string TOUCH_FETCH_RUNNING = "running";
+const string TOUCH_FETCH_PAUSED = "paused";
 const string TOUCH_FETCH_DONE = "done";
 const string TOUCH_FETCH_ERROR = "error";
 

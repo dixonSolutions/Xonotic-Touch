@@ -80,6 +80,8 @@ void TouchAssetFetch_updateWidgets(entity me, bool isError, bool isDiscover, boo
 		me.progressBar.indeterminate = false;
 		me.progressBar.color = TOUCH_ASSET_FETCH_COLOR_PROGRESS;
 		me.progressBar.setProgress(me.progressBar, 1);
+		if (me.percentLabel)
+			me.percentLabel.setText(me.percentLabel, "100%");
 		me.statusLabel.setText(me.statusLabel, _("Game data ready — restarting Xonotic Touch"));
 		me.hintLabel.setText(me.hintLabel, _("Setup is complete."));
 		return;
@@ -90,6 +92,8 @@ void TouchAssetFetch_updateWidgets(entity me, bool isError, bool isDiscover, boo
 		me.progressBar.indeterminate = false;
 		me.progressBar.color = TOUCH_ASSET_FETCH_COLOR_ERROR;
 		me.progressBar.setProgress(me.progressBar, 1);
+		if (me.percentLabel)
+			me.percentLabel.setText(me.percentLabel, "");
 		me.statusLabel.setText(me.statusLabel, (message != "") ? message : _("Download failed."));
 		if (me.relaunchFailed)
 			me.hintLabel.setText(me.hintLabel,
@@ -103,11 +107,14 @@ void TouchAssetFetch_updateWidgets(entity me, bool isError, bool isDiscover, boo
 	me.progressBar.color = TOUCH_ASSET_FETCH_COLOR_PROGRESS;
 	me.hintLabel.setText(me.hintLabel, _("Keep Xonotic Touch open until setup finishes."));
 
-	if (isDiscover)
+	// Determinate whenever the shell published a real percent (download bytes,
+	// Flatpak copy steps, discovery checkpoints). Sweep only for "still thinking".
+	bool havePercent = (me.progressPercent > 0);
+	if (isDiscover && !havePercent)
 	{
-		// Discovery is a search, not a transfer: a sweeping bar promises motion
-		// without claiming a percentage it cannot know.
 		me.progressBar.indeterminate = true;
+		if (me.percentLabel)
+			me.percentLabel.setText(me.percentLabel, "");
 		me.statusLabel.setText(me.statusLabel,
 			(message != "") ? message : _("Looking for game data on this device..."));
 		return;
@@ -115,8 +122,10 @@ void TouchAssetFetch_updateWidgets(entity me, bool isError, bool isDiscover, boo
 
 	me.progressBar.indeterminate = false;
 	me.progressBar.setProgress(me.progressBar, me.progressPercent / 100);
-	string label = (message != "") ? message : _("Downloading game data...");
-	me.statusLabel.setText(me.statusLabel, sprintf("%s  %d%%", label, me.progressPercent));
+	if (me.percentLabel)
+		me.percentLabel.setText(me.percentLabel, sprintf("%d%%", me.progressPercent));
+	me.statusLabel.setText(me.statusLabel,
+		(message != "") ? message : _("Downloading game data..."));
 }
 
 void XonoticTouchAssetFetchDialog_draw(entity me)
@@ -165,11 +174,14 @@ void XonoticTouchAssetFetchDialog_fill(entity me)
 		e.allowWrap_spacing = 0.5;
 	me.TR(me);
 	me.TR(me);
+		me.TD(me, 1, me.columns, me.percentLabel = makeXonoticHeaderLabel(""));
 	me.TR(me);
 		me.TD(me, 1, me.columns, me.progressBar = makeXonoticProgressBar());
 	me.TR(me);
-		me.TD(me, 1, me.columns, me.statusLabel = makeXonoticTextLabel(0.5, _("Checking your game data...")));
-		me.statusLabel.allowCut = true;
+		me.TD(me, 2, me.columns, me.statusLabel = makeXonoticTextLabel(0.5, _("Checking your game data...")));
+		me.statusLabel.allowWrap = true;
+		me.statusLabel.allowWrap_spacing = 0.4;
+	me.TR(me);
 	me.TR(me);
 	me.TR(me);
 		me.TDempty(me, 1);

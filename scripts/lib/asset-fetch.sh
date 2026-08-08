@@ -1,6 +1,10 @@
 #!/bin/bash
 # Shared game asset download helpers (build-time and first-run).
-set -euo pipefail
+# Only tighten shell options when executed as a script — sourcing from
+# packaging/start.sh must not turn on nounset/errexit for the launcher.
+if [ "${BASH_SOURCE[0]-}" = "${0-}" ]; then
+    set -euo pipefail
+fi
 
 XONOTIC_DATA_PK3DIR_ASSET_DIRS=(textures models gfx sound particles demos cubemaps maps)
 
@@ -104,15 +108,20 @@ xonotic_progress_write() {
     local percent="$2"
     local message="$3"
     local file="${XONOTIC_ASSET_FETCH_PROGRESS:-}"
+    local tmp
 
     if [ -z "$file" ]; then
         return 0
     fi
+    mkdir -p "$(dirname "$file")"
+    # Atomic replace so the menu never reads a half-written tick.
+    tmp="${file}.tmp.$$"
     {
         printf '%s\n' "$status"
         printf '%s\n' "$percent"
         printf '%s\n' "$message"
-    } > "$file"
+    } > "$tmp"
+    mv -f "$tmp" "$file"
 }
 
 xonotic_fetch_pk3dir_sparse() {
@@ -187,19 +196,57 @@ xonotic_fetch_git_assets() {
     fi
 }
 
+# Download one autobuild zip while updating the wizard percent between pct_lo..pct_hi.
 xonotic_download_autobuild_zip() {
     local zip_path="$1"
     local zip_name="$2"
-    local label="$3"
+    local pct_lo="${3:-15}"
+    local pct_hi="${4:-$((pct_lo + 18))}"
+    local url="${XONOTIC_AUTOBUILD_URL}/${zip_name}"
+    local expected=0 have=0 pct mb curl_pid
 
-    if [ -n "$label" ]; then
-        xonotic_progress_write running "$label" "Downloading ${zip_name}..."
-    fi
+    xonotic_progress_write running "$pct_lo" "Downloading ${zip_name}..."
 
     if command -v curl >/dev/null 2>&1; then
-        curl -fL --user "${XONOTIC_AUTOBUILD_USER}:${XONOTIC_AUTOBUILD_PASS}" \
-            -o "$zip_path" "${XONOTIC_AUTOBUILD_URL}/${zip_name}"
-        return
+        expected="$(
+            curl -sI -L --user "${XONOTIC_AUTOBUILD_USER}:${XONOTIC_AUTOBUILD_PASS}" "$url" \
+                | awk 'BEGIN{c=0} tolower($1)=="content-length:" {c=$2} END{print c+0}' \
+                | tr -d '\r'
+        )"
+        mkdir -p "$(dirname "$zip_path")"
+        # Resume partial zips. Truncating here used to restart every relaunch and
+        # race other orphan curls writing the same path.
+        have="$(wc -c < "$zip_path" 2>/dev/null | tr -d ' ' || echo 0)"
+        have="${have:-0}"
+        if [ "${expected:-0}" -gt 0 ] 2>/dev/null && [ "$have" -ge "$expected" ]; then
+            xonotic_progress_write running "$pct_hi" "Downloaded ${zip_name}"
+            return 0
+        fi
+        curl -fL -C - --user "${XONOTIC_AUTOBUILD_USER}:${XONOTIC_AUTOBUILD_PASS}" \
+            -o "$zip_path" "$url" &
+        curl_pid=$!
+        while kill -0 "$curl_pid" 2>/dev/null; do
+            have="$(wc -c < "$zip_path" 2>/dev/null | tr -d ' ' || echo 0)"
+            have="${have:-0}"
+            pct="$pct_lo"
+            if [ "${expected:-0}" -gt 0 ] 2>/dev/null; then
+                pct=$((pct_lo + have * (pct_hi - pct_lo) / expected))
+                if [ "$pct" -gt "$pct_hi" ]; then
+                    pct="$pct_hi"
+                fi
+            fi
+            mb=$((have / 1048576))
+            if [ "${expected:-0}" -gt 0 ] 2>/dev/null; then
+                xonotic_progress_write running "$pct" \
+                    "Downloading ${zip_name} (${mb} / $((expected / 1048576)) MB)..."
+            else
+                xonotic_progress_write running "$pct" \
+                    "Downloading ${zip_name} (${mb} MB)..."
+            fi
+            sleep 1
+        done
+        wait "$curl_pid"
+        return $?
     fi
 
     # Ubuntu Touch clicks ship busybox wget instead of curl (no --user support,
@@ -243,29 +290,29 @@ xonotic_fetch_autobuild_assets() {
     extract_dir="$tmp/extract"
 
     if xonotic_asset_dirs_missing "$data_dir"; then
-        xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest.zip" 15
+        xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest.zip" 10 34
         xonotic_progress_write running 35 "Installing core game data..."
         xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir" "$extract_dir"
         rm -f "$zip_path"
     fi
 
     if xonotic_maps_assets_missing "$data_dir"; then
-        xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest-mappingsupport.zip" 45
+        xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest-mappingsupport.zip" 40 58
         xonotic_progress_write running 60 "Installing maps..."
         xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir" "$extract_dir"
         rm -f "$zip_path"
     fi
 
     if xonotic_music_assets_missing "$data_dir"; then
-        xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest-high.zip" 70
+        xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest-high.zip" 65 83
         xonotic_progress_write running 85 "Installing music..."
         xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir" "$extract_dir"
         rm -f "$zip_path"
     fi
 
     if xonotic_nexcompat_assets_missing "$data_dir"; then
-        xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest.zip" 88
-        xonotic_progress_write running 92 "Installing compatibility pack..."
+        xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest.zip" 88 94
+        xonotic_progress_write running 95 "Installing compatibility pack..."
         xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir" "$extract_dir"
         rm -f "$zip_path"
     fi
@@ -301,16 +348,19 @@ xonotic_fetch_game_assets() {
         return 0
     fi
 
-    xonotic_progress_write running 0 "Preparing download..."
+    # Autobuild zips first: predictable size + live progress. Git sparse clones
+    # are opt-in — they hang for a long time on "Preparing download..." when
+    # gitlab is slow/unreachable inside Flatpak.
+    xonotic_progress_write running 5 "Starting download..."
     echo "xonotic-touch: downloading game assets (first launch may take several minutes)..."
-    if xonotic_fetch_git_assets "$data_dir"; then
+    if xonotic_fetch_autobuild_assets "$data_dir" && xonotic_assets_are_ready "$data_dir"; then
         xonotic_assets_mark_ready "$data_dir"
         xonotic_progress_write done 100 "Download complete"
         return 0
     fi
 
-    xonotic_fetch_autobuild_assets "$data_dir"
-    if xonotic_assets_are_ready "$data_dir"; then
+    if [ "${XONOTIC_ALLOW_GIT_ASSET_FETCH:-0}" = "1" ] && xonotic_fetch_git_assets "$data_dir"; then
+        xonotic_assets_mark_ready "$data_dir"
         xonotic_progress_write done 100 "Download complete"
         return 0
     fi

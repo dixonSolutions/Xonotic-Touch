@@ -8,7 +8,10 @@
 #   1. Assets already in our app data → use them (no import, no download)
 #   2. Original Flatpak org.xonotic.Xonotic → full copy into our data
 #   3. Otherwise download via the in-game wizard
-set -euo pipefail
+# Keep options local to direct execution; see asset-fetch.sh.
+if [ "${BASH_SOURCE[0]-}" = "${0-}" ]; then
+    set -euo pipefail
+fi
 
 XONOTIC_DISCOVERY_PK3_PATTERNS=(
     'xonotic-*-data.pk3'
@@ -40,16 +43,19 @@ xonotic_discovery_progress_write() {
     local percent="$2"
     local message="$3"
     local file="${XONOTIC_ASSET_FETCH_PROGRESS:-}"
+    local tmp
 
     if [ -z "$file" ]; then
         return 0
     fi
     mkdir -p "$(dirname "$file")"
+    tmp="${file}.tmp.$$"
     {
         printf '%s\n' "$status"
         printf '%s\n' "$percent"
         printf '%s\n' "$message"
-    } > "$file"
+    } > "$tmp"
+    mv -f "$tmp" "$file"
 }
 
 xonotic_discovery_source_has_assets() {
@@ -126,7 +132,8 @@ xonotic_discovery_copy_assets_from() {
 
     mkdir -p "$target_dir"
 
-    xonotic_discovery_progress_write discover 45 "Copying packages from Flatpak Xonotic..."
+    # Use "running" so the wizard shows a real determinate bar (not the sweep).
+    xonotic_discovery_progress_write running 42 "Copying packages from Flatpak Xonotic..."
 
     for pattern in "${XONOTIC_DISCOVERY_PK3_PATTERNS[@]}"; do
         for file in "$source_dir"/$pattern; do
@@ -135,7 +142,7 @@ xonotic_discovery_copy_assets_from() {
             if [ -e "$target_dir/$base" ]; then
                 continue
             fi
-            xonotic_discovery_progress_write discover 50 "Copying ${base}..."
+            xonotic_discovery_progress_write running 48 "Copying package ${base}..."
             if ! cp -a "$file" "$target_dir/$base"; then
                 xonotic_discovery_progress_write error 0 "Failed to copy ${base}."
                 return 1
@@ -155,11 +162,17 @@ xonotic_discovery_copy_assets_from() {
         fi
         trees_done=$((trees_done + 1))
         if [ "$trees_total" -gt 0 ]; then
-            percent=$((55 + trees_done * 35 / trees_total))
+            percent=$((50 + trees_done * 40 / trees_total))
         else
             percent=90
         fi
-        xonotic_discovery_progress_write discover "$percent" "Copying ${tree} into Xonotic Touch..."
+        case "$tree" in
+            *data*) xonotic_discovery_progress_write running "$percent" "Copying core game files from Flatpak..." ;;
+            *maps*) xonotic_discovery_progress_write running "$percent" "Copying maps from Flatpak..." ;;
+            *music*) xonotic_discovery_progress_write running "$percent" "Copying music from Flatpak..." ;;
+            *nexcompat*) xonotic_discovery_progress_write running "$percent" "Copying compatibility pack from Flatpak..." ;;
+            *) xonotic_discovery_progress_write running "$percent" "Copying ${tree} from Flatpak..." ;;
+        esac
         mkdir -p "$target_dir/$tree"
         rc=0
         if command -v rsync >/dev/null 2>&1; then
@@ -196,29 +209,30 @@ xonotic_resolve_missing_assets() {
     export XONOTIC_ASSET_FETCH_PROGRESS="${XONOTIC_ASSET_FETCH_PROGRESS:-$target_dir/touch/asset-progress.txt}"
     mkdir -p "$(dirname "$XONOTIC_ASSET_FETCH_PROGRESS")"
 
-    xonotic_discovery_progress_write discover 5 "Checking Xonotic Touch game data..."
+    xonotic_discovery_progress_write discover 5 "Checking this app's game data folder..."
 
     if declare -F xonotic_assets_are_ready >/dev/null 2>&1 && xonotic_assets_are_ready "$target_dir"; then
-        xonotic_discovery_progress_write "done" 100 "Using game assets already in Xonotic Touch."
+        xonotic_discovery_progress_write "done" 100 "Game data already installed in Xonotic Touch."
         return 0
     fi
 
-    # Keep this message brief — find must finish in well under a second.
-    xonotic_discovery_progress_write discover 15 "Checking for Flatpak Xonotic..."
+    xonotic_discovery_progress_write discover 12 "No complete game data in this app yet."
+    xonotic_discovery_progress_write discover 18 "Looking for Flatpak org.xonotic.Xonotic..."
 
     if source="$(xonotic_discovery_find_flatpak_xonotic_data)"; then
-        xonotic_discovery_progress_write discover 40 "Found Flatpak Xonotic — copying into this app..."
+        xonotic_discovery_progress_write running 35 "Found Flatpak Xonotic — copying into this app..."
         if ! xonotic_discovery_copy_assets_from "$source" "$target_dir"; then
             return 1
         fi
 
         if declare -F xonotic_assets_are_ready >/dev/null 2>&1 && xonotic_assets_are_ready "$target_dir"; then
-            xonotic_discovery_progress_write "done" 100 "Copied game assets from Flatpak Xonotic."
+            xonotic_discovery_progress_write "done" 100 "Imported game data from Flatpak Xonotic."
             return 0
         fi
-        xonotic_discovery_progress_write discover 92 "Flatpak copy incomplete — downloading the rest..."
+        xonotic_discovery_progress_write running 92 "Flatpak copy incomplete — downloading missing packs..."
     else
-        xonotic_discovery_progress_write discover 30 "No Flatpak Xonotic — starting download..."
+        xonotic_discovery_progress_write discover 25 "Flatpak Xonotic not found on this device."
+        xonotic_discovery_progress_write running 28 "Will download game data from the Xonotic servers..."
     fi
 
     if declare -F xonotic_fetch_game_assets >/dev/null 2>&1; then

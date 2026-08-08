@@ -64,11 +64,19 @@ SCREEN_CALC="${APP_ROOT}/share/xonotic/screen-calc.sh"
 FETCH_ASSETS="${APP_ROOT}/share/xonotic/fetch-assets-runtime.sh"
 FETCH_ASSETS_POSIX="${APP_ROOT}/share/xonotic/fetch-assets-posix.sh"
 SYNC_BUNDLE="${APP_ROOT}/share/xonotic/sync-bundle-data.sh"
-# Always use the host xdg-data path. Flatpak sets XDG_DATA_HOME to
-# ~/.var/app/<app>/data, which would fork assets/config away from the
-# documented ~/.local/share/xonotic-touch tree (and the
-# --filesystem=xdg-data/xonotic-touch bind). Override with XONOTIC_TOUCH_USER_BASE.
-USER_BASE="${XONOTIC_TOUCH_USER_BASE:-${HOME}/.local/share/xonotic-touch}"
+# Data location:
+#   Flatpak → $XDG_DATA_HOME/xonotic-touch  (~/.var/app/<id>/data/...) so
+#             "Delete app data" / uninstall --delete-data actually wipes packs.
+#   Else    → ~/.local/share/xonotic-touch
+# Override with XONOTIC_TOUCH_USER_BASE. Legacy host path is migrated once.
+LEGACY_USER_BASE="${HOME}/.local/share/xonotic-touch"
+if [ -n "${XONOTIC_TOUCH_USER_BASE:-}" ]; then
+    USER_BASE="$XONOTIC_TOUCH_USER_BASE"
+elif [ -n "${FLATPAK_ID:-}" ] && [ -n "${XDG_DATA_HOME:-}" ]; then
+    USER_BASE="${XDG_DATA_HOME}/xonotic-touch"
+else
+    USER_BASE="$LEGACY_USER_BASE"
+fi
 USER_DATA="${USER_BASE}/data"
 LAYOUT_CFG="${USER_DATA}/screen.layout.cfg"
 TOUCH_PROFILE="${XONOTIC_TOUCH_PROFILE:-standard}"
@@ -111,6 +119,50 @@ fi
 
 mkdir -p "$USER_DATA" 2>/dev/null || xonotic_log "cannot create $USER_DATA"
 
+# One launcher process only. Flatpak/desktop icons + wizard relaunches used to
+# stack several start.sh copies, each spawning its own curl into the same zip.
+INSTANCE_LOCK="$USER_BASE/instance.lock"
+if command -v flock >/dev/null 2>&1; then
+    # FD 7 stays open for the life of this process (survives bash re-exec above).
+    exec 7>"$INSTANCE_LOCK"
+    if ! flock -n 7; then
+        xonotic_log "already running — refusing second instance"
+        exit 0
+    fi
+fi
+
+# Move the old host path into Flatpak app data, then delete the host copy.
+# Leaving the host tree around would make "Delete app data" look like a no-op
+# (packs would migrate back on the next launch). Also run when the new base
+# already exists but is empty while legacy still holds packs or a partial zip —
+# otherwise curl and the wizard progress file split across two directories.
+if [ -n "${FLATPAK_ID:-}" ] \
+    && [ "$USER_BASE" != "$LEGACY_USER_BASE" ] \
+    && [ -d "$LEGACY_USER_BASE/data" ]; then
+    _migrate_needed=0
+    if [ ! -e "$USER_BASE" ]; then
+        _migrate_needed=1
+    elif [ ! -f "$USER_BASE/data/.assets-ready" ] \
+        && [ ! -f "$USER_DATA/.assets-ready" ]; then
+        if [ -f "$LEGACY_USER_BASE/data/.assets-ready" ] \
+            || [ -d "$LEGACY_USER_BASE/data/.fetch-tmp" ] \
+            || ls "$LEGACY_USER_BASE"/data/xonotic-*-data.pk3 >/dev/null 2>&1; then
+            _migrate_needed=1
+        fi
+    fi
+    if [ "$_migrate_needed" = "1" ]; then
+        xonotic_log "migrating game data from $LEGACY_USER_BASE → $USER_BASE"
+        if mkdir -p "$USER_BASE" \
+            && cp -a "$LEGACY_USER_BASE/." "$USER_BASE/" 2>/dev/null; then
+            rm -rf "$LEGACY_USER_BASE" 2>/dev/null \
+                || xonotic_log "could not remove $LEGACY_USER_BASE — delete it manually for clean wipes"
+            xonotic_log "legacy host data migrated"
+        else
+            xonotic_log "legacy migration copy failed — leaving $LEGACY_USER_BASE in place"
+        fi
+    fi
+fi
+
 sync_bundle_data() {
     if [ ! -x "$SYNC_BUNDLE" ]; then
         return 0
@@ -148,13 +200,111 @@ clear_restart_request() {
     rm -f "$RESTART_MARKER" "$RESTART_MARKER_HOME" 2>/dev/null || true
 }
 
+# True when a background job is already updating the wizard progress file.
+# (No `local` — this file must stay dash-safe when bash cannot re-exec.)
+fetch_progress_is_live() {
+    _fp_status=""
+    _fp_age=0
+    [ -f "$PROGRESS_FILE" ] || return 1
+    _fp_status="$(head -n 1 "$PROGRESS_FILE" 2>/dev/null || true)"
+    case "$_fp_status" in
+        discover|running) ;;
+        *) return 1 ;;
+    esac
+    # Fresh tick within 90s ⇒ another job owns the download; do not start another.
+    _fp_age="$(($(date +%s) - $(stat -c %Y "$PROGRESS_FILE" 2>/dev/null || echo 0)))"
+    [ "$_fp_age" -ge 0 ] 2>/dev/null && [ "$_fp_age" -lt 90 ]
+}
+
+# After we hold fetch.lock exclusively, drop leftover writers from killed
+# launches so only this job writes into .fetch-tmp/.
+kill_orphan_fetch_writers() {
+    _kow_needle="$USER_DATA/.fetch-tmp/"
+    for _kow_pid in $(pgrep -x curl 2>/dev/null || true) $(pgrep -x wget 2>/dev/null || true); do
+        _kow_cmd="$(tr '\0' ' ' < "/proc/$_kow_pid/cmdline" 2>/dev/null || true)"
+        case "$_kow_cmd" in
+            *"$_kow_needle"*) kill "$_kow_pid" 2>/dev/null || true ;;
+        esac
+    done
+}
+
+# Download must not outlive the app (wizard says keep it open; curl -C - resumes).
+ASSET_FETCH_PID=""
+
+write_fetch_paused() {
+    _wfp_pct=0
+    [ -f "$USER_DATA/.assets-ready" ] && return 0
+    if [ -f "$PROGRESS_FILE" ]; then
+        _wfp_pct="$(sed -n '2p' "$PROGRESS_FILE" 2>/dev/null || echo 0)"
+    fi
+    case "$_wfp_pct" in
+        ''|*[!0-9]*) _wfp_pct=0 ;;
+    esac
+    {
+        printf '%s\n' paused
+        printf '%s\n' "$_wfp_pct"
+        printf '%s\n' "Download paused. Reopen Xonotic Touch to continue."
+    } > "${PROGRESS_FILE}.tmp.$$" 2>/dev/null \
+        && mv -f "${PROGRESS_FILE}.tmp.$$" "$PROGRESS_FILE" 2>/dev/null \
+        || true
+}
+
+# Kill a PID and every descendant (fetch shell → curl). Dash-safe, no locals.
+kill_process_tree() {
+    _kpt_root="$1"
+    [ -n "$_kpt_root" ] || return 0
+    for _kpt_child in $(pgrep -P "$_kpt_root" 2>/dev/null || true); do
+        kill_process_tree "$_kpt_child"
+    done
+    kill -TERM "$_kpt_root" 2>/dev/null || true
+}
+
+stop_asset_fetch() {
+    _saf_pid="${ASSET_FETCH_PID:-}"
+    ASSET_FETCH_PID=""
+    if [ -n "$_saf_pid" ]; then
+        kill_process_tree "$_saf_pid"
+        # Brief grace for curl to flush; then hard-kill anything left.
+        sleep 0.3 2>/dev/null || sleep 1
+        kill_process_tree "$_saf_pid"
+        kill -KILL "$_saf_pid" 2>/dev/null || true
+        for _saf_child in $(pgrep -P "$_saf_pid" 2>/dev/null || true); do
+            kill -KILL "$_saf_child" 2>/dev/null || true
+        done
+        wait "$_saf_pid" 2>/dev/null || true
+    fi
+    kill_orphan_fetch_writers
+    write_fetch_paused
+}
+
+launcher_cleanup() {
+    # Drop traps first so a second signal during teardown cannot re-enter.
+    trap - EXIT INT TERM HUP
+    stop_asset_fetch
+}
+
+trap 'launcher_cleanup; exit 130' INT
+trap 'launcher_cleanup; exit 143' TERM
+trap 'launcher_cleanup; exit 129' HUP
+trap launcher_cleanup EXIT
+
 # Asset resolution:
 #   Sync:  our USER_DATA already ready? → no wizard
 #   Else:  show fullscreen wizard; background does Flatpak copy → else download
 # Never block launch on Flatpak/network — that was freezing "detection".
+# Called at most once per launcher process (relaunch loop must not stack curls).
 prepare_assets() {
     ASSET_FETCH_ACTIVE=0
     TOUCH_ASSETS_READY=0
+
+    if [ "${ASSET_FETCH_JOB_STARTED:-0}" = "1" ]; then
+        if [ -f "$USER_DATA/.assets-ready" ]; then
+            TOUCH_ASSETS_READY=1
+        else
+            ASSET_FETCH_ACTIVE=1
+        fi
+        return 0
+    fi
 
     # The asset libraries are bash-only; sourcing them from dash is a syntax
     # error. Confined clicks usually cannot exec host bash, so fall back to the
@@ -171,37 +321,58 @@ prepare_assets() {
             TOUCH_ASSETS_READY=1
         else
             ASSET_FETCH_ACTIVE=1
-            # Seed progress before the engine opens so the wizard is never blank.
-            {
-                printf '%s\n' discover
-                printf '%s\n' 5
-                printf '%s\n' "Checking your game data..."
-            } > "$PROGRESS_FILE"
+            ASSET_FETCH_JOB_STARTED=1
+            if fetch_progress_is_live; then
+                xonotic_log "asset fetch already in progress — joining existing job"
+            else
+                # Seed progress before the engine opens so the wizard is never blank.
+                {
+                    printf '%s\n' discover
+                    printf '%s\n' 5
+                    printf '%s\n' "Checking your game data..."
+                } > "$PROGRESS_FILE"
+            fi
+            # flock: relaunch / double-start must not run two curls into one zip.
             (
+                trap 'kill_orphan_fetch_writers; exit 143' TERM INT
+                if command -v flock >/dev/null 2>&1; then
+                    flock -n 9 || exit 0
+                fi
+                kill_orphan_fetch_writers
                 if declare -F xonotic_resolve_missing_assets >/dev/null 2>&1; then
                     xonotic_resolve_missing_assets "$USER_DATA"
                 else
                     xonotic_fetch_game_assets "$USER_DATA"
                 fi
                 sync_bundle_data
-            ) &
+            ) 9>"$USER_DATA/touch/fetch.lock" &
+            ASSET_FETCH_PID=$!
         fi
     elif [ -f "$USER_DATA/.assets-ready" ]; then
         TOUCH_ASSETS_READY=1
     elif [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" != "1" ] && [ -x "$FETCH_ASSETS_POSIX" ]; then
         ASSET_FETCH_ACTIVE=1
+        ASSET_FETCH_JOB_STARTED=1
         # Same file the wizard polls; without this the POSIX downloader reports
         # nowhere and setup sits on its opening message for the whole download.
         export XONOTIC_ASSET_FETCH_PROGRESS="$PROGRESS_FILE"
-        {
-            printf '%s\n' discover
-            printf '%s\n' 5
-            printf '%s\n' "Checking your game data..."
-        } > "$PROGRESS_FILE"
+        if ! fetch_progress_is_live; then
+            {
+                printf '%s\n' discover
+                printf '%s\n' 5
+                printf '%s\n' "Checking your game data..."
+            } > "$PROGRESS_FILE"
+        fi
         (
+            trap 'kill_orphan_fetch_writers; exit 143' TERM INT
+            if command -v flock >/dev/null 2>&1; then
+                flock -n 9 || exit 0
+            fi
+            kill_orphan_fetch_writers
             "$FETCH_ASSETS_POSIX" "$USER_DATA"
             sync_bundle_data
-        ) &
+        ) 9>"$USER_DATA/touch/fetch.lock" &
+        ASSET_FETCH_PID=$!
     fi
 }
 
@@ -282,8 +453,10 @@ else
     export LD_LIBRARY_PATH="${APP_ROOT}/lib"
 fi
 
+# DarkPlaces session lock (when locksession>0). Only clear a stale file — never
+# delete a lock held by a live engine (that allowed stacked instances).
 XONOTIC_LOCK="${HOME}/.xonotic/lock"
-if [ -f "$XONOTIC_LOCK" ]; then
+if [ -f "$XONOTIC_LOCK" ] && ! pgrep -f "${BIN}" >/dev/null 2>&1; then
     rm -f "$XONOTIC_LOCK" 2>/dev/null || true
 fi
 
@@ -353,14 +526,25 @@ run_engine() {
 # A stale marker from a killed session must not relaunch this one.
 clear_restart_request
 
+ASSET_FETCH_JOB_STARTED=0
 ENGINE_STATUS=0
 while :; do
     prepare_assets
     run_engine || ENGINE_STATUS=$?
-    restart_requested || break
-    clear_restart_request
-    xonotic_log "relaunching engine so downloaded game data is loaded"
-    ENGINE_STATUS=0
+    # Intentional post-download relaunch: keep the (usually finished) fetch job
+    # alone; do not treat engine exit as "user closed the app".
+    if restart_requested; then
+        clear_restart_request
+        xonotic_log "relaunching engine so downloaded game data is loaded"
+        ENGINE_STATUS=0
+        continue
+    fi
+    break
 done
 
+# User closed the app (or the engine exited without asking for relaunch).
+# Stop download explicitly; EXIT trap is a backstop for signals.
+xonotic_log "stopping asset fetch (app closing)"
+stop_asset_fetch
+trap - EXIT INT TERM HUP
 exit "$ENGINE_STATUS"

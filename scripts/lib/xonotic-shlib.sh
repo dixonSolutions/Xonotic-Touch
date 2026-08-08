@@ -407,8 +407,11 @@ xonotic_preflight_run() {
     fi
 }
 
+# Sets XONOTIC_TOUCH_ASSET_FETCH_ACTIVE / XONOTIC_TOUCH_ASSETS_READY and may
+# start a background fetch. Must run in the launcher shell (not a subshell) so
+# XONOTIC_ASSET_FETCH_PID stays owned for shutdown-on-exit.
 xonotic_touch_begin_asset_fetch() {
-    local data_dir asset_lib discover_lib progress_file
+    local data_dir asset_lib discover_lib progress_file needle pid cmdline
     data_dir="$(xonotic_data_dir)"
     asset_lib="$(xonotic_root)/scripts/lib/asset-fetch.sh"
     discover_lib="$(xonotic_root)/scripts/lib/asset-discover.sh"
@@ -417,8 +420,10 @@ xonotic_touch_begin_asset_fetch() {
     progress_file="$data_dir/touch/asset-progress.txt"
     mkdir -p "$data_dir/touch"
 
+    XONOTIC_TOUCH_ASSET_FETCH_ACTIVE=0
+    XONOTIC_TOUCH_ASSETS_READY=0
+
     if [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" = "1" ] || [ ! -f "$asset_lib" ]; then
-        printf '0 0\n'
         return 0
     fi
 
@@ -432,9 +437,17 @@ xonotic_touch_begin_asset_fetch() {
 
     # Fast sync only: ready? → no wizard. Otherwise fullscreen wizard + background.
     if xonotic_assets_are_ready "$data_dir"; then
-        printf '0 1\n'
+        XONOTIC_TOUCH_ASSETS_READY=1
         return 0
     fi
+
+    XONOTIC_TOUCH_ASSET_FETCH_ACTIVE=1
+
+    # Avoid stacking fetch jobs when the engine relaunches after setup.
+    if [ "${XONOTIC_ASSET_FETCH_JOB_STARTED:-0}" = "1" ]; then
+        return 0
+    fi
+    XONOTIC_ASSET_FETCH_JOB_STARTED=1
 
     {
         printf '%s\n' discover
@@ -443,13 +456,66 @@ xonotic_touch_begin_asset_fetch() {
     } > "$progress_file"
 
     (
+        needle="$data_dir/.fetch-tmp/"
+        trap 'for pid in $(pgrep -x curl 2>/dev/null || true) $(pgrep -x wget 2>/dev/null || true); do
+            cmdline="$(tr "\0" " " < "/proc/$pid/cmdline" 2>/dev/null || true)"
+            case "$cmdline" in *"$needle"*) kill "$pid" 2>/dev/null || true ;; esac
+        done; exit 143' TERM INT
+        if command -v flock >/dev/null 2>&1; then
+            flock -n 9 || exit 0
+        fi
+        # Drop leftover writers from previous launcher copies.
+        for pid in $(pgrep -x curl 2>/dev/null || true) $(pgrep -x wget 2>/dev/null || true); do
+            cmdline="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+            case "$cmdline" in
+                *"$needle"*) kill "$pid" 2>/dev/null || true ;;
+            esac
+        done
         if declare -F xonotic_resolve_missing_assets >/dev/null 2>&1; then
             xonotic_resolve_missing_assets "$data_dir"
         else
             xonotic_fetch_game_assets "$data_dir"
         fi
-    ) &
-    printf '1 0\n'
+    ) 9>"$data_dir/touch/fetch.lock" &
+    XONOTIC_ASSET_FETCH_PID=$!
+}
+
+xonotic_touch_stop_asset_fetch() {
+    local data_dir progress_file pid child pct
+    data_dir="$(xonotic_data_dir)"
+    progress_file="$data_dir/touch/asset-progress.txt"
+    pid="${XONOTIC_ASSET_FETCH_PID:-}"
+    XONOTIC_ASSET_FETCH_PID=""
+
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        for child in $(pgrep -P "$pid" 2>/dev/null || true); do
+            kill "$child" 2>/dev/null || true
+        done
+        kill "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+    fi
+
+    # Belt-and-braces: any remaining writers into this fetch-tmp.
+    local needle="$data_dir/.fetch-tmp/" cmdline
+    for pid in $(pgrep -x curl 2>/dev/null || true) $(pgrep -x wget 2>/dev/null || true); do
+        cmdline="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+        case "$cmdline" in
+            *"$needle"*) kill "$pid" 2>/dev/null || true ;;
+        esac
+    done
+
+    if [ ! -f "$data_dir/.assets-ready" ]; then
+        pct="$(sed -n '2p' "$progress_file" 2>/dev/null || echo 0)"
+        case "$pct" in
+            ''|*[!0-9]*) pct=0 ;;
+        esac
+        {
+            printf '%s\n' paused
+            printf '%s\n' "$pct"
+            printf '%s\n' "Download paused. Reopen Xonotic Touch to continue."
+        } > "${progress_file}.tmp.$$" \
+            && mv -f "${progress_file}.tmp.$$" "$progress_file"
+    fi
 }
 
 xonotic_run_native() {
@@ -465,11 +531,8 @@ xonotic_run_native() {
     xonotic_stage_touch_runtime
     xonotic_write_screen_layout
 
-    local asset_fetch_active=0
-    local touch_assets_ready=0
-    if read -r asset_fetch_active touch_assets_ready < <(xonotic_touch_begin_asset_fetch); then
-        :
-    fi
+    XONOTIC_ASSET_FETCH_PID=""
+    xonotic_touch_begin_asset_fetch
 
     # Mirrors packaging/start.sh: the download wizard asks for a relaunch so the
     # engine picks up packs that appeared after it built its search path.
@@ -488,6 +551,11 @@ xonotic_run_native() {
         "${XONOTIC_VID_WIDTH:-?}" "${XONOTIC_VID_HEIGHT:-?}"
     printf '\n'
 
+    # Download stops with the app; partial zips resume on the next launch.
+    trap 'xonotic_touch_stop_asset_fetch' EXIT
+    trap 'xonotic_touch_stop_asset_fetch; exit 130' INT
+    trap 'xonotic_touch_stop_asset_fetch; exit 143' TERM
+
     while :; do
         "$bin" -xonotic \
             -customgamename "Xonotic Touch" \
@@ -496,8 +564,8 @@ xonotic_run_native() {
             +exec config.cfg \
             +exec autoexec.cfg \
             +exec touch/startup.cfg \
-            +set _touch_asset_fetch_active "$asset_fetch_active" \
-            +set _touch_assets_ready "$touch_assets_ready" \
+            +set _touch_asset_fetch_active "${XONOTIC_TOUCH_ASSET_FETCH_ACTIVE:-0}" \
+            +set _touch_assets_ready "${XONOTIC_TOUCH_ASSETS_READY:-0}" \
             +vid_fullscreen "$fullscreen" \
             +vid_touchscreen 1 \
             +cl_movement 1 \
@@ -510,11 +578,11 @@ xonotic_run_native() {
         fi
         rm -f "$restart_marker" "$restart_marker_home"
         printf 'Relaunching engine so downloaded game data is loaded\n'
-        if read -r asset_fetch_active touch_assets_ready < <(xonotic_touch_begin_asset_fetch); then
-            :
-        fi
+        xonotic_touch_begin_asset_fetch
         status=0
     done
 
+    trap - EXIT INT TERM
+    xonotic_touch_stop_asset_fetch
     return "$status"
 }

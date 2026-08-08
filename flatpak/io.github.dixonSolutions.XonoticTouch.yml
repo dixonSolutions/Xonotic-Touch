@@ -11,6 +11,8 @@ finish-args:
   - --socket=fallback-x11
   - --socket=pulseaudio
   - --device=dri
+  # Game packs live under Flatpak $XDG_DATA_HOME (wiped with app data).
+  # Legacy host path is writable only so the one-time migrator can remove it.
   - --filesystem=xdg-data/xonotic-touch:create
   - --filesystem=home/.xonotic:create
   - --filesystem=home/.var/app/org.xonotic.Xonotic:ro

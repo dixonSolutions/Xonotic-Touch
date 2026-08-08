@@ -41,7 +41,17 @@ flatpak remote-info --log xonotic-touch io.github.dixonSolutions.XonoticTouch
 
 First launch downloads game assets (~3 GB) into:
 
-`$XDG_DATA_HOME/xonotic-touch/data/` (typically `~/.local/share/xonotic-touch/data/`)
+| Install | Path |
+|---------|------|
+| **Flatpak** | `~/.var/app/io.github.dixonSolutions.XonoticTouch/data/xonotic-touch/data/` (wiped by Delete app data / `flatpak uninstall --delete-data`) |
+| **Click / native** | `~/.local/share/xonotic-touch/data/` |
+
+Legacy Flatpak installs that still have `~/.local/share/xonotic-touch` are migrated into the Flatpak data dir on next launch. To force a clean first-run wizard now:
+
+```bash
+rm -rf ~/.local/share/xonotic-touch \
+  ~/.var/app/io.github.dixonSolutions.XonoticTouch
+```
 
 User config and touch layout overrides remain in `~/.xonotic/`.
 

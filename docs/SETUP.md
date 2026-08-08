@@ -52,6 +52,8 @@ Implemented in `scripts/lib/asset-discover.sh` (steps 1–2) and `packaging/star
 
 A **fast** ready-check runs before launch. Flatpak copy and download run in the **background** and drive the fullscreen setup wizard via `data/touch/asset-progress.txt`. If our data is already ready, the wizard never appears. Gameplay stays blocked until `.assets-ready` exists.
 
+Flatpak stores packs under the app’s own data dir (`~/.var/app/…/data/xonotic-touch/`), so Software “Delete app data” clears them. The old host path `~/.local/share/xonotic-touch` is only read for a one-time migration.
+
 ### Boot assets (why the package is not empty)
 
 The wizard is drawn by the engine, so the package has to contain enough art for the menu to render before anything is downloaded. `scripts/fetch-boot-assets.sh` stages that subset — the `luma` menu skin plus console and loading graphics, ~31 MB — into `xonotic-data.pk3dir/gfx`, and `scripts/stage-slim-data.sh` calls it after stripping the large media directories. Both `stage-flatpak.sh` and `stage-click.sh` inherit it from there; `XONOTIC_SKIP_BOOT_ASSETS=1` opts out for offline builds. The script copies from a local `engine/data/xonotic-data.pk3dir` when one exists, otherwise it pulls just those paths from upstream with a blob-filtered sparse checkout.
@@ -80,12 +82,14 @@ The engine launches for the setup UI, but **Play** and other game actions wait u
 While resolving, the shell writes `data/touch/asset-progress.txt` (three lines):
 
 ```
-discover|running|done|error
+discover|running|paused|done|error
 0–100
 Human-readable status message
 ```
 
 The `discover` phase covers “our data ready?” then “copy from Flatpak Xonotic?”; the wizard shows a sweeping bar for it, because neither step can report a percentage. The bar becomes a real percentage in the `running` download phase, and turns red with a **Try again** button on `error`.
+
+Closing the app stops the download job (and any curl/wget children). Progress is written as `paused`; the next launch resumes the partial zip. The download does **not** keep running after quit — keep the app open until setup finishes.
 
 The launcher seeds this file *before* exec so the wizard is never blank, and never deletes it — the background worker overwrites it in place.
 
