@@ -122,14 +122,24 @@ brightest, hardest-edged object in the frame was the one nobody needs to study
 asset, and `hud_panel_fg_alpha` dims the weapon icons along with the plate.
 
 Rather than ship an override asset under a skin name we do not control, the strip
-is now drawn by the overlay: rounded slots, glass for owned, accent tint plus a
-rim for held, impulse number as a corner badge (`57-weps.jpg`). It costs about
-what the stock panel cost — both draw a background, an icon and a label per
-weapon — and it claims no input, since the WEP button and the wheel switch guns.
+is now drawn by the overlay, as a list: one rounded region, the held weapon washed
+in accent the way a list view marks a selected row, impulse number as a corner
+badge. It claims no input, since the WEP button and the wheel switch guns.
 
-First attempt filled the held slot at latch opacity and reproduced the original
-complaint in our own palette. Hue and an edge are enough to mark one slot in a
-column of five; weight is not needed and is what made it shout.
+Two wrong turns on the way, both instructive:
+
+- The first version filled every slot with its own plate and the held one at latch
+  opacity, which reproduced the original complaint in our own palette
+  (`57-weps.jpg`). Marking a selection is a job for hue and an edge, not weight.
+- Per-slot plates also took the overlay from ~90 to **175** draw calls, because a
+  rounded rect is nine draws — four corners, four edges, a middle. The list form
+  is a fixed ~18 regardless of how many weapons are held. Worth doing that
+  arithmetic before drawing a shape per item.
+
+Then it was dialled *too* far down: at `TOUCH_A_SURFACE * 0.8` the region and its
+white icons washed out over a sunlit sky. It sits at `TOUCH_A_SURFACE` for the
+region and `TOUCH_A_SURFACE_LATCH` for the selected row, which holds up over both
+dark geometry and bright sky (`62-weplist.jpg`).
 
 ## 6. Every frag printed across the controls
 

@@ -160,11 +160,19 @@ cheaper path *and* the correct one: chrome should recede.
 
 ### 5.2 Measured cost
 
-**78 draw calls** in steady state on the target device, from the `fills` field of
-the `touch_debug` readout, at a sustained 30 fps cap with headroom (uncapped the
-same scene runs >110 fps). Roughly: 25 for the five labels (each is 4 stroke
-passes plus the glyphs), 22 for the hop bar and two chrome pills, 8 for the move
-stick, 8 for the two round buttons.
+**78 draw calls** for the controls alone, from the `fills` field of the
+`touch_debug` readout, at a sustained 30 fps cap with headroom (uncapped the same
+scene runs >110 fps). Roughly: 25 for the five labels (each is 4 stroke passes
+plus the glyphs), 22 for the hop bar and two chrome pills, 8 for the move stick,
+8 for the two round buttons.
+
+With the readouts added — vitals, ammo and the weapons list — a live frame reads
+around 170 with the debug overlay itself on top. Two figures are worth keeping in
+mind when adding to this layer: a rounded rect is **nine** draws (four corners,
+four edges, one middle), and a label is four stroke passes plus glyphs. That is
+what makes "one region with a highlighted row" cheaper than "a plate per row" by
+an order of magnitude, and it is the arithmetic to do *before* drawing a shape per
+item.
 
 This is over the 34-fill ceiling in TOUCH_LAYOUT_SPEC §10, and that ceiling does
 not transfer: it was measured for `drawfill` rectangle stacks, whereas these are
@@ -345,10 +353,20 @@ The weapons strip is also ours now. The stock `hud_panel_weapons` drew the held
 weapon on the skin's `weapon_current_bg` — an opaque chamfered plate — which made
 the brightest, hardest-edged object on screen the one thing a player never needs
 to study. That brightness is in the asset, so no cvar could tone it down, and
-`hud_panel_fg_alpha` would have dimmed the weapon icons with it. The replacement
-is a column of rounded slots on the right edge, glass for what you own, an accent
-tint plus a rim for what you hold, and the impulse number as a badge in the
-corner. Switching stays with the WEP button and the wheel; the strip is a readout.
+`hud_panel_fg_alpha` would have dimmed the weapon icons with it.
+
+The replacement is a **list**, not a row of buttons: one rounded region on the
+right edge holding what you own, with the held weapon washed in the accent colour
+the way a list view marks a selected row, and the impulse number as a corner
+badge. Two reasons it is one region rather than a plate per weapon. It is a single
+inventory, so it should read as one object (Law of Common Region). And a rounded
+rect is nine draws, so per-slot plates put the overlay at 175 draw calls, where
+the list is a fixed ~18 no matter how many weapons you hold.
+
+The first attempt did draw a plate per slot, at latch opacity, and reproduced the
+exact complaint about the stock panel in our own palette — a readout was again the
+loudest thing on screen. Marking a selection is a job for hue and an edge, not
+weight. Switching stays with the WEP button and the wheel; the strip is a readout.
 
 `touch_mobile_hud` is the single switch for all three — vitals, ammo and weapons —
 because it is one decision (does the touch layer own the HUD), and three switches

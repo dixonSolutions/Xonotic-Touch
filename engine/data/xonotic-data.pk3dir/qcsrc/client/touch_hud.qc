@@ -301,7 +301,7 @@ void Touch_Hud_DrawAmmo(float alpha)
 
 const float TOUCH_HUD_WEP_H   = 26;
 const float TOUCH_HUD_WEP_W   = 46;
-const float TOUCH_HUD_WEP_GAP = 5;
+const float TOUCH_HUD_WEP_PAD = 4;
 
 vector Touch_Hud_WeaponsCenter(void)
 {
@@ -316,31 +316,16 @@ int Touch_Hud_OwnedWeaponCount(void)
 	return n;
 }
 
-void Touch_Hud_DrawWeaponSlot(vector center, vector half, Weapon wep, bool current,
+// One row of the list: icon, plus the impulse key as a small badge. The impulse
+// is what a player with a keyboard attached presses and is how the stock panel
+// labels slots, but it is reference rather than the point of the row, so it stays
+// out of the icon's way and well under its weight.
+void Touch_Hud_DrawWeaponRow(vector center, vector half, Weapon wep, bool current,
 	float alpha)
 {
-	float r = TOUCH_R_SM * Touch_Hud_Scale();
-	// The held weapon is the only one that needs to be found without looking, so
-	// it is the only one that gets the accent and a rim; the rest are inventory.
-	// The held slot is marked by hue and an edge, not by weight. Filling it at
-	// latch opacity made a readout the brightest thing on screen — which is the
-	// same mistake the stock panel's opaque plate makes, just in our own palette.
-	Touch_Shape_RRect(center, half, r, (current ? TOUCH_C_ACCENT : TOUCH_C_SURFACE),
-		alpha * TOUCH_A_SURFACE * (current ? 1.0 : 0.8));
-	if (current)
-		Touch_Shape_RRectRing(center, half, r, TOUCH_W_STROKE * Touch_Hud_Scale(),
-			TOUCH_C_ACCENT, alpha * TOUCH_A_RIM);
-
-	// Inset far enough to leave the top-left corner free for the slot number, so
-	// the number reads as a badge on the slot rather than a second column beside
-	// the icon. Dimmed when not held: an unheld weapon is worth a glance, not
-	// attention.
 	Touch_Hud_DrawSkinPicFit(center, half * 1.3, wep.model2,
 		alpha * (current ? TOUCH_A_INK : TOUCH_A_INK * 0.55));
 
-	// The impulse key, in the corner, small. It is what a player with a keyboard
-	// attached presses, and it is how the stock panel labels slots — but it is
-	// reference, not the point of the row, so it does not compete with the icon.
 	float num = Touch_Hud_U(TOUCH_FONT_READOUT_SM) * 0.8;
 	Touch_Shape_LabelAligned(center - half + '1 1 0' * Touch_Hud_U(TOUCH_SPACE_1)
 		+ eY * num * 0.5, num, ftos(wep.impulse), 0, TOUCH_C_INK,
@@ -356,20 +341,41 @@ void Touch_Hud_DrawWeapons(float alpha)
 		return;
 
 	float h = Touch_Hud_U(TOUCH_HUD_WEP_H);
-	float gap = Touch_Hud_U(TOUCH_HUD_WEP_GAP);
-	vector half = eX * (Touch_Hud_U(TOUCH_HUD_WEP_W) * 0.5) + eY * (h * 0.5);
+	float pad = Touch_Hud_U(TOUCH_HUD_WEP_PAD);
+	float w = Touch_Hud_U(TOUCH_HUD_WEP_W);
+	float r = TOUCH_R_SM * Touch_Hud_Scale();
+	vector row_half = eX * (w * 0.5) + eY * (h * 0.5);
 	vector center = Touch_Hud_WeaponsCenter();
 	// Centred on its anchor, so the strip grows in both directions as weapons are
 	// picked up instead of walking down the screen.
-	float y = center.y - (n * h + (n - 1) * gap) * 0.5 + h * 0.5;
+	float top = center.y - (n * h) * 0.5;
+
+	// One region behind the whole list rather than a plate per weapon (Law of
+	// Common Region): this is a single inventory, not nine loose badges, and it is
+	// also the difference between two rounded rects and eleven. Each rounded rect
+	// is nine draws, so per-slot plates put the overlay at 175 draw calls.
+	Touch_Shape_RRect(eX * center.x + eY * center.y,
+		eX * (w * 0.5 + pad) + eY * (n * h * 0.5 + pad), r + pad,
+		TOUCH_C_SURFACE, alpha * TOUCH_A_SURFACE);
 
 	entity wepent = viewmodels[0];
 	WepSet owned = STAT(WEAPONS);
+	// Not `i`: FOREACH declares its own, and shadowing it makes the counter const.
+	int slot = 0;
+	// The held weapon is a selected row, the way a list view marks one: an accent
+	// wash and nothing else. Marking it by *weight* — a bright opaque plate — is
+	// what made the stock panel the loudest object on screen. One washed row
+	// inside a quiet region is not the same thing as a plate behind every slot,
+	// which is what the first attempt drew.
 	FOREACH(Weapons, it != WEP_Null && it.impulse >= 0 && (owned & it.m_wepset),
 	{
-		Touch_Hud_DrawWeaponSlot(eX * center.x + eY * y, half, it,
-			it == wepent.switchweapon, alpha);
-		y += h + gap;
+		vector at = eX * center.x + eY * (top + slot * h + h * 0.5);
+		bool current = (it == wepent.switchweapon);
+		if (current)
+			Touch_Shape_RRect(at, row_half, r, TOUCH_C_ACCENT,
+				alpha * TOUCH_A_SURFACE_LATCH);
+		Touch_Hud_DrawWeaponRow(at, row_half, it, current, alpha);
+		slot += 1;
 	});
 }
 
