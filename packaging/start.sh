@@ -205,6 +205,13 @@ quarantine_stale_touch_menu_overrides() {
         xonotic_log "quarantining stale $_q_menu (old asset-fetch progress path)"
         mv -f "$_q_menu" "${_q_menu}.stale-pre-touch-progress" 2>/dev/null || true
     fi
+    # Stale home CSQC sorts above Flatpak touch/data packs and causes
+    # CL_ParseServerMessage: Illegible server message when SVQC/CSQC diverge.
+    _q_csqc="$_q_home_data/xonotic-data.pk3dir/csprogs.dat"
+    if [ -f "$_q_csqc" ]; then
+        xonotic_log "quarantining stale $_q_csqc (home override shadows bundled Touch CSQC)"
+        mv -f "$_q_csqc" "${_q_csqc}.stale-home-override" 2>/dev/null || true
+    fi
 }
 
 sync_bundle_data
