@@ -311,57 +311,103 @@ xonotic_file_size() {
     fi
 }
 
-# Start one zip download in the background (no progress loop). Prints pid.
+# Last background download PID started by xonotic_start_autobuild_download.
+# Must NOT be captured via $(...) — that runs the starter in a subshell so the
+# PID is not a child of the fetch loop and `wait` aborts the whole job.
+XONOTIC_DOWNLOAD_PID=0
+
+# Start one zip download in the background (no progress loop).
+# Sets XONOTIC_DOWNLOAD_PID (0 = already complete on disk).
 xonotic_start_autobuild_download() {
     local zip_path="$1"
     local zip_name="$2"
     local url="${XONOTIC_AUTOBUILD_URL}/${zip_name}"
     local expected="${3:-0}"
     local conns
-    local pid
 
+    XONOTIC_DOWNLOAD_PID=0
     mkdir -p "$(dirname "$zip_path")"
     if [ "${expected:-0}" -gt 0 ] 2>/dev/null \
         && [ "$(xonotic_file_size "$zip_path")" -ge "$expected" ]; then
-        echo 0
         return 0
     fi
 
     conns="$(xonotic_fetch_connections)"
+    # Close fetch.lock fd 9 in the child so orphan curls cannot block the next
+    # fetchd after the parent shell dies (flock would otherwise stay held).
     if [ "$conns" -gt 1 ] 2>/dev/null && command -v aria2c >/dev/null 2>&1; then
         # Multi-connection: much better on high-latency / rate-limited links.
-        aria2c -c --console-log-level=warn --summary-interval=0 \
-            --http-user="${XONOTIC_AUTOBUILD_USER}" \
-            --http-passwd="${XONOTIC_AUTOBUILD_PASS}" \
-            -x "$conns" -s "$conns" -j 1 -k 1M \
-            -d "$(dirname "$zip_path")" -o "$(basename "$zip_path")" \
-            "$url" >/dev/null 2>&1 &
-        pid=$!
-        echo "$pid"
+        (
+            exec 9>&-
+            aria2c -c --console-log-level=warn --summary-interval=0 \
+                --http-user="${XONOTIC_AUTOBUILD_USER}" \
+                --http-passwd="${XONOTIC_AUTOBUILD_PASS}" \
+                -x "$conns" -s "$conns" -j 1 -k 1M \
+                -d "$(dirname "$zip_path")" -o "$(basename "$zip_path")" \
+                "$url" >/dev/null 2>&1
+        ) &
+        XONOTIC_DOWNLOAD_PID=$!
         return 0
     fi
 
     if command -v curl >/dev/null 2>&1; then
-        curl -fL -C - --user "${XONOTIC_AUTOBUILD_USER}:${XONOTIC_AUTOBUILD_PASS}" \
-            -o "$zip_path" "$url" >/dev/null 2>&1 &
-        pid=$!
-        echo "$pid"
+        (
+            exec 9>&-
+            curl -fL -C - --user "${XONOTIC_AUTOBUILD_USER}:${XONOTIC_AUTOBUILD_PASS}" \
+                -o "$zip_path" "$url" >/dev/null 2>&1
+        ) &
+        XONOTIC_DOWNLOAD_PID=$!
         return 0
     fi
 
     if command -v wget >/dev/null 2>&1; then
         local scheme="${XONOTIC_AUTOBUILD_URL%%://*}"
         local host_path="${XONOTIC_AUTOBUILD_URL#*://}"
-        wget -q -O "$zip_path" \
-            "${scheme}://${XONOTIC_AUTOBUILD_USER}:${XONOTIC_AUTOBUILD_PASS}@${host_path}/${zip_name}" \
-            >/dev/null 2>&1 &
-        pid=$!
-        echo "$pid"
+        (
+            exec 9>&-
+            wget -q -O "$zip_path" \
+                "${scheme}://${XONOTIC_AUTOBUILD_USER}:${XONOTIC_AUTOBUILD_PASS}@${host_path}/${zip_name}" \
+                >/dev/null 2>&1
+        ) &
+        XONOTIC_DOWNLOAD_PID=$!
         return 0
     fi
 
     echo "xonotic: curl, wget, or aria2c required to download game assets" >&2
     return 1
+}
+
+# Wait for a download PID. Handles orphans from a previous fetchd (not children
+# of this shell) by polling; success is "process gone + zip size OK".
+xonotic_wait_download_pid() {
+    local pid="$1"
+    local zip_path="$2"
+    local expected="${3:-0}"
+    local have
+
+    [ -n "$pid" ] && [ "$pid" != "0" ] || return 0
+
+    if kill -0 "$pid" 2>/dev/null; then
+        # Our child: wait for exit status. Not our child: poll until gone.
+        if ! wait "$pid" 2>/dev/null; then
+            while kill -0 "$pid" 2>/dev/null; do
+                sleep 1
+            done
+        fi
+    else
+        wait "$pid" 2>/dev/null || true
+    fi
+
+    have="$(xonotic_file_size "$zip_path")"
+    if [ "$expected" -gt 0 ] 2>/dev/null && [ "$have" -lt "$expected" ]; then
+        echo "xonotic-touch: download incomplete for $(basename "$zip_path") ($have / $expected bytes)" >&2
+        return 1
+    fi
+    if [ "$have" -le 0 ] 2>/dev/null; then
+        echo "xonotic-touch: download produced empty file: $zip_path" >&2
+        return 1
+    fi
+    return 0
 }
 
 # Download one autobuild zip while updating the wizard percent between pct_lo..pct_hi.
@@ -378,7 +424,8 @@ xonotic_download_autobuild_zip() {
     if command -v curl >/dev/null 2>&1; then
         expected="$(xonotic_autobuild_content_length "$url")"
     fi
-    pid="$(xonotic_start_autobuild_download "$zip_path" "$zip_name" "$expected")" || return 1
+    xonotic_start_autobuild_download "$zip_path" "$zip_name" "$expected" || return 1
+    pid="${XONOTIC_DOWNLOAD_PID:-0}"
     if [ "${pid:-0}" = "0" ]; then
         xonotic_progress_write running "$pct_hi" "Downloaded ${zip_name}"
         return 0
@@ -397,7 +444,7 @@ xonotic_download_autobuild_zip() {
         fi
         sleep 1
     done
-    wait "$pid"
+    xonotic_wait_download_pid "$pid" "$zip_path" "$expected" || return 1
 }
 
 xonotic_extract_autobuild_pk3() {
@@ -523,7 +570,9 @@ xonotic_fetch_autobuild_assets() {
                 continue
             fi
             # curl -C - / aria2c -c continue the partial file in place.
-            pid="$(xonotic_start_autobuild_download "$path" "$name" "$expected")" || return 1
+            # Call directly (not $(...)) so $! stays a child of this shell.
+            xonotic_start_autobuild_download "$path" "$name" "$expected" || return 1
+            pid="${XONOTIC_DOWNLOAD_PID:-0}"
             pids[$next]="$pid"
             if [ "$pid" != "0" ]; then
                 jobs=$((jobs + 1))
@@ -577,7 +626,8 @@ xonotic_fetch_autobuild_assets() {
             if kill -0 "$pid" 2>/dev/null; then
                 jobs=$((jobs + 1))
             else
-                wait "$pid" || return 1
+                xonotic_wait_download_pid "$pid" "${paths[$idx]}" "${expecteds[$idx]:-0}" \
+                    || return 1
                 pids[$idx]=0
                 if [ "${installed[$idx]:-0}" != "1" ]; then
                     xonotic_install_autobuild_zip "$data_dir" "${paths[$idx]}" "${kinds[$idx]}" \
@@ -594,7 +644,7 @@ xonotic_fetch_autobuild_assets() {
     for idx in "${!pids[@]}"; do
         pid="${pids[$idx]}"
         [ -n "$pid" ] && [ "$pid" != "0" ] || continue
-        wait "$pid" || return 1
+        xonotic_wait_download_pid "$pid" "${paths[$idx]}" "${expecteds[$idx]:-0}" || return 1
         pids[$idx]=0
         if [ "${installed[$idx]:-0}" != "1" ]; then
             xonotic_install_autobuild_zip "$data_dir" "${paths[$idx]}" "${kinds[$idx]}" \
