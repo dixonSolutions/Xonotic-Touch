@@ -127,7 +127,7 @@ flatpak install --user XonoticTouch-1.2.<N>-x86_64.flatpak
 | Job | Trigger | Output |
 |-----|---------|--------|
 | `version` | push to `main` | `1.2.<run_number>` / `v1.2.<run_number>` |
-| `flatpak` (matrix `x86_64`, `aarch64`) | push to `main` | Versioned Flatpak bundles |
+| `flatpak` (`x86_64` on `ubuntu-latest`, `aarch64` on native `ubuntu-24.04-arm`) | push to `main` | Versioned Flatpak bundles |
 | `click` (matrix `arm64`, `armhf`) | push to `main` | Versioned `.click` packages |
 | `publish-pages` | push to `main` | GitHub Pages: Flatpak OSTree + Click downloads |
 | `release` | push to `main` | New GitHub Release tag (old tags kept) |

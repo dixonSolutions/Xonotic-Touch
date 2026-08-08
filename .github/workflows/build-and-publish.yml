@@ -44,34 +44,26 @@ jobs:
   flatpak:
     name: Flatpak (${{ matrix.arch }})
     needs: [version]
-    runs-on: ubuntu-latest
+    # Native runners only — QEMU aarch64-on-x86 was ~10× slower than x86_64.
+    # ubuntu-24.04-arm is free for public repos.
+    runs-on: ${{ matrix.runner }}
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
       options: --privileged
     strategy:
       fail-fast: false
       matrix:
-        arch: [x86_64, aarch64]
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Stamp package version
         run: bash scripts/set-package-version.sh "${{ needs.version.outputs.version }}"
-
-      - name: Install Docker for QEMU
-        if: matrix.arch != 'x86_64'
-        run: |
-          curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-26.0.0.tgz \
-            --output ./docker.tgz
-          tar xzf docker.tgz
-          mv docker/* /usr/bin
-
-      - name: Set up QEMU
-        if: matrix.arch != 'x86_64'
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
 
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
