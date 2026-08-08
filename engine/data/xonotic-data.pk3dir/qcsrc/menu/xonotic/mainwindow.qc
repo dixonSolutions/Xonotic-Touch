@@ -86,21 +86,25 @@ void MainWindow_tryOpenStartupDialogs(entity me)
 
 void MainWindow_draw(entity me)
 {
+	// Setup owns the entire frame: open the wizard first and never paint the
+	// stock main menu (Play / Multiplayer / …) underneath it.
+	if (me.assetFetchDialog.shouldShow())
+	{
+		MainWindow_tryOpenStartupDialogs(me);
+		me.firstDraw = false;
+		draw_reset_full();
+		draw_Fill('0 0 0', eX * realconwidth + eY * realconheight, '0.06 0.07 0.1', 1);
+		me.assetFetchDialog.draw(me.assetFetchDialog);
+		return;
+	}
+
 	SUPER(MainWindow).draw(me);
 
 	if (me.firstDraw)
 	{
 		MainWindow_tryOpenStartupDialogs(me);
 		me.firstDraw = false;
-		return;
 	}
-
-	// Nothing behind the setup wizard is safe while the game data is missing:
-	// the stock menu would happily start a map that is not on disk. Re-running
-	// the chain keeps the wizard in front — opening an already open dialog is a
-	// no-op in ModalController, so this costs nothing once it is up.
-	if (me.assetFetchDialog.shouldShow())
-		MainWindow_tryOpenStartupDialogs(me);
 }
 
 void DemoButton_Click(entity me, entity other)

@@ -54,14 +54,7 @@ void TouchAssetFetch_setErrorState(bool isError)
 	cvar_set("_touch_asset_fetch_error", isError ? "1" : "0");
 }
 
-/** Hide the main menu completely behind this dialog.
- *
- * Setup owns the whole screen until the game is playable: a card floating over
- * half-drawn menu buttons reads as a broken game, and on a fresh install those
- * buttons lead nowhere anyway. Drawing in screen space instead of this dialog's
- * box also keeps the cover opaque while the modal controller animates the
- * dialog in, when draw_alpha has not reached 1 yet.
- */
+/** Solid fullscreen cover — no menu chrome and no game backdrop peeking through. */
 void TouchAssetFetch_drawScrim(entity me)
 {
 	vector saveShift = draw_shift;
@@ -70,11 +63,7 @@ void TouchAssetFetch_drawScrim(entity me)
 	float saveAlpha = draw_alpha;
 
 	draw_reset_full();
-	draw_Fill('0 0 0', '1 1 0', SKINCOLOR_BACKGROUND, TOUCH_ASSET_FETCH_SCRIM_ALPHA);
-	// Boot assets ship the menu background, so setup keeps the game's backdrop
-	// rather than a flat void; the fill above covers the frames where the menu
-	// declines to redraw it.
-	drawBackground(SKINGFX_BACKGROUND, 1, SKINALIGN_BACKGROUND, true);
+	draw_Fill('0 0 0', eX * realconwidth + eY * realconheight, '0.06 0.07 0.1', TOUCH_ASSET_FETCH_SCRIM_ALPHA);
 
 	draw_shift = saveShift;
 	draw_scale = saveScale;
