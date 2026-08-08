@@ -136,8 +136,13 @@ const float TOUCH_FONT_MIN   = 9;
 const float TOUCH_FONT_MAX   = 20;
 const float TOUCH_FONT_FIT_H = 0.75; // of the control's half-height
 const float TOUCH_FONT_FIT_W = 0.70; // of the control's full width
-// drawstring advances roughly this fraction of the font size per character.
+// Fallback only: drawstring advances roughly this fraction of the font size per
+// character. Real widths come from the engine (Touch_Shape_LabelWidth).
 const float TOUCH_FONT_ADVANCE = 0.55;
+
+// The chrome pills all take the type size this label needs, so that MENU, CHAT,
+// CONSOLE and SCORE share one size instead of each fitting its own text.
+const string TOUCH_CHROME_LABEL_REF = "CONSOLE";
 
 // HUD readouts are glanced at from peripheral vision rather than read under a
 // thumb, so they size independently of the control labels and above their cap.

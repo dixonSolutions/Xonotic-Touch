@@ -1,6 +1,7 @@
 #include "touch_config.qh"
 #include "touch_chat.qh"
 #include "touch_pause.qh"
+#include "touch_scores.qh"
 #include "touch_init.qh"
 #include "../dpdefs/ut_touchfinger.qc"
 
@@ -164,6 +165,14 @@ bool Touch_ConsoleCommand(string s, int argc)
 	if (s == "touch_chat")
 	{
 		Touch_Chat_Open(argc >= 2 && argv(1) == "team");
+		return true;
+	}
+	// Deliberately a toggle rather than a pass-through to +showscores: this is the
+	// same action the pill performs, so a bound key and the pill cannot disagree
+	// about whether the board is up.
+	if (s == "touch_scores")
+	{
+		Touch_Scores_Toggle();
 		return true;
 	}
 	return false;

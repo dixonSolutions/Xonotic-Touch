@@ -43,7 +43,6 @@ int touch_last_hop_mode = -1;
 float touch_tapfire_until;
 bool touch_weapon_wheel;
 bool touch_mouse_down;
-float touch_two_finger_time;
 int touch_active_finger_count;
 bool touch_ready;
 int touch_last_fire_mode;
@@ -160,7 +159,10 @@ void Touch_ReleaseAll(void)
 	touch_move_offset = '0 0 0';
 	touch_mouse_down = false;
 	touch_active_finger_count = 0;
-	touch_two_finger_time = 0;
+	// Same reason as the hop latch below: the overlay is gone at intermission and
+	// mapvote, so a held +showscores would have nothing left on screen to say it
+	// was held and no pill to release it.
+	Touch_Scores_Hide();
 	// The hop latch must not survive into a menu or across a map change, or the
 	// player would spawn already holding jump with nothing on screen saying so.
 	touch_hop_latched = false;
@@ -223,6 +225,9 @@ int Touch_AssignRole(vector p)
 
 	if (Touch_Chat_PillHit(p))
 		return TOUCH_ROLE_CHAT;
+
+	if (Touch_Scores_PillHit(p))
+		return TOUCH_ROLE_SCORES;
 
 	// Stock vertical weapons strip — tap icon to switch (replaces WEP button).
 	if (Touch_Weapons_Hit(p))
@@ -294,6 +299,8 @@ int Touch_ClaimFinger(int src, vector pos)
 			Touch_Pause_OnDown(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_CHAT)
 			Touch_Chat_OnDown(pos);
+		else if (touch_finger_role[i] == TOUCH_ROLE_SCORES)
+			Touch_Scores_OnDown(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_LOOK)
 			Touch_Look_BeginGesture(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_WEAPON)
@@ -408,17 +415,20 @@ void Touch_PollFingers(void)
 		else if (i == 3) seen = seen3;
 		if (seen)
 			continue;
-		// Top-bar pills must not use the lost-finger grace (B4 + pause realtime):
+		// Chrome pills must not use the lost-finger grace (B4 + pause realtime):
 		// a pill is a discrete tap that commits on release, and keeping the
 		// finger alive past the release would re-fire it on the next frame.
 		int role = touch_finger_role[i];
-		if (role == TOUCH_ROLE_CON || role == TOUCH_ROLE_PAUSE || role == TOUCH_ROLE_CHAT)
+		if (role == TOUCH_ROLE_CON || role == TOUCH_ROLE_PAUSE || role == TOUCH_ROLE_CHAT
+			|| role == TOUCH_ROLE_SCORES)
 		{
 			vector up = touch_finger_last_pos[i];
 			if (role == TOUCH_ROLE_CON)
 				Touch_Console_OnUp(up);
 			else if (role == TOUCH_ROLE_PAUSE)
 				Touch_Pause_OnUp(up);
+			else if (role == TOUCH_ROLE_SCORES)
+				Touch_Scores_OnUp(up);
 			else
 				Touch_Chat_OnUp(up);
 			touch_finger_used[i] = false;
@@ -463,6 +473,7 @@ void Touch_EnsureReady(void)
 	Touch_Pause_InitDefaults();
 	Touch_Customize_Reset();
 	Touch_Chat_Reset();
+	Touch_Scores_Reset();
 	Touch_Kb_Reset();
 	// Before anything reads a touch cvar: a stale saved layout is still in force
 	// at this point, and the migration is what replaces it with the new defaults.
@@ -574,6 +585,8 @@ void Touch_Frame(void)
 			Touch_Pause_OnMove(pos);
 		else if (role == TOUCH_ROLE_CHAT)
 			Touch_Chat_OnMove(pos);
+		else if (role == TOUCH_ROLE_SCORES)
+			Touch_Scores_OnMove(pos);
 		else if (role == TOUCH_ROLE_MOVE)
 		{
 			move_active = true;
@@ -744,11 +757,6 @@ void Touch_Frame(void)
 		Touch_SetKey("zoom", zoom_down);
 	}
 
-	// Two-finger "scoreboard" previously called Scoreboard_UI_Enable(1) which is
-	// team-select and Release_Common_Keys — breaks FIRE+LOOK (B1). Keep off by
-	// default; only a future deliberate tap should enable this path.
-	if (!autocvar_touch_scoreboard_gesture || touch_active_finger_count < 2)
-		touch_two_finger_time = 0;
 }
 
 bool Touch_InputEvent(float bInputType, float nPrimary, float nSecondary)
@@ -763,6 +771,14 @@ bool Touch_InputEvent(float bInputType, float nPrimary, float nSecondary)
 	if (Touch_Chat_Active() && bInputType == 0 && nPrimary == K_ESCAPE)
 	{
 		Touch_Chat_Close();
+		return true;
+	}
+
+	// Escape clears the board before it reaches the game menu: the board is the
+	// thing on screen, so it is what Escape is aimed at.
+	if (Touch_Scores_Shown() && bInputType == 0 && nPrimary == K_ESCAPE)
+	{
+		Touch_Scores_Hide();
 		return true;
 	}
 

@@ -13,7 +13,8 @@ void Touch_WriteAllCvars(float fh);
 //   2 = two-thumb redesign (new baseline, chrome pills, chat button, mobile HUD)
 //   3 = top band split into thirds; CONSOLE moved to the bottom-left corner
 //   4 = ammo folded into the vitals group; its own anchor cvars retired
-const float TOUCH_LAYOUT_VERSION = 4;
+//   5 = SCORE pill added beside CONSOLE
+const float TOUCH_LAYOUT_VERSION = 5;
 void Touch_MigrateLayout(void);
 
 void Touch_EnforceSquare2D(void);
@@ -118,7 +119,6 @@ void Touch_ApplyNotifyPanel(void);
 #define autocvar_touch_weapon_slot3 cvar_string("touch_weapon_slot3")
 #define autocvar_touch_auto_fire cvar("touch_auto_fire")
 #define autocvar_touch_dodge_mode cvar("touch_dodge_mode")
-#define autocvar_touch_scoreboard_gesture cvar("touch_scoreboard_gesture")
 #define autocvar_touch_chat_mode cvar("touch_chat_mode")
 #define autocvar_touch_minimal_more cvar("touch_minimal_more")
 #define autocvar_touch_setup_done cvar("touch_setup_done")
@@ -137,6 +137,11 @@ void Touch_ApplyNotifyPanel(void);
 #define autocvar_touch_weplist_x cvar("touch_weplist_x")
 #define autocvar_touch_weplist_y cvar("touch_weplist_y")
 #define autocvar_touch_weplist_visible cvar("touch_weplist_visible")
+#define autocvar_touch_scores_x cvar("touch_scores_x")
+#define autocvar_touch_scores_y cvar("touch_scores_y")
+#define autocvar_touch_scores_size cvar("touch_scores_size")
+#define autocvar_touch_scores_aspect cvar("touch_scores_aspect")
+#define autocvar_touch_scores_visible cvar("touch_scores_visible")
 #define autocvar_touch_chat_x cvar("touch_chat_x")
 #define autocvar_touch_chat_y cvar("touch_chat_y")
 #define autocvar_touch_chat_size cvar("touch_chat_size")

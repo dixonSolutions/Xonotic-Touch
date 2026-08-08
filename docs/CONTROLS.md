@@ -44,14 +44,15 @@ Two-thumb layout tuned for Xonotic strafe movement and nine weapons.
 │   ╭──────╮                   tap = fire, drag = look    │
 │   │ MOVE │                         ╭───────╮            │
 │   ╰──────╯                         │ FIRE  │            │
-│  (CONSOLE)              (DUCK)   (═══HOP═══)            │
+│ (CONSOLE) (SCORE)       (DUCK)   (═══HOP═══)            │
 └─────────────────────────────────────────────────────────┘
 ```
 
 The top band is split into thirds: player state left, match clock centre, scores
-right, with MENU and CHAT beneath the scores. CONSOLE sits alone in the bottom-left
-— three pills do not fit beside two readouts on a 3:2 panel, and CONSOLE is the one
-a player does not reach for mid-match.
+right, with MENU and CHAT beneath the scores. CONSOLE and SCORE sit in the
+bottom-left — four pills do not fit beside two readouts on a 3:2 panel, so the two
+corners split by how often they are used: the top-right holds what a player reaches
+for mid-match, the bottom-left what is worth a deliberate reach.
 
 Health, armour and ammo are one group of three rows in the top-left corner, sharing
 an icon column and a right-aligned number column. Ammo used to sit out by FIRE, on
@@ -72,6 +73,7 @@ feed and the chat feed each get a band that touches neither.
 | **MENU** (top row) | Tap → Escape / GameMenu | Native Xonotic pause menu — see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md) |
 | **CONSOLE** (bottom-left) | Tap → `toggleconsole`, drag to reposition | Text sheet: layered keyboard, COMMANDS palette — see [TOUCH_CONSOLE_SPEC.md](TOUCH_CONSOLE_SPEC.md) |
 | **CHAT** (top-right) | Tap → modal chat sheet: backlog, field, on-screen QWERTY | `say` / `say_team`; also the `touch_chat [team]` command for a hardware key |
+| **SCORE** (bottom-left) | Tap → full scoreboard, tap again to clear; Escape also clears | `+showscores` / `-showscores`; also the `touch_scores` command |
 | Mobile HUD | Health, armour and ammo as one group, top-left | Bars for the two that have a maximum; reserve rounds beside the clip for weapons that reload |
 
 Geometry, sizing rationale and the input model are specified in
@@ -224,7 +226,7 @@ Engine movement (already in `touch/xonotic.cfg`):
 | `touch_weapon_slot3` | string | | `"Grenade Launcher"` | |
 | `touch_auto_fire` | int | 0/1 | `0` | Off by default |
 | `touch_dodge_mode` | int | 0=button, 1=double-tap | `0` | Competitive preset may use `1` |
-| `touch_scoreboard_gesture` | int | 0=edge btn, 1=two-finger tap | `1` | |
+| `touch_scores_visible` | int | 0/1 | `1` | SCORE pill; `touch_scores_x/y/size/aspect` place it |
 | `touch_chat_mode` | int | 0=pause only, 1=quick phrases | `1` | Pause-menu chat entry; the CHAT sheet is always available |
 | `touch_kb_height` | float | 0.28–0.70 | `0.38` | On-screen keyboard height, fraction of screen |
 | `touch_kb_maxlen` | int | | `120` | Longest message the composer accepts |
@@ -250,7 +252,6 @@ Engine movement (already in `touch/xonotic.cfg`):
 | Hold fire + drag | Fire while steering (`touch_fire_drag_look`) | On by default |
 | Hold HOP | Latch bunny-hop until tapped again | On by default (`touch_hop_mode 1`) |
 | Double-tap move stick dir | Dash | Competitive (`touch_dodge_mode 1`) |
-| Two-finger tap | Scoreboard | Standard (`touch_scoreboard_gesture 1`) |
 
 ### Multitouch (CSQC contract)
 
@@ -481,7 +482,7 @@ Build flow: clone repo (integrated `engine/`) → `fetch-sources.sh code` (if ne
 | Weapon switch | HUD strip; wheel / 3-slot / cycle button optional | `touch_weapon_mode`, `touch_weapon_visible` |
 | Zoom | Hold near fire | `touch_zoom_mode` |
 | Use / E | Small button or long-press context | Hide in DM if unused |
-| Scoreboard | Two-finger tap or edge button | `touch_scoreboard_gesture` |
+| Scoreboard | SCORE pill toggles it; also the `touch_scores` command | `touch_scores_visible` |
 | Chat | Pause or quick phrases | `touch_chat_mode` |
 
 ---

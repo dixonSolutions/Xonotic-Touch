@@ -18,6 +18,7 @@
 #include <client/touch_look.qh>
 #include <client/touch_pause.qh>
 #include <client/touch_pointer.qh>
+#include <client/touch_scores.qh>
 #include <client/touch_shape.qh>
 #include <client/touch_theme.qh>
 #include <client/touch_weapons.qh>

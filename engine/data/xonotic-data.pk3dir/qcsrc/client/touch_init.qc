@@ -102,6 +102,20 @@ void Touch_DefineCvars(void)
 	Touch_RegisterCvar("touch_con_snap", "0.005");
 	Touch_RegisterCvar("touch_con_margin_px", "4");
 	Touch_RegisterCvar("touch_con_lock", "0");
+	// SCORE next to CONSOLE, and the pair states the rule for both corners: the
+	// top-right holds what a player reaches for mid-match, the bottom-left holds
+	// what is worth a deliberate reach. The three-line score readout in the corner
+	// already covers the glance; this pill is for the whole board — everyone's
+	// frags, pings and team totals — which is a thing you stop to read.
+	// 0.182 from CONSOLE — the same centre-to-centre pitch as MENU → CHAT, so both
+	// corners share one rhythm. At 0.220 the pair was packed to a 0.02 gap while
+	// the top pair sat at 0.073, which read as two different kinds of spacing for
+	// one kind of control.
+	Touch_RegisterCvar("touch_scores_x", "0.272");
+	Touch_RegisterCvar("touch_scores_y", "0.948");
+	Touch_RegisterCvar("touch_scores_size", "0.060");
+	Touch_RegisterCvar("touch_scores_aspect", "2.9");
+	Touch_RegisterCvar("touch_scores_visible", "1");
 	// MENU and CHAT are a pair: same size and shape because they are the same
 	// kind of thing (Law of Similarity), adjacent because they belong together
 	// (Law of Proximity), and 0.060 puts them at 11 mm tall — the old 0.040 was
@@ -201,7 +215,6 @@ void Touch_DefineCvars(void)
 	Touch_RegisterCvar("touch_weapon_slot3", "Grenade Launcher");
 	Touch_RegisterCvar("touch_auto_fire", "0");
 	Touch_RegisterCvar("touch_dodge_mode", "0");
-	Touch_RegisterCvar("touch_scoreboard_gesture", "0"); // off until deliberate two-finger tap is verified (B1)
 	Touch_RegisterCvar("touch_chat_mode", "1");
 	Touch_RegisterCvar("touch_minimal_more", "0");
 	Touch_RegisterCvar("touch_setup_done", "0");
@@ -281,6 +294,7 @@ void Touch_Init(void)
 	registercommand("touch_pause");
 	registercommand("touch_pause_exit");
 	registercommand("touch_chat");
+	registercommand("touch_scores");
 
 	Touch_EnforceSquare2D();
 	Touch_LoadStartupConfigs();

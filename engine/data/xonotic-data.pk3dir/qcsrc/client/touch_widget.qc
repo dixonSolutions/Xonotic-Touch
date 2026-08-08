@@ -227,7 +227,13 @@ void Touch_Widget_ChromePill(vector center, vector half, string label, bool pres
 	float a = pressed ? max(0.85, alpha) : max(TOUCH_A_CHROME_REST, alpha * 0.8);
 	vector surface = pressed ? accent : TOUCH_C_SURFACE;
 	vector rim = pressed ? accent : TOUCH_C_RIM;
-	float fs = Touch_Widget_LabelSize(half, label);
+	// All chrome pills take one type size, not each its own fit: they are one level
+	// of the hierarchy, and fitting each label separately made CONSOLE and SCORE —
+	// adjacent, same size, same shape — differ by 8% in cap height. The size is the
+	// one the *longest* label in the family needs, so nothing overflows, and `min`
+	// keeps that true if a longer label is ever added.
+	float fs = min(Touch_Widget_LabelSize(half, label),
+		Touch_Widget_LabelSize(half, TOUCH_CHROME_LABEL_REF));
 
 	if (!Touch_Shape_Ready())
 	{

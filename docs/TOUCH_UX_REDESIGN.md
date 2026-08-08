@@ -431,6 +431,35 @@ Their content stays with the stock panels — warmup, overtime and round rules a
 already implemented there and a second copy would drift. Only placement and
 weight are ours.
 
+### 7.2.2 The scoreboard had no way in
+
+The full scoreboard — everyone's frags, pings, damage and team totals — was
+unreachable in a touch-only session. Both paths to it assumed a keyboard: the TAB
+bind, and a `touch_scoreboard_gesture` two-finger tap that shipped disabled and
+whose handler had already been stripped back to clearing a timer, so the three
+presets that set it to 1 were enabling nothing. All a player could see was the
+three-line score readout in the corner.
+
+It is now a **SCORE pill** beside CONSOLE, and the dead gesture and its cvar are
+gone. A pill rather than a gesture because a gesture nobody is told about is not a
+feature (Paradox of the Active User), and because a two-finger tap in the look zone
+is *also* a look drag and a tap-fire — the same collision that made the original
+handler unsafe. It toggles: tap to open, tap to clear, Escape to clear, and the
+pill draws accented while the board is up so a toggle never has to be tested to be
+read.
+
+Two things make the toggle safe rather than a trap. `Touch_Draw` runs after
+`HUD_Draw`, so the pill stays on top of the board it opened and remains the way out
+of it. And `Touch_ReleaseAll` releases it, so a held `+showscores` cannot survive
+into intermission or a mapvote where there is no overlay left to release it — the
+same failure mode the hop latch had.
+
+It goes through `+showscores` rather than reimplementing the panel, so every other
+reason that panel draws — the death scoreboard, intermission, mapvote — is
+untouched. Placement follows from frequency: the corner readout already covers the
+glance, and the whole board is something you stop to read, which is what the
+bottom-left is for.
+
 ### 7.3 Presets
 
 `standard.cfg` is the layout, and `left`, `casual`, `competitive` and `minimal`
@@ -556,6 +585,16 @@ bound to **F8**, which dumps `vid_con*`, `con_chat*`, `hud_panel_chat*`,
 `hud_panel_weapons*`, `touch_hop*`, `touch_mobile_hud` and
 `touch_layout_version` to `/tmp/xonotic-dev.log`. Several rounds of layout
 debugging were spent guessing at values this prints in one keypress.
+
+### 9.7 A CSQC command needs two edits
+
+`CSQC_ConsoleCommand` is only consulted for names passed to `registercommand()`.
+Adding a branch to `Touch_ConsoleCommand` without the matching registration compiles
+clean, reads as if it works, and does nothing — the engine answers
+`Unknown command "…"`. So every console command is two edits: the branch, and the
+`registercommand` call in `Touch_Init`. `touch_scores` shipped broken this way and
+was caught by pressing its dev bind and reading `/tmp/xonotic-dev.log`; inspection
+would not have found it.
 
 ## 10. Performance
 

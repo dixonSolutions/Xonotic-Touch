@@ -1,0 +1,30 @@
+#pragma once
+
+// The scoreboard, for a session with no TAB key.
+//
+// The full scoreboard is drawn by the stock panel and shown by the engine's
+// `+showscores`. Every path to it assumed a keyboard: the bind, and a two-finger
+// gesture that was disabled by default and whose handler had already been reduced
+// to clearing a timer. So a touch-only player could see the three-line score
+// readout in the corner and nothing else — not the rest of the server, not pings,
+// not team totals.
+//
+// This is a pill, not a gesture. A gesture nobody is told about is not a feature
+// (Paradox of the Active User), and a two-finger tap in the look zone is also a
+// look drag and a tap-fire.
+
+void Touch_Scores_Reset(void);
+
+bool Touch_Scores_Shown(void);
+void Touch_Scores_Toggle(void);
+void Touch_Scores_Hide(void);
+
+// Pill in the bottom-left, alongside CONSOLE.
+vector Touch_Scores_PillCenter(void);
+vector Touch_Scores_PillHalf(void);
+bool Touch_Scores_PillHit(vector p);
+void Touch_Scores_DrawPill(float alpha);
+
+int Touch_Scores_OnDown(vector p);
+void Touch_Scores_OnMove(vector p);
+void Touch_Scores_OnUp(vector p);

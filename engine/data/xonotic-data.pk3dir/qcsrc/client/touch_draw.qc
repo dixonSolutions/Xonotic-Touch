@@ -154,6 +154,7 @@ void Touch_DrawOverlay(float overlayAlpha)
 		Touch_Pause_DrawPill(overlayAlpha);
 		Touch_Chat_DrawPill(overlayAlpha);
 		Touch_Console_Draw(overlayAlpha);
+		Touch_Scores_DrawPill(overlayAlpha);
 	}
 
 	if (autocvar_touch_move_visible || autocvar_touch_debug)

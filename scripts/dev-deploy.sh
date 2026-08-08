@@ -131,6 +131,7 @@ bind F7  "cmd join"
 bind F8  "exec xt-probe.cfg"
 bind F6  "touch_chat"
 bind F5  "toggle touch_customize 0 1"
+bind F4  "touch_scores"
 BINDS
 # F8 dumps the state that this overlay derives at runtime, to stdout and so to
 # /tmp/xonotic-dev.log. `cvarlist <prefix>` is the only way to read a value back
