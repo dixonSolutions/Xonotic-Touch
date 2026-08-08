@@ -76,10 +76,14 @@ jobs:
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
-          bundle: XonoticTouch-${{ needs.version.outputs.version }}-${{ matrix.arch }}.flatpak
+          # Action appends "-${arch}" to this basename; do not include arch here.
+          bundle: XonoticTouch-${{ needs.version.outputs.version }}.flatpak
           manifest-path: flatpak/io.github.dixonSolutions.XonoticTouch.yml
           arch: ${{ matrix.arch }}
           keep-build-dirs: true
+          # We upload under a stable name below; the action's auto-upload
+          # creates a second artifact that breaks unfiltered download-artifact.
+          upload-artifact: false
           cache-key: xonotic-touch-${{ matrix.arch }}-v1-${{ hashFiles('flatpak/io.github.dixonSolutions.XonoticTouch.yml', 'scripts/**', 'packaging/**', 'touch/**', 'engine/darkplaces/makefile.inc') }}
           restore-cache: true
 
@@ -88,6 +92,7 @@ jobs:
         with:
           name: flatpak-${{ matrix.arch }}
           path: XonoticTouch-${{ needs.version.outputs.version }}-${{ matrix.arch }}.flatpak
+          if-no-files-found: error
 
   click:
     name: Click (${{ matrix.arch }})
@@ -147,6 +152,8 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: '{flatpak,click}-*'
+          merge-multiple: false
 
       - name: Build Flatpak OSTree + Click download remote
         env:
@@ -217,6 +224,8 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: release
+          pattern: '{flatpak,click}-*'
+          merge-multiple: false
 
       - name: Prepare release files
         env:
@@ -285,6 +294,8 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: click-*
+          merge-multiple: false
 
       - name: click-review packages (must be clean)
         run: |
