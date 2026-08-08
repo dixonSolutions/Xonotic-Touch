@@ -76,12 +76,13 @@ jobs:
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
-          # Action appends "-${arch}" to this basename; do not include arch here.
-          bundle: XonoticTouch-${{ needs.version.outputs.version }}.flatpak
+          # On-disk filename is exactly this path; auto-upload (disabled below)
+          # would also append -${arch} to the *artifact name* only.
+          bundle: XonoticTouch-${{ needs.version.outputs.version }}-${{ matrix.arch }}.flatpak
           manifest-path: flatpak/io.github.dixonSolutions.XonoticTouch.yml
           arch: ${{ matrix.arch }}
           keep-build-dirs: true
-          # We upload under a stable name below; the action's auto-upload
+          # Manual upload uses a stable name (flatpak-${arch}). Auto-upload
           # creates a second artifact that breaks unfiltered download-artifact.
           upload-artifact: false
           cache-key: xonotic-touch-${{ matrix.arch }}-v1-${{ hashFiles('flatpak/io.github.dixonSolutions.XonoticTouch.yml', 'scripts/**', 'packaging/**', 'touch/**', 'engine/darkplaces/makefile.inc') }}
