@@ -113,14 +113,32 @@ like a GNOME dialog, not a tint.
   100 health green, 5 armour red, 28 shells).
 - HOP rests as a ghost capsule matching DUCK, and no longer as a lit switch.
 
-## Known inconsistency, not yet addressed
+## 5. The weapons strip was the loudest thing on screen
 
-The stock weapons strip is still the loudest element on screen: the selected
-weapon draws the skin's `weapon_current_bg`, an opaque chamfered plate, next to a
-HUD that is otherwise dark glass with hairline strokes. It cannot be toned down
-with cvars — the brightness is in the asset, and `hud_panel_fg_alpha` would dim
-the weapon icons along with it. The fix is to shadow
-`gfx/hud/<hud_skin>/weapon_current_bg` with a generated rounded translucent plate
-in our own data directory, the way `touch/gfx/touch/*.tga` already shadows
-nothing. That needs `hud_skin` pinned in `touch/xonotic.cfg` first, so the
-override lands under a known name.
+The selected weapon drew the skin's `weapon_current_bg`, an opaque chamfered
+plate, beside a HUD that is otherwise dark glass with hairline strokes — so the
+brightest, hardest-edged object in the frame was the one nobody needs to study
+(`41-ingame.jpg`, right edge). Cvars cannot reach it: the brightness is in the
+asset, and `hud_panel_fg_alpha` dims the weapon icons along with the plate.
+
+Rather than ship an override asset under a skin name we do not control, the strip
+is now drawn by the overlay: rounded slots, glass for owned, accent tint plus a
+rim for held, impulse number as a corner badge (`57-weps.jpg`). It costs about
+what the stock panel cost — both draw a background, an icon and a label per
+weapon — and it claims no input, since the WEP button and the wheel switch guns.
+
+First attempt filled the held slot at latch opacity and reproduced the original
+complaint in our own palette. Hue and an edge are enough to mark one slot in a
+column of five; weight is not needed and is what made it shout.
+
+## 6. Every frag printed across the controls
+
+`hud_panel_notify` ships bottom-right, which on this layout is FIRE, HOP and
+DUCK. Each kill wrote a line of text over the buttons (`57-weps.jpg`, bottom
+right). It now sits in the right band under the chrome pills, above the weapons
+strip: the placement other shooters use, and clear of every control.
+
+That makes three engine-drawn feeds that had to be told where to go — kill
+notifications, chat, and the match clock. A touch layout puts controls where a
+desktop HUD puts text, so any panel whose position was never questioned is a
+candidate. Checking them is worth doing before adding anything new to a corner.

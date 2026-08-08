@@ -143,6 +143,12 @@ void Touch_DefineCvars(void)
 	// same centre line — below the weapons strip, which ends at y 0.76.
 	Touch_RegisterCvar("touch_ammo_x", "0.855");
 	Touch_RegisterCvar("touch_ammo_y", "0.795");
+	// Right edge, mid-height: clear of the scores above and FIRE below, and on the
+	// same side as the hand that switches weapons. It is a readout, so sitting
+	// inside the look zone costs nothing.
+	Touch_RegisterCvar("touch_weplist_x", "0.962");
+	Touch_RegisterCvar("touch_weplist_y", "0.430");
+	Touch_RegisterCvar("touch_weplist_visible", "1");
 	Touch_RegisterCvar("touch_move_zone_w", "0.32");
 	Touch_RegisterCvar("touch_look_zone_left", "0.32");
 	Touch_RegisterCvar("touch_look_zone_right", "1.0");
@@ -295,13 +301,13 @@ void Touch_EnforceSquare2D(void)
 	cvar_set("vid_conwidthauto", "1");
 }
 
+// Geometry for the *stock* strip, which is the fallback when the touch readouts
+// are switched off. Touch_ApplyMobileHudEngineSettings decides which one draws.
 void Touch_ApplyTouchWeaponsStrip(void)
 {
 	if (!cvar("vid_touchscreen"))
 		return;
-	// Prefer the stock vertical weapons HUD as the touch switcher.
 	cvar_set("touch_weapon_visible", "0");
-	cvar_set("hud_panel_weapons", "1");
 	cvar_set("hud_panel_weapons_onlyowned", "1");
 	cvar_set("hud_panel_weapons_timeout", "0");
 	cvar_set("hud_panel_weapons_label", "1");
@@ -321,6 +327,10 @@ void Touch_ApplyMobileHudEngineSettings(void)
 	bool touch_hud = boolean(cvar("touch_mobile_hud"));
 	cvar_set("hud_panel_healtharmor", touch_hud ? "0" : "1");
 	cvar_set("hud_panel_ammo", touch_hud ? "0" : "1");
+	// One switch for all the readouts rather than one per panel: they are the same
+	// decision — does the touch layer own the HUD — and three knobs would let a
+	// player end up with two weapon strips or none.
+	cvar_set("hud_panel_weapons", touch_hud ? "0" : "1");
 }
 
 // The match clock keeps the centre of the top band now that the chrome pills
@@ -343,6 +353,27 @@ void Touch_ApplyTimerPanel(void)
 	// alpha lets it read as the same family without losing the contrast that
 	// keeps white numerals legible over a bright skybox.
 	localcmd("seta hud_panel_timer_bg_alpha 0.35\n");
+}
+
+// The kill feed shipped in the bottom-right corner, which on this layout is
+// exactly where FIRE, HOP and DUCK live — every frag printed a line of text
+// across the controls. It moves to the right band under the chrome pills: the
+// placement players already expect from other shooters (Jakob), above the
+// weapons strip and clear of every control.
+void Touch_ApplyNotifyPanel(void)
+{
+	if (!cvar("vid_touchscreen"))
+		return;
+	cvar_set("hud_panel_notify", "1");
+	localcmd("seta hud_panel_notify_pos \"0.620 0.140\"\n");
+	localcmd("seta hud_panel_notify_size \"0.360 0.190\"\n");
+	localcmd("seta hud_panel_notify_bg 0\n");
+	// Newest at the top, next to where the eye already goes for the scores.
+	cvar_set("hud_panel_notify_flip", "1");
+	// Long enough to read while moving, short enough that the band is usually
+	// empty: this sits over the look zone, and stale text there is just noise.
+	cvar_set("hud_panel_notify_time", "8");
+	cvar_set("hud_panel_notify_fadetime", "1");
 }
 
 // The transient chat feed is drawn by the engine, and the stock HUD_Chat panel

@@ -336,6 +336,39 @@ palette from the controls. They are now rounded-rect surfaces from the same
 tokens, with capsule stat bars whose track stays visible at ghost alpha so the
 bar is readable by *length* even when the value is low.
 
+Health and armour sit top-left, ammo under FIRE — it belongs to the trigger, and
+anchoring the number in a fixed slot rather than centring it means 100 → 99 → 9
+does not walk the group sideways under the eye. Both are readouts and neither
+claims input, so neither can put a dead patch in the aim area.
+
+The weapons strip is also ours now. The stock `hud_panel_weapons` drew the held
+weapon on the skin's `weapon_current_bg` — an opaque chamfered plate — which made
+the brightest, hardest-edged object on screen the one thing a player never needs
+to study. That brightness is in the asset, so no cvar could tone it down, and
+`hud_panel_fg_alpha` would have dimmed the weapon icons with it. The replacement
+is a column of rounded slots on the right edge, glass for what you own, an accent
+tint plus a rim for what you hold, and the impulse number as a badge in the
+corner. Switching stays with the WEP button and the wheel; the strip is a readout.
+
+`touch_mobile_hud` is the single switch for all three — vitals, ammo and weapons —
+because it is one decision (does the touch layer own the HUD), and three switches
+would let a player end up with two weapon strips or none.
+
+### 7.2.1 Where the engine's own feeds go
+
+Three feeds are drawn by the engine or by stock panels, and all three shipped
+somewhere that a touch layout cannot afford:
+
+| Feed | Was | Now |
+|---|---|---|
+| Kill notifications | bottom-right, printing lines across FIRE, HOP and DUCK | right band under the chrome pills, above the weapons strip |
+| Chat | bottom-left at 2.7 mm type, under the move stick | left band above the stick, 4.7 mm |
+| Match clock | crowded against the chrome pills | centre of the top band, which the pills vacated |
+
+Their content stays with the stock panels — warmup, overtime and round rules are
+already implemented there and a second copy would drift. Only placement and
+weight are ours.
+
 ### 7.3 Presets
 
 `standard.cfg` is the layout, and `left`, `casual`, `competitive` and `minimal`

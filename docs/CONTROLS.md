@@ -60,7 +60,7 @@ a player does not reach for mid-match.
 | Fire | Hold; sliding off keeps firing and steers | `+attack` (+ look delta) |
 | **HOP** | Tap = one jump, hold = latch (keeps hopping hands-free) | `+jump` |
 | DUCK | Tap or hold | `+crouch` |
-| Weapon | HUD weapon strip; button hidden by default | `impulse 1`…`9` or cycle |
+| Weapon | WEP button / wheel; the right-edge strip is a readout, not a switcher | `impulse 1`…`9` or cycle |
 | Reload | Tap; hidden by default | `weapon_reload` |
 | **MENU** (top row) | Tap → Escape / GameMenu | Native Xonotic pause menu — see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md) |
 | **CONSOLE** (bottom-left) | Tap → `toggleconsole`, drag to reposition | Text sheet: layered keyboard, COMMANDS palette — see [TOUCH_CONSOLE_SPEC.md](TOUCH_CONSOLE_SPEC.md) |

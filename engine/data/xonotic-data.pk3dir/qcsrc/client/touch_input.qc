@@ -470,6 +470,7 @@ void Touch_EnsureReady(void)
 	Touch_ApplyTouchWeaponsStrip();
 	Touch_ApplyChatFeedSettings();
 	Touch_ApplyTimerPanel();
+	Touch_ApplyNotifyPanel();
 	Touch_ApplyMobileHudEngineSettings();
 	touch_last_mobile_hud = autocvar_touch_mobile_hud;
 	// Migrate legacy simple_draw → glass_quality once.

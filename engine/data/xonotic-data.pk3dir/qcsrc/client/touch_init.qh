@@ -22,6 +22,7 @@ void Touch_ApplyTouchWeaponsStrip(void);
 void Touch_ApplyMobileHudEngineSettings(void);
 void Touch_ApplyChatFeedSettings(void);
 void Touch_ApplyTimerPanel(void);
+void Touch_ApplyNotifyPanel(void);
 
 #define autocvar_touch_preset cvar_string("touch_preset")
 #define autocvar_touch_scale cvar("touch_scale")
@@ -134,6 +135,9 @@ void Touch_ApplyTimerPanel(void);
 #define autocvar_touch_hud_maxarmor cvar("touch_hud_maxarmor")
 #define autocvar_touch_ammo_x cvar("touch_ammo_x")
 #define autocvar_touch_ammo_y cvar("touch_ammo_y")
+#define autocvar_touch_weplist_x cvar("touch_weplist_x")
+#define autocvar_touch_weplist_y cvar("touch_weplist_y")
+#define autocvar_touch_weplist_visible cvar("touch_weplist_visible")
 #define autocvar_touch_chat_x cvar("touch_chat_x")
 #define autocvar_touch_chat_y cvar("touch_chat_y")
 #define autocvar_touch_chat_size cvar("touch_chat_size")

@@ -286,6 +286,93 @@ void Touch_Hud_DrawAmmo(float alpha)
 		col, alpha * TOUCH_A_INK);
 }
 
+// ---------------------------------------------------------------------------
+// Weapons strip
+// ---------------------------------------------------------------------------
+// Which guns you hold and which one is up, as a readout on the right edge. The
+// stock hud_panel_weapons was doing this job, but its selected slot is the skin's
+// `weapon_current_bg` — an opaque chamfered plate — which made the brightest,
+// hardest-edged thing on screen the one element nobody needs to look at twice.
+// Its brightness lives in the asset, so no cvar could tone it down, and dimming
+// the panel would have dimmed the icons with it.
+//
+// Switching weapons stays with the WEP button and the wheel. This claims no
+// input, like the other readouts.
+
+const float TOUCH_HUD_WEP_H   = 26;
+const float TOUCH_HUD_WEP_W   = 46;
+const float TOUCH_HUD_WEP_GAP = 5;
+
+vector Touch_Hud_WeaponsCenter(void)
+{
+	return Touch_WidgetCenter(autocvar_touch_weplist_x, autocvar_touch_weplist_y, 0);
+}
+
+int Touch_Hud_OwnedWeaponCount(void)
+{
+	WepSet owned = STAT(WEAPONS);
+	int n = 0;
+	FOREACH(Weapons, it != WEP_Null && it.impulse >= 0 && (owned & it.m_wepset), n += 1);
+	return n;
+}
+
+void Touch_Hud_DrawWeaponSlot(vector center, vector half, Weapon wep, bool current,
+	float alpha)
+{
+	float r = TOUCH_R_SM * Touch_Hud_Scale();
+	// The held weapon is the only one that needs to be found without looking, so
+	// it is the only one that gets the accent and a rim; the rest are inventory.
+	// The held slot is marked by hue and an edge, not by weight. Filling it at
+	// latch opacity made a readout the brightest thing on screen — which is the
+	// same mistake the stock panel's opaque plate makes, just in our own palette.
+	Touch_Shape_RRect(center, half, r, (current ? TOUCH_C_ACCENT : TOUCH_C_SURFACE),
+		alpha * TOUCH_A_SURFACE * (current ? 1.0 : 0.8));
+	if (current)
+		Touch_Shape_RRectRing(center, half, r, TOUCH_W_STROKE * Touch_Hud_Scale(),
+			TOUCH_C_ACCENT, alpha * TOUCH_A_RIM);
+
+	// Inset far enough to leave the top-left corner free for the slot number, so
+	// the number reads as a badge on the slot rather than a second column beside
+	// the icon. Dimmed when not held: an unheld weapon is worth a glance, not
+	// attention.
+	Touch_Hud_DrawSkinPicFit(center, half * 1.3, wep.model2,
+		alpha * (current ? TOUCH_A_INK : TOUCH_A_INK * 0.55));
+
+	// The impulse key, in the corner, small. It is what a player with a keyboard
+	// attached presses, and it is how the stock panel labels slots — but it is
+	// reference, not the point of the row, so it does not compete with the icon.
+	float num = Touch_Hud_U(TOUCH_FONT_READOUT_SM) * 0.8;
+	Touch_Shape_LabelAligned(center - half + '1 1 0' * Touch_Hud_U(TOUCH_SPACE_1)
+		+ eY * num * 0.5, num, ftos(wep.impulse), 0, TOUCH_C_INK,
+		alpha * TOUCH_A_INK * 0.7);
+}
+
+void Touch_Hud_DrawWeapons(float alpha)
+{
+	if (!autocvar_touch_weplist_visible)
+		return;
+	int n = Touch_Hud_OwnedWeaponCount();
+	if (n <= 0)
+		return;
+
+	float h = Touch_Hud_U(TOUCH_HUD_WEP_H);
+	float gap = Touch_Hud_U(TOUCH_HUD_WEP_GAP);
+	vector half = eX * (Touch_Hud_U(TOUCH_HUD_WEP_W) * 0.5) + eY * (h * 0.5);
+	vector center = Touch_Hud_WeaponsCenter();
+	// Centred on its anchor, so the strip grows in both directions as weapons are
+	// picked up instead of walking down the screen.
+	float y = center.y - (n * h + (n - 1) * gap) * 0.5 + h * 0.5;
+
+	entity wepent = viewmodels[0];
+	WepSet owned = STAT(WEAPONS);
+	FOREACH(Weapons, it != WEP_Null && it.impulse >= 0 && (owned & it.m_wepset),
+	{
+		Touch_Hud_DrawWeaponSlot(eX * center.x + eY * y, half, it,
+			it == wepent.switchweapon, alpha);
+		y += h + gap;
+	});
+}
+
 void Touch_Hud_Draw(float alpha)
 {
 	if (!Touch_Hud_ShouldDraw())
@@ -297,4 +384,5 @@ void Touch_Hud_Draw(float alpha)
 
 	Touch_Hud_DrawStatus(alpha);
 	Touch_Hud_DrawAmmo(alpha);
+	Touch_Hud_DrawWeapons(alpha);
 }
