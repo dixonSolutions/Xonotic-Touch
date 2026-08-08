@@ -9,6 +9,8 @@ const string TOUCH_ASSET_PROGRESS_FILE = "touch/asset-progress.txt";
 // downloader and the engine's search path, so anything that needs new packs
 // loaded (or a failed download retried) has to go back through it.
 const string TOUCH_RELAUNCH_MARKER = "touch/relaunch-request.txt";
+// Wizard "Download in background": launcher keeps fetchd/tray, closes the UI.
+const string TOUCH_BACKGROUND_FETCH_MARKER = "touch/background-fetch-request.txt";
 
 // First line of the progress file, written by scripts/lib/asset-fetch.sh,
 // scripts/lib/asset-discover.sh and scripts/fetch-assets-posix.sh.
@@ -25,3 +27,4 @@ bool TouchStartup_userProfileNeeded();
 bool TouchStartup_touchSetupNeeded();
 void TouchStartup_readProgress(entity dlg);
 bool TouchStartup_requestRelaunch();
+bool TouchStartup_requestBackgroundFetch();

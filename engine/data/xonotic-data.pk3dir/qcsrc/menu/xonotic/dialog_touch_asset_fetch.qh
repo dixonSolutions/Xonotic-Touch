@@ -9,11 +9,13 @@ CLASS(XonoticTouchAssetFetchDialog, XonoticRootDialog)
 	METHOD(XonoticTouchAssetFetchDialog, fill, void(entity));
 	METHOD(XonoticTouchAssetFetchDialog, shouldShow, bool());
 	METHOD(XonoticTouchAssetFetchDialog, draw, void(entity));
-	ATTRIB(XonoticTouchAssetFetchDialog, title, string, _("Xonotic Touch"));
+	// Title chrome stays empty — the Xonotic logo is the brand signal.
+	ATTRIB(XonoticTouchAssetFetchDialog, title, string, "");
 	ATTRIB(XonoticTouchAssetFetchDialog, color, vector, '0.06 0.07 0.1');
 	// Edge-to-edge setup screen — the broken main menu must never show through.
 	ATTRIB(XonoticTouchAssetFetchDialog, intendedWidth, float, 1);
-	ATTRIB(XonoticTouchAssetFetchDialog, rows, float, 12);
+	// Hero logo + one large primary action (background / close / retry).
+	ATTRIB(XonoticTouchAssetFetchDialog, rows, float, 20);
 	ATTRIB(XonoticTouchAssetFetchDialog, columns, float, 6);
 	ATTRIB(XonoticTouchAssetFetchDialog, name, string, "TouchAssetFetch");
 	ATTRIB(XonoticTouchAssetFetchDialog, closable, bool, false);
@@ -21,15 +23,26 @@ CLASS(XonoticTouchAssetFetchDialog, XonoticRootDialog)
 	ATTRIB(XonoticTouchAssetFetchDialog, progressStatus, string, string_null);
 	ATTRIB(XonoticTouchAssetFetchDialog, progressPercent, float, 0);
 	ATTRIB(XonoticTouchAssetFetchDialog, progressMessage, string, string_null);
+	ATTRIB(XonoticTouchAssetFetchDialog, logoImage, entity);
 	ATTRIB(XonoticTouchAssetFetchDialog, headlineLabel, entity);
 	ATTRIB(XonoticTouchAssetFetchDialog, statusLabel, entity);
 	ATTRIB(XonoticTouchAssetFetchDialog, hintLabel, entity);
 	ATTRIB(XonoticTouchAssetFetchDialog, percentLabel, entity);
 	ATTRIB(XonoticTouchAssetFetchDialog, progressBar, entity);
+	// One always-focusable CTA — never stack invisible disabled siblings (they
+	// still win itemFromPoint and swallow taps on touchscreens).
+	ATTRIB(XonoticTouchAssetFetchDialog, primaryButton, entity);
 	// Set once the download reported success, to hold the finished state on
 	// screen for a beat before the relaunch takes the window away.
 	ATTRIB(XonoticTouchAssetFetchDialog, completedTime, float, 0);
 	// "Try again" could not hand back to the launcher, so the user has to
 	// restart the app by hand.
 	ATTRIB(XonoticTouchAssetFetchDialog, relaunchFailed, bool, false);
+	// Menu BGM starts once the music pack is on disk (may be mid-download).
+	ATTRIB(XonoticTouchAssetFetchDialog, musicStarted, bool, false);
+	ATTRIB(XonoticTouchAssetFetchDialog, backgroundFailed, bool, false);
+	// User chose background download — UI stays until they close the window.
+	ATTRIB(XonoticTouchAssetFetchDialog, backgroundMode, bool, false);
+	// Earliest time Close window may quit (blocks same-gesture double-fire).
+	ATTRIB(XonoticTouchAssetFetchDialog, backgroundCloseArmedTime, float, 0);
 ENDCLASS(XonoticTouchAssetFetchDialog)

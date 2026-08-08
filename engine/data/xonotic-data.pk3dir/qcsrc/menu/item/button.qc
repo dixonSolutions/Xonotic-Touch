@@ -29,20 +29,40 @@
 	}
 	float Button_mouseDrag(entity me, vector pos)
 	{
+		float slop = cvar("vid_touchscreen") ? 0.25 : 0;
 		me.pressed = 1;
-		if (pos.x < 0) me.pressed = 0;
-		if (pos.y < 0) me.pressed = 0;
-		if (pos.x >= 1) me.pressed = 0;
-		if (pos.y >= 1) me.pressed = 0;
+		if (pos.x < -slop) me.pressed = 0;
+		if (pos.y < -slop) me.pressed = 0;
+		if (pos.x >= 1 + slop) me.pressed = 0;
+		if (pos.y >= 1 + slop) me.pressed = 0;
 		return 1;
 	}
 	METHOD(Button, mousePress, bool(Button this, vector pos))
 	{
-		this.mouseDrag(this, pos);  // verify coordinates
+		this.mouseDrag(this, pos);  // verify coordinates (with touch slop)
+		// Touchscreens: fire on press. Finger release often drifts outside the
+		// 0..1 hit box, so mouseRelease never sees pressed=1 (dead taps).
+		if (cvar("vid_touchscreen") && this.pressed && !this.disabled && this.onClick)
+		{
+			this.playClickSound(this);
+			if (this.applyButton)
+				this.applyButton.disabled = false;
+			this.onClick(this, this.onClickEntity);
+			if (this.disableOnClick)
+				this.disabled = true;
+			this.pressed = 0;
+		}
 		return true;
 	}
 	float Button_mouseRelease(entity me, vector pos)
 	{
+		// Touch already fired on press. mouseDrag() would re-arm pressed=1 and
+		// a second onClick would run (e.g. Download in background → instant quit).
+		if (cvar("vid_touchscreen"))
+		{
+			me.pressed = 0;
+			return 1;
+		}
 		me.mouseDrag(me, pos);  // verify coordinates
 		if (me.pressed)
 		{

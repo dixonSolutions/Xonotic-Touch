@@ -58,6 +58,24 @@
 #include "dialog_credits.qh"
 #include "dialog_quit.qh"
 
+/** Open the asset-fetch wizard instantly (no zoom animation).
+ *
+ * Animated showChild from a zero-size origin leaves Container hit boxes out of
+ * sync with the painted UI — taps on Download in background never fire.
+ * Manual dialog.draw() without SUPER made that worse: pixels without focus.
+ */
+void MainWindow_openAssetFetchDialog(entity me)
+{
+	entity dlg = me.assetFetchDialog;
+
+	if (dlg.ModalController_state)
+		return;
+	if (dlg.parent.focusedChild)
+		dlg.parent.focusedChild.saveFocus(dlg.parent.focusedChild);
+	dlg.ModalController_controllingButton = NULL;
+	dlg.parent.showChild(dlg.parent, dlg, '0 0 0', eX * conwidth + eY * conheight, 1);
+}
+
 void MainWindow_tryOpenStartupDialogs(entity me)
 {
 	// Setup runs ahead of the terms of service: the ToS arrives asynchronously
@@ -66,7 +84,7 @@ void MainWindow_tryOpenStartupDialogs(entity me)
 	// still shown, just on the relaunch that follows a finished setup.
 	if (me.assetFetchDialog.shouldShow())
 	{
-		DialogOpenButton_Click_withCoords(NULL, me.assetFetchDialog, '0 0 0', eX * conwidth + eY * conheight);
+		MainWindow_openAssetFetchDialog(me);
 		return;
 	}
 	if (me.ToSDialog.shouldShow())
@@ -86,15 +104,13 @@ void MainWindow_tryOpenStartupDialogs(entity me)
 
 void MainWindow_draw(entity me)
 {
-	// Setup owns the entire frame: open the wizard first and never paint the
-	// stock main menu (Play / Multiplayer / …) underneath it.
+	// Setup owns the frame via the modal path so focus + touch hit-testing work.
+	// The wizard paints its own fullscreen scrim over the stock nexposee.
 	if (me.assetFetchDialog.shouldShow())
 	{
-		MainWindow_tryOpenStartupDialogs(me);
+		MainWindow_openAssetFetchDialog(me);
 		me.firstDraw = false;
-		draw_reset_full();
-		draw_Fill('0 0 0', eX * realconwidth + eY * realconheight, '0.06 0.07 0.1', 1);
-		me.assetFetchDialog.draw(me.assetFetchDialog);
+		SUPER(MainWindow).draw(me);
 		return;
 	}
 

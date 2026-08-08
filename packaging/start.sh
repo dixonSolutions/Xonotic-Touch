@@ -119,14 +119,26 @@ fi
 
 mkdir -p "$USER_DATA" 2>/dev/null || xonotic_log "cannot create $USER_DATA"
 
-# One launcher process only. Flatpak/desktop icons + wizard relaunches used to
-# stack several start.sh copies, each spawning its own curl into the same zip.
+# One UI launcher at a time. Background fetchd + tray do not hold this lock, so
+# reopening the app while a download runs joins the existing job instead of
+# stacking curls. A second click while the engine is up asks the tray to focus.
 INSTANCE_LOCK="$USER_BASE/instance.lock"
+engine_is_running() {
+    pgrep -f "${BIN}" >/dev/null 2>&1
+}
+
 if command -v flock >/dev/null 2>&1; then
     # FD 7 stays open for the life of this process (survives bash re-exec above).
     exec 7>"$INSTANCE_LOCK"
     if ! flock -n 7; then
-        xonotic_log "already running — refusing second instance"
+        # Existing UI session (engine or tray wait loop): ask it to show again.
+        mkdir -p "$USER_DATA/touch" 2>/dev/null || true
+        printf '%s\n' show > "$USER_DATA/touch/tray-cmd.txt" 2>/dev/null || true
+        if engine_is_running; then
+            xonotic_log "already running — asked session to show window"
+        else
+            xonotic_log "session already active — asked tray to show window"
+        fi
         exit 0
     fi
 fi
@@ -171,7 +183,34 @@ sync_bundle_data() {
         || xonotic_log "bundle sync failed"
 }
 
+# Old device-test overrides under ~/.xonotic/data (zzz*-touch-fix.pk3dir and a
+# copied xonotic-data.pk3dir) ship a menu.dat that still opens
+# `.asset-fetch-progress` (rejected by FS_CheckNastyPath) and shows the stuck
+# "Preparing download..." copy. Those packs sort above the Flatpak menu and
+# freeze the wizard even while the shell writes live progress. Quarantine them.
+quarantine_stale_touch_menu_overrides() {
+    _q_home_data="${HOME}/.xonotic/data"
+    [ -d "$_q_home_data" ] || return 0
+    for _q_dir in \
+        "$_q_home_data/zzz-touch-fix.pk3dir" \
+        "$_q_home_data/zzzz-touch-fix.pk3dir"
+    do
+        if [ -d "$_q_dir" ]; then
+            xonotic_log "removing stale test override $_q_dir (shadowed setup wizard)"
+            rm -rf "$_q_dir" 2>/dev/null || true
+        fi
+    done
+    _q_menu="$_q_home_data/xonotic-data.pk3dir/menu.dat"
+    if [ -f "$_q_menu" ] && grep -Fq "asset-fetch-progress" "$_q_menu" 2>/dev/null; then
+        xonotic_log "quarantining stale $_q_menu (old asset-fetch progress path)"
+        mv -f "$_q_menu" "${_q_menu}.stale-pre-touch-progress" 2>/dev/null || true
+    fi
+}
+
 sync_bundle_data
+quarantine_stale_touch_menu_overrides
+
+
 
 ASSET_FETCH_ACTIVE=0
 TOUCH_ASSETS_READY=0
@@ -180,6 +219,9 @@ TOUCH_ASSETS_READY=0
 # cannot see a `.asset-fetch-progress` at all (verified against fs.c). The
 # shell-only `.assets-ready` marker keeps its name.
 mkdir -p "$USER_DATA/touch" 2>/dev/null || xonotic_log "cannot create $USER_DATA/touch"
+# Menu QC FILE_WRITE often lands in the engine userdir (~/.xonotic/data), not
+# the Flatpak gamedir — keep both marker directories ready.
+mkdir -p "${HOME}/.xonotic/data/touch" 2>/dev/null || true
 PROGRESS_FILE="$USER_DATA/touch/asset-progress.txt"
 ASSET_FETCH_LIB="${FETCH_ASSETS%/*}/asset-fetch.sh"
 ASSET_DISCOVER_LIB="${FETCH_ASSETS%/*}/asset-discover.sh"
@@ -191,6 +233,13 @@ ASSET_DISCOVER_LIB="${FETCH_ASSETS%/*}/asset-discover.sh"
 # resolves the user path, so both are checked (same split as touch.layout.cfg).
 RESTART_MARKER="$USER_DATA/touch/relaunch-request.txt"
 RESTART_MARKER_HOME="${HOME}/.xonotic/data/touch/relaunch-request.txt"
+BACKGROUND_MARKER="$USER_DATA/touch/background-fetch-request.txt"
+BACKGROUND_MARKER_HOME="${HOME}/.xonotic/data/touch/background-fetch-request.txt"
+TRAY_CMD_FILE="$USER_DATA/touch/tray-cmd.txt"
+FETCHD_PIDFILE="$USER_BASE/fetchd.pid"
+TRAY_PIDFILE="$USER_BASE/tray.pid"
+HELPER_LIB_DIR="$USER_BASE/lib"
+FLATPAK_APP_ID="${FLATPAK_ID:-io.github.dixonSolutions.XonoticTouch}"
 
 restart_requested() {
     [ -f "$RESTART_MARKER" ] || [ -f "$RESTART_MARKER_HOME" ]
@@ -198,6 +247,194 @@ restart_requested() {
 
 clear_restart_request() {
     rm -f "$RESTART_MARKER" "$RESTART_MARKER_HOME" 2>/dev/null || true
+}
+
+background_fetch_requested() {
+    [ -f "$BACKGROUND_MARKER" ] || [ -f "$BACKGROUND_MARKER_HOME" ]
+}
+
+clear_background_fetch_request() {
+    rm -f "$BACKGROUND_MARKER" "$BACKGROUND_MARKER_HOME" 2>/dev/null || true
+}
+
+# Copy download/tray helpers into user data so a host-side fetchd/tray can run
+# them after the Flatpak sandbox exits ( /app is not visible on the host ).
+sync_session_helpers() {
+    mkdir -p "$HELPER_LIB_DIR" "$USER_BASE/bin" 2>/dev/null || return 0
+    for _h in asset-fetch.sh asset-discover.sh sync-bundle-data.sh \
+        xonotic-touch-fetchd.sh fetch-assets-posix.sh; do
+        if [ -f "${APP_ROOT}/share/xonotic/$_h" ]; then
+            cp -f "${APP_ROOT}/share/xonotic/$_h" "$HELPER_LIB_DIR/$_h" 2>/dev/null || true
+            case "$_h" in
+                *.sh) chmod +x "$HELPER_LIB_DIR/$_h" 2>/dev/null || true ;;
+            esac
+        fi
+    done
+    if [ -f "${APP_ROOT}/share/xonotic/xonotic-touch-tray.py" ]; then
+        cp -f "${APP_ROOT}/share/xonotic/xonotic-touch-tray.py" \
+            "$USER_BASE/bin/xonotic-touch-tray.py" 2>/dev/null || true
+        chmod +x "$USER_BASE/bin/xonotic-touch-tray.py" 2>/dev/null || true
+    fi
+}
+
+# Run a command on the host when we are inside Flatpak (tray/notify/AppIndicator
+# and a download that must outlive `flatpak kill` of the UI instance).
+host_run() {
+    if [ -n "${FLATPAK_ID:-}" ] && command -v flatpak-spawn >/dev/null 2>&1; then
+        flatpak-spawn --host "$@"
+        return $?
+    fi
+    "$@"
+}
+
+# Host-side helpers (fetchd/tray) live outside the Flatpak PID namespace.
+# In-sandbox kill -0 on those PIDs always fails and looks like "tray died".
+host_pid_alive() {
+    _hpa_pid="$1"
+    [ -n "$_hpa_pid" ] || return 1
+    host_run kill -0 "$_hpa_pid" 2>/dev/null
+}
+
+fetchd_is_live() {
+    [ -f "$FETCHD_PIDFILE" ] || return 1
+    _fd_pid="$(cat "$FETCHD_PIDFILE" 2>/dev/null || true)"
+    [ -n "$_fd_pid" ] || return 1
+    host_pid_alive "$_fd_pid"
+}
+
+tray_is_live() {
+    [ -f "$TRAY_PIDFILE" ] || return 1
+    _tr_pid="$(cat "$TRAY_PIDFILE" 2>/dev/null || true)"
+    [ -n "$_tr_pid" ] || return 1
+    host_pid_alive "$_tr_pid"
+}
+
+# Kill leftover tray Pythons. Never pkill -f the script path: that matches the
+# pkill/ssh cmdline itself and can murder the launcher.
+kill_orphan_trays() {
+    host_run bash -c '
+        for pid in $(pgrep -f "python3 .*/xonotic-touch-tray\\.py" 2>/dev/null || true); do
+            cmd=$(tr "\0" " " < "/proc/$pid/cmdline" 2>/dev/null || true)
+            case "$cmd" in *pkill*|*pgrep*) continue ;; esac
+            kill -TERM "$pid" 2>/dev/null || true
+        done
+    ' 2>/dev/null || true
+}
+
+ensure_tray() {
+    [ "${XONOTIC_TOUCH_NO_TRAY:-0}" = "1" ] && return 0
+    tray_is_live && return 0
+    sync_session_helpers
+    [ -f "$USER_BASE/bin/xonotic-touch-tray.py" ] || return 0
+    # Drop orphans from older launches that lost their pidfile (race on relaunch).
+    kill_orphan_trays
+    rm -f "$TRAY_PIDFILE" 2>/dev/null || true
+    xonotic_log "starting system tray"
+    host_run env \
+        "XONOTIC_TOUCH_USER_BASE=$USER_BASE" \
+        "XONOTIC_TOUCH_FLATPAK_ID=$FLATPAK_APP_ID" \
+        "XONOTIC_TOUCH_TRAY_ICON=$FLATPAK_APP_ID" \
+        python3 "$USER_BASE/bin/xonotic-touch-tray.py" \
+        >/dev/null 2>&1 &
+    # host_run may wrap flatpak-spawn; prefer the Python pid once tray.pid appears.
+    _tr_i=0
+    while [ "$_tr_i" -lt 20 ]; do
+        if tray_is_live; then
+            return 0
+        fi
+        sleep 0.1 2>/dev/null || true
+        _tr_i=$((_tr_i + 1))
+    done
+}
+
+# Prefer a host fetchd so closing the Flatpak UI does not kill curl.
+# flock inside fetchd is the real single-writer guard — a stale "running"
+# progress line must not prevent a handoff after the sandbox fetch was killed.
+ensure_fetchd() {
+    [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" = "1" ] && return 0
+    fetchd_is_live && return 0
+    if [ -f "$USER_DATA/.assets-ready" ]; then
+        return 0
+    fi
+    sync_session_helpers
+    [ -x "$HELPER_LIB_DIR/xonotic-touch-fetchd.sh" ] || return 1
+    xonotic_log "starting background asset fetchd"
+    if [ ! -f "$PROGRESS_FILE" ]; then
+        {
+            printf '%s\n' discover
+            printf '%s\n' 5
+            printf '%s\n' "Checking your game data..."
+        } > "$PROGRESS_FILE"
+    fi
+    host_run env \
+        "XONOTIC_TOUCH_USER_BASE=$USER_BASE" \
+        "XONOTIC_TOUCH_LIB_DIR=$HELPER_LIB_DIR" \
+        "XONOTIC_TOUCH_FLATPAK_ID=$FLATPAK_APP_ID" \
+        "XONOTIC_TOUCH_BUNDLE_DATA=$BUNDLE_DATA" \
+        "XONOTIC_ASSET_FETCH_PROGRESS=$PROGRESS_FILE" \
+        "XONOTIC_TOUCH_AUTO_OPEN_ON_READY=1" \
+        "XONOTIC_TOUCH_NOTIFY_ON_READY=1" \
+        bash "$HELPER_LIB_DIR/xonotic-touch-fetchd.sh" \
+        >/dev/null 2>&1 &
+    sleep 0.2 2>/dev/null || true
+}
+
+stop_fetchd() {
+    if fetchd_is_live; then
+        _sfd_pid="$(cat "$FETCHD_PIDFILE" 2>/dev/null || true)"
+        if [ -n "$_sfd_pid" ]; then
+            host_run kill -TERM "$_sfd_pid" 2>/dev/null || kill -TERM "$_sfd_pid" 2>/dev/null || true
+            sleep 0.3 2>/dev/null || true
+            host_run kill -KILL "$_sfd_pid" 2>/dev/null || kill -KILL "$_sfd_pid" 2>/dev/null || true
+        fi
+    fi
+    rm -f "$FETCHD_PIDFILE" 2>/dev/null || true
+    kill_orphan_fetch_writers
+}
+
+stop_tray() {
+    if tray_is_live; then
+        _st_pid="$(cat "$TRAY_PIDFILE" 2>/dev/null || true)"
+        if [ -n "$_st_pid" ]; then
+            host_run kill -TERM "$_st_pid" 2>/dev/null || kill -TERM "$_st_pid" 2>/dev/null || true
+        fi
+    fi
+    kill_orphan_trays
+    rm -f "$TRAY_PIDFILE" 2>/dev/null || true
+}
+
+# Block until tray asks to show the window again, or quit the session.
+# Returns 0 = show/relaunch engine, 1 = quit session.
+wait_tray_session() {
+    rm -f "$TRAY_CMD_FILE" 2>/dev/null || true
+    xonotic_log "session in tray (Show window / Quit from the tray menu)"
+    while :; do
+        if [ -f "$TRAY_CMD_FILE" ]; then
+            _wts_cmd="$(head -n 1 "$TRAY_CMD_FILE" 2>/dev/null || true)"
+            rm -f "$TRAY_CMD_FILE" 2>/dev/null || true
+            case "$_wts_cmd" in
+                quit)
+                    return 1
+                    ;;
+                show*|play*|close)
+                    # close is handled by the engine already being gone; show → relaunch
+                    case "$_wts_cmd" in
+                        close) ;;
+                        *) return 0 ;;
+                    esac
+                    ;;
+            esac
+        fi
+        # If tray died and nothing is downloading, end the session.
+        if ! tray_is_live && ! fetchd_is_live && ! fetch_progress_is_live; then
+            return 1
+        fi
+        # Download finished while we were in the tray — open the game.
+        if [ -f "$USER_DATA/.assets-ready" ] && ! engine_is_running; then
+            return 0
+        fi
+        sleep 1
+    done
 }
 
 # True when a background job is already updating the wizard progress file.
@@ -220,7 +457,9 @@ fetch_progress_is_live() {
 # launches so only this job writes into .fetch-tmp/.
 kill_orphan_fetch_writers() {
     _kow_needle="$USER_DATA/.fetch-tmp/"
-    for _kow_pid in $(pgrep -x curl 2>/dev/null || true) $(pgrep -x wget 2>/dev/null || true); do
+    for _kow_pid in $(pgrep -x curl 2>/dev/null || true) \
+        $(pgrep -x wget 2>/dev/null || true) \
+        $(pgrep -x aria2c 2>/dev/null || true); do
         _kow_cmd="$(tr '\0' ' ' < "/proc/$_kow_pid/cmdline" 2>/dev/null || true)"
         case "$_kow_cmd" in
             *"$_kow_needle"*) kill "$_kow_pid" 2>/dev/null || true ;;
@@ -228,12 +467,16 @@ kill_orphan_fetch_writers() {
     done
 }
 
-# Download must not outlive the app (wizard says keep it open; curl -C - resumes).
+# In-sandbox fetch PID (fallback when host fetchd cannot start). Prefer fetchd.
 ASSET_FETCH_PID=""
+# When set, quitting the engine leaves fetchd/tray running instead of pausing.
+SESSION_KEEP_BACKGROUND=0
 
 write_fetch_paused() {
     _wfp_pct=0
     [ -f "$USER_DATA/.assets-ready" ] && return 0
+    # Host fetchd still owns the download — do not mark paused.
+    fetchd_is_live && return 0
     if [ -f "$PROGRESS_FILE" ]; then
         _wfp_pct="$(sed -n '2p' "$PROGRESS_FILE" 2>/dev/null || echo 0)"
     fi
@@ -260,6 +503,11 @@ kill_process_tree() {
 }
 
 stop_asset_fetch() {
+    # Leave host fetchd alone when the session continues in the background.
+    if [ "${SESSION_KEEP_BACKGROUND:-0}" = "1" ]; then
+        ASSET_FETCH_PID=""
+        return 0
+    fi
     _saf_pid="${ASSET_FETCH_PID:-}"
     ASSET_FETCH_PID=""
     if [ -n "$_saf_pid" ]; then
@@ -273,6 +521,7 @@ stop_asset_fetch() {
         done
         wait "$_saf_pid" 2>/dev/null || true
     fi
+    stop_fetchd
     kill_orphan_fetch_writers
     write_fetch_paused
 }
@@ -280,7 +529,13 @@ stop_asset_fetch() {
 launcher_cleanup() {
     # Drop traps first so a second signal during teardown cannot re-enter.
     trap - EXIT INT TERM HUP
+    if [ "${SESSION_KEEP_BACKGROUND:-0}" = "1" ]; then
+        # Detach in-sandbox child so EXIT does not reap a download we handed off.
+        ASSET_FETCH_PID=""
+        return 0
+    fi
     stop_asset_fetch
+    stop_tray
 }
 
 trap 'launcher_cleanup; exit 130' INT
@@ -317,62 +572,78 @@ prepare_assets() {
             . "$ASSET_DISCOVER_LIB"
         fi
         export XONOTIC_ASSET_FETCH_PROGRESS="$PROGRESS_FILE"
-        if xonotic_assets_are_ready "$USER_DATA"; then
+        # A live download must keep the setup wizard up even if minimum packs
+        # already satisfy .assets-ready (progressive extract / extra packs).
+        if xonotic_assets_are_ready "$USER_DATA" \
+            && ! fetchd_is_live && ! fetch_progress_is_live; then
             TOUCH_ASSETS_READY=1
         else
             ASSET_FETCH_ACTIVE=1
             ASSET_FETCH_JOB_STARTED=1
-            if fetch_progress_is_live; then
-                xonotic_log "asset fetch already in progress — joining existing job"
+            if fetchd_is_live; then
+                xonotic_log "asset fetchd already running — joining existing job"
             else
-                # Seed progress before the engine opens so the wizard is never blank.
-                {
-                    printf '%s\n' discover
-                    printf '%s\n' 5
-                    printf '%s\n' "Checking your game data..."
-                } > "$PROGRESS_FILE"
+                # Always try host fetchd. A stale progress file alone must not
+                # skip starting work; fetchd's flock is the real single-writer.
+                if ensure_fetchd && fetchd_is_live; then
+                    xonotic_log "asset fetchd started (survives UI close)"
+                elif fetch_progress_is_live; then
+                    xonotic_log "asset fetch already in progress — joining existing job"
+                else
+                    {
+                        printf '%s\n' discover
+                        printf '%s\n' 5
+                        printf '%s\n' "Checking your game data..."
+                    } > "$PROGRESS_FILE"
+                    (
+                        trap 'kill_orphan_fetch_writers; exit 143' TERM INT
+                        if command -v flock >/dev/null 2>&1; then
+                            flock -n 9 || exit 0
+                        fi
+                        kill_orphan_fetch_writers
+                        if declare -F xonotic_resolve_missing_assets >/dev/null 2>&1; then
+                            xonotic_resolve_missing_assets "$USER_DATA"
+                        else
+                            xonotic_fetch_game_assets "$USER_DATA"
+                        fi
+                        sync_bundle_data
+                    ) 9>"$USER_DATA/touch/fetch.lock" &
+                    ASSET_FETCH_PID=$!
+                fi
             fi
-            # flock: relaunch / double-start must not run two curls into one zip.
+        fi
+    elif fetchd_is_live || fetch_progress_is_live; then
+        ASSET_FETCH_ACTIVE=1
+        ASSET_FETCH_JOB_STARTED=1
+    elif [ -f "$USER_DATA/.assets-ready" ]; then
+        TOUCH_ASSETS_READY=1
+    elif [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" != "1" ] && [ -x "$FETCH_ASSETS_POSIX" ]; then
+        ASSET_FETCH_ACTIVE=1
+        ASSET_FETCH_JOB_STARTED=1
+        export XONOTIC_ASSET_FETCH_PROGRESS="$PROGRESS_FILE"
+        if fetchd_is_live; then
+            :
+        elif ensure_fetchd && fetchd_is_live; then
+            :
+        elif fetch_progress_is_live; then
+            :
+        else
+            {
+                printf '%s\n' discover
+                printf '%s\n' 5
+                printf '%s\n' "Checking your game data..."
+            } > "$PROGRESS_FILE"
             (
                 trap 'kill_orphan_fetch_writers; exit 143' TERM INT
                 if command -v flock >/dev/null 2>&1; then
                     flock -n 9 || exit 0
                 fi
                 kill_orphan_fetch_writers
-                if declare -F xonotic_resolve_missing_assets >/dev/null 2>&1; then
-                    xonotic_resolve_missing_assets "$USER_DATA"
-                else
-                    xonotic_fetch_game_assets "$USER_DATA"
-                fi
+                "$FETCH_ASSETS_POSIX" "$USER_DATA"
                 sync_bundle_data
             ) 9>"$USER_DATA/touch/fetch.lock" &
             ASSET_FETCH_PID=$!
         fi
-    elif [ -f "$USER_DATA/.assets-ready" ]; then
-        TOUCH_ASSETS_READY=1
-    elif [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" != "1" ] && [ -x "$FETCH_ASSETS_POSIX" ]; then
-        ASSET_FETCH_ACTIVE=1
-        ASSET_FETCH_JOB_STARTED=1
-        # Same file the wizard polls; without this the POSIX downloader reports
-        # nowhere and setup sits on its opening message for the whole download.
-        export XONOTIC_ASSET_FETCH_PROGRESS="$PROGRESS_FILE"
-        if ! fetch_progress_is_live; then
-            {
-                printf '%s\n' discover
-                printf '%s\n' 5
-                printf '%s\n' "Checking your game data..."
-            } > "$PROGRESS_FILE"
-        fi
-        (
-            trap 'kill_orphan_fetch_writers; exit 143' TERM INT
-            if command -v flock >/dev/null 2>&1; then
-                flock -n 9 || exit 0
-            fi
-            kill_orphan_fetch_writers
-            "$FETCH_ASSETS_POSIX" "$USER_DATA"
-            sync_bundle_data
-        ) 9>"$USER_DATA/touch/fetch.lock" &
-        ASSET_FETCH_PID=$!
     fi
 }
 
@@ -525,26 +796,85 @@ run_engine() {
 
 # A stale marker from a killed session must not relaunch this one.
 clear_restart_request
+clear_background_fetch_request
+rm -f "$TRAY_CMD_FILE" 2>/dev/null || true
+
+sync_session_helpers
+ensure_tray
 
 ASSET_FETCH_JOB_STARTED=0
 ENGINE_STATUS=0
+# Close-to-tray when the tray actually started (GNOME needs AppIndicator ext).
+# Override: XONOTIC_TOUCH_CLOSE_TO_TRAY=0|1
+if [ -n "${XONOTIC_TOUCH_CLOSE_TO_TRAY:-}" ]; then
+    CLOSE_TO_TRAY="$XONOTIC_TOUCH_CLOSE_TO_TRAY"
+elif tray_is_live; then
+    CLOSE_TO_TRAY=1
+else
+    CLOSE_TO_TRAY=0
+fi
+
 while :; do
     prepare_assets
     run_engine || ENGINE_STATUS=$?
-    # Intentional post-download relaunch: keep the (usually finished) fetch job
-    # alone; do not treat engine exit as "user closed the app".
+
     if restart_requested; then
         clear_restart_request
         xonotic_log "relaunching engine so downloaded game data is loaded"
         ENGINE_STATUS=0
         continue
     fi
+
+    # Wizard: "Download in background" / Close window — UI exits; fetchd+tray stay.
+    if background_fetch_requested; then
+        clear_background_fetch_request
+        SESSION_KEEP_BACKGROUND=1
+        # Hand off any in-sandbox curl to host fetchd (resume partials).
+        if [ -n "${ASSET_FETCH_PID:-}" ]; then
+            kill_process_tree "$ASSET_FETCH_PID" 2>/dev/null || true
+            ASSET_FETCH_PID=""
+            sleep 0.5 2>/dev/null || true
+        fi
+        ensure_fetchd || true
+        ensure_tray
+        xonotic_log "download continues in background (tray + notification when done)"
+        if wait_tray_session; then
+            SESSION_KEEP_BACKGROUND=1
+            ENGINE_STATUS=0
+            continue
+        fi
+        # Tray Quit already stops fetchd; never tear down a still-running download
+        # because wait_tray_session returned (tray crash / false-negative live check).
+        xonotic_log "background UI session ended — leaving fetchd/tray if still running"
+        trap - EXIT INT TERM HUP
+        exit 0
+    fi
+
+    # Window closed. Keep tray/session when enabled or a download is still live.
+    if [ "$CLOSE_TO_TRAY" = "1" ] || fetchd_is_live || fetch_progress_is_live; then
+        SESSION_KEEP_BACKGROUND=1
+        if fetch_progress_is_live || fetchd_is_live; then
+            ensure_fetchd || true
+        fi
+        ensure_tray
+        if wait_tray_session; then
+            ENGINE_STATUS=0
+            continue
+        fi
+        # Detach rather than kill — closing the window must not abort a download.
+        if fetchd_is_live || fetch_progress_is_live; then
+            xonotic_log "UI closed — download still running in background"
+            trap - EXIT INT TERM HUP
+            exit 0
+        fi
+        SESSION_KEEP_BACKGROUND=0
+    fi
     break
 done
 
-# User closed the app (or the engine exited without asking for relaunch).
-# Stop download explicitly; EXIT trap is a backstop for signals.
-xonotic_log "stopping asset fetch (app closing)"
+xonotic_log "stopping session (fetch + tray)"
+SESSION_KEEP_BACKGROUND=0
 stop_asset_fetch
+stop_tray
 trap - EXIT INT TERM HUP
 exit "$ENGINE_STATUS"

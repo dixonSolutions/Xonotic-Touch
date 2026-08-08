@@ -53,3 +53,7 @@ engine/data/touch/
 # Runtime data copies at repo root
 data/*
 !data/README.md
+
+# Python
+__pycache__/
+*.py[cod]

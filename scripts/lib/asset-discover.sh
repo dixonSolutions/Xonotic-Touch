@@ -235,6 +235,12 @@ xonotic_resolve_missing_assets() {
         xonotic_discovery_progress_write running 28 "Will download game data from the Xonotic servers..."
     fi
 
+    # Menu theme (~7 MB) before multi-GB packs so the wizard can start BGM.
+    if declare -F xonotic_ensure_menu_theme_track >/dev/null 2>&1; then
+        xonotic_discovery_progress_write running 30 "Downloading menu theme music..."
+        xonotic_ensure_menu_theme_track "$target_dir" || true
+    fi
+
     if declare -F xonotic_fetch_game_assets >/dev/null 2>&1; then
         xonotic_fetch_game_assets "$target_dir"
         return $?

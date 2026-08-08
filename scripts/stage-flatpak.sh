@@ -26,6 +26,8 @@ install -m 755 "$ROOT/scripts/fetch-assets-posix.sh" "$DEST/share/xonotic/fetch-
 install -m 755 "$ROOT/scripts/sync-bundle-data.sh" "$DEST/share/xonotic/sync-bundle-data.sh"
 install -m 644 "$ROOT/scripts/lib/asset-fetch.sh" "$DEST/share/xonotic/asset-fetch.sh"
 install -m 644 "$ROOT/scripts/lib/asset-discover.sh" "$DEST/share/xonotic/asset-discover.sh"
+install -m 755 "$ROOT/scripts/xonotic-touch-fetchd.sh" "$DEST/share/xonotic/xonotic-touch-fetchd.sh"
+install -m 755 "$ROOT/scripts/xonotic-touch-tray.py" "$DEST/share/xonotic/xonotic-touch-tray.py"
 
 # Slim data + boot assets (menu skin, console, loading screen) so the engine can
 # show the download wizard instead of a missing-texture menu.

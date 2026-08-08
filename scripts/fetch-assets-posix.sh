@@ -159,43 +159,85 @@ if assets_ready; then
     exit 0
 fi
 
-progress_write running 5 "Starting download from Xonotic servers..."
-echo "xonotic-touch: downloading game assets (first launch may take several minutes)..." >&2
+progress_write running 5 "Starting parallel downloads from Xonotic servers..."
+echo "xonotic-touch: downloading game assets in parallel (first launch may take several minutes)..." >&2
 
 tmp="$DATA_DIR/.fetch-tmp"
 mkdir -p "$tmp"
-zip_path="$tmp/xonotic.zip"
 extract_dir="$tmp/extract"
+need_core=0
+need_maps=0
+need_music=0
+# pid files for background curls
+: > "$tmp/pids"
 
-if ! has_pk3 'xonotic-*-data.pk3'; then
-    download_zip "$zip_path" "Xonotic-latest.zip" 10 34
-    progress_write running 35 "Installing core game data..."
-    extract_pk3 "$zip_path" "$extract_dir"
-    rm -f "$zip_path"
-fi
-
-if ! has_pk3 'xonotic-*-maps.pk3'; then
-    download_zip "$zip_path" "Xonotic-latest-mappingsupport.zip" 40 58
-    progress_write running 60 "Installing maps..."
-    extract_pk3 "$zip_path" "$extract_dir"
-    rm -f "$zip_path"
-fi
-
-if ! has_pk3 'xonotic-*-music.pk3'; then
-    download_zip "$zip_path" "Xonotic-latest-high.zip" 65 83
-    progress_write running 85 "Installing music..."
-    extract_pk3 "$zip_path" "$extract_dir"
-    rm -f "$zip_path"
-fi
-
-if ! has_pk3 'xonotic-*-nexcompat.pk3'; then
-    # Nexcompat ships in the main zip; re-fetch if still missing after core.
-    if ! has_pk3 'xonotic-*-data.pk3'; then
-        download_zip "$zip_path" "Xonotic-latest.zip" 88 94
-        progress_write running 95 "Installing compatibility pack..."
-        extract_pk3 "$zip_path" "$extract_dir"
-        rm -f "$zip_path"
+start_bg_curl() {
+    _bg_path="$1"
+    _bg_name="$2"
+    _bg_url="${AUTOBUILD_URL}/${_bg_name}"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fL -C - --user "${AUTOBUILD_USER}:${AUTOBUILD_PASS}" \
+            -o "$_bg_path" "$_bg_url" >/dev/null 2>&1 &
+        echo $! >> "$tmp/pids"
+        return 0
     fi
+    # Fallback: serial wget path via download_zip.
+    download_zip "$_bg_path" "$_bg_name" 10 80
+}
+
+if ! has_pk3 'xonotic-*-data.pk3' || ! has_pk3 'xonotic-*-nexcompat.pk3'; then
+    need_core=1
+    start_bg_curl "$tmp/xonotic.zip" "Xonotic-latest.zip"
+fi
+if ! has_pk3 'xonotic-*-maps.pk3'; then
+    need_maps=1
+    start_bg_curl "$tmp/xonotic-maps.zip" "Xonotic-latest-mappingsupport.zip"
+fi
+if ! has_pk3 'xonotic-*-music.pk3'; then
+    need_music=1
+    start_bg_curl "$tmp/xonotic-music.zip" "Xonotic-latest-high.zip"
+fi
+
+# Aggregate progress until every background curl exits.
+while [ -s "$tmp/pids" ]; do
+    alive=0
+    have=0
+    for f in "$tmp"/xonotic.zip "$tmp"/xonotic-maps.zip "$tmp"/xonotic-music.zip; do
+        [ -f "$f" ] || continue
+        have=$((have + $(file_size "$f")))
+    done
+    mb=$((have / 1048576))
+    : > "$tmp/pids.new"
+    while read -r cpid; do
+        [ -n "$cpid" ] || continue
+        if kill -0 "$cpid" 2>/dev/null; then
+            alive=$((alive + 1))
+            echo "$cpid" >> "$tmp/pids.new"
+        else
+            wait "$cpid" || exit 1
+        fi
+    done < "$tmp/pids"
+    mv -f "$tmp/pids.new" "$tmp/pids"
+    progress_write running 20 \
+        "Downloading packs in parallel (${mb} MB, ${alive} active)..."
+    [ "$alive" -eq 0 ] && break
+    sleep 1
+done
+
+if [ "$need_core" = "1" ]; then
+    progress_write running 88 "Installing core game data..."
+    extract_pk3 "$tmp/xonotic.zip" "$extract_dir"
+    rm -f "$tmp/xonotic.zip"
+fi
+if [ "$need_maps" = "1" ]; then
+    progress_write running 92 "Installing maps..."
+    extract_pk3 "$tmp/xonotic-maps.zip" "$extract_dir"
+    rm -f "$tmp/xonotic-maps.zip"
+fi
+if [ "$need_music" = "1" ]; then
+    progress_write running 96 "Installing music..."
+    extract_pk3 "$tmp/xonotic-music.zip" "$extract_dir"
+    rm -f "$tmp/xonotic-music.zip"
 fi
 
 rm -rf "$tmp"

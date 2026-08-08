@@ -17,8 +17,27 @@ bool TouchStartup_assetFetchActive()
 
 bool TouchStartup_assetFetchDialog_shouldShow()
 {
+	string status;
+	float fh;
+
 	if (!cvar("vid_touchscreen"))
 		return false;
+
+	// Live fetchd ticks win over a premature ready flag: minimum packs can be
+	// marked installed while larger packs are still downloading.
+	if (fexists(TOUCH_ASSET_PROGRESS_FILE))
+	{
+		fh = fopen(TOUCH_ASSET_PROGRESS_FILE, FILE_READ);
+		if (fh >= 0)
+		{
+			status = fgets(fh);
+			fclose(fh);
+			if (status == TOUCH_FETCH_RUNNING || status == TOUCH_FETCH_DISCOVER
+				|| status == TOUCH_FETCH_ERROR || status == TOUCH_FETCH_PAUSED)
+				return true;
+		}
+	}
+
 	if (TouchStartup_assetsReady())
 		return false;
 	// Only when the launcher started background resolution (or a progress file
@@ -98,5 +117,22 @@ bool TouchStartup_requestRelaunch()
 	fputs(fh, "requested by the Xonotic Touch setup wizard\n");
 	fclose(fh);
 	localcmd("quit\n");
+	return true;
+}
+
+/** Mark that the download should keep running after the UI closes.
+ *
+ * Does not quit — the wizard shows a “downloading in background” state and
+ * lets the user close when ready. packaging/start.sh reads the marker after
+ * the engine exits.
+ */
+bool TouchStartup_requestBackgroundFetch()
+{
+	float fh = fopen(TOUCH_BACKGROUND_FETCH_MARKER, FILE_WRITE);
+	if (fh < 0)
+		return false;
+
+	fputs(fh, "requested by the Xonotic Touch setup wizard\n");
+	fclose(fh);
 	return true;
 }

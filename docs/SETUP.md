@@ -89,11 +89,15 @@ Human-readable status message
 
 The `discover` phase covers “our data ready?” then “copy from Flatpak Xonotic?”; the wizard shows a sweeping bar for it, because neither step can report a percentage. The bar becomes a real percentage in the `running` download phase, and turns red with a **Try again** button on `error`.
 
-Closing the app stops the download job (and any curl/wget children). Progress is written as `paused`; the next launch resumes the partial zip. The download does **not** keep running after quit — keep the app open until setup finishes.
+By default the session can **close to tray**: the host-side `fetchd` keeps downloading, and a StatusNotifierItem tray offers Show / Quit / recent maps (see [desktop-tray.md](desktop-tray.md)). The setup wizard also has **Download in background**, which closes the UI, continues the download, sends a notification when packs are ready, and re-opens the app if it is not already running. Reopening while a download is live joins the existing `fetch.lock` job (no duplicate curls). Tray **Quit** (or `XONOTIC_TOUCH_CLOSE_TO_TRAY=0` without a live fetchd) stops the download and writes `paused`; the next launch resumes the partial zip.
+
+Missing pack zips (core, maps, music) download **in parallel** (default up to 3–4 jobs; override with `XONOTIC_FETCH_PARALLEL`). When `aria2c` is on PATH, each large zip also uses multiple HTTP connections (`XONOTIC_FETCH_CONNECTIONS`, default 6). Each zip **resumes** with `curl -C -` / `aria2c -c`; packs already installed are skipped. Finished zips are extracted as soon as they complete. The open-menu theme (`rising-of-the-phoenix`, ~7 MB) is fetched first into `xonotic-touch-theme.pk3dir` so the wizard can play BGM via `touch/music-ready.txt` while core/maps packs continue. The setup wizard shows the Xonotic logo from `gfx/xonotic_logo` (staged via `touch/gfx/`).
 
 The launcher seeds this file *before* exec so the wizard is never blank, and never deletes it — the background worker overwrites it in place.
 
 The name matters: DarkPlaces' `FS_CheckNastyPath` rejects every path with a leading dot, so the menu cannot read a `.asset-fetch-progress`. Anything the engine has to open lives under `touch/` with a plain name.
+
+If the wizard sits on **Preparing download...** while `touch/asset-progress.txt` is updating on disk, a stale `menu.dat` under `~/.xonotic/data/` (often `zzz-touch-fix.pk3dir` from an old device test) is shadowing the package. `packaging/start.sh` quarantines those overrides on launch; you can also remove them manually.
 
 ### Ready marker
 

@@ -22,6 +22,13 @@ finish-args:
   - --filesystem=home/.var/app/org.xonotic.Xonotic:ro
   - --filesystem=/usr/share/games/xonotic:ro
   - --filesystem=/usr/share/xonotic:ro
+  # Tray + “download finished” notifications (host AppIndicator via flatpak-spawn).
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.Flatpak
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.AppMenu.Registrar
+  - --talk-name=com.canonical.indicator.application
+  - --filesystem=xdg-run/xonotic-touch-tray:create
 
 build-options:
   env:

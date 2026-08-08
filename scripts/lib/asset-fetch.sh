@@ -55,6 +55,73 @@ xonotic_music_assets_missing() {
     return 0
 }
 
+# Default menu / game-open theme (xonotic-common.cfg menu_cdtrack).
+XONOTIC_MENU_THEME_TRACK="${XONOTIC_MENU_THEME_TRACK:-rising-of-the-phoenix}"
+XONOTIC_MENU_THEME_URL="${XONOTIC_MENU_THEME_URL:-https://gitlab.com/xonotic/xonotic-music.pk3dir/-/raw/master/sound/cdtracks/${XONOTIC_MENU_THEME_TRACK}.ogg}"
+
+xonotic_menu_theme_path() {
+    local data_dir="$1"
+    echo "$data_dir/xonotic-touch-theme.pk3dir/sound/cdtracks/${XONOTIC_MENU_THEME_TRACK}.ogg"
+}
+
+# True when the open-menu theme ogg is on disk (tiny boot pk3dir or full music pack).
+xonotic_menu_theme_ready() {
+    local data_dir="$1"
+    local theme
+    theme="$(xonotic_menu_theme_path "$data_dir")"
+    if [ -f "$theme" ] && [ "$(xonotic_file_size "$theme")" -gt 100000 ]; then
+        return 0
+    fi
+    # Full music pack may already ship the track under a pk3dir tree.
+    if [ -f "$data_dir/xonotic-music.pk3dir/sound/cdtracks/${XONOTIC_MENU_THEME_TRACK}.ogg" ]; then
+        return 0
+    fi
+    return 1
+}
+
+xonotic_mark_music_ready() {
+    local data_dir="$1"
+    mkdir -p "$data_dir/touch"
+    : > "$data_dir/touch/music-ready.txt"
+}
+
+# ~6–7 MB menu theme so the wizard can play BGM long before the full music zip.
+xonotic_ensure_menu_theme_track() {
+    local data_dir="$1"
+    local dest partial dest_dir
+
+    if xonotic_menu_theme_ready "$data_dir"; then
+        xonotic_mark_music_ready "$data_dir"
+        return 0
+    fi
+
+    dest="$(xonotic_menu_theme_path "$data_dir")"
+    dest_dir="$(dirname "$dest")"
+    partial="${dest}.partial"
+    mkdir -p "$dest_dir"
+
+    echo "xonotic-touch: fetching menu theme (${XONOTIC_MENU_THEME_TRACK})..." >&2
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "xonotic-touch: curl missing — cannot fetch menu theme early" >&2
+        return 1
+    fi
+
+    # Keep the main pack progress intact; only nudge if we have not started yet.
+    if [ ! -f "${XONOTIC_ASSET_FETCH_PROGRESS:-}" ]; then
+        :
+    fi
+
+    if curl -fL --connect-timeout 20 --max-time 180 -C - \
+        -o "$partial" "$XONOTIC_MENU_THEME_URL"; then
+        mv -f "$partial" "$dest"
+        xonotic_mark_music_ready "$data_dir"
+        echo "xonotic-touch: menu theme ready at $dest" >&2
+        return 0
+    fi
+    rm -f "$partial" 2>/dev/null || true
+    return 1
+}
+
 xonotic_nexcompat_assets_missing() {
     local data_dir="$1"
 
@@ -196,71 +263,141 @@ xonotic_fetch_git_assets() {
     fi
 }
 
+# How many pack zips to pull at once (device can usually saturate the link
+# with 2–4). Override with XONOTIC_FETCH_PARALLEL=1 for serial.
+xonotic_fetch_parallel_jobs() {
+    local n="${XONOTIC_FETCH_PARALLEL:-}"
+    local cpus
+    if [ -n "$n" ]; then
+        echo "$n"
+        return 0
+    fi
+    cpus="$(nproc 2>/dev/null || echo 2)"
+    if [ "$cpus" -ge 8 ] 2>/dev/null; then
+        echo 4
+    elif [ "$cpus" -ge 4 ] 2>/dev/null; then
+        echo 3
+    else
+        echo 2
+    fi
+}
+
+# Extra HTTP connections per large zip (aria2c). 1 = single-stream curl.
+xonotic_fetch_connections() {
+    local n="${XONOTIC_FETCH_CONNECTIONS:-}"
+    if [ -n "$n" ]; then
+        echo "$n"
+        return 0
+    fi
+    if command -v aria2c >/dev/null 2>&1; then
+        echo 6
+    else
+        echo 1
+    fi
+}
+
+xonotic_autobuild_content_length() {
+    local url="$1"
+    curl -sI -L --user "${XONOTIC_AUTOBUILD_USER}:${XONOTIC_AUTOBUILD_PASS}" "$url" \
+        | awk 'BEGIN{c=0} tolower($1)=="content-length:" {c=$2} END{print c+0}' \
+        | tr -d '\r'
+}
+
+xonotic_file_size() {
+    if [ -f "$1" ]; then
+        wc -c < "$1" | tr -d ' '
+    else
+        echo 0
+    fi
+}
+
+# Start one zip download in the background (no progress loop). Prints pid.
+xonotic_start_autobuild_download() {
+    local zip_path="$1"
+    local zip_name="$2"
+    local url="${XONOTIC_AUTOBUILD_URL}/${zip_name}"
+    local expected="${3:-0}"
+    local conns
+    local pid
+
+    mkdir -p "$(dirname "$zip_path")"
+    if [ "${expected:-0}" -gt 0 ] 2>/dev/null \
+        && [ "$(xonotic_file_size "$zip_path")" -ge "$expected" ]; then
+        echo 0
+        return 0
+    fi
+
+    conns="$(xonotic_fetch_connections)"
+    if [ "$conns" -gt 1 ] 2>/dev/null && command -v aria2c >/dev/null 2>&1; then
+        # Multi-connection: much better on high-latency / rate-limited links.
+        aria2c -c --console-log-level=warn --summary-interval=0 \
+            --http-user="${XONOTIC_AUTOBUILD_USER}" \
+            --http-passwd="${XONOTIC_AUTOBUILD_PASS}" \
+            -x "$conns" -s "$conns" -j 1 -k 1M \
+            -d "$(dirname "$zip_path")" -o "$(basename "$zip_path")" \
+            "$url" >/dev/null 2>&1 &
+        pid=$!
+        echo "$pid"
+        return 0
+    fi
+
+    if command -v curl >/dev/null 2>&1; then
+        curl -fL -C - --user "${XONOTIC_AUTOBUILD_USER}:${XONOTIC_AUTOBUILD_PASS}" \
+            -o "$zip_path" "$url" >/dev/null 2>&1 &
+        pid=$!
+        echo "$pid"
+        return 0
+    fi
+
+    if command -v wget >/dev/null 2>&1; then
+        local scheme="${XONOTIC_AUTOBUILD_URL%%://*}"
+        local host_path="${XONOTIC_AUTOBUILD_URL#*://}"
+        wget -q -O "$zip_path" \
+            "${scheme}://${XONOTIC_AUTOBUILD_USER}:${XONOTIC_AUTOBUILD_PASS}@${host_path}/${zip_name}" \
+            >/dev/null 2>&1 &
+        pid=$!
+        echo "$pid"
+        return 0
+    fi
+
+    echo "xonotic: curl, wget, or aria2c required to download game assets" >&2
+    return 1
+}
+
 # Download one autobuild zip while updating the wizard percent between pct_lo..pct_hi.
+# Kept for callers that still want a single serial job.
 xonotic_download_autobuild_zip() {
     local zip_path="$1"
     local zip_name="$2"
     local pct_lo="${3:-15}"
     local pct_hi="${4:-$((pct_lo + 18))}"
     local url="${XONOTIC_AUTOBUILD_URL}/${zip_name}"
-    local expected=0 have=0 pct mb curl_pid
+    local expected=0 have=0 pct mb pid
 
     xonotic_progress_write running "$pct_lo" "Downloading ${zip_name}..."
-
     if command -v curl >/dev/null 2>&1; then
-        expected="$(
-            curl -sI -L --user "${XONOTIC_AUTOBUILD_USER}:${XONOTIC_AUTOBUILD_PASS}" "$url" \
-                | awk 'BEGIN{c=0} tolower($1)=="content-length:" {c=$2} END{print c+0}' \
-                | tr -d '\r'
-        )"
-        mkdir -p "$(dirname "$zip_path")"
-        # Resume partial zips. Truncating here used to restart every relaunch and
-        # race other orphan curls writing the same path.
-        have="$(wc -c < "$zip_path" 2>/dev/null | tr -d ' ' || echo 0)"
-        have="${have:-0}"
-        if [ "${expected:-0}" -gt 0 ] 2>/dev/null && [ "$have" -ge "$expected" ]; then
-            xonotic_progress_write running "$pct_hi" "Downloaded ${zip_name}"
-            return 0
+        expected="$(xonotic_autobuild_content_length "$url")"
+    fi
+    pid="$(xonotic_start_autobuild_download "$zip_path" "$zip_name" "$expected")" || return 1
+    if [ "${pid:-0}" = "0" ]; then
+        xonotic_progress_write running "$pct_hi" "Downloaded ${zip_name}"
+        return 0
+    fi
+    while kill -0 "$pid" 2>/dev/null; do
+        have="$(xonotic_file_size "$zip_path")"
+        pct="$pct_lo"
+        if [ "${expected:-0}" -gt 0 ] 2>/dev/null; then
+            pct=$((pct_lo + have * (pct_hi - pct_lo) / expected))
+            [ "$pct" -gt "$pct_hi" ] && pct="$pct_hi"
+            xonotic_progress_write running "$pct" \
+                "Downloading ${zip_name} ($((have / 1048576)) / $((expected / 1048576)) MB)..."
+        else
+            xonotic_progress_write running "$pct" \
+                "Downloading ${zip_name} ($((have / 1048576)) MB)..."
         fi
-        curl -fL -C - --user "${XONOTIC_AUTOBUILD_USER}:${XONOTIC_AUTOBUILD_PASS}" \
-            -o "$zip_path" "$url" &
-        curl_pid=$!
-        while kill -0 "$curl_pid" 2>/dev/null; do
-            have="$(wc -c < "$zip_path" 2>/dev/null | tr -d ' ' || echo 0)"
-            have="${have:-0}"
-            pct="$pct_lo"
-            if [ "${expected:-0}" -gt 0 ] 2>/dev/null; then
-                pct=$((pct_lo + have * (pct_hi - pct_lo) / expected))
-                if [ "$pct" -gt "$pct_hi" ]; then
-                    pct="$pct_hi"
-                fi
-            fi
-            mb=$((have / 1048576))
-            if [ "${expected:-0}" -gt 0 ] 2>/dev/null; then
-                xonotic_progress_write running "$pct" \
-                    "Downloading ${zip_name} (${mb} / $((expected / 1048576)) MB)..."
-            else
-                xonotic_progress_write running "$pct" \
-                    "Downloading ${zip_name} (${mb} MB)..."
-            fi
-            sleep 1
-        done
-        wait "$curl_pid"
-        return $?
-    fi
-
-    # Ubuntu Touch clicks ship busybox wget instead of curl (no --user support,
-    # so the credentials go into the URL userinfo).
-    if command -v wget >/dev/null 2>&1; then
-        local scheme="${XONOTIC_AUTOBUILD_URL%%://*}"
-        local host_path="${XONOTIC_AUTOBUILD_URL#*://}"
-        wget -O "$zip_path" \
-            "${scheme}://${XONOTIC_AUTOBUILD_USER}:${XONOTIC_AUTOBUILD_PASS}@${host_path}/${zip_name}"
-        return
-    fi
-
-    echo "xonotic: curl or wget required to download game assets" >&2
-    return 1
+        sleep 1
+    done
+    wait "$pid"
 }
 
 xonotic_extract_autobuild_pk3() {
@@ -272,6 +409,10 @@ xonotic_extract_autobuild_pk3() {
         echo "xonotic: unzip required to extract game assets" >&2
         return 1
     fi
+    if [ ! -f "$zip_path" ]; then
+        echo "xonotic: missing zip for extract: $zip_path" >&2
+        return 1
+    fi
 
     mkdir -p "$extract_dir" "$data_dir"
     unzip -q "$zip_path" "Xonotic/data/*.pk3" -d "$extract_dir"
@@ -279,45 +420,191 @@ xonotic_extract_autobuild_pk3() {
     rm -rf "$extract_dir/Xonotic"
 }
 
+# Install one finished zip as soon as it lands so later packs keep downloading
+# and the wizard can start menu music without waiting for the whole queue.
+xonotic_install_autobuild_zip() {
+    local data_dir="$1"
+    local zip_path="$2"
+    local kind="$3" # core|maps|music
+    local extract_dir="$data_dir/.fetch-tmp/extract"
+
+    case "$kind" in
+        core)
+            xonotic_progress_write running 88 "Installing core game data..."
+            xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir" "$extract_dir" || return 1
+            ;;
+        maps)
+            xonotic_progress_write running 92 "Installing maps..."
+            xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir" "$extract_dir" || return 1
+            ;;
+        music)
+            xonotic_progress_write running 96 "Installing music..."
+            xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir" "$extract_dir" || return 1
+            # Menu polls this (plain name — no leading dot) to start BGM early.
+            xonotic_mark_music_ready "$data_dir"
+            ;;
+        *) return 1 ;;
+    esac
+    # Keep the zip until install succeeded; only then free the disk.
+    rm -f "$zip_path"
+}
+
+# Pull every missing pack zip at once (capped). Resume partials with curl -C - /
+# aria2c -c; never re-download a pack that is already installed or a zip that
+# already matches Content-Length. Extract each pack as soon as its zip finishes.
 xonotic_fetch_autobuild_assets() {
     local data_dir="$1"
-    local zip_path
-    local extract_dir
     local tmp="$data_dir/.fetch-tmp"
+    local parallel jobs=0 next=0
+    local -a names=() paths=() expecteds=() pids=() kinds=() installed=()
+    local idx name path url expected pid alive have total_exp total_have pct mb emb
+    local kind
 
-    mkdir -p "$tmp"
-    zip_path="$tmp/xonotic.zip"
-    extract_dir="$tmp/extract"
+    mkdir -p "$tmp" "$data_dir/touch"
+    parallel="$(xonotic_fetch_parallel_jobs)"
 
-    if xonotic_asset_dirs_missing "$data_dir"; then
-        xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest.zip" 10 34
-        xonotic_progress_write running 35 "Installing core game data..."
-        xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir" "$extract_dir"
-        rm -f "$zip_path"
+    # Menu theme first (~7 MB): wizard can play rising-of-the-phoenix while the
+    # multi-GB packs continue. Full music zip still fills out the soundtrack.
+    xonotic_ensure_menu_theme_track "$data_dir" || true
+    if ! xonotic_music_assets_missing "$data_dir"; then
+        xonotic_mark_music_ready "$data_dir"
     fi
 
-    if xonotic_maps_assets_missing "$data_dir"; then
-        xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest-mappingsupport.zip" 40 58
-        xonotic_progress_write running 60 "Installing maps..."
-        xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir" "$extract_dir"
-        rm -f "$zip_path"
-    fi
-
+    # Skip anything already present on disk — never re-download finished packs.
+    # Music zip is queued first so parallel slots prefer soundtrack completion.
     if xonotic_music_assets_missing "$data_dir"; then
-        xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest-high.zip" 65 83
-        xonotic_progress_write running 85 "Installing music..."
-        xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir" "$extract_dir"
-        rm -f "$zip_path"
+        names+=("Xonotic-latest-high.zip")
+        paths+=("$tmp/xonotic-music.zip")
+        kinds+=("music")
+    fi
+    if xonotic_asset_dirs_missing "$data_dir" || xonotic_nexcompat_assets_missing "$data_dir"; then
+        names+=("Xonotic-latest.zip")
+        paths+=("$tmp/xonotic.zip")
+        kinds+=("core")
+    fi
+    if xonotic_maps_assets_missing "$data_dir"; then
+        names+=("Xonotic-latest-mappingsupport.zip")
+        paths+=("$tmp/xonotic-maps.zip")
+        kinds+=("maps")
     fi
 
-    if xonotic_nexcompat_assets_missing "$data_dir"; then
-        xonotic_download_autobuild_zip "$zip_path" "Xonotic-latest.zip" 88 94
-        xonotic_progress_write running 95 "Installing compatibility pack..."
-        xonotic_extract_autobuild_pk3 "$zip_path" "$data_dir" "$extract_dir"
-        rm -f "$zip_path"
+    if [ "${#names[@]}" -eq 0 ]; then
+        return 0
     fi
 
-    rm -rf "$tmp"
+    xonotic_progress_write running 8 \
+        "Resuming ${#names[@]} pack download(s) (up to ${parallel} at once)..."
+
+    for idx in "${!names[@]}"; do
+        url="${XONOTIC_AUTOBUILD_URL}/${names[$idx]}"
+        expected=0
+        if command -v curl >/dev/null 2>&1; then
+            expected="$(xonotic_autobuild_content_length "$url")"
+        fi
+        expecteds+=("$expected")
+        pids+=("")
+        installed+=(0)
+    done
+
+    next=0
+    while [ "$next" -lt "${#names[@]}" ] || [ "$jobs" -gt 0 ]; do
+        while [ "$jobs" -lt "$parallel" ] && [ "$next" -lt "${#names[@]}" ]; do
+            name="${names[$next]}"
+            path="${paths[$next]}"
+            expected="${expecteds[$next]}"
+            kind="${kinds[$next]}"
+            # Already-complete zip from a previous session: install, don't re-get.
+            if [ "$expected" -gt 0 ] 2>/dev/null \
+                && [ "$(xonotic_file_size "$path")" -ge "$expected" ]; then
+                xonotic_install_autobuild_zip "$data_dir" "$path" "$kind" || return 1
+                pids[$next]=0
+                installed[$next]=1
+                next=$((next + 1))
+                continue
+            fi
+            # curl -C - / aria2c -c continue the partial file in place.
+            pid="$(xonotic_start_autobuild_download "$path" "$name" "$expected")" || return 1
+            pids[$next]="$pid"
+            if [ "$pid" != "0" ]; then
+                jobs=$((jobs + 1))
+                have="$(xonotic_file_size "$path")"
+                if [ "$have" -gt 0 ] 2>/dev/null; then
+                    echo "xonotic-touch: resuming $name at $((have / 1048576)) MB (pid $pid)" >&2
+                else
+                    echo "xonotic-touch: download started: $name (pid $pid)" >&2
+                fi
+            fi
+            next=$((next + 1))
+        done
+
+        alive=0
+        total_exp=0
+        total_have=0
+        for idx in "${!names[@]}"; do
+            expected="${expecteds[$idx]:-0}"
+            have="$(xonotic_file_size "${paths[$idx]}")"
+            # Count installed packs as fully done for the bar.
+            if [ "${installed[$idx]:-0}" = "1" ] && [ "$expected" -gt 0 ]; then
+                have="$expected"
+            fi
+            [ "$expected" -gt 0 ] 2>/dev/null && total_exp=$((total_exp + expected))
+            total_have=$((total_have + have))
+            pid="${pids[$idx]:-}"
+            if [ -n "$pid" ] && [ "$pid" != "0" ] && kill -0 "$pid" 2>/dev/null; then
+                alive=$((alive + 1))
+            fi
+        done
+
+        pct=10
+        if [ "$total_exp" -gt 0 ]; then
+            pct=$((10 + total_have * 78 / total_exp))
+            [ "$pct" -gt 88 ] && pct=88
+        fi
+        mb=$((total_have / 1048576))
+        emb=$((total_exp / 1048576))
+        if [ "$emb" -gt 0 ]; then
+            xonotic_progress_write running "$pct" \
+                "Downloading ${#names[@]} packs (${mb} / ${emb} MB, ${alive} active) — resumes if interrupted..."
+        else
+            xonotic_progress_write running "$pct" \
+                "Downloading ${#names[@]} packs (${mb} MB, ${alive} active) — resumes if interrupted..."
+        fi
+
+        jobs=0
+        for idx in "${!pids[@]}"; do
+            pid="${pids[$idx]}"
+            [ -n "$pid" ] && [ "$pid" != "0" ] || continue
+            if kill -0 "$pid" 2>/dev/null; then
+                jobs=$((jobs + 1))
+            else
+                wait "$pid" || return 1
+                pids[$idx]=0
+                if [ "${installed[$idx]:-0}" != "1" ]; then
+                    xonotic_install_autobuild_zip "$data_dir" "${paths[$idx]}" "${kinds[$idx]}" \
+                        || return 1
+                    installed[$idx]=1
+                fi
+            fi
+        done
+
+        [ "$alive" -eq 0 ] && [ "$next" -ge "${#names[@]}" ] && break
+        sleep 1
+    done
+
+    for idx in "${!pids[@]}"; do
+        pid="${pids[$idx]}"
+        [ -n "$pid" ] && [ "$pid" != "0" ] || continue
+        wait "$pid" || return 1
+        pids[$idx]=0
+        if [ "${installed[$idx]:-0}" != "1" ]; then
+            xonotic_install_autobuild_zip "$data_dir" "${paths[$idx]}" "${kinds[$idx]}" \
+                || return 1
+            installed[$idx]=1
+        fi
+    done
+
+    # Leave any unrelated leftovers; never wipe partial zips on pause/error.
+    rmdir "$tmp/extract" 2>/dev/null || true
 }
 
 _xonotic_asset_discover_lib() {
@@ -353,6 +640,8 @@ xonotic_fetch_game_assets() {
     # gitlab is slow/unreachable inside Flatpak.
     xonotic_progress_write running 5 "Starting download..."
     echo "xonotic-touch: downloading game assets (first launch may take several minutes)..."
+    # Theme before the big zips so the open-menu track is available ASAP.
+    xonotic_ensure_menu_theme_track "$data_dir" || true
     if xonotic_fetch_autobuild_assets "$data_dir" && xonotic_assets_are_ready "$data_dir"; then
         xonotic_assets_mark_ready "$data_dir"
         xonotic_progress_write done 100 "Download complete"
