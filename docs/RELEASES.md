@@ -46,9 +46,10 @@ First launch downloads game assets (~3 GB) into:
 | **Flatpak** | `~/.var/app/io.github.dixonSolutions.XonoticTouch/data/xonotic-touch/data/` (wiped by Delete app data / `flatpak uninstall --delete-data`) |
 | **Click / native** | `~/.local/share/xonotic-touch/data/` |
 
-Legacy Flatpak installs that still have `~/.local/share/xonotic-touch` are migrated into the Flatpak data dir on next launch. To force a clean first-run wizard now:
+Legacy Flatpak installs that still have `~/.local/share/xonotic-touch` are migrated into the Flatpak data dir on next launch (the manifest exposes that host path only for migration — not as the live store). To force a clean first-run wizard now:
 
 ```bash
+flatpak uninstall --user --delete-data io.github.dixonSolutions.XonoticTouch
 rm -rf ~/.local/share/xonotic-touch \
   ~/.var/app/io.github.dixonSolutions.XonoticTouch
 ```

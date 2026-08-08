@@ -11,9 +11,13 @@ finish-args:
   - --socket=fallback-x11
   - --socket=pulseaudio
   - --device=dri
-  # Game packs live under Flatpak $XDG_DATA_HOME (wiped with app data).
-  # Legacy host path is writable only so the one-time migrator can remove it.
-  - --filesystem=xdg-data/xonotic-touch:create
+  # Game packs must live in real Flatpak $XDG_DATA_HOME (.../data/xonotic-touch)
+  # so "Delete app data" / uninstall --delete-data clears them. Do NOT grant
+  # --filesystem=xdg-data/xonotic-touch — that bind-mounts the host
+  # ~/.local/share/xonotic-touch over $XDG_DATA_HOME/xonotic-touch (same inode),
+  # which is why wipes looked like no-ops. Legacy host tree is exposed separately
+  # for the one-time migrator in packaging/start.sh.
+  - --filesystem=home/.local/share/xonotic-touch
   - --filesystem=home/.xonotic:create
   - --filesystem=home/.var/app/org.xonotic.Xonotic:ro
   - --filesystem=/usr/share/games/xonotic:ro
