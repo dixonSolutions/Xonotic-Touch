@@ -42,7 +42,7 @@ Or grab a versioned `.click` from [GitHub Releases](https://github.com/dixonSolu
 Local build with [Clickable](https://clickable-ut.dev/): `clickable build --arch arm64`  
 Or: `./scripts/build-click.sh --arch arm64`
 
-First launch downloads game data to `~/.local/share/xonotic-touch/data/`. See [docs/RELEASES.md](docs/RELEASES.md).
+First launch downloads game data into the platform writable dir (see [docs/RELEASES.md](docs/RELEASES.md)).
 
 ## Maintainer workflow
 

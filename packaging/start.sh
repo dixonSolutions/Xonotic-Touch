@@ -67,13 +67,24 @@ SYNC_BUNDLE="${APP_ROOT}/share/xonotic/sync-bundle-data.sh"
 # Data location:
 #   Flatpak → $XDG_DATA_HOME/xonotic-touch  (~/.var/app/<id>/data/...) so
 #             "Delete app data" / uninstall --delete-data actually wipes packs.
+#   Click   → $XDG_DATA_HOME/<APP_PKGNAME>  (only path AppArmor allows creating
+#             files under; ~/.local/share/xonotic-touch is denied — issue #19)
 #   Else    → ~/.local/share/xonotic-touch
 # Override with XONOTIC_TOUCH_USER_BASE. Legacy host path is migrated once.
 LEGACY_USER_BASE="${HOME}/.local/share/xonotic-touch"
+# APP_ID is <pkgname>_<appname>_<version> (e.g. xonotictouch.dixonsolutions_xonotic_1.2.42).
+CLICK_PKGNAME=""
+if [ -n "${APP_ID:-}" ]; then
+    CLICK_PKGNAME="${APP_ID%%_*}"
+fi
 if [ -n "${XONOTIC_TOUCH_USER_BASE:-}" ]; then
     USER_BASE="$XONOTIC_TOUCH_USER_BASE"
 elif [ -n "${FLATPAK_ID:-}" ] && [ -n "${XDG_DATA_HOME:-}" ]; then
     USER_BASE="${XDG_DATA_HOME}/xonotic-touch"
+elif [ -n "$CLICK_PKGNAME" ]; then
+    USER_BASE="${XDG_DATA_HOME:-${HOME}/.local/share}/${CLICK_PKGNAME}"
+elif [ -n "${UBUNTU_APPLICATION_ISOLATION:-}" ]; then
+    USER_BASE="${XDG_DATA_HOME:-${HOME}/.local/share}/xonotictouch.dixonsolutions"
 else
     USER_BASE="$LEGACY_USER_BASE"
 fi
@@ -122,24 +133,43 @@ mkdir -p "$USER_DATA" 2>/dev/null || xonotic_log "cannot create $USER_DATA"
 # One UI launcher at a time. Background fetchd + tray do not hold this lock, so
 # reopening the app while a download runs joins the existing job instead of
 # stacking curls. A second click while the engine is up asks the tray to focus.
+#
+# Click confinement often leaves host flock(1) on PATH but denies executing it.
+# Never treat a failed flock exec (or a non-writable lock path) as "already
+# running" — that aborts launch before the engine starts (issue #19).
 INSTANCE_LOCK="$USER_BASE/instance.lock"
 engine_is_running() {
     pgrep -f "${BIN}" >/dev/null 2>&1
 }
 
+xonotic_notify_existing_session() {
+    mkdir -p "$USER_DATA/touch" 2>/dev/null || true
+    printf '%s\n' show > "$USER_DATA/touch/tray-cmd.txt" 2>/dev/null || true
+    if engine_is_running; then
+        xonotic_log "already running — asked session to show window"
+    else
+        xonotic_log "session already active — asked tray to show window"
+    fi
+}
+
 if command -v flock >/dev/null 2>&1; then
     # FD 7 stays open for the life of this process (survives bash re-exec above).
-    exec 7>"$INSTANCE_LOCK"
-    if ! flock -n 7; then
-        # Existing UI session (engine or tray wait loop): ask it to show again.
-        mkdir -p "$USER_DATA/touch" 2>/dev/null || true
-        printf '%s\n' show > "$USER_DATA/touch/tray-cmd.txt" 2>/dev/null || true
-        if engine_is_running; then
-            xonotic_log "already running — asked session to show window"
+    if { exec 7>"$INSTANCE_LOCK"; } 2>/dev/null; then
+        if flock -n 7 2>/dev/null; then
+            : # we hold the single-instance lock
         else
-            xonotic_log "session already active — asked tray to show window"
+            _xonotic_flock_status=$?
+            # flock -n returns 1 when another process holds the lock. Any other
+            # status (126/127 = AppArmor denied exec, etc.) must not abort launch.
+            if [ "$_xonotic_flock_status" -eq 1 ]; then
+                xonotic_notify_existing_session
+                exit 0
+            fi
+            xonotic_log "flock unavailable (status ${_xonotic_flock_status}) — skipping single-instance guard"
+            exec 7>&- 2>/dev/null || true
         fi
-        exit 0
+    else
+        xonotic_log "cannot create $INSTANCE_LOCK — continuing without single-instance guard"
     fi
 fi
 

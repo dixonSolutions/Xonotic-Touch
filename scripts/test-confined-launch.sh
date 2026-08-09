@@ -1,5 +1,5 @@
 #!/bin/bash
-# Regression test for the Ubuntu Touch launch path (issue #18).
+# Regression test for the Ubuntu Touch launch path (issues #18 and #19).
 #
 # Simulates click confinement: the launcher is started as a relative path with
 # an unusable PATH, so every host binary (dirname, mkdir, tar, sed, ...) is out
@@ -10,6 +10,7 @@ ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 WORK="${WORK:-$ROOT/build/test-confined}"
 APP_ROOT="$WORK/app"
 USER_BASE="$WORK/home/.local/share/xonotic-touch"
+CLICK_USER_BASE="$WORK/home/.local/share/xonotictouch.dixonsolutions"
 ENGINE_LOG="$WORK/engine-args.txt"
 
 FAILURES=0
@@ -56,23 +57,21 @@ EOF
 }
 
 # Launch exactly like the click desktop hook: relative Exec, no usable PATH.
-run_confined() {
-    rm -f "$ENGINE_LOG"
-    ( cd "$APP_ROOT" && env -i \
-        HOME="$WORK/home" \
-        PATH=/nonexistent \
-        XONOTIC_TOUCH_USER_BASE="$USER_BASE" \
-        XONOTIC_SKIP_ASSET_FETCH=1 \
-        "$@" \
-        /bin/sh -c 'exec bin/start.sh' )
-}
-
 expect_launch() {
     local label="$1"
-    shift
+    local expect_base="$2"
+    shift 2
 
     local output status=0
-    output="$(run_confined "$@" 2>&1)" || status=$?
+    output="$(
+        rm -f "$ENGINE_LOG"
+        ( cd "$APP_ROOT" && env -i \
+            HOME="$WORK/home" \
+            PATH=/nonexistent \
+            XONOTIC_SKIP_ASSET_FETCH=1 \
+            "$@" \
+            /bin/sh -c 'exec bin/start.sh' ) 2>&1
+    )" || status=$?
 
     if [ "$status" -ne 0 ]; then
         fail "$label: launcher exited with status $status"
@@ -97,11 +96,11 @@ expect_launch() {
         fail "$label: engine did not receive a numeric vid_width"
         return
     fi
-    if [ ! -f "$USER_BASE/data/xonotic-data.pk3dir/gfx/bundled.txt" ]; then
-        fail "$label: bundled data was not synced into the user data dir"
+    if [ ! -f "$expect_base/data/xonotic-data.pk3dir/gfx/bundled.txt" ]; then
+        fail "$label: bundled data was not synced into $expect_base/data"
         return
     fi
-    if ! grep -q 'exec touch/profiles/standard.cfg' "$USER_BASE/data/touch/startup.cfg"; then
+    if ! grep -q 'exec touch/profiles/standard.cfg' "$expect_base/data/touch/startup.cfg"; then
         fail "$label: touch profile was not wired into startup.cfg"
         return
     fi
@@ -109,8 +108,38 @@ expect_launch() {
 }
 
 stage_fake_click
-expect_launch 'launches confined (bash available)'
-expect_launch 'launches confined (POSIX sh only)' XONOTIC_TOUCH_NO_BASH=1
+expect_launch 'launches confined (bash available)' "$USER_BASE" \
+    XONOTIC_TOUCH_USER_BASE="$USER_BASE"
+expect_launch 'launches confined (POSIX sh only)' "$USER_BASE" \
+    XONOTIC_TOUCH_USER_BASE="$USER_BASE" XONOTIC_TOUCH_NO_BASH=1
+
+# issue #19: APP_ID selects the AppArmor-writable APP_PKGNAME data dir.
+rm -rf "$CLICK_USER_BASE" "$USER_BASE"
+expect_launch 'launches confined (APP_ID writable path)' "$CLICK_USER_BASE" \
+    APP_ID=xonotictouch.dixonsolutions_xonotic_1.2.42 \
+    XDG_DATA_HOME="$WORK/home/.local/share" \
+    XONOTIC_TOUCH_NO_BASH=1 \
+    UBUNTU_APPLICATION_ISOLATION=1
+
+if [ -d "$USER_BASE" ]; then
+    fail 'APP_ID launch wrote to legacy ~/.local/share/xonotic-touch'
+else
+    pass 'APP_ID launch did not use legacy xonotic-touch path'
+fi
+
+# issue #19: flock on PATH but unusable must not abort or pretend "already running".
+rm -rf "$CLICK_USER_BASE"
+mkdir -p "$WORK/fake-bin"
+cat > "$WORK/fake-bin/flock" <<'EOF'
+#!/bin/sh
+exit 126
+EOF
+chmod 755 "$WORK/fake-bin/flock"
+expect_launch 'launches when flock exec is denied' "$CLICK_USER_BASE" \
+    APP_ID=xonotictouch.dixonsolutions_xonotic_1.2.42 \
+    XDG_DATA_HOME="$WORK/home/.local/share" \
+    PATH="$WORK/fake-bin" \
+    XONOTIC_TOUCH_NO_BASH=1
 
 if [ "$FAILURES" -ne 0 ]; then
     printf '%d confined-launch check(s) failed\n' "$FAILURES" >&2

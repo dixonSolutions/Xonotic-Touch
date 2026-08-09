@@ -5,7 +5,8 @@ stricter than Flatpak or a desktop session. This document is the contract every
 script in the launch path must honour.
 
 Reported by [issue #18](https://github.com/dixonSolutions/Xonotic-Touch/issues/18)
-(Xiaomi Redmi Note 9 Pro, UT 24.04-1.4):
+(Xiaomi Redmi Note 9 Pro, UT 24.04-1.4) and [issue #19](https://github.com/dixonSolutions/Xonotic-Touch/issues/19)
+(immediate exit after load when the instance lock path is not AppArmor-writable):
 
 ```
 aa-exec[19008]: bin/start.sh: 5: dirname: Permission denied
@@ -19,11 +20,13 @@ collapsed to `/` and the launcher aborted before the engine ever started.
 
 | Rule | Consequence for us |
 |------|--------------------|
-| Host binaries outside the click tree are not exec'able (`dirname`, `mkdir`, `tar`, `curl`, ...) | Every runtime tool must ship inside the package |
+| Host binaries outside the click tree are not exec'able (`dirname`, `mkdir`, `tar`, `curl`, `flock`, ...) | Every runtime tool must ship inside the package; optional host tools must be probed before use |
 | Files inside the click tree are exec'able | `bin/busybox` and its applet symlinks work |
 | The click manifest only accepts `policy_groups`, not custom AppArmor rules | We cannot whitelist host binaries; bundling is the only fix |
+| Writable paths are only under `XDG_*/<APP_PKGNAME>` | Game data lives in `$XDG_DATA_HOME/<APP_PKGNAME>` (e.g. `~/.local/share/xonotictouch.dixonsolutions/`). Writing to `~/.local/share/xonotic-touch/` is denied (`mknod` / Permission denied) and aborts launch if the instance lock is treated as fatal — see [issue #19](https://github.com/dixonSolutions/Xonotic-Touch/issues/19) |
 | `/bin/sh` (dash) runs the desktop hook's `Exec=bin/start.sh` | The launcher must be POSIX until it re-execs into bash |
 | `$0` is relative; `APP_DIR` points at the install root | Resolve the app root from both, never from `pwd`/`dirname` |
+| `APP_ID` is `<pkgname>_<appname>_<version>` | Derive `APP_PKGNAME` as `${APP_ID%%_*}` for the writable data dir |
 
 ## 2. Launcher contract (`packaging/start.sh`)
 
@@ -32,17 +35,22 @@ collapsed to `/` and the launcher aborted before the engine ever started.
 2. **App root is validated, not assumed.** Candidates are
    `$XONOTIC_TOUCH_APP_ROOT`, `${0%/*}/..`, then `$APP_DIR`; the first one that
    actually contains `bin/xonotic` wins. Otherwise we log both inputs and exit.
-3. **Bash is optional.** The asset helpers need bash (arrays, `compgen`, process
+3. **User data uses the AppArmor-writable path.** With `APP_ID` set (click),
+   `USER_BASE` is `$XDG_DATA_HOME/${APP_ID%%_*}` — not
+   `~/.local/share/xonotic-touch`. Flatpak still uses
+   `$XDG_DATA_HOME/xonotic-touch`. Override with `XONOTIC_TOUCH_USER_BASE`.
+4. **Bash is optional.** The asset helpers need bash (arrays, `compgen`, process
    substitution), so the launcher probes bash and re-execs into it. If bash is
    not exec'able it keeps running under `/bin/sh` and uses
    `fetch-assets-posix.sh` (busybox wget/unzip) for first-launch downloads.
-4. **Host tools are probed, not trusted.** `mkdir`/`grep`/`sed`/`awk`/`tar` are
+5. **Host tools are probed, not trusted.** `mkdir`/`grep`/`sed`/`awk`/`tar` are
    exercised once. If they work (desktop, Flatpak) the bundled `bin/` is appended
    to `PATH` so GNU behaviour is preserved; if they are denied it is prepended so
-   the busybox applets take over.
-5. **Only the engine exec is fatal.** Bundle sync, screen probing, and config
-   writes log and continue, and empty screen values fall back to defaults, so a
-   partially confined device still reaches the menu.
+   the busybox applets take over. `flock` is only used when it actually acquires
+   a lock (exit 1 = already running); denied exec must not abort launch.
+6. **Only the engine exec is fatal.** Bundle sync, screen probing, config
+   writes, and the instance lock log and continue, and empty screen values fall
+   back to defaults, so a partially confined device still reaches the menu.
 
 Environment overrides: `XONOTIC_TOUCH_APP_ROOT`, `XONOTIC_TOUCH_USER_BASE`,
 `XONOTIC_TOUCH_NO_BASH=1` (stay on POSIX sh), `XONOTIC_SKIP_ASSET_FETCH=1`.
