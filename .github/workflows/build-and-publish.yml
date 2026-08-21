@@ -129,6 +129,17 @@ jobs:
           path: click-out/*.click
           if-no-files-found: error
 
+  android:
+    name: Android
+    needs: [version]
+    # Same job as the standalone Android workflow; that one skips main so the
+    # APKs are not built twice for a release commit.
+    uses: ./.github/workflows/android.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.version.outputs.version }}
+      version_code: ${{ github.run_number }}
+
   publish-pages:
     name: Publish Pages (Flatpak + Click remotes)
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
@@ -207,7 +218,7 @@ jobs:
   release:
     name: GitHub Release
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-    needs: [version, flatpak, click]
+    needs: [version, flatpak, click, android]
     runs-on: ubuntu-latest
     # Explicit write scope for tag + release creation (repo Actions default
     # must also allow write: Settings → Actions → General → Workflow permissions).
@@ -221,7 +232,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: release
-          pattern: '{flatpak,click}-*'
+          pattern: '{flatpak,click,android}-*'
           merge-multiple: false
 
       - name: Prepare release files
@@ -233,6 +244,8 @@ jobs:
           cp release/flatpak-aarch64/*.flatpak release/upload/
           cp release/click-arm64/*.click release/upload/
           cp release/click-armhf/*.click release/upload/
+          cp release/android-arm64-v8a/*.apk release/upload/
+          cp release/android-armeabi-v7a/*.apk release/upload/
           ls -la release/upload/
           {
             echo "## Xonotic Touch ${VERSION}"
@@ -260,6 +273,15 @@ jobs:
             echo "wget https://dixonSolutions.github.io/Xonotic-Touch/click/latest-arm64.click"
             echo "pkcon install-local --allow-untrusted latest-arm64.click"
             echo '```'
+            echo
+            echo "### Android (.apk)"
+            echo
+            echo "Sideload — arm64-v8a for anything from the last decade, armeabi-v7a for older phones:"
+            echo
+            echo "- \`XonoticTouch-${VERSION}-arm64-v8a.apk\`"
+            echo "- \`XonoticTouch-${VERSION}-armeabi-v7a.apk\`"
+            echo
+            echo "First launch downloads about 1 GB of maps, textures and music."
             echo
             echo "Offline Flatpak + Click bundles are attached below."
             echo

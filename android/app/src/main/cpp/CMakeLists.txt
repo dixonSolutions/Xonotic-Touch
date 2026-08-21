@@ -42,7 +42,8 @@ dp_objects(DP_MENU OBJ_MENU)
 dp_objects(DP_SND OBJ_SND_COMMON)
 
 # OBJ_SDL from makefile.inc, minus the pieces this build opts out of:
-# OBJ_SND_XMP (no libxmp) and OBJ_VIDEO_CAPTURE (no CONFIG_VIDEO_CAPTURE).
+# OBJ_SND_XMP (no libxmp) and OBJ_VIDEO_CAPTURE — the capture path reads back
+# frames through GL32-only pixel-pack buffers that GLES2 has no equivalent for.
 set(DP_SDL
     "${DP_DIR}/builddate.c"
     "${DP_DIR}/sys_sdl.c"

@@ -2,7 +2,9 @@ name: Android
 
 on:
   push:
-    branches: ['**']
+    # main goes through build-and-publish.yml, which calls this workflow —
+    # keeping '**' here would build every APK twice on every release commit.
+    branches-ignore: [main, master]
     paths-ignore: ['docs/**', 'README.md']
   workflow_dispatch:
   workflow_call:
