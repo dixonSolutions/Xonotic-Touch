@@ -1,7 +1,11 @@
 package io.github.dixonsolutions.xonotictouch;
 
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 
 import org.libsdl.app.SDLActivity;
 
@@ -32,6 +36,58 @@ public final class XonoticActivity extends SDLActivity {
             baseDir = new GameData(this).baseDir().getAbsolutePath();
         }
         super.onCreate(savedInstanceState);
+        watchSoftKeyboard();
+    }
+
+    /**
+     * Show the system bars for as long as the soft keyboard is up.
+     *
+     * The engine runs immersive fullscreen — DP_MOBILETOUCH forces
+     * SDL_WINDOW_FULLSCREEN | SDL_WINDOW_BORDERLESS — which hides the navigation
+     * bar. Android's IME can only be dismissed with Back, so once a menu text
+     * field opened the keyboard there was nothing left on screen to close it
+     * with. Bringing the bars back while typing restores that way out, and
+     * immersive mode returns the moment the keyboard does.
+     */
+    private void watchSoftKeyboard() {
+        final View decor = getWindow().getDecorView();
+        decor.setOnApplyWindowInsetsListener((view, insets) -> {
+            setSystemBarsVisible(isKeyboardVisible(insets, view));
+            return view.onApplyWindowInsets(insets);
+        });
+    }
+
+    private static boolean isKeyboardVisible(WindowInsets insets, View decor) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return insets.isVisible(WindowInsets.Type.ime());
+        }
+        // Before the ime() inset existed, the keyboard is only visible as an
+        // unusually deep bottom inset. A quarter of the window is well clear of
+        // the navigation bar and well under any keyboard.
+        return insets.getSystemWindowInsetBottom() > decor.getHeight() / 4;
+    }
+
+    private void setSystemBarsVisible(boolean visible) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller == null) {
+                return;
+            }
+            if (visible) {
+                controller.show(WindowInsets.Type.systemBars());
+            } else {
+                controller.hide(WindowInsets.Type.systemBars());
+            }
+            return;
+        }
+        View decor = getWindow().getDecorView();
+        decor.setSystemUiVisibility(visible ? View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                : View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
     }
 
     @Override
