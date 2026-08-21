@@ -159,6 +159,7 @@ qbool PNG_OpenLibrary (void)
 		"libpng12.0.dylib",
 #else
 		"libpng16.so.16",
+		"libpng16.so", // Android: the APK's lib dir holds unversioned sonames
 		"libpng15.so.15", // WTF libtool guidelines anyone?
 		"libpng14.so.14", // WTF libtool guidelines anyone?
 		"libpng12.so.0",
