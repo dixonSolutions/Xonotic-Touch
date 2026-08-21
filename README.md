@@ -1,11 +1,11 @@
 # Xonotic Touch
 
-**Xonotic Touch** is a touch-only build of [Xonotic](https://xonotic.org) for Linux tablets and phones. Virtual sticks, weapon wheels, and layout presets are tuned for two-thumb play in landscape. Ships as a slim **Flatpak** or Ubuntu Touch **`.click`** (~60 MB); textures, maps, and music download on first launch (~3 GB). Native C + QuakeC — no Qt shell.
+**Xonotic Touch** is a touch-only build of [Xonotic](https://xonotic.org) for Linux tablets and phones. Virtual sticks, weapon wheels, and layout presets are tuned for two-thumb play in landscape. Ships as a slim **Flatpak**, Ubuntu Touch **`.click`**, or Android **`.apk`** (~60 MB); textures, maps, and music download on first launch (~3 GB). Native C + QuakeC — no Qt shell.
 
 | | |
 |---|---|
 | **Install** | Flatpak remote, [OpenStore](https://open-store.io/app/xonotictouch.dixonsolutions) / Ubuntu Touch `.click`, and versioned GitHub Releases (each `main` push) |
-| **Platforms** | Flatpak: Linux `x86_64` + `aarch64` (Wayland/X11). Click: Ubuntu Touch `arm64` + `armhf` |
+| **Platforms** | Flatpak: Linux `x86_64` + `aarch64` (Wayland/X11). Click: Ubuntu Touch `arm64` + `armhf`. Android: `arm64-v8a` + `armeabi-v7a` |
 | **Input** | Touchscreen required — mouse-as-touch only for local dev |
 
 <img width="1954" height="1302" alt="image" src="https://github.com/user-attachments/assets/cf918732-3540-4fd4-a9f9-b7550dc1b6d2" />
@@ -42,6 +42,12 @@ Or grab a versioned `.click` from [GitHub Releases](https://github.com/dixonSolu
 Local build with [Clickable](https://clickable-ut.dev/): `clickable build --arch arm64`  
 Or: `./scripts/build-click.sh --arch arm64`
 
+### Android (.apk)
+
+Sideload from [GitHub Releases](https://github.com/dixonSolutions/Xonotic-Touch/releases/latest) — `arm64-v8a` for anything from the last decade, `armeabi-v7a` for older phones. Same slim-package deal: the APK carries game logic and the menu, and the first launch pulls maps, textures and music.
+
+Local build: `ANDROID_SDK_ROOT=~/Android/Sdk ./scripts/android-build.sh --abi arm64-v8a` — see [docs/ANDROID.md](docs/ANDROID.md).
+
 First launch downloads game data into the platform writable dir (see [docs/RELEASES.md](docs/RELEASES.md)).
 
 ## Maintainer workflow
@@ -72,11 +78,13 @@ First launch downloads game data into the platform writable dir (see [docs/RELEA
 | `packaging/start.sh` | Launcher: sync bundle, fetch assets, run game |
 | `flatpak/` | Flatpak manifest, metainfo, desktop entry |
 | `click/` | Ubuntu Touch click metadata (manifest, desktop, AppArmor) |
+| `android/` | Gradle project; darkplaces built as `libmain.so` by the NDK |
 | `clickable.yaml` | Clickable build entry for UT `.click` packages |
 | `scripts/` | Build, staging, runtime asset fetch, local installers |
 
 ## Docs
 
+- [docs/ANDROID.md](docs/ANDROID.md) — Android APK: what the port needed, signing, first-launch download
 - [docs/RELEASES.md](docs/RELEASES.md) — Flatpak + Click, CI, GitHub Releases
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — technical overview
 - [docs/MAINTAINING.md](docs/MAINTAINING.md) — source maintainer guide
