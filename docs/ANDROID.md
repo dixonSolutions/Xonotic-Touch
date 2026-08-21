@@ -74,7 +74,7 @@ friends out of `engine/darkplaces/makefile.inc`. The Touch port adds engine file
 ## Building locally
 
 ```bash
-ANDROID_SDK_ROOT=~/Android/Sdk ANDROID_NDK_ROOT=~/Android/Sdk/ndk/27.2.12479018 \
+ANDROID_SDK_ROOT=~/Android/Sdk ANDROID_NDK_ROOT=~/Android/Sdk/ndk/27.3.13750724 \
   ./scripts/android-build.sh --abi arm64-v8a --version 1.2.0
 ```
 
