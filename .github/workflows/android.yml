@@ -1,0 +1,119 @@
+name: Android
+
+on:
+  push:
+    branches: ['**']
+    paths-ignore: ['docs/**', 'README.md']
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: Version name stamped into the APK
+        type: string
+        required: true
+      version_code:
+        description: Monotonic Android versionCode
+        type: string
+        required: true
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NDK_VERSION: 27.2.12479018
+
+jobs:
+  apk:
+    name: APK (${{ matrix.abi }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      # `secrets` is not a context step-level `if` can read; hoist the check.
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [arm64-v8a, armeabi-v7a]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        run: |
+          VERSION="${{ inputs.version }}"
+          CODE="${{ inputs.version_code }}"
+          # Branch builds carry no workflow_call inputs but still need a code.
+          [ -n "$VERSION" ] || VERSION="1.2.${{ github.run_number }}"
+          [ -n "$CODE" ] || CODE="${{ github.run_number }}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            build-essential make gcc g++ pkg-config git \
+            cmake ninja-build imagemagick zip unzip curl xz-utils \
+            libgmp-dev
+
+      - name: Install Android NDK ${{ env.NDK_VERSION }}
+        run: |
+          set -euo pipefail
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "ndk;${NDK_VERSION}" "platforms;android-35" "build-tools;35.0.0" >/dev/null
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Cache native dependency sources
+        uses: actions/cache@v4
+        with:
+          path: build/android/src
+          key: xonotic-android-src-v1-${{ hashFiles('scripts/android-deps.sh') }}
+
+      - name: Cache compiled native dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/android/prefix/${{ matrix.abi }}
+          key: xonotic-android-prefix-${{ matrix.abi }}-${{ env.NDK_VERSION }}-${{ hashFiles('scripts/android-deps.sh') }}
+
+      - name: Decode signing keystore
+        if: env.HAS_KEYSTORE == 'true'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          mkdir -p build/android
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > build/android/release.keystore
+          echo "ANDROID_KEYSTORE=$PWD/build/android/release.keystore" >> "$GITHUB_ENV"
+
+      - name: Build APK
+        env:
+          ANDROID_ABI: ${{ matrix.abi }}
+          PROJECT_VERSION: ${{ steps.ver.outputs.version }}
+          PROJECT_CODE: ${{ steps.ver.outputs.code }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: bash scripts/android-build.sh
+
+      - name: Show APK metadata
+        run: |
+          set -euo pipefail
+          APK="$(find build/android-out -name '*.apk' | head -1)"
+          ls -lh "$APK"
+          AAPT="$(find "$ANDROID_SDK_ROOT/build-tools" -name aapt2 | sort -r | head -1)"
+          "$AAPT" dump badging "$APK" | head -15 || true
+          unzip -l "$APK" | grep -E 'lib/|assets/' | head -10
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-${{ matrix.abi }}
+          path: build/android-out/*.apk
+          if-no-files-found: error

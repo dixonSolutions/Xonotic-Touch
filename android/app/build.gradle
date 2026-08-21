@@ -1,0 +1,80 @@
+apply plugin: 'com.android.application'
+
+// Every knob comes from scripts/android-build.sh so the gradle file stays
+// free of paths that only exist on one machine.
+def depsPrefix   = project.findProperty('deps_prefix')   ?: "${rootDir}/../build/android/prefix/arm64-v8a"
+def targetAbi    = project.findProperty('compile_abi')   ?: 'arm64-v8a'
+def appVersion   = project.findProperty('version_name')  ?: 'dev'
+def appCode      = (project.findProperty('version_code') ?: '1').toInteger()
+def keystorePath = project.findProperty('keystore')      ?: ''
+
+android {
+    namespace 'io.github.dixonsolutions.xonotictouch'
+    compileSdk 35
+    ndkVersion project.findProperty('ndk_version') ?: '27.2.12479018'
+
+    defaultConfig {
+        applicationId 'io.github.dixonsolutions.xonotictouch'
+        minSdk 21
+        targetSdk 35
+        versionCode appCode
+        versionName appVersion
+        ndk { abiFilters targetAbi }
+        externalNativeBuild {
+            cmake {
+                arguments "-DXONOTIC_DEPS_PREFIX=${depsPrefix}",
+                          "-DXONOTIC_VERSION=${appVersion}"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path 'src/main/cpp/CMakeLists.txt'
+            version '3.22.1+'
+        }
+    }
+
+    sourceSets {
+        main {
+            // libSDL2.so and libpng16.so are built by scripts/android-deps.sh and
+            // staged per ABI; SDL's Java glue is copied out of the same tarball.
+            jniLibs.srcDirs = ['src/main/jniLibs']
+        }
+    }
+
+    if (keystorePath) {
+        signingConfigs {
+            release {
+                storeFile file(keystorePath)
+                storePassword project.getProperty('storepass')
+                keyAlias project.getProperty('alias')
+                keyPassword project.getProperty('storepass')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (keystorePath) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    packagingOptions {
+        // The engine dlopen()s libpng at runtime, which only works if the
+        // library is a real file in the install's lib dir.
+        jniLibs.useLegacyPackaging = true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+    }
+}

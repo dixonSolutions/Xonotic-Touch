@@ -228,6 +228,37 @@ xonotic_maybe_make_clean() {
     make clean >/dev/null 2>&1 || true
 }
 
+# QuakeC only. The Android build compiles the engine with the NDK, but progs.dat
+# / csprogs.dat / menu.dat are architecture-neutral and still have to come from a
+# host gmqcc run.
+xonotic_compile_qc_only() {
+    local root gmqcc qcsrc
+    root="$(xonotic_root)"
+    gmqcc="$root/engine/gmqcc/gmqcc"
+    qcsrc="$root/engine/data/xonotic-data.pk3dir/qcsrc/Makefile"
+
+    xonotic_ensure_game_code
+    if [ ! -f "$qcsrc" ]; then
+        xonotic_usage 'Missing qcsrc — run: ./scripts/fetch-sources.sh code' 1
+    fi
+
+    export MAKEFLAGS="${MAKEFLAGS:--j$(nproc)}"
+    export QCCFLAGS_WATERMARK="${QCCFLAGS_WATERMARK:-local-dev}"
+    export XON_BUILDSYSTEM=1
+
+    cd "$root/engine/gmqcc"
+    if [ -f gmqcc ] && ! ./gmqcc --version >/dev/null 2>&1; then
+        printf 'gmqcc binary incompatible with current environment — rebuilding from source\n'
+        make clean >/dev/null 2>&1 || true
+    fi
+    make $MAKEFLAGS STRIP=: gmqcc
+
+    cd "$root/engine/data/xonotic-data.pk3dir"
+    make QCC="$gmqcc" XON_BUILDSYSTEM=1 QCCFLAGS_WATERMARK="$QCCFLAGS_WATERMARK" $MAKEFLAGS qc
+    # 'qc' can skip menu.dat when only menu sources changed.
+    make QCC="$gmqcc" XON_BUILDSYSTEM=1 QCCFLAGS_WATERMARK="$QCCFLAGS_WATERMARK" -C qcsrc ../menu.dat
+}
+
 xonotic_compile_engine_only() {
     local root out_dir out_bin darkplaces
     root="$(xonotic_root)"

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Xonotic Touch</string>
+    <string name="boot_unpacking">Unpacking game data…</string>
+    <string name="boot_downloading">Downloading game assets…</string>
+    <string name="boot_first_run">First launch downloads about 1 GB. Wi-Fi recommended.</string>
+    <string name="boot_failed">Could not prepare game data</string>
+    <string name="boot_retry">Retry</string>
+    <string name="boot_quit">Quit</string>
+</resources>
