@@ -24,7 +24,8 @@ for years. `sys.h` already turns on, for `__ANDROID__`:
 USE_GLES2  USE_RWOPS  LINK_TO_ZLIB  LINK_TO_LIBVORBIS  DP_MOBILETOUCH  DP_FREETYPE_STATIC
 ```
 
-So the port is mostly plumbing rather than engine work:
+That support had not seen a compiler in a long time, though, so pointing the NDK
+at it turned up a handful of things:
 
 * **Entry point.** SDL's Android glue calls `SDL_main` over JNI; darkplaces
   spells it `main`. `sys_sdl.c` is compiled with `-Dmain=SDL_main`.
@@ -36,6 +37,19 @@ So the port is mostly plumbing rather than engine work:
 * **Basedir.** `fs.c` defaults Android to `/sdcard/xonotic`, which scoped storage
   made unwritable in Android 10. `XonoticActivity` passes an explicit `-basedir`
   under the app's private external files directory.
+* **GLES2 symbol gaps.** `glquake.h`'s GLES2 branch is a list of `qgl* -> gl*`
+  defines that stops at core ES 2.0, but `gl_backend.c` still names `GLAPIENTRY`,
+  `GL_BGRA` and the `ARB_debug_output` enums on `RENDERPATH_GL32` branches a
+  GLES2 build never takes. They now parse; they still do nothing.
+* **KTX textures.** `gl_textures.c` includes `ktx10/include/ktx.h` under a bare
+  `__ANDROID__` guard. That library is not in this tree and Xonotic ships no
+  `.ktx` textures, so the path moved behind `DP_ANDROID_KTX`.
+* **Video capture is off.** Its frame readback wants GLES 3 pixel-pack buffers.
+  `snd_main.c` reads `cls.capturevideo.active` without the
+  `CONFIG_VIDEO_CAPTURE` guard its six sibling references have — now guarded.
+* **`const` drift.** `vid_sdl.c`'s `DP_MOBILETOUCH` branch assigns through
+  `mode`, which went `const` since that branch was last built. Cast, as the
+  `WIN32` path beside it already does.
 
 The touch HUD needs nothing special: it is the same `touch_ui.c` /
 `DP_MOBILETOUCH` path the Ubuntu Touch build uses.
