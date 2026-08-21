@@ -1,6 +1,7 @@
 package io.github.dixonsolutions.xonotictouch;
 
 import android.content.Context;
+import android.util.Base64;
 import android.util.Log;
 
 import java.io.File;
@@ -12,7 +13,6 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -34,6 +34,7 @@ final class GameData {
     private static final String BUNDLE_STAMP = ".bundle-version";
 
     private static final String AUTOBUILD = "https://beta.xonotic.org/autobuild";
+    private static final String AUTOBUILD_LOGIN = "xonotic:g-23";
 
     /** zip name -> the pk3 suffix it satisfies. */
     private static final String[][] DOWNLOADS = {
@@ -143,7 +144,7 @@ final class GameData {
             if (code != HttpURLConnection.HTTP_OK) {
                 throw new IOException("HTTP " + code + " for " + url);
             }
-            long total = connection.getContentLengthLong();
+            long total = connection.getContentLength();
 
             try (InputStream in = connection.getInputStream();
                  OutputStream out = new FileOutputStream(target)) {
@@ -169,12 +170,13 @@ final class GameData {
 
     /**
      * The autobuild mirror sits behind a shared HTTP login that Xonotic
-     * publishes with the download link; packaging/start.sh sends the same one.
+     * publishes alongside the download link; scripts/fetch-assets-posix.sh sends
+     * the same one. android.util.Base64, not java.util, because the latter only
+     * arrived in API 26 and this app supports 21.
      */
     private static String autobuildAuthHeader() {
-        String login = System.getProperty("xonotic.autobuild.login", "xonotic:g-23");
-        return "Basic " + Base64.getEncoder()
-                .encodeToString(login.getBytes(StandardCharsets.UTF_8));
+        byte[] login = AUTOBUILD_LOGIN.getBytes(StandardCharsets.UTF_8);
+        return "Basic " + Base64.encodeToString(login, Base64.NO_WRAP);
     }
 
     // ------------------------------------------------------------- utilities

@@ -1561,7 +1561,10 @@ int R_SaveTextureDDSFile(rtexture_t *rt, const char *filename, qbool skipuncompr
 #endif
 }
 
-#ifdef __ANDROID__
+// KTX texture loading needs libktx vendored at ktx10/, which this tree does
+// not carry and Xonotic does not use. Gated behind its own define so an
+// ordinary Android build does not trip over the missing header.
+#ifdef DP_ANDROID_KTX
 // ELUAN: FIXME: separate this code
 #include "ktx10/include/ktx.h"
 #endif
@@ -1586,7 +1589,7 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 	fs_offset_t ddsfilesize;
 	unsigned int ddssize;
 	qbool force_swdecode;
-#ifdef __ANDROID__
+#ifdef DP_ANDROID_KTX
 	// ELUAN: FIXME: separate this code
 	char vabuf[1024];
 	char vabuf2[1024];
@@ -1597,7 +1600,7 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 	if (cls.state == ca_dedicated)
 		return NULL;
 
-#ifdef __ANDROID__
+#ifdef DP_ANDROID_KTX
 	// ELUAN: FIXME: separate this code
 	if (vid.renderpath != RENDERPATH_GLES2)
 	{
@@ -1732,7 +1735,7 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 			return NULL;
 		}
 	}
-#endif // __ANDROID__
+#endif // DP_ANDROID_KTX
 
 	dds = FS_LoadFile(filename, tempmempool, true, &ddsfilesize);
 	ddssize = ddsfilesize;
