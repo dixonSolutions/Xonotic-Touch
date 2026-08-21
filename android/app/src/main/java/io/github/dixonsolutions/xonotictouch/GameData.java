@@ -229,10 +229,26 @@ final class GameData {
                 continue;
             }
             mkdirs(out.getParentFile());
-            try (OutputStream sink = new FileOutputStream(out)) {
+            File target = strip == null
+                    ? out
+                    : new File(out.getParentFile(), out.getName() + ".part");
+            try (OutputStream sink = new FileOutputStream(target)) {
                 int read;
                 while ((read = zip.read(buffer)) > 0) {
                     sink.write(buffer, 0, read);
+                }
+            } catch (IOException e) {
+                if (strip != null && !target.delete() && target.exists()) {
+                    Log.w(TAG, "Could not delete " + target);
+                }
+                throw e;
+            }
+            if (strip != null) {
+                if (out.exists() && !out.delete()) {
+                    throw new IOException("Cannot replace " + out);
+                }
+                if (!target.renameTo(out)) {
+                    throw new IOException("Cannot move " + target + " to " + out);
                 }
             }
             if (++files % 200 == 0) {

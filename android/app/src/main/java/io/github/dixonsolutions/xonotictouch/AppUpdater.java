@@ -137,7 +137,8 @@ final class AppUpdater {
      * @return false when the user has not granted permission to install from
      *         this app; the settings screen for that has been opened.
      */
-    boolean install(Update update, GameData.Progress progress) throws IOException {
+    boolean install(Update update, GameData.Progress progress, Runnable onFailure)
+            throws IOException {
         if (!canInstallPackages()) {
             requestInstallPermission();
             return false;
@@ -151,6 +152,7 @@ final class AppUpdater {
         }
 
         int sessionId = installer.createSession(params);
+        boolean committed = false;
         try (PackageInstaller.Session session = installer.openSession(sessionId)) {
             HttpURLConnection connection = (HttpURLConnection) new URL(update.url).openConnection();
             connection.setConnectTimeout(30_000);
@@ -187,7 +189,17 @@ final class AppUpdater {
                 connection.disconnect();
             }
 
-            session.commit(installStatusIntent().getIntentSender());
+            session.commit(installStatusIntent(onFailure).getIntentSender());
+            committed = true;
+        } catch (IOException | RuntimeException e) {
+            if (!committed) {
+                try {
+                    installer.abandonSession(sessionId);
+                } catch (RuntimeException abandonError) {
+                    e.addSuppressed(abandonError);
+                }
+            }
+            throw e;
         }
         return true;
     }
@@ -215,8 +227,8 @@ final class AppUpdater {
      * STATUS_PENDING_USER_ACTION, which carries the system's confirm dialog for
      * us to launch — without that the session sits there and nothing happens.
      */
-    private PendingIntent installStatusIntent() {
-        context.registerReceiver(new BroadcastReceiver() {
+    private PendingIntent installStatusIntent(Runnable onFailure) {
+        BroadcastReceiver receiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context ctx, Intent intent) {
                 int status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS,
@@ -224,28 +236,48 @@ final class AppUpdater {
                 if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
                     Intent confirm = intent.getParcelableExtra(Intent.EXTRA_INTENT);
                     if (confirm != null) {
-                        confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                        ctx.startActivity(confirm);
+                        try {
+                            confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            ctx.startActivity(confirm);
+                            return;
+                        } catch (RuntimeException e) {
+                            Log.w(TAG, "Could not open install confirmation", e);
+                        }
                     }
+                    finish(ctx, true);
                     return;
                 }
                 if (status != PackageInstaller.STATUS_SUCCESS) {
                     Log.w(TAG, "Install failed (" + status + "): "
                             + intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE));
                 }
+                finish(ctx, status != PackageInstaller.STATUS_SUCCESS);
+            }
+
+            private void finish(Context ctx, boolean failed) {
                 try {
                     ctx.unregisterReceiver(this);
                 } catch (IllegalArgumentException ignored) {
                     // Already gone; the process may be restarting for the upgrade.
                 }
+                if (failed) {
+                    onFailure.run();
+                }
             }
-        }, new IntentFilter(INSTALL_ACTION));
+        };
+        IntentFilter filter = new IntentFilter(INSTALL_ACTION);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            context.registerReceiver(receiver, filter);
+        }
 
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             flags |= PendingIntent.FLAG_MUTABLE;
         }
-        return PendingIntent.getBroadcast(context, 0, new Intent(INSTALL_ACTION), flags);
+        Intent intent = new Intent(INSTALL_ACTION).setPackage(context.getPackageName());
+        return PendingIntent.getBroadcast(context, 0, intent, flags);
     }
 
     // ------------------------------------------------------------- utilities

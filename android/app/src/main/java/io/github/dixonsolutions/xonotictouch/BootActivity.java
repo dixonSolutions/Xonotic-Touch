@@ -101,7 +101,8 @@ public final class BootActivity extends Activity {
         detail.setText("");
         worker = new Thread(() -> {
             try {
-                if (!updater.install(update, this::report)) {
+                if (!updater.install(update, this::report,
+                        () -> ui.post(() -> continueToGame(data)))) {
                     // Waiting on the "install unknown apps" toggle; the settings
                     // screen is up, so let the player back out into the game.
                     ui.post(() -> continueToGame(data));
