@@ -51,6 +51,24 @@ at it turned up a handful of things:
   `mode`, which went `const` since that branch was last built. Cast, as the
   `WIN32` path beside it already does.
 
+Three more only showed up on a device, each of which alone stopped the game
+reaching its menu:
+
+* **No directory listing worked at all.** `listdirectory()` decides between the
+  real filesystem and APK-asset emulation with `basepath[0] != '/'`, but
+  `FS_AddGameDirectory` passes the whole directory as `path` and leaves
+  `basepath` empty — and `""` fails that test exactly as a relative name does.
+  Every listing went down the asset path, looked for an `ls.txt` that does not
+  exist, and returned nothing, so **no `.pk3` in a writable gamedir was ever
+  found**. The test now uses the composed path.
+* **The engine did not know it was Xonotic.** darkplaces picks its game from
+  `argv[0]`, which SDL sets to `app_process`, so it started as plain Quake
+  looking for `id1/`. `XonoticActivity` passes `-xonotic` explicitly.
+* **The session lock is unobtainable, not contended.** `Host_LockSession` calls
+  `FS_SysOpen(p, "wl", ...)`, and under `USE_RWOPS` a locked open *always*
+  returns invalid. Treating that as fatal meant the game could never start, so
+  on that path it warns instead.
+
 The touch HUD needs nothing special: it is the same `touch_ui.c` /
 `DP_MOBILETOUCH` path the Ubuntu Touch build uses.
 
@@ -91,9 +109,13 @@ during `FS_Init` and would not see anything Java staged afterwards.
 1. Unpack `assets/xonotic-slim-data.zip` — game logic, configs, and the menu skin
    the download screen itself needs. Re-runs after an app update so new progs
    never sit beside old ones.
-2. Fetch `Xonotic-latest.zip`, `-mappingsupport` and `-high` from the Xonotic
-   autobuild server and extract their `.pk3` payloads. Same source, same
-   archives, as `scripts/fetch-assets-posix.sh` uses on Ubuntu Touch. About 1 GB.
+2. Fetch `Xonotic-latest.zip` from the Xonotic autobuild server and extract its
+   `.pk3` payloads — about 1.16 GB. That one archive already carries data, maps,
+   music and fonts; the `-mappingsupport` and `-high` builds that
+   `scripts/fetch-assets-posix.sh` also pulls on Ubuntu Touch duplicate it, for
+   1.6 GB of download and no new files. It is extracted straight off the socket
+   rather than staged, so it needs no temporary space and a failure costs only a
+   retry.
 3. Start `XonoticActivity`.
 
 ## Updating
@@ -132,6 +154,18 @@ Android keeps the app's storage as-is, and:
 This depends on both builds being signed with the same key. Android refuses an
 update whose signature changed, and the only way out of that is uninstalling,
 which takes the data with it. See **Signing** below.
+
+## Debugging on a device
+
+A phone has no launcher command line, so `XonoticActivity` appends anything in
+`<basedir>/xonotic.args` to the engine's arguments — whitespace separated, `#`
+for comments. `-developer` routes the engine's console to logcat (tagged
+`app_process`, because that is SDL's `argv[0]`), and `-condebug` writes
+`<basedir>/userdata/data/qconsole.log`, which `adb shell cat` can read whole:
+
+```bash
+adb shell "echo '-xonotic -condebug' > /storage/emulated/0/Android/data/io.github.dixonsolutions.xonotictouch/files/xonotic.args"
+```
 
 ## Known gaps
 

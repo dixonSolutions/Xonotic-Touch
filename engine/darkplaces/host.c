@@ -342,6 +342,13 @@ void Host_LockSession(void)
 		// TODO maybe write the pid into the lockfile, while we are at it? may help server management tools
 		if(!locksession_fh)
 		{
+#ifdef USE_RWOPS
+			// SDL_RWops cannot lock, so FS_SysOpen refuses every "wl" open on
+			// this platform — the lock is not merely contended, it is
+			// unobtainable. Refusing to start over it would mean never
+			// starting at all, and a mobile build runs one instance anyway.
+			Con_Printf(CON_WARN "WARNING: session lock %s could not be acquired: this platform has no file locking. Continuing anyway.\n", p);
+#else
 			if(locksession.integer == 2)
 			{
 				Con_Printf(CON_WARN "WARNING: session lock %s could not be acquired. Please run with -sessionid and an unique session name. Continuing anyway.\n", p);
@@ -350,6 +357,7 @@ void Host_LockSession(void)
 			{
 				Sys_Error("session lock %s could not be acquired. Please run with -sessionid and an unique session name.\n", p);
 			}
+#endif
 		}
 	}
 }

@@ -36,11 +36,16 @@ final class GameData {
     private static final String AUTOBUILD = "https://beta.xonotic.org/autobuild";
     private static final String AUTOBUILD_LOGIN = "xonotic:g-23";
 
-    /** zip name -> the pk3 suffix it satisfies. */
-    private static final String[][] DOWNLOADS = {
-        {"Xonotic-latest.zip", "-data.pk3"},
-        {"Xonotic-latest-mappingsupport.zip", "-maps.pk3"},
-        {"Xonotic-latest-high.zip", "-music.pk3"},
+    /**
+     * One archive covers everything. Xonotic-latest.zip ships the data, maps,
+     * music, nexcompat and font pk3s together; the -mappingsupport and -high
+     * builds duplicate them, which is 1.6 GB of download for no new files.
+     */
+    private static final String ASSET_ARCHIVE = "Xonotic-latest.zip";
+
+    /** The pk3s that have to be on disk before the game is playable. */
+    private static final String[] REQUIRED_PK3S = {
+        "-data.pk3", "-maps.pk3", "-music.pk3",
     };
 
     interface Progress {
@@ -107,33 +112,24 @@ final class GameData {
             throw new IOException("Cannot create " + data);
         }
 
-        String status = context.getString(R.string.boot_downloading);
-        for (String[] download : DOWNLOADS) {
-            if (hasPk3(data, download[1])) {
-                continue;
-            }
-            File zip = new File(context.getCacheDir(), download[0]);
-            try {
-                fetch(AUTOBUILD + "/" + download[0], zip, progress, status, download[0]);
-                progress.update(status, "Installing " + download[0], -1);
-                try (InputStream raw = new FileInputStream(zip)) {
-                    // The archive nests everything under Xonotic/; only the pk3
-                    // payloads matter, and they belong in <basedir>/data.
-                    unzip(new ZipInputStream(raw), data, "Xonotic/data/", progress, status);
-                }
-            } finally {
-                // Never leave a partial archive behind: the next launch would
-                // treat a truncated file as a complete one.
-                if (!zip.delete() && zip.exists()) {
-                    Log.w(TAG, "Could not delete " + zip);
-                }
+        boolean complete = true;
+        for (String suffix : REQUIRED_PK3S) {
+            if (!hasPk3(data, suffix)) {
+                complete = false;
+                break;
             }
         }
-    }
+        if (complete) {
+            return;
+        }
 
-    private void fetch(String url, File target, Progress progress, String status, String name)
-            throws IOException {
-        HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+        String status = context.getString(R.string.boot_downloading);
+        Log.i(TAG, "Fetching " + ASSET_ARCHIVE);
+        // Extract as it arrives instead of staging the archive first: the zip is
+        // over a gigabyte, and a copy in the cache directory both doubles the
+        // space needed and invites Android to evict it mid-download.
+        HttpURLConnection connection =
+                (HttpURLConnection) new URL(AUTOBUILD + "/" + ASSET_ARCHIVE).openConnection();
         try {
             connection.setRequestProperty("Authorization", autobuildAuthHeader());
             connection.setConnectTimeout(30_000);
@@ -142,29 +138,67 @@ final class GameData {
 
             int code = connection.getResponseCode();
             if (code != HttpURLConnection.HTTP_OK) {
-                throw new IOException("HTTP " + code + " for " + url);
+                throw new IOException("HTTP " + code + " for " + ASSET_ARCHIVE);
             }
-            long total = connection.getContentLength();
 
-            try (InputStream in = connection.getInputStream();
-                 OutputStream out = new FileOutputStream(target)) {
-                byte[] buffer = new byte[64 * 1024];
-                long done = 0;
-                long lastReport = 0;
-                int read;
-                while ((read = in.read(buffer)) > 0) {
-                    out.write(buffer, 0, read);
-                    done += read;
-                    // One UI post per megabyte; per-chunk posts flood the looper.
-                    if (done - lastReport >= 1024 * 1024) {
-                        lastReport = done;
-                        progress.update(status, name + " — " + (done >> 20) + " MB",
-                                total > 0 ? (int) (done * 100 / total) : -1);
-                    }
-                }
+            try (InputStream raw = new ProgressStream(connection.getInputStream(),
+                    connection.getContentLength(), progress, status)) {
+                // Everything nests under Xonotic/; only the pk3 payloads matter,
+                // and they belong in <basedir>/data.
+                unzip(new ZipInputStream(raw), data, "Xonotic/data/", progress, status);
             }
         } finally {
             connection.disconnect();
+        }
+
+        for (String suffix : REQUIRED_PK3S) {
+            if (!hasPk3(data, suffix)) {
+                throw new IOException(ASSET_ARCHIVE + " did not yield a *" + suffix);
+            }
+        }
+    }
+
+    /** Counts bytes off the wire so the bar tracks the download, not the unzip. */
+    private static final class ProgressStream extends java.io.FilterInputStream {
+        private final long total;
+        private final Progress progress;
+        private final String status;
+        private long done;
+        private long lastReport;
+
+        ProgressStream(InputStream in, long total, Progress progress, String status) {
+            super(in);
+            this.total = total;
+            this.progress = progress;
+            this.status = status;
+        }
+
+        @Override
+        public int read() throws IOException {
+            int b = super.read();
+            if (b >= 0) {
+                advance(1);
+            }
+            return b;
+        }
+
+        @Override
+        public int read(byte[] buffer, int offset, int length) throws IOException {
+            int read = super.read(buffer, offset, length);
+            if (read > 0) {
+                advance(read);
+            }
+            return read;
+        }
+
+        private void advance(int count) {
+            done += count;
+            // One UI post per megabyte; per-chunk posts flood the looper.
+            if (done - lastReport >= 1024 * 1024) {
+                lastReport = done;
+                progress.update(status, (done >> 20) + " / " + (total >> 20) + " MB",
+                        total > 0 ? (int) (done * 100 / total) : -1);
+            }
         }
     }
 

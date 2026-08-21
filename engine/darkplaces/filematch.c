@@ -204,7 +204,14 @@ void listdirectory(stringlist_t *list, const char *basepath, const char *path)
 #ifdef __ANDROID__
 	// SDL currently does not support listing assets, so we have to emulate
 	// it. We're using relative paths for assets, so that will do.
-	if (basepath[0] != '/')
+	//
+	// Test the composed path, not basepath: FS_AddGameDirectory passes the
+	// whole directory as `path` with an empty basepath, and "" fails a
+	// `basepath[0] != '/'` check just as surely as a relative name does. That
+	// sent every real filesystem listing down the asset path, where it looked
+	// for an ls.txt that does not exist and returned nothing — so no .pk3 in
+	// any user-writable gamedir was ever found.
+	if (fullpath[0] != '/')
 	{
 		char listpath[MAX_OSPATH];
 		qfile_t *listfile;
