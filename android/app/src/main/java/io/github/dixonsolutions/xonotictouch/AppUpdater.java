@@ -50,6 +50,16 @@ final class AppUpdater {
     private static final String INSTALL_ACTION =
         "io.github.dixonsolutions.xonotictouch.INSTALL_STATUS";
 
+    private static final class InstallStatusIntent {
+        final PendingIntent pendingIntent;
+        final BroadcastReceiver receiver;
+
+        InstallStatusIntent(PendingIntent pendingIntent, BroadcastReceiver receiver) {
+            this.pendingIntent = pendingIntent;
+            this.receiver = receiver;
+        }
+    }
+
     /** A release newer than what is installed, with the asset for this device. */
     static final class Update {
         final String version;
@@ -153,6 +163,7 @@ final class AppUpdater {
 
         int sessionId = installer.createSession(params);
         boolean committed = false;
+        InstallStatusIntent statusIntent = null;
         try (PackageInstaller.Session session = installer.openSession(sessionId)) {
             HttpURLConnection connection = (HttpURLConnection) new URL(update.url).openConnection();
             connection.setConnectTimeout(30_000);
@@ -189,10 +200,14 @@ final class AppUpdater {
                 connection.disconnect();
             }
 
-            session.commit(installStatusIntent(onFailure).getIntentSender());
+            statusIntent = installStatusIntent(onFailure);
+            session.commit(statusIntent.pendingIntent.getIntentSender());
             committed = true;
         } catch (IOException | RuntimeException e) {
             if (!committed) {
+                if (statusIntent != null) {
+                    unregisterInstallReceiver(statusIntent.receiver);
+                }
                 try {
                     installer.abandonSession(sessionId);
                 } catch (RuntimeException abandonError) {
@@ -227,7 +242,7 @@ final class AppUpdater {
      * STATUS_PENDING_USER_ACTION, which carries the system's confirm dialog for
      * us to launch — without that the session sits there and nothing happens.
      */
-    private PendingIntent installStatusIntent(Runnable onFailure) {
+    private InstallStatusIntent installStatusIntent(Runnable onFailure) {
         BroadcastReceiver receiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context ctx, Intent intent) {
@@ -244,40 +259,46 @@ final class AppUpdater {
                             Log.w(TAG, "Could not open install confirmation", e);
                         }
                     }
-                    finish(ctx, true);
+                    finish(true);
                     return;
                 }
                 if (status != PackageInstaller.STATUS_SUCCESS) {
                     Log.w(TAG, "Install failed (" + status + "): "
                             + intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE));
                 }
-                finish(ctx, status != PackageInstaller.STATUS_SUCCESS);
+                finish(status != PackageInstaller.STATUS_SUCCESS);
             }
 
-            private void finish(Context ctx, boolean failed) {
-                try {
-                    ctx.unregisterReceiver(this);
-                } catch (IllegalArgumentException ignored) {
-                    // Already gone; the process may be restarting for the upgrade.
-                }
+            private void finish(boolean failed) {
+                unregisterInstallReceiver(this);
                 if (failed) {
                     onFailure.run();
                 }
             }
         };
-        IntentFilter filter = new IntentFilter(INSTALL_ACTION);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED);
-        } else {
-            context.registerReceiver(receiver, filter);
-        }
 
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             flags |= PendingIntent.FLAG_MUTABLE;
         }
         Intent intent = new Intent(INSTALL_ACTION).setPackage(context.getPackageName());
-        return PendingIntent.getBroadcast(context, 0, intent, flags);
+        PendingIntent pendingIntent = PendingIntent.getBroadcast(context, 0, intent, flags);
+
+        IntentFilter filter = new IntentFilter(INSTALL_ACTION);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            context.registerReceiver(receiver, filter);
+        }
+        return new InstallStatusIntent(pendingIntent, receiver);
+    }
+
+    private void unregisterInstallReceiver(BroadcastReceiver receiver) {
+        try {
+            context.unregisterReceiver(receiver);
+        } catch (IllegalArgumentException ignored) {
+            // Already gone; the process may be restarting for the upgrade.
+        }
     }
 
     // ------------------------------------------------------------- utilities
