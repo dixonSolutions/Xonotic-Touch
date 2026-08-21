@@ -1,6 +1,7 @@
 package io.github.dixonsolutions.xonotictouch;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
@@ -61,6 +62,61 @@ public final class BootActivity extends Activity {
         progress.setIndeterminate(true);
 
         GameData data = new GameData(this);
+        worker = new Thread(() -> {
+            // Ask about a new build before unpacking anything: an update
+            // replaces the payload we would otherwise be extracting.
+            AppUpdater.Update update = new AppUpdater(this).findUpdate();
+            if (update != null) {
+                ui.post(() -> offerUpdate(update, data));
+            } else {
+                ui.post(() -> continueToGame(data));
+            }
+        }, "xonotic-update-check");
+        worker.start();
+    }
+
+    /**
+     * Android confirms every package install itself, so this only decides
+     * whether to hand the installer an APK — it can never update behind the
+     * player's back, and declining drops straight into the game.
+     */
+    private void offerUpdate(AppUpdater.Update update, GameData data) {
+        AppUpdater updater = new AppUpdater(this);
+        new AlertDialog.Builder(this)
+            .setTitle(getString(R.string.update_title, update.version))
+            .setMessage(getString(R.string.update_message, updater.installedVersion()))
+            .setPositiveButton(R.string.update_install, (d, which) -> installUpdate(updater, update, data))
+            .setNegativeButton(R.string.update_later, (d, which) -> continueToGame(data))
+            .setNeutralButton(R.string.update_skip, (d, which) -> {
+                updater.skip(update);
+                continueToGame(data);
+            })
+            .setOnCancelListener(d -> continueToGame(data))
+            .show();
+    }
+
+    private void installUpdate(AppUpdater updater, AppUpdater.Update update, GameData data) {
+        progress.setIndeterminate(true);
+        status.setText(R.string.update_downloading);
+        detail.setText("");
+        worker = new Thread(() -> {
+            try {
+                if (!updater.install(update, this::report)) {
+                    // Waiting on the "install unknown apps" toggle; the settings
+                    // screen is up, so let the player back out into the game.
+                    ui.post(() -> continueToGame(data));
+                }
+                // On success the system takes over and restarts us as the new
+                // build, so there is nothing left to do here.
+            } catch (IOException | RuntimeException e) {
+                Log.w(TAG, "Update install failed", e);
+                ui.post(() -> continueToGame(data));
+            }
+        }, "xonotic-update");
+        worker.start();
+    }
+
+    private void continueToGame(GameData data) {
         worker = new Thread(() -> {
             try {
                 data.prepare(this::report);
