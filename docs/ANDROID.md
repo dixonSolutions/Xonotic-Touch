@@ -96,6 +96,43 @@ during `FS_Init` and would not see anything Java staged afterwards.
    archives, as `scripts/fetch-assets-posix.sh` uses on Ubuntu Touch. About 1 GB.
 3. Start `XonoticActivity`.
 
+## Updating
+
+A sideloaded app has no store behind it, so it watches its own release feed.
+`BootActivity` asks GitHub for the latest release before unpacking anything —
+an update would replace the payload it was about to extract — and offers it:
+
+* **Update** streams the ABI-matching APK straight into a `PackageInstaller`
+  session and hands it to the system.
+* **Not now** goes straight into the game and asks again next launch.
+* **Skip this version** suppresses that one release.
+
+Android confirms every package install itself, so the app cannot update behind
+the player's back, and there is no path where a failed or slow check keeps
+anyone out of the game — any error just falls through to launching.
+
+`scripts/android-verify-update-feed.sh` runs after each release and fails the
+build if the release could not drive an update. The updater finds its download
+by tag shape (`vX.Y.Z`) and asset filename (must contain the ABI), and both are
+conventions rather than contracts: renaming the APKs would strand every install
+on its current build with no error anywhere.
+
+### What survives an update
+
+Everything the player has. An update is an ordinary same-signature upgrade, so
+Android keeps the app's storage as-is, and:
+
+* saved configs and keybinds live in `<basedir>/userdata`, which the update
+  path never touches;
+* downloaded maps, textures and music are `.pk3` files in `<basedir>/data` and
+  are not re-fetched;
+* the bundled slim payload is re-extracted on a version change — it overwrites
+  its own files and deletes nothing else.
+
+This depends on both builds being signed with the same key. Android refuses an
+update whose signature changed, and the only way out of that is uninstalling,
+which takes the data with it. See **Signing** below.
+
 ## Known gaps
 
 * **libcurl is absent**, so in-game map downloads and the update check are
@@ -114,10 +151,15 @@ CI signs release APKs with a repository keystore when one is configured:
 | `ANDROID_KEYSTORE_PASSWORD` | store *and* key password |
 | `ANDROID_KEY_ALIAS` | key alias |
 
-Without them the build still succeeds, but `scripts/android-build.sh` generates a
-throwaway key. **APKs signed with a throwaway key cannot upgrade an existing
-install** — Android refuses an update whose signature changed. Set the secrets
-before pointing anyone at the download.
+Both repositories are signed with the **same** key, so one keystore covers every
+Android build here. That is fine — a signing key is not tied to a package name —
+and it means one backup to keep rather than two.
+
+Without those secrets the build still succeeds, but `scripts/android-build.sh`
+generates a throwaway key. **APKs signed with a throwaway key cannot upgrade an
+existing install**, which also breaks in-app updates: Android refuses an update
+whose signature changed, and uninstalling to get around it takes the player's
+data with it.
 
 ```bash
 keytool -genkeypair -v -keystore release.keystore -alias xonotictouch \

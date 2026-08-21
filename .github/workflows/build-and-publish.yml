@@ -300,6 +300,13 @@ jobs:
           make_latest: true
           target_commitish: ${{ github.sha }}
 
+      # The shipped app finds its update by tag shape and asset filename. Both
+      # are conventions, and breaking either strands every install silently.
+      - name: Verify the release can drive in-app updates
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/android-verify-update-feed.sh
+
   # Upload arm64 + armhf revisions to OpenStore (requires OPENSTORE_API_KEY).
   openstore:
     name: OpenStore

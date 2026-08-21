@@ -831,9 +831,12 @@ extern void (GLAPIENTRY *qglViewport)(GLint x, GLint y, GLsizei width, GLsizei h
 #define qglCreateProgram glCreateProgram
 #define qglCreateShader glCreateShader
 #define qglCullFace glCullFace
-#define qglDebugMessageCallbackARB glDebugMessageCallbackARB
-#define qglDebugMessageControlARB glDebugMessageControlARB
-#define qglDebugMessageInsertARB glDebugMessageInsertARB
+// ES has no ARB_debug_output entry points to alias, and gl_backend.c reaches
+// for these behind a vid.support flag that is always false here. Swallow the
+// calls; the cast keeps the callback referenced so it does not warn as unused.
+#define qglDebugMessageCallbackARB(callback, userParam) ((void)(callback))
+#define qglDebugMessageControlARB(source, type, severity, count, ids, enabled) ((void)0)
+#define qglDebugMessageInsertARB(source, type, id, severity, length, buf) ((void)0)
 #define qglDeleteBuffers glDeleteBuffers
 #define qglDeleteFramebuffers glDeleteFramebuffers
 #define qglDeleteProgram glDeleteProgram
@@ -1027,10 +1030,6 @@ extern void (GLAPIENTRY *qglViewport)(GLint x, GLint y, GLsizei width, GLsizei h
 #define GL_DEBUG_SEVERITY_HIGH_ARB              0x9146
 #define GL_DEBUG_SEVERITY_MEDIUM_ARB            0x9147
 #define GL_DEBUG_SEVERITY_LOW_ARB               0x9148
-// No ES entry points to bind these to, so swallow the calls. The cast keeps the
-// callback referenced, otherwise it warns as unused.
-#define qglDebugMessageControlARB(source, type, severity, count, ids, enabled) ((void)0)
-#define qglDebugMessageCallbackARB(callback, userParam) ((void)(callback))
 #endif //USE_GLES2
 
 #define GL_COLOR_ATTACHMENT0                0x8CE0

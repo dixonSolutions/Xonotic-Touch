@@ -10,6 +10,9 @@
          are pulled from the Xonotic autobuild server on first launch. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Sideloaded builds have no store to update them, so the app offers its
+         own release feed on launch. Android still confirms every install. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:allowBackup="false"
