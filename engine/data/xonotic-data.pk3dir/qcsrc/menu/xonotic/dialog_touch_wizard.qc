@@ -13,7 +13,12 @@ bool XonoticTouchSetupDialog_shouldShow()
 void TouchSetup_Finish_Click(entity btn, entity me)
 {
 	TouchMenu_WriteLayoutFile("touch.layout.cfg");
-	cvar_set("touch_setup_done", "1");
+	// seta, not cvar_set: touch_setup_done is registered by the client VM in
+	// touch_init.qc, which has not loaded while the menu is up, so cvar_set
+	// found nothing and the wizard reopened on every launch. seta creates the
+	// cvar and archives it, the same way dialog_firstrun.qc sets
+	// touch_profile_done.
+	localcmd("seta touch_setup_done 1\n");
 	localcmd("saveconfig\n");
 	Dialog_Close(btn, me);
 }

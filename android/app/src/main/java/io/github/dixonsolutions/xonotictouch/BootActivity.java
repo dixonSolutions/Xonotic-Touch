@@ -62,17 +62,21 @@ public final class BootActivity extends Activity {
         progress.setIndeterminate(true);
 
         GameData data = new GameData(this);
-        worker = new Thread(() -> {
-            // Ask about a new build before unpacking anything: an update
-            // replaces the payload we would otherwise be extracting.
-            AppUpdater.Update update = new AppUpdater(this).findUpdate();
-            if (update != null) {
-                ui.post(() -> offerUpdate(update, data));
-            } else {
-                ui.post(() -> continueToGame(data));
-            }
-        }, "xonotic-update-check");
-        worker.start();
+        AppUpdater updater = new AppUpdater(this);
+
+        // Look for a newer build without holding up the boot. The answer lands
+        // in preferences and is offered on the next launch, so the network is
+        // never between the player and the game.
+        updater.checkInBackground();
+
+        // Still ask before unpacking anything: an update replaces the payload
+        // we would otherwise be extracting. This is only a preferences read.
+        AppUpdater.Update update = updater.pendingUpdate();
+        if (update != null) {
+            offerUpdate(update, data);
+        } else {
+            continueToGame(data);
+        }
     }
 
     /**

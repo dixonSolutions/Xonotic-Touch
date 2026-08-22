@@ -805,9 +805,12 @@ void GL_Setup(void)
 	qglGetIntegerv(GL_MAX_TEXTURE_SIZE, (GLint*)&vid.maxtexturesize_2d);
 	CHECKGLERROR
 #ifdef GL_MAX_CUBE_MAP_TEXTURE_SIZE
-#ifdef USE_GLES2
-	if (GL_CheckExtension("GL_ARB_texture_cube_map", "-nocubemap", false))
-#endif
+	// Cube maps are core in both GL 3.2 and GLES2, so query the limit directly.
+	// This used to be gated on GL_ARB_texture_cube_map under GLES2, but that is a
+	// desktop-only extension string which Mali and Adreno never advertise, so the
+	// query was skipped and maxtexturesize_cubemap stayed 0. A 0 limit makes
+	// GL_Texture_CalcImageSize() clamp every skybox to 1x1 and R_UploadFullTexture()
+	// then aborts on its non-2D stretch guard as soon as a map loads.
 	{
 		qglGetIntegerv(GL_MAX_CUBE_MAP_TEXTURE_SIZE, (GLint*)&vid.maxtexturesize_cubemap);
 		Con_DPrintf("GL_MAX_CUBE_MAP_TEXTURE_SIZE = %i\n", vid.maxtexturesize_cubemap);

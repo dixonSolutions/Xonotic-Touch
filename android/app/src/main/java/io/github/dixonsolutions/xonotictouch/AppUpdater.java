@@ -46,6 +46,9 @@ final class AppUpdater {
     private static final String PREFS = "updates";
     private static final String PREF_ENABLED = "check_on_launch";
     private static final String PREF_SKIPPED_TAG = "skipped_tag";
+    private static final String PREF_PENDING_TAG = "pending_tag";
+    private static final String PREF_PENDING_URL = "pending_url";
+    private static final String PREF_PENDING_SIZE = "pending_size";
 
     private static final String INSTALL_ACTION =
         "io.github.dixonsolutions.xonotictouch.INSTALL_STATUS";
@@ -81,6 +84,58 @@ final class AppUpdater {
 
     void skip(Update update) {
         prefs(context).edit().putString(PREF_SKIPPED_TAG, update.version).apply();
+    }
+
+    /**
+     * Runs {@link #findUpdate()} on a detached thread and caches what it finds
+     * for the next launch.
+     *
+     * Boot must not wait on the network. This used to run inline, so every
+     * launch blocked on api.github.com and then lost the answer anyway when
+     * BootActivity's onDestroy() interrupted the request on the way to the
+     * engine. The thread is deliberately not tied to an activity: if it is cut
+     * short it simply caches nothing and the next launch tries again.
+     */
+    void checkInBackground() {
+        Thread thread = new Thread(() -> rememberPending(findUpdate()), "xonotic-update-check");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private void rememberPending(Update update) {
+        SharedPreferences.Editor edit = prefs(context).edit();
+        if (update == null) {
+            edit.remove(PREF_PENDING_TAG).remove(PREF_PENDING_URL).remove(PREF_PENDING_SIZE);
+        } else {
+            edit.putString(PREF_PENDING_TAG, update.version)
+                .putString(PREF_PENDING_URL, update.url)
+                .putLong(PREF_PENDING_SIZE, update.size);
+        }
+        edit.apply();
+    }
+
+    /**
+     * @return the update a previous background check found, or null. Only reads
+     *         preferences, so it is safe on the boot path. The version and skip
+     *         list are re-checked here because either may have moved since the
+     *         cache was written — notably when that very update got installed.
+     */
+    Update pendingUpdate() {
+        if (!isEnabled(context)) {
+            return null;
+        }
+        SharedPreferences prefs = prefs(context);
+        String version = prefs.getString(PREF_PENDING_TAG, null);
+        String url = prefs.getString(PREF_PENDING_URL, null);
+        if (version == null || url == null) {
+            return null;
+        }
+        if (compareVersions(version, installedVersion()) <= 0
+                || version.equals(prefs.getString(PREF_SKIPPED_TAG, null))) {
+            rememberPending(null);
+            return null;
+        }
+        return new Update(version, url, prefs.getLong(PREF_PENDING_SIZE, -1));
     }
 
     /**
