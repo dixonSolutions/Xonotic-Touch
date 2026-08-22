@@ -12,3 +12,6 @@ void Touch_Chat_Capture(string msg);
 // name the on-screen control instead in a touch session. Returns "" when the
 // touch layer has nothing on screen for that command.
 string Touch_CommandLabel(string command);
+// True while a touch sheet is modal and owns the screen (edit mode, chat). Stock
+// panels that keep drawing underneath print straight through it.
+bool Touch_OwnsScreen(void);

@@ -98,6 +98,15 @@ bool Touch_Active(void)
 	return autocvar__menu_alpha < 1;
 }
 
+// Edit mode and the chat sheet are modal: they dim or cover the scene and nothing
+// underneath is reachable. Stock panels do not know that and keep drawing, so the
+// death scoreboard printed its whole table across the drag handles. Asked by the
+// panels that would otherwise compete.
+bool Touch_OwnsScreen(void)
+{
+	return Touch_CustomizeActive() || Touch_Chat_Active();
+}
+
 // Stock panels build their prompts out of key binds — "You are dead, press SPACE to
 // respawn", "Press primary fire to spectate" — which on a touch-only device names a
 // key the player has no way to press. Where the touch layer puts that command on

@@ -562,6 +562,13 @@ xonotic_run_native() {
     xonotic_stage_touch_runtime
     xonotic_write_screen_layout
 
+    local touch_mode
+    case "${XONOTIC_TOUCH_MODE:-auto}" in
+        always|2) touch_mode=2 ;;
+        off|0)    touch_mode=0 ;;
+        *)        touch_mode=1 ;;
+    esac
+
     XONOTIC_ASSET_FETCH_PID=""
     xonotic_touch_begin_asset_fetch
 
@@ -598,7 +605,8 @@ xonotic_run_native() {
             +set _touch_asset_fetch_active "${XONOTIC_TOUCH_ASSET_FETCH_ACTIVE:-0}" \
             +set _touch_assets_ready "${XONOTIC_TOUCH_ASSETS_READY:-0}" \
             +vid_fullscreen "$fullscreen" \
-            +vid_touchscreen 1 \
+            +vid_touchscreen_mode "$touch_mode" \
+            +vid_touchscreen_touchonly 1 \
             +cl_movement 1 \
             +con_closeontoggle 1 \
             +developer 0 \

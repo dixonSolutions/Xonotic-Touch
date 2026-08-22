@@ -804,6 +804,22 @@ mkdir -p "${DATA_DIR}/touch/profiles" 2>/dev/null || true
     fi
 } > "$STARTUP_CFG" || xonotic_log "cannot write $STARTUP_CFG"
 
+# Touch controls: auto-detect by default. Desktop test windows have no
+# touchscreen, so they force Always unless XONOTIC_TOUCH_MODE is set.
+# Values: auto | always | off
+if [ -z "${XONOTIC_TOUCH_MODE:-}" ]; then
+    if [ "${IS_DESKTOP:-0}" = "1" ]; then
+        XONOTIC_TOUCH_MODE=always
+    else
+        XONOTIC_TOUCH_MODE=auto
+    fi
+fi
+case "$XONOTIC_TOUCH_MODE" in
+    always|2) VID_TOUCHSCREEN_MODE=2 ;;
+    off|0)    VID_TOUCHSCREEN_MODE=0 ;;
+    *)        VID_TOUCHSCREEN_MODE=1 ;;
+esac
+
 # The engine resolves -xonotic gamedirs relative to the cwd.
 cd "$USER_BASE" 2>/dev/null || xonotic_log "cannot enter $USER_BASE — engine may not find game data"
 
@@ -821,7 +837,8 @@ run_engine() {
         +set _touch_asset_fetch_active "$ASSET_FETCH_ACTIVE" \
         +set _touch_assets_ready "$TOUCH_ASSETS_READY" \
         +vid_fullscreen "$FULLSCREEN" \
-        +vid_touchscreen 1 \
+        +vid_touchscreen_mode "$VID_TOUCHSCREEN_MODE" \
+        +vid_touchscreen_touchonly 1 \
         +vid_conwidthauto 1 \
         +vid_conheight "$XONOTIC_VID_HEIGHT" \
         +vid_width "$XONOTIC_VID_WIDTH" \
