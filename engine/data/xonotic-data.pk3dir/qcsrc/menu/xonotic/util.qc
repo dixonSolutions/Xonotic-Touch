@@ -623,8 +623,14 @@ void updateCompression()
 		cvar_set("r_texture_dds_load", "1");
 		if(!can_dds)
 		{
-			cvar_set("r_texture_dds_swdecode", "1");
-			LOG_WARN(_("^1ERROR: Texture compression is required but not supported.\n^1Expect visual problems."));
+			// Xonotic Touch: DarkPlaces' software DDS decode renders black on the
+			// GL ES parts we ship to (Mali reports no S3TC), which left every map
+			// an unlit void while geometry, collision and the HUD were all fine.
+			// Load the uncompressed originals instead -- the data set has them for
+			// everything except a few particle sheets, which simply go missing.
+			cvar_set("r_texture_dds_load", "0");
+			cvar_set("r_texture_dds_swdecode", "0");
+			LOG_WARN(_("^1Texture compression is not supported: loading uncompressed textures instead."));
 		}
 	}
 	else
