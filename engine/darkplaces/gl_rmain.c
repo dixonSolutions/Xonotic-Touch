@@ -1369,7 +1369,13 @@ static void R_SetupShader_SetPermutationGLSL(unsigned int mode, uint64_t permuta
 					permutation -= j;
 					r_glsl_permutation = R_GLSL_FindPermutation(mode, permutation);
 					if (!r_glsl_permutation->compiled)
-						R_GLSL_CompilePermutation(perm, mode, permutation);
+						// compile into the reduced permutation we just looked up, not
+						// into perm: perm is the one that already failed, so building
+						// there left r_glsl_permutation->program at 0 and this loop
+						// stripped every bit before giving up with no shader bound.
+						// Desktop GL compiles everything so it never showed; on GLES2,
+						// where the DIFFUSE permutations fail, it renders the world black.
+						R_GLSL_CompilePermutation(r_glsl_permutation, mode, permutation);
 					if (r_glsl_permutation->program)
 						break;
 				}
