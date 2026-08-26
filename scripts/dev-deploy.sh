@@ -187,20 +187,15 @@ if [ "$DO_RESTART" = 1 ]; then
     # setsid detaches from the ssh session: without it the game is killed as
     # soon as this connection closes. `pgrep -x` avoids matching our own
     # command line, which contains the pattern.
-    # The tray relaunches the engine when it sees it exit, which races our own
-    # launch and loses the "session lock" fight, so stop the tray first and boot
-    # without one. Killing the engine also strands two locks: the launcher's
-    # instance.lock (start.sh then hands off to the tray instead of booting) and
-    # DarkPlaces' ~/.xonotic/lock (aborts the new process with an error box).
+    # Killing the engine strands two locks: the launcher's instance.lock (start.sh
+    # then reports "already running" instead of booting) and DarkPlaces'
+    # ~/.xonotic/lock (aborts the new process with an error box). Clear both.
     run_ssh "export XDG_RUNTIME_DIR=/run/user/\$(id -u); \
              export DBUS_SESSION_BUS_ADDRESS=unix:path=\$XDG_RUNTIME_DIR/bus; \
              export WAYLAND_DISPLAY=wayland-0; \
-             [ -f '$REMOTE_BASE/tray.pid' ] \
-               && kill \"\$(cat '$REMOTE_BASE/tray.pid')\" 2>/dev/null; \
              pkill -x xonotic 2>/dev/null; sleep 2; \
-             rm -f '$REMOTE_BASE/instance.lock' '$REMOTE_BASE/tray.lock' \
-                   '$REMOTE_BASE/tray.pid' \"\$HOME/.xonotic/lock\"; \
-             XONOTIC_TOUCH_NO_TRAY=1 setsid nohup \
+             rm -f '$REMOTE_BASE/instance.lock' \"\$HOME/.xonotic/lock\"; \
+             setsid nohup \
              flatpak run io.github.dixonSolutions.XonoticTouch -condebug \
              >/tmp/xonotic-dev.log 2>&1 </dev/null & \
              sleep ${XT_BOOT_WAIT:-20}; pgrep -x xonotic >/dev/null \
