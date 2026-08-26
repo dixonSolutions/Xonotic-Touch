@@ -219,6 +219,10 @@ void Touch_DefineCvars(void)
 	Touch_RegisterCvar("touch_minimal_more", "0");
 	Touch_RegisterCvar("touch_setup_done", "0");
 	Touch_RegisterCvar("touch_profile_done", "0");
+	// Opt-out, like every other self-updating build here: a player who does
+	// nothing still gets fixes. The platform layer owns the real preference
+	// and mirrors it back through update-status.txt.
+	Touch_RegisterCvar("touch_update_auto", "1");
 	Touch_RegisterCvar("touch_hud_scale", "0.85");
 	Touch_RegisterCvar("touch_performance_profile", "thermal");
 	Touch_RegisterCvar("touch_simple_draw", "0");

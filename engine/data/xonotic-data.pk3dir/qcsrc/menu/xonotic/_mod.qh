@@ -91,6 +91,7 @@
 #include <menu/xonotic/dialog_termsofservice.qh>
 #include <menu/xonotic/dialog_touch_asset_fetch.qh>
 #include <menu/xonotic/dialog_touch_home.qh>
+#include <menu/xonotic/dialog_touch_updates.qh>
 #include <menu/xonotic/dialog_touch_wizard.qh>
 #include <menu/xonotic/dialog_uid2name.qh>
 #include <menu/xonotic/dialog_welcome.qh>
@@ -132,6 +133,7 @@
 #include <menu/xonotic/textslider.qh>
 #include <menu/xonotic/touch_menu_layout.qh>
 #include <menu/xonotic/touch_startup_util.qh>
+#include <menu/xonotic/touch_update_util.qh>
 #include <menu/xonotic/touchbutton.qh>
 #include <menu/xonotic/util.qh>
 #include <menu/xonotic/weaponarenacheckbox.qh>

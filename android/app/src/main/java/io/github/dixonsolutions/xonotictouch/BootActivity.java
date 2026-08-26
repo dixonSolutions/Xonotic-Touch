@@ -63,12 +63,29 @@ public final class BootActivity extends Activity {
 
         GameData data = new GameData(this);
         worker = new Thread(() -> {
+            AppUpdater updater = new AppUpdater(this);
+            UpdateBridge bridge = new UpdateBridge(this, data.baseDir());
+            String installed = updater.installedVersion();
+            // Publish before asking. The engine reads this file to draw its own
+            // version and update screen, and it has to be right even on the
+            // launches where the check finds nothing or never returns.
+            bridge.publishChecking(installed);
+
             // Ask about a new build before unpacking anything: an update
             // replaces the payload we would otherwise be extracting.
-            AppUpdater.Update update = new AppUpdater(this).findUpdate();
+            AppUpdater.Update update = updater.findUpdate();
             if (update != null) {
-                ui.post(() -> offerUpdate(update, data));
+                bridge.publishAvailable(installed, update);
+                // Auto-update is the default, and taking it means not stopping
+                // to ask -- the system installer still confirms, so this is not
+                // an unattended install, just one fewer dialog in front of it.
+                if (AppUpdater.isEnabled(this) && AppUpdater.isAutoInstall(this)) {
+                    ui.post(() -> installUpdate(updater, bridge, update, data));
+                } else {
+                    ui.post(() -> offerUpdate(update, data));
+                }
             } else {
+                bridge.publishUpToDate(installed);
                 ui.post(() -> continueToGame(data));
             }
         }, "xonotic-update-check");
@@ -82,10 +99,11 @@ public final class BootActivity extends Activity {
      */
     private void offerUpdate(AppUpdater.Update update, GameData data) {
         AppUpdater updater = new AppUpdater(this);
+        UpdateBridge bridge = new UpdateBridge(this, data.baseDir());
         new AlertDialog.Builder(this)
             .setTitle(getString(R.string.update_title, update.version))
             .setMessage(getString(R.string.update_message, updater.installedVersion()))
-            .setPositiveButton(R.string.update_install, (d, which) -> installUpdate(updater, update, data))
+            .setPositiveButton(R.string.update_install, (d, which) -> installUpdate(updater, bridge, update, data))
             .setNegativeButton(R.string.update_later, (d, which) -> continueToGame(data))
             .setNeutralButton(R.string.update_skip, (d, which) -> {
                 updater.skip(update);
@@ -95,22 +113,31 @@ public final class BootActivity extends Activity {
             .show();
     }
 
-    private void installUpdate(AppUpdater updater, AppUpdater.Update update, GameData data) {
+    private void installUpdate(AppUpdater updater, UpdateBridge bridge,
+                               AppUpdater.Update update, GameData data) {
         progress.setIndeterminate(true);
         status.setText(R.string.update_downloading);
         detail.setText("");
+        String installed = updater.installedVersion();
         worker = new Thread(() -> {
             try {
-                if (!updater.install(update, this::report,
+                if (!updater.install(update, (text, note, percent) -> {
+                            bridge.publishDownloading(installed, update.version, percent);
+                            report(text, note, percent);
+                        },
                         () -> ui.post(() -> continueToGame(data)))) {
                     // Waiting on the "install unknown apps" toggle; the settings
                     // screen is up, so let the player back out into the game.
+                    bridge.publishNeedsPermission(installed, update.version);
                     ui.post(() -> continueToGame(data));
+                    return;
                 }
+                bridge.publishInstalling(installed, update.version);
                 // On success the system takes over and restarts us as the new
                 // build, so there is nothing left to do here.
             } catch (IOException | RuntimeException e) {
                 Log.w(TAG, "Update install failed", e);
+                bridge.publishError(installed, String.valueOf(e.getMessage()));
                 ui.post(() -> continueToGame(data));
             }
         }, "xonotic-update");

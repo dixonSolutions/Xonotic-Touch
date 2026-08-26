@@ -1,0 +1,80 @@
+#pragma once
+
+// App self-update, seen from the menu.
+//
+// The updater itself is platform code — AppUpdater on Android, the package
+// manager on Linux — and the menu has no way to call either: QuakeC has no JNI
+// and no process control. So the two halves talk through files in the gamedir,
+// the same handshake TouchStartup already uses for the asset downloader, and
+// for the same reason.
+//
+// The platform layer owns update-status.txt and only ever writes it. The menu
+// owns update-request.txt and only ever writes that. Neither reads its own
+// file back, so there is no shared state to race over: the worst a torn read
+// costs is one stale frame, and the dialog re-reads every second anyway.
+
+/** Written by the platform layer. Lines, in order:
+ *
+ *   1  format version, currently 1 — a reader seeing anything else stands down
+ *   2  state, one of the TOUCH_UPDATE_* constants below
+ *   3  installed version, e.g. 1.2.49
+ *   4  latest known version, empty when no check has succeeded yet
+ *   5  versions behind, integer, 0 when current or unknown
+ *   6  percent 0-100, meaningful only while downloading
+ *   7  one-line human-readable status
+ *   8  auto-update preference, "on" or "off"
+ */
+const string TOUCH_UPDATE_STATUS_FILE = "touch/update-status.txt";
+
+/** Written by the menu, consumed and deleted by the platform layer. One token:
+ *  check | install | skip | auto-on | auto-off
+ */
+const string TOUCH_UPDATE_REQUEST_FILE = "touch/update-request.txt";
+
+const float TOUCH_UPDATE_FORMAT = 1;
+
+/** No check has run yet this session. */
+const string TOUCH_UPDATE_IDLE = "idle";
+/** A check is in flight. */
+const string TOUCH_UPDATE_CHECKING = "checking";
+/** Checked, and this is the newest build there is. */
+const string TOUCH_UPDATE_UPTODATE = "uptodate";
+/** A newer release exists and can be installed from here. */
+const string TOUCH_UPDATE_AVAILABLE = "available";
+/** Streaming the new build. */
+const string TOUCH_UPDATE_DOWNLOADING = "downloading";
+/** Handed to the system installer; it owns the screen now. */
+const string TOUCH_UPDATE_INSTALLING = "installing";
+/** Downloaded, but Android will not install until "install unknown apps" is granted. */
+const string TOUCH_UPDATE_NEEDS_PERMISSION = "needs-permission";
+/** The last check or install failed; line 7 says why. */
+const string TOUCH_UPDATE_ERROR = "error";
+/** Flatpak or OpenStore owns updates here — show the version, offer no install. */
+const string TOUCH_UPDATE_MANAGED = "managed";
+
+/** Menu-side cvar the auto-update checkbox binds to; mirrored from line 8. */
+const string TOUCH_UPDATE_AUTO_CVAR = "touch_update_auto";
+
+/** Re-read the status file. Cheap enough to call once a frame-ish; the dialog
+ *  rate-limits it anyway. Safe when the file is absent or half-written.
+ */
+void TouchUpdate_read();
+
+string TouchUpdate_stateName();
+string TouchUpdate_installed();
+string TouchUpdate_latest();
+float TouchUpdate_behind();
+float TouchUpdate_percent();
+string TouchUpdate_message();
+bool TouchUpdate_autoEnabled();
+/** True while the platform layer is working — check, download or install. */
+bool TouchUpdate_busy();
+bool TouchUpdate_request(string token);
+/** True when this build can install an update itself (Android, not Flatpak). */
+bool TouchUpdate_canSelfInstall();
+/** True when a newer build is known to exist. */
+bool TouchUpdate_isBehind();
+/** "Xonotic Touch 1.2.49", or a plain fallback before any status is published. */
+string TouchUpdate_versionLine();
+/** "4 versions behind", "Up to date", "Checking…" — one short line for chrome. */
+string TouchUpdate_shortStatus();

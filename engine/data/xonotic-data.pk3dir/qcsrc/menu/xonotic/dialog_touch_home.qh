@@ -3,6 +3,12 @@
 #include "dialog.qh"
 CLASS(XonoticTouchHomeDialog, XonoticDialog)
 	METHOD(XonoticTouchHomeDialog, fill, void(entity));
+	METHOD(XonoticTouchHomeDialog, draw, void(entity));
+	ATTRIB(XonoticTouchHomeDialog, versionButton, entity);
+	// Owned string: compared against the freshly built caption so setText only
+	// runs when the text actually changed.
+	ATTRIB(XonoticTouchHomeDialog, versionCaption, string, string_null);
+	ATTRIB(XonoticTouchHomeDialog, nextVersionPoll, float, 0);
 	ATTRIB(XonoticTouchHomeDialog, title, string, _("Play"));
 	ATTRIB(XonoticTouchHomeDialog, name, string, "touchhome");
 	ATTRIB(XonoticTouchHomeDialog, tooltip, string, _("Quick play, campaign, multiplayer, and touch controls"));
