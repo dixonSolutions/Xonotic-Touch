@@ -122,6 +122,15 @@ now waits for the lock to actually come free instead of sleeping a fixed 0.5 s
 (the outgoing job runs a TERM trap before its fd closes, and fetchd does not
 retry), and `settle_after_handoff` writes `paused` when nothing took over.
 
+Both halves of that check are load-bearing, and neither is obvious. Its stub
+engine lingers a second and its stub download keeps rewriting progress, because
+stopping a process tree only gets hard once the root has a live child and a
+surviving job only gives itself away by overwriting `paused` afterwards. With an
+instant engine and a download that reports once, the check passes over a handoff
+that killed nothing at all — which is how `kill_process_tree` came to send its
+last TERM to the deepest child (a global clobbered by its own recursion) and go
+unnoticed.
+
 On-device verification after installing a `.click`:
 
 ```bash
