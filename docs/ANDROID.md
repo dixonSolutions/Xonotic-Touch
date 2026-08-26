@@ -162,6 +162,29 @@ by tag shape (`vX.Y.Z`) and asset filename (must contain the ABI), and both are
 conventions rather than contracts: renaming the APKs would strand every install
 on its current build with no error anywhere.
 
+### What the updater will and will not install
+
+The three Touch projects (this one, SuperTuxKart Touch and Potato Tomato) share one
+self-update model, and this is the part of it worth stating out loud: the only
+thing that ever reaches the package installer is an `.apk` release asset served
+by `github.com` for this repository's own path.
+
+`isTrustedApkUrl` enforces that — https, `github.com`, this repo, an `.apk`
+suffix, no `..` — and it is checked twice: once when picking the asset out of
+the release feed, and again in `install()` immediately before the bytes are
+streamed into the `PackageInstaller` session. The second check is not
+redundant. It is the one guarding the actual install, and it does not depend on
+a caller having remembered the first.
+
+The URL already arrives inside a TLS response from `api.github.com`, so this is
+defence in depth rather than the only thing standing in the way. It costs one
+string comparison, and what it guards is an unattended package install.
+
+A session that fails partway is abandoned rather than merely closed: closing
+only drops the handle, and the staged bytes -- a whole partial APK -- would sit
+there until the system reaped them, so a retried download would otherwise cost
+the player storage every time.
+
 ### What survives an update
 
 Everything the player has. An update is an ordinary same-signature upgrade, so

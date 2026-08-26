@@ -40,8 +40,11 @@ final class AppUpdater {
 
     private static final String TAG = "XonoticTouch";
 
+    /** Only release assets of this repo are ever downloaded or installed. */
+    private static final String REPO = "dixonSolutions/Xonotic-Touch";
+
     private static final String RELEASES_URL =
-        "https://api.github.com/repos/dixonSolutions/Xonotic-Touch/releases/latest";
+        "https://api.github.com/repos/" + REPO + "/releases/latest";
 
     private static final String PREFS = "updates";
     private static final String PREF_ENABLED = "check_on_launch";
@@ -115,11 +118,15 @@ final class AppUpdater {
                 for (int i = 0; i < assets.length(); i++) {
                     JSONObject asset = assets.getJSONObject(i);
                     String name = asset.optString("name", "");
-                    if (name.endsWith(".apk") && name.contains(abi)) {
-                        return new Update(version,
-                                asset.getString("browser_download_url"),
-                                asset.optLong("size", -1));
+                    String url = asset.optString("browser_download_url", "");
+                    if (!name.endsWith(".apk") || !name.contains(abi)) {
+                        continue;
                     }
+                    if (!isTrustedApkUrl(url)) {
+                        Log.w(TAG, "Ignoring release asset with an untrusted URL: " + url);
+                        continue;
+                    }
+                    return new Update(version, url, asset.optLong("size", -1));
                 }
             }
             Log.i(TAG, "Release " + version + " has no build for " + Build.SUPPORTED_ABIS[0]);
@@ -139,6 +146,15 @@ final class AppUpdater {
      */
     boolean install(Update update, GameData.Progress progress, Runnable onFailure)
             throws IOException {
+        /*
+         * Checked again at the point of use, not only where the URL was picked.
+         * These bytes go straight into a PackageInstaller session, so this check is
+         * the difference between updating this app and installing an arbitrary APK,
+         * and it is cheap enough to not depend on a caller having done it.
+         */
+        if (!isTrustedApkUrl(update.url)) {
+            throw new IOException("refusing to install an untrusted APK URL");
+        }
         if (!canInstallPackages()) {
             requestInstallPermission();
             return false;
@@ -293,6 +309,22 @@ final class AppUpdater {
         } catch (PackageManager.NameNotFoundException e) {
             return "0";
         }
+    }
+
+    /**
+     * True only for an `.apk` release asset served by GitHub for this repo.
+     *
+     * The URL arrives inside a TLS response from api.github.com, so this is defence
+     * in depth rather than the only thing standing in the way — but what it guards
+     * is an unattended package install, and the cost of the guard is one string
+     * comparison.
+     */
+    static boolean isTrustedApkUrl(String url) {
+        return url != null
+                && url.startsWith("https://github.com/")
+                && url.contains(REPO)
+                && url.endsWith(".apk")
+                && !url.contains("..");
     }
 
     /** Numeric dotted-version compare; non-numeric parts sort as 0. */
