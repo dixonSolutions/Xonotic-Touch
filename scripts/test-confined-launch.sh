@@ -205,6 +205,55 @@ expect_launch 'launches when flock exec is denied' "$CLICK_USER_BASE" \
 expect_posix_fetch 'POSIX downloader runs when no fetchd is packaged (click)' 'no-fetchd'
 expect_posix_fetch 'POSIX downloader runs even when fetchd cannot start (bash absent)' 'with-fetchd'
 
+# Handing an in-flight download to fetchd stops the in-sandbox job first, on the
+# promise that the daemon picks it up. When it does not, the progress file must
+# not be left on a fresh discover/running line: the next launch reads that as a
+# job already running and joins a phantom instead of resuming the partial.
+expect_paused_after_failed_handoff() {
+    local label='failed fetchd handoff pauses instead of faking a live download'
+    local progress="$CLICK_USER_BASE/data/touch/asset-progress.txt"
+
+    rm -rf "$CLICK_USER_BASE"
+
+    # A "download" that just holds touch/fetch.lock and reports progress.
+    cat > "$APP_ROOT/share/xonotic/asset-fetch.sh" <<'EOF'
+xonotic_assets_are_ready() { return 1; }
+xonotic_fetch_game_assets() {
+  printf 'running\n42\nDownloading...\n' > "$XONOTIC_ASSET_FETCH_PROGRESS"
+  sleep 30
+}
+EOF
+    # A fetchd that refuses to come up: exits without writing a pidfile.
+    cat > "$APP_ROOT/share/xonotic/xonotic-touch-fetchd.sh" <<'EOF'
+#!/bin/bash
+exit 1
+EOF
+    chmod 755 "$APP_ROOT/share/xonotic/xonotic-touch-fetchd.sh"
+
+    # Real PATH here: this case needs bash, or the handoff is declined outright.
+    ( cd "$APP_ROOT" && env -i \
+        HOME="$WORK/home" \
+        PATH=/usr/bin:/bin \
+        APP_ID=xonotictouch.dixonsolutions_xonotic_1.2.49 \
+        XDG_DATA_HOME="$WORK/home/.local/share" \
+        UBUNTU_APPLICATION_ISOLATION=1 \
+        /bin/sh -c 'exec bin/start.sh' ) >/dev/null 2>&1 || true
+
+    local status
+    status="$(head -n 1 "$progress" 2>/dev/null || echo MISSING)"
+    if [ "$status" = 'paused' ]; then
+        pass "$label"
+    else
+        fail "$label: progress left as '$status'"
+    fi
+
+    install -m 644 "$ROOT/scripts/lib/asset-fetch.sh" "$APP_ROOT/share/xonotic/asset-fetch.sh"
+    rm -f "$APP_ROOT/share/xonotic/xonotic-touch-fetchd.sh"
+    rm -rf "$CLICK_USER_BASE"
+}
+
+expect_paused_after_failed_handoff
+
 if [ "$FAILURES" -ne 0 ]; then
     printf '%d confined-launch check(s) failed\n' "$FAILURES" >&2
     exit 1

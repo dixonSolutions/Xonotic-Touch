@@ -358,6 +358,49 @@ fetchd_can_start() {
     [ -x "$HELPER_LIB_DIR/xonotic-touch-fetchd.sh" ]
 }
 
+# True while something still holds touch/fetch.lock.
+#
+# fetchd takes that lock with `flock -n` and quits on the spot if it cannot, so
+# a handoff waits for the outgoing job to let go rather than assuming a fixed
+# sleep was long enough -- the outgoing job runs a TERM trap before its fd
+# closes. Reports "free" when flock is unavailable, which is the same platform
+# where fetchd_can_start is already false.
+fetch_lock_is_held() {
+    command -v flock >/dev/null 2>&1 || return 1
+    ! ( flock -n 9 ) 9>"$USER_DATA/touch/fetch.lock" 2>/dev/null
+}
+
+# Stop the in-sandbox download so fetchd can take the lock, then wait for it to
+# actually come free. Sets _hand_off=1 so the caller knows a download was
+# stopped on the promise that something else would pick it up.
+handoff_inflight_fetch() {
+    _hand_off=0
+    [ -n "${ASSET_FETCH_PID:-}" ] || return 0
+    fetchd_is_live && return 0
+    fetchd_can_start || return 0
+    kill_process_tree "$ASSET_FETCH_PID" 2>/dev/null || true
+    ASSET_FETCH_PID=""
+    _hand_off=1
+    _hand_i=0
+    while [ "$_hand_i" -lt 20 ] && fetch_lock_is_held; do
+        sleep 0.1 2>/dev/null || true
+        _hand_i=$((_hand_i + 1))
+    done
+    return 0
+}
+
+# After a handoff, say what actually happened. Leaving the progress file on a
+# fresh discover/running line when nothing picked the download up has the next
+# launch join a job that does not exist -- until the line ages out 90s later.
+# `paused` makes that launch resume the partial instead.
+settle_after_handoff() {
+    if [ "${_hand_off:-0}" = "1" ] && ! fetchd_is_live; then
+        write_fetch_paused
+        return 1
+    fi
+    return 0
+}
+
 ensure_fetchd() {
     [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" = "1" ] && return 0
     fetchd_is_live && return 0
@@ -808,13 +851,13 @@ while :; do
         # Hand off any in-sandbox curl to host fetchd (resume partials). Only
         # when one can actually start: stopping it otherwise just ends the
         # download, which is all a confined click would get out of it.
-        if [ -n "${ASSET_FETCH_PID:-}" ] && fetchd_can_start; then
-            kill_process_tree "$ASSET_FETCH_PID" 2>/dev/null || true
-            ASSET_FETCH_PID=""
-            sleep 0.5 2>/dev/null || true
-        fi
+        handoff_inflight_fetch
         ensure_fetchd || true
-        xonotic_log "download continues in background (notification when done)"
+        if settle_after_handoff; then
+            xonotic_log "download continues in background (notification when done)"
+        else
+            xonotic_log "could not hand off to fetchd; download paused, reopen to resume"
+        fi
         trap - EXIT INT TERM HUP
         exit 0
     fi
@@ -828,13 +871,13 @@ while :; do
         # so without stopping the in-sandbox job first the daemon starts, loses
         # the lock, quits, and the download goes down with the UI -- the wizard's
         # background button already did this handoff, this path did not.
-        if [ -n "${ASSET_FETCH_PID:-}" ] && ! fetchd_is_live && fetchd_can_start; then
-            kill_process_tree "$ASSET_FETCH_PID" 2>/dev/null || true
-            ASSET_FETCH_PID=""
-            sleep 0.5 2>/dev/null || true
-        fi
+        handoff_inflight_fetch
         ensure_fetchd || true
-        xonotic_log "UI closed — download still running in background"
+        if settle_after_handoff; then
+            xonotic_log "UI closed — download still running in background"
+        else
+            xonotic_log "UI closed — could not hand off to fetchd; download paused"
+        fi
         trap - EXIT INT TERM HUP
         exit 0
     fi

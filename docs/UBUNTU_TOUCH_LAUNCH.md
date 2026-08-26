@@ -106,11 +106,21 @@ with bash available and with `XONOTIC_TOUCH_NO_BASH=1` — and asserts that the
 engine starts, receives numeric `vid_*` values, gets the bundled data synced into
 the user data dir, and has the touch profile wired into `touch/startup.cfg`.
 
-Those launch checks all pass `XONOTIC_SKIP_ASSET_FETCH=1`, so two further checks
-cover the downloader itself: with no bash, `fetch-assets-posix.sh` must actually
-be invoked — once with no fetchd packaged (the click layout) and once with one
-present (the Flatpak/desktop layout), because only the second reproduces the
-`ensure_fetchd` false-success above.
+Those launch checks all pass `XONOTIC_SKIP_ASSET_FETCH=1`, so three further
+checks cover the downloader itself. Two assert that with no bash,
+`fetch-assets-posix.sh` is actually invoked — once with no fetchd packaged (the
+click layout) and once with one present (the Flatpak/desktop layout), because
+only the second reproduces the `ensure_fetchd` false-success above.
+
+The third covers the handoff. Stopping the in-sandbox download so fetchd can
+take `touch/fetch.lock` is a promise that something will pick it up, and when
+the daemon does not come up the promise is broken twice over: the download is
+gone, and the progress file still reads `discover`/`running`, which
+`fetch_progress_is_live` takes for a job in flight — so the next launch inside
+90 s joins a phantom rather than resuming the partial. `handoff_inflight_fetch`
+now waits for the lock to actually come free instead of sleeping a fixed 0.5 s
+(the outgoing job runs a TERM trap before its fd closes, and fetchd does not
+retry), and `settle_after_handoff` writes `paused` when nothing took over.
 
 On-device verification after installing a `.click`:
 
