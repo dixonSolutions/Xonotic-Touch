@@ -1841,6 +1841,24 @@ void R_Mesh_Draw(int firstvertex, int numvertices, int firsttriangle, int numtri
 			}
 			else if (bufferobject3i)
 			{
+				/*
+				 * GL_UNSIGNED_INT indices are core in desktop GL but need
+				 * GL_OES_element_index_uint on ES 2.0. Without it this call is
+				 * a GL_INVALID_ENUM that draws nothing, which reads on screen as
+				 * a world that simply is not there. RSurf_PrepareVerticesForBatch
+				 * routes world geometry around this, so anything arriving here is
+				 * a path that did not - worth one line in the log.
+				 */
+				if (!vid.support.element_index_uint)
+				{
+					static qbool warned = false;
+					if (!warned)
+					{
+						warned = true;
+						Con_Print(CON_WARN "R_Mesh_Draw: 32bit indices without GL_OES_element_index_uint - this draw is dropped.\n");
+					}
+					break;
+				}
 				GL_BindEBO(bufferobject3i);
 				qglDrawElements(GL_TRIANGLES, numelements, GL_UNSIGNED_INT, (void *)bufferoffset3i);CHECKGLERROR
 			}

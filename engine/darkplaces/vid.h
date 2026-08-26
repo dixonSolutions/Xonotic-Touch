@@ -49,6 +49,8 @@ typedef struct viddef_support_s
 	qbool ext_texture_filter_anisotropic;
 	qbool ext_texture_srgb;
 	qbool arb_debug_output;
+	/// 32bit (GL_UNSIGNED_INT) draw indices. Core in GL, an extension in GLES2.
+	qbool element_index_uint;
 }
 viddef_support_t;
 

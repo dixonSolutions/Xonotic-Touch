@@ -3408,10 +3408,22 @@ void GL_Main_Init(void)
 	if (gamemode == GAME_NEHAHRA || gamemode == GAME_TENEBRAE)
 		Cvar_SetQuick(&r_fullbrights, "0");
 #ifdef DP_MOBILETOUCH
-	// GLES devices have terrible depth precision in general, so...
+	/*
+	 * GLES devices have poor depth precision, so pull the near plane out and use
+	 * a finite far plane, which distributes depth far better than the infinite
+	 * projection does.
+	 *
+	 * The far plane must still reach the far side of the map. This used to pin
+	 * it at a flat 4096 units with the world term switched off entirely, which
+	 * is fine for the Quake 1 maps that mobile support was written against and
+	 * useless here: Xonotic maps are routinely several times that across, so
+	 * everything past a few rooms away was clipped and the map looked broken
+	 * rather than distant. Keeping r_farclip_world at its default lets the far
+	 * plane scale with the map the way the desktop path already does, and 4096
+	 * of base on top of that is ample headroom.
+	 */
 	Cvar_SetValueQuick(&r_nearclip, 4);
 	Cvar_SetValueQuick(&r_farclip_base, 4096);
-	Cvar_SetValueQuick(&r_farclip_world, 0);
 	Cvar_SetValueQuick(&r_useinfinitefarclip, 0);
 #endif
 	R_RegisterModule("GL_Main", gl_main_start, gl_main_shutdown, gl_main_newmap, NULL, NULL);
@@ -7461,6 +7473,19 @@ void RSurf_PrepareVerticesForBatch(int batchneed, int texturenumsurfaces, const 
 	if (!rsurface.modelvertex3f_vertexbuffer && firstvertex != 0)
 		dynamicvertex = true;
 
+	// GLES2 without GL_OES_element_index_uint cannot draw 32bit indices at all,
+	// and Mod_AllocSurfMesh only builds the 16bit index array for models of
+	// 65536 vertices or fewer. Every Xonotic map is far larger than that, so on
+	// such a device the non-dynamic paths hand glDrawElements a GL_UNSIGNED_INT
+	// it must reject with GL_INVALID_ENUM: the 2D menu (16bit quad indices)
+	// draws, the world does not.
+	//
+	// The dynamic path renumbers each batch from zero, which brings the indices
+	// back inside 16bit range, so take it. It copies vertex arrays every frame
+	// and is measurably slower - but it is the path that draws.
+	if (!vid.support.element_index_uint && !rsurface.modelelement3s)
+		dynamicvertex = true;
+
 	// a cvar to force the dynamic vertex path to be taken, for debugging
 	if (r_batch_debugdynamicvertexpath.integer)
 	{
@@ -7920,6 +7945,18 @@ void RSurf_PrepareVerticesForBatch(int batchneed, int texturenumsurfaces, const 
 			rsurface.batchelement3s = (unsigned short *)R_FrameData_Alloc(batchnumtriangles * sizeof(unsigned short[3]));
 			for (i = 0;i < numtriangles*3;i++)
 				rsurface.batchelement3s[i] = rsurface.batchelement3i[i];
+		}
+		else if (!vid.support.element_index_uint)
+		{
+			// Renumbering was this batch's only route to 16bit indices and it
+			// still does not fit, so this batch cannot be drawn on this device.
+			// Say so once rather than leaving a hole in the world unexplained.
+			static qbool warned = false;
+			if (!warned)
+			{
+				warned = true;
+				Con_Printf(CON_WARN "This GPU has no GL_OES_element_index_uint and a %i vertex batch does not fit 16bit indices - some geometry will not be drawn.\n", numvertices);
+			}
 		}
 
 		// since we've copied everything, the batch now starts at 0
