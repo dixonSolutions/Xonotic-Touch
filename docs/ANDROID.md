@@ -202,6 +202,13 @@ and only writes it; the menu owns `update-request.txt` and only writes that.
 Neither reads its own file back, so there is no shared state to race over — a
 torn read costs one stale second, and the menu re-reads every second anyway.
 
+Both files live in `<basedir>/userdata/data/data/touch/`, which is `-userdir`
+plus the gamedir plus the `data/` that `VM_fopen` prefixes on its own — the same
+doubling behind Xonotic's "saved in data/data/" messages. That is the only
+directory a QuakeC `FILE_WRITE` can create a file in, and the first one a read
+searches, so it is where the Java side has to meet the menu. `GameData`'s
+`engineWriteDir` works it out once.
+
 The format is documented once, in `qcsrc/menu/xonotic/touch_update_util.qh`;
 `UpdateBridge` points at it rather than repeating it. Requests are `check`,
 `install`, `skip`, `auto-on` and `auto-off`, served by a poll thread in
@@ -212,7 +219,17 @@ Auto-update is opt-out, so a player who never opens the screen still gets fixes.
 Turning it off does not stop the check — the screen still has to say how far
 behind you are — it stops the install happening without being asked for. Android
 confirms every package install either way, so even "automatic" is one tap rather
-than none.
+than none. Flipping the checkbox publishes nothing: the preference is the only
+thing that changed, and a fresh record written around it could only guess at the
+state above it and would take a found release off the screen with it.
+
+A check that could not reach the feed is published as such, not as "up to date".
+`findUpdate()` answers "nothing newer" and "could not ask" with the same null,
+and treating them alike would tell a player on a flaky connection that they are
+current — and drop the release the boot check had already found, which is the
+one thing on that screen they might have been about to install. That release is
+kept in the same preferences as the skipped tag, so Skip and Install still know
+what they mean in a process that never ran the check itself.
 
 On Linux there is nothing to install: Flatpak and the OpenStore own updates, so
 `packaging/start.sh` publishes the `managed` state and the screen shows the

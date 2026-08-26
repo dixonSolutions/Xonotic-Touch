@@ -100,29 +100,30 @@ public final class XonoticActivity extends SDLActivity {
         String installed = updater.installedVersion();
         switch (request) {
             case "auto-on":
-                AppUpdater.setAutoInstall(this, true);
-                // Republish so line 8 reflects the new preference immediately;
-                // the menu reads its checkbox back from there.
-                bridge.publishIdle(installed);
-                return;
             case "auto-off":
-                AppUpdater.setAutoInstall(this, false);
-                bridge.publishIdle(installed);
+                // Nothing to publish. The preference is the only thing that
+                // changed, and any record written around it would have to
+                // invent the seven lines above line 8 -- throwing away a
+                // release the boot check already found, and greying out the
+                // Install and Skip buttons that were about to take it. The next
+                // real publish carries the new preference; until then the menu
+                // holds the value it just asked for.
+                AppUpdater.setAutoInstall(this, "auto-on".equals(request));
                 return;
-            case "skip":
-                AppUpdater.skipVersion(this, lastSeenUpdate == null ? null : lastSeenUpdate.version);
+            case "skip": {
+                AppUpdater.Update target = targetUpdate(bridge, updater, installed);
+                if (target == null) {
+                    publishFindings(bridge, updater, installed, null);
+                    return;
+                }
+                updater.skip(target);
                 lastSeenUpdate = null;
                 bridge.publishUpToDate(installed);
                 return;
+            }
             case "check":
                 bridge.publishChecking(installed);
-                AppUpdater.Update found = updater.findUpdate();
-                lastSeenUpdate = found;
-                if (found == null) {
-                    bridge.publishUpToDate(installed);
-                } else {
-                    bridge.publishAvailable(installed, found);
-                }
+                publishFindings(bridge, updater, installed, updater.findUpdate());
                 return;
             case "install":
                 installFromMenu(bridge, updater, installed);
@@ -132,18 +133,56 @@ public final class XonoticActivity extends SDLActivity {
         }
     }
 
-    private void installFromMenu(UpdateBridge bridge, AppUpdater updater, String installed) {
+    /**
+     * The release Install and Skip are acting on.
+     *
+     * The menu enables both from the published status, which the boot check may
+     * have written before this process existed, so the field is routinely empty
+     * when the first press arrives. Fall back to what that check recorded, and
+     * only then to asking the feed again.
+     */
+    private AppUpdater.Update targetUpdate(UpdateBridge bridge, AppUpdater updater,
+                                           String installed) {
         AppUpdater.Update update = lastSeenUpdate;
         if (update == null) {
-            // The menu can ask to install before anything has been found -- a
-            // check that failed, or a status file left by a previous run. Look
-            // again rather than refusing.
-            bridge.publishChecking(installed);
-            update = updater.findUpdate();
-            lastSeenUpdate = update;
+            update = updater.lastFound();
         }
         if (update == null) {
-            bridge.publishUpToDate(installed);
+            bridge.publishChecking(installed);
+            update = updater.findUpdate();
+        }
+        lastSeenUpdate = update;
+        return update;
+    }
+
+    /**
+     * Publish what a check learned.
+     *
+     * A check that could not reach the feed has learned nothing, and saying
+     * "up to date" on its behalf both misinforms the player and drops the
+     * release the last successful check found — which is the one thing on this
+     * screen they might have been about to install.
+     */
+    private void publishFindings(UpdateBridge bridge, AppUpdater updater,
+                                 String installed, AppUpdater.Update found) {
+        if (found != null) {
+            lastSeenUpdate = found;
+            bridge.publishAvailable(installed, found);
+            return;
+        }
+        if (updater.lastCheckFailed()) {
+            lastSeenUpdate = lastSeenUpdate != null ? lastSeenUpdate : updater.lastFound();
+            bridge.publishCheckFailed(installed, lastSeenUpdate);
+            return;
+        }
+        lastSeenUpdate = null;
+        bridge.publishUpToDate(installed);
+    }
+
+    private void installFromMenu(UpdateBridge bridge, AppUpdater updater, String installed) {
+        AppUpdater.Update update = targetUpdate(bridge, updater, installed);
+        if (update == null) {
+            publishFindings(bridge, updater, installed, null);
             return;
         }
         final String latest = update.version;
@@ -229,7 +268,7 @@ public final class XonoticActivity extends SDLActivity {
         List<String> args = new ArrayList<>(Arrays.asList(
             "-xonotic",
             "-basedir", baseDir,
-            "-userdir", new File(baseDir, "userdata").getAbsolutePath()));
+            "-userdir", GameData.userDir(new File(baseDir)).getAbsolutePath()));
         args.addAll(extraArguments());
         return args.toArray(new String[0]);
     }

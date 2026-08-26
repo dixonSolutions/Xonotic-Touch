@@ -18,5 +18,6 @@
     <string name="update_status_available">Xonotic Touch %1$s is available.</string>
     <string name="update_status_installing">Confirm the install prompt to finish.</string>
     <string name="update_status_failed">Update failed. Try again later.</string>
+    <string name="update_status_check_failed">Could not reach the update server.</string>
     <string name="update_status_permission">Allow installing apps from Xonotic Touch to finish.</string>
 </resources>

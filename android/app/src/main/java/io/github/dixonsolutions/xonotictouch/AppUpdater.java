@@ -54,6 +54,17 @@ final class AppUpdater {
     private static final String PREF_SKIPPED_TAG = "skipped_tag";
     /** Whether a release we find installs without stopping to ask first. */
     private static final String PREF_AUTO_INSTALL = "auto_install";
+    /**
+     * The release the last successful check found.
+     *
+     * The check that finds an update runs in BootActivity, and the menu's
+     * Install and Skip are served from XonoticActivity, which never saw it —
+     * so without somewhere durable to put it, both buttons act on nothing on
+     * exactly the launches where there is something to act on.
+     */
+    private static final String PREF_FOUND_VERSION = "found_version";
+    private static final String PREF_FOUND_URL = "found_url";
+    private static final String PREF_FOUND_SIZE = "found_size";
 
     private static final String INSTALL_ACTION =
         "io.github.dixonsolutions.xonotictouch.INSTALL_STATUS";
@@ -72,6 +83,9 @@ final class AppUpdater {
     }
 
     private final Context context;
+
+    /** Whether the last {@link #findUpdate()} got an answer out of the feed. */
+    private boolean checkFailed;
 
     AppUpdater(Context context) {
         this.context = context.getApplicationContext();
@@ -103,14 +117,6 @@ final class AppUpdater {
         prefs(context).edit().putBoolean(PREF_AUTO_INSTALL, enabled).apply();
     }
 
-    /** Suppress one release by version, for the menu's "Skip this version". */
-    static void skipVersion(Context context, String version) {
-        if (version == null || version.isEmpty()) {
-            return;
-        }
-        prefs(context).edit().putString(PREF_SKIPPED_TAG, version).apply();
-    }
-
     void skip(Update update) {
         prefs(context).edit().putString(PREF_SKIPPED_TAG, update.version).apply();
     }
@@ -119,14 +125,71 @@ final class AppUpdater {
      * @return the newer release, or null when up to date, skipped, offline, or
      *         the feed has no build for this device's ABI. Never throws: a
      *         failed update check must not stand between the player and the
-     *         game.
+     *         game. Use {@link #lastCheckFailed()} to tell the null that means
+     *         "nothing to install" from the one that means "could not ask".
      */
     Update findUpdate() {
+        checkFailed = true;
+        Update found = queryFeed();
+        // Only a check that got an answer may overwrite what the last one
+        // recorded. An offline retry knows nothing, and must not forget the
+        // release an earlier check found for the menu's Install and Skip.
+        if (!checkFailed) {
+            rememberFound(found);
+        }
+        return found;
+    }
+
+    /**
+     * Whether the last {@link #findUpdate()} reached the release feed at all.
+     *
+     * "There is nothing newer" and "I could not ask" come back as the same
+     * null, and a caller that publishes them alike tells the player they are
+     * current when nobody knows.
+     */
+    boolean lastCheckFailed() {
+        return checkFailed;
+    }
+
+    /**
+     * The release the last successful check found, still filtered by what has
+     * happened since: an update already installed, or since skipped, is gone.
+     */
+    Update lastFound() {
+        SharedPreferences prefs = prefs(context);
+        String version = prefs.getString(PREF_FOUND_VERSION, "");
+        String url = prefs.getString(PREF_FOUND_URL, "");
+        if (version.isEmpty() || !isTrustedApkUrl(url)) {
+            return null;
+        }
+        if (version.equals(prefs.getString(PREF_SKIPPED_TAG, null))
+                || compareVersions(version, installedVersion()) <= 0) {
+            return null;
+        }
+        return new Update(version, url, prefs.getLong(PREF_FOUND_SIZE, -1));
+    }
+
+    private void rememberFound(Update update) {
+        SharedPreferences.Editor edit = prefs(context).edit();
+        if (update == null) {
+            edit.remove(PREF_FOUND_VERSION).remove(PREF_FOUND_URL).remove(PREF_FOUND_SIZE);
+        } else {
+            edit.putString(PREF_FOUND_VERSION, update.version)
+                .putString(PREF_FOUND_URL, update.url)
+                .putLong(PREF_FOUND_SIZE, update.size);
+        }
+        edit.apply();
+    }
+
+    private Update queryFeed() {
         if (!isEnabled(context)) {
             return null;
         }
         try {
             JSONObject release = new JSONObject(fetch(RELEASES_URL));
+            // Past this point every null is the feed's answer rather than our
+            // failure to get one.
+            checkFailed = false;
             String tag = release.optString("tag_name", "");
             String version = tag.startsWith("v") ? tag.substring(1) : tag;
             if (version.isEmpty() || release.optBoolean("draft") || release.optBoolean("prerelease")) {
@@ -160,6 +223,9 @@ final class AppUpdater {
             }
             Log.i(TAG, "Release " + version + " has no build for " + Build.SUPPORTED_ABIS[0]);
         } catch (Exception e) {
+            // Including one thrown after the fetch: a release we could not
+            // finish reading is not a release we can say anything about.
+            checkFailed = true;
             Log.i(TAG, "Update check skipped: " + e);
         }
         return null;
