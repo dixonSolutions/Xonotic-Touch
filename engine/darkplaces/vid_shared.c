@@ -775,6 +775,17 @@ void GL_Setup(void)
 	vid.support.ext_texture_srgb = true; // GL3 core, but not GLES2
 #endif
 	vid.support.arb_debug_output = GL_CheckExtension("GL_ARB_debug_output", "-nogldebugoutput", false);
+	/*
+	 * 32bit draw indices are core in desktop GL but only an extension in ES 2.0,
+	 * and a map with more than 65536 vertices cannot be indexed without them —
+	 * which is every Xonotic map. See RSurf_PrepareVerticesForBatch for what the
+	 * renderer does when they are missing.
+	 */
+#ifdef USE_GLES2
+	vid.support.element_index_uint = GL_CheckExtension("GL_OES_element_index_uint", "-noindexuint", false);
+#else
+	vid.support.element_index_uint = true;
+#endif
 	vid.allowalphatocoverage = false;
 
 // COMMANDLINEOPTION: GL: -noanisotropy disables GL_EXT_texture_filter_anisotropic (allows higher quality texturing)

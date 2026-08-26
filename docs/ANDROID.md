@@ -69,6 +69,29 @@ reaching its menu:
   returns invalid. Treating that as fatal meant the game could never start, so
   on that path it warns instead.
 
+Two more stopped the *map* from drawing once the menu worked. Both are cases
+where mobile support written for Quake 1 meets a Xonotic-sized map:
+
+* **32bit draw indices.** `Mod_AllocSurfMesh` only builds the 16bit index array
+  for models of 65536 vertices or fewer; anything larger is drawn with
+  `GL_UNSIGNED_INT`. That is core in desktop GL, but on ES 2.0 it needs
+  `GL_OES_element_index_uint`, and nothing checked for it. Every Xonotic map is
+  far past 65536 vertices, so on a device without that extension every world
+  draw was a `GL_INVALID_ENUM` that drew nothing — while the 2D menu, which
+  indexes quads with 16bit `quadelement3s`, drew perfectly. The renderer now
+  detects the extension, and when it is absent forces the dynamic batch path,
+  which renumbers each batch from zero and so fits 16bit indices. It copies
+  vertex arrays every frame and is slower; it is also the path that draws.
+* **The far plane did not reach the far side of the map.** The `DP_MOBILETOUCH`
+  block pinned `r_farclip_base` at 4096 and switched `r_farclip_world` off
+  entirely, so the far plane was a flat 4096 units regardless of map size. That
+  is reasonable for the Quake 1 maps this branch was written against, and
+  useless for Xonotic, whose maps are routinely several times that across:
+  everything past a few rooms was clipped away. `r_farclip_world` now keeps its
+  default, so the far plane scales with the map as it does on desktop. The near
+  plane stays at 4 and the far plane stays finite — both genuinely help the
+  depth precision this branch was worried about.
+
 The touch HUD needs nothing special: it is the same `touch_ui.c` /
 `DP_MOBILETOUCH` path the Ubuntu Touch build uses.
 
