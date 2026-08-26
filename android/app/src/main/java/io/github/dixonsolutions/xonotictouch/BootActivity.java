@@ -13,6 +13,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Launcher screen: gets the basedir into shape, then hands off to the engine.
@@ -116,6 +117,11 @@ public final class BootActivity extends Activity {
             .setNegativeButton(R.string.update_later, (d, which) -> continueToGame(data))
             .setNeutralButton(R.string.update_skip, (d, which) -> {
                 updater.skip(update);
+                // The status file still says `available` from the check a
+                // moment ago. Left there, the in-game Updates screen spends the
+                // session offering to install the release just declined here,
+                // and only corrects itself once someone presses the button.
+                bridge.publishUpToDate(updater.installedVersion());
                 continueToGame(data);
             })
             .setOnCancelListener(d -> continueToGame(data))
@@ -128,6 +134,11 @@ public final class BootActivity extends Activity {
         status.setText(R.string.update_downloading);
         detail.setText("");
         String installed = updater.installedVersion();
+        // The failure callback is a broadcast receiver, so it can land before
+        // install() has returned -- at once, if launching the confirm dialog
+        // throws. Publishing `installing` over it would put back the very state
+        // the callback exists to clear.
+        AtomicBoolean failed = new AtomicBoolean();
         worker = new Thread(() -> {
             try {
                 if (!updater.install(update, (text, note, percent) -> {
@@ -142,6 +153,7 @@ public final class BootActivity extends Activity {
                             // `installing` and the Updates screen spends the
                             // rest of the session greyed out behind a bar that
                             // never finishes.
+                            failed.set(true);
                             bridge.publishError(installed,
                                     getString(R.string.update_status_failed));
                             ui.post(() -> continueToGame(data));
@@ -152,7 +164,9 @@ public final class BootActivity extends Activity {
                     ui.post(() -> continueToGame(data));
                     return;
                 }
-                bridge.publishInstalling(installed, update.version);
+                if (!failed.get()) {
+                    bridge.publishInstalling(installed, update.version);
+                }
                 // On success the system takes over and restarts us as the new
                 // build, so there is nothing left to do here.
             } catch (IOException | RuntimeException e) {
