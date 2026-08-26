@@ -137,8 +137,24 @@ final class UpdateBridge {
                 context.getString(R.string.update_status_permission));
     }
 
-    void publishError(String installed, String message) {
-        publish(STATE_ERROR, installed, "", 0, 0, message);
+    /**
+     * An install that did not happen: cancelled at the system prompt, refused,
+     * or a download that gave out.
+     *
+     * Deliberately not a bare `error` record: that carries no latest version
+     * and nothing behind, and TouchUpdate_isBehind() -- which is what the menu
+     * gates Install and Skip on -- counts neither. Cancelling the confirm
+     * dialog is a thing players do on purpose, so it has to leave behind the
+     * button that starts the install again, with the failure said in the
+     * message rather than in a state that disables the way out of it.
+     */
+    void publishInstallFailed(String installed, String latest, String message) {
+        if (latest == null || latest.isEmpty()) {
+            publish(STATE_ERROR, installed, "", 0, 0, message);
+            return;
+        }
+        publish(STATE_AVAILABLE, installed, latest,
+                versionsBehind(installed, latest), 0, message);
     }
 
     /**

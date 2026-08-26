@@ -195,7 +195,7 @@ public final class XonoticActivity extends SDLActivity {
                     (text, note, percent) -> bridge.publishDownloading(installed, latest, percent),
                     () -> {
                         failed.set(true);
-                        bridge.publishError(installed,
+                        bridge.publishInstallFailed(installed, latest,
                                 getString(R.string.update_status_failed));
                     })) {
                 bridge.publishNeedsPermission(installed, latest);
@@ -205,8 +205,11 @@ public final class XonoticActivity extends SDLActivity {
                 bridge.publishInstalling(installed, latest);
             }
         } catch (IOException | RuntimeException e) {
+            // Same reasoning as the callback above: a download that broke off
+            // is a reason to offer the retry, not to take it away.
             Log.w("XonoticTouch", "Update install failed", e);
-            bridge.publishError(installed, String.valueOf(e.getMessage()));
+            bridge.publishInstallFailed(installed, latest,
+                    String.valueOf(e.getMessage()));
         }
     }
 

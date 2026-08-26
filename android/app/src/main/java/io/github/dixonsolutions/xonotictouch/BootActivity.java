@@ -154,7 +154,7 @@ public final class BootActivity extends Activity {
                             // rest of the session greyed out behind a bar that
                             // never finishes.
                             failed.set(true);
-                            bridge.publishError(installed,
+                            bridge.publishInstallFailed(installed, update.version,
                                     getString(R.string.update_status_failed));
                             ui.post(() -> continueToGame(data));
                         })) {
@@ -170,8 +170,11 @@ public final class BootActivity extends Activity {
                 // On success the system takes over and restarts us as the new
                 // build, so there is nothing left to do here.
             } catch (IOException | RuntimeException e) {
+                // Same reasoning as the callback above: a download that broke
+                // off is a reason to offer the retry, not to take it away.
                 Log.w(TAG, "Update install failed", e);
-                bridge.publishError(installed, String.valueOf(e.getMessage()));
+                bridge.publishInstallFailed(installed, update.version,
+                        String.valueOf(e.getMessage()));
                 ui.post(() -> continueToGame(data));
             }
         }, "xonotic-update");
