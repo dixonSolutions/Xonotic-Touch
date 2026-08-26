@@ -55,7 +55,11 @@ if [ -z "${BASH_VERSION:-}" ] && [ "${XONOTIC_TOUCH_NO_BASH:-0}" != "1" ]; then
             exec "$xonotic_bash" "$0" "$@"
         fi
     done
-    xonotic_log "bash unavailable — asset discovery and download are disabled"
+    # Not "downloads are off": prepare_assets falls back to the POSIX
+    # downloader (fetch-assets-posix.sh, busybox wget/unzip). Only the bash-only
+    # discovery libraries are out of reach. Saying otherwise sent the diagnosis
+    # of issue #19 in the wrong direction.
+    xonotic_log "bash unavailable — using the POSIX asset downloader"
 fi
 
 BUNDLE_DATA="${APP_ROOT}/data"
@@ -346,15 +350,27 @@ ensure_fetchd() {
     if [ -f "$USER_DATA/.assets-ready" ]; then
         return 0
     fi
+    # fetchd is a bash script, and a confined click cannot exec bash at all, so
+    # on Ubuntu Touch it can never start. Refusing the job here rather than
+    # trying and failing is the whole point: the placeholder progress file below
+    # is written before the daemon is launched, and a fresh one reads as a live
+    # download to fetch_progress_is_live -- which then suppresses the POSIX
+    # fallback in prepare_assets, the only downloader such a device has. The
+    # wizard sat at "Checking your game data..." forever and nothing fetched.
+    if [ -z "${BASH_VERSION:-}" ]; then
+        return 1
+    fi
     sync_session_helpers
     [ -x "$HELPER_LIB_DIR/xonotic-touch-fetchd.sh" ] || return 1
     xonotic_log "starting background asset fetchd"
+    _ef_wrote_progress=0
     if [ ! -f "$PROGRESS_FILE" ]; then
         {
             printf '%s\n' discover
             printf '%s\n' 5
             printf '%s\n' "Checking your game data..."
         } > "$PROGRESS_FILE"
+        _ef_wrote_progress=1
     fi
     host_run env \
         "XONOTIC_TOUCH_USER_BASE=$USER_BASE" \
@@ -366,7 +382,23 @@ ensure_fetchd() {
         "XONOTIC_TOUCH_NOTIFY_ON_READY=1" \
         bash "$HELPER_LIB_DIR/xonotic-touch-fetchd.sh" \
         >/dev/null 2>&1 &
-    sleep 0.2 2>/dev/null || true
+    # Wait for the pidfile instead of assuming. The old 0.2s sleep was also the
+    # last command, so this function reported success for a daemon that had not
+    # started -- and on a slow device, for one that simply had not got there yet.
+    _ef_i=0
+    while [ "$_ef_i" -lt 20 ]; do
+        if fetchd_is_live; then
+            return 0
+        fi
+        sleep 0.1 2>/dev/null || true
+        _ef_i=$((_ef_i + 1))
+    done
+    # It never came up. Drop the placeholder, or the caller sees a download in
+    # flight that does not exist and skips starting a real one.
+    if [ "$_ef_wrote_progress" = "1" ]; then
+        rm -f "$PROGRESS_FILE" 2>/dev/null || true
+    fi
+    return 1
 }
 
 stop_fetchd() {

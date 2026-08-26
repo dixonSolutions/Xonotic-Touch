@@ -107,6 +107,66 @@ expect_launch() {
     pass "$label"
 }
 
+# Asset fetching, which expect_launch deliberately skips.
+#
+# With no bash the POSIX downloader is the only fetcher a confined click has, so
+# "was it actually started" is the whole question -- and nothing here used to ask
+# it. `stage_fetchd` decides whether the fetchd daemon is present: the click
+# package ships none, but a Flatpak/desktop install does, and it was that layout
+# where ensure_fetchd wrote a placeholder progress file, failed to exec its bash
+# daemon, reported success anyway, and left the fresh placeholder reading as a
+# live download -- which suppressed the fallback entirely.
+expect_posix_fetch() {
+    local label="$1"
+    local stage_fetchd="$2"
+    local fetch_log="$WORK/posix-fetch-invoked.txt"
+
+    rm -f "$fetch_log"
+    rm -rf "$CLICK_USER_BASE"
+
+    if [ "$stage_fetchd" = 'with-fetchd' ]; then
+        install -m 755 "$ROOT/scripts/xonotic-touch-fetchd.sh" \
+            "$APP_ROOT/share/xonotic/xonotic-touch-fetchd.sh"
+    else
+        rm -f "$APP_ROOT/share/xonotic/xonotic-touch-fetchd.sh"
+    fi
+
+    # Recorder in place of the real downloader: this test is about whether the
+    # launcher reaches it, not about downloading 1.16 GB.
+    cat > "$APP_ROOT/share/xonotic/fetch-assets-posix.sh" <<EOF
+#!/bin/sh
+printf 'invoked %s\n' "\$1" >> "$fetch_log"
+exit 0
+EOF
+    chmod 755 "$APP_ROOT/share/xonotic/fetch-assets-posix.sh"
+
+    ( cd "$APP_ROOT" && env -i \
+        HOME="$WORK/home" \
+        PATH=/nonexistent \
+        APP_ID=xonotictouch.dixonsolutions_xonotic_1.2.49 \
+        XDG_DATA_HOME="$WORK/home/.local/share" \
+        UBUNTU_APPLICATION_ISOLATION=1 \
+        XONOTIC_TOUCH_NO_BASH=1 \
+        /bin/sh -c 'exec bin/start.sh' ) >/dev/null 2>&1 || true
+
+    # The fetcher runs in a background subshell; give it a moment to land.
+    local i=0
+    while [ "$i" -lt 30 ] && [ ! -f "$fetch_log" ]; do
+        sleep 0.1
+        i=$((i + 1))
+    done
+
+    if [ -f "$fetch_log" ]; then
+        pass "$label"
+    else
+        fail "$label: fetch-assets-posix.sh was never invoked"
+    fi
+
+    install -m 755 "$ROOT/scripts/fetch-assets-posix.sh" \
+        "$APP_ROOT/share/xonotic/fetch-assets-posix.sh"
+    rm -f "$APP_ROOT/share/xonotic/xonotic-touch-fetchd.sh"
+}
+
 stage_fake_click
 expect_launch 'launches confined (bash available)' "$USER_BASE" \
     XONOTIC_TOUCH_USER_BASE="$USER_BASE"
@@ -140,6 +200,10 @@ expect_launch 'launches when flock exec is denied' "$CLICK_USER_BASE" \
     XDG_DATA_HOME="$WORK/home/.local/share" \
     PATH="$WORK/fake-bin" \
     XONOTIC_TOUCH_NO_BASH=1
+
+# No bash: the POSIX downloader must actually start, in both packaging layouts.
+expect_posix_fetch 'POSIX downloader runs when no fetchd is packaged (click)' 'no-fetchd'
+expect_posix_fetch 'POSIX downloader runs even when fetchd cannot start (bash absent)' 'with-fetchd'
 
 if [ "$FAILURES" -ne 0 ]; then
     printf '%d confined-launch check(s) failed\n' "$FAILURES" >&2
