@@ -24,18 +24,22 @@ pass() {
     printf 'ok: %s\n' "$1"
 }
 
-stage_fake_click() {
-    rm -rf "$WORK"
-    mkdir -p "$APP_ROOT/bin" "$APP_ROOT/lib" "$APP_ROOT/share/xonotic" \
-        "$APP_ROOT/data/xonotic-data.pk3dir/gfx" "$WORK/home"
-
-    # Stub engine: records argv instead of opening a window.
+# Stub engine: records argv instead of opening a window.
+stage_engine_stub() {
     cat > "$APP_ROOT/bin/xonotic" <<EOF
 #!/bin/sh
 printf '%s\n' "\$@" > "$ENGINE_LOG"
 exit 0
 EOF
     chmod 755 "$APP_ROOT/bin/xonotic"
+}
+
+stage_fake_click() {
+    rm -rf "$WORK"
+    mkdir -p "$APP_ROOT/bin" "$APP_ROOT/lib" "$APP_ROOT/share/xonotic" \
+        "$APP_ROOT/data/xonotic-data.pk3dir/gfx" "$WORK/home"
+
+    stage_engine_stub
 
     install -m 755 "$ROOT/packaging/start.sh" "$APP_ROOT/bin/start.sh"
     install -m 755 "$ROOT/touch/screen-calc.sh" "$APP_ROOT/share/xonotic/screen-calc.sh"
@@ -215,12 +219,18 @@ expect_paused_after_failed_handoff() {
 
     rm -rf "$CLICK_USER_BASE"
 
-    # A "download" that just holds touch/fetch.lock and reports progress.
+    # A "download" that holds touch/fetch.lock and keeps reporting progress, the
+    # way a real one does. Reporting once would let a job that survived the
+    # handoff pass this check: `paused` would still be the last line written.
     cat > "$APP_ROOT/share/xonotic/asset-fetch.sh" <<'EOF'
 xonotic_assets_are_ready() { return 1; }
 xonotic_fetch_game_assets() {
-  printf 'running\n42\nDownloading...\n' > "$XONOTIC_ASSET_FETCH_PROGRESS"
-  sleep 30
+  _i=0
+  while [ "$_i" -lt 150 ]; do
+    printf 'running\n42\nDownloading...\n' > "$XONOTIC_ASSET_FETCH_PROGRESS"
+    sleep 0.2 || true
+    _i=$((_i + 1))
+  done
 }
 EOF
     # A fetchd that refuses to come up: exits without writing a pidfile.
@@ -230,6 +240,17 @@ exit 1
 EOF
     chmod 755 "$APP_ROOT/share/xonotic/xonotic-touch-fetchd.sh"
 
+    # An engine that lingers, so the window closes with the fetch job settled
+    # into its loop. Stopping a process tree is only hard once the root has a
+    # live child; an engine that returns instantly usually closes the window
+    # before the job has one, and the handoff looks fine either way.
+    cat > "$APP_ROOT/bin/xonotic" <<'EOF'
+#!/bin/sh
+sleep 1
+exit 0
+EOF
+    chmod 755 "$APP_ROOT/bin/xonotic"
+
     # Real PATH here: this case needs bash, or the handoff is declined outright.
     ( cd "$APP_ROOT" && env -i \
         HOME="$WORK/home" \
@@ -238,6 +259,9 @@ EOF
         XDG_DATA_HOME="$WORK/home/.local/share" \
         UBUNTU_APPLICATION_ISOLATION=1 \
         /bin/sh -c 'exec bin/start.sh' ) >/dev/null 2>&1 || true
+
+    # Long enough for a job that outlived the handoff to overwrite `paused`.
+    sleep 0.5
 
     local status
     status="$(head -n 1 "$progress" 2>/dev/null || echo MISSING)"
@@ -250,6 +274,7 @@ EOF
     install -m 644 "$ROOT/scripts/lib/asset-fetch.sh" "$APP_ROOT/share/xonotic/asset-fetch.sh"
     rm -f "$APP_ROOT/share/xonotic/xonotic-touch-fetchd.sh"
     rm -rf "$CLICK_USER_BASE"
+    stage_engine_stub
 }
 
 expect_paused_after_failed_handoff

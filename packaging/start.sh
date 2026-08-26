@@ -521,14 +521,16 @@ write_fetch_paused() {
         || true
 }
 
-# Kill a PID and every descendant (fetch shell → curl). Dash-safe, no locals.
+# Kill a PID and every descendant (fetch shell → curl). Dash-safe, no locals —
+# hence "$1" for the root, which the shell keeps per call: a shared global comes
+# back from the recursion holding the deepest child's pid, so the final TERM
+# went there and any root with a live child survived the kill.
 kill_process_tree() {
-    _kpt_root="$1"
-    [ -n "$_kpt_root" ] || return 0
-    for _kpt_child in $(pgrep -P "$_kpt_root" 2>/dev/null || true); do
+    [ -n "${1:-}" ] || return 0
+    for _kpt_child in $(pgrep -P "$1" 2>/dev/null || true); do
         kill_process_tree "$_kpt_child"
     done
-    kill -TERM "$_kpt_root" 2>/dev/null || true
+    kill -TERM "$1" 2>/dev/null || true
 }
 
 stop_asset_fetch() {
