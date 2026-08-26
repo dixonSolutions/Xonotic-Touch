@@ -46,6 +46,9 @@ final class AppUpdater {
     private static final String RELEASES_URL =
         "https://api.github.com/repos/" + REPO + "/releases/latest";
 
+    /** Every download URL this repo's release assets can have starts with this. */
+    private static final String DOWNLOAD_PREFIX = "https://github.com/" + REPO + "/";
+
     private static final String PREFS = "updates";
     private static final String PREF_ENABLED = "check_on_launch";
     private static final String PREF_SKIPPED_TAG = "skipped_tag";
@@ -321,8 +324,7 @@ final class AppUpdater {
      */
     static boolean isTrustedApkUrl(String url) {
         return url != null
-                && url.startsWith("https://github.com/")
-                && url.contains(REPO)
+                && url.startsWith(DOWNLOAD_PREFIX)
                 && url.endsWith(".apk")
                 && !url.contains("..");
     }
