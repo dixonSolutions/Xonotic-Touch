@@ -5,8 +5,10 @@
 #include "bigbutton.qh"
 #include "touchbutton.qh"
 #include "textlabel.qh"
+#include "button.qh"
 #include "mainwindow.qh"
 #include "touch_startup_util.qh"
+#include "touch_update_util.qh"
 
 void TouchHome_PlayNow(entity btn, entity dummy)
 {
@@ -54,6 +56,11 @@ void TouchHome_OpenMultiplayer(entity btn, entity dummy)
 	localcmd("menu_cmd directmenu Multiplayer\n");
 }
 
+void TouchHome_OpenUpdates(entity btn, entity dummy)
+{
+	localcmd("menu_cmd directmenu TouchUpdates\n");
+}
+
 void XonoticTouchHomeDialog_fill(entity me)
 {
 	entity e;
@@ -79,4 +86,39 @@ void XonoticTouchHomeDialog_fill(entity me)
 		me.TD(me, 1.5, 2, e = makeXonoticTouchCommandButton(_("Profile"), '0 0 0', "menu_cmd directmenu profile", 0));
 		me.TD(me, 1.5, 2, e = makeXonoticTouchCommandButton(_("Controls"), '0 0 0', "menu_cmd directmenu touchsettings", 0));
 		me.TD(me, 1.5, 2, e = makeXonoticTouchCommandButton(_("Settings"), '0 0 0', "menu_cmd directmenu settings", 0));
+
+	// Version footer. Stock Xonotic shows its own git build tag here, which
+	// names the engine rather than the build the player installed and cannot
+	// answer "am I up to date". This shows the Touch version instead, and is
+	// the way in to the update screen — the place people look for it.
+	me.gotoRC(me, me.rows - 1, 0);
+		me.TD(me, 1, me.columns, me.versionButton = makeXonoticButton(TouchUpdate_versionLine(), '0 0 0'));
+			me.versionButton.onClick = TouchHome_OpenUpdates;
+			me.versionButton.onClickEntity = NULL;
+}
+
+void XonoticTouchHomeDialog_draw(entity me)
+{
+	// Cheap poll: the status file changes at most once a second and only while
+	// the updater is working, but the version has to be right the first frame
+	// this screen is seen, before anyone has opened the update dialog.
+	if (time >= me.nextVersionPoll)
+	{
+		me.nextVersionPoll = time + 2;
+		TouchUpdate_read();
+
+		string caption = TouchUpdate_versionLine();
+		string status = TouchUpdate_shortStatus();
+		// Only badge the button when there is something to act on. "Up to date"
+		// on the home screen is noise; "4 versions behind" is not.
+		if (TouchUpdate_isBehind() && status != "")
+			caption = strcat(caption, " - ", status);
+		if (caption != me.versionCaption)
+		{
+			strcpy(me.versionCaption, caption);
+			me.versionButton.setText(me.versionButton, caption);
+		}
+	}
+
+	SUPER(XonoticTouchHomeDialog).draw(me);
 }

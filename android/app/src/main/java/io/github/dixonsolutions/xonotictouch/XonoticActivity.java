@@ -13,6 +13,8 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -26,6 +28,9 @@ public final class XonoticActivity extends SDLActivity {
     static final String EXTRA_BASEDIR = "io.github.dixonsolutions.xonotictouch.BASEDIR";
 
     private String baseDir;
+    private Thread updateService;
+    /** Last release the check found, so Install and Skip know what they mean. */
+    private volatile AppUpdater.Update lastSeenUpdate;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -37,6 +42,124 @@ public final class XonoticActivity extends SDLActivity {
         }
         super.onCreate(savedInstanceState);
         watchSoftKeyboard();
+        startUpdateService();
+    }
+
+    @Override
+    protected void onDestroy() {
+        stopUpdateService();
+        super.onDestroy();
+    }
+
+    /**
+     * Serve the menu's update requests while the game is running.
+     *
+     * BootActivity has already finished by the time anyone can reach the Updates
+     * screen, so without something listening here every button on it would write
+     * a request file that nothing ever reads. The engine owns the screen; this
+     * thread owns the network and the installer.
+     *
+     * A poll rather than a watch: the writer is QuakeC using plain fopen, which
+     * gives no inotify guarantees worth relying on, and a second of latency on a
+     * button that kicks off a 30 MB download is not worth a FileObserver for.
+     */
+    private void startUpdateService() {
+        if (baseDir == null) {
+            return;
+        }
+        final UpdateBridge bridge = new UpdateBridge(this, new File(baseDir));
+        final AppUpdater updater = new AppUpdater(this);
+        updateService = new Thread(() -> {
+            // Whatever BootActivity last published stands until someone asks for
+            // something; re-checking here would double every launch's API call.
+            while (!Thread.currentThread().isInterrupted()) {
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                String request = bridge.takeRequest();
+                if (request != null) {
+                    serveUpdateRequest(bridge, updater, request);
+                }
+            }
+        }, "xonotic-update-service");
+        updateService.setDaemon(true);
+        updateService.start();
+    }
+
+    private void stopUpdateService() {
+        if (updateService != null) {
+            updateService.interrupt();
+            updateService = null;
+        }
+    }
+
+    private void serveUpdateRequest(UpdateBridge bridge, AppUpdater updater, String request) {
+        String installed = updater.installedVersion();
+        switch (request) {
+            case "auto-on":
+                AppUpdater.setAutoInstall(this, true);
+                // Republish so line 8 reflects the new preference immediately;
+                // the menu reads its checkbox back from there.
+                bridge.publishIdle(installed);
+                return;
+            case "auto-off":
+                AppUpdater.setAutoInstall(this, false);
+                bridge.publishIdle(installed);
+                return;
+            case "skip":
+                AppUpdater.skipVersion(this, lastSeenUpdate == null ? null : lastSeenUpdate.version);
+                lastSeenUpdate = null;
+                bridge.publishUpToDate(installed);
+                return;
+            case "check":
+                bridge.publishChecking(installed);
+                AppUpdater.Update found = updater.findUpdate();
+                lastSeenUpdate = found;
+                if (found == null) {
+                    bridge.publishUpToDate(installed);
+                } else {
+                    bridge.publishAvailable(installed, found);
+                }
+                return;
+            case "install":
+                installFromMenu(bridge, updater, installed);
+                return;
+            default:
+                Log.w("XonoticTouch", "Ignoring unknown update request: " + request);
+        }
+    }
+
+    private void installFromMenu(UpdateBridge bridge, AppUpdater updater, String installed) {
+        AppUpdater.Update update = lastSeenUpdate;
+        if (update == null) {
+            // The menu can ask to install before anything has been found -- a
+            // check that failed, or a status file left by a previous run. Look
+            // again rather than refusing.
+            bridge.publishChecking(installed);
+            update = updater.findUpdate();
+            lastSeenUpdate = update;
+        }
+        if (update == null) {
+            bridge.publishUpToDate(installed);
+            return;
+        }
+        final String latest = update.version;
+        try {
+            if (!updater.install(update,
+                    (text, note, percent) -> bridge.publishDownloading(installed, latest, percent),
+                    () -> bridge.publishError(installed,
+                            getString(R.string.update_status_failed)))) {
+                bridge.publishNeedsPermission(installed, latest);
+                return;
+            }
+            bridge.publishInstalling(installed, latest);
+        } catch (IOException | RuntimeException e) {
+            Log.w("XonoticTouch", "Update install failed", e);
+            bridge.publishError(installed, String.valueOf(e.getMessage()));
+        }
     }
 
     /**

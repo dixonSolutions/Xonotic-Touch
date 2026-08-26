@@ -185,6 +185,39 @@ only drops the handle, and the staged bytes -- a whole partial APK -- would sit
 there until the system reaped them, so a retried download would otherwise cost
 the player storage every time.
 
+### The in-game Updates screen
+
+`BootActivity` can only ask its question once, before the engine exists, in a
+dialog that is gone by the time anyone is playing. Everything a player wants
+afterwards — which build am I on, how far behind, check again, stop asking —
+lives in the menu instead, under **Updates**, reachable from the version line at
+the bottom of the touch home screen. That line replaces stock Xonotic's `git`
+build tag, which names the engine rather than the build that was installed and
+cannot answer "am I up to date".
+
+The menu is QuakeC: no JNI, no way to call `AppUpdater`. So the two halves talk
+through two files in the gamedir, the same handshake the asset downloader
+already uses and for the same reason. `UpdateBridge` owns `update-status.txt`
+and only writes it; the menu owns `update-request.txt` and only writes that.
+Neither reads its own file back, so there is no shared state to race over — a
+torn read costs one stale second, and the menu re-reads every second anyway.
+
+The format is documented once, in `qcsrc/menu/xonotic/touch_update_util.qh`;
+`UpdateBridge` points at it rather than repeating it. Requests are `check`,
+`install`, `skip`, `auto-on` and `auto-off`, served by a poll thread in
+`XonoticActivity` — without one, every button on that screen would write a file
+nothing ever reads.
+
+Auto-update is opt-out, so a player who never opens the screen still gets fixes.
+Turning it off does not stop the check — the screen still has to say how far
+behind you are — it stops the install happening without being asked for. Android
+confirms every package install either way, so even "automatic" is one tap rather
+than none.
+
+On Linux there is nothing to install: Flatpak and the OpenStore own updates, so
+`packaging/start.sh` publishes the `managed` state and the screen shows the
+version with its buttons disabled rather than offering one that cannot work.
+
 ### What survives an update
 
 Everything the player has. An update is an ordinary same-signature upgrade, so

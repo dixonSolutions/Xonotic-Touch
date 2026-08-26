@@ -97,6 +97,10 @@ install -m 755 "$ROOT/packaging/start.sh" "$DEST/bin/start.sh"
 install -m 755 "$ROOT/touch/screen-calc.sh" "$DEST/share/xonotic/screen-calc.sh"
 install -m 755 "$ROOT/scripts/fetch-assets-runtime.sh" "$DEST/share/xonotic/fetch-assets-runtime.sh"
 install -m 755 "$ROOT/scripts/fetch-assets-posix.sh" "$DEST/share/xonotic/fetch-assets-posix.sh"
+# The launcher publishes this into update-status.txt so the menu can show which
+# build is installed instead of stock Xonotic's git tag, which names the engine.
+printf '%s\n' "$CLICK_VERSION" > "$DEST/share/xonotic/version.txt"
+chmod 644 "$DEST/share/xonotic/version.txt"
 install -m 755 "$ROOT/scripts/sync-bundle-data.sh" "$DEST/share/xonotic/sync-bundle-data.sh"
 install -m 644 "$ROOT/scripts/lib/asset-fetch.sh" "$DEST/share/xonotic/asset-fetch.sh"
 install -m 644 "$ROOT/scripts/lib/asset-discover.sh" "$DEST/share/xonotic/asset-discover.sh"

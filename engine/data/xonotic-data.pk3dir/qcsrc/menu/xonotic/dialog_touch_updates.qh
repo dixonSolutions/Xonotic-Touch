@@ -1,0 +1,48 @@
+#pragma once
+
+#include "dialog.qh"
+#include "touch_update_util.qh"
+
+// Full update management, in the shape the rest of the menu already uses: an
+// ordinary Xonotic dialog, not a platform popup. The Android launcher can only
+// ask a yes/no question once, at boot, before the engine exists; everything a
+// player might want afterwards — what version am I on, how far behind, check
+// again, stop asking — has to live somewhere they can get back to.
+CLASS(XonoticTouchUpdatesDialog, XonoticDialog)
+	METHOD(XonoticTouchUpdatesDialog, fill, void(entity));
+	METHOD(XonoticTouchUpdatesDialog, draw, void(entity));
+	METHOD(XonoticTouchUpdatesDialog, showNotify, void(entity));
+	ATTRIB(XonoticTouchUpdatesDialog, title, string, _("Updates"));
+	ATTRIB(XonoticTouchUpdatesDialog, name, string, "TouchUpdates");
+	ATTRIB(XonoticTouchUpdatesDialog, tooltip, string, _("Installed version, available updates, and how they are installed"));
+	ATTRIB(XonoticTouchUpdatesDialog, color, vector, SKINCOLOR_DIALOG_SETTINGS);
+	ATTRIB(XonoticTouchUpdatesDialog, intendedWidth, float, 0.8);
+	ATTRIB(XonoticTouchUpdatesDialog, rows, float, 14);
+	ATTRIB(XonoticTouchUpdatesDialog, columns, float, 6);
+
+	// Labels re-pointed from the status file every poll rather than rebuilt:
+	// fill() runs once, and tearing down items under a live touch would drop
+	// the press that is still travelling through them.
+	ATTRIB(XonoticTouchUpdatesDialog, versionLabel, entity);
+	ATTRIB(XonoticTouchUpdatesDialog, statusLabel, entity);
+	ATTRIB(XonoticTouchUpdatesDialog, latestLabel, entity);
+	ATTRIB(XonoticTouchUpdatesDialog, messageLabel, entity);
+	ATTRIB(XonoticTouchUpdatesDialog, progressBar, entity);
+	ATTRIB(XonoticTouchUpdatesDialog, checkButton, entity);
+	ATTRIB(XonoticTouchUpdatesDialog, installButton, entity);
+	ATTRIB(XonoticTouchUpdatesDialog, skipButton, entity);
+	ATTRIB(XonoticTouchUpdatesDialog, autoBox, entity);
+
+	// Poll clock. The status file is written by another process, so there is
+	// nothing to subscribe to — but re-reading it every frame would be a file
+	// open per frame for a value that changes at most once a second.
+	ATTRIB(XonoticTouchUpdatesDialog, nextPoll, float, 0);
+	// Last auto-update cvar value we published, so a user flipping the checkbox
+	// is told to the platform layer exactly once.
+	ATTRIB(XonoticTouchUpdatesDialog, publishedAuto, float, -1);
+	// Set when a request could not be written; the dialog says so rather than
+	// leaving a button that silently does nothing.
+	ATTRIB(XonoticTouchUpdatesDialog, requestFailed, bool, false);
+ENDCLASS(XonoticTouchUpdatesDialog)
+
+entity makeXonoticTouchUpdatesDialog();

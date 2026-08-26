@@ -52,6 +52,8 @@ final class AppUpdater {
     private static final String PREFS = "updates";
     private static final String PREF_ENABLED = "check_on_launch";
     private static final String PREF_SKIPPED_TAG = "skipped_tag";
+    /** Whether a release we find installs without stopping to ask first. */
+    private static final String PREF_AUTO_INSTALL = "auto_install";
 
     private static final String INSTALL_ACTION =
         "io.github.dixonsolutions.xonotictouch.INSTALL_STATUS";
@@ -83,6 +85,30 @@ final class AppUpdater {
 
     static void setEnabled(Context context, boolean enabled) {
         prefs(context).edit().putBoolean(PREF_ENABLED, enabled).apply();
+    }
+
+    /**
+     * Opt-out, so a player who never opens the update screen still gets fixes.
+     *
+     * Turning this off does not stop the check -- the in-game Updates screen
+     * still has to be able to say how far behind you are -- it stops the
+     * install happening without being asked for. Android confirms every
+     * package install either way, so even "automatic" is one tap, not none.
+     */
+    static boolean isAutoInstall(Context context) {
+        return prefs(context).getBoolean(PREF_AUTO_INSTALL, true);
+    }
+
+    static void setAutoInstall(Context context, boolean enabled) {
+        prefs(context).edit().putBoolean(PREF_AUTO_INSTALL, enabled).apply();
+    }
+
+    /** Suppress one release by version, for the menu's "Skip this version". */
+    static void skipVersion(Context context, String version) {
+        if (version == null || version.isEmpty()) {
+            return;
+        }
+        prefs(context).edit().putString(PREF_SKIPPED_TAG, version).apply();
     }
 
     void skip(Update update) {

@@ -134,6 +134,40 @@ fi
 
 mkdir -p "$USER_DATA" 2>/dev/null || xonotic_log "cannot create $USER_DATA"
 
+# Publish the update status the menu's Updates screen reads.
+#
+# On Linux the package manager owns updates -- Flatpak, or the OpenStore for a
+# click -- so there is nothing for an in-app installer to do, and the screen
+# says so rather than offering a button that cannot work. The version still has
+# to be right: the menu shows it in place of stock Xonotic's git build tag,
+# which names the engine rather than the build the player installed.
+#
+# Format and states are documented in qcsrc/menu/xonotic/touch_update_util.qh.
+xonotic_publish_update_status() {
+    _pus_dir="$USER_DATA/touch"
+    mkdir -p "$_pus_dir" 2>/dev/null || return 0
+    _pus_version="${XONOTIC_TOUCH_VERSION:-}"
+    if [ -z "$_pus_version" ] && [ -r "$APP_ROOT/share/xonotic/version.txt" ]; then
+        _pus_version="$(head -n 1 "$APP_ROOT/share/xonotic/version.txt" 2>/dev/null || true)"
+    fi
+    {
+        printf '%s\n' 1
+        printf '%s\n' managed
+        printf '%s\n' "$_pus_version"
+        printf '%s\n' ""
+        printf '%s\n' 0
+        printf '%s\n' 0
+        printf '%s\n' "Installed and updated by your package manager."
+        printf '%s\n' off
+    } > "$_pus_dir/update-status.txt.tmp" 2>/dev/null \
+        && mv -f "$_pus_dir/update-status.txt.tmp" "$_pus_dir/update-status.txt" 2>/dev/null \
+        || true
+    # Nothing on this platform serves requests, so a stale one left by an
+    # earlier Android install would sit there looking unanswered forever.
+    rm -f "$_pus_dir/update-request.txt" 2>/dev/null || true
+}
+xonotic_publish_update_status
+
 # One UI launcher at a time. The background fetchd does not hold this lock, so
 # reopening the app while a download runs joins the existing job instead of
 # stacking curls.
