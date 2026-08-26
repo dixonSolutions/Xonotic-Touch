@@ -344,24 +344,33 @@ fetchd_is_live() {
 # Prefer a host fetchd so closing the Flatpak UI does not kill curl.
 # flock inside fetchd is the real single-writer guard — a stale "running"
 # progress line must not prevent a handoff after the sandbox fetch was killed.
+# True when a host fetchd could actually be started.
+#
+# fetchd is a bash script, and a confined click can neither exec bash nor ships
+# a copy of it, so on Ubuntu Touch the answer is always no. Callers need to know
+# that *before* they stop an in-sandbox download to hand it over: killing the
+# only downloader on the device for a daemon that cannot start loses the
+# download outright.
+fetchd_can_start() {
+    [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" != "1" ] || return 1
+    [ -n "${BASH_VERSION:-}" ] || return 1
+    sync_session_helpers
+    [ -x "$HELPER_LIB_DIR/xonotic-touch-fetchd.sh" ]
+}
+
 ensure_fetchd() {
     [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" = "1" ] && return 0
     fetchd_is_live && return 0
     if [ -f "$USER_DATA/.assets-ready" ]; then
         return 0
     fi
-    # fetchd is a bash script, and a confined click cannot exec bash at all, so
-    # on Ubuntu Touch it can never start. Refusing the job here rather than
-    # trying and failing is the whole point: the placeholder progress file below
-    # is written before the daemon is launched, and a fresh one reads as a live
-    # download to fetch_progress_is_live -- which then suppresses the POSIX
-    # fallback in prepare_assets, the only downloader such a device has. The
-    # wizard sat at "Checking your game data..." forever and nothing fetched.
-    if [ -z "${BASH_VERSION:-}" ]; then
-        return 1
-    fi
-    sync_session_helpers
-    [ -x "$HELPER_LIB_DIR/xonotic-touch-fetchd.sh" ] || return 1
+    # Refusing the job here rather than trying and failing is the whole point:
+    # the placeholder progress file below is written before the daemon is
+    # launched, and a fresh one reads as a live download to
+    # fetch_progress_is_live -- which then suppresses the POSIX fallback in
+    # prepare_assets, the only downloader such a device has. The wizard sat at
+    # "Checking your game data..." forever and nothing fetched.
+    fetchd_can_start || return 1
     xonotic_log "starting background asset fetchd"
     _ef_wrote_progress=0
     if [ ! -f "$PROGRESS_FILE" ]; then
@@ -796,8 +805,10 @@ while :; do
     if background_fetch_requested; then
         clear_background_fetch_request
         SESSION_KEEP_BACKGROUND=1
-        # Hand off any in-sandbox curl to host fetchd (resume partials).
-        if [ -n "${ASSET_FETCH_PID:-}" ]; then
+        # Hand off any in-sandbox curl to host fetchd (resume partials). Only
+        # when one can actually start: stopping it otherwise just ends the
+        # download, which is all a confined click would get out of it.
+        if [ -n "${ASSET_FETCH_PID:-}" ] && fetchd_can_start; then
             kill_process_tree "$ASSET_FETCH_PID" 2>/dev/null || true
             ASSET_FETCH_PID=""
             sleep 0.5 2>/dev/null || true
@@ -812,6 +823,16 @@ while :; do
     # it is a download already in flight, which fetchd finishes on the host.
     if fetchd_is_live || fetch_progress_is_live; then
         SESSION_KEEP_BACKGROUND=1
+        # The in-sandbox curl holds touch/fetch.lock and dies with this session.
+        # fetchd takes that same lock with `flock -n` and exits when it cannot,
+        # so without stopping the in-sandbox job first the daemon starts, loses
+        # the lock, quits, and the download goes down with the UI -- the wizard's
+        # background button already did this handoff, this path did not.
+        if [ -n "${ASSET_FETCH_PID:-}" ] && ! fetchd_is_live && fetchd_can_start; then
+            kill_process_tree "$ASSET_FETCH_PID" 2>/dev/null || true
+            ASSET_FETCH_PID=""
+            sleep 0.5 2>/dev/null || true
+        fi
         ensure_fetchd || true
         xonotic_log "UI closed — download still running in background"
         trap - EXIT INT TERM HUP
