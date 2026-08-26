@@ -1,6 +1,6 @@
 #!/bin/bash
 # Host-side asset fetch daemon. Survives Flatpak UI exit so "download in
-# background" and tray Quit are meaningful. Holds touch/fetch.lock; resumes
+# background" is meaningful. Holds touch/fetch.lock; resumes
 # partial zips; notifies and optionally re-opens the app when packs are ready.
 set -euo pipefail
 

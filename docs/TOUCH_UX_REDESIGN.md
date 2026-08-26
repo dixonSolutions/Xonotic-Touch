@@ -551,11 +551,10 @@ them. Every deploy silently did nothing. It now probes for the directory that
 actually holds `xonotic-*-data.pk3` and fails loudly if neither has assets.
 
 Restarting also needed fixing: killing the engine strands the launcher's
-`instance.lock` (so `start.sh` hands off to the tray instead of booting) and
+`instance.lock` (so `start.sh` reports "already running" instead of booting) and
 DarkPlaces' `~/.xonotic/lock` (so the new process dies with a "session lock could
-not be acquired" dialog), and the tray relaunches the engine on its own and
-races our launch. The restart now stops the tray, clears both locks, and boots
-with `XONOTIC_TOUCH_NO_TRAY=1 … -condebug`.
+not be acquired" dialog). The restart now clears both locks before booting with
+`-condebug`.
 
 ### 9.2 Configs must go to the engine userdir
 

@@ -130,9 +130,9 @@ fi
 
 mkdir -p "$USER_DATA" 2>/dev/null || xonotic_log "cannot create $USER_DATA"
 
-# One UI launcher at a time. Background fetchd + tray do not hold this lock, so
+# One UI launcher at a time. The background fetchd does not hold this lock, so
 # reopening the app while a download runs joins the existing job instead of
-# stacking curls. A second click while the engine is up asks the tray to focus.
+# stacking curls.
 #
 # Click confinement often leaves host flock(1) on PATH but denies executing it.
 # Never treat a failed flock exec (or a non-writable lock path) as "already
@@ -143,12 +143,10 @@ engine_is_running() {
 }
 
 xonotic_notify_existing_session() {
-    mkdir -p "$USER_DATA/touch" 2>/dev/null || true
-    printf '%s\n' show > "$USER_DATA/touch/tray-cmd.txt" 2>/dev/null || true
     if engine_is_running; then
-        xonotic_log "already running — asked session to show window"
+        xonotic_log "already running — ignoring duplicate launch"
     else
-        xonotic_log "session already active — asked tray to show window"
+        xonotic_log "session already active — ignoring duplicate launch"
     fi
 }
 
@@ -279,9 +277,7 @@ RESTART_MARKER="$USER_DATA/touch/relaunch-request.txt"
 RESTART_MARKER_HOME="${HOME}/.xonotic/data/touch/relaunch-request.txt"
 BACKGROUND_MARKER="$USER_DATA/touch/background-fetch-request.txt"
 BACKGROUND_MARKER_HOME="${HOME}/.xonotic/data/touch/background-fetch-request.txt"
-TRAY_CMD_FILE="$USER_DATA/touch/tray-cmd.txt"
 FETCHD_PIDFILE="$USER_BASE/fetchd.pid"
-TRAY_PIDFILE="$USER_BASE/tray.pid"
 HELPER_LIB_DIR="$USER_BASE/lib"
 FLATPAK_APP_ID="${FLATPAK_ID:-io.github.dixonSolutions.XonoticTouch}"
 
@@ -301,10 +297,10 @@ clear_background_fetch_request() {
     rm -f "$BACKGROUND_MARKER" "$BACKGROUND_MARKER_HOME" 2>/dev/null || true
 }
 
-# Copy download/tray helpers into user data so a host-side fetchd/tray can run
-# them after the Flatpak sandbox exits ( /app is not visible on the host ).
+# Copy download helpers into user data so a host-side fetchd can run them after
+# the Flatpak sandbox exits ( /app is not visible on the host ).
 sync_session_helpers() {
-    mkdir -p "$HELPER_LIB_DIR" "$USER_BASE/bin" 2>/dev/null || return 0
+    mkdir -p "$HELPER_LIB_DIR" 2>/dev/null || return 0
     for _h in asset-fetch.sh asset-discover.sh sync-bundle-data.sh \
         xonotic-touch-fetchd.sh fetch-assets-posix.sh; do
         if [ -f "${APP_ROOT}/share/xonotic/$_h" ]; then
@@ -314,14 +310,9 @@ sync_session_helpers() {
             esac
         fi
     done
-    if [ -f "${APP_ROOT}/share/xonotic/xonotic-touch-tray.py" ]; then
-        cp -f "${APP_ROOT}/share/xonotic/xonotic-touch-tray.py" \
-            "$USER_BASE/bin/xonotic-touch-tray.py" 2>/dev/null || true
-        chmod +x "$USER_BASE/bin/xonotic-touch-tray.py" 2>/dev/null || true
-    fi
 }
 
-# Run a command on the host when we are inside Flatpak (tray/notify/AppIndicator
+# Run a command on the host when we are inside Flatpak (desktop notifications,
 # and a download that must outlive `flatpak kill` of the UI instance).
 host_run() {
     if [ -n "${FLATPAK_ID:-}" ] && command -v flatpak-spawn >/dev/null 2>&1; then
@@ -331,8 +322,8 @@ host_run() {
     "$@"
 }
 
-# Host-side helpers (fetchd/tray) live outside the Flatpak PID namespace.
-# In-sandbox kill -0 on those PIDs always fails and looks like "tray died".
+# The host-side fetchd lives outside the Flatpak PID namespace. In-sandbox
+# kill -0 on its PID always fails and looks like "the download died".
 host_pid_alive() {
     _hpa_pid="$1"
     [ -n "$_hpa_pid" ] || return 1
@@ -344,51 +335,6 @@ fetchd_is_live() {
     _fd_pid="$(cat "$FETCHD_PIDFILE" 2>/dev/null || true)"
     [ -n "$_fd_pid" ] || return 1
     host_pid_alive "$_fd_pid"
-}
-
-tray_is_live() {
-    [ -f "$TRAY_PIDFILE" ] || return 1
-    _tr_pid="$(cat "$TRAY_PIDFILE" 2>/dev/null || true)"
-    [ -n "$_tr_pid" ] || return 1
-    host_pid_alive "$_tr_pid"
-}
-
-# Kill leftover tray Pythons. Never pkill -f the script path: that matches the
-# pkill/ssh cmdline itself and can murder the launcher.
-kill_orphan_trays() {
-    host_run bash -c '
-        for pid in $(pgrep -f "python3 .*/xonotic-touch-tray\\.py" 2>/dev/null || true); do
-            cmd=$(tr "\0" " " < "/proc/$pid/cmdline" 2>/dev/null || true)
-            case "$cmd" in *pkill*|*pgrep*) continue ;; esac
-            kill -TERM "$pid" 2>/dev/null || true
-        done
-    ' 2>/dev/null || true
-}
-
-ensure_tray() {
-    [ "${XONOTIC_TOUCH_NO_TRAY:-0}" = "1" ] && return 0
-    tray_is_live && return 0
-    sync_session_helpers
-    [ -f "$USER_BASE/bin/xonotic-touch-tray.py" ] || return 0
-    # Drop orphans from older launches that lost their pidfile (race on relaunch).
-    kill_orphan_trays
-    rm -f "$TRAY_PIDFILE" 2>/dev/null || true
-    xonotic_log "starting system tray"
-    host_run env \
-        "XONOTIC_TOUCH_USER_BASE=$USER_BASE" \
-        "XONOTIC_TOUCH_FLATPAK_ID=$FLATPAK_APP_ID" \
-        "XONOTIC_TOUCH_TRAY_ICON=$FLATPAK_APP_ID" \
-        python3 "$USER_BASE/bin/xonotic-touch-tray.py" \
-        >/dev/null 2>&1 &
-    # host_run may wrap flatpak-spawn; prefer the Python pid once tray.pid appears.
-    _tr_i=0
-    while [ "$_tr_i" -lt 20 ]; do
-        if tray_is_live; then
-            return 0
-        fi
-        sleep 0.1 2>/dev/null || true
-        _tr_i=$((_tr_i + 1))
-    done
 }
 
 # Prefer a host fetchd so closing the Flatpak UI does not kill curl.
@@ -436,51 +382,6 @@ stop_fetchd() {
     kill_orphan_fetch_writers
 }
 
-stop_tray() {
-    if tray_is_live; then
-        _st_pid="$(cat "$TRAY_PIDFILE" 2>/dev/null || true)"
-        if [ -n "$_st_pid" ]; then
-            host_run kill -TERM "$_st_pid" 2>/dev/null || kill -TERM "$_st_pid" 2>/dev/null || true
-        fi
-    fi
-    kill_orphan_trays
-    rm -f "$TRAY_PIDFILE" 2>/dev/null || true
-}
-
-# Block until tray asks to show the window again, or quit the session.
-# Returns 0 = show/relaunch engine, 1 = quit session.
-wait_tray_session() {
-    rm -f "$TRAY_CMD_FILE" 2>/dev/null || true
-    xonotic_log "session in tray (Show window / Quit from the tray menu)"
-    while :; do
-        if [ -f "$TRAY_CMD_FILE" ]; then
-            _wts_cmd="$(head -n 1 "$TRAY_CMD_FILE" 2>/dev/null || true)"
-            rm -f "$TRAY_CMD_FILE" 2>/dev/null || true
-            case "$_wts_cmd" in
-                quit)
-                    return 1
-                    ;;
-                show*|play*|close)
-                    # close is handled by the engine already being gone; show → relaunch
-                    case "$_wts_cmd" in
-                        close) ;;
-                        *) return 0 ;;
-                    esac
-                    ;;
-            esac
-        fi
-        # If tray died and nothing is downloading, end the session.
-        if ! tray_is_live && ! fetchd_is_live && ! fetch_progress_is_live; then
-            return 1
-        fi
-        # Download finished while we were in the tray — open the game.
-        if [ -f "$USER_DATA/.assets-ready" ] && ! engine_is_running; then
-            return 0
-        fi
-        sleep 1
-    done
-}
-
 # True when a background job is already updating the wizard progress file.
 # (No `local` — this file must stay dash-safe when bash cannot re-exec.)
 fetch_progress_is_live() {
@@ -513,7 +414,7 @@ kill_orphan_fetch_writers() {
 
 # In-sandbox fetch PID (fallback when host fetchd cannot start). Prefer fetchd.
 ASSET_FETCH_PID=""
-# When set, quitting the engine leaves fetchd/tray running instead of pausing.
+# When set, quitting the engine leaves fetchd running instead of pausing.
 SESSION_KEEP_BACKGROUND=0
 
 write_fetch_paused() {
@@ -579,7 +480,6 @@ launcher_cleanup() {
         return 0
     fi
     stop_asset_fetch
-    stop_tray
 }
 
 trap 'launcher_cleanup; exit 130' INT
@@ -841,22 +741,11 @@ run_engine() {
 # A stale marker from a killed session must not relaunch this one.
 clear_restart_request
 clear_background_fetch_request
-rm -f "$TRAY_CMD_FILE" 2>/dev/null || true
 
 sync_session_helpers
-ensure_tray
 
 ASSET_FETCH_JOB_STARTED=0
 ENGINE_STATUS=0
-# Close-to-tray when the tray actually started (GNOME needs AppIndicator ext).
-# Override: XONOTIC_TOUCH_CLOSE_TO_TRAY=0|1
-if [ -n "${XONOTIC_TOUCH_CLOSE_TO_TRAY:-}" ]; then
-    CLOSE_TO_TRAY="$XONOTIC_TOUCH_CLOSE_TO_TRAY"
-elif tray_is_live; then
-    CLOSE_TO_TRAY=1
-else
-    CLOSE_TO_TRAY=0
-fi
 
 while :; do
     prepare_assets
@@ -869,7 +758,9 @@ while :; do
         continue
     fi
 
-    # Wizard: "Download in background" / Close window — UI exits; fetchd+tray stay.
+    # Wizard: "Download in background" / Close window — the UI exits and the
+    # host-side fetchd carries the download on its own, notifying (and reopening
+    # the app) once the packs land.
     if background_fetch_requested; then
         clear_background_fetch_request
         SESSION_KEEP_BACKGROUND=1
@@ -880,45 +771,25 @@ while :; do
             sleep 0.5 2>/dev/null || true
         fi
         ensure_fetchd || true
-        ensure_tray
-        xonotic_log "download continues in background (tray + notification when done)"
-        if wait_tray_session; then
-            SESSION_KEEP_BACKGROUND=1
-            ENGINE_STATUS=0
-            continue
-        fi
-        # Tray Quit already stops fetchd; never tear down a still-running download
-        # because wait_tray_session returned (tray crash / false-negative live check).
-        xonotic_log "background UI session ended — leaving fetchd/tray if still running"
+        xonotic_log "download continues in background (notification when done)"
         trap - EXIT INT TERM HUP
         exit 0
     fi
 
-    # Window closed. Keep tray/session when enabled or a download is still live.
-    if [ "$CLOSE_TO_TRAY" = "1" ] || fetchd_is_live || fetch_progress_is_live; then
+    # Window closed. Closing quits the session — the one thing allowed to outlive
+    # it is a download already in flight, which fetchd finishes on the host.
+    if fetchd_is_live || fetch_progress_is_live; then
         SESSION_KEEP_BACKGROUND=1
-        if fetch_progress_is_live || fetchd_is_live; then
-            ensure_fetchd || true
-        fi
-        ensure_tray
-        if wait_tray_session; then
-            ENGINE_STATUS=0
-            continue
-        fi
-        # Detach rather than kill — closing the window must not abort a download.
-        if fetchd_is_live || fetch_progress_is_live; then
-            xonotic_log "UI closed — download still running in background"
-            trap - EXIT INT TERM HUP
-            exit 0
-        fi
-        SESSION_KEEP_BACKGROUND=0
+        ensure_fetchd || true
+        xonotic_log "UI closed — download still running in background"
+        trap - EXIT INT TERM HUP
+        exit 0
     fi
     break
 done
 
-xonotic_log "stopping session (fetch + tray)"
+xonotic_log "stopping session"
 SESSION_KEEP_BACKGROUND=0
 stop_asset_fetch
-stop_tray
 trap - EXIT INT TERM HUP
 exit "$ENGINE_STATUS"
