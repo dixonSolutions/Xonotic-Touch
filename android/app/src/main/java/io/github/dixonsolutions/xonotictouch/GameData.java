@@ -71,6 +71,28 @@ final class GameData {
         return new File(baseDir(), "data");
     }
 
+    /** The directory passed to the engine as {@code -userdir}. */
+    static File userDir(File baseDir) {
+        return new File(baseDir, "userdata");
+    }
+
+    /**
+     * Where the engine resolves a QuakeC {@code fopen(name, FILE_WRITE)}.
+     *
+     * Two things stack up to make this not the path the QuakeC source reads
+     * as. darkplaces writes into the userdir's copy of the gamedir, not the
+     * basedir's, whenever a userdir is set — and it is. On top of that
+     * {@code VM_fopen} prefixes a {@code data/} of its own, which is the
+     * doubling behind Xonotic's own "saved in data/data/" messages.
+     *
+     * Reads search this directory first, so it is also where a file the menu
+     * has to read belongs. Anything on the Java side that has to meet QuakeC
+     * halfway spells the path from here rather than working it out again.
+     */
+    static File engineWriteDir(File baseDir) {
+        return new File(new File(userDir(baseDir), "data"), "data");
+    }
+
     void prepare(Progress progress) throws IOException {
         File base = baseDir();
         if (!base.isDirectory() && !base.mkdirs()) {

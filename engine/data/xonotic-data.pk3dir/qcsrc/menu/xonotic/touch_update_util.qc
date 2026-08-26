@@ -16,6 +16,16 @@ bool touchUpdate_auto;
 bool touchUpdate_haveStatus;
 bool touchUpdate_cvarReady;
 
+/** The auto-update value we have asked the platform layer for and not yet seen
+ *  come back on line 8; -1 when nothing is in flight.
+ *
+ *  The platform layer serves requests on its own clock, so the next poll after
+ *  a flip still reads the old preference. Mirroring that back would snap the
+ *  checkbox to where it was, the dialog would read that as a second flip, and
+ *  the request the player actually made would be overwritten by its opposite.
+ */
+float touchUpdate_requestedAuto = -1;
+
 /** The menu runs with no CSQC behind it, so touch_init.qc's registration has
  *  not happened when the main menu first draws. Without this the checkbox reads
  *  an unset cvar as 0 and shows auto-update off on every cold start.
@@ -82,7 +92,14 @@ void TouchUpdate_read()
 
 	// Keep the checkbox cvar in step with the platform's own preference, so the
 	// toggle reads correctly on a fresh launch without the menu storing a
-	// second copy that could disagree with it.
+	// second copy that could disagree with it. A flip we have asked for and not
+	// been answered on yet is the one case where the file is the stale copy.
+	if (touchUpdate_requestedAuto >= 0)
+	{
+		if ((touchUpdate_auto ? 1 : 0) != touchUpdate_requestedAuto)
+			return;
+		touchUpdate_requestedAuto = -1;
+	}
 	if (cvar(TOUCH_UPDATE_AUTO_CVAR) != (touchUpdate_auto ? 1 : 0))
 		cvar_set(TOUCH_UPDATE_AUTO_CVAR, touchUpdate_auto ? "1" : "0");
 }
@@ -153,6 +170,12 @@ bool TouchUpdate_request(string token)
 
 	fputs(fh, strcat(token, "\n"));
 	fclose(fh);
+
+	if (token == "auto-on")
+		touchUpdate_requestedAuto = 1;
+	else if (token == "auto-off")
+		touchUpdate_requestedAuto = 0;
+
 	return true;
 }
 

@@ -50,7 +50,12 @@ final class UpdateBridge {
 
     UpdateBridge(Context context, File baseDir) {
         this.context = context.getApplicationContext();
-        File touch = new File(new File(baseDir, "data"), "touch");
+        // Where the menu's fopen() actually reaches, which is not where its
+        // path reads as -- see GameData.engineWriteDir. Under the basedir the
+        // status file was still found, by a lower-priority read fallback, so
+        // the screen showed a version while every button on it wrote a request
+        // into a directory nothing was watching.
+        File touch = new File(GameData.engineWriteDir(baseDir), "touch");
         this.statusFile = new File(touch, "update-status.txt");
         this.requestFile = new File(touch, "update-request.txt");
     }
@@ -88,6 +93,25 @@ final class UpdateBridge {
     void publishUpToDate(String installed) {
         publish(STATE_UPTODATE, installed, installed, 0, 0,
                 context.getString(R.string.update_status_current));
+    }
+
+    /**
+     * A check that could not reach the release feed.
+     *
+     * Deliberately not {@link #publishUpToDate}: both come back from
+     * {@link AppUpdater#findUpdate()} as the same null, and publishing them
+     * alike tells a player on a flaky connection that they are current. Any
+     * release an earlier check found is kept, so one bad check does not take
+     * away the install it was offering.
+     */
+    void publishCheckFailed(String installed, AppUpdater.Update known) {
+        String message = context.getString(R.string.update_status_check_failed);
+        if (known == null) {
+            publish(STATE_ERROR, installed, "", 0, 0, message);
+            return;
+        }
+        publish(STATE_AVAILABLE, installed, known.version,
+                versionsBehind(installed, known.version), 0, message);
     }
 
     void publishAvailable(String installed, AppUpdater.Update update) {

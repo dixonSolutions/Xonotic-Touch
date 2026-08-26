@@ -85,7 +85,16 @@ public final class BootActivity extends Activity {
                     ui.post(() -> offerUpdate(update, data));
                 }
             } else {
-                bridge.publishUpToDate(installed);
+                // "Nothing newer" and "could not ask" come back from
+                // findUpdate() as the same null. Publishing them alike would
+                // tell a player on a flaky connection that they are current,
+                // and drop the release the last check that did reach the feed
+                // found. Either way the game still starts.
+                if (updater.lastCheckFailed()) {
+                    bridge.publishCheckFailed(installed, updater.lastFound());
+                } else {
+                    bridge.publishUpToDate(installed);
+                }
                 ui.post(() -> continueToGame(data));
             }
         }, "xonotic-update-check");
@@ -125,7 +134,18 @@ public final class BootActivity extends Activity {
                             bridge.publishDownloading(installed, update.version, percent);
                             report(text, note, percent);
                         },
-                        () -> ui.post(() -> continueToGame(data)))) {
+                        () -> {
+                            // install() returns once the session is committed,
+                            // not once the player has confirmed it, so this is
+                            // the only place that learns the prompt was
+                            // dismissed. Without it the status file stays on
+                            // `installing` and the Updates screen spends the
+                            // rest of the session greyed out behind a bar that
+                            // never finishes.
+                            bridge.publishError(installed,
+                                    getString(R.string.update_status_failed));
+                            ui.post(() -> continueToGame(data));
+                        })) {
                     // Waiting on the "install unknown apps" toggle; the settings
                     // screen is up, so let the player back out into the game.
                     bridge.publishNeedsPermission(installed, update.version);
