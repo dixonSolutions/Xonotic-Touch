@@ -13,11 +13,10 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
-import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * The engine surface. {@link BootActivity} has already unpacked the basedir by
@@ -186,15 +185,25 @@ public final class XonoticActivity extends SDLActivity {
             return;
         }
         final String latest = update.version;
+        // The failure callback is a broadcast receiver, so it can land before
+        // install() has returned -- at once, if launching the confirm dialog
+        // throws. Publishing `installing` over it would leave the screen busy
+        // behind a bar that never finishes.
+        final AtomicBoolean failed = new AtomicBoolean();
         try {
             if (!updater.install(update,
                     (text, note, percent) -> bridge.publishDownloading(installed, latest, percent),
-                    () -> bridge.publishError(installed,
-                            getString(R.string.update_status_failed)))) {
+                    () -> {
+                        failed.set(true);
+                        bridge.publishError(installed,
+                                getString(R.string.update_status_failed));
+                    })) {
                 bridge.publishNeedsPermission(installed, latest);
                 return;
             }
-            bridge.publishInstalling(installed, latest);
+            if (!failed.get()) {
+                bridge.publishInstalling(installed, latest);
+            }
         } catch (IOException | RuntimeException e) {
             Log.w("XonoticTouch", "Update install failed", e);
             bridge.publishError(installed, String.valueOf(e.getMessage()));
