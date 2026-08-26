@@ -43,6 +43,16 @@ collapsed to `/` and the launcher aborted before the engine ever started.
    substitution), so the launcher probes bash and re-execs into it. If bash is
    not exec'able it keeps running under `/bin/sh` and uses
    `fetch-assets-posix.sh` (busybox wget/unzip) for first-launch downloads.
+   Anything that *needs* bash must therefore decline the job rather than try and
+   fail. `ensure_fetchd` is the one that got this wrong: it wrote a placeholder
+   `discover` progress file, launched its bash daemon into a denied exec, and
+   still returned success. `fetch_progress_is_live` then read that fresh
+   placeholder as a download already in flight and skipped starting the POSIX
+   fallback, so nothing downloaded at all. It now returns non-zero when there is
+   no bash, waits for the daemon's pidfile instead of assuming a 0.2 s sleep was
+   enough, and removes the placeholder if the daemon never came up. The click
+   package ships no fetchd, so this never reached a phone — but a Flatpak or
+   desktop install, which does ship one, could hit it on a slow start.
 5. **Host tools are probed, not trusted.** `mkdir`/`grep`/`sed`/`awk`/`tar` are
    exercised once. If they work (desktop, Flatpak) the bundled `bin/` is appended
    to `PATH` so GNU behaviour is preserved; if they are denied it is prepended so
@@ -95,6 +105,12 @@ it exactly like the desktop hook does: relative `Exec=bin/start.sh` with
 with bash available and with `XONOTIC_TOUCH_NO_BASH=1` — and asserts that the
 engine starts, receives numeric `vid_*` values, gets the bundled data synced into
 the user data dir, and has the touch profile wired into `touch/startup.cfg`.
+
+Those launch checks all pass `XONOTIC_SKIP_ASSET_FETCH=1`, so two further checks
+cover the downloader itself: with no bash, `fetch-assets-posix.sh` must actually
+be invoked — once with no fetchd packaged (the click layout) and once with one
+present (the Flatpak/desktop layout), because only the second reproduces the
+`ensure_fetchd` false-success above.
 
 On-device verification after installing a `.click`:
 
