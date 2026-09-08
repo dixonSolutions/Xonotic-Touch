@@ -9,6 +9,7 @@
 #include "csprogs.h"
 #include "r_stats.h"
 #include "touch_ui.h"
+#include "touch_hud.h"
 #ifdef CONFIG_VIDEO_CAPTURE
 #include "cap_avi.h"
 #include "cap_ogg.h"
@@ -1548,6 +1549,8 @@ scr_touchscreenarea_t scr_touchscreenareas[128];
 
 static void SCR_DrawTouchscreenOverlay(void)
 {
+	// Engine copy of the Touch HUD, only while a server's CSQC is running.
+	TouchHUD_Draw();
 	int i;
 	scr_touchscreenarea_t *a;
 	cachepic_t *pic;

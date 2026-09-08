@@ -25,6 +25,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "utf8lib.h"
 #include "touch_ui.h"
 #include "csprogs.h"
+#include "touch_hud.h"
 #include "screen.h"
 
 #ifndef __IPHONEOS__
@@ -660,14 +661,6 @@ static qbool VID_TouchscreenArea(int corner, float px, float py, float pwidth, f
 
 // ELUAN:
 // not reentrant, but we only need one mouse cursor anyway...
-// Xonotic Touch: restyle the area VID_TouchscreenArea just added (no-op when
-// the call added nothing, e.g. a zero-sized rect).
-static void VID_TouchscreenLastStyle(int style)
-{
-	if (scr_numtouchscreenareas > 0)
-		scr_touchscreenareas[scr_numtouchscreenareas - 1].style = style;
-}
-
 static void VID_TouchscreenCursor(float px, float py, float pwidth, float pheight, qbool *resultbutton, keynum_t key)
 {
 	int finger;
@@ -1118,46 +1111,19 @@ static void IN_Move_TouchScreen_Xonotic(void)
 			VID_SyncDesktopMouse();
 		break;
 	case key_game:
-		if (cl_touch_csqc_active || !CLVM_prog->loaded)
+		if (TouchHUD_Active())
 		{
-			// CSQC touch controls read fingers via gettouchfinger — no engine overlays.
+			// A server's own CSQC is running (cl_csqc_download 2 on a server that
+			// is not this build), so the CSQC Touch HUD is not there. The engine
+			// runs a copy of it -- same cvars, same layout, same glass -- see
+			// touch_hud.c. Engine areas stay clear: the HUD reads fingers itself.
+			TouchHUD_Frame();
 			Vid_ClearAllTouchscreenAreas(0);
 		}
 		else
 		{
-			// A server's own CSQC is running (cl_csqc_download 2 on a server that
-			// is not this build), so the Touch HUD is not there. The engine draws
-			// its own overlay instead, laid out for Xonotic's default binds: move
-			// disc bottom-left, turn-and-shoot disc bottom-right, FIRE / JUMP /
-			// ALT / CROUCH rings around it, weapon switch and MENU / SCORES along
-			// the top. Buttons come first and are exclusive, so a finger on one
-			// never also turns the view. Sizes follow vid_touchscreen_density the
-			// way the stock layouts do.
-			// Buttons carry no picture on purpose: without one the overlay
-			// draws the port's labelled glass pill (TouchUI_DrawGlassItem),
-			// the same look as the console sheet. The two sticks keep a ring.
-			float bt = 15 * yscale;
-			if (bt < 16) bt = 16;
-			VectorClear(move);
-			VectorClear(aim);
-			VID_TouchscreenArea(3, -250*xscale, -480*yscale, 170*xscale, 170*yscale, NULL, bt, "FIRE",   NULL, &buttons[2], K_MOUSE1,     NULL, 0, 0, 0, true);
-			VID_TouchscreenLastStyle(TOUCHUI_STYLE_ACCENT);
-			VID_TouchscreenArea(3, -440*xscale, -300*yscale, 140*xscale, 140*yscale, NULL, bt, "JUMP",   NULL, &buttons[3], K_SPACE,      NULL, 0, 0, 0, true);
-			VID_TouchscreenArea(3, -110*xscale, -300*yscale, 100*xscale, 100*yscale, NULL, bt, "ALT",    NULL, &buttons[4], K_MOUSE2,     NULL, 0, 0, 0, true);
-			VID_TouchscreenArea(3, -580*xscale, -150*yscale, 110*xscale, 100*yscale, NULL, bt, "CROUCH", NULL, &buttons[5], K_CTRL,       NULL, 0, 0, 0, true);
-			VID_TouchscreenLastStyle(TOUCHUI_STYLE_DIM);
-			VID_TouchscreenArea(1, -300*xscale,   84*yscale, 130*xscale,  56*yscale, NULL, bt, "< WEP",  NULL, &buttons[6], K_MWHEELDOWN, NULL, 0, 0, 0, true);
-			VID_TouchscreenArea(1, -160*xscale,   84*yscale, 130*xscale,  56*yscale, NULL, bt, "WEP >",  NULL, &buttons[7], K_MWHEELUP,   NULL, 0, 0, 0, true);
-			VID_TouchscreenArea(0,   14*xscale,   14*yscale, 110*xscale,  56*yscale, NULL, bt, "MENU",   NULL, &buttons[8], K_ESCAPE,     NULL, 0, 0, 0, true);
-			VID_TouchscreenArea(0,  134*xscale,   14*yscale, 130*xscale,  56*yscale, NULL, bt, "SCORES", NULL, &buttons[9], K_TAB,        NULL, 0, 0, 0, true);
-			// Move stick: deflection drives forward/side speed.
-			VID_TouchscreenArea(2,   24*xscale, -280*yscale, 250*xscale, 250*yscale, "gfx/touch/ring_thick.tga", 0, NULL, move, &buttons[1], (keynum_t)0, NULL, 0.12, 125*xscale, 125*yscale, false);
-			// Turn-and-shoot stick: deflection turns, touching it fires.
-			VID_TouchscreenArea(3, -290*xscale, -280*yscale, 250*xscale, 250*yscale, "gfx/touch/ring_thick.tga", 0, NULL, aim, &buttons[10], K_MOUSE1, NULL, 0.15, 125*xscale, 125*yscale, false);
-			cl.cmd.forwardmove -= move[1] * cl_forwardspeed.value;
-			cl.cmd.sidemove += move[0] * cl_sidespeed.value;
-			cl.viewangles[0] += aim[1] * cl_pitchspeed.value * cl.realframetime;
-			cl.viewangles[1] -= aim[0] * cl_yawspeed.value * cl.realframetime;
+			// CSQC touch controls read fingers via gettouchfinger — no engine overlays.
+			Vid_ClearAllTouchscreenAreas(0);
 		}
 		break;
 	default:

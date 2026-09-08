@@ -389,10 +389,16 @@ Main menu is stock Xonotic (Singleplayer / Multiplayer / Media / Settings / …)
   (`csprogs-xonotic-v0.8.6-NNNN-gHASH.dat`), `cl_csqc_download 0` refused to
   fetch it, and the bundled `csprogs.dat` cannot read another revision's
   messages anyway ("Illegible server message"). The port now runs
-  `cl_csqc_download 2`: the Touch CSQC (and its HUD) stays only on a server
-  that runs this exact data build; any other server supplies its own CSQC and
-  the engine's built-in touch overlay provides the controls
-  (`csprogs.c` `CL_VM_Init`, `cl_parse.c`). Server maps download again:
+  `cl_csqc_download 2`: the Touch CSQC stays only on a server that runs this
+  exact data build; any other server supplies its own CSQC, and the engine
+  then runs its own copy of the Touch HUD (`engine/darkplaces/touch_hud.c`):
+  the same `touch_*` layout cvars, the same `gfx/touch` masks, the same MOVE
+  stick, FIRE, HOP (with the latch), DUCK, CONSOLE / SCORE / MENU / CHAT pills
+  and vitals rows, the same drag-look filter and stick thresholds. The one
+  difference is weapon switching: the stock strip is only tappable through
+  the port's CSQC, so on such a server the WEP glass button (tap = next,
+  swipe up/down = previous/next) appears at `touch_weapon_x/y`
+  (`csprogs.c` `CL_VM_Init`, `cl_parse.c`, `vid_sdl.c`). Server maps download again:
   `cl_curl_enabled` is back to 1 (the launcher writes both values into the
   generated `touch/startup.cfg`, after `config.cfg`, so an archived 0 from an
   older build cannot stick); with it off, a server map outside the bundled
