@@ -142,6 +142,45 @@ Called for important messages that should stay in the center of the screen
 for a few moments
 ==============
 */
+static char scr_toast_text[256];
+static double scr_toast_until;
+
+void SCR_Toast(const char *text)
+{
+	dp_strlcpy(scr_toast_text, text ? text : "", sizeof(scr_toast_text));
+	scr_toast_until = host.realtime + 3.5;
+}
+
+/*
+==============
+SCR_DrawToast
+
+A pill at the top of the screen. Unlike centerprint it is not part of the
+game view, so it shows in the menu and the console too, and it is sized off
+the console height rather than the notify font so it stays readable on a
+tablet held at arm's length.
+==============
+*/
+static void SCR_DrawToast(void)
+{
+	float h, w, x, y, pad;
+	float fade;
+
+	if (!scr_toast_text[0] || host.realtime > scr_toast_until)
+		return;
+	fade = (float)(scr_toast_until - host.realtime);
+	if (fade > 1)
+		fade = 1;
+	h = bound(12, vid_conheight.value / 28, 32);
+	pad = h * 0.6f;
+	w = DrawQ_TextWidth(scr_toast_text, 0, h, h, false, FONT_DEFAULT);
+	x = (vid_conwidth.value - w) * 0.5f;
+	y = vid_conheight.value * 0.09f;
+	DrawQ_Fill(x - pad, y - pad * 0.5f, w + pad * 2, h + pad, 0, 0, 0, 0.62f * fade, 0);
+	DrawQ_Fill(x - pad, y - pad * 0.5f, w + pad * 2, 2, 1, 1, 1, 0.35f * fade, 0);
+	DrawQ_String(x, y, scr_toast_text, 0, h, h, 1, 1, 1, fade, 0, NULL, true, FONT_DEFAULT);
+}
+
 void SCR_CenterPrint(const char *str)
 {
 	scr_centertime_off = scr_centertime.value;
@@ -1797,6 +1836,7 @@ static void SCR_DrawScreen (void)
 
 	SCR_DrawConsole();
 	SCR_DrawInfobar();
+	SCR_DrawToast();
 
 	if (!scr_loading)
 	{
@@ -2163,6 +2203,7 @@ extern cvar_t cl_minfps_qualitystepmax;
 extern cvar_t cl_minfps_force;
 void CL_UpdateScreen(void)
 {
+	VID_TouchHotplugFrame();
 	static double cl_updatescreen_quality = 1;
 
 	vec3_t vieworigin;

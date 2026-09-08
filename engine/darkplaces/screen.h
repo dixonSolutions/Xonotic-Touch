@@ -29,6 +29,9 @@ struct portable_samplepair_s;
 void CL_Screen_Init (void);
 void CL_UpdateScreen (void);
 void SCR_CenterPrint(const char *str);
+// Short engine-side notice drawn over everything -- menus included -- for a
+// few seconds. Used for input hot-plug ("Keyboard connected").
+void SCR_Toast(const char *text);
 
 void SCR_BeginLoadingPlaque (qbool startup);
 void SCR_DeferLoadingPlaque (qbool startup);

@@ -107,6 +107,11 @@ cp "$PK3DIR/csprogs.dat" "$PK3DIR/menu.dat" "$TMPSTAGE/"
 
 log "uploading progs + gfx"
 copy_to "$TMPSTAGE/." "$REMOTE_OVERLAY/"
+# Stamp the overlay with the app commit it was built against. The launcher
+# removes an overlay whose stamp no longer matches the installed app, so an
+# old dev menu cannot shadow a newer release on this device.
+run_ssh "flatpak info --user --show-commit io.github.dixonSolutions.XonoticTouch 2>/dev/null \
+         > '$REMOTE_OVERLAY/.built-for' || true"
 
 log "uploading touch configs"
 # Into the engine *userdir*, which is the highest-priority search path. The

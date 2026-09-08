@@ -152,9 +152,23 @@ an update would replace the payload it was about to extract — and offers it:
 * **Not now** goes straight into the game and asks again next launch.
 * **Skip this version** suppresses that one release.
 
-Android confirms every package install itself, so the app cannot update behind
-the player's back, and there is no path where a failed or slow check keeps
-anyone out of the game — any error just falls through to launching.
+Android confirms the first in-app install itself. On Android 12 and newer the
+app then becomes the package's *installer of record*, and every later update
+goes through `PackageInstaller` with `USER_ACTION_NOT_REQUIRED` (the manifest
+declares `UPDATE_PACKAGES_WITHOUT_USER_ACTION` for it), so the player is not
+asked again. A sideloaded first install still asks once, because its installer
+of record is the file manager or browser that placed it. There is no path
+where a failed or slow check keeps anyone out of the game — any error just
+falls through to launching.
+
+`BootActivity` checks at launch; `XonoticActivity` checks again from
+`onResume()` once the game has been in the background for more than an hour,
+so a phone that is never cold-started still picks up releases, and installs
+automatically when the Updates screen's automatic setting is on.
+
+Releases carry `arm64-v8a`, `armeabi-v7a` and `x86_64` APKs; the last one is
+for Chromebooks, Waydroid and the emulator (`scripts/android-build.sh --abi
+x86_64`).
 
 `scripts/android-verify-update-feed.sh` runs after each release and fails the
 build if the release could not drive an update. The updater finds its download

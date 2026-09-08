@@ -13,6 +13,10 @@
 
 In-game: glass MOVE stick and FIRE / JUMP / crouch, top **CONSOLE** pill, and the stock **right-side weapons strip** (tap an icon to switch — no separate WEP button).
 
+![Xonotic Touch on a public CTS server, Surface Pro 9: the engine's fallback overlay with labelled glass buttons and two ring sticks](docs/media/server-surface-overlay.jpg)
+
+*On a public server (here exe.pub CTS, Surface Pro 9) the client runs the server's own CSQC, so the engine draws this fallback overlay instead of the Touch HUD; on a server running this exact data build, or offline, the full Touch HUD stays. Attach a keyboard and every on-screen control disappears until it is unplugged again.*
+
 ## Install (Flatpak)
 
 ```bash

@@ -262,6 +262,18 @@ final class AppUpdater {
             params.setSize(update.size);
         }
 
+        // Android 12+ lets the app that installed a package update it without
+        // the confirm dialog, once it is that package's installer of record.
+        // The first in-app update still asks (a sideload's installer is the
+        // file manager or browser); every one after it just happens.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            params.setRequireUserAction(
+                PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED);
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            params.setInstallReason(PackageManager.INSTALL_REASON_USER);
+        }
+
         int sessionId = installer.createSession(params);
         boolean committed = false;
         try (PackageInstaller.Session session = installer.openSession(sessionId)) {

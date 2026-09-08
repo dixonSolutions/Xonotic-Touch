@@ -24,6 +24,13 @@ android {
             cmake {
                 arguments "-DXONOTIC_DEPS_PREFIX=${depsPrefix}",
                           "-DXONOTIC_VERSION=${appVersion}"
+                // ccache when the host has it: the NDK compiler call is
+                // wrapped and the second build of a commit costs seconds.
+                def ccacheBin = ['/usr/bin/ccache', '/usr/local/bin/ccache',
+                                 '/opt/homebrew/bin/ccache'].find { new File(it).exists() }
+                if (ccacheBin != null && System.getenv('XONOTIC_NO_CCACHE') == null) {
+                    arguments "-DCMAKE_C_COMPILER_LAUNCHER=${ccacheBin}"
+                }
             }
         }
     }

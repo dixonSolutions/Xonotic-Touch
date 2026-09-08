@@ -26,6 +26,13 @@ See the GNU General Public License for more details.
 #include <unistd.h>
 #endif
 
+#if defined(__linux__) && !defined(__ANDROID__)
+#include <dirent.h>
+#include <fcntl.h>
+#include <linux/input.h>
+#include <sys/ioctl.h>
+#endif
+
 // Linux input bits (from linux/input-event-codes.h) — avoid depending on kernel headers.
 #define VID_KEY_A                 30
 #define VID_ABS_MT_POSITION_X     53
@@ -87,7 +94,122 @@ static qbool vid_name_is_ignored_keyboard(const char *name)
 		return true;
 	if (vid_strcasestr_has(name, "consumer control"))
 		return true;
+	// Not a keyboard anyone types on: the switch device itself, and the
+	// virtual keyboards that remappers (keyd, ydotool, xdotool, uinput
+	// tools, remote desktop) keep permanently plugged in.
+	if (vid_strcasestr_has(name, "tablet mode"))
+		return true;
+	if (vid_strcasestr_has(name, "keyd"))
+		return true;
+	if (vid_strcasestr_has(name, "virtual"))
+		return true;
+	if (vid_strcasestr_has(name, "uinput"))
+		return true;
+	if (vid_strcasestr_has(name, "ydotool"))
+		return true;
+	if (vid_strcasestr_has(name, "xdotool"))
+		return true;
+	if (vid_strcasestr_has(name, "wlroots"))
+		return true;
+	if (vid_strcasestr_has(name, "remote desktop"))
+		return true;
 	return false;
+}
+
+// SW_TABLET_MODE: a detachable or convertible reports whether its keyboard is
+// folded away. The keyboard stays listed in /proc while it is, so the switch
+// has to win. Needs /dev/input readable (Flatpak: --device=input).
+//
+// Opening every /dev/input node costs about 0.4 s on a Surface (the IPTS
+// virtual devices are slow to open) -- a visible hitch when done per poll.
+// The switch fds are found once and kept; they are re-found only when the
+// procfs device list changes (vid_tablet_switch_invalidate). Reading their
+// state is one ioctl each, well under a microsecond.
+#define VID_MAX_SWITCH_FDS 8
+static int vid_switch_fds[VID_MAX_SWITCH_FDS];
+static int vid_switch_nfds = -1; // -1: never scanned
+
+static void vid_tablet_switch_invalidate(void)
+{
+#if defined(__linux__) && !defined(__ANDROID__)
+	int i;
+	for (i = 0; i < vid_switch_nfds; i++)
+		close(vid_switch_fds[i]);
+#endif
+	vid_switch_nfds = -1;
+}
+
+static void vid_tablet_switch_rescan(void)
+{
+	vid_tablet_switch_invalidate();
+	vid_switch_nfds = 0;
+#if defined(__linux__) && !defined(__ANDROID__)
+	{
+		DIR *dir;
+		struct dirent *ent;
+		dir = opendir("/dev/input");
+		if (!dir)
+			return;
+		while ((ent = readdir(dir)) != NULL)
+		{
+			char path[64];
+			int fd;
+			unsigned long caps[(SW_MAX + 1 + 8 * sizeof(long) - 1) / (8 * sizeof(long))];
+			if (strncmp(ent->d_name, "event", 5))
+				continue;
+			dpsnprintf(path, sizeof(path), "/dev/input/%s", ent->d_name);
+			fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+			if (fd < 0)
+				continue;
+			memset(caps, 0, sizeof(caps));
+			if (vid_switch_nfds < VID_MAX_SWITCH_FDS
+				&& ioctl(fd, EVIOCGBIT(EV_SW, sizeof(caps)), caps) >= 0
+				&& (caps[SW_TABLET_MODE / (8 * sizeof(long))] & (1UL << (SW_TABLET_MODE % (8 * sizeof(long))))))
+				vid_switch_fds[vid_switch_nfds++] = fd;
+			else
+				close(fd);
+		}
+		closedir(dir);
+	}
+#endif
+}
+
+static qbool vid_read_tablet_mode(qbool *found)
+{
+	*found = false;
+	if (vid_switch_nfds < 0)
+		vid_tablet_switch_rescan();
+	*found = vid_switch_nfds > 0;
+#if defined(__linux__) && !defined(__ANDROID__)
+	{
+		int i;
+		for (i = 0; i < vid_switch_nfds; i++)
+		{
+			unsigned long state[(SW_MAX + 1 + 8 * sizeof(long) - 1) / (8 * sizeof(long))];
+			memset(state, 0, sizeof(state));
+			if (ioctl(vid_switch_fds[i], EVIOCGSW(sizeof(state)), state) >= 0
+				&& (state[SW_TABLET_MODE / (8 * sizeof(long))] & (1UL << (SW_TABLET_MODE % (8 * sizeof(long))))))
+				return true;
+		}
+	}
+#endif
+	return false;
+}
+
+// The whole of /proc/bus/input/devices: about 0.1 ms to read, and its text
+// changing is the only reason to walk /dev/input again.
+static size_t vid_read_proc_bus_input(char *buf, size_t size)
+{
+	FILE *f;
+	size_t n = 0;
+	buf[0] = 0;
+	f = fopen("/proc/bus/input/devices", "r");
+	if (!f)
+		return 0;
+	n = fread(buf, 1, size - 1, f);
+	buf[n] = 0;
+	fclose(f);
+	return n;
 }
 
 // Parse space-separated hex capability bitmaps from /proc/bus/input/devices.
@@ -132,12 +254,17 @@ static qbool vid_bitmap_has_bit(const char *hex, unsigned bit)
 	return (words[idx] & (1UL << bit_in_word)) != 0;
 }
 
-static void vid_scan_proc_bus_input(qbool *has_touch, qbool *has_keyboard)
+// Linux input bus ids that mean "plugged in by the player".
+#define VID_BUS_USB        0x03
+#define VID_BUS_BLUETOOTH  0x05
+
+static void vid_scan_proc_bus_input(qbool *has_touch, qbool *has_keyboard, qbool *has_external_keyboard)
 {
 	FILE *f;
 	char line[512];
 	char name[256];
 	unsigned prop = 0;
+	unsigned bus = 0;
 	qbool key_a = false;
 	qbool abs_mt = false;
 
@@ -148,7 +275,9 @@ static void vid_scan_proc_bus_input(qbool *has_touch, qbool *has_keyboard)
 
 	while (fgets(line, sizeof(line), f))
 	{
-		if (!strncmp(line, "N: Name=\"", 9))
+		if (!strncmp(line, "I: Bus=", 7))
+			bus = (unsigned)strtoul(line + 7, NULL, 16);
+		else if (!strncmp(line, "N: Name=\"", 9))
 		{
 			name[0] = 0;
 			sscanf(line, "N: Name=\"%255[^\"]\"", name);
@@ -166,9 +295,14 @@ static void vid_scan_proc_bus_input(qbool *has_touch, qbool *has_keyboard)
 			else if (abs_mt && !(prop & 1u) && vid_strcasestr_has(name, "touch"))
 				*has_touch = true;
 			if (key_a && !vid_name_is_ignored_keyboard(name))
+			{
 				*has_keyboard = true;
+				if (has_external_keyboard && (bus == VID_BUS_USB || bus == VID_BUS_BLUETOOTH))
+					*has_external_keyboard = true;
+			}
 			name[0] = 0;
 			prop = 0;
+			bus = 0;
 			key_a = false;
 			abs_mt = false;
 		}
@@ -236,24 +370,33 @@ static qbool vid_chassis_is_handheld_or_tablet(int chassis)
 	return chassis == 11 || chassis == 30;
 }
 
-void VID_DetectTouchHardware(qbool *has_touchscreen, qbool *is_touch_only)
+static void vid_detect_hardware(qbool *has_touchscreen, qbool *has_keyboard, qbool *tablet_mode)
 {
 	qbool touch = false;
 	qbool keyboard = false;
+	qbool external = false;
+	qbool switch_found = false;
+	qbool tablet = false;
 	int chassis;
 
 	if (VID_SDL_HasTouchDevices() || vid_touch_finger_seen)
 		touch = true;
 
-	vid_scan_proc_bus_input(&touch, &keyboard);
+	vid_scan_proc_bus_input(&touch, &keyboard, &external);
+	tablet = vid_read_tablet_mode(&switch_found);
+	// A tablet-mode switch saying "tablet" overrides the built-in keyboard
+	// (a folded-back Type Cover stays listed). A USB or Bluetooth keyboard
+	// is not part of the chassis, so it counts whatever the switch says.
+	if (switch_found && tablet)
+		keyboard = external;
 
 	chassis = vid_read_chassis_type();
 	if (vid_chassis_is_handheld_or_tablet(chassis) && touch)
-		keyboard = false;
+		keyboard = external;
 	if (vid_is_ubuntu_touch())
 	{
 		touch = true;
-		keyboard = false;
+		keyboard = external;
 	}
 
 #ifdef DP_MOBILETOUCH
@@ -262,7 +405,96 @@ void VID_DetectTouchHardware(qbool *has_touchscreen, qbool *is_touch_only)
 #endif
 
 	*has_touchscreen = touch;
+	*has_keyboard = keyboard;
+	*tablet_mode = switch_found && tablet;
+}
+
+void VID_DetectTouchHardware(qbool *has_touchscreen, qbool *is_touch_only)
+{
+	qbool touch = false;
+	qbool keyboard = false;
+	qbool tablet = false;
+
+	vid_detect_hardware(&touch, &keyboard, &tablet);
+	*has_touchscreen = touch;
 	*is_touch_only = touch && !keyboard;
+}
+
+// ---------------------------------------------------------------------------
+// Live hot-plug: keyboards come and go while the game runs (a Type Cover
+// clicks on, a Bluetooth keyboard pairs, a convertible folds). SDL2 has no
+// keyboard hot-plug event, so re-read the hardware once a second and re-apply
+// the mode when the answer changes. In Auto mode that shows or hides the
+// on-screen controls in place, in menus and mid-match, and says so.
+
+static double vid_touch_hotplug_next;
+static qbool vid_touch_hotplug_init;
+static qbool vid_touch_hotplug_keyboard;
+static qbool vid_touch_hotplug_touch;
+#define VID_PROC_INPUT_MAX 16384
+static char vid_touch_hotplug_proc[VID_PROC_INPUT_MAX];
+
+void VID_TouchHotplugFrame(void)
+{
+	qbool touch, keyboard, tablet;
+	qbool was_on, is_on;
+	const char *msg = NULL;
+	static char proc[VID_PROC_INPUT_MAX];
+
+#ifdef DP_MOBILETOUCH
+	return;
+#endif
+	if (host.realtime < vid_touch_hotplug_next)
+		return;
+	vid_touch_hotplug_next = host.realtime + 1.0;
+
+	// A device came or went: the switch fds may have moved, re-find them.
+	// Otherwise the per-second work is this read plus one ioctl per switch.
+	vid_read_proc_bus_input(proc, sizeof(proc));
+	if (strcmp(proc, vid_touch_hotplug_proc))
+	{
+		memcpy(vid_touch_hotplug_proc, proc, sizeof(vid_touch_hotplug_proc));
+		vid_tablet_switch_invalidate();
+	}
+
+	vid_detect_hardware(&touch, &keyboard, &tablet);
+	if (!vid_touch_hotplug_init)
+	{
+		vid_touch_hotplug_init = true;
+		vid_touch_hotplug_keyboard = keyboard;
+		vid_touch_hotplug_touch = touch;
+		Con_Printf("Input hot-plug: startup keyboard=%d touch=%d tablet_mode=%d, touch controls %s\n",
+			keyboard, touch, tablet, vid_touchscreen.integer ? "on" : "off");
+		return;
+	}
+	if (keyboard == vid_touch_hotplug_keyboard && touch == vid_touch_hotplug_touch)
+		return;
+
+	was_on = vid_touchscreen.integer != 0;
+	VID_ApplyTouchscreenMode();
+	is_on = vid_touchscreen.integer != 0;
+
+	if (keyboard != vid_touch_hotplug_keyboard)
+	{
+		if (keyboard)
+			msg = (was_on && !is_on) ? "Keyboard connected: touch controls hidden" : "Keyboard connected";
+		else
+			msg = (!was_on && is_on) ? "Keyboard disconnected: touch controls shown" : "Keyboard disconnected";
+	}
+	else if (touch != vid_touch_hotplug_touch)
+	{
+		if (touch)
+			msg = (!was_on && is_on) ? "Touchscreen detected: touch controls shown" : "Touchscreen detected";
+		else
+			msg = "Touchscreen removed";
+	}
+	vid_touch_hotplug_keyboard = keyboard;
+	vid_touch_hotplug_touch = touch;
+
+	Con_Printf("Input hot-plug: keyboard=%d touch=%d tablet_mode=%d -> touch controls %s\n",
+		keyboard, touch, tablet, is_on ? "on" : "off");
+	if (msg)
+		SCR_Toast(msg);
 }
 
 void VID_ApplyTouchscreenMode(void)

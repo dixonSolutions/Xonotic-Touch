@@ -6,6 +6,7 @@ ignore_review_errors: true
 
 dependencies_host:
   - build-essential
+  - ccache
   - make
   - gcc
   - g++

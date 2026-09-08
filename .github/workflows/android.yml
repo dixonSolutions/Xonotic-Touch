@@ -36,7 +36,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        abi: [arm64-v8a, armeabi-v7a]
+        # x86_64: Waydroid, Chromebooks, the emulator -- and how the
+        # self-updater gets exercised on a desktop before a release.
+        abi: [arm64-v8a, armeabi-v7a, x86_64]
     steps:
       - uses: actions/checkout@v4
 
@@ -66,7 +68,18 @@ jobs:
           sudo apt-get install -y -qq --no-install-recommends \
             build-essential make gcc g++ pkg-config git \
             cmake ninja-build imagemagick zip unzip curl xz-utils \
-            libgmp-dev
+            libgmp-dev ccache
+
+      # The engine's CMake build wraps the NDK compiler in ccache when it is
+      # on PATH. Per-commit key with a prefix fallback: every run restores
+      # the newest cache and saves its own (an exact hit is never re-saved).
+      - name: Cache ccache (engine)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: xonotic-android-ccache-${{ matrix.abi }}-${{ env.NDK_VERSION }}-${{ github.sha }}
+          restore-keys: |
+            xonotic-android-ccache-${{ matrix.abi }}-${{ env.NDK_VERSION }}-
 
       - name: Install Android NDK ${{ env.NDK_VERSION }}
         run: |
@@ -99,6 +112,8 @@ jobs:
       - name: Build APK
         env:
           ANDROID_ABI: ${{ matrix.abi }}
+          CCACHE_DIR: ~/.cache/ccache
+          CCACHE_MAXSIZE: 500M
           PROJECT_VERSION: ${{ steps.ver.outputs.version }}
           PROJECT_CODE: ${{ steps.ver.outputs.code }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}

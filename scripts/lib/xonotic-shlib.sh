@@ -250,6 +250,9 @@ xonotic_compile_qc_only() {
     if [ -f gmqcc ] && ! ./gmqcc --version >/dev/null 2>&1; then
         printf 'gmqcc binary incompatible with current environment — rebuilding from source\n'
         make clean >/dev/null 2>&1 || true
+        # make clean alone leaves a binary newer than its sources behind on
+        # some trees, and make then calls it up to date.
+        rm -f gmqcc
     fi
     make $MAKEFLAGS STRIP=: gmqcc
 
@@ -257,6 +260,35 @@ xonotic_compile_qc_only() {
     make QCC="$gmqcc" XON_BUILDSYSTEM=1 QCCFLAGS_WATERMARK="$QCCFLAGS_WATERMARK" $MAKEFLAGS qc
     # 'qc' can skip menu.dat when only menu sources changed.
     make QCC="$gmqcc" XON_BUILDSYSTEM=1 QCCFLAGS_WATERMARK="$QCCFLAGS_WATERMARK" -C qcsrc ../menu.dat
+}
+
+# Compiler for the DarkPlaces make. /usr/bin is forced to the front of PATH
+# below (a broken sdl2-config in some SDK images), which also hides the ccache
+# wrappers flatpak-builder --ccache puts first -- so ask for ccache by name.
+# Prints "cc" when ccache is absent or the caller chose CC.
+xonotic_dp_cc() {
+    if [ -n "${CC:-}" ]; then
+        printf '%s' "$CC"
+    elif [ -z "${XONOTIC_NO_CCACHE:-}" ] && command -v ccache >/dev/null 2>&1; then
+        printf 'ccache cc'
+    else
+        printf 'cc'
+    fi
+}
+
+# How DarkPlaces gets libjpeg. Inside flatpak-builder the SDK's jpeglib.h and
+# its libjpeg.so disagree about the ABI (header 80, library 62), and a binary
+# linked with LINK_TO_LIBJPEG exits at start-up with "Wrong JPEG library
+# version". DarkPlaces' own dlopen path carries a 62 header and opens
+# libjpeg.so.62, which is exactly what the runtime ships.
+xonotic_dp_link_jpeg() {
+    if [ -n "${DP_LINK_JPEG:-}" ]; then
+        printf '%s' "$DP_LINK_JPEG"
+    elif [ -d /run/build ] || [ -n "${FLATPAK_ID:-}" ]; then
+        printf 'dlopen'
+    else
+        printf 'shared'
+    fi
 }
 
 xonotic_compile_engine_only() {
@@ -274,7 +306,7 @@ xonotic_compile_engine_only() {
     printf 'Building DarkPlaces for %s...\n' "${ARCH:-host}"
     cd "$darkplaces"
     xonotic_maybe_make_clean
-    PATH="/usr/bin:${PATH}" make sdl-release DP_SSE=0 "${MAKEFLAGS:--j$(nproc)}"
+    PATH="/usr/bin:${PATH}" make sdl-release DP_SSE=0 "${MAKEFLAGS:--j$(nproc)}" CC="$(xonotic_dp_cc)" DP_LINK_JPEG="$(xonotic_dp_link_jpeg)"
     install -m 755 darkplaces-sdl "$out_bin"
     printf 'Built %s (%s)\n' "$out_bin" "$(file -b "$out_bin")"
 }
@@ -337,6 +369,7 @@ xonotic_compile() {
     if [ -f gmqcc ] && ! ./gmqcc --version >/dev/null 2>&1; then
         printf 'gmqcc binary incompatible with current environment — rebuilding from source\n'
         xonotic_maybe_make_clean
+        rm -f gmqcc
     fi
     if [ -n "${ARCH_TRIPLET:-}" ]; then
         xonotic_maybe_make_clean
@@ -354,7 +387,7 @@ xonotic_compile() {
     cd "$root/engine/darkplaces"
     xonotic_maybe_make_clean
     # Some SDK images ship a broken sdl2-config — ensure /usr/bin/sdl2-config is found first.
-    PATH="/usr/bin:${PATH}" make sdl-release DP_SSE=0 $MAKEFLAGS STRIP=:
+    PATH="/usr/bin:${PATH}" make sdl-release DP_SSE=0 $MAKEFLAGS STRIP=: CC="$(xonotic_dp_cc)" DP_LINK_JPEG="$(xonotic_dp_link_jpeg)"
     install -m 755 darkplaces-sdl "$out_bin"
 
     printf 'Built %s (%s)\n' "$out_bin" "$(file -b "$out_bin")"

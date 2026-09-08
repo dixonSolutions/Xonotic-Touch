@@ -22,7 +22,7 @@ SDL_VERSION="${SDL_VERSION:-2.32.10}"
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") [--abi arm64-v8a|armeabi-v7a] [--version X.Y.Z] [--code N] [--out DIR]
+Usage: $(basename "$0") [--abi arm64-v8a|armeabi-v7a|x86_64|x86] [--version X.Y.Z] [--code N] [--out DIR]
 
 Environment:
   ANDROID_SDK_ROOT / ANDROID_HOME   Android SDK (required)
@@ -45,8 +45,8 @@ while [ $# -gt 0 ]; do
 done
 
 case "$ABI" in
-    arm64-v8a|armeabi-v7a) ;;
-    *) echo "Unsupported ABI: $ABI (arm64-v8a, armeabi-v7a)" >&2; exit 1 ;;
+    arm64-v8a|armeabi-v7a|x86_64|x86) ;;
+    *) echo "Unsupported ABI: $ABI (arm64-v8a, armeabi-v7a, x86_64, x86)" >&2; exit 1 ;;
 esac
 
 SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"

@@ -77,7 +77,11 @@ jobs:
           # Manual upload uses a stable name (flatpak-${arch}). Auto-upload
           # creates a second artifact that breaks unfiltered download-artifact.
           upload-artifact: false
-          cache-key: xonotic-touch-${{ matrix.arch }}-v1-${{ hashFiles('flatpak/io.github.dixonSolutions.XonoticTouch.yml', 'scripts/**', 'packaging/**', 'touch/**', 'engine/darkplaces/makefile.inc') }}
+          # The action only falls back to caches whose key starts with
+          # "flatpak-builder-<arch>", and never re-saves an exact hit. A key
+          # per commit under that prefix means every run restores the newest
+          # ccache and saves its own.
+          cache-key: flatpak-builder-${{ matrix.arch }}-xonotic-v2-${{ github.sha }}
           restore-cache: true
 
       - name: Upload Flatpak bundle
@@ -99,6 +103,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # Clickable compiles inside its container; ccache lives in the
+      # workspace so it survives between runs. Per-commit key with a prefix
+      # fallback, like the Android and Flatpak jobs.
+      - name: Cache ccache (click)
+        uses: actions/cache@v4
+        with:
+          path: build/ccache-click-${{ matrix.arch }}
+          key: xonotic-click-ccache-${{ matrix.arch }}-${{ github.sha }}
+          restore-keys: |
+            xonotic-click-ccache-${{ matrix.arch }}-
 
       - name: Build Click package
         uses: tuxecure/clickable@v2
@@ -246,6 +261,7 @@ jobs:
           cp release/click-armhf/*.click release/upload/
           cp release/android-arm64-v8a/*.apk release/upload/
           cp release/android-armeabi-v7a/*.apk release/upload/
+          cp release/android-x86_64/*.apk release/upload/
           ls -la release/upload/
           {
             echo "## Xonotic Touch ${VERSION}"
@@ -280,6 +296,7 @@ jobs:
             echo
             echo "- \`XonoticTouch-${VERSION}-arm64-v8a.apk\`"
             echo "- \`XonoticTouch-${VERSION}-armeabi-v7a.apk\`"
+            echo "- \`XonoticTouch-${VERSION}-x86_64.apk\` (Chromebooks, Waydroid, emulators)"
             echo
             echo "First launch downloads about 1 GB of maps, textures and music."
             echo
@@ -305,6 +322,7 @@ jobs:
       - name: Verify the release can drive in-app updates
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPDATE_FEED_ABIS: arm64-v8a armeabi-v7a x86_64
         run: bash scripts/android-verify-update-feed.sh
 
   # Upload arm64 + armhf revisions to OpenStore (requires OPENSTORE_API_KEY).

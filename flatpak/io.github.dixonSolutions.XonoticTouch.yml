@@ -11,6 +11,9 @@ finish-args:
   - --socket=fallback-x11
   - --socket=pulseaudio
   - --device=dri
+  # The keyboard hot-plug watcher reads the SW_TABLET_MODE switch from
+  # /dev/input (a folded-back Type Cover stays listed in /proc otherwise).
+  - --device=input
   # Game packs must live in real Flatpak $XDG_DATA_HOME (.../data/xonotic-touch)
   # so "Delete app data" / uninstall --delete-data clears them. Do NOT grant
   # --filesystem=xdg-data/xonotic-touch — that bind-mounts the host
@@ -58,3 +61,17 @@ modules:
     sources:
       - type: dir
         path: ..
+        # Local build products would ride into the sandbox and, with the
+        # copy flattening mtimes, could pass for up to date there.
+        skip:
+          - .git
+          - .flatpak-builder
+          - build
+          - build-flatpak
+          - build-flatpak-prebuilt
+          - build-click
+          - engine/darkplaces/build-obj
+          - engine/darkplaces/darkplaces-sdl
+          - engine/darkplaces/darkplaces-dedicated
+          - engine/gmqcc/gmqcc
+          - engine/data/xonotic-data.pk3dir/qcsrc/.tmp

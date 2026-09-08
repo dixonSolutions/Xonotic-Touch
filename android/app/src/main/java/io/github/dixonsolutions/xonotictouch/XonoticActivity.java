@@ -30,6 +30,14 @@ public final class XonoticActivity extends SDLActivity {
     private Thread updateService;
     /** Last release the check found, so Install and Skip know what they mean. */
     private volatile AppUpdater.Update lastSeenUpdate;
+    /** When this process last asked the release feed (elapsedRealtime). The
+     *  boot check counts: it ran moments before this activity started. */
+    private volatile long lastCheckMs = android.os.SystemClock.elapsedRealtime();
+    /** A game left in the background for hours comes back through onResume(),
+     *  not through BootActivity. Looking again after this long keeps a phone
+     *  that is never cold-started from missing every release. */
+    private static final long RECHECK_AFTER_MS = 60L * 60L * 1000L;
+    private Thread resumeCheck;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -48,6 +56,45 @@ public final class XonoticActivity extends SDLActivity {
     protected void onDestroy() {
         stopUpdateService();
         super.onDestroy();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        recheckUpdateIfStale();
+    }
+
+    /**
+     * Ask the feed again after a long stretch in the background.
+     *
+     * Serves the same auto-install preference as the boot check: found and
+     * automatic means the download starts; found and manual means the menu's
+     * Updates screen shows it the next time it is opened. Nothing here stops
+     * play -- the check is on its own thread and a failure changes nothing.
+     */
+    private void recheckUpdateIfStale() {
+        if (android.os.SystemClock.elapsedRealtime() - lastCheckMs < RECHECK_AFTER_MS) {
+            return;
+        }
+        if (resumeCheck != null && resumeCheck.isAlive()) {
+            return;
+        }
+        if (!AppUpdater.isEnabled(this) || baseDir == null) {
+            return;
+        }
+        lastCheckMs = android.os.SystemClock.elapsedRealtime();
+        final UpdateBridge bridge = new UpdateBridge(this, new File(baseDir));
+        final AppUpdater updater = new AppUpdater(this);
+        resumeCheck = new Thread(() -> {
+            String installed = updater.installedVersion();
+            AppUpdater.Update update = updater.findUpdate();
+            publishFindings(bridge, updater, installed, update);
+            if (update != null && AppUpdater.isAutoInstall(this)) {
+                installFromMenu(bridge, updater, installed);
+            }
+        }, "xonotic-update-recheck");
+        resumeCheck.setDaemon(true);
+        resumeCheck.start();
     }
 
     /**

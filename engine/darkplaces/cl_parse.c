@@ -189,7 +189,7 @@ cvar_t snd_cdautopause = {CF_CLIENT | CF_ARCHIVE, "snd_cdautopause", "1", "pause
 cvar_t cl_serverextension_download = {CF_CLIENT, "cl_serverextension_download", "0", "indicates whether the server supports the download command"};
 // Xonotic Touch: keep local Touch CSQC (virtual sticks / Console) instead of
 // replacing it with a stock server's csprogs.dat from dlcache.
-cvar_t cl_csqc_download = {CF_CLIENT | CF_ARCHIVE, "cl_csqc_download", "1", "download CSQC from servers when CRC differs (0 = always keep local csprogs.dat; needed for touch controls on public servers)"};
+cvar_t cl_csqc_download = {CF_CLIENT, "cl_csqc_download", "1", "download CSQC from servers when CRC differs (0 = always keep local csprogs.dat, 1 = stock, 2 = keep local csprogs.dat only when it is the server's exact build, otherwise download -- the Xonotic Touch default)"};
 cvar_t cl_joinbeforedownloadsfinish = {CF_CLIENT | CF_ARCHIVE, "cl_joinbeforedownloadsfinish", "1", "if non-zero the game will begin after the map is loaded before other downloads finish"};
 cvar_t cl_nettimesyncfactor = {CF_CLIENT | CF_ARCHIVE, "cl_nettimesyncfactor", "0", "rate at which client time adapts to match server time, 1 = instantly, 0.125 = slowly, 0 = not at all (only applied in bound modes 0, 1, 2, 3)"};
 cvar_t cl_nettimesyncboundmode = {CF_CLIENT | CF_ARCHIVE, "cl_nettimesyncboundmode", "6", "method of restricting client time to valid values, 0 = no correction, 1 = tight bounding (jerky with packet loss), 2 = loose bounding (corrects it if out of bounds), 3 = leniant bounding (ignores temporary errors due to varying framerate), 4 = slow adjustment method from Quake3, 5 = slightly nicer version of Quake3 method, 6 = tight bounding + mode 5, 7 = jitter compensated dynamic adjustment rate"};
@@ -1124,6 +1124,8 @@ static void CL_BeginDownloads(qbool aborteddownload)
 		 && cl_serverextension_download.integer
 		 && cl_csqc_download.integer
 		 && (FS_CRCFile(csqc_progname.string, &progsize) != csqc_progcrc.integer || ((int)progsize != csqc_progsize.integer && csqc_progsize.integer != -1))
+		 // Xonotic Touch (mode 2): the bundled csprogs.dat may already be this build.
+		 && !(cl_csqc_download.integer == 2 && FS_CRCFile("csprogs.dat", &progsize) == csqc_progcrc.integer && ((int)progsize == csqc_progsize.integer || csqc_progsize.integer == -1))
 		 && !FS_FileExists(va(vabuf, sizeof(vabuf), "dlcache/%s.%i.%i", csqc_progname.string, csqc_progsize.integer, csqc_progcrc.integer)))
 		{
 			Con_Printf("Downloading new CSQC code to dlcache/%s.%i.%i\n", csqc_progname.string, csqc_progsize.integer, csqc_progcrc.integer);

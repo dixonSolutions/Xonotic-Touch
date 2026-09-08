@@ -280,12 +280,41 @@ quarantine_stale_touch_menu_overrides() {
     fi
 }
 
+# scripts/dev-deploy.sh drops compiled QuakeC into <data>/zzzz-touch-dev.pk3dir,
+# which sorts above everything the package ships. It writes the app commit it
+# was built against into .built-for; once the app itself moves on, that
+# overlay is an old menu and HUD wearing the new engine -- every touch cvar
+# comes up "Unknown command" and the stock Xonotic menu appears. Drop it the
+# moment it no longer matches, in both places the engine searches.
+quarantine_stale_dev_overlays() {
+    _q_app=""
+    if [ -f /.flatpak-info ]; then
+        _q_app="$(sed -n 's/^app-commit=//p' /.flatpak-info 2>/dev/null | head -n 1)"
+    fi
+    for _q_base in "$USER_DATA" "${HOME}/.xonotic/data"; do
+        [ -d "$_q_base" ] || continue
+        for _q_dir in "$_q_base"/*-touch-dev.pk3dir; do
+            [ -d "$_q_dir" ] || continue
+            _q_built_for=""
+            [ -f "$_q_dir/.built-for" ] && read -r _q_built_for < "$_q_dir/.built-for"
+            if [ -n "$_q_app" ] && [ "$_q_built_for" = "$_q_app" ]; then
+                xonotic_log "keeping dev overlay $_q_dir (built for this app commit)"
+                continue
+            fi
+            xonotic_log "removing stale dev overlay $_q_dir (built for '${_q_built_for:-unknown}', app is '${_q_app:-not flatpak}')"
+            rm -rf "$_q_dir" 2>/dev/null || true
+        done
+    done
+}
+
 sync_bundle_data
 quarantine_stale_touch_menu_overrides
+quarantine_stale_dev_overlays
 
-# Stock multiplayer servers push their csprogs into dlcache and wipe Touch HUD /
-# Console. Drop those caches each launch; cl_csqc_download 0 (engine) prevents
-# re-download once the Flatpak ships that cvar.
+# Stock multiplayer servers push their csprogs into dlcache. Drop those caches
+# each launch so a stale copy never outlives the pack it came with;
+# cl_csqc_download 2 (touch/xonotic.cfg) keeps the Touch CSQC on servers that
+# run this exact data build and takes the server's CSQC everywhere else.
 if [ -d "${HOME}/.xonotic/data/dlcache" ]; then
     rm -f "${HOME}/.xonotic/data/dlcache"/csprogs.dat.* 2>/dev/null || true
 fi
@@ -808,6 +837,14 @@ mkdir -p "${DATA_DIR}/touch/profiles" 2>/dev/null || true
     echo "prvm_traceqc 0"
     echo "prvm_statementprofiling 0"
     echo "prvm_timeprofiling 0"
+    # This file runs after config.cfg, so an archived value from an older
+    # build cannot pin the client to 0 (which failed every public-server
+    # join). 2 = keep the Touch CSQC only on a server running this exact data
+    # build, take the server's CSQC everywhere else.
+    echo "cl_csqc_download 2"
+    # Same reason: an archived cl_curl_enabled 0 from an older build left
+    # every server map undownloaded, and the world black.
+    echo "cl_curl_enabled 1"
     if [ -f "${TOUCH_PROFILES_DIR}/${TOUCH_PROFILE}.cfg" ]; then
         echo "exec touch/profiles/${TOUCH_PROFILE}.cfg"
     else

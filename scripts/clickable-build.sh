@@ -29,6 +29,12 @@ export CLICK_FRAMEWORK="${CLICK_FRAMEWORK:-ubuntu-touch-24.04-1.x}"
 CLICKABLE_ARCH="${ARCH:-}"
 export CLICK_ARCH="${CLICKABLE_ARCH}"
 export DEST="${INSTALL_DIR:?INSTALL_DIR must be set by Clickable}"
+# Keep ccache inside the workspace: CI persists build/ between runs, and the
+# container's home does not survive. ARCH is set by Clickable.
+if command -v ccache >/dev/null 2>&1; then
+    export CCACHE_DIR="${ROOT}/build/ccache-click-${ARCH:-host}"
+    mkdir -p "$CCACHE_DIR"
+fi
 
 case "${CLICKABLE_ARCH}" in
     arm64)

@@ -28,6 +28,30 @@ Settings → Touch. **Rescan hardware** runs `vid_touchscreen_rescan`.
 4. Ubuntu Touch / Lomiri (`/etc/os-release`, `CLICK_FRAMEWORK`, desktop name).
 5. First `SDL_FINGERDOWN` while Auto is selected re-runs the scan (SDL often
    reports zero devices until the first finger).
+6. `SW_TABLET_MODE` from `/dev/input` (Flatpak: `--device=input`). Engaged
+   means the built-in keyboard is folded away or detached, whatever `/proc`
+   still lists. Keyboards on USB (bus 0x03) or Bluetooth (0x05) count
+   regardless -- they are the player's, not the chassis'.
+7. Permanently-present virtual keyboards (`keyd`, `ydotool`, `xdotool`,
+   `uinput`, remote desktop) are not keyboards.
+
+## Live hot-plug
+
+`VID_TouchHotplugFrame()` runs from `CL_UpdateScreen` and re-reads the
+hardware once a second: one read of `/proc/bus/input/devices` (about
+0.1 ms) plus one ioctl per kept tablet-switch descriptor. `/dev/input` is
+walked only when that listing changes -- opening every event node costs
+about 0.4 s on a Surface, and doing it per second was a rhythmic render
+stall. When the keyboard or touchscreen answer changes it
+re-applies `vid_touchscreen_mode`: in Auto the CSQC overlay, weapon strip and
+console pill go away the moment a keyboard is attached and return when it is
+removed -- in the menu as well as mid-match, because every `touch_*.qc` draw
+already gates on `vid_touchscreen`. A toast (`SCR_Toast`, drawn over menus
+too) says *Keyboard connected: touch controls hidden* or *Keyboard
+disconnected: touch controls shown*.
+
+Testing without hardware: `scripts/fake-keyboard.py 10` creates a `uinput`
+keyboard on bus 0x03 for ten seconds.
 
 Android/iOS (`DP_MOBILETOUCH`) still force Always.
 

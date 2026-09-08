@@ -18,7 +18,7 @@ set -euo pipefail
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 CACHE_DIR="${ANDROID_CACHE_DIR:-$ROOT/build/android}"
 SRC_DIR="$CACHE_DIR/src"
-ABI="${1:?usage: android-deps.sh <abi>   (arm64-v8a | armeabi-v7a)}"
+ABI="${1:?usage: android-deps.sh <abi>   (arm64-v8a | armeabi-v7a | x86_64 | x86)}"
 PREFIX="$CACHE_DIR/prefix/$ABI"
 API="${ANDROID_API_LEVEL:-21}"
 

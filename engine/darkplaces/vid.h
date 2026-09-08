@@ -267,6 +267,8 @@ qbool VID_SDL_HasTouchDevices(void);
 void VID_DetectTouchHardware(qbool *has_touchscreen, qbool *is_touch_only);
 void VID_ApplyTouchscreenMode(void);
 void VID_NoteTouchFingerSeen(void);
+// Once-a-second re-read of the input hardware; applies the mode on change.
+void VID_TouchHotplugFrame(void);
 void VID_TouchscreenMode_c(struct cvar_s *var);
 void VID_Touchscreen_c(struct cvar_s *var);
 void VID_TouchscreenRescan_f(struct cmd_state_s *cmd);

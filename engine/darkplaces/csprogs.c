@@ -977,8 +977,16 @@ qbool MakeDownloadPacket(const char *filename, unsigned char *data, size_t len, 
 }
 
 extern cvar_t csqc_usedemoprogs;
+// Xonotic Touch: true while the bundled Touch CSQC (the one with the on-screen
+// stick, weapon strip and console pill) is the client program. False when a
+// server's own CSQC was taken instead; the engine then draws its fallback
+// overlay (vid_sdl.c, IN_Move_TouchScreen_Xonotic).
+qbool cl_touch_csqc_active = false;
+
 void CL_VM_Init (void)
 {
+	// Xonotic Touch: whether this connection runs the bundled touch CSQC.
+	qbool csqc_keep_local = false;
 	prvm_prog_t *prog = CLVM_prog;
 	const char* csprogsfn = NULL;
 	unsigned char *csprogsdata = NULL;
@@ -1000,10 +1008,26 @@ void CL_VM_Init (void)
 
 	// see if the requested csprogs.dat file matches the requested crc
 	// Xonotic Touch: cl_csqc_download 0 skips dlcache so stock server CSQC
-	// cannot replace the local Touch HUD / Console.
+	// cannot replace the local Touch HUD / Console. cl_csqc_download 2 keeps
+	// the local Touch CSQC only when it is byte-for-byte the build the server
+	// runs (same CRC and size); any other server gets its own CSQC, because a
+	// Touch CSQC built from a different data revision cannot parse that
+	// server's messages and the connection dies with "Illegible server
+	// message" a few frames in.
 	{
 		extern cvar_t cl_csqc_download;
-		if (cl_csqc_download.integer && (!cls.demoplayback || csqc_usedemoprogs.integer))
+		if (cl_csqc_download.integer == 2 && !cls.demoplayback)
+		{
+			size_t localsize = 0;
+			int localcrc = FS_CRCFile("csprogs.dat", &localsize);
+			csqc_keep_local = (localcrc == requiredcrc && (int)localsize == requiredsize);
+			Con_Printf("Touch CSQC %s the server's build (local %i/%i, server %i/%i): %s\n",
+				csqc_keep_local ? "matches" : "differs from", localcrc, (int)localsize, requiredcrc, requiredsize,
+				csqc_keep_local ? "keeping the touch HUD" : "using the server's CSQC with the engine touch overlay");
+		}
+		else
+			csqc_keep_local = (cl_csqc_download.integer == 0);
+		if (cl_csqc_download.integer && !csqc_keep_local && (!cls.demoplayback || csqc_usedemoprogs.integer))
 		{
 			csprogsfn = va(vabuf, sizeof(vabuf), "dlcache/%s.%i.%i", csqc_progname.string, requiredsize, requiredcrc);
 			if(cls.caughtcsprogsdata && cls.caughtcsprogsdatasize == requiredsize && CRC_Block(cls.caughtcsprogsdata, (size_t)cls.caughtcsprogsdatasize) == requiredcrc)
@@ -1026,6 +1050,22 @@ void CL_VM_Init (void)
 		csprogsfn = csqc_progname.string;
 		csprogsdata = FS_LoadFile(csprogsfn, tempmempool, true, &csprogsdatasize);
 	}
+	// Xonotic Touch: servers name their CSQC by version
+	// (csprogs-xonotic-v0.8.6-NNNN-gHASH.dat). With downloads off that exact
+	// file never exists on this side, and the old behaviour was to give up:
+	// "server requires CSQC, but ... wasn't found" on every public server.
+	// The bundled Touch csprogs.dat stands in for it; the CRC check below
+	// then warns instead of disconnecting.
+	if (!csprogsdata && !cls.demoplayback)
+	{
+		if (csqc_keep_local && strcmp(csqc_progname.string, "csprogs.dat"))
+		{
+			csprogsfn = "csprogs.dat";
+			csprogsdata = FS_LoadFile(csprogsfn, tempmempool, true, &csprogsdatasize);
+			if (csprogsdata)
+				Con_Printf("Server wants %s; using local csprogs.dat instead (cl_csqc_download 0) -- touch controls stay available\n", csqc_progname.string);
+		}
+	}
 	if (csprogsdata)
 	{
 		csprogsdatacrc = CRC_Block(csprogsdata, (size_t)csprogsdatasize);
@@ -1040,7 +1080,7 @@ void CL_VM_Init (void)
 				// We WANT to continue here, and play the demo with different csprogs!
 				// After all, this is just a warning. Sure things may go wrong from here.
 			}
-			else if (!cl_csqc_download.integer)
+			else if (csqc_keep_local)
 			{
 				// Xonotic Touch: keep local CSQC (touch HUD) on stock servers.
 				Con_Printf(CON_WARN "Warning: Using local %s (CRC/size %i/%i; server wants %i/%i) because cl_csqc_download is 0\n", csqc_progname.string, csprogsdatacrc, (int)csprogsdatasize, requiredcrc, requiredsize);
@@ -1059,6 +1099,8 @@ void CL_VM_Init (void)
 			CL_DisconnectEx(false, CON_ERROR "CL_VM_Init: %s requires CSQC, but \"%s\" wasn't found\n", cls.demoplayback ? "demo" : "server", csqc_progname.string);
 		return;
 	}
+
+	cl_touch_csqc_active = csqc_keep_local || !strcmp(csprogsfn, "csprogs.dat");
 
 	PRVM_Prog_Init(prog, cmd_local);
 
@@ -1164,6 +1206,7 @@ void CL_VM_Init (void)
 
 void CL_VM_ShutDown (void)
 {
+	cl_touch_csqc_active = false;
 	prvm_prog_t *prog = CLVM_prog;
 	Cmd_ClearCSQCCommands(cmd_local);
 

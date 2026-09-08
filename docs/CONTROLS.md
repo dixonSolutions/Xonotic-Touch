@@ -384,7 +384,20 @@ Pause sub-tabs: Preset · Look · Move · Buttons · Layout · Advanced (export/
 Main menu is stock Xonotic (Singleplayer / Multiplayer / Media / Settings / …). Touch-specific UI stays under Settings → Touch controls (and first-run wizard).
 
 - **Touch setup** — first-run: preset → handedness → save.
-- **Server browser** — stock Multiplayer browser.
+- **Server browser** — stock Multiplayer browser. Joining used to fail on
+  every public server: they name their client progs by version
+  (`csprogs-xonotic-v0.8.6-NNNN-gHASH.dat`), `cl_csqc_download 0` refused to
+  fetch it, and the bundled `csprogs.dat` cannot read another revision's
+  messages anyway ("Illegible server message"). The port now runs
+  `cl_csqc_download 2`: the Touch CSQC (and its HUD) stays only on a server
+  that runs this exact data build; any other server supplies its own CSQC and
+  the engine's built-in touch overlay provides the controls
+  (`csprogs.c` `CL_VM_Init`, `cl_parse.c`). Server maps download again:
+  `cl_curl_enabled` is back to 1 (the launcher writes both values into the
+  generated `touch/startup.cfg`, after `config.cfg`, so an archived 0 from an
+  older build cannot stick); with it off, a server map outside the bundled
+  packs left the world black behind a working HUD. Mobile-data mode still
+  turns downloads off at runtime.
 - **Pause** — Escape / GameMenu Resume (see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md)).
 
 ---

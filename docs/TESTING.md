@@ -32,6 +32,15 @@ Quick checks:
 | Returning user (name + `touch_setup_done`) | No profile/touch dialogs |
 | Menu text field tap | System keyboard (GNOME: Accessibility → Screen Keyboard) |
 
+## Keyboard hot-plug
+
+The overlay follows the hardware live (`docs/TOUCH_DETECTION.md`). Without a
+real keyboard to hand, `scripts/fake-keyboard.py 10` creates a `uinput` USB
+keyboard for ten seconds on the device (needs `/dev/uinput` access and
+python-evdev); the engine should say *Keyboard connected: touch controls
+hidden* and then *Keyboard disconnected: touch controls shown*, in the menu
+and mid-match.
+
 ## Ubuntu Touch confinement
 
 Click apps cannot exec host binaries, so the launcher and its helpers must work
