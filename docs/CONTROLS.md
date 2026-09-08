@@ -130,6 +130,20 @@ exec touch/profiles/battery.cfg
 
 All `touch_*` cvars are **port extensions**. Register in CSQC with `registercommand` / `cvar` and `CF_ARCHIVE` so the engine persists them in the user config. Until CSQC registers them, lines in profile `.cfg` files are inert but document the contract.
 
+### Enablement (engine)
+
+Hardware detection lives in DarkPlaces (`vid_touchdetect.c`). The CSQC overlay still keys off `vid_touchscreen`; the engine sets that from mode + detection. See [TOUCH_DETECTION.md](TOUCH_DETECTION.md).
+
+| Cvar | Type | Range | Default | Notes |
+|------|------|-------|---------|-------|
+| `vid_touchscreen_mode` | int | 0/1/2 | `1` | 0 = off, 1 = auto, 2 = always on |
+| `vid_touchscreen_touchonly` | int | 0/1 | `1` | Auto enables only on touch-only devices (no physical keyboard) |
+| `vid_touchscreen` | int | 0/1 | derived | Runtime switch used by CSQC; do not set in ship cfg |
+| `vid_touchscreen_detected` | int | 0/1 | readonly | Last scan found a touchscreen |
+| `vid_touchscreen_touchonly_detected` | int | 0/1 | readonly | Last scan classified the machine as touch-only |
+
+Launcher override: `XONOTIC_TOUCH_MODE=auto|always|off`. Desktop test windows default to `always` because they have no touch hardware.
+
 ### Layout (geometry)
 
 Each widget has `touch_<name>_x`, `_y`, `_size` and `_visible`. `_x` / `_y` are

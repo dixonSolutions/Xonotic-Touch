@@ -75,5 +75,6 @@ Public Flatpak remote: GitHub Pages OSTree repo with retained commit history. Cl
 - [SOURCES.md](SOURCES.md)
 - [SCREEN.md](SCREEN.md)
 - [CONTROLS.md](CONTROLS.md)
+- [TOUCH_DETECTION.md](TOUCH_DETECTION.md) — hardware scan, Off/Auto/Always
 - [SETUP.md](SETUP.md) — first-run wizard, asset progress, touch menus, OSK
 - [UBUNTU_TOUCH_LAUNCH.md](UBUNTU_TOUCH_LAUNCH.md) — AppArmor click confinement contract

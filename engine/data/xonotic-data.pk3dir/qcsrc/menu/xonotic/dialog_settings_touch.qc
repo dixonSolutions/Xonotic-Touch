@@ -43,6 +43,20 @@ void XonoticTouchSettingsTab_fill(entity me)
 
 	// Tab height MUST be 15.5 to match Settings TabController (settings.rows - 3.5).
 	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Touch input")));
+	me.TR(me);
+		me.TD(me, 1, 2, e = makeXonoticRadioButton_T(1, "vid_touchscreen_mode", "0", _("Off"),
+			_("Never show on-screen touch controls")));
+		me.TD(me, 1, 2, e = makeXonoticRadioButton_T(1, "vid_touchscreen_mode", "1", _("Auto"),
+			_("Enable touch controls when a touch-only device is detected")));
+		me.TD(me, 1, 2, e = makeXonoticRadioButton_T(1, "vid_touchscreen_mode", "2", _("Always"),
+			_("Always show on-screen touch controls")));
+	me.TR(me);
+		me.TD(me, 1, 4, e = makeXonoticCheckBox_T(0, "vid_touchscreen_touchonly", _("Auto-detect touch-only devices"),
+			_("When Auto is selected, enable only if a touchscreen is present and no physical keyboard is attached. Tablets and Ubuntu Touch always count as touch-only.")));
+		me.TD(me, 1, 2, e = makeXonoticCommandButton(_("Rescan hardware"), '0 0 0', "vid_touchscreen_rescan; menu_cmd sync", 0));
+
+	me.TR(me);
 		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Preset")));
 	me.TR(me);
 		me.TD(me, 1, 1.5, e = makeXonoticCommandButton(_("Standard"), '0 0 0', "exec touch/profiles/standard.cfg; menu_cmd sync", 0));

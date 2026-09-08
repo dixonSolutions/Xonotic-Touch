@@ -6524,7 +6524,10 @@ static void Mod_Q3BSP_LoadLightGrid(lump_t *l)
 			}
 		}
 
-		if (mod_q3bsp_lightgrid_texture.integer)
+		// GLES2 has no core 3D textures, so vid.maxtexturesize_3d stays 0 there and
+		// R_LoadTexture3D() would clamp the grid to 1x1x1 and abort the same way.
+		// Leaving the texture NULL falls back to sampling the grid per entity.
+		if (mod_q3bsp_lightgrid_texture.integer && vid.maxtexturesize_3d > 0)
 		{
 			// build a texture to hold the data for per-pixel sampling
 			// this has 3 different kinds of data stacked in it:

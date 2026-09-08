@@ -2,6 +2,7 @@
 
 #include <client/csqcmodel_hooks.qh>
 #include <client/draw.qh>
+#include <client/touch_api.qh>
 #include <client/hud/panel/chat.qh>
 #include <client/hud/panel/physics.qh>
 #include <client/hud/panel/quickmenu.qh>
@@ -2401,6 +2402,12 @@ string Scoreboard_Fraglimit_Draw(float limit, bool is_leadlimit)
 void Scoreboard_Draw(bool should_draw)
 {
 	if (!should_draw)
+		return;
+	// A touch sheet that owns the screen is modal, and this board is not part of it:
+	// while dead in edit mode it printed the whole table across the drag handles.
+	// A heavier scrim was the alternative, but edit mode exists to place controls
+	// against the view, so the view has to stay visible.
+	if (Touch_OwnsScreen())
 		return;
 	if (!autocvar__hud_configure)
 	{

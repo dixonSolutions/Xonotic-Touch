@@ -956,9 +956,14 @@ static void IN_Move_TouchScreen_SteelStorm(void)
 	cl.viewangles[1] -= aim[0] * cl_yawspeed.value * cl.realframetime;
 }
 
-static qbool VID_TouchscreenHasRealDevices(void)
+qbool VID_SDL_HasTouchDevices(void)
 {
 	return SDL_GetNumTouchDevices() > 0;
+}
+
+static qbool VID_TouchscreenHasRealDevices(void)
+{
+	return VID_SDL_HasTouchDevices() || vid_touchscreen_detected.integer;
 }
 
 static void VID_SyncDesktopMouse(void)
@@ -1585,6 +1590,7 @@ void Sys_SDL_HandleEvents(void)
 #ifdef DEBUGSDLEVENTS
 				Con_DPrintf("SDL_FINGERDOWN for finger %i\n", (int)event.tfinger.fingerId);
 #endif
+				VID_NoteTouchFingerSeen();
 				for (i = 0;i < MAXFINGERS-1;i++)
 				{
 					if (!multitouch[i][0])
@@ -1862,6 +1868,7 @@ void VID_Init (void)
 #endif
 #endif
 #ifdef DP_MOBILETOUCH
+	Cvar_SetValueQuick(&vid_touchscreen_mode, 2);
 	Cvar_SetValueQuick(&vid_touchscreen, 1);
 #endif
 	Cvar_RegisterVariable(&joy_sdl2_trigger_deadzone);

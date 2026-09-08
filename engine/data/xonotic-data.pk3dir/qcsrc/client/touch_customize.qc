@@ -88,12 +88,36 @@ string Touch_Customize_WidgetLabel(int wid)
 	}
 }
 
+// A hidden button is not merely invisible: every `*_visible` cvar also gates the
+// control's hit test in Touch_AssignRole, so a hidden button has no input either.
+// Offering a drag handle for one means inviting the player to carefully place
+// something that will never appear — which is what RLD and ZOOM were doing, while
+// DASH alone was correctly left out. One predicate, so the rule is the same for all
+// eight and the two loops below cannot drift apart.
+//
+// MOVE is the exception: the move zone stays live with the stick hidden, so its
+// anchor is still worth placing.
+bool Touch_Customize_WidgetEnabled(int wid)
+{
+	switch (wid)
+	{
+		case TOUCH_WIDGET_MOVE: return true;
+		case TOUCH_WIDGET_FIRE: return boolean(autocvar_touch_fire_visible);
+		case TOUCH_WIDGET_JUMP: return boolean(autocvar_touch_jump_visible);
+		case TOUCH_WIDGET_CROUCH: return boolean(autocvar_touch_crouch_visible);
+		case TOUCH_WIDGET_WEAPON: return boolean(autocvar_touch_weapon_visible);
+		case TOUCH_WIDGET_ZOOM: return boolean(autocvar_touch_zoom_visible);
+		case TOUCH_WIDGET_RELOAD: return boolean(autocvar_touch_reload_visible);
+		default: return boolean(autocvar_touch_dodge_visible);
+	}
+}
+
 int Touch_Customize_HitWidget(vector p)
 {
 	int wid;
 	for (wid = TOUCH_WIDGET_COUNT - 1; wid >= 0; wid -= 1)
 	{
-		if (wid == TOUCH_WIDGET_DODGE && !autocvar_touch_dodge_visible)
+		if (!Touch_Customize_WidgetEnabled(wid))
 			continue;
 		vector wp = Touch_Customize_GetWidgetPos(wid);
 		float nx = wp.x, ny = wp.y, nsize = wp.z;
@@ -225,7 +249,7 @@ void Touch_Customize_Draw(void)
 	int wid;
 	for (wid = 0; wid < TOUCH_WIDGET_COUNT; wid += 1)
 	{
-		if (wid == TOUCH_WIDGET_DODGE && !autocvar_touch_dodge_visible)
+		if (!Touch_Customize_WidgetEnabled(wid))
 			continue;
 		Touch_Customize_DrawHandle(wid, alpha);
 	}
