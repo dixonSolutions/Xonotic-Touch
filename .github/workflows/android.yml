@@ -76,7 +76,9 @@ jobs:
       - name: Cache ccache (engine)
         uses: actions/cache@v4
         with:
-          path: ~/.cache/ccache
+          # A literal path: `env:` values are not shell-expanded, so a ~ in
+          # CCACHE_DIR would have ccache write to a directory named "~".
+          path: ${{ github.workspace }}/.ccache
           key: xonotic-android-ccache-${{ matrix.abi }}-${{ env.NDK_VERSION }}-${{ github.sha }}
           restore-keys: |
             xonotic-android-ccache-${{ matrix.abi }}-${{ env.NDK_VERSION }}-
@@ -112,7 +114,7 @@ jobs:
       - name: Build APK
         env:
           ANDROID_ABI: ${{ matrix.abi }}
-          CCACHE_DIR: ~/.cache/ccache
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
           CCACHE_MAXSIZE: 500M
           PROJECT_VERSION: ${{ steps.ver.outputs.version }}
           PROJECT_CODE: ${{ steps.ver.outputs.code }}
@@ -121,8 +123,11 @@ jobs:
         run: bash scripts/android-build.sh
 
       - name: Show APK metadata
+        env:
+          CCACHE_DIR: ${{ github.workspace }}/.ccache
         run: |
           set -euo pipefail
+          ccache -s 2>/dev/null | head -12 || true
           APK="$(find build/android-out -name '*.apk' | head -1)"
           ls -lh "$APK"
           AAPT="$(find "$ANDROID_SDK_ROOT/build-tools" -name aapt2 | sort -r | head -1)"
