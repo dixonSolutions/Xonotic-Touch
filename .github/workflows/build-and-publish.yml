@@ -305,6 +305,25 @@ jobs:
             echo "Commit: \`${GITHUB_SHA}\`"
           } > release/notes.md
 
+      # The Actions token cannot create a release whose target is no longer the
+      # branch head (a push that lands while this run is still building makes
+      # it so, and the API answers 403 "Resource not accessible by
+      # integration"). Pushing the tag ourselves works for any commit, and the
+      # release then attaches to the existing tag with no target at all.
+      - name: Tag the built commit
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "tag $TAG already exists"
+          else
+            git tag -a "$TAG" "$GITHUB_SHA" -m "$TAG"
+            git push origin "refs/tags/$TAG"
+          fi
+
       - name: Create versioned GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -315,7 +334,6 @@ jobs:
           files: release/upload/*
           fail_on_unmatched_files: true
           make_latest: true
-          target_commitish: ${{ github.sha }}
 
       # The shipped app finds its update by tag shape and asset filename. Both
       # are conventions, and breaking either strands every install silently.
