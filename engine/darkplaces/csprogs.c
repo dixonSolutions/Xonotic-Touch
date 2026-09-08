@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "progsvm.h"
 #include "clprogdefs.h"
 #include "csprogs.h"
+#include "touch_hud.h"
 #include "cl_collision.h"
 #include "snd_main.h"
 #include "clvm_cmds.h"
@@ -1202,6 +1203,7 @@ void CL_VM_Init (void)
 
 	// Update Coop and Deathmatch Globals (at this point the client knows them from ServerInfo)
 	CL_VM_UpdateCoopDeathmatchGlobals(cl.gametype);
+	TouchHUD_ProgsChanged();
 }
 
 void CL_VM_ShutDown (void)
@@ -1220,6 +1222,7 @@ void CL_VM_ShutDown (void)
 			prog->ExecuteProgram(prog, PRVM_clientfunction(CSQC_Shutdown), "QC function CSQC_Shutdown is missing");
 	}
 	PRVM_Prog_Reset(prog);
+	TouchHUD_ProgsChanged();
 	Con_DPrint("CSQC ^1unloaded\n");
 }
 

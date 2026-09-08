@@ -344,8 +344,9 @@ static void widget_chrome_pill(float cx, float cy, float hx, float hy, const cha
 enum
 {
 	ROLE_NONE = -1, ROLE_IGNORED = -2,
-	ROLE_MOVE = 0, ROLE_LOOK, ROLE_FIRE,
-	ROLE_JUMP = 100, ROLE_CROUCH, ROLE_WEAPON, ROLE_CON = 106, ROLE_PAUSE, ROLE_CHAT = 109, ROLE_SCORES
+	ROLE_MOVE = 0, ROLE_LOOK, ROLE_FIRE, ROLE_FIRE2,
+	ROLE_JUMP = 100, ROLE_CROUCH, ROLE_WEAPON, ROLE_ZOOM, ROLE_DODGE, ROLE_RELOAD, ROLE_CON, ROLE_PAUSE, ROLE_SHEET, ROLE_CHAT, ROLE_SCORES,
+	ROLE_WEPSTRIP = 200
 };
 
 #define MAX_FINGERS 4
@@ -359,11 +360,15 @@ typedef struct finger_s
 	double lost_time;   // 0 while reported
 	qbool first_frame;
 	qbool fired;        // role-specific one-shot (pill tap, weapon swipe)
+	qbool draglook;     // FIRE finger that has escaped into a look drag
+	float prev_look_x, prev_look_y;
+	int impulse;        // ROLE_WEPSTRIP: the row's impulse
 } finger_t;
 
 static finger_t fingers[MAX_FINGERS];
 static float move_off_x, move_off_y;
-static qbool key_forward, key_back, key_left, key_right, key_attack, key_jump, key_crouch, key_scores;
+static qbool key_forward, key_back, key_left, key_right, key_attack, key_attack2, key_jump, key_crouch, key_scores, key_zoom;
+static int strip_selected_impulse = -1;  // last row tapped: the only "current" we can know here
 static qbool hop_latched, hop_cancelling;
 static double hop_press_time;
 static double tapfire_until;
@@ -392,9 +397,11 @@ void TouchHUD_ReleaseAll(void)
 	set_key("moveleft", &key_left, false);
 	set_key("moveright", &key_right, false);
 	set_key("attack", &key_attack, false);
+	set_key("attack2", &key_attack2, false);
 	set_key("jump", &key_jump, false);
 	set_key("crouch", &key_crouch, false);
 	set_key("showscores", &key_scores, false);
+	set_key("zoom", &key_zoom, false);
 	hop_latched = false;
 	hop_cancelling = false;
 	tapfire_until = 0;
@@ -418,6 +425,359 @@ qbool TouchHUD_Active(void)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Weapons: read from the CSQC the server sent, not from a table. Xonotic sorts
+// both its weapons registry and its stats registry by name before numbering
+// them (REGISTRY_SORT), so a weapon's id -- its WepSet bit -- and the index of
+// the WEAPONS stat differ from build to build: STAT_WEAPONS is 32 in this
+// port's own data and 164 on one public server. Whatever CSQC is loaded holds
+// the answer in its globals: STAT_WEAPONS.m_id, and the weapon list from
+// Weapons_first along .enemy (REGISTRY_NEXT), each with .m_id, .impulse,
+// .netname and .model2 (the HUD icon). Bound again on every CSQC load.
+// ---------------------------------------------------------------------------
+#define MAX_WEAPONS 72
+// ammo_stat: the stat holding this weapon's reserve (-1 = none: infinite).
+typedef struct wepdef_s { char name[32]; char pic[64]; char ammo_icon[32]; int impulse; int id; int ammo_stat; } wepdef_t;
+static wepdef_t weapons[MAX_WEAPONS];
+static int num_weapons = 0;
+static int stat_weapons = -1;
+// The CSQC's viewmodels[0] (the wepent) tells the held weapon and its clip,
+// which no stat does: global offset plus the fields read from it each frame.
+typedef struct qcfield_s { int ofs; int type; } qcfield_t;
+static int viewmodels_ofs = -1;
+static qcfield_t f_switchweapon, f_activeweapon, f_clip_load, f_clip_size, f_wep_id;
+
+static qcfield_t qcfield(prvm_prog_t *prog, const char *name)
+{
+	qcfield_t f = {-1, 0};
+	mdef_t *d = PRVM_ED_FindField(prog, name);
+	if (d)
+	{
+		f.ofs = d->ofs;
+		f.type = d->type & ~DEF_SAVEGLOBAL;
+	}
+	return f;
+}
+
+static int qcfield_int(prvm_prog_t *prog, prvm_edict_t *ed, qcfield_t f)
+{
+	prvm_eval_t *v;
+	if (f.ofs < 0)
+		return 0;
+	v = PRVM_EDICTFIELDVALUE(ed, f.ofs);
+	return f.type == ev_float ? (int)v->_float : v->_int;
+}
+
+static int def_type(const mdef_t *d)
+{
+	return d->type & ~DEF_SAVEGLOBAL;
+}
+
+// A field as an int, whether the QC declared it int or float.
+static int field_int(prvm_prog_t *prog, prvm_edict_t *ed, const mdef_t *f)
+{
+	prvm_eval_t *v = PRVM_EDICTFIELDVALUE(ed, f->ofs);
+	return def_type(f) == ev_float ? (int)v->_float : v->_int;
+}
+
+static const char *field_string(prvm_prog_t *prog, prvm_edict_t *ed, const mdef_t *f)
+{
+	return f ? PRVM_GetString(prog, PRVM_EDICTFIELDVALUE(ed, f->ofs)->string) : "";
+}
+
+static prvm_edict_t *edict_or_null(prvm_prog_t *prog, int n)
+{
+	if (n <= 0 || n >= prog->num_edicts)
+		return NULL;
+	return PRVM_EDICT_NUM(n);
+}
+
+static prvm_edict_t *global_edict(prvm_prog_t *prog, const char *name)
+{
+	mdef_t *g = PRVM_ED_FindGlobal(prog, name);
+	if (!g || def_type(g) != ev_entity)
+		return NULL;
+	return edict_or_null(prog, PRVM_GLOBALFIELDEDICT(g->ofs));
+}
+
+static void bind_weapons(void)
+{
+	prvm_prog_t *prog = CLVM_prog;
+	mdef_t *f_id, *f_impulse, *f_pic, *f_name, *f_next;
+	prvm_edict_t *ed;
+	int guard;
+	mdef_t *f_ammo_type, *f_ammo_icon, *g_viewmodels;
+	int res_none = 0, stat_fuel = -1, stat_plasma = -1;
+	num_weapons = 0;
+	stat_weapons = -1;
+	viewmodels_ofs = -1;
+	strip_selected_impulse = -1;
+	if (!prog->loaded)
+		return;
+	f_id = PRVM_ED_FindField(prog, "m_id");
+	f_impulse = PRVM_ED_FindField(prog, "impulse");
+	f_next = PRVM_ED_FindField(prog, "enemy");
+	f_pic = PRVM_ED_FindField(prog, "model2");
+	f_name = PRVM_ED_FindField(prog, "netname");
+	f_ammo_type = PRVM_ED_FindField(prog, "ammo_type");
+	f_ammo_icon = PRVM_ED_FindField(prog, "m_icon");
+	if (!f_id || !f_impulse || !f_next)
+		return;
+	ed = global_edict(prog, "STAT_WEAPONS");
+	if (ed)
+	{
+		stat_weapons = field_int(prog, ed, f_id);
+		if (stat_weapons < 0 || stat_weapons + 2 >= MAX_CL_STATS)
+			stat_weapons = -1;
+	}
+	// GetAmmoStat: shells/bullets/rockets/cells are engine stats, fuel and
+	// plasma registered ones; RES_NONE is a weapon that uses no ammo.
+	ed = global_edict(prog, "STAT_FUEL");
+	if (ed)
+		stat_fuel = field_int(prog, ed, f_id);
+	ed = global_edict(prog, "STAT_PLASMA");
+	if (ed)
+		stat_plasma = field_int(prog, ed, f_id);
+	ed = global_edict(prog, "RES_NONE");
+	if (ed)
+		res_none = PRVM_NUM_FOR_EDICT(ed);
+	g_viewmodels = PRVM_ED_FindGlobal(prog, "viewmodels");
+	if (g_viewmodels && def_type(g_viewmodels) == ev_entity)
+		viewmodels_ofs = g_viewmodels->ofs;
+	f_switchweapon = qcfield(prog, "switchweapon");
+	f_activeweapon = qcfield(prog, "activeweapon");
+	f_clip_load = qcfield(prog, "clip_load");
+	f_clip_size = qcfield(prog, "clip_size");
+	f_wep_id = qcfield(prog, "m_id");
+	// The registry's linked list, in the order the CSQC's own FOREACH walks it.
+	for (ed = global_edict(prog, "Weapons_first"), guard = 0; ed && guard < 256 && num_weapons < MAX_WEAPONS; guard++)
+	{
+		int id = field_int(prog, ed, f_id);
+		int impulse = field_int(prog, ed, f_impulse);
+		if (id > 0 && impulse >= 0)
+		{
+			wepdef_t *wd = &weapons[num_weapons++];
+			wd->id = id;
+			wd->impulse = impulse;
+			dp_strlcpy(wd->name, field_string(prog, ed, f_name), sizeof(wd->name));
+			dp_strlcpy(wd->pic, field_string(prog, ed, f_pic), sizeof(wd->pic));
+			wd->ammo_stat = -1;
+			wd->ammo_icon[0] = 0;
+			if (f_ammo_type)
+			{
+				int res = PRVM_EDICTFIELDEDICT(ed, f_ammo_type->ofs);
+				prvm_edict_t *re = (res != res_none) ? edict_or_null(prog, res) : NULL;
+				if (re)
+				{
+					const char *kind = field_string(prog, re, f_name);
+					if (!strcmp(kind, "shells")) wd->ammo_stat = STAT_SHELLS;
+					else if (!strcmp(kind, "bullets")) wd->ammo_stat = STAT_NAILS;
+					else if (!strcmp(kind, "rockets")) wd->ammo_stat = STAT_ROCKETS;
+					else if (!strcmp(kind, "cells")) wd->ammo_stat = STAT_CELLS;
+					else if (!strcmp(kind, "fuel")) wd->ammo_stat = stat_fuel;
+					else if (!strcmp(kind, "plasma")) wd->ammo_stat = stat_plasma;
+					if (wd->ammo_stat >= MAX_CL_STATS)
+						wd->ammo_stat = -1;
+					dp_strlcpy(wd->ammo_icon, field_string(prog, re, f_ammo_icon), sizeof(wd->ammo_icon));
+				}
+			}
+		}
+		ed = edict_or_null(prog, PRVM_EDICTFIELDEDICT(ed, f_next->ofs));
+	}
+	if (!cl_touch_csqc_active)
+		Con_Printf("Touch HUD: %d weapons from the server's CSQC, WEAPONS stat %d\n", num_weapons, stat_weapons);
+	else
+		Con_DPrintf("Touch HUD: %d weapons from the local CSQC, WEAPONS stat %d\n", num_weapons, stat_weapons);
+}
+
+void TouchHUD_ProgsChanged(void)
+{
+	bind_weapons();
+}
+
+// The wepent (viewmodels[0]) of the loaded CSQC, or NULL.
+static prvm_edict_t *wepent(void)
+{
+	prvm_prog_t *prog = CLVM_prog;
+	if (viewmodels_ofs < 0 || !prog->loaded)
+		return NULL;
+	return edict_or_null(prog, PRVM_GLOBALFIELDEDICT(viewmodels_ofs));
+}
+
+// Index in weapons[] of the weapon being switched to (held, once the switch
+// lands), like the CSQC's wepent.switchweapon; -1 when the CSQC does not say.
+static int held_weapon_index(void)
+{
+	prvm_prog_t *prog = CLVM_prog;
+	prvm_edict_t *ve = wepent(), *we = NULL;
+	int id, i;
+	if (!ve)
+		return -1;
+	if (f_switchweapon.ofs >= 0)
+		we = edict_or_null(prog, PRVM_EDICTFIELDEDICT(ve, f_switchweapon.ofs));
+	if (!we && f_activeweapon.ofs >= 0)
+		we = edict_or_null(prog, PRVM_EDICTFIELDEDICT(ve, f_activeweapon.ofs));
+	if (!we)
+		return -1;
+	id = qcfield_int(prog, we, f_wep_id);
+	for (i = 0; i < num_weapons; i++)
+		if (weapons[i].id == id)
+			return i;
+	return -1;
+}
+
+// WepSet_FromWeapon: bit id-1 of the first stat for ids 1..24, then the next two.
+static qbool weapon_owned(int index)
+{
+	int bit = weapons[index].id - 1;
+	if (stat_weapons < 0 || bit < 0)
+		return false;
+	if (bit < 24)
+		return (cl.stats[stat_weapons] & (1 << bit)) != 0;
+	if (bit < 48)
+		return (cl.stats[stat_weapons + 1] & (1 << (bit - 24))) != 0;
+	return (cl.stats[stat_weapons + 2] & (1 << (bit - 48))) != 0;
+}
+
+// The HUD skin's pic, like Touch_Hud_SkinPicPath: hud_skin first, default second.
+static cachepic_t *skin_pic(const char *name)
+{
+	char path[128];
+	cachepic_t *pic;
+	const char *skin = Cvar_VariableString(&cvars_all, "hud_skin", 0);
+	if (skin && skin[0])
+	{
+		dpsnprintf(path, sizeof(path), "gfx/hud/%s/%s", skin, name);
+		pic = Draw_CachePic_Flags(path, CACHEPICFLAG_FAILONMISSING | CACHEPICFLAG_QUIET);
+		if (Draw_IsPicLoaded(pic))
+			return pic;
+	}
+	dpsnprintf(path, sizeof(path), "gfx/hud/luma/%s", name);
+	pic = Draw_CachePic_Flags(path, CACHEPICFLAG_FAILONMISSING | CACHEPICFLAG_QUIET);
+	if (Draw_IsPicLoaded(pic))
+		return pic;
+	dpsnprintf(path, sizeof(path), "gfx/hud/default/%s", name);
+	pic = Draw_CachePic_Flags(path, CACHEPICFLAG_FAILONMISSING | CACHEPICFLAG_QUIET);
+	if (Draw_IsPicLoaded(pic))
+		return pic;
+	return NULL;
+}
+
+// Fit a pic inside a box without distortion; returns the drawn width.
+static float skin_pic_fit(cachepic_t *pic, float cx, float cy, float box_w, float box_h, float a)
+{
+	float pw, ph, aspect, h, w;
+	if (!pic)
+		return 0;
+	pw = Draw_GetPicWidth(pic);
+	ph = Draw_GetPicHeight(pic);
+	aspect = (pw > 0 && ph > 0) ? pw / ph : 1.0f;
+	h = min(box_h, box_w / aspect);
+	w = h * aspect;
+	DrawQ_Pic(cx - w * 0.5f, cy - h * 0.5f, pic, w, h, 1, 1, 1, a, 0);
+	return w;
+}
+
+static float hud_unit(void) { return ui_scale() * max(0.4f, cv("touch_hud_scale", 0.85f)); }
+#define WEP_ROW_H 26.0f
+#define WEP_ROW_W 46.0f
+#define WEP_PAD   4.0f
+
+static int owned_weapon_count(void)
+{
+	int i, n = 0;
+	for (i = 0; i < num_weapons; i++)
+		if (weapons[i].impulse >= 0 && weapon_owned(i))
+			n++;
+	return n;
+}
+
+// Row rects of the strip, in the order the CSQC draws them. Returns the count.
+static int strip_rows(float *out_cx, float *out_top, float *out_row_h, float *out_row_w, int *out_index, int maxrows)
+{
+	float u = hud_unit();
+	float h = WEP_ROW_H * u, w = WEP_ROW_W * u;
+	float cx, cy;
+	int i, n = 0, total = owned_weapon_count();
+	widget_center(cv("touch_weplist_x", 0.962f), cv("touch_weplist_y", 0.360f), &cx, &cy);
+	*out_cx = cx;
+	*out_top = cy - (total * h) * 0.5f;
+	*out_row_h = h;
+	*out_row_w = w;
+	for (i = 0; i < num_weapons && n < maxrows; i++)
+		if (weapons[i].impulse >= 0 && weapon_owned(i))
+			out_index[n++] = i;
+	return n;
+}
+
+// Tap on a strip row: the row's impulse, or -1. Same pad as Touch_Weapons_HitImpulse.
+static int strip_hit(float px, float py)
+{
+	float cx, top, h, w, pad;
+	int idx[MAX_WEAPONS];
+	int n, i;
+	if (!cv("touch_weplist_visible", 1))
+		return -1;
+	n = strip_rows(&cx, &top, &h, &w, idx, MAX_WEAPONS);
+	if (n <= 0)
+		return -1;
+	pad = min(w, h) * 0.12f;
+	for (i = 0; i < n; i++)
+	{
+		float y = top + i * h;
+		if (px >= cx - w * 0.5f - pad && px <= cx + w * 0.5f + pad && py >= y - pad && py <= y + h + pad)
+			return weapons[idx[i]].impulse;
+	}
+	return -1;
+}
+
+static void draw_rrect(float cx, float cy, float hx, float hy, const float *rgb, float a)
+{
+	// Rounded plate: a capsule end at each side reads the same at these sizes,
+	// and needs no fourth mask.
+	shape_capsule(cx, cy, hx, hy, rgb, a);
+}
+
+static void draw_weapon_strip(float a)
+{
+	float cx, top, h, w, pad, u, num_fs, num_slot, r;
+	int idx[MAX_WEAPONS];
+	int n, i, held;
+	if (!cv("touch_weplist_visible", 1))
+		return;
+	n = strip_rows(&cx, &top, &h, &w, idx, MAX_WEAPONS);
+	if (n <= 0)
+		return;
+	held = held_weapon_index();
+	u = hud_unit();
+	pad = WEP_PAD * u;
+	r = 6 * u;
+	num_fs = 12 * u * 0.8f;
+	num_slot = label_width(num_fs, "9");
+	(void)r;
+	draw_rrect(cx, top + n * h * 0.5f, w * 0.5f + pad, n * h * 0.5f + pad, C_SURFACE, a * A_SURFACE);
+	for (i = 0; i < n; i++)
+	{
+		const wepdef_t *wd = &weapons[idx[i]];
+		float y = top + i * h + h * 0.5f;
+		// The held weapon when the CSQC's wepent tells it (the local rule);
+		// the last tapped row only when it does not.
+		qbool current = held >= 0 ? (idx[i] == held) : (strip_selected_impulse >= 0 && wd->impulse == strip_selected_impulse);
+		float left = cx - w * 0.5f + pad;
+		float icon_left, icon_right;
+		char num[8];
+		if (current)
+			draw_rrect(cx, y, w * 0.5f, h * 0.5f, C_ACCENT, a * A_SURFACE_LATCH);
+		dpsnprintf(num, sizeof(num), "%d", wd->impulse);
+		shape_label_right(left + num_slot, y, num_fs, num, C_INK, a * A_INK * 0.7f);
+		icon_left = left + num_slot + pad;
+		icon_right = cx + w * 0.5f - pad;
+		if (!skin_pic_fit(skin_pic(wd->pic), (icon_left + icon_right) * 0.5f, y, icon_right - icon_left, h - pad * 2,
+			a * (current ? A_INK : A_INK * 0.55f)))
+			shape_label((icon_left + icon_right) * 0.5f, y, num_fs, wd->name, C_INK, a * (current ? A_INK : A_INK * 0.55f));
+	}
+}
+
 static qbool role_owned(int role)
 {
 	int i;
@@ -429,9 +789,9 @@ static qbool role_owned(int role)
 
 static qbool weapon_button_shown(void)
 {
-	// The stock strip cannot be tapped without the port's CSQC, so the WEP
-	// glass button stands in for it here whatever its cvar says.
-	return true;
+	// The strip is the switcher, as locally; the WEP button only when the
+	// player asked for it, or when nothing is owned yet to tap on.
+	return cv("touch_weapon_visible", 0) || (cv("touch_weplist_visible", 1) && owned_weapon_count() == 0);
 }
 
 static int assign_role(float px, float py)
@@ -444,16 +804,27 @@ static int assign_role(float px, float py)
 		return ROLE_CHAT;
 	if (cv("touch_scores_visible", 1) && hit_rect(px, py, cv("touch_scores_x", 0.272f), cv("touch_scores_y", 0.948f), cv("touch_scores_size", 0.060f), cv("touch_scores_aspect", 2.9f), 1.20f))
 		return ROLE_SCORES;
+	// The weapon strip: tap a row to switch (Touch_Weapons_Hit).
+	if (strip_hit(px, py) >= 0)
+		return ROLE_WEPSTRIP;
 	if (in_edge_deadzone(px, py))
 		return ROLE_IGNORED;
 	if (cv("touch_fire_visible", 1) && hit_circle(px, py, cv("touch_fire_x", 0.855f), cv("touch_fire_y", 0.680f), cv("touch_fire_size", 0.140f), 1.15f))
 		return ROLE_FIRE;
+	if (cv("touch_fire2_visible", 0) && hit_circle(px, py, cv("touch_fire2_x", 0.135f), cv("touch_fire2_y", 0.240f), cv("touch_fire2_size", 0.120f), 1.15f))
+		return ROLE_FIRE2;
 	if (cv("touch_jump_visible", 1) && hit_rect(px, py, cv("touch_jump_x", 0.855f), cv("touch_jump_y", 0.885f), cv("touch_jump_size", 0.072f), cv("touch_jump_aspect", 2.6f), 1.10f))
 		return ROLE_JUMP;
 	if (cv("touch_crouch_visible", 1) && hit_circle(px, py, cv("touch_crouch_x", 0.700f), cv("touch_crouch_y", 0.885f), cv("touch_crouch_size", 0.066f), 1.10f))
 		return ROLE_CROUCH;
 	if (weapon_button_shown() && hit_circle(px, py, cv("touch_weapon_x", 0.540f), cv("touch_weapon_y", 0.860f), cv("touch_weapon_size", 0.100f), 1.10f))
 		return ROLE_WEAPON;
+	if (cv("touch_zoom_visible", 0) && hit_circle(px, py, cv("touch_zoom_x", 0.860f), cv("touch_zoom_y", 0.480f), cv("touch_zoom_size", 0.100f), 1.10f))
+		return ROLE_ZOOM;
+	if (cv("touch_reload_visible", 0) && hit_circle(px, py, cv("touch_reload_x", 0.720f), cv("touch_reload_y", 0.480f), cv("touch_reload_size", 0.100f), 1.10f))
+		return ROLE_RELOAD;
+	if (cv("touch_dodge_visible", 0) && hit_circle(px, py, cv("touch_dodge_x", 0.165f), cv("touch_dodge_y", 0.480f), cv("touch_dodge_size", 0.100f), 1.10f))
+		return ROLE_DODGE;
 	if (in_move_zone(px, py) || (cv("touch_move_visible", 1) && hit_circle(px, py, cv("touch_move_x", 0.170f), cv("touch_move_y", 0.680f), cv("touch_move_size", 0.229f), 1.0f)))
 	{
 		if (role_owned(ROLE_MOVE))
@@ -594,7 +965,7 @@ void TouchHUD_Frame(void)
 	double now = host.realtime;
 	float dt;
 	float grace = cv("touch_finger_grace_ms", 120) * 0.001f;
-	qbool fire_count = false, jump_down = false, crouch_down = false, scores_down = false, move_active = false, look_seen = false;
+	qbool fire_count = false, fire2_down = false, zoom_down = false, jump_down = false, crouch_down = false, scores_down = false, move_active = false, look_seen = false;
 	float look_dx = 0, look_dy = 0;
 	qbool look_first = false;
 
@@ -645,6 +1016,21 @@ void TouchHUD_Frame(void)
 				look_begin();
 			if (f->role == ROLE_JUMP)
 				hop_press_time = now;
+			if (f->role == ROLE_WEPSTRIP)
+			{
+				char cmd[32];
+				f->impulse = strip_hit(px, py);
+				if (f->impulse >= 0)
+				{
+					dpsnprintf(cmd, sizeof(cmd), "impulse %d\n", f->impulse);
+					Cbuf_AddText(cmd_local, cmd);
+					strip_selected_impulse = f->impulse;
+				}
+			}
+			if (f->role == ROLE_RELOAD)
+				Cbuf_AddText(cmd_local, "weapon_reload\n");
+			if (f->role == ROLE_DODGE)
+				Cbuf_AddText(cmd_local, "+dodge\n-dodge\n");
 		}
 		else
 		{
@@ -681,6 +1067,8 @@ void TouchHUD_Frame(void)
 			pill_release(f);
 		else if (f->role == ROLE_WEAPON)
 			weapon_gesture(f, true);
+		else if (f->role == ROLE_FIRE && f->draglook)
+			look_active = false;
 		else if (f->role == ROLE_LOOK)
 		{
 			// tap in the look zone fires once (touch_look_tap_fire)
@@ -727,6 +1115,34 @@ void TouchHUD_Frame(void)
 			break;
 		case ROLE_FIRE:
 			fire_count = true;
+			// touch_fire_drag_look: the fire button is also an aim surface. The
+			// drag starts once the finger has left the look deadzone; a dedicated
+			// look finger keeps priority.
+			if (cv("touch_fire_drag_look", 1) && !look_seen)
+			{
+				float ddx = f->last_x - f->down_x, ddy = f->last_y - f->down_y;
+				if (!f->draglook && sqrt(ddx * ddx + ddy * ddy) >= cv("touch_look_deadzone_px", 4))
+				{
+					f->draglook = true;
+					look_begin();
+					f->prev_look_x = f->last_x;
+					f->prev_look_y = f->last_y;
+				}
+				if (f->draglook)
+				{
+					look_seen = true;
+					look_dx += f->last_x - f->prev_look_x;
+					look_dy += f->last_y - f->prev_look_y;
+					f->prev_look_x = f->last_x;
+					f->prev_look_y = f->last_y;
+				}
+			}
+			break;
+		case ROLE_FIRE2:
+			fire2_down = true;
+			break;
+		case ROLE_ZOOM:
+			zoom_down = true;
 			break;
 		case ROLE_JUMP:
 			jump_down = true;
@@ -766,8 +1182,10 @@ void TouchHUD_Frame(void)
 		look_apply(look_dx, look_dy, dt);
 	look_prev_time = now;
 
-	// fire: held button, or a look-zone tap
+	// fire: held button, or a look-zone tap; ALT is the secondary
 	set_key("attack", &key_attack, fire_count || now < tapfire_until);
+	set_key("attack2", &key_attack2, fire2_down);
+	set_key("zoom", &key_zoom, zoom_down);
 
 	// hop: hold past touch_hop_latch_ms latches bunny-hop; a tap while latched clears it
 	if (cv("touch_hop_mode", 1) == 1)
@@ -824,17 +1242,78 @@ static void draw_bar(float lx, float cy, float w, float h, float frac, const flo
 		shape_disc(lx + hy, cy, hy, fill, a * 0.92f);
 }
 
-static void draw_stat_row(float ox, float oy, float hud_u, const char *tag, int value, int maxvalue, float a)
+static void draw_stat_row(float ox, float oy, float hud_u, const char *icon_name, const char *tag, int value, int maxvalue, float a)
 {
 	float icon = 22 * hud_u, num_slot = 54 * hud_u, bar_w = 122 * hud_u, bar_h = 9 * hud_u, row_h = 30 * hud_u;
 	float mid_y = oy + row_h * 0.5f;
 	float rgb[3];
 	char num[16];
 	num_color(value, maxvalue, rgb);
-	shape_label(ox + icon * 0.5f, mid_y, 12 * hud_u, tag, rgb, a * A_INK);
+	if (!skin_pic_fit(skin_pic(icon_name), ox + icon * 0.5f, mid_y, icon, icon, a * A_INK))
+		shape_label(ox + icon * 0.5f, mid_y, 12 * hud_u, tag, rgb, a * A_INK);
 	dpsnprintf(num, sizeof(num), "%d", value);
 	shape_label_right(ox + icon + 6 * hud_u + num_slot, mid_y, FONT_READOUT * hud_u, num, rgb, a * A_INK);
 	draw_bar(ox + icon + 6 * hud_u + num_slot + 12 * hud_u, mid_y, bar_w, bar_h, maxvalue > 0 ? (float)value / maxvalue : 0, rgb, a);
+}
+
+// Touch_Hud_DrawAmmoRow: the held weapon's ammo type icon and reserve, the
+// clip and "/ reserve" for clip weapons, an infinity sign when it uses none.
+static void draw_ammo_row(float ox, float oy, float hud_u, float a)
+{
+	float icon = 22 * hud_u, num_slot = 54 * hud_u, row_h = 30 * hud_u;
+	float mid_y = oy + row_h * 0.5f, num_right = ox + icon + 6 * hud_u + num_slot;
+	const float *rgb = C_INK;
+	prvm_prog_t *prog = CLVM_prog;
+	prvm_edict_t *ve = wepent();
+	int held = held_weapon_index();
+	int reserve = 0, clip = -1, clipmax = 0, shown;
+	qbool infinite, clipped;
+	char text[16];
+	const char *icon_name = "ammo_shells";
+	if (held < 0)
+	{
+		// No wepent to ask: the engine's own current-ammo stat, as before.
+		reserve = max(0, cl.stats[STAT_AMMO]);
+		infinite = false;
+	}
+	else
+	{
+		const wepdef_t *wd = &weapons[held];
+		infinite = (cl.stats[STAT_ITEMS] & 1) || wd->ammo_stat < 0; // IT_UNLIMITED_AMMO
+		if (wd->ammo_stat >= 0)
+			reserve = max(0, cl.stats[wd->ammo_stat]);
+		if (wd->ammo_icon[0])
+			icon_name = wd->ammo_icon;
+		if (ve)
+		{
+			clip = qcfield_int(prog, ve, f_clip_load);
+			clipmax = qcfield_int(prog, ve, f_clip_size);
+		}
+	}
+	clipped = !infinite && clipmax > 0 && clip >= 0;
+	shown = clipped ? clip : reserve;
+	if (infinite)
+		dp_strlcpy(text, "\xE2\x88\x9E", sizeof(text)); // U+221E
+	else
+		dpsnprintf(text, sizeof(text), "%d", shown);
+	if (!infinite)
+	{
+		qbool low = clipped ? (shown <= clipmax * 0.25f) : (shown < 10);
+		if (shown <= 0)
+			rgb = C_DANGER;
+		else if (low)
+			rgb = C_WARNING;
+	}
+	if (!infinite)
+		skin_pic_fit(skin_pic(icon_name), ox + icon * 0.5f, mid_y, icon * 1.3f, icon * 1.3f, a * A_INK);
+	shape_label_right(num_right, mid_y, FONT_READOUT * hud_u, text, rgb, a * A_INK);
+	if (clipped)
+	{
+		float fs = FONT_READOUT * hud_u * 0.75f;
+		char rest[24];
+		dpsnprintf(rest, sizeof(rest), "/ %d", reserve);
+		shape_label(num_right + 8 * hud_u + label_width(fs, rest) * 0.5f, mid_y, fs, rest, C_INK, a * A_INK * 0.8f);
+	}
 }
 
 static void draw_vitals(float a)
@@ -845,15 +1324,14 @@ static void draw_vitals(float a)
 	float cx, cy, ox, oy, pitch = (30 + 6) * hud_u;
 	int health = max(0, cl.stats[STAT_HEALTH]);
 	int armor = max(0, cl.stats[STAT_ARMOR]);
-	int ammo = max(0, cl.stats[STAT_AMMO]);
 	if (!cv("touch_mobile_hud", 1))
 		return;
 	widget_center(cv("touch_hud_x", 0.150f), cv("touch_hud_y", 0.115f), &cx, &cy);
 	ox = cx - w * 0.5f;
 	oy = cy - h * 0.5f;
-	draw_stat_row(ox, oy, hud_u, "HP", health, max(100, (int)cv("touch_hud_maxhealth", 100)), a);
-	draw_stat_row(ox, oy + pitch, hud_u, "AR", armor, max(100, (int)cv("touch_hud_maxarmor", 100)), armor > 0 ? a : a * 0.7f);
-	draw_stat_row(ox, oy + pitch * 2, hud_u, "AM", ammo, 100, a);
+	draw_stat_row(ox, oy, hud_u, "health", "HP", health, max(100, (int)cv("touch_hud_maxhealth", 100)), a);
+	draw_stat_row(ox, oy + pitch, hud_u, "armor", "AR", armor, max(100, (int)cv("touch_hud_maxarmor", 100)), armor > 0 ? a : a * 0.7f);
+	draw_ammo_row(ox, oy + pitch * 2, hud_u, a);
 }
 
 // ---------------------------------------------------------------------------
@@ -935,6 +1413,19 @@ void TouchHUD_Draw(void)
 		draw_circle_widget("touch_crouch_x", 0.700f, "touch_crouch_y", 0.885f, "touch_crouch_size", 0.066f, "DUCK", key_crouch, a, C_ACCENT);
 	if (weapon_button_shown())
 		draw_circle_widget("touch_weapon_x", 0.540f, "touch_weapon_y", 0.860f, "touch_weapon_size", 0.100f, "WEP", role_owned(ROLE_WEAPON), a, C_ACCENT);
+	if (cv("touch_fire2_visible", 0))
+		draw_circle_widget("touch_fire2_x", 0.135f, "touch_fire2_y", 0.240f, "touch_fire2_size", 0.120f, "ALT", key_attack2, a, C_DANGER);
+	if (cv("touch_zoom_visible", 0))
+		draw_circle_widget("touch_zoom_x", 0.860f, "touch_zoom_y", 0.480f, "touch_zoom_size", 0.100f, "ZOOM", key_zoom, a, C_ACCENT);
+	if (cv("touch_reload_visible", 0))
+		draw_circle_widget("touch_reload_x", 0.720f, "touch_reload_y", 0.480f, "touch_reload_size", 0.100f, "RLD", role_owned(ROLE_RELOAD), a, C_ACCENT);
+	if (cv("touch_dodge_visible", 0))
+		draw_circle_widget("touch_dodge_x", 0.165f, "touch_dodge_y", 0.480f, "touch_dodge_size", 0.100f, "DASH", role_owned(ROLE_DODGE), a, C_ACCENT);
 
-	draw_vitals(a);
+	// Readouts draw only for a live player, like Touch_Hud_Draw.
+	if (cl.stats[STAT_HEALTH] > 0)
+	{
+		draw_vitals(a);
+		draw_weapon_strip(a);
+	}
 }

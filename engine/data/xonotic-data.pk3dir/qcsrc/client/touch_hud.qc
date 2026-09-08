@@ -2,6 +2,7 @@
 #include "touch_init.qh"
 #include "touch_widget.qh"
 #include "touch_layout.qh"
+#include "touch_weapons.qh"
 #include <client/main.qh>
 #include <client/hud/hud.qh>
 #include <client/view.qh>
@@ -303,8 +304,9 @@ void Touch_Hud_DrawAmmoRow(vector origin, float alpha)
 // Its brightness lives in the asset, so no cvar could tone it down, and dimming
 // the panel would have dimmed the icons with it.
 //
-// Switching weapons stays with the WEP button and the wheel. This claims no
-// input, like the other readouts.
+// Every row is also a tap target (Touch_Weapons_AddSlot): the strip is the
+// weapon switcher, here and -- through the engine's copy of this HUD -- on
+// servers that run their own CSQC, so the two never diverge.
 
 const float TOUCH_HUD_WEP_H   = 26;
 const float TOUCH_HUD_WEP_W   = 46;
@@ -379,6 +381,8 @@ void Touch_Hud_DrawWeapons(float alpha)
 	WepSet owned = STAT(WEAPONS);
 	// Not `i`: FOREACH declares its own, and shadowing it makes the counter const.
 	int slot = 0;
+	// Rebuilt every frame, like the stock panel does when it is the one drawing.
+	Touch_Weapons_BeginFrame();
 	// The held weapon is a selected row, the way a list view marks one: an accent
 	// wash and nothing else. Marking it by *weight* — a bright opaque plate — is
 	// what made the stock panel the loudest object on screen. One washed row
@@ -392,6 +396,7 @@ void Touch_Hud_DrawWeapons(float alpha)
 			Touch_Shape_RRect(at, row_half, r, TOUCH_C_ACCENT,
 				alpha * TOUCH_A_SURFACE_LATCH);
 		Touch_Hud_DrawWeaponRow(at, row_half, it, current, alpha);
+		Touch_Weapons_AddSlot(at - row_half, row_half * 2, it.impulse, true);
 		slot += 1;
 	});
 }

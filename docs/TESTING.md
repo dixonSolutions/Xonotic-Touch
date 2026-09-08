@@ -41,6 +41,19 @@ python-evdev); the engine should say *Keyboard connected: touch controls
 hidden* and then *Keyboard disconnected: touch controls shown*, in the menu
 and mid-match.
 
+## Driving the touch HUD without fingers
+
+A remote-desktop pointer click never reaches the HUD: the engine ignores
+mouse buttons while a real touchscreen is present, and its mouse-as-finger
+fallback polls the button state once per frame, so an instantaneous click is
+never seen. `scripts/fake-touch.py` creates a `uinput` touchscreen instead
+and the compositor delivers its events as genuine SDL fingers. Coordinates
+are native screen pixels; the device maps onto the whole monitor, so scale
+does not matter. `tap:X:Y`, `drag:X1:Y1:X2:Y2:MS` and `wait:MS` chain in one
+run, e.g. `python3 scripts/fake-touch.py tap:2740:748 wait:300 tap:2740:664`
+taps two weapon-strip rows. A compositor screenshot of the fullscreen game
+is stale (direct scanout); use the engine's own `screenshot` command.
+
 ## Ubuntu Touch confinement
 
 Click apps cannot exec host binaries, so the launcher and its helpers must work

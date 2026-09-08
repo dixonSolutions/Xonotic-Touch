@@ -394,11 +394,20 @@ Main menu is stock Xonotic (Singleplayer / Multiplayer / Media / Settings / …)
   then runs its own copy of the Touch HUD (`engine/darkplaces/touch_hud.c`):
   the same `touch_*` layout cvars, the same `gfx/touch` masks, the same MOVE
   stick, FIRE, HOP (with the latch), DUCK, CONSOLE / SCORE / MENU / CHAT pills
-  and vitals rows, the same drag-look filter and stick thresholds. The one
-  difference is weapon switching: the stock strip is only tappable through
-  the port's CSQC, so on such a server the WEP glass button (tap = next,
-  swipe up/down = previous/next) appears at `touch_weapon_x/y`
-  (`csprogs.c` `CL_VM_Init`, `cl_parse.c`, `vid_sdl.c`). Server maps download again:
+  and vitals rows (with the skin's icons), the same weapon strip -- every
+  row a tap target that sends the row's impulse, exactly as the local strip
+  does now -- the same drag-look filter, FIRE drag-look, look-zone tap-fire,
+  stick thresholds, hop latch, and the ALT / ZOOM / RLD / DASH widgets when
+  their `_visible` cvars are on. Owned weapons come from the WEAPONS stat,
+  and the engine reads that stat's index and the weapon list (id, impulse,
+  icon) from the loaded CSQC's own globals, because Xonotic sorts both its
+  stats and weapons registries by name before numbering them, so they
+  differ from build to build (STAT_WEAPONS is 32 in this port's data and
+  164 on one public server). The held weapon, its clip and its ammo type
+  come from the CSQC's own wepent (`viewmodels[0]`), so the highlighted
+  row and the ammo readout follow the local rules; only when a CSQC has no
+  such entity does the highlight fall back to the last row tapped
+  (`csprogs.c` `CL_VM_Init`, `cl_parse.c`, `vid_sdl.c`, `touch_hud.c`). Server maps download again:
   `cl_curl_enabled` is back to 1 (the launcher writes both values into the
   generated `touch/startup.cfg`, after `config.cfg`, so an archived 0 from an
   older build cannot stick); with it off, a server map outside the bundled
