@@ -203,6 +203,10 @@ static size_t vid_read_proc_bus_input(char *buf, size_t size)
 	FILE *f;
 	size_t n = 0;
 	buf[0] = 0;
+#ifdef __ANDROID__
+	// Android: no desktop probing at all (see vid_is_ubuntu_touch)
+	return 0;
+#endif
 	f = fopen("/proc/bus/input/devices", "r");
 	if (!f)
 		return 0;
@@ -269,6 +273,9 @@ static void vid_scan_proc_bus_input(qbool *has_touch, qbool *has_keyboard, qbool
 	qbool abs_mt = false;
 
 	name[0] = 0;
+#ifdef __ANDROID__
+	return;
+#endif
 	f = fopen("/proc/bus/input/devices", "r");
 	if (!f)
 		return;
@@ -315,6 +322,9 @@ static int vid_read_chassis_type(void)
 	FILE *f;
 	int type = -1;
 
+#ifdef __ANDROID__
+	return -1;
+#endif
 	f = fopen("/sys/class/dmi/id/chassis_type", "r");
 	if (!f)
 		return -1;
@@ -348,6 +358,12 @@ static qbool vid_is_ubuntu_touch(void)
 {
 	const char *desktop;
 
+#ifdef __ANDROID__
+	// These probes describe Linux desktops and Ubuntu Touch. On Android they
+	// can only produce SELinux denials in the log -- /proc/bus/input, DMI,
+	// os-release -- and DP_MOBILETOUCH overrides whatever they find anyway.
+	return false;
+#endif
 	if (vid_os_release_has("Ubuntu Touch") || vid_os_release_has("UBUNTU_TOUCH")
 		|| vid_os_release_has("VARIANT_ID=touch") || vid_os_release_has("lomiri"))
 		return true;

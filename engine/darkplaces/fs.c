@@ -2164,7 +2164,12 @@ static void FS_Init_Dir (void)
 #ifdef DP_FS_BASEDIR
 		dp_strlcpy(fs_basedir, DP_FS_BASEDIR, sizeof(fs_basedir));
 #elif defined(__ANDROID__)
-		dpsnprintf(fs_basedir, sizeof(fs_basedir), "/sdcard/%s/", gameuserdirname);
+		// Xonotic Touch: upstream fell back to /sdcard/<game>/ here. Shared
+		// storage needs a storage permission the app does not (and must not)
+		// ask for, and scoped storage has made it unwritable since Android 10
+		// anyway. XonoticActivity always passes the app's private -basedir, so
+		// reaching this is a launcher bug: say so instead of touching /sdcard.
+		Sys_Error("Android builds need -basedir (the app's private storage directory)");
 #elif defined(MACOSX)
 		// FIXME: is there a better way to find the directory outside the .app, without using Objective-C?
 		if (strstr(sys.argv[0], ".app/"))
