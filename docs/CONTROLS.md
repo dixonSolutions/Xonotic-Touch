@@ -401,7 +401,7 @@ Uses engine volume cvars; port adds an output profile for phone speaker vs headp
 |------|----------|---------|
 | `standard.cfg` | Most players | The layout. Every other control preset `exec`s it and overrides only what differs |
 | `casual.cfg` | New to touch / Xonotic | Larger widgets, light aim assist, lower sens, auto-hop |
-| `competitive.cfg` | Experienced | Smaller widgets, no assist, higher sens, second fire button on (claw grip), snappier look filter, 3-slot weapons, double-tap dash |
+| `competitive.cfg` | Experienced | Smaller widgets, no assist (auto-shoot and aim assist off), higher sens, second fire button on (claw grip), snappier look filter, 3-slot weapons, double-tap dash |
 | `left.cfg` | Left-handed | `touch_handedness 1` — the mirror is computed, not a second copy of the geometry |
 | `minimal.cfg` | Small phones | Fewest controls; auto-hop so nothing but move, look and fire is needed |
 | `battery.cfg` | Long sessions | Performance row only |
