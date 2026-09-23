@@ -3,7 +3,8 @@
 #
 # darkplaces normally dlopen()s its codecs, but sys.h forces LINK_TO_ZLIB,
 # LINK_TO_LIBVORBIS and DP_FREETYPE_STATIC on __ANDROID__, and jpeg.c refuses to
-# dlopen on Android at all. So everything except libpng is linked statically:
+# dlopen on Android at all. So everything except libpng and libcurl is linked
+# statically:
 #
 #   zlib        NDK sysroot (-lz)
 #   ogg/vorbis  static  — LINK_TO_LIBVORBIS
@@ -12,6 +13,8 @@
 #   libpng      SHARED, installed as libpng.so so that image_png.c's existing
 #               dlopen name list finds it inside the APK. Patching the engine to
 #               link PNG statically would mean rewriting 30-odd function pointers.
+#   libcurl     SHARED, dlopen()ed by libcurl.c for server map downloads, with
+#               mbedTLS linked into it for https
 #   SDL2        shared  — also supplies the Java glue the APK needs
 set -euo pipefail
 
@@ -28,6 +31,8 @@ VORBIS_VERSION="${VORBIS_VERSION:-1.3.7}"
 FREETYPE_TAG="${FREETYPE_TAG:-VER-2-13-3}"
 JPEG_VERSION="${JPEG_VERSION:-3.1.2}"
 PNG_VERSION="${PNG_VERSION:-1.6.50}"
+MBEDTLS_VERSION="${MBEDTLS_VERSION:-3.6.7}"
+CURL_VERSION="${CURL_VERSION:-8.22.0}"
 
 NDK="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-}}"
 if [ -z "$NDK" ] || [ ! -d "$NDK" ]; then
@@ -133,6 +138,46 @@ if [ ! -f "$PREFIX/lib/libpng16.so" ]; then
     # libpng16.so — file name and DT_SONAME agree, which is what dlopen wants.
     # image_png.c's name list carries a matching entry.
     test -f "$PREFIX/lib/libpng16.so" || { echo "libpng build produced no shared object" >&2; ls -la "$PREFIX/lib" >&2; exit 1; }
+fi
+
+##### mbedTLS + libcurl (shared, dlopen'd) ####################################
+
+# libcurl.c dlopen()s libcurl the way image_png.c does libpng, and Android has
+# no system copy to find. Without it a server's map pk3 can never be fetched
+# (sv_curl_defaulturl is the only way Xonotic servers hand out maps), so any
+# server running a map outside the stock packs leaves the world black.
+#
+# TLS comes from mbedTLS, linked statically into libcurl.so: most map mirrors
+# are https. The CA store is Android's own -- libcurl.c points CURLOPT_CAPATH
+# at it at runtime, so there is no bundle here to go stale.
+if [ ! -f "$PREFIX/lib/libmbedtls.a" ]; then
+    log "mbedTLS $MBEDTLS_VERSION"
+    fetch "https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-$MBEDTLS_VERSION/mbedtls-$MBEDTLS_VERSION.tar.bz2" "mbedtls-$MBEDTLS_VERSION"
+    cmake_build "$SRC_DIR/mbedtls-$MBEDTLS_VERSION" mbedtls \
+        -DUSE_SHARED_MBEDTLS_LIBRARY=OFF -DUSE_STATIC_MBEDTLS_LIBRARY=ON \
+        -DENABLE_PROGRAMS=OFF -DENABLE_TESTING=OFF -DGEN_FILES=OFF \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+fi
+
+if [ ! -f "$PREFIX/lib/libcurl.so" ]; then
+    log "libcurl $CURL_VERSION"
+    fetch "https://curl.se/download/curl-$CURL_VERSION.tar.xz" "curl-$CURL_VERSION"
+    # HTTP(S) only: that is all sv_curl_defaulturl and the engine's other
+    # curl users (server-side stats, pic downloads) ever ask for.
+    cmake_build "$SRC_DIR/curl-$CURL_VERSION" curl \
+        -DBUILD_SHARED_LIBS=ON -DBUILD_STATIC_LIBS=OFF \
+        -DBUILD_CURL_EXE=OFF -DBUILD_TESTING=OFF -DBUILD_LIBCURL_DOCS=OFF \
+        -DBUILD_MISC_DOCS=OFF -DENABLE_CURL_MANUAL=OFF -DCURL_USE_PKGCONFIG=OFF \
+        -DCURL_USE_MBEDTLS=ON -DCURL_USE_OPENSSL=OFF -DMBEDTLS_INCLUDE_DIR="$PREFIX/include" \
+        -DMBEDTLS_LIBRARY="$PREFIX/lib/libmbedtls.a" \
+        -DMBEDX509_LIBRARY="$PREFIX/lib/libmbedx509.a" \
+        -DMBEDCRYPTO_LIBRARY="$PREFIX/lib/libmbedcrypto.a" \
+        -DHTTP_ONLY=ON -DCURL_DISABLE_LDAP=ON -DCURL_USE_LIBPSL=OFF \
+        -DUSE_LIBIDN2=OFF -DCURL_USE_LIBSSH2=OFF -DUSE_NGHTTP2=OFF \
+        -DCURL_BROTLI=OFF -DCURL_ZSTD=OFF -DCURL_ZLIB=ON \
+        -DCURL_CA_BUNDLE=none -DCURL_CA_PATH=none -DCURL_CA_FALLBACK=OFF \
+        -DENABLE_THREADED_RESOLVER=ON
+    test -f "$PREFIX/lib/libcurl.so" || { echo "curl build produced no shared object" >&2; ls -la "$PREFIX/lib" >&2; exit 1; }
 fi
 
 log "dependencies ready in $PREFIX"

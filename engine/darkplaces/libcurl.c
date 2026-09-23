@@ -68,6 +68,7 @@ typedef enum
 	CINIT(VERBOSE, LONG, 41),
 	CINIT(POST, LONG, 47),         /* HTTP POST method */
 	CINIT(FOLLOWLOCATION, LONG, 52),  /* use Location: Luke! */
+	CINIT(CAPATH, OBJECTPOINT, 97),   /* directory of hashed CA certificates */
 	CINIT(POSTFIELDSIZE, LONG, 60),
 	CINIT(PRIVATE, OBJECTPOINT, 103),
 	CINIT(PROTOCOLS, LONG, 181),
@@ -385,6 +386,30 @@ static qbool CURL_OpenLibrary (void)
 	// Load the DLL
 	return Sys_LoadDependency (dllnames, &curl_dll, curlfuncs);
 }
+
+#ifdef __ANDROID__
+static const char *curl_android_capath;
+
+static void CURL_FindAndroidCAPath(void)
+{
+	static const char *const dirs[] =
+	{
+		"/apex/com.android.conscrypt/cacerts",
+		"/system/etc/security/cacerts",
+	};
+	size_t i;
+	for (i = 0; i < sizeof(dirs) / sizeof(dirs[0]); i++)
+	{
+		if (FS_SysFileType(dirs[i]) == FS_FILETYPE_DIRECTORY)
+		{
+			curl_android_capath = dirs[i];
+			Con_DPrintf("libcurl: using system CA certificates from %s\n", dirs[i]);
+			return;
+		}
+	}
+	Con_Printf(CON_WARN "libcurl: no system CA store found; https downloads will fail\n");
+}
+#endif
 
 
 /*
@@ -753,6 +778,14 @@ static void CheckPendingDownloads(void)
 				qcurl_easy_setopt(di->curle, CURLOPT_WRITEDATA, (void *) di);
 				qcurl_easy_setopt(di->curle, CURLOPT_PRIVATE, (void *) di);
 				qcurl_easy_setopt(di->curle, CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS | CURLPROTO_FTP);
+#ifdef __ANDROID__
+				// The APK's libcurl carries no CA bundle of its own (a bundled one
+				// only goes stale); use the system store every other app trusts.
+				// Android 14 moved the updatable copy into the conscrypt APEX and
+				// keeps /system/etc/security/cacerts for older releases.
+				if (curl_android_capath)
+					qcurl_easy_setopt(di->curle, CURLOPT_CAPATH, curl_android_capath);
+#endif
 				if(qcurl_easy_setopt(di->curle, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS | CURLPROTO_FTP) != CURLE_OK)
 				{
 					Con_Printf("^1WARNING:^7 for security reasons, please upgrade to libcurl 7.19.4 or above. In a later version of DarkPlaces, HTTP redirect support will be disabled for this libcurl version.\n");
@@ -815,6 +848,9 @@ void Curl_Init(void)
 	if (Thread_HasThreads()) curl_mutex = Thread_CreateMutex();
 	qcurl_global_init(CURL_GLOBAL_SSL);
 	curlm = qcurl_multi_init();
+#ifdef __ANDROID__
+	CURL_FindAndroidCAPath();
+#endif
 }
 
 /*

@@ -85,9 +85,10 @@ cp -f "$SDL_JAVA_SRC"/*.java "$SDL_JAVA_DST/"
 JNI_LIBS="$ANDROID_DIR/app/src/main/jniLibs/$ABI"
 rm -rf "$JNI_LIBS"
 mkdir -p "$JNI_LIBS"
-# libSDL2.so is linked; libpng16.so is dlopen()ed by image_png.c. Both have to be
-# real files in the install's lib directory.
-for so in libSDL2.so libpng16.so; do
+# libSDL2.so is linked; libpng16.so and libcurl.so are dlopen()ed by image_png.c
+# and libcurl.c. All of them have to be real files in the install's lib
+# directory.
+for so in libSDL2.so libpng16.so libcurl.so; do
     test -f "$PREFIX/lib/$so" || { echo "Missing $PREFIX/lib/$so" >&2; exit 1; }
     install -m 644 "$PREFIX/lib/$so" "$JNI_LIBS/$so"
 done
