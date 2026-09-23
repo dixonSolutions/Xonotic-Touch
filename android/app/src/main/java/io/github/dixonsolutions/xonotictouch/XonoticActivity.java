@@ -1,8 +1,12 @@
 package io.github.dixonsolutions.xonotictouch;
 
+import android.content.pm.PackageManager;
+import android.content.res.Configuration;
+import android.hardware.input.InputManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.InputDevice;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -16,6 +20,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -38,6 +43,26 @@ public final class XonoticActivity extends SDLActivity {
      *  that is never cold-started from missing every release. */
     private static final long RECHECK_AFTER_MS = 60L * 60L * 1000L;
     private Thread resumeCheck;
+    private InputManager inputManager;
+    /** Last state handed to the engine, so logcat only hears about changes. */
+    private int reportedInputState = -1;
+    private final InputManager.InputDeviceListener inputDeviceListener =
+            new InputManager.InputDeviceListener() {
+                @Override
+                public void onInputDeviceAdded(int deviceId) {
+                    reportInputDevices();
+                }
+
+                @Override
+                public void onInputDeviceRemoved(int deviceId) {
+                    reportInputDevices();
+                }
+
+                @Override
+                public void onInputDeviceChanged(int deviceId) {
+                    reportInputDevices();
+                }
+            };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,11 +74,15 @@ public final class XonoticActivity extends SDLActivity {
         }
         super.onCreate(savedInstanceState);
         watchSoftKeyboard();
+        watchInputDevices();
         startUpdateService();
     }
 
     @Override
     protected void onDestroy() {
+        if (inputManager != null) {
+            inputManager.unregisterInputDeviceListener(inputDeviceListener);
+        }
         stopUpdateService();
         super.onDestroy();
     }
@@ -61,8 +90,117 @@ public final class XonoticActivity extends SDLActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        reportInputDevices();
         recheckUpdateIfStale();
     }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        // keyboard and keyboardHidden are in the manifest's configChanges, so a
+        // keyboard attached, folded away or slid shut arrives here.
+        reportInputDevices();
+    }
+
+    /**
+     * Tell the engine which input hardware is attached, and keep telling it.
+     *
+     * The engine decides whether the on-screen controls show (Auto mode): on
+     * for a touch device with no keyboard, off once a real keyboard is
+     * attached, and in either case whatever the player last actually used --
+     * a touch brings them straight back. InputManager's listener covers USB
+     * and Bluetooth hot-plug; configuration changes cover a keyboard folded
+     * away. None of this needs a permission.
+     */
+    private void watchInputDevices() {
+        inputManager = (InputManager) getSystemService(INPUT_SERVICE);
+        if (inputManager != null) {
+            // A null handler delivers the callbacks on the main looper.
+            inputManager.registerInputDeviceListener(inputDeviceListener, null);
+        }
+        reportInputDevices();
+    }
+
+    private void reportInputDevices() {
+        boolean touch = getPackageManager().hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN);
+        boolean keyboard = false;
+        boolean mouse = false;
+        StringBuilder names = new StringBuilder();
+        for (int id : InputDevice.getDeviceIds()) {
+            InputDevice device = InputDevice.getDevice(id);
+            if (device == null || device.isVirtual()) {
+                continue;
+            }
+            int sources = device.getSources();
+            if (hasSource(sources, InputDevice.SOURCE_TOUCHSCREEN)) {
+                touch = true;
+            }
+            if (isRealKeyboard(device, sources)) {
+                keyboard = true;
+                names.append(" keyboard=\"").append(device.getName()).append('"');
+            }
+            if (hasSource(sources, InputDevice.SOURCE_MOUSE)
+                    && !hasSource(sources, InputDevice.SOURCE_TOUCHSCREEN)) {
+                mouse = true;
+                names.append(" mouse=\"").append(device.getName()).append('"');
+            }
+        }
+        // A keyboard the system itself calls hidden -- a lid or slider shut,
+        // a Chromebook folded into a tablet -- is not one the player can use.
+        if (getResources().getConfiguration().hardKeyboardHidden
+                == Configuration.HARDKEYBOARDHIDDEN_YES) {
+            keyboard = false;
+        }
+
+        int state = (touch ? 1 : 0) | (keyboard ? 2 : 0) | (mouse ? 4 : 0);
+        if (state != reportedInputState) {
+            reportedInputState = state;
+            Log.i("XonoticTouch", "Input devices: touch=" + touch + " keyboard=" + keyboard
+                    + " mouse=" + mouse + names);
+        }
+        try {
+            nativeInputDevices(touch, keyboard, mouse);
+        } catch (UnsatisfiedLinkError e) {
+            // libmain did not load; SDLActivity is already showing why.
+        }
+    }
+
+    private static boolean hasSource(int sources, int source) {
+        return (sources & source) == source;
+    }
+
+    /**
+     * A keyboard someone types on: alphabetic, not virtual, not a game
+     * controller (plenty of Bluetooth pads report letter keys), and not one
+     * of the button sets and sensors phones register as keyboards.
+     */
+    private static boolean isRealKeyboard(InputDevice device, int sources) {
+        if (!hasSource(sources, InputDevice.SOURCE_KEYBOARD)
+                || device.getKeyboardType() != InputDevice.KEYBOARD_TYPE_ALPHABETIC) {
+            return false;
+        }
+        if (hasSource(sources, InputDevice.SOURCE_GAMEPAD)
+                || hasSource(sources, InputDevice.SOURCE_JOYSTICK)) {
+            return false;
+        }
+        String name = device.getName() == null ? "" : device.getName().toLowerCase(Locale.ROOT);
+        for (String ignored : IGNORED_KEYBOARD_NAMES) {
+            if (name.contains(ignored)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Fingerprint readers, GPIO buttons, hall sensors and uinput helpers that
+     *  some phones register as alphabetic keyboards. */
+    private static final String[] IGNORED_KEYBOARD_NAMES = {
+        "uinput", "fingerprint", "fpc", "goodix", "gf_input", "gpio", "_pon",
+        "hall", "power", "volume", "headset", "virtual", "sensor",
+    };
+
+    /** vid_touchdetect.c: what the engine's Auto touch mode decides from. */
+    private static native void nativeInputDevices(boolean touch, boolean keyboard, boolean mouse);
 
     /**
      * Ask the feed again after a long stretch in the background.

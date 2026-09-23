@@ -441,7 +441,9 @@ qbool VID_ShowingKeyboard(void)
 
 static void VID_SetMouse(qbool relative, qbool hidecursor)
 {
-#ifndef DP_MOBILETOUCH
+	// Android too: with a keyboard and mouse attached the touch controls go
+	// away, and mouselook needs relative mode (pointer capture, Android 8+).
+#if !defined(DP_MOBILETOUCH) || defined(__ANDROID__)
 #ifdef MACOSX
 	if(relative)
 		if(vid_usingmouse && (vid_usingnoaccel != !!apple_mouse_noaccel.integer))
@@ -958,9 +960,64 @@ static void IN_Move_TouchScreen_SteelStorm(void)
 	cl.viewangles[1] -= aim[0] * cl_yawspeed.value * cl.realframetime;
 }
 
+// Only direct touch surfaces count. SDL on X11 also lists touchpads (XI2
+// dependent-touch devices, SDL_TOUCH_DEVICE_INDIRECT_*), and a laptop's
+// touchpad is a mouse, not a touchscreen.
+static qbool VID_TouchIsDirect(SDL_TouchID id)
+{
+	SDL_TouchDeviceType type = SDL_GetTouchDeviceType(id);
+	return type == SDL_TOUCH_DEVICE_DIRECT || type == SDL_TOUCH_DEVICE_INVALID;
+}
+
 qbool VID_SDL_HasTouchDevices(void)
 {
-	return SDL_GetNumTouchDevices() > 0;
+	int i, n = SDL_GetNumTouchDevices();
+	for (i = 0; i < n; i++)
+		if (VID_TouchIsDirect(SDL_GetTouchDevice(i)))
+			return true;
+	return false;
+}
+
+// Keys that say someone is playing on a keyboard: letters, digits,
+// punctuation, arrows, keypad, space / enter / tab / backspace and the
+// modifiers. Not Escape or Back (a phone's back gesture arrives as a key),
+// function keys, media and power keys, or Super.
+static qbool VID_ScancodeIsPlay(SDL_Scancode sc)
+{
+	return (sc >= SDL_SCANCODE_A && sc <= SDL_SCANCODE_0)
+		|| sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_BACKSPACE
+		|| sc == SDL_SCANCODE_TAB || sc == SDL_SCANCODE_SPACE
+		|| (sc >= SDL_SCANCODE_MINUS && sc <= SDL_SCANCODE_SLASH)
+		|| (sc >= SDL_SCANCODE_RIGHT && sc <= SDL_SCANCODE_UP)
+		|| (sc >= SDL_SCANCODE_KP_DIVIDE && sc <= SDL_SCANCODE_KP_PERIOD)
+		|| sc == SDL_SCANCODE_LCTRL || sc == SDL_SCANCODE_LSHIFT || sc == SDL_SCANCODE_LALT
+		|| sc == SDL_SCANCODE_RCTRL || sc == SDL_SCANCODE_RSHIFT || sc == SDL_SCANCODE_RALT;
+}
+
+static void VID_NoteKeyEvent(const SDL_KeyboardEvent *key)
+{
+	if (key->state != SDL_PRESSED || key->repeat || !VID_ScancodeIsPlay(key->keysym.scancode))
+		return;
+	// On-screen keyboards (GNOME, Lomiri, Android IMEs) type through the
+	// same key events. While one can be up they say nothing about hardware.
+	if (vid_touchscreen.integer && SDL_IsTextInputActive())
+		return;
+	VID_NoteKeyboardUse();
+}
+
+static void VID_NoteMouseMotion(const SDL_MouseMotionEvent *motion)
+{
+	int w = 0, h = 0;
+	float travel;
+	// Touch emulation (Wayland, Android) is marked; X11's pointer emulation
+	// is not, and the quiet period after a finger event covers that.
+	if (motion->which == SDL_TOUCH_MOUSEID || !window)
+		return;
+	SDL_GetWindowSize(window, &w, &h);
+	if (w <= 0)
+		return;
+	travel = (float)(abs(motion->xrel) + abs(motion->yrel)) / (float)w;
+	VID_NoteMouseUse(travel, false);
 }
 
 static qbool VID_TouchscreenHasRealDevices(void)
@@ -1382,6 +1439,7 @@ void Sys_SDL_HandleEvents(void)
 				else
 					Con_DPrintf("SDL_Event: SDL_KEYUP %i\n", event.key.keysym.sym);
 #endif
+				VID_NoteKeyEvent(&event.key);
 				keycode = MapKey(event.key.keysym.sym);
 				isdown = (event.key.state == SDL_PRESSED);
 				unicode = 0;
@@ -1417,11 +1475,15 @@ void Sys_SDL_HandleEvents(void)
 				else
 					Con_DPrintf("SDL_Event: SDL_MOUSEBUTTONUP\n");
 #endif
-			if ((!vid_touchscreen.integer || SDL_GetNumTouchDevices() == 0)
+			if (event.type == SDL_MOUSEBUTTONDOWN && event.button.which != SDL_TOUCH_MOUSEID)
+				VID_NoteMouseUse(0, true);
+			if ((!vid_touchscreen.integer || !VID_SDL_HasTouchDevices())
 				&& event.button.button > 0 && event.button.button <= ARRAY_SIZE(buttonremap))
 				Key_Event( buttonremap[event.button.button - 1], 0, event.button.state == SDL_PRESSED );
 			break;
 			case SDL_MOUSEWHEEL:
+				if (event.wheel.which != SDL_TOUCH_MOUSEID)
+					VID_NoteMouseUse(0, true);
 				// TODO support wheel x direction.
 				i = event.wheel.y;
 				while (i > 0) {
@@ -1592,6 +1654,7 @@ void Sys_SDL_HandleEvents(void)
 				}
 				break;
 		case SDL_MOUSEMOTION:
+			VID_NoteMouseMotion(&event.motion);
 			// In touchscreen mode update the window-relative cursor position so
 			// VID_TouchscreenCursor can track the pointer and fire K_MOUSE1 correctly.
 			if (vid_touchscreen.integer)
@@ -1604,7 +1667,8 @@ void Sys_SDL_HandleEvents(void)
 #ifdef DEBUGSDLEVENTS
 				Con_DPrintf("SDL_FINGERDOWN for finger %i\n", (int)event.tfinger.fingerId);
 #endif
-				VID_NoteTouchFingerSeen();
+				if (VID_TouchIsDirect(event.tfinger.touchId))
+					VID_NoteTouchUse();
 				for (i = 0;i < MAXFINGERS-1;i++)
 				{
 					if (!multitouch[i][0])
@@ -1624,6 +1688,8 @@ void Sys_SDL_HandleEvents(void)
 #ifdef DEBUGSDLEVENTS
 				Con_DPrintf("SDL_FINGERUP for finger %i\n", (int)event.tfinger.fingerId);
 #endif
+				if (VID_TouchIsDirect(event.tfinger.touchId))
+					VID_NoteTouchActivity();
 				for (i = 0;i < MAXFINGERS-1;i++)
 				{
 					if (multitouch[i][0] == event.tfinger.fingerId + 1)
@@ -1640,6 +1706,8 @@ void Sys_SDL_HandleEvents(void)
 #ifdef DEBUGSDLEVENTS
 				Con_DPrintf("SDL_FINGERMOTION for finger %i\n", (int)event.tfinger.fingerId);
 #endif
+				if (VID_TouchIsDirect(event.tfinger.touchId))
+					VID_NoteTouchActivity();
 				for (i = 0;i < MAXFINGERS-1;i++)
 				{
 					if (multitouch[i][0] == event.tfinger.fingerId + 1)
@@ -1881,10 +1949,12 @@ void VID_Init (void)
 	Cvar_RegisterVariable(&apple_mouse_noaccel);
 #endif
 #endif
-#ifdef DP_MOBILETOUCH
+#if defined(DP_MOBILETOUCH) && !defined(__ANDROID__)
 	Cvar_SetValueQuick(&vid_touchscreen_mode, 2);
 	Cvar_SetValueQuick(&vid_touchscreen, 1);
 #endif
+	// Android starts with the controls on and follows InputManager from there.
+	VID_TouchDetect_Init();
 	Cvar_RegisterVariable(&joy_sdl2_trigger_deadzone);
 
 	Cvar_RegisterCallback(&vid_display,                VID_ApplyDisplayMode_c);
