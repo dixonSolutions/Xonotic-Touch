@@ -266,9 +266,17 @@ void VID_GetTouchFinger(int slot, int *active, float *nx, float *ny);
 qbool VID_SDL_HasTouchDevices(void);
 void VID_DetectTouchHardware(qbool *has_touchscreen, qbool *is_touch_only);
 void VID_ApplyTouchscreenMode(void);
-void VID_NoteTouchFingerSeen(void);
-// Once-a-second re-read of the input hardware; applies the mode on change.
+void VID_TouchDetect_Init(void);
+// Per frame: react to input devices coming and going (event driven; an idle
+// frame is one zero-timeout poll on Linux, one int read on Android).
 void VID_TouchHotplugFrame(void);
+// Last active input, fed from the event loop. Auto mode shows the touch
+// controls on a direct touch at once and hides them after sustained keyboard
+// or mouse play with no finger on the screen.
+void VID_NoteTouchUse(void);       // a finger or pen went down on a direct touch surface
+void VID_NoteTouchActivity(void);  // a finger moved or lifted
+void VID_NoteKeyboardUse(void);    // a real key press (caller filters repeats and soft keyboards)
+void VID_NoteMouseUse(float travel, qbool press); // travel in window widths
 void VID_TouchscreenMode_c(struct cvar_s *var);
 void VID_Touchscreen_c(struct cvar_s *var);
 void VID_TouchscreenRescan_f(struct cmd_state_s *cmd);
