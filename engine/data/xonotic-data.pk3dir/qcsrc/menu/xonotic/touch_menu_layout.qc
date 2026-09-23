@@ -61,6 +61,10 @@ void TouchMenu_WriteLayoutFile(string path)
 	TouchMenu_ConfigWriteString(fh, "touch_weapon_slot2");
 	TouchMenu_ConfigWriteString(fh, "touch_weapon_slot3");
 	TouchMenu_ConfigWriteFloat(fh, "touch_auto_fire");
+	TouchMenu_ConfigWriteFloat(fh, "cl_touch_autoshoot");
+	TouchMenu_ConfigWriteFloat(fh, "cl_touch_aimassist");
+	TouchMenu_ConfigWriteFloat(fh, "cl_touch_aimassist_friction");
+	TouchMenu_ConfigWriteFloat(fh, "cl_touch_aimassist_strength");
 	TouchMenu_ConfigWriteFloat(fh, "touch_dodge_mode");
 	TouchMenu_ConfigWriteFloat(fh, "touch_scoreboard_gesture");
 	TouchMenu_ConfigWriteFloat(fh, "touch_chat_mode");

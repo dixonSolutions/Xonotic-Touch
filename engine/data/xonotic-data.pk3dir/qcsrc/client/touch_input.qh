@@ -22,6 +22,8 @@ bool Touch_JumpHeld(void);
 bool Touch_CrouchHeld(void);
 bool Touch_HopLatched(void);
 bool Touch_Fire2Held(void);
+// The engine's touch auto-shoot is holding fire (touch_aim.c): FIRE glows.
+bool Touch_AutoShootEngaged(void);
 
 // Debug counters for touch_debug overlay
 int Touch_DebugFills(void);

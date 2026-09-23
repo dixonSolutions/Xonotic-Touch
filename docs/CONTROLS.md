@@ -255,6 +255,63 @@ Engine movement (already in `touch/xonotic.cfg`):
 | `touch_minimal_more` | int | 0/1 | `0` | Minimal preset: secondary panel for crouch/zoom/dodge |
 | `touch_setup_done` | int | 0/1 | `0` | First-run wizard completed; skip on next launch |
 
+### Shoot helpers: auto-shoot and aim assist (engine)
+
+These run in the engine client (`engine/darkplaces/touch_aim.c`), not in
+the CSQC, so they work the same on a public server (where the client runs
+the server's own CSQC and the engine draws the HUD) and in a local match.
+They only run in touch mode: when a physical keyboard is attached the engine
+clears `vid_touchscreen` and all of this switches off, whatever the cvars
+say. Settings → Touch → **Shoot helpers** has the two switches and the
+slowdown / pull sliders.
+
+| Cvar | Default | What it does |
+|------|---------|--------------|
+| `cl_touch_autoshoot` | `1` | Fire while the crosshair is on a visible enemy player |
+| `cl_touch_autoshoot_delay` | `0.1` | Reaction time (s) before auto-fire starts (clamped 0.05–0.5) |
+| `cl_touch_autoshoot_release` | `0.15` | Keep firing this long (s) after the crosshair slips off (0–0.5) |
+| `cl_touch_aimassist` | `1` | Master switch for slowdown and pull |
+| `cl_touch_aimassist_friction` | `0.35` | Slowdown: fraction of look speed removed over an enemy, fading to the cone edge (0 = off, max 0.8) |
+| `cl_touch_aimassist_strength` | `0.15` | Pull: fraction of your own turn speed added toward the nearest enemy in the cone (0 = off, max 0.5) |
+| `cl_touch_aimassist_maxrate` | `15` | Hard cap on the pull, degrees per second (max 30) |
+| `cl_touch_aimassist_cone` | `6` | Half-angle (degrees) around the crosshair where an enemy counts as near (max 10) |
+| `cl_touch_aim_range` | `3000` | Enemies farther than this (units) are ignored |
+| `cl_touch_aim_debug` | `0` | 1 = print target / fire changes to the console, 2 = also teammates under the crosshair |
+
+How it decides:
+
+- **Players** are the CSQC edicts whose engine-set `entnum` is a client slot
+  (1…maxclients): Xonotic networks players through CSQCModel, so their
+  interpolated origin and networked bounding box live there, in any CSQC.
+- **Enemies** come from the engine scoreboard: a spectator (frags -666/-616)
+  is never a target; in a team game the same pants colour as yours is a
+  teammate. Whether it is a team game is read from the CSQC's `teamplay`
+  global; if that cannot be found the game is treated as a team game, so a
+  player wearing your colour is never shot.
+- **Not** yourself, the player you are spectating, corpses (`solid ==
+  SOLID_CORPSE`), gibs and copied bodies (not player slots), hidden or
+  invisible players (`EF_NODRAW`, no drawmask, alpha below 0.4).
+- **Line of sight**: a world trace (plus CSQC brush models such as doors)
+  from the view origin to the point the crosshair ray enters the body.
+- Auto-shoot adds the attack bit to the outgoing move in `CL_SendMove`. It
+  never touches the `+attack` key state, so a finger on FIRE always fires,
+  and auto-shoot letting go can never cancel a manual hold. FIRE glows while
+  auto-shoot is firing (engine HUD and CSQC HUD).
+- Slowdown multiplies the touch look drag: the engine HUD applies it in
+  `look_apply`; the port's CSQC reads it from `_cl_touch_aim_lookscale`.
+- Pull only happens while a finger is on the aim control (look zone or
+  FIRE) and you are turning or moving, never against a turn heading away
+  from the target, capped per second so it cannot snap. The port's CSQC
+  reports the aim finger through `_cl_touch_hud_state`.
+- Nothing runs in menus, the console, the chat sheet, the layout editor,
+  intermission, while dead, spectating or watching a demo.
+
+Limits: the aim is at the interpolated position you see, which is what the
+server's antilag expects for hitscan; projectile weapons get no lead, so
+auto-shoot at range with the Mortar or Devastator mostly wastes ammo, and
+charge weapons are simply held. Team detection relies on Xonotic forcing
+team colours; a mod that does not will be treated conservatively.
+
 **Fire, zoom, weapons (recommended defaults):**
 
 | Option | Values | Default | Notes |

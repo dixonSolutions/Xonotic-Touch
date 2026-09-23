@@ -36,6 +36,7 @@ OBJ_COMMON= \
 	cl_screen.o \
 	touch_ui.o \
 	touch_hud.o \
+	touch_aim.o \
 	vid_touchdetect.o \
 	cl_video.o \
 	cl_video_libavw.o \

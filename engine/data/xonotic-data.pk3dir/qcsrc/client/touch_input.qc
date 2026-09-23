@@ -67,10 +67,30 @@ bool touch_owns_jump;
 bool touch_owns_crouch;
 bool touch_owns_zoom;
 
+// Last value written to _cl_touch_hud_state, so the cvar is set only on change.
+int touch_hud_state_sent = -2;
+
 int touch_debug_fills;
 int touch_debug_cmds;
 float touch_debug_cmd_window;
 int touch_debug_cmds_per_sec;
+
+// Tell the engine's aim assist (touch_aim.c) whether this HUD is live and
+// whether a finger is on the aim control (look zone or FIRE): the pull toward
+// an enemy only ever happens while one is. -1 = not live, 0 = live, 1 = aiming.
+void Touch_ReportHudState(int st)
+{
+	if (st == touch_hud_state_sent)
+		return;
+	touch_hud_state_sent = st;
+	if (cvar_type("_cl_touch_hud_state"))
+		cvar_set("_cl_touch_hud_state", ftos(st));
+}
+
+bool Touch_AutoShootEngaged(void)
+{
+	return cvar("_cl_touch_autoshoot_active") > 0;
+}
 
 bool Touch_MouseDown(void)
 {
@@ -560,16 +580,19 @@ void Touch_Frame(void)
 
 	if (Touch_CustomizeActive())
 	{
+		Touch_ReportHudState(-1);
 		Touch_Customize_Frame();
 		return;
 	}
 	if (Touch_Chat_Active())
 	{
+		Touch_ReportHudState(-1);
 		Touch_Chat_Frame();
 		return;
 	}
 	if (!Touch_Active())
 	{
+		Touch_ReportHudState(-1);
 		Touch_ReleaseAll();
 		return;
 	}
@@ -709,6 +732,7 @@ void Touch_Frame(void)
 	}
 
 	Touch_Look_Frame(look_accum, look_last, look_first, look_active);
+	Touch_ReportHudState((look_active || fire_count > 0) ? 1 : 0);
 
 	bool pressed_fire = fire_count > 0;
 	bool tap_fire = time < touch_tapfire_until;

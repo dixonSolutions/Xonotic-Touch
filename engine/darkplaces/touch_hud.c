@@ -16,6 +16,7 @@ applies to both.
 #include "cl_screen.h"
 #include "csprogs.h"
 #include "touch_hud.h"
+#include "touch_aim.h"
 
 extern cvar_t vid_touchscreen;
 extern cvar_t vid_conwidth;
@@ -405,6 +406,7 @@ void TouchHUD_ReleaseAll(void)
 	hop_latched = false;
 	hop_cancelling = false;
 	tapfire_until = 0;
+	TouchAim_SetHudAimTouch(false);
 	move_off_x = move_off_y = 0;
 	look_active = false;
 	look_vel_x = look_vel_y = 0;
@@ -892,6 +894,9 @@ static void look_apply(float raw_x, float raw_y, float dt)
 	pitch = look_vel_y * dt * k * cv("touch_sens_y_mult", 0.85f);
 	if (cv("touch_invert_y", 0))
 		pitch = -pitch;
+	// aim friction: the drag turns slower over an enemy (touch_aim.c)
+	yaw *= TouchAim_LookScale();
+	pitch *= TouchAim_LookScale();
 	cap = cv("touch_look_max_deg_per_s", 900) * dt;
 	yaw = bound(-cap, yaw, cap);
 	pitch = bound(-cap, pitch, cap);
@@ -1161,6 +1166,10 @@ void TouchHUD_Frame(void)
 		}
 	}
 
+	// a finger on the look zone or FIRE is on the aim control: the only time
+	// aim magnetism may pull (touch_aim.c)
+	TouchAim_SetHudAimTouch(look_seen || fire_count);
+
 	// movement keys from the stick (Touch_ApplyMove thresholds)
 	if (move_active && sqrt(move_off_x * move_off_x + move_off_y * move_off_y) > cv("touch_stick_deadzone", 0.18f))
 	{
@@ -1402,7 +1411,7 @@ void TouchHUD_Draw(void)
 	if (cv("touch_move_visible", 1))
 		draw_move_stick(a);
 	if (cv("touch_fire_visible", 1))
-		draw_circle_widget("touch_fire_x", 0.855f, "touch_fire_y", 0.680f, "touch_fire_size", 0.140f, "FIRE", key_attack, a, C_DANGER);
+		draw_circle_widget("touch_fire_x", 0.855f, "touch_fire_y", 0.680f, "touch_fire_size", 0.140f, "FIRE", key_attack || TouchAim_AutoFiring(), a, C_DANGER);
 	if (cv("touch_jump_visible", 1))
 	{
 		widget_center(cv("touch_jump_x", 0.855f), cv("touch_jump_y", 0.885f), &cx, &cy);

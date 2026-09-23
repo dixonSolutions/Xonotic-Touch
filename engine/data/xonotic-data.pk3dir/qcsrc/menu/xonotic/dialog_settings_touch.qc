@@ -80,6 +80,25 @@ void XonoticTouchSettingsTab_fill(entity me)
 		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(0.7, 1.4, 0.05, "touch_scale", _("Size of move/fire/jump widgets")));
 		me.TD(me, 1, 3, e = makeXonoticCommandButton(_("Customize layout (in game)"), '0 0 0', "touch_customize 1; togglemenu 0", COMMANDBUTTON_CLOSE));
 
+	// Engine-side (touch_aim.c), so they work on public servers too. Touch mode
+	// only: with a keyboard attached none of this runs, whatever is ticked here.
+	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Shoot helpers")));
+	me.TR(me);
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoshoot", _("Auto-shoot"),
+			_("Fire automatically while the crosshair is on an enemy. Never fires at teammates, and FIRE still works by hand")));
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_aimassist", _("Aim assist"),
+			_("Aim slows down over an enemy, and is pulled gently toward one while you turn or move")));
+	me.TR(me);
+		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Slowdown:")));
+			setDependent(e, "cl_touch_aimassist", 1, 1);
+		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(0, 0.8, 0.05, "cl_touch_aimassist_friction", _("How much aiming slows down over an enemy (0 = off)")));
+			setDependent(e, "cl_touch_aimassist", 1, 1);
+		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Pull:")));
+			setDependent(e, "cl_touch_aimassist", 1, 1);
+		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(0, 0.5, 0.05, "cl_touch_aimassist_strength", _("How strongly the view is pulled toward a nearby enemy while you turn or move (0 = off)")));
+			setDependent(e, "cl_touch_aimassist", 1, 1);
+
 	me.TR(me);
 		me.TD(me, 1, 2, e = makeXonoticButton(_("Save layout"), '0 0 0'));
 			e.onClick = TouchMenu_SaveLayout_Click;

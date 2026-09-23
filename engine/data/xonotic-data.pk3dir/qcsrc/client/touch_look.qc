@@ -155,6 +155,16 @@ void Touch_Look_Update(vector raw_px, float dt)
 	if (autocvar_touch_invert_y)
 		pitch = -pitch;
 
+	// Aim friction: the engine's touch aim assist (touch_aim.c) slows the drag
+	// while the crosshair is on or near an enemy. It publishes the multiplier
+	// because it also runs on servers whose CSQC is not this one.
+	float assist = cvar("_cl_touch_aim_lookscale");
+	if (assist > 0 && assist < 1)
+	{
+		yaw *= assist;
+		pitch *= assist;
+	}
+
 	float cap = autocvar_touch_look_max_deg_per_s * dt;
 	yaw = bound(-cap, yaw, cap);
 	pitch = bound(-cap, pitch, cap);
