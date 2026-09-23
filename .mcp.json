@@ -1,0 +1,9 @@
+{
+	"mcpServers": {
+		"agent-locks": {
+			"type": "stdio",
+			"command": "pnpm",
+			"args": ["dlx", "github:luohoa97/agent-locks#a18322ee061d229421d5f6ca7e84f3a6886e873d"]
+		}
+	}
+}
