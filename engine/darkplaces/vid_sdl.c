@@ -2200,6 +2200,13 @@ static qbool VID_InitModeGL(const viddef_mode_t *mode)
 
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, (gl_debug.integer > 0 ? SDL_GL_CONTEXT_DEBUG_FLAG : 0));
 
+#ifdef __ANDROID__
+	// Without a hint SDL's Android glue gives a resizable window
+	// SCREEN_ORIENTATION_FULL_USER, which overrides the manifest's
+	// sensorLandscape: turn the tablet and the game goes portrait mid-match,
+	// HUD and all. Either landscape, following the sensor, is what we want.
+	SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+#endif
 	window = SDL_CreateWindow(gamename, vid.xPos, vid.yPos, mode->width, mode->height, windowflags);
 	if (window == NULL)
 	{
