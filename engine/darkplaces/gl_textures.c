@@ -92,7 +92,13 @@ static textypeinfo_t textype_shadowmap24_raw             = {"shadowmap24_raw",  
 static textypeinfo_t textype_depth16                     = {"depth16",                  TEXTYPE_DEPTHBUFFER16        ,  2,  2,  2.0f, GL_DEPTH_COMPONENT16              , GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT};
 static textypeinfo_t textype_depth24                     = {"depth24",                  TEXTYPE_DEPTHBUFFER24        ,  2,  2,  2.0f, GL_DEPTH_COMPONENT16              , GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT};
 static textypeinfo_t textype_depth24stencil8             = {"depth24stencil8",          TEXTYPE_DEPTHBUFFER24STENCIL8,  2,  2,  2.0f, GL_DEPTH_COMPONENT16              , GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT};
-static textypeinfo_t textype_colorbuffer                 = {"colorbuffer",              TEXTYPE_COLORBUFFER          ,  2,  2,  2.0f, GL_RGB565                         , GL_RGBA           , GL_UNSIGNED_SHORT_5_6_5};
+// GL_RGB565 is a renderbuffer format: ES 2.0 glTexImage2D only takes the five
+// unsized formats (GL_INVALID_VALUE otherwise), and ES 3.x rejects RGB565 paired
+// with GL_RGBA (GL_INVALID_OPERATION). Either way the texture had no storage,
+// so every view that went through an FBO -- gamma/contrast, the damage and
+// water blur, bloom, the loading screen -- rendered black. 8bit RGBA is valid
+// and colour-renderable on every ES version, and has no 565 banding.
+static textypeinfo_t textype_colorbuffer                 = {"colorbuffer",              TEXTYPE_COLORBUFFER          ,  4,  4,  4.0f, GL_RGBA                           , GL_RGBA           , GL_UNSIGNED_BYTE };
 static textypeinfo_t textype_colorbuffer16f              = {"colorbuffer16f",           TEXTYPE_COLORBUFFER16F       ,  2,  2,  2.0f, GL_RGBA16F                        , GL_RGBA           , GL_HALF_FLOAT};
 static textypeinfo_t textype_colorbuffer32f              = {"colorbuffer32f",           TEXTYPE_COLORBUFFER32F       ,  2,  2,  2.0f, GL_RGBA32F                        , GL_RGBA           , GL_FLOAT};
 
@@ -233,6 +239,9 @@ typedef struct gltexture_s
 	int glinternalformat;
 	// GL_UNSIGNED_BYTE or GL_UNSIGNED_INT or GL_UNSIGNED_SHORT or GL_FLOAT
 	int gltype;
+	// red and blue were swapped at creation (BGRA <-> RGBA, see
+	// vid.forcetextype), so R_UpdateTexture has to swap its input the same way
+	qbool swaprb;
 }
 gltexture_t;
 
@@ -1307,6 +1316,7 @@ static rtexture_t *R_SetupTexture(rtexturepool_t *rtexturepool, const char *iden
 	glt->glinternalformat = texinfo->glinternalformat;
 	glt->glformat = texinfo->glformat;
 	glt->gltype = texinfo->gltype;
+	glt->swaprb = swaprb;
 	glt->bytesperpixel = texinfo->internalbytesperpixel;
 	glt->sides = glt->texturetype == GLTEXTURETYPE_CUBEMAP ? 6 : 1;
 	glt->texnum = 0;
@@ -2157,6 +2167,23 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 		}
 	}
 
+	// GLES cannot upload GL_BGRA (the "bgra" textype's glformat is only there
+	// for the swap in R_SetupTexture), so an uncompressed or software-decoded
+	// DDS -- every Xonotic texture on a GPU without S3TC -- was a failed
+	// glTexImage2D and sampled black. Swap to RGBA here the way R_SetupTexture
+	// does for every other image.
+	if (textype == TEXTYPE_BGRA && vid.forcetextype == TEXTYPE_RGBA)
+	{
+		unsigned char *p, *end = mippixels_start + mipsize_total, t;
+		for (p = mippixels_start; p + 3 < end; p += 4)
+		{
+			t = p[0];
+			p[0] = p[2];
+			p[2] = t;
+		}
+		textype = TEXTYPE_RGBA;
+	}
+
 	// when not requesting mipmaps, do not load them
 	if(!(flags & TEXF_MIPMAP))
 		dds_miplevels = 0;
@@ -2288,6 +2315,7 @@ int R_TextureFlags(rtexture_t *rt)
 void R_UpdateTexture(rtexture_t *rt, const unsigned char *data, int x, int y, int z, int width, int height, int depth, int combine)
 {
 	gltexture_t *glt = (gltexture_t *)rt;
+	unsigned char *swapped = NULL;
 	if (data == NULL)
 		Host_Error("R_UpdateTexture: no data supplied");
 	if (glt == NULL)
@@ -2296,6 +2324,18 @@ void R_UpdateTexture(rtexture_t *rt, const unsigned char *data, int x, int y, in
 	{
 		Con_DPrintf("R_UpdateTexture: texture %p \"%s\" in pool %p has not been uploaded yet\n", (void *)glt, glt->identifier, (void *)glt->pool);
 		return;
+	}
+	// R_SetupTexture swapped red and blue when it created this texture (GLES
+	// has no BGRA upload), and callers keep handing over data in the order they
+	// asked for then. Without the same swap here every update came out with
+	// red and blue exchanged.
+	if (glt->swaprb)
+	{
+		static int rgbaswapindices[4] = {2, 1, 0, 3};
+		int pixels = glt->bufferpixels ? width * height * depth : glt->inputwidth * glt->inputheight * glt->inputdepth * glt->sides;
+		swapped = (unsigned char *)Mem_Alloc(tempmempool, (size_t)pixels * 4);
+		Image_CopyMux(swapped, data, pixels, 1, false, false, false, 4, 4, rgbaswapindices);
+		data = swapped;
 	}
 	// update part of the texture
 	if (glt->bufferpixels)
@@ -2356,6 +2396,8 @@ void R_UpdateTexture(rtexture_t *rt, const unsigned char *data, int x, int y, in
 	}
 	else
 		R_UploadFullTexture(glt, data);
+	if (swapped)
+		Mem_Free(swapped);
 }
 
 int R_RealGetTexture(rtexture_t *rt)

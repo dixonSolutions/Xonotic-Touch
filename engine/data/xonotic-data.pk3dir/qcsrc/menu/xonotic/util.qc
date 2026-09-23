@@ -623,14 +623,17 @@ void updateCompression()
 		cvar_set("r_texture_dds_load", "1");
 		if(!can_dds)
 		{
-			// Xonotic Touch: DarkPlaces' software DDS decode renders black on the
-			// GL ES parts we ship to (Mali reports no S3TC), which left every map
-			// an unlit void while geometry, collision and the HUD were all fine.
-			// Load the uncompressed originals instead -- the data set has them for
-			// everything except a few particle sheets, which simply go missing.
-			cvar_set("r_texture_dds_load", "0");
-			cvar_set("r_texture_dds_swdecode", "0");
-			LOG_WARN(_("^1Texture compression is not supported: loading uncompressed textures instead."));
+			// Xonotic Touch: the release packs carry every world, model and
+			// particle texture as DDS only -- there are no uncompressed
+			// originals to fall back to (3207 of 3211 map textures, 1205 in the
+			// data pack). So on a GPU without S3TC (Mali, Adreno) the textures
+			// are software decoded, as upstream intends. That used to come out
+			// black on GLES because the decoded BGRA pixels were uploaded with
+			// GL_BGRA, which GLES rejects; the engine swaps them to RGBA now.
+			// Turning DDS loading off instead, as this branch once did, left
+			// nothing to load at all.
+			cvar_set("r_texture_dds_swdecode", "1");
+			LOG_INFO(_("Texture compression is not supported: decoding textures in software at reduced resolution."));
 		}
 	}
 	else
