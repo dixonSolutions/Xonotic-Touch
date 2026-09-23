@@ -82,7 +82,8 @@ void Touch_DrawFireButton(float theAlpha)
 {
 	vector c = Touch_WidgetCenter(autocvar_touch_fire_x, autocvar_touch_fire_y, autocvar_touch_fire_size);
 	float r = Touch_WidgetRadius(autocvar_touch_fire_size);
-	bool held = Touch_FireHeld() || Touch_PreviewStates();
+	// Auto-shoot firing lights FIRE the same way a thumb on it does.
+	bool held = Touch_FireHeld() || Touch_PreviewStates() || Touch_AutoShootEngaged();
 	Touch_Widget_Button(c, r, TOUCH_LABEL_FIRE, held, theAlpha, TOUCH_C_DANGER);
 
 	// While a drag off FIRE is steering the view, echo the reticle idea on the
