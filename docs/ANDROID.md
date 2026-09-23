@@ -31,12 +31,15 @@ at it turned up a handful of things:
   spells it `main`. `sys_sdl.c` is compiled with `-Dmain=SDL_main`.
 * **Codecs.** Everything the engine normally `dlopen()`s is linked statically
   instead, because Android has no system copies — see `scripts/android-deps.sh`.
-  The one exception is libpng, which stays dynamic (rewriting its thirty-odd
-  function pointers is not worth it) and ships in the APK as `libpng16.so`.
-  `image_png.c` gained that unversioned name in its lookup list.
-* **Basedir.** `fs.c` defaults Android to `/sdcard/xonotic`, which scoped storage
-  made unwritable in Android 10. `XonoticActivity` passes an explicit `-basedir`
-  under the app's private external files directory.
+  The exceptions are libpng, which stays dynamic (rewriting its thirty-odd
+  function pointers is not worth it) and ships in the APK as `libpng16.so` --
+  `image_png.c` gained that unversioned name in its lookup list -- and libcurl,
+  which ships as `libcurl.so` (see **Joining servers** below).
+* **Basedir.** `fs.c` defaulted Android to `/sdcard/xonotic`, which needs a
+  storage permission and which scoped storage made unwritable in Android 10.
+  `XonoticActivity` passes an explicit `-basedir` under the app's private
+  external files directory, and the `/sdcard` fallback is now an error rather
+  than a silent attempt.
 * **GLES2 symbol gaps.** `glquake.h`'s GLES2 branch is a list of `qgl* -> gl*`
   defines that stops at core ES 2.0, but `gl_backend.c` still names `GLAPIENTRY`,
   `GL_BGRA` and the `ARB_debug_output` enums on `RENDERPATH_GL32` branches a
@@ -92,8 +95,84 @@ where mobile support written for Quake 1 meets a Xonotic-sized map:
   plane stays at 4 and the far plane stays finite — both genuinely help the
   depth precision this branch was worried about.
 
+Four more made maps draw with the wrong light and the wrong colours even
+after that. The shader ones were found by validating DarkPlaces' builtin GLSL
+with glslang as GLSL ES 1.00, assembled exactly as `R_GLSL_CompilePermutation`
+does on `RENDERPATH_GLES2`: 217 of 300 reachable permutations failed before,
+none after.
+
+* **`sat()` did not compile.** `shader_glsl.h` defined it as `clamp(x, 0, 1)`.
+  GLSL ES has no implicit int-to-float conversion, so strict drivers (Mali,
+  ANGLE) rejected every permutation using it -- diffuse shading, specular and
+  vertex texture blending. The fallback then stripped `DIFFUSE` from the
+  deluxemapped world shader, which leaves `diffusetex * Color_Ambient`: the
+  lightmap was ignored altogether. The same went for models, whose
+  `MODE_LIGHTDIRECTION` used `#define lightcolor 1`. Both are float literals now.
+* **Texture updates swapped red and blue.** GLES has no `GL_BGRA` upload, so
+  `R_SetupTexture` swaps BGRA data to RGBA when a texture is created, but
+  `R_UpdateTexture` sent later updates unswapped. Textures remember the swap now.
+* **Render-target textures had no storage.** The GLES colorbuffer textype was
+  `GL_RGB565` with `GL_RGBA`, which `glTexImage2D` rejects on every ES version,
+  so any view drawn through an FBO (gamma/contrast, blur, bloom) sampled
+  nothing. It is 8bit RGBA now.
+* **DDS textures on GPUs without S3TC.** The release packs carry world and
+  model textures as DDS only -- there are no tga/jpg originals to fall back to
+  -- so they are software decoded (quarter resolution). That used to come out
+  black because the decoded BGRA was uploaded as `GL_BGRA`; it is swapped to
+  RGBA first now, and the menu turns `r_texture_dds_swdecode` on instead of
+  turning DDS loading off.
+
 The touch HUD needs nothing special: it is the same `touch_ui.c` /
 `DP_MOBILETOUCH` path the Ubuntu Touch build uses.
+
+## Joining servers
+
+The Flatpak and Click packages start the engine through `packaging/start.sh`,
+which runs the Touch config chain (`+exec xonotic.cfg`, `config.cfg`,
+`autoexec.cfg`, then a generated `touch/startup.cfg`). Android has no shell
+launcher, so `XonoticActivity` passes the same `+exec` chain and `GameData`
+writes `touch/startup.cfg` into the userdir on every start. It pins the two
+settings a public server needs, after `config.cfg` so an archived value
+cannot win:
+
+* `cl_csqc_download 2` -- use the bundled Touch CSQC only on a server running
+  this exact build; take the server's CSQC everywhere else.
+* `cl_curl_enabled 1` -- download the server's map pk3 from its
+  `sv_curl_defaulturl`, which is the only way Xonotic servers hand out maps.
+
+For the second, `scripts/android-deps.sh` builds libcurl (HTTP/HTTPS only)
+with mbedTLS linked in, and the APK ships it as `libcurl.so`, a name
+`libcurl.c` already `dlopen()`s. There is no CA bundle in the APK: on Android
+`libcurl.c` points `CURLOPT_CAPATH` at the system store
+(`/apex/com.android.conscrypt/cacerts`, or `/system/etc/security/cacerts`
+before Android 14).
+
+`-customgamename` is not passed, unlike `start.sh`: it also renames the game in
+master server queries, and the server browser would list nothing.
+
+## Permissions
+
+The merged manifest (`aapt2 dump permissions`) declares exactly:
+
+| Permission | Why |
+|---|---|
+| `INTERNET` | first-launch data download, servers, map downloads, update check |
+| `ACCESS_NETWORK_STATE` | the mobile-data setting |
+| `REQUEST_INSTALL_PACKAGES` | the self-updater hands its APK to `PackageInstaller` |
+| `UPDATE_PACKAGES_WITHOUT_USER_ACTION` | later updates without the confirm dialog (Android 12+) |
+
+None of them is a runtime ("dangerous") permission, so the app never shows a
+permission prompt. Nothing asks for storage, Bluetooth, location, nearby
+devices or the microphone: SDL's Bluetooth controller support checks
+`BLUETOOTH_CONNECT` and quietly skips itself without it, and the engine never
+calls `SDL_AndroidRequestPermission`. Everything the app writes is in its own
+private storage. The Linux touch detection that reads `/proc/bus/input`, DMI,
+`/etc/os-release` and `/dev/input` is compiled out or returns early on Android;
+`DP_MOBILETOUCH` decides there.
+
+`REQUEST_INSTALL_PACKAGES` is the one a player may notice: Android shows it as
+"install unknown apps" and asks for it in Settings the first time the updater
+installs something, never before. Removing it would mean no in-app updates.
 
 ## Layout
 
@@ -103,7 +182,7 @@ android/
   app/src/main/java/…/BootActivity      unpacks + downloads game data
   app/src/main/java/…/GameData          the unpack/download itself
   app/src/main/java/…/XonoticActivity   SDLActivity subclass, passes -basedir
-scripts/android-deps.sh           SDL2, ogg, vorbis, freetype, jpeg, png per ABI
+scripts/android-deps.sh           SDL2, ogg, vorbis, freetype, jpeg, png, curl+mbedTLS per ABI
 scripts/android-stage-assets.sh   QuakeC + slim data -> the APK's assets
 scripts/android-build.sh          branding, SDL glue, gradle
 ```
@@ -121,7 +200,7 @@ ANDROID_SDK_ROOT=~/Android/Sdk ANDROID_NDK_ROOT=~/Android/Sdk/ndk/27.3.13750724 
 
 Needs `gradle` 8.9+, `cmake`, `ninja`, ImageMagick, and the usual host toolchain
 for gmqcc. Everything else is downloaded into `build/android/` and cached there:
-SDL2, libogg, libvorbis, freetype, libjpeg-turbo and libpng sources, built once
+SDL2, libogg, libvorbis, freetype, libjpeg-turbo, libpng, mbedTLS and curl sources, built once
 per ABI.
 
 ## What the app does on first launch
@@ -279,8 +358,6 @@ adb shell "echo '-xonotic -condebug' > /storage/emulated/0/Android/data/io.githu
 
 ## Known gaps
 
-* **libcurl is absent**, so in-game map downloads and the update check are
-  disabled. The first-launch download does not use it — that is plain Java.
 * **d0_blind_id is absent**, so server-side player authentication and stats are
   unavailable. Plain connections work.
 * No AAB, so this is sideload / F-Droid shaped rather than Play Store shaped.
