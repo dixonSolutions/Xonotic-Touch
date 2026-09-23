@@ -154,13 +154,23 @@ final class GameData {
         }
     }
 
+    /**
+     * One preparation at a time, process-wide. Two runs overlapping write the
+     * same pk3 .part files and each renames its copy into place, which can
+     * leave a corrupt pk3 that every later launch takes for a finished one.
+     * A second caller waits here and then finds the work already done.
+     */
+    private static final Object PREPARE_LOCK = new Object();
+
     void prepare(Progress progress) throws IOException {
-        File base = baseDir();
-        if (!base.isDirectory() && !base.mkdirs()) {
-            throw new IOException("Cannot create " + base);
+        synchronized (PREPARE_LOCK) {
+            File base = baseDir();
+            if (!base.isDirectory() && !base.mkdirs()) {
+                throw new IOException("Cannot create " + base);
+            }
+            installBundle(progress);
+            downloadAssets(progress);
         }
-        installBundle(progress);
-        downloadAssets(progress);
     }
 
     // ---------------------------------------------------------------- bundle

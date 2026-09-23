@@ -181,14 +181,28 @@ public final class BootActivity extends Activity {
         worker.start();
     }
 
+    /**
+     * Several paths can end in here for the same launch -- a failed-install
+     * broadcast and the exception from the same install, say -- and each used
+     * to start its own preparation thread. Only the first one counts.
+     */
+    private final AtomicBoolean continued = new AtomicBoolean();
+
     private void continueToGame(GameData data) {
+        if (!continued.compareAndSet(false, true)) {
+            return;
+        }
         worker = new Thread(() -> {
             try {
                 data.prepare(this::report);
                 ui.post(() -> launchEngine(data));
             } catch (IOException | RuntimeException e) {
                 Log.e(TAG, "Game data preparation failed", e);
-                ui.post(() -> showFailure(e));
+                ui.post(() -> {
+                    // Retry goes through start() and may come back here.
+                    continued.set(false);
+                    showFailure(e);
+                });
             }
         }, "xonotic-bootstrap");
         worker.start();
@@ -208,6 +222,10 @@ public final class BootActivity extends Activity {
     }
 
     private void launchEngine(GameData data) {
+        // A screen that is already gone must not start a second engine.
+        if (isFinishing() || isDestroyed()) {
+            return;
+        }
         Intent intent = new Intent(this, XonoticActivity.class);
         intent.putExtra(XonoticActivity.EXTRA_BASEDIR, data.baseDir().getAbsolutePath());
         startActivity(intent);
