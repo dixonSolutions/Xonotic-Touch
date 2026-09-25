@@ -147,8 +147,10 @@ with mbedTLS linked in, and the APK ships it as `libcurl.so`, a name
 (`/apex/com.android.conscrypt/cacerts`, or `/system/etc/security/cacerts`
 before Android 14).
 
-`-customgamename` is not passed, unlike `start.sh`: it also renames the game in
-master server queries, and the server browser would list nothing.
+`-customgamename` is not passed: on its own it also renames the game in master
+server queries, and the server browser would list nothing. `start.sh` passes
+it for the window title and undoes that with `-customgamenetworkfiltername
+Xonotic`.
 
 ## Permissions
 

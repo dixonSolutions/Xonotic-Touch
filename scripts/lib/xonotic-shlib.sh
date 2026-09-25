@@ -627,9 +627,12 @@ xonotic_run_native() {
     trap 'xonotic_touch_stop_asset_fetch; exit 130' INT
     trap 'xonotic_touch_stop_asset_fetch; exit 143' TERM
 
+    # -customgamename also renames the game in master server queries, which
+    # then list no servers; -customgamenetworkfiltername puts the stock name back.
     while :; do
         "$bin" -xonotic \
             -customgamename "Xonotic Touch" \
+            -customgamenetworkfiltername Xonotic \
             +exec xonotic.cfg \
             +exec screen.layout.cfg \
             +exec config.cfg \
