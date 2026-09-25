@@ -112,9 +112,10 @@ final class GameData {
      * older build cannot pin either of those off. It is written into the
      * userdir's gamedir, which the engine searches before anything else.
      *
-     * {@code -customgamename} is deliberately not passed, unlike start.sh:
-     * it also renames the game in master server queries, which then list no
-     * public servers at all.
+     * {@code -customgamename} is deliberately not passed: on its own it also
+     * renames the game in master server queries, which then list no public
+     * servers at all. start.sh passes it for the window title and puts the
+     * query name back with {@code -customgamenetworkfiltername Xonotic}.
      */
     static List<String> startupArguments(File baseDir) {
         writeStartupConfig(baseDir);

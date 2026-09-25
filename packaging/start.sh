@@ -883,9 +883,13 @@ cd "$USER_BASE" 2>/dev/null || xonotic_log "cannot enter $USER_BASE — engine m
 # Re-exec user config AFTER xonotic.cfg: the default chain (xonotic-client.cfg)
 # sets `_cl_name ""` which would wipe the archived player name every launch and
 # force the FirstRun wizard again. config.cfg / autoexec restore user prefs.
+#
+# -customgamename also renames the game in master server queries, which then
+# list no servers; -customgamenetworkfiltername puts the stock name back.
 run_engine() {
     "$BIN" -xonotic \
         -customgamename "Xonotic Touch" \
+        -customgamenetworkfiltername Xonotic \
         +exec xonotic.cfg \
         +exec screen.layout.cfg \
         +exec config.cfg \
