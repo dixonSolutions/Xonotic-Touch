@@ -120,6 +120,9 @@ log "uploading touch configs"
 # Flatpak bundle over data/touch/profiles and silently reverts every deploy.
 run_ssh "mkdir -p '$REMOTE_USERDIR/touch/profiles' '$REMOTE_DATA/touch/profiles'"
 copy_to "$ROOT/touch/profiles/." "$REMOTE_USERDIR/touch/profiles/"
+# Stamped like the overlay: the launcher removes userdir profiles that were not
+# built for the installed app, or they would outrank every later release's.
+run_ssh "cp -f '$REMOTE_OVERLAY/.built-for' '$REMOTE_USERDIR/touch/profiles/.built-for' 2>/dev/null || true"
 copy_to "$ROOT/touch/xonotic.cfg" "$REMOTE_DATA/xonotic.cfg"
 # Keep the gamedir copy in step too, so a launch that skips the sync (or a
 # manual run without the dev overlay) does not fall back to stale layout values.
