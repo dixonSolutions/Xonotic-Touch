@@ -25,6 +25,91 @@ static qbool touchui_bksp_held;
 static qbool touchui_minkey_warned;
 static char touchui_palette_loaded_path[MAX_QPATH];
 
+/*
+ * Spectator actions (issue #26). While spectating or observing on a server the
+ * game prints prompts that name keys: "Press SPACE to join", "Press primary
+ * fire to spectate", "next weapon or previous weapon for next or previous
+ * player", "drop weapon to change camera mode". On public servers those come
+ * from the server's own CSQC, which the touch layer cannot rewrite, and a touch
+ * player has none of those keys. The COMMANDS tab leads with the same actions
+ * while they apply, running the command each prompt names.
+ *
+ * Buttons are pressed and released a moment later with defer. A "-fire" run in
+ * the same frame as "+fire" clears the press before any packet carries it
+ * (KeyUp with no key number resets the button), so the server never saw it.
+ */
+typedef enum touchui_specmode_e
+{
+	TOUCHUI_SPEC_NONE = 0,
+	TOUCHUI_SPEC_OBSERVING,   /* free-flying observer (spectatee_status -1) */
+	TOUCHUI_SPEC_WATCHING,    /* spectating another player */
+	TOUCHUI_SPEC_OUT          /* out of the round (-616), watching others */
+}
+touchui_specmode_t;
+
+typedef struct touchui_specentry_s
+{
+	const char *label;
+	const char *command;
+	unsigned int modes;       /* bit per touchui_specmode_t */
+}
+touchui_specentry_t;
+
+#define TOUCHUI_SPEC_BIT(m) (1u << (m))
+static const touchui_specentry_t touchui_spec_entries[] = {
+	/* "Press primary fire to spectate" */
+	{ "spectate", "+fire\ndefer 0.2 -fire", TOUCHUI_SPEC_BIT(TOUCHUI_SPEC_OBSERVING) },
+	/* "Press next weapon or previous weapon for next or previous player" */
+	{ "next player", "weapnext", TOUCHUI_SPEC_BIT(TOUCHUI_SPEC_WATCHING) | TOUCHUI_SPEC_BIT(TOUCHUI_SPEC_OUT) },
+	{ "prev player", "weapprev", TOUCHUI_SPEC_BIT(TOUCHUI_SPEC_WATCHING) | TOUCHUI_SPEC_BIT(TOUCHUI_SPEC_OUT) },
+	/* "Use next weapon or previous weapon to change the speed" */
+	{ "fly faster", "weapnext", TOUCHUI_SPEC_BIT(TOUCHUI_SPEC_OBSERVING) },
+	{ "fly slower", "weapprev", TOUCHUI_SPEC_BIT(TOUCHUI_SPEC_OBSERVING) },
+	/* "Press secondary fire to observe, drop weapon to change camera mode" */
+	{ "observe", "+fire2\ndefer 0.2 -fire2", TOUCHUI_SPEC_BIT(TOUCHUI_SPEC_WATCHING) },
+	{ "camera", "weapon_drop", TOUCHUI_SPEC_BIT(TOUCHUI_SPEC_WATCHING) | TOUCHUI_SPEC_BIT(TOUCHUI_SPEC_OUT) },
+	/* "Press jump to join" */
+	{ "join", "join", TOUCHUI_SPEC_BIT(TOUCHUI_SPEC_OBSERVING) | TOUCHUI_SPEC_BIT(TOUCHUI_SPEC_WATCHING) },
+};
+#define TOUCHUI_SPEC_COUNT ((int)(sizeof(touchui_spec_entries) / sizeof(touchui_spec_entries[0])))
+
+/* Entries shown by the last layout, so a tap runs what was drawn under it. */
+static int touchui_spec_shown[TOUCHUI_SPEC_COUNT];
+static int touchui_spec_shown_count;
+
+static touchui_specmode_t TouchUI_SpectatorMode(void)
+{
+	int me = cl.realplayerentity;
+	int frags;
+
+	if (cls.state != ca_connected || cls.signon != SIGNONS || cls.demoplayback)
+		return TOUCHUI_SPEC_NONE;
+	if (cl.intermission || !cl.scores || me < 1 || me > cl.maxclients)
+		return TOUCHUI_SPEC_NONE;
+	/* Nexuiz-derived games mark spectators -666 and players out of the round
+	 * -616 (touch_aim.c, cl_collision.c). A spectator's view is moved to the
+	 * player they watch with svc_setview. */
+	frags = cl.scores[me - 1].frags;
+	if (frags != -666 && frags != -616)
+		return TOUCHUI_SPEC_NONE;
+	if (cl.viewentity != me && cl.viewentity >= 1 && cl.viewentity <= cl.maxclients)
+		return frags == -666 ? TOUCHUI_SPEC_WATCHING : TOUCHUI_SPEC_OUT;
+	return frags == -666 ? TOUCHUI_SPEC_OBSERVING : TOUCHUI_SPEC_NONE;
+}
+
+static void TouchUI_UpdateSpectatorEntries(void)
+{
+	touchui_specmode_t mode = TouchUI_SpectatorMode();
+	int i;
+
+	touchui_spec_shown_count = 0;
+	if (mode == TOUCHUI_SPEC_NONE)
+		return;
+	for (i = 0; i < TOUCHUI_SPEC_COUNT; i++)
+		if (touchui_spec_entries[i].modes & TOUCHUI_SPEC_BIT(mode))
+			touchui_spec_shown[touchui_spec_shown_count++] = i;
+}
+
 /* Built-in palette if the file is missing. */
 static const struct { const char *label; const char *cmd; } touchui_builtin_palette[] = {
 	{ "disconnect", "disconnect" },
@@ -372,33 +457,65 @@ static int TouchUI_LayoutKeyboard(float x, float y, float w, float h,
 	return n;
 }
 
+/* A palette-file entry named like a spectator action on screen (the stock file
+ * has "join" and "spectate") would show the same word twice, and "spectate"
+ * would even mean two different things. The spectator action wins while shown. */
+static qbool TouchUI_PaletteShadowed(int idx)
+{
+	int k;
+	for (k = 0; k < touchui_spec_shown_count; k++)
+		if (!strcasecmp(touchui_palette[idx].label, touchui_spec_entries[touchui_spec_shown[k]].label))
+			return true;
+	return false;
+}
+
 static int TouchUI_LayoutPalette(float x, float y, float w, float h,
 	touchui_item_t *out, int maxout, int n)
 {
 	float gap = bound(2.0f, touch_kb_gap.value * w, 16.0f);
 	int cols = (w > h) ? 4 : 3;
-	int rows, i, col, row;
+	int rows, i, col, row, slot, total;
 	float cw, rh, th;
 
 	TouchUI_ReloadPalette();
-	if (touchui_palette_count <= 0)
+	TouchUI_UpdateSpectatorEntries();
+	total = touchui_spec_shown_count;
+	for (i = 0; i < touchui_palette_count; i++)
+		if (!TouchUI_PaletteShadowed(i))
+			total++;
+	if (total <= 0)
 		return n;
-	rows = (touchui_palette_count + cols - 1) / cols;
+	rows = (total + cols - 1) / cols;
 	if (rows < 1)
 		rows = 1;
 	cw = (w - gap * (float)(cols + 1)) / (float)cols;
 	rh = (h - gap * (float)(rows + 1)) / (float)rows;
 	th = bound(10.0f, rh * 0.35f, 22.0f);
+	/* Spectator actions first, in accent, then the palette file. */
+	for (slot = 0; slot < touchui_spec_shown_count; slot++)
+	{
+		col = slot % cols;
+		row = slot / cols;
+		TouchUI_PushItem(out, &n, maxout,
+			x + gap + (float)col * (cw + gap),
+			y + gap + (float)row * (rh + gap),
+			cw, rh,
+			touchui_spec_entries[touchui_spec_shown[slot]].label, th,
+			TOUCHUI_STYLE_ACCENT, TOUCHUI_ACT_SPECTATE, slot);
+	}
 	for (i = 0; i < touchui_palette_count; i++)
 	{
-		col = i % cols;
-		row = i / cols;
+		if (TouchUI_PaletteShadowed(i))
+			continue;
+		col = slot % cols;
+		row = slot / cols;
 		TouchUI_PushItem(out, &n, maxout,
 			x + gap + (float)col * (cw + gap),
 			y + gap + (float)row * (rh + gap),
 			cw, rh,
 			touchui_palette[i].label, th,
 			TOUCHUI_STYLE_GLASS, TOUCHUI_ACT_PALETTE, i);
+		slot++;
 	}
 	return n;
 }
@@ -588,6 +705,17 @@ static void TouchUI_FireAction(const touchui_item_t *it, double realtime)
 		{
 			dpsnprintf(vabuf, sizeof(vabuf), "%s\n", touchui_palette[it->action_arg].command);
 			Cbuf_AddText(cmd_local, vabuf);
+		}
+		break;
+	case TOUCHUI_ACT_SPECTATE:
+		if (it->action_arg >= 0 && it->action_arg < touchui_spec_shown_count)
+		{
+			dpsnprintf(vabuf, sizeof(vabuf), "%s\n", touchui_spec_entries[touchui_spec_shown[it->action_arg]].command);
+			Cbuf_AddText(cmd_local, vabuf);
+			/* The sheet covers the view these actions change; close it so the
+			 * player sees the next player, the camera or the join. */
+			TouchUI_EmitKey(K_ESCAPE);
+			TouchUI_ResetInputState();
 		}
 		break;
 	default:

@@ -333,17 +333,27 @@ void CL_KeepaliveMessage (qbool readmessages)
 	deltatime = dirtytime - lastdirtytime;
 	lastdirtytime = dirtytime;
 	if (deltatime <= 0 || deltatime >= 1800.0)
+	{
+		recursive = thisrecursive;
 		return;
+	}
 
 	countdownmsg -= deltatime;
 	countdownupdate -= deltatime;
 
-	if(!thisrecursive)
+	// The texture, model and map loaders call in here all through a load, and
+	// a join runs the whole load inside one frame: 50 s on a Surface Pro 9
+	// (issue #25). Redraw the loading screen and let the window system hear
+	// from us every tenth of a second, or the progress bar sits still and
+	// GNOME offers to kill the game. Only while the loading screen is up:
+	// in the middle of a match this would draw a half-loaded world.
+	if(!thisrecursive && cls.state != ca_dedicated && scr_loading)
 	{
-		if(cls.state != ca_dedicated)
+		if(countdownupdate <= 0)
 		{
-			if(countdownupdate <= 0) // check if time stepped backwards
-				countdownupdate = 2;
+			countdownupdate = 0.1;
+			VID_PumpEvents();
+			CL_UpdateScreen();
 		}
 	}
 

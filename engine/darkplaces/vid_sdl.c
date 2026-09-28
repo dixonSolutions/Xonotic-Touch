@@ -2312,6 +2312,11 @@ void VID_Finish (void)
 	}
 }
 
+void VID_PumpEvents(void)
+{
+	SDL_PumpEvents();
+}
+
 vid_mode_t VID_GetDesktopMode(void)
 {
 	SDL_DisplayMode mode;

@@ -480,6 +480,18 @@ Main menu is stock Xonotic (Singleplayer / Multiplayer / Media / Settings / …)
   execs too) although the server was never quiet. `NetConn_TimedOut`
   (`netconn.c`) now judges the silence by the wall clock and only drops a
   connection that really heard nothing for the whole timeout.
+  The same one-frame load also froze the loading screen and left the window
+  deaf to the compositor, so GNOME marked the game unresponsive (issue #25).
+  The loading screen's frame cap measured against `host.realtime` too, so
+  every redraw after the first looked too soon; it now uses the wall clock.
+  `CL_KeepaliveMessage`, which the texture, model and map loaders call all
+  through a load, redraws the loading screen and pumps window events
+  (`VID_PumpEvents`, queued only, nothing is acted on mid-load) every tenth
+  of a second while the loading screen is up. In a headless GNOME session
+  joining the same server, the longest stretch without any Wayland traffic
+  fell from 7.8 s to under 1.5 s. `gl_texturecompression` was measured as
+  a suspect for the slow load and made no difference beyond the network's
+  own variance, so the Touch default stays on.
 - **Pause** — Escape / GameMenu Resume (see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md)).
 
 ---

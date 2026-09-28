@@ -236,6 +236,11 @@ void VID_ShowKeyboard(qbool show);
 qbool VID_ShowingKeyboard(void);
 
 void VID_Finish (void);
+/// Lets the window system hear from us while one long frame is still running
+/// (a join that loads the map and every model inside CL_BeginDownloads). Events
+/// are only queued, not handled, so no input is acted on mid-load; what it buys
+/// is the compositor's ping answered, so GNOME stops calling the game frozen.
+void VID_PumpEvents(void);
 
 void VID_Restart_f(struct cmd_state_s *cmd);
 
