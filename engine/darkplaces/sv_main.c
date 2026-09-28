@@ -2507,7 +2507,7 @@ static void SV_CheckTimeouts(void)
 
 	// never timeout loopback connections
 	for (i = (host_isclient.integer ? 1 : 0), host_client = &svs.clients[i]; i < svs.maxclients; i++, host_client++)
-		if (host_client->netconnection && host.realtime > host_client->netconnection->timeout)
+		if (host_client->netconnection && NetConn_TimedOut(host_client->netconnection))
 			SV_DropClient(false, "Timed out");
 }
 
