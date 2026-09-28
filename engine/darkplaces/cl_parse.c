@@ -353,7 +353,7 @@ void CL_KeepaliveMessage (qbool readmessages)
 		{
 			countdownupdate = 0.1;
 			VID_PumpEvents();
-			CL_UpdateScreen();
+			SCR_UpdateLoadingScreen();
 		}
 	}
 
