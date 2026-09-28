@@ -286,6 +286,13 @@ quarantine_stale_touch_menu_overrides() {
 # overlay is an old menu and HUD wearing the new engine -- every touch cvar
 # comes up "Unknown command" and the stock Xonotic menu appears. Drop it the
 # moment it no longer matches, in both places the engine searches.
+#
+# It also copies touch/profiles into the engine userdir, which outranks the
+# profiles sync_bundle_data refreshes from the package. Left there, an old
+# profile ran on every launch in place of the shipped one: the 2026-08
+# thermal.cfg kept switching the weapon model off long after the package had
+# stopped doing so. Nothing shipped writes that directory, so it goes by the
+# same stamp.
 quarantine_stale_dev_overlays() {
     _q_app=""
     if [ -f /.flatpak-info ]; then
@@ -305,6 +312,17 @@ quarantine_stale_dev_overlays() {
             rm -rf "$_q_dir" 2>/dev/null || true
         done
     done
+    _q_dir="${HOME}/.xonotic/data/touch/profiles"
+    if [ -d "$_q_dir" ] && [ "$_q_dir" != "$TOUCH_PROFILES_DIR" ]; then
+        _q_built_for=""
+        [ -f "$_q_dir/.built-for" ] && read -r _q_built_for < "$_q_dir/.built-for"
+        if [ -n "$_q_app" ] && [ "$_q_built_for" = "$_q_app" ]; then
+            xonotic_log "keeping dev profiles $_q_dir (built for this app commit)"
+        else
+            xonotic_log "removing stale dev profiles $_q_dir (built for '${_q_built_for:-unknown}', app is '${_q_app:-not flatpak}')"
+            rm -rf "$_q_dir" 2>/dev/null || true
+        fi
+    fi
 }
 
 sync_bundle_data

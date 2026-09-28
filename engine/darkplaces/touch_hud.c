@@ -421,14 +421,20 @@ void TouchHUD_ReleaseAll(void)
 // lines alone would never bring the arm and weapon back to anyone who had
 // played before. Turned on once, after every startup config has run; from
 // then on the archived value is the player's own choice.
+//
+// Revision 2: a device that scripts/dev-deploy.sh had written profiles to kept
+// the old thermal.cfg in the engine userdir, above the package's, and it
+// switched the model off again after revision 1. The launcher now removes
+// those copies (quarantine_stale_dev_overlays), and this turns it on once more.
 // ---------------------------------------------------------------------------
-static cvar_t touch_viewmodel_restored = {CF_CLIENT | CF_ARCHIVE, "_touch_viewmodel_restored", "0", "1 once r_drawviewmodel was turned back on after the builds that forced it off"};
+#define TOUCH_VIEWMODEL_REV 2
+static cvar_t touch_viewmodel_restored = {CF_CLIENT | CF_ARCHIVE, "_touch_viewmodel_restored", "0", "revision of the one-time r_drawviewmodel restore already applied (see touch_hud.c)"};
 
 static void TouchHUD_RestoreViewmodel_f(cmd_state_t *cmd)
 {
-	if (touch_viewmodel_restored.integer)
+	if (touch_viewmodel_restored.integer >= TOUCH_VIEWMODEL_REV)
 		return;
-	Cvar_SetValueQuick(&touch_viewmodel_restored, 1);
+	Cvar_SetValueQuick(&touch_viewmodel_restored, TOUCH_VIEWMODEL_REV);
 	if (r_drawviewmodel.integer)
 		return;
 	Cvar_SetValueQuick(&r_drawviewmodel, 1);
