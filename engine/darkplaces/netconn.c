@@ -1217,6 +1217,36 @@ lhnetsocket_t *NetConn_ChooseServerSocketForAddress(lhnetaddress_t *address)
 	return NULL;
 }
 
+/*
+====================
+NetConn_TimedOut
+
+True when nothing has arrived on conn for its whole allowance.
+
+host.realtime is stamped once per frame. A client joining a public server
+loads the map and every precached model inside one frame, and on a tablet
+that frame can outlast net_messagetimeout (30 seconds on Xonotic). The
+keepalives read during it stamp each packet with the stale frame time, so on
+the next frame realtime has overtaken conn->timeout although the server was
+never quiet, and the join ended in "Connection timed out". Judge the silence
+by the wall clock instead, and give the connection what is left of its
+allowance.
+====================
+*/
+qbool NetConn_TimedOut(netconn_t *conn)
+{
+	double allowance, silence;
+
+	if (host.realtime <= conn->timeout)
+		return false;
+	allowance = conn->timeout - conn->lastMessageTime;
+	silence = Sys_DirtyTime() - conn->lastMessageDirtyTime;
+	if (silence >= allowance)
+		return true;
+	conn->timeout = host.realtime + allowance - silence;
+	return false;
+}
+
 netconn_t *NetConn_Open(lhnetsocket_t *mysocket, lhnetaddress_t *peeraddress)
 {
 	netconn_t *conn;
@@ -1224,6 +1254,7 @@ netconn_t *NetConn_Open(lhnetsocket_t *mysocket, lhnetaddress_t *peeraddress)
 	conn->mysocket = mysocket;
 	conn->peeraddress = *peeraddress;
 	conn->lastMessageTime = host.realtime;
+	conn->lastMessageDirtyTime = Sys_DirtyTime();
 	conn->message.data = conn->messagedata;
 	conn->message.maxsize = sizeof(conn->messagedata);
 	conn->message.cursize = 0;
@@ -1420,6 +1451,7 @@ static int NetConn_ReceivedMessage(netconn_t *conn, const unsigned char *data, s
 		if (reliable_message)
 			conn->qw.incoming_reliable_sequence ^= 1;
 		conn->lastMessageTime = host.realtime;
+		conn->lastMessageDirtyTime = Sys_DirtyTime();
 		conn->timeout = host.realtime + newtimeout;
 		conn->unreliableMessagesReceived++;
 		if (conn == cls.netcon)
@@ -1497,6 +1529,7 @@ static int NetConn_ReceivedMessage(netconn_t *conn, const unsigned char *data, s
 
 					conn->nq.unreliableReceiveSequence = sequence + 1;
 					conn->lastMessageTime = host.realtime;
+					conn->lastMessageDirtyTime = Sys_DirtyTime();
 					conn->timeout = host.realtime + newtimeout;
 					conn->unreliableMessagesReceived++;
 					if (length > 0)
@@ -1533,6 +1566,7 @@ static int NetConn_ReceivedMessage(netconn_t *conn, const unsigned char *data, s
 						if (conn->nq.ackSequence != conn->nq.sendSequence)
 							Con_DPrint("ack sequencing error\n");
 						conn->lastMessageTime = host.realtime;
+						conn->lastMessageDirtyTime = Sys_DirtyTime();
 						conn->timeout = host.realtime + newtimeout;
 						if (conn->sendMessageLength > MAX_PACKETFRAGMENT)
 						{
@@ -1595,6 +1629,7 @@ static int NetConn_ReceivedMessage(netconn_t *conn, const unsigned char *data, s
 				if (sequence == conn->nq.receiveSequence)
 				{
 					conn->lastMessageTime = host.realtime;
+					conn->lastMessageDirtyTime = Sys_DirtyTime();
 					conn->timeout = host.realtime + newtimeout;
 					conn->nq.receiveSequence++;
 					if( conn->receiveMessageLength + length <= (int)sizeof( conn->receiveMessage ) ) {
@@ -2734,7 +2769,7 @@ void NetConn_ClientFrame(void)
 #ifdef CONFIG_MENU
 	NetConn_QueryQueueFrame();
 #endif
-	if (cls.netcon && host.realtime > cls.netcon->timeout && !sv.active)
+	if (cls.netcon && !sv.active && NetConn_TimedOut(cls.netcon))
 		CL_DisconnectEx(true, "Connection timed out");
 }
 

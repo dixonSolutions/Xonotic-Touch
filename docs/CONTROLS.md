@@ -470,6 +470,16 @@ Main menu is stock Xonotic (Singleplayer / Multiplayer / Media / Settings / …)
   older build cannot stick); with it off, a server map outside the bundled
   packs left the world black behind a working HUD. Mobile-data mode still
   turns downloads off at runtime.
+  A join that had to download and load a big map and model packs then
+  ended in "Connection timed out" (53 s of loading on a Surface Pro 9).
+  The engine loads the map and every precached model inside one frame, and
+  `host.realtime` stands still for the whole of it, so the keepalives read
+  during that frame stamped each packet with the stale frame time; on the
+  next frame realtime had overtaken the connection's timeout
+  (`net_messagetimeout`, 30 s under Xonotic's config, which the client
+  execs too) although the server was never quiet. `NetConn_TimedOut`
+  (`netconn.c`) now judges the silence by the wall clock and only drops a
+  connection that really heard nothing for the whole timeout.
 - **Pause** — Escape / GameMenu Resume (see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md)).
 
 ---

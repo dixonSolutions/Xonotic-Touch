@@ -152,6 +152,10 @@ typedef struct netconn_s
 	double connecttime;
 	double timeout;
 	double lastMessageTime;
+	/// Sys_DirtyTime() when lastMessageTime was stamped. host.realtime stands
+	/// still for a whole frame, so on a frame that outlasts the timeout this is
+	/// the only record of when the peer was last heard from (NetConn_TimedOut).
+	double lastMessageDirtyTime;
 	double lastSendTime;
 
 	/// writing buffer to send to peer as the next reliable message
@@ -445,6 +449,7 @@ lhnetsocket_t *NetConn_ChooseServerSocketForAddress(lhnetaddress_t *address);
 void NetConn_Init(void);
 void NetConn_Shutdown(void);
 netconn_t *NetConn_Open(lhnetsocket_t *mysocket, lhnetaddress_t *peeraddress);
+qbool NetConn_TimedOut(netconn_t *conn);
 void NetConn_Close(netconn_t *conn);
 void NetConn_Listen(qbool state);
 int NetConn_Read(lhnetsocket_t *mysocket, void *data, int maxlength, lhnetaddress_t *peeraddress);
