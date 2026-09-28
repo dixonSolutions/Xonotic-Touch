@@ -1911,15 +1911,19 @@ static void SCR_ChooseLoadingPic(qbool startup)
 
 /*
 ===============
-SCR_BeginLoadingPlaque
+SCR_UpdateLoadingScreen
 
+Redraw from inside a load, where the stack may be empty: SCR_BeginLoadingPlaque
+pushes its dummy status only for its own redraw, and the stack is empty again
+between items. CL_UpdateScreen reads an empty stack as a finished load and ends
+the plaque, so keep a dummy status on it here too, or a local map load would
+clear the plaque partway through and draw a half-built world.
 ================
 */
-void SCR_BeginLoadingPlaque(qbool startup)
+void SCR_UpdateLoadingScreen(void)
 {
 	loadingscreenstack_t dummy_status;
 
-	// we need to push a dummy status so CL_UpdateScreen knows we have things to load...
 	if (!loadingscreenstack)
 	{
 		dummy_status.msg[0] = '\0';
@@ -1927,13 +1931,24 @@ void SCR_BeginLoadingPlaque(qbool startup)
 		loadingscreenstack = &dummy_status;
 	}
 
-	SCR_DeferLoadingPlaque(startup);
-	if (scr_loadingscreen_background.integer)
-		SCR_SetLoadingScreenTexture();
 	CL_UpdateScreen();
 
 	if (loadingscreenstack == &dummy_status)
 		loadingscreenstack = NULL;
+}
+
+/*
+===============
+SCR_BeginLoadingPlaque
+
+================
+*/
+void SCR_BeginLoadingPlaque(qbool startup)
+{
+	SCR_DeferLoadingPlaque(startup);
+	if (scr_loadingscreen_background.integer)
+		SCR_SetLoadingScreenTexture();
+	SCR_UpdateLoadingScreen();
 }
 
 void SCR_DeferLoadingPlaque(qbool startup)

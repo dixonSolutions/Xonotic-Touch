@@ -36,6 +36,9 @@ void SCR_Toast(const char *text);
 void SCR_BeginLoadingPlaque (qbool startup);
 void SCR_DeferLoadingPlaque (qbool startup);
 void SCR_EndLoadingPlaque (void);
+// redraws the loading screen without letting CL_UpdateScreen mistake an empty
+// loading screen stack for a finished load
+void SCR_UpdateLoadingScreen (void);
 
 // pushes an item on the loading screen
 void SCR_PushLoadingScreen (const char *msg, float len_in_parent);
