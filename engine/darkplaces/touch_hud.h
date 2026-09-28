@@ -12,6 +12,9 @@ It is active only while a foreign CSQC is loaded (see cl_touch_csqc_active).
 
 #include "qtypes.h"
 
+// Cvars and commands (CL_InitInput).
+void TouchHUD_Init(void);
+
 // Whether the engine HUD should be running right now.
 qbool TouchHUD_Active(void);
 
@@ -21,6 +24,10 @@ void TouchHUD_Frame(void);
 
 // Draw the overlay (called from the 2D overlay pass, key_game only).
 void TouchHUD_Draw(void);
+
+// Stock healtharmor / ammo / weapons panels on exactly when the touch
+// readouts are not drawn. Every frame, under any CSQC.
+void TouchHUD_SyncStockPanels(void);
 
 // Release every key this module is holding (disconnect, menu, CSQC swap).
 void TouchHUD_ReleaseAll(void);

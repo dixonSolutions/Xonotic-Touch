@@ -403,19 +403,30 @@ static void VID_UpdateTextInputRect(void)
 	SDL_SetTextInputRect(&rect);
 }
 
+// Whether SDL text input being on puts a keyboard over the game. Touch tablets
+// on Linux/Wayland use text-input-v3 for the compositor OSK, and
+// SDL_HasScreenKeyboardSupport() is often false there (GNOME, Ubuntu Touch).
+static qbool VID_TextInputShowsKeyboard(void)
+{
+	return vid_touchscreen.integer || SDL_HasScreenKeyboardSupport();
+}
+
 void VID_ShowKeyboard(qbool show)
 {
+	// With no on-screen keyboard to hide, text input is only how a hardware
+	// keyboard's characters arrive (SDL_TEXTINPUT), so it stays on, as in stock
+	// DarkPlaces. Stopping it here is what left the console, chat and menu
+	// fields deaf to typing once a keyboard had hidden the touch controls:
+	// keys still came through, but never a character.
+	if (!VID_TextInputShowsKeyboard())
+		show = true;
+
 	if (!show)
 	{
 		if (SDL_IsTextInputActive())
 			SDL_StopTextInput();
 		return;
 	}
-
-	// Touch tablets on Linux/Wayland use text-input-v3 for the compositor OSK;
-	// SDL_HasScreenKeyboardSupport() is often false there (GNOME, Ubuntu Touch).
-	if (!SDL_HasScreenKeyboardSupport() && !vid_touchscreen.integer)
-		return;
 
 	VID_UpdateTextInputRect();
 	if (!SDL_IsTextInputActive())
@@ -425,8 +436,11 @@ void VID_ShowKeyboard(qbool show)
 // Re-request compositor OSK (mutter/lomiri may ignore a sticky enable).
 static void VID_PulseKeyboard(void)
 {
-	if (!vid_touchscreen.integer && !SDL_HasScreenKeyboardSupport())
+	if (!VID_TextInputShowsKeyboard())
+	{
+		VID_ShowKeyboard(true);
 		return;
+	}
 	if (SDL_IsTextInputActive())
 		SDL_StopTextInput();
 	VID_UpdateTextInputRect();

@@ -414,6 +414,63 @@ void TouchHUD_ReleaseAll(void)
 		fingers[i].used = false;
 }
 
+// ---------------------------------------------------------------------------
+// First-person weapon model. touch/xonotic.cfg and the thermal profile every
+// launch runs used to force r_drawviewmodel 0, so every install archived it,
+// and the launcher runs config.cfg after the shipped defaults: dropping those
+// lines alone would never bring the arm and weapon back to anyone who had
+// played before. Turned on once, after every startup config has run; from
+// then on the archived value is the player's own choice.
+// ---------------------------------------------------------------------------
+static cvar_t touch_viewmodel_restored = {CF_CLIENT | CF_ARCHIVE, "_touch_viewmodel_restored", "0", "1 once r_drawviewmodel was turned back on after the builds that forced it off"};
+
+static void TouchHUD_RestoreViewmodel_f(cmd_state_t *cmd)
+{
+	if (touch_viewmodel_restored.integer)
+		return;
+	Cvar_SetValueQuick(&touch_viewmodel_restored, 1);
+	if (r_drawviewmodel.integer)
+		return;
+	Cvar_SetValueQuick(&r_drawviewmodel, 1);
+	Con_Printf("Touch: first-person weapon model turned back on (r_drawviewmodel 1)\n");
+}
+
+void TouchHUD_Init(void)
+{
+	Cvar_RegisterVariable(&touch_viewmodel_restored);
+	Cmd_AddCommand(CF_CLIENT, "_touch_restore_viewmodel", TouchHUD_RestoreViewmodel_f, "turn r_drawviewmodel back on once for installs that archived the old forced 0 (queued by Host_Init)");
+}
+
+// ---------------------------------------------------------------------------
+// Stock panels. The touch readouts (vitals, weapon strip) stand in for the
+// stock healtharmor / ammo / weapons panels only while they draw, which is
+// while the touch controls are on. Decided here every frame because this is
+// the one place that runs under both CSQCs: the port's own, and a server's,
+// which knows nothing of touch and kept whatever the port last left in these
+// archived cvars. The port's CSQC used to decide on touch_mobile_hud alone and
+// stopped looking once a keyboard hid the controls, so a keyboard player had
+// no health, armour, ammo or weapons in a local match or on a server.
+// ---------------------------------------------------------------------------
+static qbool readouts_shown(void)
+{
+	return vid_touchscreen.integer && cv("touch_mobile_hud", 1);
+}
+
+static void stock_panel(const char *name, qbool on)
+{
+	cvar_t *var = Cvar_FindVar(&cvars_all, name, ~0);
+	if (var && (var->integer != 0) != on)
+		Cvar_SetValueQuick(var, on);
+}
+
+void TouchHUD_SyncStockPanels(void)
+{
+	qbool stock = !readouts_shown();
+	stock_panel("hud_panel_healtharmor", stock);
+	stock_panel("hud_panel_ammo", stock);
+	stock_panel("hud_panel_weapons", stock);
+}
+
 qbool TouchHUD_Active(void)
 {
 	if (!vid_touchscreen.integer)
@@ -745,7 +802,9 @@ static void draw_weapon_strip(float a)
 	float cx, top, h, w, pad, u, num_fs, num_slot, r;
 	int idx[MAX_WEAPONS];
 	int n, i, held;
-	if (!cv("touch_weplist_visible", 1))
+	// With the readouts off the stock weapons panel is back, and two strips
+	// would sit on the right edge.
+	if (!readouts_shown() || !cv("touch_weplist_visible", 1))
 		return;
 	n = strip_rows(&cx, &top, &h, &w, idx, MAX_WEAPONS);
 	if (n <= 0)
@@ -1333,7 +1392,7 @@ static void draw_vitals(float a)
 	float cx, cy, ox, oy, pitch = (30 + 6) * hud_u;
 	int health = max(0, cl.stats[STAT_HEALTH]);
 	int armor = max(0, cl.stats[STAT_ARMOR]);
-	if (!cv("touch_mobile_hud", 1))
+	if (!readouts_shown())
 		return;
 	widget_center(cv("touch_hud_x", 0.150f), cv("touch_hud_y", 0.115f), &cx, &cy);
 	ox = cx - w * 0.5f;

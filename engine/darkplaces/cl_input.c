@@ -26,6 +26,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "csprogs.h"
 #include "thread.h"
 #include "touch_aim.h"
+#include "touch_hud.h"
 
 /*
 ===============================================================================
@@ -2331,5 +2332,6 @@ void CL_InitInput (void)
 	Cvar_RegisterVariable(&cl_csqc_generatemousemoveevents);
 
 	TouchAim_Init();
+	TouchHUD_Init();
 }
 
