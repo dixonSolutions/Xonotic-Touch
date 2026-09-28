@@ -46,7 +46,6 @@ bool touch_mouse_down;
 int touch_active_finger_count;
 bool touch_ready;
 int touch_last_fire_mode;
-int touch_last_mobile_hud;
 bool touch_autoscreenshot_done;
 int touch_autoscreenshot_frames;
 
@@ -539,8 +538,6 @@ void Touch_EnsureReady(void)
 	Touch_ApplyChatFeedSettings();
 	Touch_ApplyTimerPanel();
 	Touch_ApplyNotifyPanel();
-	Touch_ApplyMobileHudEngineSettings();
-	touch_last_mobile_hud = autocvar_touch_mobile_hud;
 	// Migrate legacy simple_draw → glass_quality once.
 	if (cvar("touch_simple_draw") && !cvar("touch_glass_quality"))
 		cvar_set("touch_glass_quality", "0");
@@ -607,14 +604,6 @@ void Touch_Frame(void)
 		if (autocvar_touch_fire_mode == TOUCH_FIRE_HOLD)
 			touch_fire_toggle_state = false;
 		touch_last_fire_mode = autocvar_touch_fire_mode;
-	}
-
-	// Turning the touch readouts off has to hand health and ammo back to the
-	// stock panels, or the player is left with neither.
-	if (autocvar_touch_mobile_hud != touch_last_mobile_hud)
-	{
-		Touch_ApplyMobileHudEngineSettings();
-		touch_last_mobile_hud = autocvar_touch_mobile_hud;
 	}
 
 	touch_move_offset = '0 0 0';

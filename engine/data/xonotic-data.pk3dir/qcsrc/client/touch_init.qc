@@ -320,7 +320,8 @@ void Touch_EnforceSquare2D(void)
 }
 
 // Geometry for the *stock* strip, which is the fallback when the touch readouts
-// are switched off. Touch_ApplyMobileHudEngineSettings decides which one draws.
+// are not drawn. The engine decides which one draws (TouchHUD_SyncStockPanels in
+// touch_hud.c), because it has to under a server's CSQC as well.
 void Touch_ApplyTouchWeaponsStrip(void)
 {
 	if (!cvar("vid_touchscreen"))
@@ -334,21 +335,6 @@ void Touch_ApplyTouchWeaponsStrip(void)
 	localcmd("seta hud_panel_weapons_size \"0.075 0.58\"\n");
 	localcmd("seta hud_panel_weapons_bg 1\n");
 	localcmd("seta hud_panel_weapons_bg_alpha 0.35\n");
-}
-
-// The touch readouts and the stock panels are alternatives, so decide between
-// them here rather than trusting a shipped config to agree with a cvar default.
-// Previously touch/xonotic.cfg disabled the stock panels and touch_mobile_hud
-// defaulted off, which left the player with no health readout whatsoever.
-void Touch_ApplyMobileHudEngineSettings(void)
-{
-	bool touch_hud = boolean(cvar("touch_mobile_hud"));
-	cvar_set("hud_panel_healtharmor", touch_hud ? "0" : "1");
-	cvar_set("hud_panel_ammo", touch_hud ? "0" : "1");
-	// One switch for all the readouts rather than one per panel: they are the same
-	// decision — does the touch layer own the HUD — and three knobs would let a
-	// player end up with two weapon strips or none.
-	cvar_set("hud_panel_weapons", touch_hud ? "0" : "1");
 }
 
 // The match clock keeps the centre of the top band now that the chrome pills

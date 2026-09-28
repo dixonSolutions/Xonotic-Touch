@@ -21,7 +21,6 @@ void Touch_EnforceSquare2D(void);
 void Touch_LoadStartupConfigs(void);
 void Touch_ApplySensitivity(void);
 void Touch_ApplyTouchWeaponsStrip(void);
-void Touch_ApplyMobileHudEngineSettings(void);
 void Touch_ApplyChatFeedSettings(void);
 void Touch_ApplyTimerPanel(void);
 void Touch_ApplyNotifyPanel(void);

@@ -1549,14 +1549,17 @@ scr_touchscreenarea_t scr_touchscreenareas[128];
 
 static void SCR_DrawTouchscreenOverlay(void)
 {
-	// Engine copy of the Touch HUD, only while a server's CSQC is running.
-	TouchHUD_Draw();
 	int i;
 	scr_touchscreenarea_t *a;
 	cachepic_t *pic;
 	touchui_item_t item;
 	float shade;
 	keydest_t kd = (key_consoleactive & KEY_CONSOLEACTIVE_USER) ? key_console : key_dest;
+
+	// Under any CSQC: stock vitals and weapons panels unless touch draws its own.
+	TouchHUD_SyncStockPanels();
+	// Engine copy of the Touch HUD, only while a server's CSQC is running.
+	TouchHUD_Draw();
 
 	// Console / chat sheet shade (cvar-driven).
 	if (kd == key_console)
