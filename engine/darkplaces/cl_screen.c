@@ -2327,10 +2327,15 @@ void CL_UpdateScreen(void)
 			SCR_EndLoadingPlaque();
 		else if (scr_loadingscreen_maxfps.value > 0)
 		{
+			// Wall clock, not host.realtime: a join loads the map and every
+			// model inside one frame, realtime stands still for all of it, and
+			// against it every redraw after the first looked too soon. The
+			// loading screen froze for the whole 50 s load (issue #25).
 			static double lastupdate;
-			if (host.realtime - lastupdate < min(1.0f / scr_loadingscreen_maxfps.value, 0.1))
+			double now = Sys_DirtyTime();
+			if (now - lastupdate >= 0 && now - lastupdate < min(1.0f / scr_loadingscreen_maxfps.value, 0.1))
 				return;
-			lastupdate = host.realtime;
+			lastupdate = now;
 		}
 	}
 

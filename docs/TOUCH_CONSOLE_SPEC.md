@@ -10,9 +10,33 @@ Keyboard-free text entry for the engine console and chat, with a no-typing comma
    - Scrollback above the keyboard (native console)
    - **KEYS** tab: layered QWERTY with SHIFT / ?123, TAB completion, HIST, caret, SPACE, ENTER, hold-repeat BKSP
    - **COMMANDS** tab: file-driven preset grid (`touch/console_palette.txt`)
+   - While spectating or observing on a server, the COMMANDS tab leads with the
+     actions the game's own prompts name keys for, highlighted (see below)
 3. Chat (`messagemode` / `key_message`): compact sheet with quick-phrase strip + same keyboard.
 4. Keyboard height / opacity / shade are engine cvars (`touch_kb_*` / `touch_conui_*`), tunable via cfg/console.
    Settings → Touch controls covers presets, look sensitivity, opacity, and scale (no live preview panel).
+
+## Spectator actions
+
+A spectator sees prompts such as "Press SPACE to join" or "Press MOUSE1 to
+spectate". On a public server those come from the server's own CSQC, which the
+touch layer cannot rewrite (the port's CSQC answers with on-screen labels
+instead, `Touch_CommandLabel`). So the engine puts the same actions at the head
+of the COMMANDS tab while they apply. Each runs the command the prompt names and
+closes the sheet, so the player sees the result.
+
+| State | Detected by | Entries |
+|-------|-------------|---------|
+| Observing (free fly) | own scoreboard frags `-666`, view on self | spectate (`+fire`), fly faster (`weapnext`), fly slower (`weapprev`), join |
+| Spectating a player | frags `-666`, view moved to another player | next player (`weapnext`), prev player (`weapprev`), observe (`+fire2`), camera (`weapon_drop`), join |
+| Out of the round | frags `-616`, watching another player | next player, prev player, camera |
+
+Not shown at intermission, in demos, or while playing. `+fire` / `+fire2` are
+released with `defer 0.2`: a release in the same frame resets the button before
+any packet carries the press. A palette-file entry with the same label as a
+shown action (the stock file's `join` and `spectate`) is hidden meanwhile.
+"Press i for gametype info" has no entry: `+show_info` shows its panel only
+while held. Code: `TouchUI_SpectatorMode` in `touch_ui.c`.
 
 ## Layout (960×640 reference)
 
@@ -61,3 +85,5 @@ Optional `touch_kb_split 1` places left/right halves under both thumbs in landsc
 | C7 | COMMANDS tab runs a preset (e.g. screenshot) |
 | C8 | Chat sheet appears for `say` / messagemode without relying on compositor OSK |
 | C9 | Console sheet still respects `touch_kb_*` / `touch_conui_*` cvars from cfg |
+| C10 | Observing on a public server: COMMANDS leads with spectate / fly faster / fly slower / join; tapping spectate closes the sheet and spectates a player |
+| C11 | Spectating: next player switches player, observe returns to observing |

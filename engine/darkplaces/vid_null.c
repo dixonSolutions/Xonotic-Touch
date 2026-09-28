@@ -33,6 +33,10 @@ void VID_Finish (void)
 {
 }
 
+void VID_PumpEvents(void)
+{
+}
+
 void VID_Init(void)
 {
 }

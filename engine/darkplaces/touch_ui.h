@@ -42,7 +42,8 @@ typedef enum touchui_action_e
 	TOUCHUI_ACT_LAYER_SYM,
 	TOUCHUI_ACT_LAYER_ABC,
 	TOUCHUI_ACT_PALETTE,       /* action_arg = palette index */
-	TOUCHUI_ACT_BKSP_HOLD      /* backspace with hold-repeat */
+	TOUCHUI_ACT_BKSP_HOLD,     /* backspace with hold-repeat */
+	TOUCHUI_ACT_SPECTATE       /* action_arg = spectator entry index; runs it and closes the sheet */
 }
 touchui_action_t;
 
