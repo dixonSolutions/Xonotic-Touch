@@ -1243,7 +1243,11 @@ qbool NetConn_TimedOut(netconn_t *conn)
 	silence = Sys_DirtyTime() - conn->lastMessageDirtyTime;
 	if (silence >= allowance)
 		return true;
-	conn->timeout = host.realtime + allowance - silence;
+	// allowance is read back as timeout - lastMessageTime, so the two have to
+	// move together; a lastMessageTime left at the stale frame time would hand
+	// out the whole hitch again on every later check and never time out at all
+	conn->lastMessageTime = host.realtime - silence;
+	conn->timeout = conn->lastMessageTime + allowance;
 	return false;
 }
 
