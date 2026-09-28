@@ -31,6 +31,11 @@ in two layers:
    but only after sustained use with no finger on the glass, so a stray key
    or a bumped mouse does not take the controls away.
 
+Whether there is a keyboard is only ever the first layer's answer, read live
+from the system. Using a mouse, or a key arriving, never stands in for it: a
+mouse on a tablet leaves the player nothing to type or move with, and keys
+come from on-screen keyboards, remotes and mice with macro buttons too.
+
 Presence is the answer until something has been used, and a keyboard being
 plugged in or removed starts over from presence.
 */
@@ -708,6 +713,9 @@ static void vid_presence_compute(vid_presence_t *p)
 			p->keyboard = external;
 		}
 	}
+#else
+	// Nothing to ask on this platform: a desktop build has a keyboard.
+	p->keyboard = true;
 #endif
 #endif
 }
@@ -834,9 +842,10 @@ static qbool vid_kbm_accept(void)
 		vid_kbm_reset();
 		return false;
 	}
-	// Keys from a keyboard folded behind the screen.
+	// No keyboard the system knows of (none attached, or one folded behind
+	// the screen): whatever sent this, the player cannot type or move on it.
 	p = vid_presence_get();
-	if (p->tablet_mode && !p->keyboard)
+	if (!p->keyboard)
 		return false;
 	if (host.realtime - vid_kbm_start > VID_KBM_WINDOW)
 	{
@@ -871,8 +880,8 @@ void VID_NoteMouseUse(float travel, qbool press)
 {
 	// Without a keyboard there is nothing to move with: a lone mouse (or a
 	// pen the compositor turns into one) is not a reason to take the stick
-	// away. Keys already pressed in this window say otherwise.
-	if (!vid_presence_get()->keyboard && !vid_kbm_keys)
+	// away. vid_kbm_accept says the same; this skips the pen poll below.
+	if (!vid_presence_get()->keyboard)
 		return;
 	if (vid_active == VID_ACTIVE_KEYBOARD || !vid_touchscreen.integer || vid_touchscreen_mode.integer != 1)
 		return;

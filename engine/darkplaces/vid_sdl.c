@@ -344,13 +344,26 @@ qbool VID_HasScreenKeyboardSupport(void)
 	return SDL_HasScreenKeyboardSupport() != SDL_FALSE;
 }
 
+// Whether typing needs an on-screen keyboard: a touch surface and no keyboard,
+// as the system lists them right now (vid_touchdetect.c, re-read on hot-plug).
+// Not vid_touchscreen, which follows the last input used: the touch controls
+// also hide for a mouse, and a mouse types nothing. Touch tablets on
+// Linux/Wayland get their OSK through text-input-v3 even where
+// SDL_HasScreenKeyboardSupport() says no (GNOME, Ubuntu Touch).
+static qbool VID_NeedsScreenKeyboard(void)
+{
+	qbool has_touch, touch_only;
+	VID_DetectTouchHardware(&has_touch, &touch_only);
+	return touch_only;
+}
+
 static void VID_UpdateTextInputRect(void)
 {
 	SDL_Rect rect;
 	float cx, cy, cw, ch;
 	keydest_t keydest;
 
-	if (!vid_touchscreen.integer)
+	if (!VID_NeedsScreenKeyboard())
 		return;
 
 	cx = vid_touchscreen_textinput_x.value;
@@ -403,22 +416,14 @@ static void VID_UpdateTextInputRect(void)
 	SDL_SetTextInputRect(&rect);
 }
 
-// Whether SDL text input being on puts a keyboard over the game. Touch tablets
-// on Linux/Wayland use text-input-v3 for the compositor OSK, and
-// SDL_HasScreenKeyboardSupport() is often false there (GNOME, Ubuntu Touch).
-static qbool VID_TextInputShowsKeyboard(void)
-{
-	return vid_touchscreen.integer || SDL_HasScreenKeyboardSupport();
-}
-
 void VID_ShowKeyboard(qbool show)
 {
-	// With no on-screen keyboard to hide, text input is only how a hardware
-	// keyboard's characters arrive (SDL_TEXTINPUT), so it stays on, as in stock
-	// DarkPlaces. Stopping it here is what left the console, chat and menu
-	// fields deaf to typing once a keyboard had hidden the touch controls:
-	// keys still came through, but never a character.
-	if (!VID_TextInputShowsKeyboard())
+	// With a keyboard attached there is no on-screen keyboard to hide, and
+	// text input is how that keyboard's characters arrive (SDL_TEXTINPUT), so
+	// it stays on, as in stock DarkPlaces. Stopping it here is what left the
+	// console, chat and menu fields deaf to typing: keys still came through,
+	// but never a character.
+	if (!VID_NeedsScreenKeyboard())
 		show = true;
 
 	if (!show)
@@ -436,7 +441,7 @@ void VID_ShowKeyboard(qbool show)
 // Re-request compositor OSK (mutter/lomiri may ignore a sticky enable).
 static void VID_PulseKeyboard(void)
 {
-	if (!VID_TextInputShowsKeyboard())
+	if (!VID_NeedsScreenKeyboard())
 	{
 		VID_ShowKeyboard(true);
 		return;
@@ -1010,11 +1015,10 @@ static qbool VID_ScancodeIsPlay(SDL_Scancode sc)
 
 static void VID_NoteKeyEvent(const SDL_KeyboardEvent *key)
 {
+	// On-screen keyboards (GNOME, Lomiri, Android IMEs) type through the same
+	// key events. They count for nothing: only a keyboard the system lists
+	// can hide the controls (vid_kbm_accept in vid_touchdetect.c).
 	if (key->state != SDL_PRESSED || key->repeat || !VID_ScancodeIsPlay(key->keysym.scancode))
-		return;
-	// On-screen keyboards (GNOME, Lomiri, Android IMEs) type through the
-	// same key events. While one can be up they say nothing about hardware.
-	if (vid_touchscreen.integer && SDL_IsTextInputActive())
 		return;
 	VID_NoteKeyboardUse();
 }
@@ -1293,6 +1297,8 @@ void IN_Move( void )
 	static int stuck = 0;
 	static keydest_t oldkeydest;
 	static qbool oldshowkeyboard;
+	static qbool oldneedsosk;
+	qbool needsosk = VID_NeedsScreenKeyboard();
 	int x, y;
 	vid_joystate_t joystate;
 	keydest_t keydest = (key_consoleactive & KEY_CONSOLEACTIVE_USER) ? key_console : key_dest;
@@ -1301,17 +1307,20 @@ void IN_Move( void )
 
 	// Console / chat: keep compositor OSK up (GNOME Screen Keyboard + Ubuntu Touch
 	// lomiri-keyboard via Wayland text-input). Re-assert if the user dismissed it.
-	if (vid_touchscreen.integer && (keydest == key_console || keydest == key_message))
+	// Whether or not the touch controls are showing: a mouse hides them too.
+	if (needsosk && (keydest == key_console || keydest == key_message))
 	{
 		VID_UpdateTextInputRect();
 		if (!VID_ShowingKeyboard())
 			VID_ShowKeyboard(true);
 	}
-	else if (vid_touchscreen.integer && vid_touchscreen_showkeyboard.integer)
+	else if (needsosk && vid_touchscreen_showkeyboard.integer)
 		VID_UpdateTextInputRect();
 
-	// Only apply the new keyboard state if the input changes.
-	if (keydest != oldkeydest || !!vid_touchscreen_showkeyboard.integer != oldshowkeyboard)
+	// Only apply the new keyboard state if the input changes, or a keyboard
+	// was plugged in or taken away (on in-game with none, the OSK would sit
+	// over the game; off with one, its characters would stop arriving).
+	if (keydest != oldkeydest || !!vid_touchscreen_showkeyboard.integer != oldshowkeyboard || needsosk != oldneedsosk)
 	{
 		switch(keydest)
 		{
@@ -1330,6 +1339,7 @@ void IN_Move( void )
 	}
 	oldkeydest = keydest;
 	oldshowkeyboard = !!vid_touchscreen_showkeyboard.integer;
+	oldneedsosk = needsosk;
 
 	if (vid_touchscreen.integer)
 	{

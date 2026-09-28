@@ -280,7 +280,7 @@ void VID_TouchHotplugFrame(void);
 // or mouse play with no finger on the screen.
 void VID_NoteTouchUse(void);       // a finger or pen went down on a direct touch surface
 void VID_NoteTouchActivity(void);  // a finger moved or lifted
-void VID_NoteKeyboardUse(void);    // a real key press (caller filters repeats and soft keyboards)
+void VID_NoteKeyboardUse(void);    // a key press (caller filters repeats; counts only with a keyboard listed)
 void VID_NoteMouseUse(float travel, qbool press); // travel in window widths
 void VID_TouchscreenMode_c(struct cvar_s *var);
 void VID_Touchscreen_c(struct cvar_s *var);
