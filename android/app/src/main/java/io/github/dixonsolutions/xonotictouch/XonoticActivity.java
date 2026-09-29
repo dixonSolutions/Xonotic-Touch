@@ -151,8 +151,11 @@ public final class XonoticActivity extends SDLActivity {
         }
         // A keyboard the system itself calls hidden -- a lid or slider shut,
         // a Chromebook folded into a tablet -- is not one the player can use,
-        // and neither is the chassis pad that goes face-down with it.
-        boolean folded = getResources().getConfiguration().hardKeyboardHidden
+        // and neither is the chassis pad that goes face-down with it. Only a
+        // listed keyboard makes that folding: hardKeyboardHidden also reads
+        // YES on every device with no hard keys at all, where a touchpad the
+        // player attached is the pointer they aim with.
+        boolean folded = keyboard && getResources().getConfiguration().hardKeyboardHidden
                 == Configuration.HARDKEYBOARDHIDDEN_YES;
         if (folded) {
             keyboard = false;

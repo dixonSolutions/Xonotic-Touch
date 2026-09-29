@@ -164,12 +164,14 @@ int. A keyboard counts when it is `SOURCE_KEYBOARD` with
 not a fingerprint reader, GPIO button or hall sensor by name, and not
 reported hidden (`hardKeyboardHidden == YES`). A mouse counts when it is
 `SOURCE_MOUSE`, `SOURCE_TOUCHPAD` or `SOURCE_MOUSE_RELATIVE`, not a
-touchscreen or stylus, and not one of those sensors by name. A hidden
-keyboard takes the chassis pad with it: a pointer that names itself a
-touchpad or trackpad went face-down with the keys, while a mouse stays.
-Vendor and product cannot tell those apart -- a combo receiver hands its
-keyboard and its mouse one pair, both read 0 when unknown, and a base
-usually drives its pad from a second controller. Disabled devices
+touchscreen or stylus, and not one of those sensors by name. A listed
+keyboard reported hidden takes the chassis pad with it: a pointer that
+names itself a touchpad or trackpad went face-down with the keys, while a
+mouse stays. The flag on its own would not do -- it reads YES on every
+device with no hard keys, where an attached touchpad is the pointer. Nor
+can vendor and product tell a chassis pad from a mouse: a combo receiver
+hands its keyboard and its mouse one pair, both read 0 when unknown, and a
+base usually drives its pad from a second controller. Disabled devices
 (`isEnabled()`, Android 8.1+) count for nothing. No permission is involved.
 
 The Android build no longer forces Always. It starts with the controls on,
