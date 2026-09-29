@@ -26,8 +26,13 @@ env:
   CLICK_REMOTE_URL: https://dixonSolutions.github.io/Xonotic-Touch/click
 
 jobs:
+  tests:
+    name: Tests
+    uses: ./.github/workflows/tests.yml
+
   version:
     name: Version
+    needs: [tests]
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.stamp.outputs.version }}

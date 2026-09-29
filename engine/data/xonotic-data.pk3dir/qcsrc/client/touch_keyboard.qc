@@ -124,8 +124,15 @@ float Touch_Kb_CellOffset(int row, int cell)
 // Geometry
 // ---------------------------------------------------------------------------
 
+bool Touch_Kb_Hidden(void)
+{
+	return cvar("vid_keyboard_detected") > 0;
+}
+
 float Touch_Kb_Height(void)
 {
+	if (Touch_Kb_Hidden())
+		return 0;
 	vector ui = Touch_UISize();
 	return bound(0.20, autocvar_touch_kb_height, 0.70) * ui.y;
 }
@@ -251,7 +258,7 @@ bool Touch_Kb_Hit(vector p)
 {
 	touch_kb_hit_row = -1;
 	touch_kb_hit_cell = -1;
-	if (p.y < Touch_Kb_Top())
+	if (Touch_Kb_Hidden() || p.y < Touch_Kb_Top())
 		return false;
 
 	int row, cell;
@@ -314,12 +321,29 @@ string Touch_Kb_Apply(string text, int row, int cell)
 	return strcat(text, c);
 }
 
+string Touch_Kb_Type(string text, float key, float ch)
+{
+	if (key == K_BACKSPACE)
+	{
+		if (strlen(text) <= 0)
+			return text;
+		return substring(text, 0, strlen(text) - 1);
+	}
+	if (ch < 32 || ch == 127)
+		return text;
+	if (strlen(text) >= autocvar_touch_kb_maxlen)
+		return text;
+	return strcat(text, chr2str(ch));
+}
+
 // ---------------------------------------------------------------------------
 // Drawing
 // ---------------------------------------------------------------------------
 
 void Touch_Kb_Draw(float alpha, int hot_row, int hot_cell)
 {
+	if (Touch_Kb_Hidden())
+		return;
 	vector ui = Touch_UISize();
 	float top = Touch_Kb_Top();
 

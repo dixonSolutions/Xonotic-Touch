@@ -105,12 +105,14 @@ public final class XonoticActivity extends SDLActivity {
     /**
      * Tell the engine which input hardware is attached, and keep telling it.
      *
-     * The engine decides whether the on-screen controls show (Auto mode): on
-     * for a touch device with no keyboard, off once a real keyboard is
-     * attached, and in either case whatever the player last actually used --
-     * a touch brings them straight back. InputManager's listener covers USB
-     * and Bluetooth hot-plug; configuration changes cover a keyboard folded
-     * away. None of this needs a permission.
+     * This is the engine's source of truth for what the player has; what
+     * they press only ever confirms it (vid_touchdetect.c). The on-screen
+     * controls show for a touch device with no keyboard, and stay with a
+     * mouse, which aims next to them once used. They hide only after
+     * sustained typing on a keyboard listed here, and a touch brings them
+     * straight back. InputManager's listener covers USB and Bluetooth
+     * hot-plug; configuration changes cover a keyboard folded away. None of
+     * this needs a permission.
      */
     private void watchInputDevices() {
         inputManager = (InputManager) getSystemService(INPUT_SERVICE);
@@ -131,6 +133,9 @@ public final class XonoticActivity extends SDLActivity {
             if (device == null || device.isVirtual()) {
                 continue;
             }
+            if (Build.VERSION.SDK_INT >= 27 && !device.isEnabled()) {
+                continue;
+            }
             int sources = device.getSources();
             if (hasSource(sources, InputDevice.SOURCE_TOUCHSCREEN)) {
                 touch = true;
@@ -139,8 +144,7 @@ public final class XonoticActivity extends SDLActivity {
                 keyboard = true;
                 names.append(" keyboard=\"").append(device.getName()).append('"');
             }
-            if (hasSource(sources, InputDevice.SOURCE_MOUSE)
-                    && !hasSource(sources, InputDevice.SOURCE_TOUCHSCREEN)) {
+            if (isRealPointer(device, sources)) {
                 mouse = true;
                 names.append(" mouse=\"").append(device.getName()).append('"');
             }
@@ -183,17 +187,38 @@ public final class XonoticActivity extends SDLActivity {
                 || hasSource(sources, InputDevice.SOURCE_JOYSTICK)) {
             return false;
         }
+        return !hasIgnoredName(device);
+    }
+
+    /**
+     * A mouse or touchpad that moves a pointer: not a touchscreen
+     * or a pen on one (those are touch), and not a sensor that some phones
+     * register as a touchpad.
+     */
+    private static boolean isRealPointer(InputDevice device, int sources) {
+        if (hasSource(sources, InputDevice.SOURCE_TOUCHSCREEN)
+                || hasSource(sources, InputDevice.SOURCE_STYLUS)) {
+            return false;
+        }
+        boolean pointer = hasSource(sources, InputDevice.SOURCE_MOUSE)
+                || hasSource(sources, InputDevice.SOURCE_TOUCHPAD)
+                || (Build.VERSION.SDK_INT >= 26
+                        && hasSource(sources, InputDevice.SOURCE_MOUSE_RELATIVE));
+        return pointer && !hasIgnoredName(device);
+    }
+
+    private static boolean hasIgnoredName(InputDevice device) {
         String name = device.getName() == null ? "" : device.getName().toLowerCase(Locale.ROOT);
         for (String ignored : IGNORED_KEYBOARD_NAMES) {
             if (name.contains(ignored)) {
-                return false;
+                return true;
             }
         }
-        return true;
+        return false;
     }
 
     /** Fingerprint readers, GPIO buttons, hall sensors and uinput helpers that
-     *  some phones register as alphabetic keyboards. */
+     *  some phones register as alphabetic keyboards or touchpads. */
     private static final String[] IGNORED_KEYBOARD_NAMES = {
         "uinput", "fingerprint", "fpc", "goodix", "gf_input", "gpio", "_pon",
         "hall", "power", "volume", "headset", "virtual", "sensor",

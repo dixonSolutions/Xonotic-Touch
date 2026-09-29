@@ -347,7 +347,7 @@ qbool VID_HasScreenKeyboardSupport(void)
 // Whether typing needs an on-screen keyboard: a touch surface and no keyboard,
 // as the system lists them right now (vid_touchdetect.c, re-read on hot-plug).
 // Not vid_touchscreen, which follows the last input used: the touch controls
-// also hide for a mouse, and a mouse types nothing. Touch tablets on
+// can be off while no keyboard is there to type on. Touch tablets on
 // Linux/Wayland get their OSK through text-input-v3 even where
 // SDL_HasScreenKeyboardSupport() says no (GNOME, Ubuntu Touch).
 static qbool VID_NeedsScreenKeyboard(void)
@@ -984,7 +984,14 @@ static void IN_Move_TouchScreen_SteelStorm(void)
 // touchpad is a mouse, not a touchscreen.
 static qbool VID_TouchIsDirect(SDL_TouchID id)
 {
-	SDL_TouchDeviceType type = SDL_GetTouchDeviceType(id);
+	SDL_TouchDeviceType type;
+#ifdef SDL_MOUSE_TOUCHID
+	// SDL's touches made up from a mouse. SDL_HINT_MOUSE_TOUCH_EVENTS is off,
+	// but Android's SDL has already listed the "mouse_input" device by then.
+	if (id == SDL_MOUSE_TOUCHID)
+		return false;
+#endif
+	type = SDL_GetTouchDeviceType(id);
 	return type == SDL_TOUCH_DEVICE_DIRECT || type == SDL_TOUCH_DEVICE_INVALID;
 }
 
@@ -1017,8 +1024,12 @@ static void VID_NoteKeyEvent(const SDL_KeyboardEvent *key)
 {
 	// On-screen keyboards (GNOME, Lomiri, Android IMEs) type through the same
 	// key events. They count for nothing: only a keyboard the system lists
-	// can hide the controls (vid_kbm_accept in vid_touchdetect.c).
+	// can hide the controls (VID_NoteKeyboardUse in vid_touchdetect.c).
 	if (key->state != SDL_PRESSED || key->repeat || !VID_ScancodeIsPlay(key->keysym.scancode))
+		return;
+	// Typing a message is not playing on the keyboard: the controls must not
+	// vanish, and a touch chat sheet with them, halfway through a word.
+	if (key_dest != key_game || key_consoleactive || touch_owns_screen.integer)
 		return;
 	VID_NoteKeyboardUse();
 }
@@ -1041,6 +1052,19 @@ static void VID_NoteMouseMotion(const SDL_MouseMotionEvent *motion)
 static qbool VID_TouchscreenHasRealDevices(void)
 {
 	return VID_SDL_HasTouchDevices() || vid_touchscreen_detected.integer;
+}
+
+// A mouse aiming in the game next to the touch controls. The system lists
+// it and the player has used it; there is a real touchscreen (without one
+// the mouse stands in for a finger: desktop testing); the game has the keys;
+// and no modal touch sheet wants the mouse as a pointer. Fingers keep
+// moving, aiming and pressing buttons alongside it.
+static qbool VID_TouchMouselook(void)
+{
+	return vid_touchscreen.integer && key_dest == key_game
+		&& VID_TouchscreenHasRealDevices()
+		&& VID_TouchMouseConfirmed()
+		&& !touch_owns_screen.integer;
 }
 
 static void VID_SyncDesktopMouse(void)
@@ -1141,7 +1165,8 @@ static void IN_Move_TouchScreen_Xonotic(void)
 			numfingers++;
 
 	// Mouse as a touch finger for in-game CSQC controls (desktop testing only).
-	if (numfingers == 0 && vid_touchscreen.integer && keydest == key_game)
+	// A mouse held for aiming (VID_TouchMouselook) is not a finger.
+	if (numfingers == 0 && vid_touchscreen.integer && keydest == key_game && !vid_usingmouse)
 	{
 		int x, y;
 		multitouch[MAXFINGERS-1][0] = SDL_GetMouseState(&x, &y) ? 11 : 0;
@@ -1358,40 +1383,43 @@ void IN_Move( void )
 			break;
 		}
 	}
-	else
-	{
-		if (vid_usingmouse)
-		{
-			if (vid_stick_mouse.integer || !vid_usingmouse_relativeworks)
-			{
-				// have the mouse stuck in the middle, example use: prevent expose effect of beryl during the game when not using
-				// window grabbing. --blub
-				int win_half_width = vid.mode.width>>1;
-				int win_half_height = vid.mode.height>>1;
-	
-				// we need 2 frames to initialize the center position
-				if(!stuck)
-				{
-					SDL_WarpMouseInWindow(window, win_half_width, win_half_height);
-					SDL_GetMouseState(&x, &y);
-					SDL_GetRelativeMouseState(&x, &y);
-					++stuck;
-				} else {
-					SDL_GetRelativeMouseState(&x, &y);
-					in_mouse_x = x + old_x;
-					in_mouse_y = y + old_y;
-					SDL_GetMouseState(&x, &y);
-					old_x = x - win_half_width;
-					old_y = y - win_half_height;
-					SDL_WarpMouseInWindow(window, win_half_width, win_half_height);
-				}
-			} else {
-				SDL_GetRelativeMouseState( &x, &y );
-				in_mouse_x = x;
-				in_mouse_y = y;
-			}
-		}
 
+	// Mouselook: always without touch controls, and next to them while a
+	// mouse aims (VID_TouchMouselook grabs it only then).
+	if (vid_usingmouse)
+	{
+		if (vid_stick_mouse.integer || !vid_usingmouse_relativeworks)
+		{
+			// have the mouse stuck in the middle, example use: prevent expose effect of beryl during the game when not using
+			// window grabbing. --blub
+			int win_half_width = vid.mode.width>>1;
+			int win_half_height = vid.mode.height>>1;
+	
+			// we need 2 frames to initialize the center position
+			if(!stuck)
+			{
+				SDL_WarpMouseInWindow(window, win_half_width, win_half_height);
+				SDL_GetMouseState(&x, &y);
+				SDL_GetRelativeMouseState(&x, &y);
+				++stuck;
+			} else {
+				SDL_GetRelativeMouseState(&x, &y);
+				in_mouse_x = x + old_x;
+				in_mouse_y = y + old_y;
+				SDL_GetMouseState(&x, &y);
+				old_x = x - win_half_width;
+				old_y = y - win_half_height;
+				SDL_WarpMouseInWindow(window, win_half_width, win_half_height);
+			}
+		} else {
+			SDL_GetRelativeMouseState( &x, &y );
+			in_mouse_x = x;
+			in_mouse_y = y;
+		}
+	}
+
+	if (!vid_touchscreen.integer)
+	{
 		SDL_GetMouseState(&x, &y);
 		in_windowmouse_x = x;
 		in_windowmouse_y = y;
@@ -1501,7 +1529,10 @@ void Sys_SDL_HandleEvents(void)
 #endif
 			if (event.type == SDL_MOUSEBUTTONDOWN && event.button.which != SDL_TOUCH_MOUSEID)
 				VID_NoteMouseUse(0, true);
-			if ((!vid_touchscreen.integer || !VID_SDL_HasTouchDevices())
+			// A real mouse always clicks, touch controls or not: mouse and
+			// fingers work side by side. Only the clicks SDL makes up from a
+			// finger are dropped while the finger path handles that finger.
+			if ((event.button.which != SDL_TOUCH_MOUSEID || !vid_touchscreen.integer || !VID_SDL_HasTouchDevices())
 				&& event.button.button > 0 && event.button.button <= ARRAY_SIZE(buttonremap))
 				Key_Event( buttonremap[event.button.button - 1], 0, event.button.state == SDL_PRESSED );
 			break;
@@ -1767,7 +1798,14 @@ void Sys_SDL_HandleEvents(void)
 	else if (key_dest == key_menu || key_dest == key_menu_grabbed)
 		VID_SetMouse(vid_mouse.integer && !in_client_mouse && !vid_touchscreen.integer, !vid_touchscreen.integer);
 	else
-		VID_SetMouse(vid_mouse.integer && !cl.csqc_wantsmousemove && cl_prydoncursor.integer <= 0 && (!cls.demoplayback || cl_demo_mousegrab.integer) && !vid_touchscreen.integer, !vid_touchscreen.integer);
+	{
+		qbool mouse_aims = !vid_touchscreen.integer || VID_TouchMouselook();
+		VID_SetMouse(vid_mouse.integer && !cl.csqc_wantsmousemove && cl_prydoncursor.integer <= 0 && (!cls.demoplayback || cl_demo_mousegrab.integer) && mouse_aims, mouse_aims);
+	}
+
+	// Tells the touch CSQC that MOUSE1 is fire, not a press on its controls.
+	if (vid_touchscreen_mouselook.integer != (vid_touchscreen.integer && vid_usingmouse))
+		Cvar_SetValueQuick(&vid_touchscreen_mouselook, vid_touchscreen.integer && vid_usingmouse);
 }
 
 /////////////////
@@ -2001,6 +2039,11 @@ void VID_Init (void)
 	SDL_SetHint(SDL_HINT_WINDOWS_DPI_SCALING, "0");
 	// use best available awareness mode
 	SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
+#endif
+#ifdef SDL_HINT_MOUSE_TOUCH_EVENTS
+	// A mouse is a mouse. SDL on Android otherwise turns its clicks into
+	// fingers, which pressed the touch controls instead of clicking.
+	SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
 #endif
 
 	if (SDL_Init(SDL_INIT_VIDEO) < 0)

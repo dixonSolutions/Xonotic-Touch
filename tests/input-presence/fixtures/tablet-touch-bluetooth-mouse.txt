@@ -1,0 +1,32 @@
+I: Bus=0018 Vendor=04f3 Product=2b7c Version=0111
+N: Name="ELAN9008:00 04F3:2B7C"
+P: Phys=
+S: Sysfs=/devices/pci0000:00/0000:00:15.1/i2c_designware.1/i2c-1/i2c-ELAN9008:00/0018:04F3:2B7C.0001/input/input3
+U: Uniq=
+H: Handlers=mouse0 event3 
+B: PROP=2
+B: EV=1b
+B: KEY=400 0 0 0 0 0
+B: ABS=673800000000003
+
+I: Bus=0005 Vendor=046d Product=b023 Version=0111
+N: Name="MX Master 3 Mouse"
+P: Phys=
+S: Sysfs=/devices/virtual/misc/uhid/0005:046D:B023.0002/input/input4
+U: Uniq=
+H: Handlers=mouse1 event4 
+B: PROP=0
+B: EV=17
+B: KEY=1f0000 0 0 0 0
+B: REL=1943
+B: MSC=10
+
+I: Bus=0019 Vendor=0000 Product=0000 Version=0111
+N: Name="Intel HID switches"
+P: Phys=
+S: Sysfs=/devices/platform/INT33D5:00/input/input5
+U: Uniq=
+H: Handlers=event5 
+B: PROP=0
+B: EV=21
+B: SW=2

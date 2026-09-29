@@ -189,6 +189,31 @@ void Touch_Chat_Close(void)
 	strcpy(touch_chat_text, "");
 }
 
+void Touch_Chat_Send(void);
+
+bool Touch_Chat_KeyEvent(float bInputType, float nPrimary, float nSecondary)
+{
+	if (!Touch_Chat_Active() || (bInputType != 0 && bInputType != 1))
+		return false;
+	// Mouse buttons and the wheel are the pointer's, handled with the sheet's
+	// other presses.
+	if (nPrimary >= K_MOUSE1 && nPrimary <= K_MOUSE16)
+		return false;
+	if (nPrimary == K_MWHEELUP || nPrimary == K_MWHEELDOWN)
+		return false;
+	if (bInputType == 1)
+		return true;
+	if (nPrimary == K_ENTER || nPrimary == K_KP_ENTER)
+		Touch_Chat_Send();
+	else
+	{
+		// strcpy frees the old text before it reads the new one.
+		string next = Touch_Kb_Type(touch_chat_text, nPrimary, nSecondary);
+		strcpy(touch_chat_text, next);
+	}
+	return true;
+}
+
 // Space is a full-width key next to SEND, so a run of stray spaces is an easy
 // mistake. Sending it would put an empty line in everyone's feed.
 bool Touch_Chat_IsBlank(string s)

@@ -22,6 +22,11 @@ const int TOUCH_KB_ROWS = 4;
 void Touch_Kb_Reset(void);
 bool Touch_Kb_Shifted(void);
 
+// The system lists a keyboard the player can type on (vid_keyboard_detected):
+// the glass keys stand down, take no room, and typing goes through
+// Touch_Kb_Type instead.
+bool Touch_Kb_Hidden(void);
+
 // The keyboard occupies the bottom touch_kb_height of the screen. `Touch_Kb_Top`
 // is what a sheet uses to lay out whatever sits above it.
 float Touch_Kb_Top(void);
@@ -44,5 +49,9 @@ int Touch_Kb_HitCell(void);
 // owns storage). Action keys other than character insertion and backspace leave
 // the text alone; the caller handles those.
 string Touch_Kb_Apply(string text, int row, int cell);
+
+// Applies a key press from a real keyboard (CSQC_InputEvent's key and
+// character) to `text`, with the same length limit as the glass keys.
+string Touch_Kb_Type(string text, float key, float ch);
 
 void Touch_Kb_Draw(float alpha, int hot_row, int hot_cell);

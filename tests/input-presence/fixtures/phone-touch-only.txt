@@ -1,0 +1,40 @@
+I: Bus=0019 Vendor=0001 Product=0001 Version=0111
+N: Name="gpio-keys"
+P: Phys=
+S: Sysfs=/devices/platform/gpio-keys/input/input0
+U: Uniq=
+H: Handlers=kbd event0 
+B: PROP=0
+B: EV=3
+B: KEY=1c000000000000 0
+
+I: Bus=0000 Vendor=0000 Product=0000 Version=0111
+N: Name="qpnp_pon"
+P: Phys=
+S: Sysfs=/devices/platform/soc/qpnp-power-on/input/input1
+U: Uniq=
+H: Handlers=kbd event1 
+B: PROP=0
+B: EV=3
+B: KEY=14000000000000 0
+
+I: Bus=0018 Vendor=0000 Product=0000 Version=0111
+N: Name="fts_ts"
+P: Phys=
+S: Sysfs=/devices/platform/soc/a94000.i2c/i2c-2/2-0049/input/input2
+U: Uniq=
+H: Handlers=event2 
+B: PROP=2
+B: EV=b
+B: KEY=420 0 0 0 0 0
+B: ABS=673800000000000
+
+I: Bus=0006 Vendor=0000 Product=0000 Version=0111
+N: Name="uinput-goodix"
+P: Phys=
+S: Sysfs=/devices/virtual/input/input3
+U: Uniq=
+H: Handlers=kbd event3 
+B: PROP=0
+B: EV=3
+B: KEY=fffff fffffffffffffffe
