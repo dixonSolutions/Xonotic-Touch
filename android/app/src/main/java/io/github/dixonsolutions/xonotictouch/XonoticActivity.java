@@ -127,7 +127,6 @@ public final class XonoticActivity extends SDLActivity {
         boolean touch = getPackageManager().hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN);
         boolean keyboard = false;
         boolean mouse = false;
-        List<InputDevice> keyboards = new ArrayList<>();
         List<InputDevice> pointers = new ArrayList<>();
         StringBuilder names = new StringBuilder();
         for (int id : InputDevice.getDeviceIds()) {
@@ -144,7 +143,6 @@ public final class XonoticActivity extends SDLActivity {
             }
             if (isRealKeyboard(device, sources)) {
                 keyboard = true;
-                keyboards.add(device);
                 names.append(" keyboard=\"").append(device.getName()).append('"');
             }
             if (isRealPointer(device, sources)) {
@@ -153,14 +151,14 @@ public final class XonoticActivity extends SDLActivity {
         }
         // A keyboard the system itself calls hidden -- a lid or slider shut,
         // a Chromebook folded into a tablet -- is not one the player can use,
-        // and neither is the touchpad folded away in that same unit.
+        // and neither is the chassis pad that goes face-down with it.
         boolean folded = getResources().getConfiguration().hardKeyboardHidden
                 == Configuration.HARDKEYBOARDHIDDEN_YES;
         if (folded) {
             keyboard = false;
         }
         for (InputDevice pointer : pointers) {
-            if (folded && isPartOfUnit(pointer, keyboards)) {
+            if (folded && isChassisPad(pointer)) {
                 continue;
             }
             mouse = true;
@@ -219,24 +217,25 @@ public final class XonoticActivity extends SDLActivity {
     }
 
     /**
-     * A pointer built into the same physical unit as one of these keyboards:
-     * a Type Cover's or a convertible base's touchpad registers separately
-     * but carries the vendor and product of the keys it folds away with.
+     * A pad that folds away with the keys -- a Type Cover's, a convertible
+     * base's -- rather than a mouse the player set down beside the screen.
+     * Only the pad names itself one. Vendor and product cannot separate the
+     * two: a combo receiver hands its keyboard and its mouse a single pair,
+     * both read 0 when unknown, and a base usually drives its pad from a
+     * second controller with IDs of its own.
      */
-    private static boolean isPartOfUnit(InputDevice pointer, List<InputDevice> keyboards) {
-        for (InputDevice keyboard : keyboards) {
-            if (keyboard.getVendorId() == pointer.getVendorId()
-                    && keyboard.getProductId() == pointer.getProductId()) {
-                return true;
-            }
-        }
-        return false;
+    private static boolean isChassisPad(InputDevice pointer) {
+        return hasName(pointer, CHASSIS_POINTER_NAMES);
     }
 
     private static boolean hasIgnoredName(InputDevice device) {
+        return hasName(device, IGNORED_KEYBOARD_NAMES);
+    }
+
+    private static boolean hasName(InputDevice device, String[] fragments) {
         String name = device.getName() == null ? "" : device.getName().toLowerCase(Locale.ROOT);
-        for (String ignored : IGNORED_KEYBOARD_NAMES) {
-            if (name.contains(ignored)) {
+        for (String fragment : fragments) {
+            if (name.contains(fragment)) {
                 return true;
             }
         }
@@ -249,6 +248,9 @@ public final class XonoticActivity extends SDLActivity {
         "uinput", "fingerprint", "fpc", "goodix", "gf_input", "gpio", "_pon",
         "hall", "power", "volume", "headset", "virtual", "sensor",
     };
+
+    /** Pads built into a chassis or into the cover it folds away with. */
+    private static final String[] CHASSIS_POINTER_NAMES = { "touchpad", "trackpad" };
 
     /** vid_touchdetect.c: what the engine's Auto touch mode decides from. */
     private static native void nativeInputDevices(boolean touch, boolean keyboard, boolean mouse);
