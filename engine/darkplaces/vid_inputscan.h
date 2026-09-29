@@ -119,10 +119,10 @@ static qbool vid_name_is_ignored_device(const char *name)
 	return false;
 }
 
-// Keyboards that are part of the chassis even though they sit on USB: the
-// Surface Type Cover is a USB device, and the tablet switch must still be
-// able to fold it away.
-static qbool vid_name_is_chassis_keyboard(const char *name)
+// Devices that are part of the chassis even though they sit on USB: the
+// Surface Type Cover's keyboard and its touchpad are both USB devices, and the
+// tablet switch must still be able to fold them away.
+static qbool vid_name_is_chassis_device(const char *name)
 {
 	return vid_strcasestr_has(name, "type cover") || vid_strcasestr_has(name, "surface keyboard");
 }
@@ -216,6 +216,7 @@ typedef struct vid_scan_s
 	qbool keyboard;
 	qbool external_keyboard;
 	qbool mouse;      // a mouse, trackpoint or touchpad
+	qbool external_mouse;
 	int numnodes;
 	vid_node_t nodes[VID_MAX_NODES];
 }
@@ -260,7 +261,7 @@ static void vid_scan_block(vid_scan_t *s, const vid_block_t *b)
 		&& !controller && !direct && !vid_name_is_ignored_device(b->name))
 	{
 		s->keyboard = true;
-		if ((b->bus == VID_BUS_USB || b->bus == VID_BUS_BLUETOOTH) && !vid_name_is_chassis_keyboard(b->name))
+		if ((b->bus == VID_BUS_USB || b->bus == VID_BUS_BLUETOOTH) && !vid_name_is_chassis_device(b->name))
 			s->external_keyboard = true;
 	}
 
@@ -275,7 +276,11 @@ static void vid_scan_block(vid_scan_t *s, const vid_block_t *b)
 		qbool touchpad = pointer && vid_bitmap_has(&b->key, VID_BTN_TOOL_FINGER)
 			&& vid_bitmap_has(&b->abs, VID_ABS_X) && vid_bitmap_has(&b->abs, VID_ABS_Y);
 		if (relative || touchpad)
+		{
 			s->mouse = true;
+			if ((b->bus == VID_BUS_USB || b->bus == VID_BUS_BLUETOOTH) && !vid_name_is_chassis_device(b->name))
+				s->external_mouse = true;
+		}
 	}
 
 	if (!b->event[0] || s->numnodes >= VID_MAX_NODES)

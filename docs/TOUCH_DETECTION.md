@@ -41,11 +41,13 @@ Settings → Touch. **Rescan hardware** runs `vid_touchscreen_rescan`.
 5. The first direct `SDL_FINGERDOWN` counts as a touchscreen (SDL often
    reports zero devices until the first finger).
 6. `SW_TABLET_MODE` from `/dev/input` (Flatpak: `--device=input`). Engaged
-   means the built-in keyboard is folded away or detached, whatever `/proc`
-   still lists. Keyboards on USB (bus 0x03) or Bluetooth (0x05) count
-   regardless -- they are the player's, not the chassis'. The Surface Type
-   Cover is the exception: it sits on USB but is chassis, so the switch can
-   fold it away.
+   means the built-in keyboard and touchpad are folded away or detached,
+   whatever `/proc` still lists -- a chassis pad face-down on the table is
+   nothing to aim with. Keyboards and mice on USB (bus 0x03) or Bluetooth
+   (0x05) count regardless -- they are the player's, not the chassis'. The
+   Surface Type Cover is the exception: its keyboard and its touchpad sit
+   on USB but are chassis, so the switch can fold them away. A handheld or
+   tablet chassis (3) and Ubuntu Touch (4) read the same way.
 7. Permanently-present virtual keyboards and pointers (`keyd`, `ydotool`,
    `xdotool`, `uinput`, remote desktop) and Steam Deck / Steam Controller
    lizard-mode keyboards and mice are neither keyboards nor mice.
@@ -114,6 +116,10 @@ fingers keep working alongside it. Mouse and touch are used together:
   one the mouse stands in for a finger: desktop testing), `key_game`, and
   no modal touch sheet: the CSQC sets `_touch_owns_screen` while the chat
   sheet or edit mode is up, and the mouse goes back to being a pointer.
+- When a click is what confirms the mouse, the grab is taken before that
+  click is handed to the game (`VID_UpdateMouseGrab`), so the first press
+  after a mouse is plugged in fires rather than landing on whatever control
+  sits under the ungrabbed cursor.
 
 Keyboard evidence is ignored:
 - within 1.5 s of any finger event, or while a finger is down (keys then
@@ -158,9 +164,11 @@ int. A keyboard counts when it is `SOURCE_KEYBOARD` with
 not a fingerprint reader, GPIO button or hall sensor by name, and not
 reported hidden (`hardKeyboardHidden == YES`). A mouse counts when it is
 `SOURCE_MOUSE`, `SOURCE_TOUCHPAD` or `SOURCE_MOUSE_RELATIVE`, not a
-touchscreen or stylus, and not one of those sensors by name. Disabled
-devices (`isEnabled()`, Android 8.1+) count for nothing. No permission is
-involved.
+touchscreen or stylus, and not one of those sensors by name. A hidden
+keyboard takes its own touchpad with it: a pad reporting the vendor and
+product of a listed keyboard is part of that folded unit, while a mouse of
+its own stays. Disabled devices (`isEnabled()`, Android 8.1+) count for
+nothing. No permission is involved.
 
 The Android build no longer forces Always. It starts with the controls on,
 and Auto keeps them on unless a real keyboard is attached or one is

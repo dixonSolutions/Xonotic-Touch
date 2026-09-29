@@ -383,7 +383,7 @@ static void vid_presence_compute(vid_presence_t *p)
 	p->touch = VID_SDL_HasTouchDevices() || vid_touch_finger_seen;
 #ifdef VID_LINUX_PROBES
 	{
-		qbool external, switch_found = false;
+		qbool as_tablet, switch_found = false;
 		int i;
 
 		if (!vid_scan_valid)
@@ -391,7 +391,6 @@ static void vid_presence_compute(vid_presence_t *p)
 		p->touch = p->touch || vid_scan.touch;
 		p->keyboard = vid_scan.keyboard;
 		p->mouse = vid_scan.mouse;
-		external = vid_scan.external_keyboard;
 		for (i = 0; i < vid_scan.numnodes; i++)
 		{
 			if (vid_scan.nodes[i].kind != VID_NODE_SWITCH || vid_scan.nodes[i].fd < 0)
@@ -400,17 +399,22 @@ static void vid_presence_compute(vid_presence_t *p)
 			if (vid_scan.nodes[i].engaged)
 				p->tablet_mode = true;
 		}
-		// A tablet-mode switch saying "tablet" overrides the built-in keyboard
-		// (a folded-back Type Cover stays listed). A USB or Bluetooth keyboard
-		// is not part of the chassis, so it counts whatever the switch says.
-		if (switch_found && p->tablet_mode)
-			p->keyboard = external;
-		if (vid_chassis_is_handheld_or_tablet(vid_read_chassis_type()) && p->touch)
-			p->keyboard = external;
+		as_tablet = (switch_found && p->tablet_mode)
+			|| (vid_chassis_is_handheld_or_tablet(vid_read_chassis_type()) && p->touch);
 		if (vid_is_ubuntu_touch())
 		{
 			p->touch = true;
-			p->keyboard = external;
+			as_tablet = true;
+		}
+		// Held as a tablet: the chassis' own keyboard and touchpad are folded
+		// behind the screen or face-down on the table, whatever /proc still
+		// lists (a Type Cover stays listed once folded away, touchpad and
+		// all). Only what the player attached over USB or Bluetooth is still
+		// something to type on or aim with.
+		if (as_tablet)
+		{
+			p->keyboard = vid_scan.external_keyboard;
+			p->mouse = vid_scan.external_mouse;
 		}
 	}
 #else

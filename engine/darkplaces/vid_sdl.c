@@ -1462,6 +1462,25 @@ static keynum_t buttonremap[] =
 	K_MOUSE16,
 };
 
+// Who the mouse belongs to right now: the game (grabbed for mouselook) or the
+// screen (a pointer). vid_touchscreen_mouselook tells the touch CSQC which,
+// so it knows whether MOUSE1 is fire or a press on its controls.
+static void VID_UpdateMouseGrab(void)
+{
+	if (!vid_activewindow || key_consoleactive || scr_loading)
+		VID_SetMouse(false, false);
+	else if (key_dest == key_menu || key_dest == key_menu_grabbed)
+		VID_SetMouse(vid_mouse.integer && !in_client_mouse && !vid_touchscreen.integer, !vid_touchscreen.integer);
+	else
+	{
+		qbool mouse_aims = !vid_touchscreen.integer || VID_TouchMouselook();
+		VID_SetMouse(vid_mouse.integer && !cl.csqc_wantsmousemove && cl_prydoncursor.integer <= 0 && (!cls.demoplayback || cl_demo_mousegrab.integer) && mouse_aims, mouse_aims);
+	}
+
+	if (vid_touchscreen_mouselook.integer != (vid_touchscreen.integer && vid_usingmouse))
+		Cvar_SetValueQuick(&vid_touchscreen_mouselook, vid_touchscreen.integer && vid_usingmouse);
+}
+
 //#define DEBUGSDLEVENTS
 void Sys_SDL_HandleEvents(void)
 {
@@ -1528,7 +1547,15 @@ void Sys_SDL_HandleEvents(void)
 					Con_DPrintf("SDL_Event: SDL_MOUSEBUTTONUP\n");
 #endif
 			if (event.type == SDL_MOUSEBUTTONDOWN && event.button.which != SDL_TOUCH_MOUSEID)
+			{
+				qbool was_confirmed = VID_TouchMouseConfirmed();
 				VID_NoteMouseUse(0, true);
+				// The click that confirms the mouse is already the aiming
+				// mouse's own: take the grab before dispatching it, or the
+				// touch CSQC reads this one press as a tap on its controls.
+				if (!was_confirmed && VID_TouchMouseConfirmed())
+					VID_UpdateMouseGrab();
+			}
 			// A real mouse always clicks, touch controls or not: mouse and
 			// fingers work side by side. Only the clicks SDL makes up from a
 			// finger are dropped while the finger path handles that finger.
@@ -1793,19 +1820,7 @@ void Sys_SDL_HandleEvents(void)
 
 	vid_activewindow = !vid_hidden && vid_hasfocus;
 
-	if (!vid_activewindow || key_consoleactive || scr_loading)
-		VID_SetMouse(false, false);
-	else if (key_dest == key_menu || key_dest == key_menu_grabbed)
-		VID_SetMouse(vid_mouse.integer && !in_client_mouse && !vid_touchscreen.integer, !vid_touchscreen.integer);
-	else
-	{
-		qbool mouse_aims = !vid_touchscreen.integer || VID_TouchMouselook();
-		VID_SetMouse(vid_mouse.integer && !cl.csqc_wantsmousemove && cl_prydoncursor.integer <= 0 && (!cls.demoplayback || cl_demo_mousegrab.integer) && mouse_aims, mouse_aims);
-	}
-
-	// Tells the touch CSQC that MOUSE1 is fire, not a press on its controls.
-	if (vid_touchscreen_mouselook.integer != (vid_touchscreen.integer && vid_usingmouse))
-		Cvar_SetValueQuick(&vid_touchscreen_mouselook, vid_touchscreen.integer && vid_usingmouse);
+	VID_UpdateMouseGrab();
 }
 
 /////////////////

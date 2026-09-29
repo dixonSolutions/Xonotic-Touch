@@ -127,6 +127,8 @@ public final class XonoticActivity extends SDLActivity {
         boolean touch = getPackageManager().hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN);
         boolean keyboard = false;
         boolean mouse = false;
+        List<InputDevice> keyboards = new ArrayList<>();
+        List<InputDevice> pointers = new ArrayList<>();
         StringBuilder names = new StringBuilder();
         for (int id : InputDevice.getDeviceIds()) {
             InputDevice device = InputDevice.getDevice(id);
@@ -142,18 +144,27 @@ public final class XonoticActivity extends SDLActivity {
             }
             if (isRealKeyboard(device, sources)) {
                 keyboard = true;
+                keyboards.add(device);
                 names.append(" keyboard=\"").append(device.getName()).append('"');
             }
             if (isRealPointer(device, sources)) {
-                mouse = true;
-                names.append(" mouse=\"").append(device.getName()).append('"');
+                pointers.add(device);
             }
         }
         // A keyboard the system itself calls hidden -- a lid or slider shut,
-        // a Chromebook folded into a tablet -- is not one the player can use.
-        if (getResources().getConfiguration().hardKeyboardHidden
-                == Configuration.HARDKEYBOARDHIDDEN_YES) {
+        // a Chromebook folded into a tablet -- is not one the player can use,
+        // and neither is the touchpad folded away in that same unit.
+        boolean folded = getResources().getConfiguration().hardKeyboardHidden
+                == Configuration.HARDKEYBOARDHIDDEN_YES;
+        if (folded) {
             keyboard = false;
+        }
+        for (InputDevice pointer : pointers) {
+            if (folded && isPartOfUnit(pointer, keyboards)) {
+                continue;
+            }
+            mouse = true;
+            names.append(" mouse=\"").append(pointer.getName()).append('"');
         }
 
         int state = (touch ? 1 : 0) | (keyboard ? 2 : 0) | (mouse ? 4 : 0);
@@ -205,6 +216,21 @@ public final class XonoticActivity extends SDLActivity {
                 || (Build.VERSION.SDK_INT >= 26
                         && hasSource(sources, InputDevice.SOURCE_MOUSE_RELATIVE));
         return pointer && !hasIgnoredName(device);
+    }
+
+    /**
+     * A pointer built into the same physical unit as one of these keyboards:
+     * a Type Cover's or a convertible base's touchpad registers separately
+     * but carries the vendor and product of the keys it folds away with.
+     */
+    private static boolean isPartOfUnit(InputDevice pointer, List<InputDevice> keyboards) {
+        for (InputDevice keyboard : keyboards) {
+            if (keyboard.getVendorId() == pointer.getVendorId()
+                    && keyboard.getProductId() == pointer.getProductId()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean hasIgnoredName(InputDevice device) {

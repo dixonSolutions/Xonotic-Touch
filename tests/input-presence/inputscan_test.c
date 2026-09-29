@@ -17,7 +17,7 @@ typedef bool qbool;
 typedef struct expect_s
 {
 	const char *fixture;
-	int touch, keyboard, external_keyboard, mouse;
+	int touch, keyboard, external_keyboard, mouse, external_mouse;
 	int switches, pens;
 }
 expect_t;
@@ -27,19 +27,19 @@ static const expect_t expects[] =
 	// This laptop: built-in keyboard and touchpad. keyd's and ydotool's
 	// virtual keyboard and pointers, Intel HID, WMI hotkeys and the power
 	// and lid buttons are none of those.
-	{ "laptop-keyboard-touchpad.txt",        0, 1, 0, 1, 0, 0 },
+	{ "laptop-keyboard-touchpad.txt",        0, 1, 0, 1, 0, 0, 0 },
 	// Surface Pro 9: touchscreen, pen on the screen, Type Cover keyboard and
-	// touchpad on USB (chassis, so not external), tablet-mode switch.
-	{ "surface-pro-9.txt",                   1, 1, 0, 1, 1, 1 },
+	// touchpad on USB (chassis, so neither is external), tablet-mode switch.
+	{ "surface-pro-9.txt",                   1, 1, 0, 1, 0, 1, 1 },
 	// Phone: touchscreen and button sets only. A fingerprint reader that
 	// registers as a keyboard is not one.
-	{ "phone-touch-only.txt",                1, 0, 0, 0, 0, 0 },
+	{ "phone-touch-only.txt",                1, 0, 0, 0, 0, 0, 0 },
 	// Desktop: USB keyboard and mouse. The gamepad, the Steam Deck's
 	// lizard-mode keyboard and mouse, and keyd's virtual devices add nothing.
-	{ "desktop-usb-keyboard-mouse-pad.txt",  0, 1, 1, 1, 0, 0 },
+	{ "desktop-usb-keyboard-mouse-pad.txt",  0, 1, 1, 1, 1, 0, 0 },
 	// Tablet with a Bluetooth mouse (uhid, under /devices/virtual/misc) and
 	// no keyboard: a mouse says nothing about a keyboard.
-	{ "tablet-touch-bluetooth-mouse.txt",    1, 0, 0, 1, 1, 0 },
+	{ "tablet-touch-bluetooth-mouse.txt",    1, 0, 0, 1, 1, 1, 0 },
 };
 
 static char *read_file(const char *path, size_t *len)
@@ -110,11 +110,12 @@ int main(int argc, char **argv)
 		failures += check(e->fixture, "keyboard", s.keyboard, e->keyboard);
 		failures += check(e->fixture, "external_keyboard", s.external_keyboard, e->external_keyboard);
 		failures += check(e->fixture, "mouse", s.mouse, e->mouse);
+		failures += check(e->fixture, "external_mouse", s.external_mouse, e->external_mouse);
 		failures += check(e->fixture, "tablet-mode switches", switches, e->switches);
 		failures += check(e->fixture, "screen pens", pens, e->pens);
-		printf("%s %s: touch=%d keyboard=%d external=%d mouse=%d switches=%d pens=%d\n",
+		printf("%s %s: touch=%d keyboard=%d external=%d mouse=%d external_mouse=%d switches=%d pens=%d\n",
 			failures == before ? "ok  " : "FAIL", e->fixture,
-			s.touch, s.keyboard, s.external_keyboard, s.mouse, switches, pens);
+			s.touch, s.keyboard, s.external_keyboard, s.mouse, s.external_mouse, switches, pens);
 	}
 
 	// Without the kernel long the bitmap words cannot be placed.
