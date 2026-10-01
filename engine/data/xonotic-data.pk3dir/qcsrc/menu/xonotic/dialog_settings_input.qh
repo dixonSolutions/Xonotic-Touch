@@ -9,3 +9,5 @@ CLASS(XonoticInputSettingsTab, XonoticTab)
 	ATTRIB(XonoticInputSettingsTab, name, string, "inputsettings");
 ENDCLASS(XonoticInputSettingsTab)
 entity makeXonoticInputSettingsTab();
+// Keeps a sensitivity slider and its input box showing the same value.
+void linkSensitivities(entity slider, entity field);

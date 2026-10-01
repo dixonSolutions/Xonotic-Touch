@@ -7,6 +7,8 @@
 #include "commandbutton.qh"
 #include "button.qh"
 #include "mixedslider.qh"
+#include "inputbox.qh"
+#include "dialog_settings_input.qh"
 
 void TouchMenu_SaveLayout_Click(entity me, entity other)
 {
@@ -66,18 +68,30 @@ void XonoticTouchSettingsTab_fill(entity me)
 
 	me.TR(me);
 		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Look & appearance")));
+	// Its own cvar, not the mouse's `sensitivity`: Settings → Input sets that
+	// one, and with a mouse and a touchscreen both in use neither moves the other.
+	// Same 0.1–50 range as the mouse, with a box for values the slider is too
+	// coarse to hit.
 	me.TR(me);
+		entity touchSensSlider;
 		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Sensitivity:")));
-		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(1.5, 5.0, 0.1, "touch_sens_base", _("Look speed (DPI-normalized)")));
+		me.TD(me, 1, 3, e = makeXonoticSlider_T(0.1, 50, 0.1, "touch_sens_base", _("Look speed (DPI-normalized)")));
+			e.setValueSpace(e, 0);
+			touchSensSlider = e;
+		me.TD(me, 1, 1.5, e = makeXonoticInputBox_T(0, "touch_sens_base", _("Look speed (DPI-normalized)")));
+			e.saveImmediately = true;
+			e.allowedCharacters = "0.123456789";
+			linkSensitivities(touchSensSlider, e);
+	me.TR(me);
 		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Vertical:")));
 		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(0.5, 1.5, 0.05, "touch_sens_y_mult", _("Pitch vs yaw multiplier")));
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "touch_invert_y", _("Invert look Y"), string_null));
 	me.TR(me);
-		me.TD(me, 1, 2, e = makeXonoticCheckBox_T(0, "touch_invert_y", _("Invert look Y"), string_null));
 		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Opacity:")));
 		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(0.3, 1.0, 0.05, "touch_opacity", _("Control overlay opacity")));
-	me.TR(me);
 		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Control scale:")));
 		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(0.7, 1.4, 0.05, "touch_scale", _("Size of move/fire/jump widgets")));
+	me.TR(me);
 		me.TD(me, 1, 3, e = makeXonoticCommandButton(_("Customize layout (in game)"), '0 0 0', "touch_customize 1; togglemenu 0", COMMANDBUTTON_CLOSE));
 
 	// Engine-side (touch_aim.c), so they work on public servers too. Touch mode

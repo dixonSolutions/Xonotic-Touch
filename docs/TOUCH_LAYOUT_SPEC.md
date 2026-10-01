@@ -251,13 +251,13 @@ Owner: `touch_look.qc`. Single writer of `VF_CL_VIEWANGLES` from the touch layer
 
 | Cvar | Default | Range | Meaning |
 |---|---|---|---|
-| `touch_sens_base` | `2.8` | 1.0–6.0 | Multiplier on `TOUCH_LOOK_DEG_PER_PX` |
+| `touch_sens_base` | `2.8` | 0.1–50 | Multiplier on `TOUCH_LOOK_DEG_PER_PX` |
 | `touch_sens_y_mult` | `0.85` | 0.5–1.5 | Pitch multiplier |
 | `touch_invert_y` | `0` | 0/1 | |
 | `touch_look_smoothing` | `1` | 0/1/2 | EMA time constant: `0 / 0.035 s / 0.070 s` |
 | `touch_look_deadzone_px` | `4` | 0–12 | **Radial escape** distance from touch-down, once per gesture |
 | `touch_look_escape_carry` | `0.5` | 0–1 | Fraction of the escape travel credited on activation |
-| `touch_look_max_deg_per_s` | `900` | 300–2000 | Hard clamp; absorbs id churn / teleports |
+| `touch_look_max_deg_per_s` | `900` | 300–2000 | Hard clamp at `touch_sens_base` 2.8, scaled up with it above that; absorbs id churn / teleports |
 | `touch_look_glide` | `0` | 0/1 | Off = motion stops the instant the finger lifts (no inertia drift) |
 
 Constant: `TOUCH_LOOK_DEG_PER_PX = 0.18` at a reference render width of 960.
@@ -295,7 +295,7 @@ float k     = 0.18 * touch_sens_base * (960 / VF_SIZE.x);
 float yaw   = applied.x * k;
 float pitch = applied.y * k * touch_sens_y_mult * (touch_invert_y ? -1 : 1);
 
-float cap = touch_look_max_deg_per_s * dt;
+float cap = touch_look_max_deg_per_s * max(1, touch_sens_base / 2.8) * dt;
 yaw   = bound(-cap, yaw,   cap);
 pitch = bound(-cap, pitch, cap);
 
