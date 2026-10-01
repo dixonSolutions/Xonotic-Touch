@@ -27,6 +27,8 @@ collapsed to `/` and the launcher aborted before the engine ever started.
 | `/bin/sh` (dash) runs the desktop hook's `Exec=bin/start.sh` | The launcher must be POSIX until it re-execs into bash |
 | `$0` is relative; `APP_DIR` points at the install root | Resolve the app root from both, never from `pwd`/`dirname` |
 | `APP_ID` is `<pkgname>_<appname>_<version>` | Derive `APP_PKGNAME` as `${APP_ID%%_*}` for the writable data dir |
+| The engine's default userdir `~/.xonotic` is not writable | Click launches pass `-nohome` (section 2) |
+| Most phones (Halium) drive the GPU through libhybris: EGL with GLES, no desktop GL | The click engine is built with `USE_GLES2` (`XONOTIC_DP_GLES2=1` in `scripts/clickable-build.sh`) |
 
 ## 2. Launcher contract (`packaging/start.sh`)
 
@@ -39,6 +41,11 @@ collapsed to `/` and the launcher aborted before the engine ever started.
    `USER_BASE` is `$XDG_DATA_HOME/${APP_ID%%_*}` — not
    `~/.local/share/xonotic-touch`. Flatpak still uses
    `$XDG_DATA_HOME/xonotic-touch`. Override with `XONOTIC_TOUCH_USER_BASE`.
+   The engine follows it: a click launch passes `-nohome`, so DarkPlaces writes
+   into its basedir, the cwd the launcher gives it (`USER_BASE`), instead of
+   `~/.xonotic`. Without it the session lock failed and the engine quit straight
+   after reading its configs — the "does not start at all" of every review.
+   The launcher's own references to the engine userdir go through `ENGINE_HOME`.
 4. **Bash is optional.** The asset helpers need bash (arrays, `compgen`, process
    substitution), so the launcher probes bash and re-execs into it. If bash is
    not exec'able it keeps running under `/bin/sh` and uses
@@ -57,10 +64,16 @@ collapsed to `/` and the launcher aborted before the engine ever started.
    exercised once. If they work (desktop, Flatpak) the bundled `bin/` is appended
    to `PATH` so GNU behaviour is preserved; if they are denied it is prepended so
    the busybox applets take over. `flock` is only used when it actually acquires
-   a lock (exit 1 = already running); denied exec must not abort launch.
+   a lock (exit 1 = already running); denied exec must not abort launch. That
+   holds for every `flock` in the file, the download lock included
+   (`fd9_lock_is_held`): confined, flock exits 126, and reading that as "held"
+   quit every download before it started.
 6. **Only the engine exec is fatal.** Bundle sync, screen probing, config
    writes, and the instance lock log and continue, and empty screen values fall
    back to defaults, so a partially confined device still reaches the menu.
+7. **Never redirect on a bare `exec`.** `exec 7>&- 2>/dev/null` closes fd 7 *and*
+   sends stderr to /dev/null for the rest of the script. That line hid the
+   engine's fatal error from the journal on every confined launch.
 
 Environment overrides: `XONOTIC_TOUCH_APP_ROOT`, `XONOTIC_TOUCH_USER_BASE`,
 `XONOTIC_TOUCH_NO_BASH=1` (stay on POSIX sh), `XONOTIC_SKIP_ASSET_FETCH=1`.
@@ -72,6 +85,13 @@ Environment overrides: `XONOTIC_TOUCH_APP_ROOT`, `XONOTIC_TOUCH_USER_BASE`,
   `sort`, `ssl_client`, `tar`, `tr`, `unzip`, `wget`, ...).
 - Source order: host busybox when its ELF arch matches the target (native
   builds), otherwise `apt-get download busybox-static:<arch>` + `dpkg-deb -x`.
+- Stages a target-arch `bin/openssl`. busybox `wget` hands each `https://`
+  connection to `openssl s_client` and falls back to its own TLS only when that
+  cannot run. Confined, `/usr/bin/openssl` cannot, and the asset servers (and
+  GitHub) refuse busybox 1.36's TLS (`alert code 47`, `bad MAC`), so no download
+  ever started. The bundled one runs from the click tree and links the phone's
+  `libssl3`; no libraries are copied with it. Override a missing one with
+  `XONOTIC_ALLOW_MISSING_OPENSSL=1`.
 - `curl`/`unzip` are only bundled when the host binary matches the target arch.
   Cross builds previously shipped **amd64** helpers inside arm64/armhf clicks;
   those were unusable on device, so we now fall back to busybox `wget`
@@ -130,6 +150,36 @@ instant engine and a download that reports once, the check passes over a handoff
 that killed nothing at all — which is how `kill_process_tree` came to send its
 last TERM to the deepest child (a global clobbered by its own recursion) and go
 unnoticed.
+
+`PATH=/nonexistent` stands in for AppArmor, and a stub stands in for the engine,
+so neither the real profile nor GL is exercised. Four bugs got past it until the
+release click was run under its real profile: the engine userdir, the silenced
+stderr, the download lock, and TLS. It now checks for each of them.
+
+To run a release (or CI artifact) click under its real profile without a phone:
+
+1. Register arm64 emulation on the host: `docker run --privileged --rm
+   tonistiigi/binfmt --install arm64` (lasts until reboot).
+2. Make an arm64 Ubuntu 24.04 container with the UBports repo (key and list from
+   `clickable/ci-ut24.04-1.x-amd64`), `click`, `click-apparmor`,
+   `apparmor-easyprof-ubuntu`, `mir-demos`, `mir-platform-graphics-virtual`,
+   `mir-platform-rendering-egl-generic`, `mir-platform-input-evdev10`,
+   `dmz-cursor-theme`, `grim`, `libsdl2-2.0-0`, `libjpeg8`, Mesa (`libegl-mesa0`,
+   `libgl1-mesa-dri`), and `/usr/share/click/frameworks/ubuntu-touch-24.04-1.x.framework`.
+3. In a `--privileged` container with `/sys/kernel/security` mounted,
+   `click install --user=phablet --allow-unauthenticated <click>`. The phone's
+   AppArmor hook writes the profile and loads it into the (host) kernel.
+4. Start `miral-shell --platform-display-libs mir:virtual --virtual-output
+   2340x1080` as `phablet`, then launch from the click dir as UT does:
+   `aa-exec-click -p <pkg>_<app>_<version> -- /bin/sh -c 'exec bin/start.sh'`
+   with `WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR` and `APP_DIR` set. `grim` takes
+   screenshots; `journalctl -k | grep DENIED` shows the denials.
+
+Two things differ from a phone. An unprivileged `aa-exec` on a recent desktop
+kernel is turned into a profile stack (`unconfined//&<profile>`), which denies
+unix-socket traffic a phone allows; launch from a privileged container to get the
+plain label when a socket denial looks suspect. And Mesa offers desktop GL as well
+as GLES, so a container cannot show a desktop-GL engine failing on a Halium GPU.
 
 On-device verification after installing a `.click`:
 
