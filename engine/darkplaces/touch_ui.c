@@ -97,6 +97,12 @@ static touchui_specmode_t TouchUI_SpectatorMode(void)
 	return frags == -666 ? TOUCHUI_SPEC_OBSERVING : TOUCHUI_SPEC_NONE;
 }
 
+/* Observing or watching: jump means "join" there, not a hop (touch_hud.c). */
+qbool TouchUI_IsSpectating(void)
+{
+	return TouchUI_SpectatorMode() != TOUCHUI_SPEC_NONE;
+}
+
 static void TouchUI_UpdateSpectatorEntries(void)
 {
 	touchui_specmode_t mode = TouchUI_SpectatorMode();

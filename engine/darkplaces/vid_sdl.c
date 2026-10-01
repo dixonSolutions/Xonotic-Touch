@@ -1020,6 +1020,48 @@ static qbool VID_ScancodeIsPlay(SDL_Scancode sc)
 		|| sc == SDL_SCANCODE_RCTRL || sc == SDL_SCANCODE_RSHIFT || sc == SDL_SCANCODE_RALT;
 }
 
+// Ctrl+Alt+1 switches between the touch controls and keyboard-and-mouse and
+// locks it; Ctrl+Alt+2 locks what is showing, or unlocks. By scancode, so the
+// number row works on any layout. Both the press and the release are
+// swallowed: the game never sees a 1 or a 2 (weapon groups), and neither
+// does keyboard-use detection.
+static qbool VID_InputModeShortcut(const SDL_KeyboardEvent *key)
+{
+	static SDL_Scancode held = SDL_SCANCODE_UNKNOWN;
+	SDL_Scancode sc = key->keysym.scancode;
+	Uint16 mod = key->keysym.mod;
+
+	if (key->state != SDL_PRESSED)
+	{
+		if (held == SDL_SCANCODE_UNKNOWN || sc != held)
+			return false;
+		held = SDL_SCANCODE_UNKNOWN;
+		return true;
+	}
+	if (sc != SDL_SCANCODE_1 && sc != SDL_SCANCODE_2)
+		return false;
+	if (!(mod & KMOD_CTRL) || !(mod & KMOD_ALT) || (mod & (KMOD_SHIFT | KMOD_GUI)))
+		return false;
+	// The left Alt only: Windows reports AltGr as left Ctrl + right Alt, so
+	// without this a layout's AltGr+1 or AltGr+2 would lock the input mode
+	// instead of typing its character, in the console and chat too. keys.c
+	// keeps Ctrl+Alt out of the console's own shortcuts for the same reason.
+	if (mod & (KMOD_RALT | KMOD_MODE))
+		return false;
+	// Binding a key in the menu takes every key as it is.
+	if (key_dest == key_menu_grabbed)
+		return false;
+	held = sc;
+	if (!key->repeat)
+	{
+		if (sc == SDL_SCANCODE_1)
+			VID_TouchscreenToggle();
+		else
+			VID_TouchscreenLockToggle();
+	}
+	return true;
+}
+
 static void VID_NoteKeyEvent(const SDL_KeyboardEvent *key)
 {
 	// On-screen keyboards (GNOME, Lomiri, Android IMEs) type through the same
@@ -1510,6 +1552,8 @@ void Sys_SDL_HandleEvents(void)
 				else
 					Con_DPrintf("SDL_Event: SDL_KEYUP %i\n", event.key.keysym.sym);
 #endif
+				if (VID_InputModeShortcut(&event.key))
+					break;
 				VID_NoteKeyEvent(&event.key);
 				keycode = MapKey(event.key.keysym.sym);
 				isdown = (event.key.state == SDL_PRESSED);

@@ -82,6 +82,15 @@ session: "You are dead, press **HOP** to respawn", "Press **HOP** to join", "Pre
 **FIRE** to spectate". Only controls that are actually visible get named, and
 commands with no touch control (gametype info) keep their key name.
 
+Observing or spectating, the controls map to the stock spectator keys: the
+stick flies (`+forward` and the rest), drag looks, **FIRE** (`+attack`)
+spectates the next player, **ALT** (`+attack2`) goes back to observing, the
+weapon strip cycles players, and **HOP** (`+jump`) joins. HOP is a plain button
+there: no hop latch, and auto-hop does not hold it while the stick moves, or the
+observer would join the moment they flew anywhere. A finger still on HOP when
+the join lands is spent on the join: the first life starts with jump up, and
+the latch waits for the next press.
+
 Geometry, sizing rationale and the input model are specified in
 [TOUCH_UX_REDESIGN.md](TOUCH_UX_REDESIGN.md); the coordinate contract is in
 [TOUCH_LAYOUT_SPEC.md](TOUCH_LAYOUT_SPEC.md).
@@ -136,11 +145,18 @@ Hardware detection lives in DarkPlaces (`vid_touchdetect.c`). The CSQC overlay s
 
 | Cvar | Type | Range | Default | Notes |
 |------|------|-------|---------|-------|
-| `vid_touchscreen_mode` | int | 0/1/2 | `1` | 0 = off, 1 = auto, 2 = always on |
-| `vid_touchscreen_touchonly` | int | 0/1 | `1` | Auto enables only on touch-only devices (no physical keyboard) |
+| `vid_touchscreen_mode` | int | 0/1/2 | `1` | Input mode: 0 = Keyboard & mouse, 1 = Dynamic, 2 = Touch |
+| `vid_touchscreen_live` | int | 0/1 | `1` | Dynamic: 1 = switch mid-game, 0 = decide once at launch and keep it |
+| `vid_touchscreen_notify` | int | 0/1 | `1` | Toast when the controls switch by themselves; 0 = silent |
+| `vid_touchscreen_touchonly` | int | 0/1 | `1` | Dynamic, before anything is used: on only for touch-only devices (no physical keyboard) |
 | `vid_touchscreen` | int | 0/1 | derived | Runtime switch used by CSQC; do not set in ship cfg |
 | `vid_touchscreen_detected` | int | 0/1 | readonly | Last scan found a touchscreen |
 | `vid_touchscreen_touchonly_detected` | int | 0/1 | readonly | Last scan classified the machine as touch-only |
+
+**Ctrl+Alt+1** switches between the touch controls and keyboard & mouse and
+locks it there; **Ctrl+Alt+2** locks what is showing, or unlocks. A lock beats
+every mode and ends on unlock, on picking a mode in Settings → Touch, or on
+restart. Console: `vid_touchscreen_toggle`, `vid_touchscreen_lock [0|1]`.
 
 Launcher override: `XONOTIC_TOUCH_MODE=auto|always|off`. Desktop test windows default to `always` because they have no touch hardware.
 

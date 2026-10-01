@@ -44,18 +44,31 @@ void XonoticTouchSettingsTab_fill(entity me)
 	entity e;
 
 	// Tab height MUST be 15.5 to match Settings TabController (settings.rows - 3.5).
+	// Dynamic switches between the touch controls and keyboard & mouse from
+	// what the system lists and what the player uses (vid_touchdetect.c);
+	// Touch and Keyboard & mouse switch nothing. Ctrl+Alt+1 / Ctrl+Alt+2
+	// override any of them until the game restarts.
 	me.TR(me);
-		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Touch input")));
+		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Input mode")));
 	me.TR(me);
-		me.TD(me, 1, 2, e = makeXonoticRadioButton_T(1, "vid_touchscreen_mode", "0", _("Off"),
-			_("Never show on-screen touch controls")));
-		me.TD(me, 1, 2, e = makeXonoticRadioButton_T(1, "vid_touchscreen_mode", "1", _("Auto"),
-			_("Enable touch controls when a touch-only device is detected")));
-		me.TD(me, 1, 2, e = makeXonoticRadioButton_T(1, "vid_touchscreen_mode", "2", _("Always"),
-			_("Always show on-screen touch controls")));
+		me.TD(me, 1, 2, e = makeXonoticRadioButton_T(1, "vid_touchscreen_mode", "1", _("Dynamic"),
+			_("Switch between touch controls and keyboard & mouse by itself, from the devices attached and the one you use")));
+		me.TD(me, 1, 2, e = makeXonoticRadioButton_T(1, "vid_touchscreen_mode", "2", _("Touch"),
+			_("Always show the on-screen touch controls, with no detection")));
+		me.TD(me, 1, 2, e = makeXonoticRadioButton_T(1, "vid_touchscreen_mode", "0", _("Keyboard & mouse"),
+			_("Never show the on-screen touch controls, with no detection")));
 	me.TR(me);
-		me.TD(me, 1, 4, e = makeXonoticCheckBox_T(0, "vid_touchscreen_touchonly", _("Auto-detect touch-only devices"),
-			_("When Auto is selected, enable only if a touchscreen is present and no physical keyboard is attached. Tablets and Ubuntu Touch always count as touch-only.")));
+		me.TD(me, 1, 2, e = makeXonoticCheckBox_T(0, "vid_touchscreen_live", _("Switch mid-game"),
+			_("Dynamic: switch whenever a device is plugged in or another one is used. Off: decide once at launch and keep it until the game restarts")));
+			setDependent(e, "vid_touchscreen_mode", 1, 1);
+		me.TD(me, 1, 2, e = makeXonoticCheckBox_T(0, "vid_touchscreen_notify", _("Announce switches"),
+			_("Show a message when the controls switch by themselves. Off: switch silently. Ctrl+Alt+1 and Ctrl+Alt+2 always say what they did")));
+			setDependent(e, "vid_touchscreen_mode", 1, 1);
+		me.TD(me, 1, 2, e = makeXonoticCheckBox_T(0, "vid_touchscreen_touchonly", _("Touch-only devices"),
+			_("Dynamic, before anything is used: show the controls only if a touchscreen is present and no physical keyboard is attached. Tablets and Ubuntu Touch always count as touch-only")));
+			setDependent(e, "vid_touchscreen_mode", 1, 1);
+	me.TR(me);
+		me.TD(me, 1, 4, e = makeXonoticTextLabel(0, _("Ctrl+Alt+1: switch and lock    Ctrl+Alt+2: lock / unlock")));
 		me.TD(me, 1, 2, e = makeXonoticCommandButton(_("Rescan hardware"), '0 0 0', "vid_touchscreen_rescan; menu_cmd sync", 0));
 
 	me.TR(me);

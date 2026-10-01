@@ -158,7 +158,9 @@ cvar_t vid_sRGB = {CF_CLIENT | CF_ARCHIVE, "vid_sRGB", "0", "if hardware is capa
 cvar_t vid_sRGB_fallback = {CF_CLIENT | CF_ARCHIVE, "vid_sRGB_fallback", "0", "do an approximate sRGB fallback if not properly supported by hardware (2: also use the fallback if framebuffer is 8bit, 3: always use the fallback even if sRGB is supported)"};
 
 cvar_t vid_touchscreen = {CF_CLIENT, "vid_touchscreen", "0", "Use touchscreen-style input (no mouse grab, track mouse motion only while button is down, screen areas for mimicing joystick axes and buttons). Derived from vid_touchscreen_mode unless set directly"};
-cvar_t vid_touchscreen_mode = {CF_CLIENT | CF_ARCHIVE, "vid_touchscreen_mode", "1", "Touch controls: 0 = off, 1 = auto (enable when touch hardware is detected), 2 = always on"};
+cvar_t vid_touchscreen_mode = {CF_CLIENT | CF_ARCHIVE, "vid_touchscreen_mode", "1", "Input mode: 0 = keyboard & mouse (touch controls off), 1 = dynamic (follow the hardware and the input in use), 2 = touch (controls always on)"};
+cvar_t vid_touchscreen_live = {CF_CLIENT | CF_ARCHIVE, "vid_touchscreen_live", "1", "In dynamic mode: 1 = switch between touch and keyboard & mouse while playing, 0 = decide once at launch and keep it for the session"};
+cvar_t vid_touchscreen_notify = {CF_CLIENT | CF_ARCHIVE, "vid_touchscreen_notify", "1", "Show a message when the touch controls switch on or off by themselves (Ctrl+Alt+1 / Ctrl+Alt+2 always say what they did)"};
 cvar_t vid_touchscreen_touchonly = {CF_CLIENT | CF_ARCHIVE, "vid_touchscreen_touchonly", "1", "When vid_touchscreen_mode is auto, enable only on touch-only devices (touchscreen and no physical keyboard)"};
 cvar_t vid_touchscreen_detected = {CF_CLIENT | CF_READONLY, "vid_touchscreen_detected", "0", "1 if a touchscreen was detected at the last scan"};
 cvar_t vid_keyboard_detected = {CF_CLIENT | CF_READONLY, "vid_keyboard_detected", "0", "1 while the system lists a keyboard the player can type on (no on-screen keyboard is shown then)"};
@@ -1341,6 +1343,8 @@ void VID_Shared_Init(void)
 	Cvar_RegisterVariable(&vid_touchscreen);
 	Cvar_RegisterVariable(&vid_touchscreen_mode);
 	Cvar_RegisterVariable(&vid_touchscreen_touchonly);
+	Cvar_RegisterVariable(&vid_touchscreen_live);
+	Cvar_RegisterVariable(&vid_touchscreen_notify);
 	Cvar_RegisterVariable(&vid_touchscreen_detected);
 	Cvar_RegisterVariable(&vid_touchscreen_touchonly_detected);
 	Cvar_RegisterVariable(&vid_keyboard_detected);
@@ -1422,6 +1426,7 @@ void VID_Shared_Init(void)
 	Cvar_RegisterCallback(&vid_touchscreen, VID_Touchscreen_c);
 	Cvar_RegisterCallback(&vid_touchscreen_mode, VID_TouchscreenMode_c);
 	Cvar_RegisterCallback(&vid_touchscreen_touchonly, VID_TouchscreenMode_c);
+	Cvar_RegisterCallback(&vid_touchscreen_live, VID_TouchscreenLive_c);
 }
 
 /// NULL mode means read it from the cvars

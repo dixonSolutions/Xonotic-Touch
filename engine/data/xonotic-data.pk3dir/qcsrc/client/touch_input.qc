@@ -55,6 +55,7 @@ bool touch_key_back;
 bool touch_key_left;
 bool touch_key_right;
 bool touch_key_attack;
+bool touch_key_attack2;
 bool touch_key_jump;
 bool touch_key_crouch;
 bool touch_key_zoom;
@@ -63,6 +64,7 @@ bool touch_owns_back;
 bool touch_owns_left;
 bool touch_owns_right;
 bool touch_owns_attack;
+bool touch_owns_attack2;
 bool touch_owns_jump;
 bool touch_owns_crouch;
 bool touch_owns_zoom;
@@ -182,6 +184,11 @@ void Touch_SetKey(string key, bool down)
 		if (down) { if (!touch_key_attack) { localcmd("+attack\n"); touch_key_attack = true; touch_owns_attack = true; touch_debug_cmds += 1; } }
 		else if (touch_key_attack && touch_owns_attack) { localcmd("-attack\n"); touch_key_attack = false; touch_owns_attack = false; touch_debug_cmds += 1; }
 	}
+	else if (key == "attack2")
+	{
+		if (down) { if (!touch_key_attack2) { localcmd("+attack2\n"); touch_key_attack2 = true; touch_owns_attack2 = true; touch_debug_cmds += 1; } }
+		else if (touch_key_attack2 && touch_owns_attack2) { localcmd("-attack2\n"); touch_key_attack2 = false; touch_owns_attack2 = false; touch_debug_cmds += 1; }
+	}
 	else if (key == "jump")
 	{
 		if (down) { if (!touch_key_jump) { localcmd("+jump\n"); touch_key_jump = true; touch_owns_jump = true; touch_debug_cmds += 1; } }
@@ -207,6 +214,7 @@ void Touch_ReleaseAll(void)
 	Touch_SetKey("moveleft", false);
 	Touch_SetKey("moveright", false);
 	Touch_SetKey("attack", false);
+	Touch_SetKey("attack2", false);
 	Touch_SetKey("jump", false);
 	Touch_SetKey("crouch", false);
 	Touch_SetKey("zoom", false);
@@ -609,6 +617,7 @@ void Touch_Frame(void)
 
 	touch_move_offset = '0 0 0';
 	int fire_count = 0;
+	bool fire2_down = false;
 	bool jump_down = false;
 	bool crouch_down = false;
 	bool zoom_down = false;
@@ -685,8 +694,10 @@ void Touch_Frame(void)
 				}
 			}
 		}
+		// Secondary fire, as the engine HUD has it: the claw, and for a
+		// spectator the way back to observing.
 		else if (role == TOUCH_ROLE_FIRE2)
-			fire_count += 1;
+			fire2_down = true;
 		else if (role == TOUCH_ROLE_JUMP)
 			jump_down = true;
 		else if (role == TOUCH_ROLE_CROUCH)
@@ -739,6 +750,7 @@ void Touch_Frame(void)
 		Touch_SetKey("attack", pressed_fire || tap_fire || autocvar_touch_auto_fire);
 	}
 	touch_fire_down = pressed_fire;
+	Touch_SetKey("attack2", fire2_down);
 
 	// Jump is two different actions on this game. A single jump clears a gap or
 	// a step, and needs to happen the instant the finger lands. Bunny-hopping
@@ -760,7 +772,20 @@ void Touch_Frame(void)
 		touch_hop_cancelling = false;
 	}
 
-	if (autocvar_touch_hop_mode == TOUCH_HOP_LATCH)
+	// Observing or spectating, jump is "join": the stick must not hold it
+	// (auto-hop would join the moment the observer moved) and a long press
+	// must not latch it into the first life. JUMP is a plain button here.
+	if (spectatee_status != 0)
+	{
+		touch_hop_latched = false;
+		// The finger that joins is still down on the first frame of the life,
+		// where latch mode sees no new press and a stale touch_hop_press_time
+		// already reads as "held long enough". Spend the press here, as a tap
+		// that stops a hop does, so the latch waits for the next one.
+		touch_hop_cancelling = jump_down;
+		Touch_SetKey("jump", jump_down);
+	}
+	else if (autocvar_touch_hop_mode == TOUCH_HOP_LATCH)
 	{
 		if (jump_down && !touch_jump_edge)
 		{

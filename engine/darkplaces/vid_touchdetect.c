@@ -39,6 +39,16 @@ in two layers:
 
 Presence is the answer until something has been used, and a keyboard being
 plugged in or removed starts over from presence.
+
+On top of that, the player decides how much of this runs:
+- vid_touchscreen_mode: Dynamic (1, all of the above), Touch (2) or
+  Keyboard & mouse (0), the last two with no detection at all.
+- vid_touchscreen_live 0: Dynamic decides once, when presence has settled at
+  launch, and keeps that answer for the session.
+- vid_touchscreen_notify 0: switches happen without a toast.
+- Ctrl+Alt+1 switches between touch and keyboard-and-mouse and locks the
+  result; Ctrl+Alt+2 locks whatever is showing, or unlocks. A lock beats
+  every mode and lasts until it is unlocked or the game restarts.
 */
 
 #include "quakedef.h"
@@ -80,6 +90,8 @@ extern cvar_t vid_touchscreen_touchonly;
 extern cvar_t vid_touchscreen_detected;
 extern cvar_t vid_touchscreen_touchonly_detected;
 extern cvar_t vid_keyboard_detected;
+extern cvar_t vid_touchscreen_live;
+extern cvar_t vid_touchscreen_notify;
 
 // Android used to force Always on every start, and the archived config kept
 // that 2. This records that the one-off move back to Auto has happened, so a
@@ -90,6 +102,16 @@ qbool VID_SDL_HasTouchDevices(void);
 
 static qbool vid_touch_applying;
 static qbool vid_touch_finger_seen;
+static qbool vid_hotplug_init;
+
+// Ctrl+Alt+1 / Ctrl+Alt+2: -1 when nothing is locked, else the touch controls
+// are held at 0 or 1 whatever the mode and detection say. Not archived, so a
+// relaunch unlocks.
+static int vid_locked = -1;
+
+// vid_touchscreen_live 0: what Dynamic answered once presence had settled at
+// launch (or at the last rescan). -1 until then.
+static int vid_fixed = -1;
 
 // ---------------------------------------------------------------------------
 // Presence
@@ -462,6 +484,7 @@ static vid_active_t vid_active = VID_ACTIVE_NONE;
 static qbool vid_mouse_confirmed;
 
 static void vid_presence_refresh(void);
+static qbool vid_presence_settled(void);
 #ifdef VID_LINUX_PROBES
 static qbool vid_linux_poll(void);
 static qbool vid_pens_open(void);
@@ -480,7 +503,14 @@ static int vid_kbm_presses;
 
 static const char *vid_mode_name(int mode)
 {
-	return mode <= 0 ? "off" : (mode >= 2 ? "always" : "auto");
+	return mode <= 0 ? "keyboard & mouse" : (mode >= 2 ? "touch" : "dynamic");
+}
+
+// Automatic switches only; the shortcuts always say what they did.
+static void vid_notify(const char *msg)
+{
+	if (msg && vid_touchscreen_notify.integer)
+		SCR_Toast(msg);
 }
 
 // Re-derive vid_touchscreen and say what happened if it changed.
@@ -496,8 +526,7 @@ static void vid_reapply(const char *why, const char *msg_on, const char *msg_off
 		return;
 	msg = is_on ? msg_on : msg_off;
 	Con_Printf("Input: %s -> touch controls %s%s%s\n", why, is_on ? "on" : "off", msg ? ": " : "", msg ? msg : "");
-	if (msg)
-		SCR_Toast(msg);
+	vid_notify(msg);
 }
 
 static void vid_kbm_reset(void)
@@ -616,8 +645,6 @@ qbool VID_HasKeyboard(void)
 // Android: the activity pushes InputManager's answer through JNI; the frame
 // reads one int.
 
-static qbool vid_hotplug_init;
-
 static void vid_presence_changed(const vid_presence_t *old, const vid_presence_t *now)
 {
 	const char *msg = NULL;
@@ -662,8 +689,7 @@ static void vid_presence_changed(const vid_presence_t *old, const vid_presence_t
 
 	Con_Printf("Input hot-plug: keyboard=%d touch=%d mouse=%d tablet_mode=%d -> touch controls %s%s%s\n",
 		now->keyboard, now->touch, now->mouse, now->tablet_mode, is_on ? "on" : "off", msg ? ": " : "", msg ? msg : "");
-	if (msg)
-		SCR_Toast(msg);
+	vid_notify(msg);
 }
 
 // Recompute presence and react if the answer moved.
@@ -674,11 +700,14 @@ static void vid_presence_refresh(void)
 
 	vid_presence_valid = false;
 	vid_presence_get();
-	if (!had)
-		return;
-	if (old.keyboard != vid_presence.keyboard || old.touch != vid_presence.touch
-		|| old.tablet_mode != vid_presence.tablet_mode || old.mouse != vid_presence.mouse)
+	if (had && (old.keyboard != vid_presence.keyboard || old.touch != vid_presence.touch
+		|| old.tablet_mode != vid_presence.tablet_mode || old.mouse != vid_presence.mouse))
 		vid_presence_changed(&old, &vid_presence);
+	// On Android presence settles when the activity first reports, and that
+	// report may change nothing: take the launch-time answer then, not at
+	// whatever input happens to come next.
+	if (!vid_touchscreen_live.integer && vid_fixed < 0 && vid_presence_settled())
+		VID_ApplyTouchscreenMode();
 }
 
 #ifdef VID_LINUX_PROBES
@@ -976,9 +1005,14 @@ void VID_TouchHotplugFrame(void)
 #endif
 }
 
+static void VID_TouchscreenToggle_f(cmd_state_t *cmd);
+static void VID_TouchscreenLock_f(cmd_state_t *cmd);
+
 void VID_TouchDetect_Init(void)
 {
 	Cvar_RegisterVariable(&vid_touchscreen_mode_rev);
+	Cmd_AddCommand(CF_CLIENT, "vid_touchscreen_toggle", VID_TouchscreenToggle_f, "switch between the touch controls and keyboard-and-mouse, and lock it there until vid_touchscreen_lock or a restart (Ctrl+Alt+1)");
+	Cmd_AddCommand(CF_CLIENT, "vid_touchscreen_lock", VID_TouchscreenLock_f, "lock the touch controls as they are, or unlock them (Ctrl+Alt+2); 1 locks, 0 unlocks, no argument toggles");
 #ifdef __ANDROID__
 	// Controls on until the activity reports a keyboard; Auto decides from
 	// there.
@@ -986,6 +1020,32 @@ void VID_TouchDetect_Init(void)
 	Cvar_SetValueQuick(&vid_touchscreen, 1);
 	vid_touch_applying = false;
 #endif
+}
+
+// What Dynamic says right now: the last input used, else presence.
+static int vid_dynamic_want(qbool has_touch, qbool touch_only)
+{
+	if (vid_active == VID_ACTIVE_TOUCH)
+		return 1;
+	if (vid_active == VID_ACTIVE_KEYBOARD)
+		return 0;
+	if (vid_touchscreen_touchonly.integer)
+		return touch_only ? 1 : 0;
+	return has_touch ? 1 : 0;
+}
+
+// Presence is worth deciding on: the hot-plug watch is up, so SDL's window
+// and the system listing have been read (and on Android the activity has
+// spoken; until then a phone is only assumed to be touch).
+static qbool vid_presence_settled(void)
+{
+	if (!vid_hotplug_init)
+		return false;
+#ifdef __ANDROID__
+	if (!(__atomic_load_n(&vid_android_state, __ATOMIC_ACQUIRE) & VID_ANDROID_VALID))
+		return false;
+#endif
+	return true;
 }
 
 void VID_ApplyTouchscreenMode(void)
@@ -1003,25 +1063,31 @@ void VID_ApplyTouchscreenMode(void)
 	Cvar_SetValueQuick(&vid_keyboard_detected, vid_presence_get()->keyboard ? 1 : 0);
 
 	mode = vid_touchscreen_mode.integer;
-	if (mode <= 0)
+	// Decided at launch: take Dynamic's answer once presence has settled
+	// (on Android, once the activity has reported), then keep it.
+	if (!vid_touchscreen_live.integer && vid_fixed < 0 && vid_presence_settled())
+	{
+		vid_fixed = vid_dynamic_want(has_touch, touch_only);
+		Con_Printf("Input: decided at launch, touch controls %s for this session\n", vid_fixed ? "on" : "off");
+	}
+	if (vid_locked >= 0)
+		want = vid_locked;
+	else if (mode <= 0)
 		want = 0;
 	else if (mode >= 2)
 		want = 1;
-	else if (vid_active == VID_ACTIVE_TOUCH)
-		want = 1;
-	else if (vid_active == VID_ACTIVE_KEYBOARD)
-		want = 0;
-	else if (vid_touchscreen_touchonly.integer)
-		want = touch_only ? 1 : 0;
+	else if (!vid_touchscreen_live.integer && vid_fixed >= 0)
+		want = vid_fixed;
 	else
-		want = has_touch ? 1 : 0;
+		want = vid_dynamic_want(has_touch, touch_only);
 
 	if (vid_touchscreen.integer != want)
 	{
 		Cvar_SetValueQuick(&vid_touchscreen, want);
-		Con_Printf("Touch controls: %s (mode=%s, hardware touch=%s, touch-only=%s, last input=%s)\n",
+		Con_Printf("Touch controls: %s (mode=%s%s, hardware touch=%s, touch-only=%s, last input=%s)\n",
 			want ? "on" : "off",
 			vid_mode_name(mode),
+			vid_locked >= 0 ? ", locked" : (mode == 1 && !vid_touchscreen_live.integer) ? ", decided at launch" : "",
 			has_touch ? "yes" : "no",
 			touch_only ? "yes" : "no",
 			vid_active == VID_ACTIVE_TOUCH ? "touch" : vid_active == VID_ACTIVE_KEYBOARD ? "keyboard" : "none");
@@ -1031,9 +1097,20 @@ void VID_ApplyTouchscreenMode(void)
 
 void VID_TouchscreenMode_c(cvar_t *var)
 {
-	(void)var;
+	static int last_mode = -1;
 	if (vid_touch_applying)
 		return;
+	// Picking a mode is the player deciding, so it takes effect now rather
+	// than waiting behind a Ctrl+Alt lock.
+	if (var == &vid_touchscreen_mode && var->integer != last_mode)
+	{
+		last_mode = var->integer;
+		if (vid_locked >= 0)
+		{
+			vid_locked = -1;
+			Con_Printf("Input: mode set to %s, lock released\n", vid_mode_name(var->integer));
+		}
+	}
 	VID_ApplyTouchscreenMode();
 }
 
@@ -1042,12 +1119,100 @@ void VID_Touchscreen_c(cvar_t *var)
 	if (vid_touch_applying)
 		return;
 	// Direct console / config writes to vid_touchscreen become an explicit mode.
+	vid_locked = -1;
 	vid_touch_applying = true;
 	if (var->integer)
 		Cvar_SetValueQuick(&vid_touchscreen_mode, 2);
 	else
 		Cvar_SetValueQuick(&vid_touchscreen_mode, 0);
 	vid_touch_applying = false;
+}
+
+// Turning live switching off keeps what is showing now; turning it on hands
+// the decision back to Dynamic.
+// (Callbacks run on every set, changed or not: a config re-setting the same
+// value must not take a new launch answer.)
+void VID_TouchscreenLive_c(cvar_t *var)
+{
+	static int last = -1;
+	if (var->integer == last)
+		return;
+	last = var->integer;
+	vid_fixed = -1;
+	if (vid_touch_applying)
+		return;
+	VID_ApplyTouchscreenMode();
+}
+
+// The shortcuts are the player asking, so they always say what they did,
+// vid_touchscreen_notify or not, and how to undo it.
+static void vid_lock_to(int on, qbool switched)
+{
+	vid_locked = on ? 1 : 0;
+	VID_ApplyTouchscreenMode();
+	if (switched)
+		SCR_Toast(on ? "Touch controls on, locked (Ctrl+Alt+2 unlocks)" : "Keyboard & mouse, locked (Ctrl+Alt+2 unlocks)");
+	else
+		SCR_Toast(on ? "Touch controls locked on (Ctrl+Alt+2 unlocks)" : "Keyboard & mouse locked (Ctrl+Alt+2 unlocks)");
+	Con_Printf("Input: %s, touch controls locked %s until Ctrl+Alt+2 or a restart\n", switched ? "switched by hand" : "locked by hand", on ? "on" : "off");
+}
+
+static void vid_unlock(void)
+{
+	int mode = vid_touchscreen_mode.integer;
+	const char *msg;
+
+	// Dynamic carries on from what is showing: the next finger, typing or
+	// device change moves it, not the act of unlocking.
+	if (vid_locked >= 0 && mode == 1 && vid_touchscreen_live.integer)
+	{
+		vid_active = vid_locked ? VID_ACTIVE_TOUCH : VID_ACTIVE_KEYBOARD;
+		vid_kbm_reset();
+	}
+	vid_locked = -1;
+	VID_ApplyTouchscreenMode();
+	if (mode <= 0)
+		msg = "Unlocked: back to Keyboard & mouse mode";
+	else if (mode >= 2)
+		msg = "Unlocked: back to Touch mode";
+	else if (!vid_touchscreen_live.integer)
+		msg = "Unlocked: back to the launch choice";
+	else
+		msg = "Unlocked: switching automatically";
+	SCR_Toast(msg);
+	Con_Printf("Input: %s (touch controls %s)\n", msg, vid_touchscreen.integer ? "on" : "off");
+}
+
+// Ctrl+Alt+1: switch between the touch controls and keyboard-and-mouse, and
+// hold it there.
+void VID_TouchscreenToggle(void)
+{
+	vid_lock_to(!vid_touchscreen.integer, true);
+}
+
+// Ctrl+Alt+2: hold what is showing, or let go of a hold.
+void VID_TouchscreenLockToggle(void)
+{
+	if (vid_locked >= 0)
+		vid_unlock();
+	else
+		vid_lock_to(vid_touchscreen.integer != 0, false);
+}
+
+static void VID_TouchscreenToggle_f(cmd_state_t *cmd)
+{
+	(void)cmd;
+	VID_TouchscreenToggle();
+}
+
+static void VID_TouchscreenLock_f(cmd_state_t *cmd)
+{
+	if (Cmd_Argc(cmd) < 2)
+		VID_TouchscreenLockToggle();
+	else if (atoi(Cmd_Argv(cmd, 1)))
+		vid_lock_to(vid_touchscreen.integer != 0, false);
+	else if (vid_locked >= 0)
+		vid_unlock();
 }
 
 void VID_TouchscreenRescan_f(cmd_state_t *cmd)
@@ -1057,11 +1222,15 @@ void VID_TouchscreenRescan_f(cmd_state_t *cmd)
 #ifdef VID_LINUX_PROBES
 	vid_linux_refresh(true);
 #endif
+	// Asked for by hand, so a launch-time answer is taken again.
+	vid_fixed = -1;
 	vid_presence_refresh();
 	VID_ApplyTouchscreenMode();
 	p = vid_presence_get();
-	Con_Printf("vid_touchscreen_mode %d, vid_touchscreen %d, detected %d, touch-only %d, keyboard %d, mouse %d (%s), tablet mode %d, last input %s\n",
+	Con_Printf("vid_touchscreen_mode %d, live %d, locked %s, vid_touchscreen %d, detected %d, touch-only %d, keyboard %d, mouse %d (%s), tablet mode %d, last input %s\n",
 		vid_touchscreen_mode.integer,
+		vid_touchscreen_live.integer,
+		vid_locked < 0 ? "no" : vid_locked ? "on" : "off",
 		vid_touchscreen.integer,
 		vid_touchscreen_detected.integer,
 		vid_touchscreen_touchonly_detected.integer,

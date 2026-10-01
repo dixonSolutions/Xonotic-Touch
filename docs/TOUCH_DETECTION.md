@@ -11,10 +11,37 @@ Android/iOS, where touch is present; Linux tablets need a real scan.
 
 | User-facing | Cvar | Meaning |
 |-------------|------|---------|
-| Off / Auto / Always | `vid_touchscreen_mode` | Preference. Archived. |
-| Auto-detect touch-only devices | `vid_touchscreen_touchonly` | When Auto, require a touchscreen and no physical keyboard |
+| Dynamic / Touch / Keyboard & mouse | `vid_touchscreen_mode` (1 / 2 / 0) | Input mode. Dynamic is the default and does everything below; Touch and Keyboard & mouse detect nothing. Archived. |
+| Switch mid-game | `vid_touchscreen_live` | Dynamic only. On (default): switch in real time. Off: decide once at launch, keep it until the game restarts. Archived. |
+| Announce switches | `vid_touchscreen_notify` | On (default): a toast when the controls switch by themselves. Off: switch silently. Archived. |
+| Touch-only devices | `vid_touchscreen_touchonly` | Dynamic, until something is used: require a touchscreen and no physical keyboard |
 
-Settings → Touch. **Rescan hardware** runs `vid_touchscreen_rescan`.
+Settings → Touch → Input mode. **Rescan hardware** runs `vid_touchscreen_rescan`
+(with Switch mid-game off, it also takes the launch decision again).
+
+## Manual switch and lock
+
+| Shortcut | Command | Effect |
+|----------|---------|--------|
+| **Ctrl+Alt+1** | `vid_touchscreen_toggle` | Switch between the touch controls and keyboard & mouse, and lock it there |
+| **Ctrl+Alt+2** | `vid_touchscreen_lock` | Locked: unlock. Unlocked: lock what is showing, without switching. `1` / `0` lock / unlock explicitly |
+
+A lock freezes detection: hot-plug, touch, typing and the mode all stop moving
+the controls. Both shortcuts always show a toast, whatever *Announce switches*
+says, and the toast names Ctrl+Alt+2 as the way out. The lock ends on
+Ctrl+Alt+2, on picking a mode in Settings, on a direct write to
+`vid_touchscreen`, and on restart (it is never archived).
+
+Unlocking in Dynamic does not flip anything by itself: it carries on from what
+is showing (the locked state becomes the last input), and the next finger,
+typing or device change moves it. Unlocking in Touch, Keyboard & mouse or a
+launch-time Dynamic goes back to that answer.
+
+The keys are read by scancode, so the number row works on any layout. The 1
+or 2 never reaches the game or keyboard-use detection. They are not taken
+while the menu is grabbing a key for a binding, and the Alt is the left one:
+Windows reports AltGr as left Ctrl + right Alt, so AltGr+1 and AltGr+2 still
+type their character, in the console and chat too.
 
 ## Detection order
 
@@ -77,13 +104,14 @@ never walked: that took about 0.4 s on a Surface. Measured on this
 laptop, the poll costs 0.5 µs and a `/proc` read 55-65 µs. Where neither
 watch is allowed (strict confinement), `/proc` is re-read every 3 s instead.
 
-When the answer changes, `vid_touchscreen_mode` is applied again. In Auto,
+When the answer changes, `vid_touchscreen_mode` is applied again. In Dynamic,
 the overlay, weapon strip and console pill come and go in the menu and
 mid-match. That covers the CSQC HUD and the engine-drawn server HUD
 (`touch_hud.c`), since both gate on `vid_touchscreen`. A toast
 (`SCR_Toast`, drawn over menus too) says *Keyboard connected: touch controls
 hidden*, *Keyboard disconnected: touch controls shown*, *Tablet mode: touch
-controls shown* or *Laptop mode: touch controls hidden*.
+controls shown* or *Laptop mode: touch controls hidden*. With `vid_touchscreen_notify 0` the
+same switches happen without a toast (the console still logs them).
 
 ## Last active input
 
