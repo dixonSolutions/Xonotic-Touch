@@ -17,6 +17,7 @@ applies to both.
 #include "csprogs.h"
 #include "touch_hud.h"
 #include "touch_aim.h"
+#include "touch_ui.h"
 
 extern cvar_t vid_touchscreen;
 extern cvar_t vid_conwidth;
@@ -1263,8 +1264,16 @@ void TouchHUD_Frame(void)
 	set_key("attack2", &key_attack2, fire2_down);
 	set_key("zoom", &key_zoom, zoom_down);
 
-	// hop: hold past touch_hop_latch_ms latches bunny-hop; a tap while latched clears it
-	if (cv("touch_hop_mode", 1) == 1)
+	// hop: hold past touch_hop_latch_ms latches bunny-hop; a tap while latched clears it.
+	// Not for a spectator: jump is "join" there, and a latch would carry into
+	// the first life.
+	if (TouchUI_IsSpectating())
+	{
+		hop_latched = false;
+		hop_cancelling = false;
+		set_key("jump", &key_jump, jump_down);
+	}
+	else if (cv("touch_hop_mode", 1) == 1)
 	{
 		static qbool prev_jump_down;
 		if (jump_down && !prev_jump_down)

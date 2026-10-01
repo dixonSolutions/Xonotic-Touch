@@ -151,6 +151,8 @@ extern cvar_t vid_grabkeyboard;
 extern cvar_t vid_touchscreen;
 extern cvar_t vid_touchscreen_mode;
 extern cvar_t vid_touchscreen_touchonly;
+extern cvar_t vid_touchscreen_live;
+extern cvar_t vid_touchscreen_notify;
 extern cvar_t vid_touchscreen_detected;
 extern cvar_t vid_touchscreen_touchonly_detected;
 extern cvar_t vid_keyboard_detected;
@@ -289,6 +291,9 @@ void VID_NoteMouseUse(float travel, qbool press); // real pointer use; travel in
 qbool VID_TouchMouseConfirmed(void); // the system lists a mouse and it has been used
 qbool VID_HasKeyboard(void);         // the system lists a keyboard the player can type on
 void VID_TouchscreenMode_c(struct cvar_s *var);
+void VID_TouchscreenLive_c(struct cvar_s *var);
+void VID_TouchscreenToggle(void);     // Ctrl+Alt+1: switch touch / keyboard-and-mouse and lock it
+void VID_TouchscreenLockToggle(void); // Ctrl+Alt+2: lock what is showing, or unlock
 void VID_Touchscreen_c(struct cvar_s *var);
 void VID_TouchscreenRescan_f(struct cmd_state_s *cmd);
 

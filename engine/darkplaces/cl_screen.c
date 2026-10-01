@@ -173,8 +173,14 @@ static void SCR_DrawToast(void)
 	if (fade > 1)
 		fade = 1;
 	h = bound(12, vid_conheight.value / 28, 32);
-	pad = h * 0.6f;
 	w = DrawQ_TextWidth(scr_toast_text, 0, h, h, false, FONT_DEFAULT);
+	// A long message shrinks to fit rather than running off both edges.
+	if (w > vid_conwidth.value * 0.9f)
+	{
+		h *= vid_conwidth.value * 0.9f / w;
+		w = DrawQ_TextWidth(scr_toast_text, 0, h, h, false, FONT_DEFAULT);
+	}
+	pad = h * 0.6f;
 	x = (vid_conwidth.value - w) * 0.5f;
 	y = vid_conheight.value * 0.09f;
 	DrawQ_Fill(x - pad, y - pad * 0.5f, w + pad * 2, h + pad, 0, 0, 0, 0.62f * fade, 0);
