@@ -12,22 +12,26 @@ AUTOBUILD_USER="${XONOTIC_AUTOBUILD_USER:-xonotic}"
 AUTOBUILD_PASS="${XONOTIC_AUTOBUILD_PASS:-g-23}"
 PROGRESS="${XONOTIC_ASSET_FETCH_PROGRESS:-}"
 
+# POSIX sh has no local variables: every name a function sets is the script's.
+# This one used to call its temp file `tmp`, which is also the download dir
+# below, so the first progress update sent every later download and extract
+# into "asset-progress.txt.tmp.<pid>/" and the fetch died there.
 progress_write() {
-    status="$1"
-    percent="$2"
-    message="$3"
+    _pw_status="$1"
+    _pw_percent="$2"
+    _pw_message="$3"
     if [ -z "$PROGRESS" ]; then
         return 0
     fi
     # Atomic replace — menu polls this every frame.
-    tmp="${PROGRESS}.tmp.$$"
+    _pw_tmp="${PROGRESS}.tmp.$$"
     mkdir -p "$(dirname "$PROGRESS")"
     {
-        printf '%s\n' "$status"
-        printf '%s\n' "$percent"
-        printf '%s\n' "$message"
-    } > "$tmp"
-    mv -f "$tmp" "$PROGRESS"
+        printf '%s\n' "$_pw_status"
+        printf '%s\n' "$_pw_percent"
+        printf '%s\n' "$_pw_message"
+    } > "$_pw_tmp"
+    mv -f "$_pw_tmp" "$PROGRESS"
 }
 
 has_pk3() {
@@ -59,6 +63,33 @@ file_size() {
     fi
 }
 
+# Report a download's size until <pid> exits, then return its status.
+wait_with_progress() {
+    _wp_pid="$1"
+    _wp_path="$2"
+    _wp_name="$3"
+    _wp_expected="$4"
+    _wp_lo="$5"
+    _wp_hi="$6"
+    while kill -0 "$_wp_pid" 2>/dev/null; do
+        _wp_have=$(file_size "$_wp_path")
+        _wp_mb=$((_wp_have / 1048576))
+        if [ "$_wp_expected" -gt 0 ]; then
+            _wp_pct=$((_wp_lo + _wp_have * (_wp_hi - _wp_lo) / _wp_expected))
+            if [ "$_wp_pct" -gt "$_wp_hi" ]; then
+                _wp_pct=$_wp_hi
+            fi
+            progress_write running "$_wp_pct" \
+                "Downloading ${_wp_name} (${_wp_mb} / $((_wp_expected / 1048576)) MB)..."
+        else
+            progress_write running "$_wp_lo" \
+                "Downloading ${_wp_name} (${_wp_mb} MB)..."
+        fi
+        sleep 1
+    done
+    wait "$_wp_pid"
+}
+
 download_zip() {
     zip_path="$1"
     zip_name="$2"
@@ -67,11 +98,9 @@ download_zip() {
     url="${AUTOBUILD_URL}/${zip_name}"
     expected=0
     have=0
-    pct=0
-    mb=0
-    emb=0
 
     progress_write running "$pct_lo" "Downloading ${zip_name}..."
+    mkdir -p "$(dirname "$zip_path")"
 
     if command -v curl >/dev/null 2>&1; then
         expected=$(
@@ -79,7 +108,6 @@ download_zip() {
                 | awk 'BEGIN{c=0} tolower($1)=="content-length:" {c=$2} END{print c+0}' \
                 | tr -d '\r'
         )
-        mkdir -p "$(dirname "$zip_path")"
         # Resume partial downloads across relaunch / orphan cleanup.
         have=$(file_size "$zip_path")
         if [ "$expected" -gt 0 ] && [ "$have" -ge "$expected" ]; then
@@ -88,40 +116,31 @@ download_zip() {
         fi
         curl -fL -C - --user "${AUTOBUILD_USER}:${AUTOBUILD_PASS}" \
             -o "$zip_path" "$url" &
-        cpid=$!
-        while kill -0 "$cpid" 2>/dev/null; do
-            have=$(file_size "$zip_path")
-            pct=$pct_lo
-            if [ "$expected" -gt 0 ]; then
-                pct=$((pct_lo + have * (pct_hi - pct_lo) / expected))
-                if [ "$pct" -gt "$pct_hi" ]; then
-                    pct=$pct_hi
-                fi
-                emb=$((expected / 1048576))
-            fi
-            mb=$((have / 1048576))
-            if [ "$expected" -gt 0 ]; then
-                progress_write running "$pct" \
-                    "Downloading ${zip_name} (${mb} / ${emb} MB)..."
-            else
-                progress_write running "$pct" \
-                    "Downloading ${zip_name} (${mb} MB)..."
-            fi
-            sleep 1
-        done
-        wait "$cpid"
+        wait_with_progress $! "$zip_path" "$zip_name" "$expected" "$pct_lo" "$pct_hi"
         return $?
     fi
 
     if command -v wget >/dev/null 2>&1; then
         scheme="${AUTOBUILD_URL%%://*}"
         host_path="${AUTOBUILD_URL#*://}"
-        # Busybox wget: no live percent; bump message before/after.
-        progress_write running "$pct_lo" "Downloading ${zip_name} (please wait)..."
-        wget -O "$zip_path" \
-            "${scheme}://${AUTOBUILD_USER}:${AUTOBUILD_PASS}@${host_path}/${zip_name}"
-        progress_write running "$pct_hi" "Downloaded ${zip_name}"
-        return
+        url="${scheme}://${AUTOBUILD_USER}:${AUTOBUILD_PASS}@${host_path}/${zip_name}"
+        # Busybox wget prints the response headers on stderr with -S.
+        expected=$(
+            wget -S --spider "$url" 2>&1 \
+                | awk 'BEGIN{c=0} tolower($1)=="content-length:" {c=$2} END{print c+0}' \
+                | tr -d '\r'
+        )
+        # A phone suspends or closes the app mid-download, and the wizard
+        # promises partials resume: -c continues, and a complete file is not
+        # asked for again (busybox wget fails on the 416 that would get).
+        have=$(file_size "$zip_path")
+        if [ "$expected" -gt 0 ] && [ "$have" -ge "$expected" ]; then
+            progress_write running "$pct_hi" "Downloaded ${zip_name}"
+            return 0
+        fi
+        wget -q -c -O "$zip_path" "$url" &
+        wait_with_progress $! "$zip_path" "$zip_name" "$expected" "$pct_lo" "$pct_hi"
+        return $?
     fi
     echo "xonotic-touch: curl or wget required to download game assets" >&2
     return 1
@@ -159,15 +178,12 @@ if assets_ready; then
     exit 0
 fi
 
-progress_write running 5 "Starting parallel downloads from Xonotic servers..."
-echo "xonotic-touch: downloading game assets in parallel (first launch may take several minutes)..." >&2
+progress_write running 5 "Starting downloads from Xonotic servers..."
+echo "xonotic-touch: downloading game assets (first launch may take several minutes)..." >&2
 
 tmp="$DATA_DIR/.fetch-tmp"
 mkdir -p "$tmp"
 extract_dir="$tmp/extract"
-need_core=0
-need_maps=0
-need_music=0
 # pid files for background curls
 : > "$tmp/pids"
 
@@ -185,10 +201,47 @@ start_bg_curl() {
     download_zip "$_bg_path" "$_bg_name" 10 80
 }
 
+# Aggregate progress until every background curl exits.
+wait_bg_downloads() {
+    while [ -s "$tmp/pids" ]; do
+        alive=0
+        have=0
+        for f in "$tmp"/xonotic.zip "$tmp"/xonotic-maps.zip "$tmp"/xonotic-music.zip; do
+            [ -f "$f" ] || continue
+            have=$((have + $(file_size "$f")))
+        done
+        mb=$((have / 1048576))
+        : > "$tmp/pids.new"
+        while read -r cpid; do
+            [ -n "$cpid" ] || continue
+            if kill -0 "$cpid" 2>/dev/null; then
+                alive=$((alive + 1))
+                echo "$cpid" >> "$tmp/pids.new"
+            else
+                wait "$cpid" || exit 1
+            fi
+        done < "$tmp/pids"
+        mv -f "$tmp/pids.new" "$tmp/pids"
+        progress_write running 20 \
+            "Downloading packs (${mb} MB, ${alive} active)..."
+        [ "$alive" -eq 0 ] && break
+        sleep 1
+    done
+}
+
+# The core zip carries the data, maps, music and compat packs, so it goes first
+# and alone; the maps and music zips are only for a pack it did not provide.
+# Deciding all three up front fetched 2.7 GB where 1.2 GB was enough.
 if ! has_pk3 'xonotic-*-data.pk3' || ! has_pk3 'xonotic-*-nexcompat.pk3'; then
-    need_core=1
     start_bg_curl "$tmp/xonotic.zip" "Xonotic-latest.zip"
+    wait_bg_downloads
+    progress_write running 88 "Installing core game data..."
+    extract_pk3 "$tmp/xonotic.zip" "$extract_dir"
+    rm -f "$tmp/xonotic.zip"
 fi
+
+need_maps=0
+need_music=0
 if ! has_pk3 'xonotic-*-maps.pk3'; then
     need_maps=1
     start_bg_curl "$tmp/xonotic-maps.zip" "Xonotic-latest-mappingsupport.zip"
@@ -197,38 +250,8 @@ if ! has_pk3 'xonotic-*-music.pk3'; then
     need_music=1
     start_bg_curl "$tmp/xonotic-music.zip" "Xonotic-latest-high.zip"
 fi
+wait_bg_downloads
 
-# Aggregate progress until every background curl exits.
-while [ -s "$tmp/pids" ]; do
-    alive=0
-    have=0
-    for f in "$tmp"/xonotic.zip "$tmp"/xonotic-maps.zip "$tmp"/xonotic-music.zip; do
-        [ -f "$f" ] || continue
-        have=$((have + $(file_size "$f")))
-    done
-    mb=$((have / 1048576))
-    : > "$tmp/pids.new"
-    while read -r cpid; do
-        [ -n "$cpid" ] || continue
-        if kill -0 "$cpid" 2>/dev/null; then
-            alive=$((alive + 1))
-            echo "$cpid" >> "$tmp/pids.new"
-        else
-            wait "$cpid" || exit 1
-        fi
-    done < "$tmp/pids"
-    mv -f "$tmp/pids.new" "$tmp/pids"
-    progress_write running 20 \
-        "Downloading packs in parallel (${mb} MB, ${alive} active)..."
-    [ "$alive" -eq 0 ] && break
-    sleep 1
-done
-
-if [ "$need_core" = "1" ]; then
-    progress_write running 88 "Installing core game data..."
-    extract_pk3 "$tmp/xonotic.zip" "$extract_dir"
-    rm -f "$tmp/xonotic.zip"
-fi
 if [ "$need_maps" = "1" ]; then
     progress_write running 92 "Installing maps..."
     extract_pk3 "$tmp/xonotic-maps.zip" "$extract_dir"

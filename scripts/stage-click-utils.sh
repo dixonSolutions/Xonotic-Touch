@@ -15,7 +15,7 @@ LIB_DIR="$DEST/lib"
 BUSYBOX_APPLETS=(
     awk basename cat cp cut date dirname du env expr find grep head install
     ln ls mkdir mktemp mv printf readlink rm rmdir sed sleep sort ssl_client
-    stat tail tar touch tr unzip wget which xargs
+    stat tail tar touch tr unzip wc wget which xargs
 )
 
 mkdir -p "$BIN_DIR" "$LIB_DIR"

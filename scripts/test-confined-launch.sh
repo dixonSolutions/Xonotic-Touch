@@ -246,6 +246,116 @@ expect_posix_fetch 'POSIX downloader runs even when fetchd cannot start (bash ab
 # lock" and quit; under confinement flock exits 126, so none ever started.
 expect_posix_fetch 'POSIX downloader runs when flock exec is denied' 'no-fetchd' "$WORK/fake-bin"
 
+# The POSIX downloader itself, end to end, the way a click runs it: /bin/sh with
+# the package's busybox applets, wget for the network (a fake serving a small
+# zip laid out like the autobuild one), busybox unzip for the packs. Not
+# `busybox sh`: that runs its own wget whatever PATH says.
+#
+# Its progress writer once reused the name of the download dir, so every
+# download after the first went to "asset-progress.txt.tmp.<pid>/" and the fetch
+# died with the wizard stuck on "Downloading...". It also fetched the maps and
+# music zips up front, although the core zip already carries both.
+expect_posix_fetch_completes() {
+    local label="$1"
+    local preload="$2"
+    local data="$WORK/fetch-data"
+    local fixture="$WORK/fixture/Xonotic-latest.zip"
+    local wget_log="$WORK/fetch-wget.log"
+    local progress="$data/touch/asset-progress.txt"
+
+    rm -rf "$data" "$WORK/fetch-bin" "$wget_log"
+    mkdir -p "$data/touch" "$WORK/fetch-bin" "$WORK/fixture"
+    # The package's tools minus curl and wget: a cross-built click has no curl
+    # (only a native one bundles the host's), and wget is faked below.
+    local tool
+    for tool in "$APP_ROOT"/bin/*; do
+        case "${tool##*/}" in
+            curl|wget) ;;
+            *) ln -s "$tool" "$WORK/fetch-bin/${tool##*/}" ;;
+        esac
+    done
+    if [ ! -f "$fixture" ]; then
+        python3 - "$fixture" <<'PY'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "w") as z:
+    for pack in ("data", "maps", "music", "nexcompat"):
+        z.writestr(f"Xonotic/data/xonotic-20260101-{pack}.pk3", pack * 64)
+    z.writestr("Xonotic/Docs/readme.txt", "not a pack")
+PY
+    fi
+    if [ "$preload" = 'complete-core-zip' ]; then
+        mkdir -p "$data/.fetch-tmp"
+        cp "$fixture" "$data/.fetch-tmp/xonotic.zip"
+    fi
+
+    # Fake wget: answers --spider with the fixture's length, serves the core zip,
+    # 404s everything else, and logs each real download.
+    cat > "$WORK/fetch-bin/wget" <<WGET
+#!/bin/sh
+out=""; url=""; spider=0
+while [ \$# -gt 0 ]; do
+    case "\$1" in
+        -O) out="\$2"; shift ;;
+        --spider) spider=1 ;;
+        -*) ;;
+        *) url="\$1" ;;
+    esac
+    shift
+done
+case "\$url" in
+    */Xonotic-latest.zip) ;;
+    *) echo "wget: server returned error: HTTP/1.1 404 Not Found" >&2; exit 1 ;;
+esac
+if [ "\$spider" = 1 ]; then
+    echo "  Content-Length: \$(wc -c < "$fixture")" >&2
+    exit 0
+fi
+echo "\${url##*/}" >> "$wget_log"
+cat "$fixture" > "\$out"
+WGET
+    chmod 755 "$WORK/fetch-bin/wget"
+
+    local status=0
+    ( env -i HOME="$WORK/home" PATH="$WORK/fetch-bin" \
+        XONOTIC_ASSET_FETCH_PROGRESS="$progress" \
+        /bin/sh "$ROOT/scripts/fetch-assets-posix.sh" "$data" ) \
+        >"$WORK/fetch.out" 2>&1 || status=$?
+
+    if [ "$status" -ne 0 ]; then
+        fail "$label: fetch-assets-posix.sh exited $status"
+        cat "$WORK/fetch.out" >&2
+        return
+    fi
+    if [ "$(head -n 1 "$progress" 2>/dev/null)" != 'done' ]; then
+        fail "$label: progress did not reach done ($(tr '\n' '|' < "$progress" 2>/dev/null))"
+        return
+    fi
+    local pack
+    for pack in data maps music nexcompat; do
+        if [ ! -f "$data/xonotic-20260101-$pack.pk3" ]; then
+            fail "$label: $pack pack was not installed"
+            return
+        fi
+    done
+    if [ -e "$data/.fetch-tmp" ]; then
+        fail "$label: download dir was left behind"
+        return
+    fi
+    if [ "$preload" = 'complete-core-zip' ]; then
+        if [ -s "$wget_log" ]; then
+            fail "$label: fetched again a zip that was already complete ($(tr '\n' ' ' < "$wget_log"))"
+            return
+        fi
+    elif [ "$(cat "$wget_log" 2>/dev/null)" != 'Xonotic-latest.zip' ]; then
+        fail "$label: expected one download of Xonotic-latest.zip, got: $(tr '\n' ' ' < "$wget_log" 2>/dev/null)"
+        return
+    fi
+    pass "$label"
+}
+
+expect_posix_fetch_completes 'POSIX downloader installs the packs from the core zip alone' 'none'
+expect_posix_fetch_completes 'POSIX downloader does not fetch a complete zip again' 'complete-core-zip'
+
 # Handing an in-flight download to fetchd stops the in-sandbox job first, on the
 # promise that the daemon picks it up. When it does not, the progress file must
 # not be left on a fresh discover/running line: the next launch reads that as a

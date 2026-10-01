@@ -108,6 +108,20 @@ busybox applets are not GNU coreutils. Known constraints already handled:
 | `tar` | no `--exclude` | `scripts/sync-bundle-data.sh` copies per top-level entry |
 | `wget` | no `--user` | credentials in the URL (`scripts/lib/asset-fetch.sh`) |
 | `cp` | `cp -a src/. dst/` merges (verified) | used for bundle sync |
+| `sh` | `busybox sh` runs its own applets whatever `PATH` says | tests run the scripts under `/bin/sh`, as the phone does |
+
+Every command the launch scripts run must be an applet in `BUSYBOX_APPLETS`:
+the host's is denied. `wc` was missing, so `file_size` failed on a phone and
+with it download resume and the MB progress.
+
+`fetch-assets-posix.sh` is plain POSIX sh, where a function has no local
+variables. `progress_write` once named its temp file `tmp`, the download dir's
+name too, and every download after the first went into
+`asset-progress.txt.tmp.<pid>/`. Function variables there take a `_<fn>_`
+prefix. The core zip (`Xonotic-latest.zip`) carries the data, maps, music and
+compat packs, so it is fetched and unpacked first, and the maps and music zips
+only for a pack it lacked: 1.2 GB on a phone, not 2.7 GB. busybox `wget` resumes
+with `-c` and skips a zip that is already complete.
 
 Build-time scripts (`stage-slim-data.sh`, `stage-click.sh`) run on the CI host
 with GNU tools, so GNU-only flags are fine there — the restriction applies to
