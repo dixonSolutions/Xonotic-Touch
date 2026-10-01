@@ -87,7 +87,9 @@ stick flies (`+forward` and the rest), drag looks, **FIRE** (`+attack`)
 spectates the next player, **ALT** (`+attack2`) goes back to observing, the
 weapon strip cycles players, and **HOP** (`+jump`) joins. HOP is a plain button
 there: no hop latch, and auto-hop does not hold it while the stick moves, or the
-observer would join the moment they flew anywhere.
+observer would join the moment they flew anywhere. A finger still on HOP when
+the join lands is spent on the join: the first life starts with jump up, and
+the latch waits for the next press.
 
 Geometry, sizing rationale and the input model are specified in
 [TOUCH_UX_REDESIGN.md](TOUCH_UX_REDESIGN.md); the coordinate contract is in

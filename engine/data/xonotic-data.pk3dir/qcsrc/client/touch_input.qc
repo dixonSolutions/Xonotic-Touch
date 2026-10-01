@@ -778,7 +778,11 @@ void Touch_Frame(void)
 	if (spectatee_status != 0)
 	{
 		touch_hop_latched = false;
-		touch_hop_cancelling = false;
+		// The finger that joins is still down on the first frame of the life,
+		// where latch mode sees no new press and a stale touch_hop_press_time
+		// already reads as "held long enough". Spend the press here, as a tap
+		// that stops a hop does, so the latch waits for the next one.
+		touch_hop_cancelling = jump_down;
 		Touch_SetKey("jump", jump_down);
 	}
 	else if (autocvar_touch_hop_mode == TOUCH_HOP_LATCH)

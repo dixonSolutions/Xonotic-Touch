@@ -1042,6 +1042,12 @@ static qbool VID_InputModeShortcut(const SDL_KeyboardEvent *key)
 		return false;
 	if (!(mod & KMOD_CTRL) || !(mod & KMOD_ALT) || (mod & (KMOD_SHIFT | KMOD_GUI)))
 		return false;
+	// The left Alt only: Windows reports AltGr as left Ctrl + right Alt, so
+	// without this a layout's AltGr+1 or AltGr+2 would lock the input mode
+	// instead of typing its character, in the console and chat too. keys.c
+	// keeps Ctrl+Alt out of the console's own shortcuts for the same reason.
+	if (mod & (KMOD_RALT | KMOD_MODE))
+		return false;
 	// Binding a key in the menu takes every key as it is.
 	if (key_dest == key_menu_grabbed)
 		return false;

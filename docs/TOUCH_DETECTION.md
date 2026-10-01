@@ -39,7 +39,9 @@ launch-time Dynamic goes back to that answer.
 
 The keys are read by scancode, so the number row works on any layout. The 1
 or 2 never reaches the game or keyboard-use detection. They are not taken
-while the menu is grabbing a key for a binding.
+while the menu is grabbing a key for a binding, and the Alt is the left one:
+Windows reports AltGr as left Ctrl + right Alt, so AltGr+1 and AltGr+2 still
+type their character, in the console and chat too.
 
 ## Detection order
 
