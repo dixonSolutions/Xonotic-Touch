@@ -428,13 +428,13 @@ void Touch_ApplySensitivity(void)
 {
 	if (!cvar("vid_touchscreen"))
 		return;
-	// When CSQC owns look, never write sensitivity (D2). Ownership sets it to 0.
+	// When CSQC owns look, touch reads touch_sens_* itself and the mouse cvars
+	// belong to the mouse (D2). m_pitch was reset here too, which switched off
+	// the mouse's Invert aiming every time a touch setting changed.
 	if (autocvar_touch_look_owns_view)
-	{
-		cvar_set("m_pitch", "0.022");
-		cvar_set("m_yaw", "0.022");
 		return;
-	}
+	// Legacy path: touch drags reach the engine as pointer motion, so the only
+	// way to set their speed is the mouse's own cvars.
 	float dpi = max(160, cvar("vid_touchscreen_xdpi"));
 	float effective = autocvar_touch_sens_base * (320.0 / dpi);
 	float pitch = 0.022 * autocvar_touch_sens_y_mult;

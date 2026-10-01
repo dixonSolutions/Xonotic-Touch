@@ -962,7 +962,9 @@ static void look_apply(float raw_x, float raw_y, float dt)
 	// aim friction: the drag turns slower over an enemy (touch_aim.c)
 	yaw *= TouchAim_LookScale();
 	pitch *= TouchAim_LookScale();
-	cap = cv("touch_look_max_deg_per_s", 900) * dt;
+	// a clamp on finger speed, not on turn speed: it rises with sensitivity
+	// (touch_look.qc)
+	cap = cv("touch_look_max_deg_per_s", 900) * max(1.0f, cv("touch_sens_base", 2.8f) / 2.8f) * dt;
 	yaw = bound(-cap, yaw, cap);
 	pitch = bound(-cap, pitch, cap);
 	cl.viewangles[YAW] -= yaw;

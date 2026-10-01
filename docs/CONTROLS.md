@@ -193,7 +193,7 @@ harmlessly.
 
 | Cvar | Type | Range | Standard | Maps to / notes |
 |------|------|-------|----------|-----------------|
-| `touch_sens_base` | float | 1.5–5.0 | `3.5` | UI “Medium”; DPI-normalized before `sensitivity` |
+| `touch_sens_base` | float | 0.1–50 | `2.8` | Touch look speed. Separate from the mouse's `sensitivity` (Settings → Input, also 0.1–50); presets never set the mouse cvars |
 | `touch_sens_y_mult` | float | 0.5–1.5 | `1.0` | Vertical look multiplier vs horizontal |
 | `touch_invert_y` | int | 0/1 | `0` | Flip pitch |
 | `touch_look_smoothing` | int | 0–2 | `1` | Fallback averaging when the 1€ filter is off |
@@ -201,7 +201,7 @@ harmlessly.
 | `touch_look_fcmin` | float | 0.5–5 | `1.5` | 1€ minimum cutoff (Hz) — lower = smoother at rest |
 | `touch_look_beta` | float | 0–0.2 | `0.03` | 1€ speed coefficient — higher = less lag when fast |
 | `touch_look_deadzone_px` | int | 0–20 | `4` | Ignore micro-jitter on glass |
-| `touch_look_max_deg_per_s` | float | | `900` | Clamp against contact-jump spikes |
+| `touch_look_max_deg_per_s` | float | | `900` | Clamp against contact-jump spikes, at `touch_sens_base` 2.8; rises in proportion above that, so it never limits sensitivity |
 | `touch_look_escape_carry` | float | 0–1 | `0.5` | Momentum kept when a drag leaves the look zone |
 | `touch_stick_deadzone` | float | 0–0.35 | `0.18` | Analog move drift prevention |
 | `touch_stick_range` | float | 0.5–1.0 | `1.0` | Max deflection → max speed |
@@ -210,7 +210,7 @@ harmlessly.
 | `touch_gyro_sens` | float | | `0.5` | |
 | `touch_gyro_ads_only` | int | 0/1 | `1` | Gyro only while `+zoom` held |
 
-**DPI-normalized sensitivity** (apply in CSQC each frame or on cvar change):
+**DPI-normalized sensitivity** — legacy path only, with `touch_look_owns_view 0`, where touch drags reach the engine as pointer motion. With the default `1`, CSQC turns the view from `touch_sens_base` itself and never writes `sensitivity`, `m_pitch` or `m_yaw`:
 
 ```
 effective_sens = touch_sens_base * (320.0 / vid_touchscreen_xdpi)

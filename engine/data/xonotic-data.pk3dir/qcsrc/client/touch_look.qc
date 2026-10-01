@@ -165,7 +165,10 @@ void Touch_Look_Update(vector raw_px, float dt)
 		pitch *= assist;
 	}
 
-	float cap = autocvar_touch_look_max_deg_per_s * dt;
+	// The clamp is there for contact-id jumps, so it limits how fast the finger
+	// can move, not how fast the view can turn. A flat 900°/s held sensitivity
+	// 50 to a 200 px/s drag: it rises with touch_sens_base past the 2.8 default.
+	float cap = autocvar_touch_look_max_deg_per_s * max(1, autocvar_touch_sens_base / 2.8) * dt;
 	yaw = bound(-cap, yaw, cap);
 	pitch = bound(-cap, pitch, cap);
 
