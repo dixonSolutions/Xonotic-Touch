@@ -1034,7 +1034,7 @@ static void pill_release(finger_t *f)
 
 void TouchHUD_Frame(void)
 {
-	int i, j;
+	int i, j, role;
 	double now = host.realtime;
 	float dt;
 	float grace = cv("touch_finger_grace_ms", 120) * 0.001f;
@@ -1077,6 +1077,10 @@ void TouchHUD_Frame(void)
 				}
 			if (!f)
 				continue;
+			// Pick the role before the slot is taken: a zeroed slot reads as
+			// ROLE_MOVE (0), so role_owned() would find the new finger itself
+			// and ignore every touch on the stick.
+			role = assign_role(px, py);
 			memset(f, 0, sizeof(*f));
 			f->used = true;
 			f->src = id;
@@ -1084,7 +1088,7 @@ void TouchHUD_Frame(void)
 			f->down_y = f->last_y = py;
 			f->down_time = now;
 			f->first_frame = true;
-			f->role = assign_role(px, py);
+			f->role = role;
 			if (f->role == ROLE_LOOK)
 				look_begin();
 			if (f->role == ROLE_JUMP)
