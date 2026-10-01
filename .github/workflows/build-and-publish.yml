@@ -209,13 +209,21 @@ jobs:
             --version "$PACKAGE_VERSION"
           cat > site/index.html <<EOF
           <!DOCTYPE html>
-          <html lang="en"><head><meta charset="utf-8"><title>Xonotic Touch packages</title></head>
+          <html lang="en"><head><meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Xonotic Touch: touch FPS for Android, Ubuntu Touch and Linux</title>
+          <meta name="description" content="Xonotic Touch is the arena shooter Xonotic with touch controls, for Android, Ubuntu Touch, and any Linux phone, tablet or touchscreen PC via Flatpak.">
+          </head>
           <body>
-          <h1>Xonotic Touch packages</h1>
+          <h1>Xonotic Touch</h1>
+          <p>The arena shooter <a href="https://xonotic.org">Xonotic</a> with two-thumb touch controls, for
+          <strong>Android</strong>, <strong>Ubuntu Touch</strong>, and <strong>any Linux phone, tablet or touchscreen PC</strong> via Flatpak.
+          Packages are about 60 MB; maps, textures and music download on first launch.</p>
           <ul>
-            <li><a href="flatpak/">Flatpak remote</a> (Linux x86_64 + aarch64)</li>
-            <li><a href="click/">Ubuntu Touch .click downloads</a> (arm64 + armhf)</li>
-            <li><a href="https://github.com/dixonSolutions/Xonotic-Touch/releases/latest">GitHub Releases (latest)</a></li>
+            <li>Android: <a href="https://github.com/dixonSolutions/Xonotic-Touch/releases/latest">APK from GitHub Releases</a> (arm64-v8a, armeabi-v7a, x86_64)</li>
+            <li>Linux: <a href="flatpak/">Flatpak remote</a> (x86_64 + aarch64; postmarketOS, Mobian, Fedora, Ubuntu and other distros)</li>
+            <li>Ubuntu Touch: <a href="https://open-store.io/app/xonotictouch.dixonsolutions">OpenStore</a>, or <a href="click/">.click downloads</a> (arm64 + armhf)</li>
+            <li><a href="https://github.com/dixonSolutions/Xonotic-Touch">Source code and docs on GitHub</a></li>
           </ul>
           <p>Build ${PACKAGE_VERSION}</p>
           </body></html>

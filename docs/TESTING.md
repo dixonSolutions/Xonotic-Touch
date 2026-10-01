@@ -1,12 +1,12 @@
 # Testing
 
-Primary distribution is **Flatpak** (Linux) and **`.click`** (Ubuntu Touch), both built automatically on each `main` push. For day-to-day testing on a Linux touch tablet:
+Packages are **Flatpak** (any Linux), **`.click`** (Ubuntu Touch) and **`.apk`** (Android), all built automatically on each `main` push. For day-to-day testing on a Linux touch tablet:
 
 ```bash
 ./scripts/install-flatpak.sh --from-remote --run
 ```
 
-On Ubuntu Touch, install the arm64/armhf `.click` from the [latest release](https://github.com/dixonSolutions/Xonotic-Touch/releases/latest) (`pkcon install-local --allow-untrusted …`).
+On Ubuntu Touch, install the arm64/armhf `.click` from the [latest release](https://github.com/dixonSolutions/Xonotic-Touch/releases/latest) (`pkcon install-local --allow-untrusted …`). On Android, sideload the APK from the same release; [ANDROID.md](ANDROID.md) covers building one locally.
 
 Packages are **slim** (~60 MB): textures, maps, and music download on **first launch** with an in-game progress bar (network required). See [RELEASES.md](RELEASES.md) and [SETUP.md](SETUP.md).
 

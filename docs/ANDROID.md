@@ -10,7 +10,7 @@ is darkplaces compiled with the NDK.
 | Package id | `io.github.dixonsolutions.xonotictouch` |
 | App name | Xonotic Touch |
 | Launcher icon | `engine/misc/logos/icons_png/xonotic_512.png` — the same logo the Click and Flatpak packages use |
-| ABIs | `arm64-v8a`, `armeabi-v7a` |
+| ABIs | `arm64-v8a`, `armeabi-v7a`, `x86_64` |
 | min / target SDK | 21 / 35 |
 | Renderer | GLES2 (`USE_GLES2`, already set for `__ANDROID__` in `sys.h`) |
 | APK payload | Slim data only; maps, textures and music download on first launch |

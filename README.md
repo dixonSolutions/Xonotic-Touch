@@ -1,11 +1,11 @@
 # Xonotic Touch
 
-**Xonotic Touch** is a touch-only build of [Xonotic](https://xonotic.org) for Linux tablets and phones. Virtual sticks, weapon wheels, and layout presets are tuned for two-thumb play in landscape. Ships as a slim **Flatpak**, Ubuntu Touch **`.click`**, or Android **`.apk`** (~60 MB); textures, maps, and music download on first launch (~3 GB). Native C + QuakeC — no Qt shell.
+**Xonotic Touch** is a touch-first build of [Xonotic](https://xonotic.org) for **Android**, **Ubuntu Touch**, and **any Linux phone, tablet or touchscreen PC via Flatpak**. Virtual sticks, weapon wheels, and layout presets are tuned for two-thumb play in landscape. Ships as a slim Android **`.apk`**, Ubuntu Touch **`.click`**, or **Flatpak** (~60 MB); textures, maps, and music download on first launch (~3 GB). Native C + QuakeC — no Qt shell.
 
 | | |
 |---|---|
-| **Install** | Flatpak remote, [OpenStore](https://open-store.io/app/xonotictouch.dixonsolutions) / Ubuntu Touch `.click`, and versioned GitHub Releases (each `main` push) |
-| **Platforms** | Flatpak: Linux `x86_64` + `aarch64` (Wayland/X11). Click: Ubuntu Touch `arm64` + `armhf`. Android: `arm64-v8a` + `armeabi-v7a` |
+| **Install** | Android `.apk` from GitHub Releases, Flatpak remote (any Linux distro), [OpenStore](https://open-store.io/app/xonotictouch.dixonsolutions) / Ubuntu Touch `.click` — versioned GitHub Releases on each `main` push |
+| **Platforms** | Android: `arm64-v8a` + `armeabi-v7a` + `x86_64` (Waydroid, Chromebooks). Flatpak: any Linux, `x86_64` + `aarch64` (Wayland/X11) — postmarketOS, Mobian, Fedora, Ubuntu, … Click: Ubuntu Touch `arm64` + `armhf` |
 | **Input** | Touchscreen required — mouse-as-touch only for local dev |
 
 <img width="1954" height="1302" alt="image" src="https://github.com/user-attachments/assets/cf918732-3540-4fd4-a9f9-b7550dc1b6d2" />
@@ -50,7 +50,7 @@ Or: `./scripts/build-click.sh --arch arm64`
 
 ### Android (.apk)
 
-Sideload from [GitHub Releases](https://github.com/dixonSolutions/Xonotic-Touch/releases/latest) — `arm64-v8a` for anything from the last decade, `armeabi-v7a` for older phones. Same slim-package deal: the APK carries game logic and the menu, and the first launch pulls maps, textures and music.
+Sideload from [GitHub Releases](https://github.com/dixonSolutions/Xonotic-Touch/releases/latest) — `arm64-v8a` for anything from the last decade, `armeabi-v7a` for older phones, `x86_64` for Waydroid and Chromebooks. Same slim-package deal: the APK carries game logic and the menu, and the first launch pulls maps, textures and music.
 
 Local build: `ANDROID_SDK_ROOT=~/Android/Sdk ./scripts/android-build.sh --abi arm64-v8a` — see [docs/ANDROID.md](docs/ANDROID.md).
 
