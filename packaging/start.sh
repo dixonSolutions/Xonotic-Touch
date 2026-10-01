@@ -376,28 +376,34 @@ ASSET_DISCOVER_LIB="${FETCH_ASSETS%/*}/asset-discover.sh"
 # path) or when the user taps "Try again" after a failure. The engine's write
 # directory is either the gamedir or ~/.xonotic/data depending on how DarkPlaces
 # resolves the user path, so both are checked (same split as touch.layout.cfg).
+# QC's own writes go one level deeper: VM_fopen puts every FILE_WRITE under
+# data/ in the write directory, so the menu's touch/relaunch-request.txt is
+# <userdir>/data/data/touch/relaunch-request.txt. Neither path above is that,
+# and the relaunch after the first download never happened.
 RESTART_MARKER="$USER_DATA/touch/relaunch-request.txt"
 RESTART_MARKER_HOME="${ENGINE_HOME}/data/touch/relaunch-request.txt"
+RESTART_MARKER_QC="${ENGINE_HOME}/data/data/touch/relaunch-request.txt"
 BACKGROUND_MARKER="$USER_DATA/touch/background-fetch-request.txt"
 BACKGROUND_MARKER_HOME="${ENGINE_HOME}/data/touch/background-fetch-request.txt"
+BACKGROUND_MARKER_QC="${ENGINE_HOME}/data/data/touch/background-fetch-request.txt"
 FETCHD_PIDFILE="$USER_BASE/fetchd.pid"
 HELPER_LIB_DIR="$USER_BASE/lib"
 FLATPAK_APP_ID="${FLATPAK_ID:-io.github.dixonSolutions.XonoticTouch}"
 
 restart_requested() {
-    [ -f "$RESTART_MARKER" ] || [ -f "$RESTART_MARKER_HOME" ]
+    [ -f "$RESTART_MARKER" ] || [ -f "$RESTART_MARKER_HOME" ] || [ -f "$RESTART_MARKER_QC" ]
 }
 
 clear_restart_request() {
-    rm -f "$RESTART_MARKER" "$RESTART_MARKER_HOME" 2>/dev/null || true
+    rm -f "$RESTART_MARKER" "$RESTART_MARKER_HOME" "$RESTART_MARKER_QC" 2>/dev/null || true
 }
 
 background_fetch_requested() {
-    [ -f "$BACKGROUND_MARKER" ] || [ -f "$BACKGROUND_MARKER_HOME" ]
+    [ -f "$BACKGROUND_MARKER" ] || [ -f "$BACKGROUND_MARKER_HOME" ] || [ -f "$BACKGROUND_MARKER_QC" ]
 }
 
 clear_background_fetch_request() {
-    rm -f "$BACKGROUND_MARKER" "$BACKGROUND_MARKER_HOME" 2>/dev/null || true
+    rm -f "$BACKGROUND_MARKER" "$BACKGROUND_MARKER_HOME" "$BACKGROUND_MARKER_QC" 2>/dev/null || true
 }
 
 # Copy download helpers into user data so a host-side fetchd can run them after

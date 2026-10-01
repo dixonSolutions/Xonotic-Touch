@@ -356,6 +356,59 @@ WGET
 expect_posix_fetch_completes 'POSIX downloader installs the packs from the core zip alone' 'none'
 expect_posix_fetch_completes 'POSIX downloader does not fetch a complete zip again' 'complete-core-zip'
 
+# After the first download the wizard writes touch/relaunch-request.txt and
+# quits, and the launcher has to start the engine again to load the new packs.
+# QC's FILE_WRITE puts that file under data/ in the engine's write directory,
+# <userdir>/data/data/touch/, which the launcher never looked at: the session
+# just ended. This stub writes the marker exactly there on its first run.
+expect_relaunch_after_wizard() {
+    local label="$1"
+    shift
+    local runs="$WORK/engine-runs.txt"
+
+    rm -f "$runs"
+    cat > "$APP_ROOT/bin/xonotic" <<EOF
+#!/bin/sh
+echo run >> "$runs"
+userdir="\$HOME/.xonotic"
+while [ \$# -gt 0 ]; do
+    if [ "\$1" = -userdir ]; then userdir="\$2"; fi
+    shift
+done
+if [ "\$(wc -l < "$runs")" -eq 1 ]; then
+    mkdir -p "\$userdir/data/data/touch"
+    : > "\$userdir/data/data/touch/relaunch-request.txt"
+fi
+exit 0
+EOF
+    chmod 755 "$APP_ROOT/bin/xonotic"
+
+    ( cd "$APP_ROOT" && env -i \
+        HOME="$WORK/home" \
+        PATH=/nonexistent \
+        XONOTIC_SKIP_ASSET_FETCH=1 \
+        "$@" \
+        /bin/sh -c 'exec bin/start.sh' ) >/dev/null 2>&1 || true
+
+    local count=0
+    [ -f "$runs" ] && count="$(wc -l < "$runs")"
+    if [ "$count" -eq 2 ]; then
+        pass "$label"
+    else
+        fail "$label: engine ran $count time(s), expected 2"
+    fi
+    stage_engine_stub
+}
+
+rm -rf "$CLICK_USER_BASE" "$WORK/home/.xonotic"
+expect_relaunch_after_wizard 'click relaunches the engine when the wizard asks' \
+    APP_ID=xonotictouch.dixonsolutions_xonotic_1.2.42 \
+    XDG_DATA_HOME="$WORK/home/.local/share" \
+    XONOTIC_TOUCH_NO_BASH=1
+rm -rf "$WORK/home/.xonotic"
+expect_relaunch_after_wizard 'desktop relaunches the engine when the wizard asks' \
+    XONOTIC_TOUCH_USER_BASE="$USER_BASE"
+
 # Handing an in-flight download to fetchd stops the in-sandbox job first, on the
 # promise that the daemon picks it up. When it does not, the progress file must
 # not be left on a fresh discover/running line: the next launch reads that as a

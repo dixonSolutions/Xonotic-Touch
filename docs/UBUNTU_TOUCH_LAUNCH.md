@@ -28,7 +28,7 @@ collapsed to `/` and the launcher aborted before the engine ever started.
 | `$0` is relative; `APP_DIR` points at the install root | Resolve the app root from both, never from `pwd`/`dirname` |
 | `APP_ID` is `<pkgname>_<appname>_<version>` | Derive `APP_PKGNAME` as `${APP_ID%%_*}` for the writable data dir |
 | The engine's default userdir `~/.xonotic` is not writable | Click launches pass `-userdir $USER_BASE/userdir` (section 2) |
-| Most phones (Halium) drive the GPU through libhybris: EGL with GLES, no desktop GL | The click engine is built with `USE_GLES2` (`XONOTIC_DP_GLES2=1` in `scripts/clickable-build.sh`) |
+| Most phones (Halium) drive the GPU through libhybris: EGL with GLES, no desktop GL | The click engine is built with `USE_GLES2` (`XONOTIC_DP_GLES2=1` in `scripts/clickable-build.sh`). Its texture table takes DXT for GPUs with S3TC (Mesa ones): the full data's DDS textures otherwise stopped it at init |
 
 ## 2. Launcher contract (`packaging/start.sh`)
 
