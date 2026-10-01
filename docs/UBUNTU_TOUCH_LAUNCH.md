@@ -94,10 +94,13 @@ Environment overrides: `XONOTIC_TOUCH_APP_ROOT`, `XONOTIC_TOUCH_USER_BASE`,
   ever started. The bundled one runs from the click tree and links the phone's
   `libssl3`; no libraries are copied with it. Override a missing one with
   `XONOTIC_ALLOW_MISSING_OPENSSL=1`.
-- `curl`/`unzip` are only bundled when the host binary matches the target arch.
-  Cross builds previously shipped **amd64** helpers inside arm64/armhf clicks;
-  those were unusable on device, so we now fall back to busybox `wget`
-  (credentials move into the URL userinfo) and busybox `unzip`.
+- No host `curl` or `unzip` is bundled, even for a native build: phone clicks are
+  cross-built and never could ship them, and a native copy brought its libraries
+  (libc included) and a download path no phone takes. busybox `wget` and `unzip`
+  serve every click. `stage-click.sh` likewise skips `/usr/local` libraries, the
+  build image's own (an sdl2-compat without its SDL3).
+- Branches other than `main` also build an **amd64** click (never published), so
+  a click can be play-tested at native speed under its real profile on a PC.
 - Staging failure is a build failure. Override with
   `XONOTIC_ALLOW_MISSING_BUSYBOX=1` only to produce a knowingly broken package.
 

@@ -63,6 +63,12 @@ copy_shared_libs() {
                 ''|linux-vdso.so.*) continue ;;
             esac
             [ -f "$lib" ] || continue
+            # /usr/local is the build image's own, not the phone's: the amd64
+            # clickable image keeps an SDL3 and an sdl2-compat there, and
+            # bundling that libSDL2 without its SDL3 crashed the engine.
+            case "$lib" in
+                /usr/local/*) continue ;;
+            esac
             base="$(basename "$lib")"
             case "$base" in
                 ld-linux*.so*|libc.so*|libm.so*|libdl.so*|libpthread.so*|librt.so*|libresolv.so*|libgcc_s.so*|libstdc++.so*)

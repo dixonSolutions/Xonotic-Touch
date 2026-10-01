@@ -58,22 +58,6 @@ binary_matches_arch() {
     file -bL "$binary" 2>/dev/null | grep -qF "$signature"
 }
 
-copy_binary_with_libs() {
-    local binary="$1"
-    local dest_name="${2:-$(basename "$binary")}"
-
-    # The name may already be a busybox applet link; never install through it.
-    rm -f "$BIN_DIR/$dest_name"
-    install -m 755 "$binary" "$BIN_DIR/$dest_name"
-
-    local lib
-    while IFS= read -r lib; do
-        if [ -f "$lib" ]; then
-            install -m 755 "$lib" "$LIB_DIR/"
-        fi
-    done < <(ldd "$binary" 2>/dev/null | awk '/=> \/.*\// {print $3}')
-}
-
 BUSYBOX_TMP=""
 cleanup() {
     if [ -n "$BUSYBOX_TMP" ]; then
@@ -219,17 +203,7 @@ if ! stage_openssl "$ARCH_NAME"; then
     fi
 fi
 
-# curl/unzip are nicer than the busybox applets for large downloads, but only a
-# target-arch build is usable on the device.
-for util in curl unzip; do
-    util_path="$(command -v "$util" 2>/dev/null || true)"
-    if [ -z "$util_path" ]; then
-        continue
-    fi
-    if binary_matches_arch "$util_path" "$ARCH_NAME"; then
-        copy_binary_with_libs "$util_path"
-    else
-        printf 'stage-click-utils: skipping host %s (not %s) — busybox applet is used instead\n' \
-            "$util" "$ARCH_NAME"
-    fi
-done
+# No host curl or unzip, even when the build host matches the target. A
+# cross-built click (every phone build) never could ship them, and copying a
+# native one dragged in its libraries, libc included: the amd64 test click
+# then took a download path no phone takes. busybox wget and unzip serve all.

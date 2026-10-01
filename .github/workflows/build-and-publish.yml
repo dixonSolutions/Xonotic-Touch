@@ -104,7 +104,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [arm64, armhf]
+        # Phones are arm64/armhf, and only those publish. Other refs also
+        # build amd64 so a click can be play-tested at native speed under its
+        # real profile on a PC (docs/UBUNTU_TOUCH_LAUNCH.md).
+        arch: ${{ fromJSON((github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && '["arm64","armhf"]' || '["arm64","armhf","amd64"]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
