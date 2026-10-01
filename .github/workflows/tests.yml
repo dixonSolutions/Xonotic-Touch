@@ -1,0 +1,21 @@
+name: Tests
+
+# Quick checks that need no engine build and no display. They run on every
+# branch push and pull request. main runs them through build-and-publish.yml,
+# which will not publish a release that fails them.
+on:
+  push:
+    branches-ignore: [main, master]
+    paths-ignore: ['docs/**', 'README.md']
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  input-presence:
+    name: Input presence
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse recorded /proc/bus/input/devices listings
+        run: bash scripts/test-input-presence.sh

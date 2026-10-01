@@ -71,7 +71,7 @@ feed and the chat feed each get a band that touches neither.
 | Weapon | WEP button / wheel; the right-edge strip is a readout, not a switcher | `impulse 1`…`9` or cycle |
 | Reload | Tap; hidden by default | `weapon_reload` |
 | **MENU** (top row) | Tap → Escape / GameMenu | Native Xonotic pause menu — see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md) |
-| **CONSOLE** (bottom-left) | Tap → `toggleconsole`, drag to reposition | Text sheet: layered keyboard, COMMANDS palette — see [TOUCH_CONSOLE_SPEC.md](TOUCH_CONSOLE_SPEC.md) |
+| **CONSOLE** (bottom-left) | Tap → `toggleconsole`, drag to reposition | Text sheet: layered keyboard (only with no keyboard attached), COMMANDS palette — see [TOUCH_CONSOLE_SPEC.md](TOUCH_CONSOLE_SPEC.md) |
 | **CHAT** (top-right) | Tap → modal chat sheet: backlog, field, on-screen QWERTY | `say` / `say_team`; also the `touch_chat [team]` command for a hardware key |
 | **SCORE** (bottom-left) | Tap → full scoreboard, tap again to clear; Escape also clears | `+showscores` / `-showscores`; also the `touch_scores` command |
 | Mobile HUD | Health, armour and ammo as one group, top-left | Bars for the two that have a maximum; reserve rounds beside the clip for weapons that reload |
@@ -260,9 +260,10 @@ Engine movement (already in `touch/xonotic.cfg`):
 These run in the engine client (`engine/darkplaces/touch_aim.c`), not in
 the CSQC, so they work the same on a public server (where the client runs
 the server's own CSQC and the engine draws the HUD) and in a local match.
-They only run in touch mode: when a physical keyboard is attached the engine
+They only run in touch mode: when a physical keyboard is played on the engine
 clears `vid_touchscreen` and all of this switches off, whatever the cvars
-say. Settings → Touch → **Shoot helpers** has the two switches and the
+say. They also stand down while a mouse aims next to the touch controls
+(`vid_touchscreen_mouselook`). Settings → Touch → **Shoot helpers** has the two switches and the
 slowdown / pull sliders.
 
 | Cvar | Default | What it does |

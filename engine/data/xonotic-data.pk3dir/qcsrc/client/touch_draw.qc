@@ -197,6 +197,12 @@ void Touch_DrawOverlay(float overlayAlpha)
 
 void Touch_Draw(void)
 {
+	// The engine may hold a mouse for aiming next to the controls; a modal
+	// sheet needs it back as a pointer.
+	float owns = Touch_OwnsScreen();
+	if (owns != cvar("_touch_owns_screen"))
+		cvar_set("_touch_owns_screen", ftos(owns));
+
 	if (!Touch_Active())
 		return;
 

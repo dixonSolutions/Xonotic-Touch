@@ -1,0 +1,68 @@
+I: Bus=0003 Vendor=046d Product=c52b Version=0111
+N: Name="Logitech USB Receiver"
+P: Phys=
+S: Sysfs=/devices/pci0000:00/0000:00:14.0/usb1/1-2/1-2:1.0/0003:046D:C52B.0001/input/input4
+U: Uniq=
+H: Handlers=sysrq kbd leds event4 
+B: PROP=0
+B: EV=120013
+B: KEY=a08effdf018fffff fffffffffffffffe
+B: MSC=10
+
+I: Bus=0003 Vendor=046d Product=c52b Version=0111
+N: Name="Logitech USB Receiver Mouse"
+P: Phys=
+S: Sysfs=/devices/pci0000:00/0000:00:14.0/usb1/1-2/1-2:1.1/0003:046D:C52B.0002/input/input5
+U: Uniq=
+H: Handlers=mouse0 event5 
+B: PROP=0
+B: EV=17
+B: KEY=1f0000 0 0 0 0
+B: REL=1943
+B: MSC=10
+
+I: Bus=0003 Vendor=045e Product=02ea Version=0111
+N: Name="Microsoft X-Box One S pad"
+P: Phys=
+S: Sysfs=/devices/pci0000:00/0000:00:14.0/usb1/1-4/1-4:1.0/input/input6
+U: Uniq=
+H: Handlers=event6 js0 
+B: PROP=0
+B: EV=20000b
+B: KEY=7cdb000000000000 0 0 0 0
+B: ABS=3003f
+
+I: Bus=0003 Vendor=28de Product=1205 Version=0111
+N: Name="Steam Deck"
+P: Phys=
+S: Sysfs=/devices/pci0000:00/0000:00:14.0/usb1/1-5/1-5:1.2/input/input7
+U: Uniq=
+H: Handlers=sysrq kbd leds mouse1 event7 
+B: PROP=0
+B: EV=120017
+B: KEY=1f0000 0 0 a08effdf018fffff fffffffffffffffe
+B: REL=3
+B: MSC=10
+
+I: Bus=0003 Vendor=0fac Product=0ade Version=0111
+N: Name="keyd virtual keyboard"
+P: Phys=
+S: Sysfs=/devices/virtual/input/input8
+U: Uniq=
+H: Handlers=sysrq kbd event8 
+B: PROP=0
+B: EV=120013
+B: KEY=a08effdf018fffff fffffffffffffffe
+B: MSC=10
+
+I: Bus=0003 Vendor=0fac Product=1ade Version=0111
+N: Name="keyd virtual pointer"
+P: Phys=
+S: Sysfs=/devices/virtual/input/input9
+U: Uniq=
+H: Handlers=mouse2 event9 
+B: PROP=0
+B: EV=f
+B: KEY=1f0000 0 0 0 0
+B: REL=143
+B: ABS=3

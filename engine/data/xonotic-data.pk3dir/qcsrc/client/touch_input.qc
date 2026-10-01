@@ -1,4 +1,5 @@
 #include "touch_input.qh"
+#include "touch_chat.qh"
 #include "touch_customize.qh"
 #include "touch_glass.qh"
 #include "touch_hud.qh"
@@ -824,6 +825,11 @@ bool Touch_InputEvent(float bInputType, float nPrimary, float nSecondary)
 		return true;
 	}
 
+	// Typing on a real keyboard while the chat sheet is open goes into the
+	// message, not to the game's binds.
+	if (Touch_Chat_KeyEvent(bInputType, nPrimary, nSecondary))
+		return true;
+
 	// Escape clears the board before it reaches the game menu: the board is the
 	// thing on screen, so it is what Escape is aimed at.
 	if (Touch_Scores_Shown() && bInputType == 0 && nPrimary == K_ESCAPE)
@@ -835,13 +841,19 @@ bool Touch_InputEvent(float bInputType, float nPrimary, float nSecondary)
 	// Consume MOUSE1 symmetrically so engine +attack/-attack cannot desync (B2).
 	// Positions come from gettouchfinger(10) in Touch_PollFingers, or getmousepos
 	// in Touch_Pointer_Frame for the modal sheets — never from the event itself.
+	// A mouse the engine has taken for aiming next to the touch controls
+	// (vid_touchscreen_mouselook) is not a pointer on them: its button fires.
 	if (bInputType == 0 && nPrimary == K_MOUSE1)
 	{
+		if (cvar("vid_touchscreen_mouselook"))
+			return false;
 		Touch_SetMouseDown(true);
 		return true;
 	}
 	if (bInputType == 1 && nPrimary == K_MOUSE1)
 	{
+		if (!Touch_MouseDown())
+			return false;
 		Touch_SetMouseDown(false);
 		return true;
 	}

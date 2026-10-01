@@ -17,24 +17,25 @@ See the GNU General Public License for more details.
 Whether the on-screen touch controls run (vid_touchscreen) is decided here,
 in two layers:
 
-1. Presence: what hardware is attached. A touchscreen, a keyboard the player
-   can type on, whether a convertible is folded into a tablet. On Linux this
-   is read from /proc/bus/input/devices and the SW_TABLET_MODE switch; on
-   Android the activity reports it over JNI from InputManager. It is re-read
-   only when the kernel says a device came or went (inotify on /dev/input, a
-   kernel uevent socket), so an idle frame costs one poll() with a zero
-   timeout.
+1. Presence: what hardware the system lists. A touchscreen, a keyboard the
+   player can type on, a mouse or touchpad, whether a convertible is folded
+   into a tablet. On Linux this is read from /proc/bus/input/devices and the
+   SW_TABLET_MODE switch (vid_inputscan.h); on Android the activity reports
+   it over JNI from InputManager. It is re-read only when the kernel says a
+   device came or went (inotify on /dev/input, a kernel uevent socket), so
+   an idle frame costs one poll() with a zero timeout.
 
-2. Last active input: what the player is actually using. A finger (or pen) on
-   the screen shows the controls at once, even with a keyboard attached -- a
-   Surface with its Type Cover on, tapped. Keyboard and mouse hide them again,
-   but only after sustained use with no finger on the glass, so a stray key
-   or a bumped mouse does not take the controls away.
-
-Whether there is a keyboard is only ever the first layer's answer, read live
-from the system. Using a mouse, or a key arriving, never stands in for it: a
-mouse on a tablet leaves the player nothing to type or move with, and keys
-come from on-screen keyboards, remotes and mice with macro buttons too.
+2. Last active input: what the player is actually using. Input only ever
+   confirms what presence already lists; it never stands in for it. A key
+   arriving with no keyboard listed is an on-screen keyboard, a remote or a
+   mouse's macro button, and changes nothing.
+   - A finger (or pen) on the screen shows the controls at once, even with a
+     keyboard attached -- a Surface with its Type Cover on, tapped.
+   - Sustained typing on a listed keyboard, with a listed mouse or touchpad
+     to aim with and no finger on the glass, hides them.
+   - A mouse never hides them. Mouse and touch work together: its clicks are
+     clicks, and once a listed mouse has been used it aims in the game while
+     the touch controls stay (VID_TouchMouselook).
 
 Presence is the answer until something has been used, and a keyboard being
 plugged in or removed starts over from presence.
@@ -78,6 +79,7 @@ extern cvar_t vid_touchscreen_mode;
 extern cvar_t vid_touchscreen_touchonly;
 extern cvar_t vid_touchscreen_detected;
 extern cvar_t vid_touchscreen_touchonly_detected;
+extern cvar_t vid_keyboard_detected;
 
 // Android used to force Always on every start, and the archived config kept
 // that 2. This records that the one-off move back to Auto has happened, so a
@@ -96,7 +98,7 @@ typedef struct vid_presence_s
 {
 	qbool touch;        // a direct touch surface (touchscreen or screen pen)
 	qbool keyboard;     // a keyboard the player can type on right now
-	qbool mouse;        // an external pointing device (Android only)
+	qbool mouse;        // a mouse, trackpoint or touchpad
 	qbool tablet_mode;  // SW_TABLET_MODE engaged
 }
 vid_presence_t;
@@ -106,310 +108,7 @@ static qbool vid_presence_valid;
 
 #ifdef VID_LINUX_PROBES
 
-static qbool vid_strcasestr_has(const char *hay, const char *needle)
-{
-	size_t nlen, hlen, i, j;
-
-	if (!hay || !needle || !needle[0])
-		return false;
-	nlen = strlen(needle);
-	hlen = strlen(hay);
-	if (nlen > hlen)
-		return false;
-	for (i = 0; i + nlen <= hlen; i++)
-	{
-		for (j = 0; j < nlen; j++)
-		{
-			if (tolower((unsigned char)hay[i + j]) != tolower((unsigned char)needle[j]))
-				break;
-		}
-		if (j == nlen)
-			return true;
-	}
-	return false;
-}
-
-// Linux input bits (linux/input-event-codes.h).
-#define VID_KEY_Z                 44
-#define VID_KEY_SPACE             57
-#define VID_BTN_JOYSTICK          0x120
-#define VID_BTN_GAMEPAD           0x130
-#define VID_BTN_TOOL_PEN          0x140
-#define VID_ABS_MT_POSITION_X     53
-#define VID_INPUT_PROP_POINTER    0
-#define VID_INPUT_PROP_DIRECT     1
-#define VID_SW_TABLET_MODE        1
-
-// Linux input bus ids that mean "plugged in by the player".
-#define VID_BUS_USB        0x03
-#define VID_BUS_BLUETOOTH  0x05
-
-static qbool vid_name_is_ignored_keyboard(const char *name)
-{
-	static const char *const ignored[] =
-	{
-		// Button sets and media controls that advertise KEY_A.
-		"power button", "sleep button", "lid switch", "video bus", "gpio-keys",
-		"headset", "hdmi", "sof-hda", "consumer control", "intel hid",
-		"wmi hotkeys", "extra buttons",
-		// The switch device itself.
-		"tablet mode",
-		// Virtual keyboards that remappers and automation (keyd, ydotool,
-		// xdotool, uinput tools, remote desktop) keep permanently plugged in.
-		"keyd", "virtual", "uinput", "ydotool", "xdotool", "wlroots",
-		"remote desktop",
-		// Controllers whose keyboard interface is lizard-mode emulation, not
-		// something anyone types on.
-		"steam deck", "steam controller",
-		NULL
-	};
-	int i;
-
-	if (!name || !name[0])
-		return true;
-	for (i = 0; ignored[i]; i++)
-		if (vid_strcasestr_has(name, ignored[i]))
-			return true;
-	return false;
-}
-
-// Keyboards that are part of the chassis even though they sit on USB: the
-// Surface Type Cover is a USB device, and the tablet switch must still be
-// able to fold it away.
-static qbool vid_name_is_chassis_keyboard(const char *name)
-{
-	return vid_strcasestr_has(name, "type cover") || vid_strcasestr_has(name, "surface keyboard");
-}
-
-// /proc prints each capability bitmap as the kernel's longs, most significant
-// first, without leading zero words. The kernel's long is what matters: a
-// 32-bit (armhf) userspace on an arm64 kernel still reads 64-bit words.
-static int vid_kernel_long_bits(void)
-{
-	static int bits;
-	if (!bits)
-	{
-		struct utsname u;
-		bits = 32;
-		if (sizeof(long) == 8)
-			bits = 64;
-		else if (uname(&u) == 0 && strstr(u.machine, "64"))
-			bits = 64;
-	}
-	return bits;
-}
-
-#define VID_BITMAP_WORDS 32
-typedef struct vid_bitmap_s
-{
-	unsigned long long w[VID_BITMAP_WORDS]; // w[0] is the lowest word
-	int n;
-}
-vid_bitmap_t;
-
-static void vid_bitmap_parse(vid_bitmap_t *b, const char *hex, const char *end)
-{
-	unsigned long long words[VID_BITMAP_WORDS];
-	int n = 0, i;
-	const char *p = hex;
-
-	memset(b, 0, sizeof(*b));
-	while (p < end && n < VID_BITMAP_WORDS)
-	{
-		unsigned long long v = 0;
-		qbool any = false;
-		while (p < end && (*p == ' ' || *p == '\t'))
-			p++;
-		while (p < end && isxdigit((unsigned char)*p))
-		{
-			int c = tolower((unsigned char)*p);
-			v = (v << 4) | (unsigned long long)(c <= '9' ? c - '0' : c - 'a' + 10);
-			any = true;
-			p++;
-		}
-		if (!any)
-			break;
-		words[n++] = v;
-	}
-	b->n = n;
-	for (i = 0; i < n; i++)
-		b->w[i] = words[n - 1 - i];
-}
-
-static qbool vid_bitmap_has(const vid_bitmap_t *b, unsigned bit)
-{
-	unsigned wb = (unsigned)vid_kernel_long_bits();
-	unsigned idx = bit / wb;
-	if ((int)idx >= b->n)
-		return false;
-	return (b->w[idx] >> (bit % wb)) & 1;
-}
-
-// One reading of /proc/bus/input/devices.
-#define VID_MAX_NODES 12
-typedef enum vid_node_kind_e
-{
-	VID_NODE_SWITCH, // has SW_TABLET_MODE: read its events for fold / unfold
-	VID_NODE_PEN     // a pen on the screen: its contacts count as touch use
-}
-vid_node_kind_t;
-
-typedef struct vid_node_s
-{
-	vid_node_kind_t kind;
-	char event[16];   // "event7"
-	char sysfs[128];  // unique per registration, so a reused eventN is noticed
-	int fd;           // -1 until opened
-	qbool engaged;    // switch state
-}
-vid_node_t;
-
-typedef struct vid_scan_s
-{
-	qbool touch;
-	qbool keyboard;
-	qbool external_keyboard;
-	int numnodes;
-	vid_node_t nodes[VID_MAX_NODES];
-}
-vid_scan_t;
-
-typedef struct vid_block_s
-{
-	unsigned bus;
-	char name[128];
-	char event[16];
-	char sysfs[128];
-	unsigned prop;
-	vid_bitmap_t key, abs, sw;
-	qbool has_sw;
-}
-vid_block_t;
-
-static void vid_scan_block(vid_scan_t *s, const vid_block_t *b)
-{
-	qbool direct = (b->prop & (1u << VID_INPUT_PROP_DIRECT)) != 0;
-	qbool pointer = (b->prop & (1u << VID_INPUT_PROP_POINTER)) != 0;
-	qbool pen = vid_bitmap_has(&b->key, VID_BTN_TOOL_PEN);
-	qbool abs_mt = vid_bitmap_has(&b->abs, VID_ABS_MT_POSITION_X);
-
-	if (!b->name[0] && !b->event[0])
-		return;
-
-	// Touch: a direct surface (touchscreens, and pens drawn on the screen),
-	// or something calling itself one. A touchpad is INPUT_PROP_POINTER and
-	// is a mouse, not a touchscreen.
-	if (direct || vid_strcasestr_has(b->name, "touchscreen"))
-		s->touch = true;
-	else if (abs_mt && !pointer && vid_strcasestr_has(b->name, "touch"))
-		s->touch = true;
-
-	// Keyboard: letters and a space bar, not a controller (BTN_JOYSTICK /
-	// BTN_GAMEPAD: a gamepad that also reports KEY_A is still a gamepad), not
-	// a touch surface, and not one of the known button sets or virtual
-	// devices.
-	if (vid_bitmap_has(&b->key, KEY_A) && vid_bitmap_has(&b->key, VID_KEY_Z) && vid_bitmap_has(&b->key, VID_KEY_SPACE)
-		&& !vid_bitmap_has(&b->key, VID_BTN_JOYSTICK) && !vid_bitmap_has(&b->key, VID_BTN_GAMEPAD)
-		&& !direct && !vid_name_is_ignored_keyboard(b->name))
-	{
-		s->keyboard = true;
-		if ((b->bus == VID_BUS_USB || b->bus == VID_BUS_BLUETOOTH) && !vid_name_is_chassis_keyboard(b->name))
-			s->external_keyboard = true;
-	}
-
-	if (!b->event[0] || s->numnodes >= VID_MAX_NODES)
-		return;
-	if (b->has_sw && vid_bitmap_has(&b->sw, VID_SW_TABLET_MODE))
-	{
-		vid_node_t *n = &s->nodes[s->numnodes++];
-		memset(n, 0, sizeof(*n));
-		n->kind = VID_NODE_SWITCH;
-		n->fd = -1;
-		dp_strlcpy(n->event, b->event, sizeof(n->event));
-		dp_strlcpy(n->sysfs, b->sysfs, sizeof(n->sysfs));
-	}
-	else if (pen && direct)
-	{
-		vid_node_t *n = &s->nodes[s->numnodes++];
-		memset(n, 0, sizeof(*n));
-		n->kind = VID_NODE_PEN;
-		n->fd = -1;
-		dp_strlcpy(n->event, b->event, sizeof(n->event));
-		dp_strlcpy(n->sysfs, b->sysfs, sizeof(n->sysfs));
-	}
-}
-
-static void vid_scan_text(vid_scan_t *s, const char *text, size_t len)
-{
-	const char *p = text, *end = text + len;
-	vid_block_t b;
-
-	memset(s, 0, sizeof(*s));
-	memset(&b, 0, sizeof(b));
-	while (p < end)
-	{
-		const char *eol = (const char *)memchr(p, '\n', end - p);
-		size_t l;
-		if (!eol)
-			eol = end;
-		l = eol - p;
-		if (l == 0)
-		{
-			vid_scan_block(s, &b);
-			memset(&b, 0, sizeof(b));
-		}
-		else if (l > 7 && !strncmp(p, "I: Bus=", 7))
-			b.bus = (unsigned)strtoul(p + 7, NULL, 16);
-		else if (l > 9 && !strncmp(p, "N: Name=\"", 9))
-		{
-			size_t n = l - 9;
-			if (n > 0 && p[9 + n - 1] == '"')
-				n--;
-			if (n >= sizeof(b.name))
-				n = sizeof(b.name) - 1;
-			memcpy(b.name, p + 9, n);
-			b.name[n] = 0;
-		}
-		else if (l > 9 && !strncmp(p, "S: Sysfs=", 9))
-		{
-			size_t n = l - 9;
-			if (n >= sizeof(b.sysfs))
-				n = sizeof(b.sysfs) - 1;
-			memcpy(b.sysfs, p + 9, n);
-			b.sysfs[n] = 0;
-		}
-		else if (l > 12 && !strncmp(p, "H: Handlers=", 12))
-		{
-			const char *q = p + 12;
-			while (q < eol)
-			{
-				const char *t = q;
-				while (q < eol && *q != ' ')
-					q++;
-				if (q - t > 5 && q - t < (ptrdiff_t)sizeof(b.event) && !strncmp(t, "event", 5))
-				{
-					memcpy(b.event, t, q - t);
-					b.event[q - t] = 0;
-				}
-				while (q < eol && *q == ' ')
-					q++;
-			}
-		}
-		else if (l > 8 && !strncmp(p, "B: PROP=", 8))
-			b.prop = (unsigned)strtoul(p + 8, NULL, 16);
-		else if (l > 7 && !strncmp(p, "B: KEY=", 7))
-			vid_bitmap_parse(&b.key, p + 7, eol);
-		else if (l > 7 && !strncmp(p, "B: ABS=", 7))
-			vid_bitmap_parse(&b.abs, p + 7, eol);
-		else if (l > 6 && !strncmp(p, "B: SW=", 6))
-		{
-			vid_bitmap_parse(&b.sw, p + 6, eol);
-			b.has_sw = true;
-		}
-		p = eol + 1;
-	}
-	vid_scan_block(s, &b);
-}
+#include "vid_inputscan.h"
 
 // The whole of /proc/bus/input/devices, about 0.1 ms to read.
 static char *vid_proc_text;
@@ -684,14 +383,14 @@ static void vid_presence_compute(vid_presence_t *p)
 	p->touch = VID_SDL_HasTouchDevices() || vid_touch_finger_seen;
 #ifdef VID_LINUX_PROBES
 	{
-		qbool external, switch_found = false;
+		qbool as_tablet, switch_found = false;
 		int i;
 
 		if (!vid_scan_valid)
 			vid_linux_refresh(true);
 		p->touch = p->touch || vid_scan.touch;
 		p->keyboard = vid_scan.keyboard;
-		external = vid_scan.external_keyboard;
+		p->mouse = vid_scan.mouse;
 		for (i = 0; i < vid_scan.numnodes; i++)
 		{
 			if (vid_scan.nodes[i].kind != VID_NODE_SWITCH || vid_scan.nodes[i].fd < 0)
@@ -700,22 +399,29 @@ static void vid_presence_compute(vid_presence_t *p)
 			if (vid_scan.nodes[i].engaged)
 				p->tablet_mode = true;
 		}
-		// A tablet-mode switch saying "tablet" overrides the built-in keyboard
-		// (a folded-back Type Cover stays listed). A USB or Bluetooth keyboard
-		// is not part of the chassis, so it counts whatever the switch says.
-		if (switch_found && p->tablet_mode)
-			p->keyboard = external;
-		if (vid_chassis_is_handheld_or_tablet(vid_read_chassis_type()) && p->touch)
-			p->keyboard = external;
+		as_tablet = (switch_found && p->tablet_mode)
+			|| (vid_chassis_is_handheld_or_tablet(vid_read_chassis_type()) && p->touch);
 		if (vid_is_ubuntu_touch())
 		{
 			p->touch = true;
-			p->keyboard = external;
+			as_tablet = true;
+		}
+		// Held as a tablet: the chassis' own keyboard and touchpad are folded
+		// behind the screen or face-down on the table, whatever /proc still
+		// lists (a Type Cover stays listed once folded away, touchpad and
+		// all). Only what the player attached over USB or Bluetooth is still
+		// something to type on or aim with.
+		if (as_tablet)
+		{
+			p->keyboard = vid_scan.external_keyboard;
+			p->mouse = vid_scan.external_mouse;
 		}
 	}
 #else
-	// Nothing to ask on this platform: a desktop build has a keyboard.
+	// Nothing to ask on this platform: a desktop build has a keyboard and a
+	// mouse.
 	p->keyboard = true;
+	p->mouse = true;
 #endif
 #endif
 }
@@ -744,11 +450,16 @@ typedef enum vid_active_e
 {
 	VID_ACTIVE_NONE,     // nothing used yet: presence decides
 	VID_ACTIVE_TOUCH,    // a finger or pen touched the screen
-	VID_ACTIVE_KEYBOARD  // sustained keyboard / mouse play
+	VID_ACTIVE_KEYBOARD  // sustained typing on a listed keyboard
 }
 vid_active_t;
 
 static vid_active_t vid_active = VID_ACTIVE_NONE;
+
+// A listed mouse or touchpad has been used since it was last plugged in.
+// Confirmation only: it never shows or hides the controls, and without a
+// mouse in the listing nothing sets it.
+static qbool vid_mouse_confirmed;
 
 static void vid_presence_refresh(void);
 #ifdef VID_LINUX_PROBES
@@ -756,20 +467,16 @@ static qbool vid_linux_poll(void);
 static qbool vid_pens_open(void);
 #endif
 
-// Hysteresis. Touch wins at once; keyboard and mouse have to be used for a
-// moment, with no finger on the glass, before they take the controls away.
-#define VID_KBM_WINDOW        2.0   // seconds the evidence below must fit in
-#define VID_KBM_PRESSES       3     // distinct key / button presses
-#define VID_KBM_MOUSE_TRAVEL  0.15  // pointer travel, in window widths
-#define VID_KBM_MOUSE_STEP    0.03  // most one motion event may contribute
+// Hysteresis. Touch wins at once; the keyboard has to be used for a moment,
+// with no finger on the glass, before it takes the controls away.
+#define VID_KBM_WINDOW        2.0   // seconds the presses below must fit in
+#define VID_KBM_PRESSES       3     // distinct play-key presses
 #define VID_TOUCH_QUIET       1.5   // seconds after the last finger event
 #define VID_PEN_QUIET         1.0   // pen hover drives the pointer too
 
 static double vid_touch_last = -1000;
 static double vid_kbm_start = -1000;
-static int vid_kbm_presses;      // key presses plus mouse clicks
-static float vid_kbm_travel;
-static int vid_kbm_keys;         // key presses alone
+static int vid_kbm_presses;
 
 static const char *vid_mode_name(int mode)
 {
@@ -797,8 +504,6 @@ static void vid_kbm_reset(void)
 {
 	vid_kbm_start = -1000;
 	vid_kbm_presses = 0;
-	vid_kbm_travel = 0;
-	vid_kbm_keys = 0;
 }
 
 static void vid_touch_used(void)
@@ -828,62 +533,53 @@ void VID_NoteTouchActivity(void)
 	vid_kbm_reset();
 }
 
-// Evidence for keyboard / mouse play. Only matters while the controls are on.
-static qbool vid_kbm_accept(void)
+// A play key. It counts towards hiding the controls only while they are on
+// in Auto, the system lists a keyboard (so this is that keyboard, not an
+// on-screen one) and a mouse or touchpad to aim with, and no finger is on
+// the glass.
+void VID_NoteKeyboardUse(void)
 {
 	const vid_presence_t *p;
 
 	if (vid_active == VID_ACTIVE_KEYBOARD || !vid_touchscreen.integer || vid_touchscreen_mode.integer != 1)
-		return false;
+		return;
 	// A finger is down or has just lifted: keys now are an elbow on a
-	// folded cover, and pointer motion is the compositor's touch emulation.
+	// folded cover.
 	if (host.realtime - vid_touch_last < VID_TOUCH_QUIET)
 	{
 		vid_kbm_reset();
-		return false;
+		return;
 	}
 	// No keyboard the system knows of (none attached, or one folded behind
-	// the screen): whatever sent this, the player cannot type or move on it.
+	// the screen): whatever sent this, the player cannot type on it. And a
+	// keyboard alone leaves nothing to aim with, so the controls stay.
 	p = vid_presence_get();
-	if (!p->keyboard)
-		return false;
+	if (!p->keyboard || !p->mouse)
+		return;
 	if (host.realtime - vid_kbm_start > VID_KBM_WINDOW)
 	{
 		vid_kbm_reset();
 		vid_kbm_start = host.realtime;
 	}
-	return true;
-}
-
-static void vid_kbm_check(void)
-{
-	if (vid_kbm_presses < VID_KBM_PRESSES && vid_kbm_travel < VID_KBM_MOUSE_TRAVEL)
+	if (++vid_kbm_presses < VID_KBM_PRESSES)
 		return;
 	vid_active = VID_ACTIVE_KEYBOARD;
-	if (!vid_kbm_keys)
-		vid_reapply("mouse used", NULL, "Mouse in use: touch controls hidden");
-	else
-		vid_reapply("keyboard used", NULL, "Keyboard in use: touch controls hidden");
+	vid_reapply("keyboard used", NULL, "Keyboard in use: touch controls hidden");
 	vid_kbm_reset();
 }
 
-void VID_NoteKeyboardUse(void)
-{
-	if (!vid_kbm_accept())
-		return;
-	vid_kbm_presses++;
-	vid_kbm_keys++;
-	vid_kbm_check();
-}
-
+// Real (not touch-emulated) pointer motion or a click. It confirms the mouse
+// or touchpad the system lists, so the game can aim with it next to the
+// touch controls. It never hides them: a mouse says nothing about a
+// keyboard, and fingers keep working alongside it.
 void VID_NoteMouseUse(float travel, qbool press)
 {
-	// Without a keyboard there is nothing to move with: a lone mouse (or a
-	// pen the compositor turns into one) is not a reason to take the stick
-	// away. vid_kbm_accept says the same; this skips the pen poll below.
-	if (!vid_presence_get()->keyboard)
+	if (vid_mouse_confirmed || !vid_presence_get()->mouse)
 		return;
-	if (vid_active == VID_ACTIVE_KEYBOARD || !vid_touchscreen.integer || vid_touchscreen_mode.integer != 1)
+	if (!press && travel <= 0)
+		return;
+	// X11 does not mark the pointer events it emulates from a finger.
+	if (host.realtime - vid_touch_last < VID_TOUCH_QUIET)
 		return;
 #ifdef VID_LINUX_PROBES
 	// Wayland hands a pen to SDL as a mouse. Catch up on the pen's own
@@ -893,15 +589,18 @@ void VID_NoteMouseUse(float travel, qbool press)
 	if (host.realtime - vid_pen_last < VID_PEN_QUIET)
 		return;
 #endif
-	if (!vid_kbm_accept())
-		return;
-	if (travel > VID_KBM_MOUSE_STEP)
-		travel = VID_KBM_MOUSE_STEP;
-	if (travel > 0)
-		vid_kbm_travel += travel;
-	if (press)
-		vid_kbm_presses++;
-	vid_kbm_check();
+	vid_mouse_confirmed = true;
+	Con_Printf("Input: mouse in use (the system lists one)\n");
+}
+
+qbool VID_TouchMouseConfirmed(void)
+{
+	return vid_mouse_confirmed && vid_presence_get()->mouse;
+}
+
+qbool VID_HasKeyboard(void)
+{
+	return vid_presence_get()->keyboard;
 }
 
 // ---------------------------------------------------------------------------
@@ -930,6 +629,14 @@ static void vid_presence_changed(const vid_presence_t *old, const vid_presence_t
 	{
 		vid_active = VID_ACTIVE_NONE;
 		vid_kbm_reset();
+	}
+	// A mouse that went away has to be used again once it is back. Without
+	// one, keyboard play leaves nothing to aim with, so presence decides.
+	if (old->mouse != now->mouse)
+	{
+		vid_mouse_confirmed = false;
+		if (!now->mouse && vid_active == VID_ACTIVE_KEYBOARD)
+			vid_active = VID_ACTIVE_NONE;
 	}
 
 	was_on = vid_touchscreen.integer != 0;
@@ -1293,6 +1000,7 @@ void VID_ApplyTouchscreenMode(void)
 	vid_touch_applying = true;
 	Cvar_SetValueQuick(&vid_touchscreen_detected, has_touch ? 1 : 0);
 	Cvar_SetValueQuick(&vid_touchscreen_touchonly_detected, touch_only ? 1 : 0);
+	Cvar_SetValueQuick(&vid_keyboard_detected, vid_presence_get()->keyboard ? 1 : 0);
 
 	mode = vid_touchscreen_mode.integer;
 	if (mode <= 0)
@@ -1316,7 +1024,7 @@ void VID_ApplyTouchscreenMode(void)
 			vid_mode_name(mode),
 			has_touch ? "yes" : "no",
 			touch_only ? "yes" : "no",
-			vid_active == VID_ACTIVE_TOUCH ? "touch" : vid_active == VID_ACTIVE_KEYBOARD ? "keyboard/mouse" : "none");
+			vid_active == VID_ACTIVE_TOUCH ? "touch" : vid_active == VID_ACTIVE_KEYBOARD ? "keyboard" : "none");
 	}
 	vid_touch_applying = false;
 }
@@ -1352,11 +1060,11 @@ void VID_TouchscreenRescan_f(cmd_state_t *cmd)
 	vid_presence_refresh();
 	VID_ApplyTouchscreenMode();
 	p = vid_presence_get();
-	Con_Printf("vid_touchscreen_mode %d, vid_touchscreen %d, detected %d, touch-only %d, keyboard %d, tablet mode %d, last input %s\n",
+	Con_Printf("vid_touchscreen_mode %d, vid_touchscreen %d, detected %d, touch-only %d, keyboard %d, mouse %d (%s), tablet mode %d, last input %s\n",
 		vid_touchscreen_mode.integer,
 		vid_touchscreen.integer,
 		vid_touchscreen_detected.integer,
 		vid_touchscreen_touchonly_detected.integer,
-		p->keyboard, p->tablet_mode,
-		vid_active == VID_ACTIVE_TOUCH ? "touch" : vid_active == VID_ACTIVE_KEYBOARD ? "keyboard/mouse" : "none");
+		p->keyboard, p->mouse, vid_mouse_confirmed ? "used" : "not used yet", p->tablet_mode,
+		vid_active == VID_ACTIVE_TOUCH ? "touch" : vid_active == VID_ACTIVE_KEYBOARD ? "keyboard" : "none");
 }

@@ -105,12 +105,14 @@ public final class XonoticActivity extends SDLActivity {
     /**
      * Tell the engine which input hardware is attached, and keep telling it.
      *
-     * The engine decides whether the on-screen controls show (Auto mode): on
-     * for a touch device with no keyboard, off once a real keyboard is
-     * attached, and in either case whatever the player last actually used --
-     * a touch brings them straight back. InputManager's listener covers USB
-     * and Bluetooth hot-plug; configuration changes cover a keyboard folded
-     * away. None of this needs a permission.
+     * This is the engine's source of truth for what the player has; what
+     * they press only ever confirms it (vid_touchdetect.c). The on-screen
+     * controls show for a touch device with no keyboard, and stay with a
+     * mouse, which aims next to them once used. They hide only after
+     * sustained typing on a keyboard listed here, and a touch brings them
+     * straight back. InputManager's listener covers USB and Bluetooth
+     * hot-plug; configuration changes cover a keyboard folded away. None of
+     * this needs a permission.
      */
     private void watchInputDevices() {
         inputManager = (InputManager) getSystemService(INPUT_SERVICE);
@@ -125,10 +127,14 @@ public final class XonoticActivity extends SDLActivity {
         boolean touch = getPackageManager().hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN);
         boolean keyboard = false;
         boolean mouse = false;
+        List<InputDevice> pointers = new ArrayList<>();
         StringBuilder names = new StringBuilder();
         for (int id : InputDevice.getDeviceIds()) {
             InputDevice device = InputDevice.getDevice(id);
             if (device == null || device.isVirtual()) {
+                continue;
+            }
+            if (Build.VERSION.SDK_INT >= 27 && !device.isEnabled()) {
                 continue;
             }
             int sources = device.getSources();
@@ -139,17 +145,27 @@ public final class XonoticActivity extends SDLActivity {
                 keyboard = true;
                 names.append(" keyboard=\"").append(device.getName()).append('"');
             }
-            if (hasSource(sources, InputDevice.SOURCE_MOUSE)
-                    && !hasSource(sources, InputDevice.SOURCE_TOUCHSCREEN)) {
-                mouse = true;
-                names.append(" mouse=\"").append(device.getName()).append('"');
+            if (isRealPointer(device, sources)) {
+                pointers.add(device);
             }
         }
         // A keyboard the system itself calls hidden -- a lid or slider shut,
-        // a Chromebook folded into a tablet -- is not one the player can use.
-        if (getResources().getConfiguration().hardKeyboardHidden
-                == Configuration.HARDKEYBOARDHIDDEN_YES) {
+        // a Chromebook folded into a tablet -- is not one the player can use,
+        // and neither is the chassis pad that goes face-down with it. Only a
+        // listed keyboard makes that folding: hardKeyboardHidden also reads
+        // YES on every device with no hard keys at all, where a touchpad the
+        // player attached is the pointer they aim with.
+        boolean folded = keyboard && getResources().getConfiguration().hardKeyboardHidden
+                == Configuration.HARDKEYBOARDHIDDEN_YES;
+        if (folded) {
             keyboard = false;
+        }
+        for (InputDevice pointer : pointers) {
+            if (folded && isChassisPad(pointer)) {
+                continue;
+            }
+            mouse = true;
+            names.append(" mouse=\"").append(pointer.getName()).append('"');
         }
 
         int state = (touch ? 1 : 0) | (keyboard ? 2 : 0) | (mouse ? 4 : 0);
@@ -183,21 +199,61 @@ public final class XonoticActivity extends SDLActivity {
                 || hasSource(sources, InputDevice.SOURCE_JOYSTICK)) {
             return false;
         }
+        return !hasIgnoredName(device);
+    }
+
+    /**
+     * A mouse or touchpad that moves a pointer: not a touchscreen
+     * or a pen on one (those are touch), and not a sensor that some phones
+     * register as a touchpad.
+     */
+    private static boolean isRealPointer(InputDevice device, int sources) {
+        if (hasSource(sources, InputDevice.SOURCE_TOUCHSCREEN)
+                || hasSource(sources, InputDevice.SOURCE_STYLUS)) {
+            return false;
+        }
+        boolean pointer = hasSource(sources, InputDevice.SOURCE_MOUSE)
+                || hasSource(sources, InputDevice.SOURCE_TOUCHPAD)
+                || (Build.VERSION.SDK_INT >= 26
+                        && hasSource(sources, InputDevice.SOURCE_MOUSE_RELATIVE));
+        return pointer && !hasIgnoredName(device);
+    }
+
+    /**
+     * A pad that folds away with the keys -- a Type Cover's, a convertible
+     * base's -- rather than a mouse the player set down beside the screen.
+     * Only the pad names itself one. Vendor and product cannot separate the
+     * two: a combo receiver hands its keyboard and its mouse a single pair,
+     * both read 0 when unknown, and a base usually drives its pad from a
+     * second controller with IDs of its own.
+     */
+    private static boolean isChassisPad(InputDevice pointer) {
+        return hasName(pointer, CHASSIS_POINTER_NAMES);
+    }
+
+    private static boolean hasIgnoredName(InputDevice device) {
+        return hasName(device, IGNORED_KEYBOARD_NAMES);
+    }
+
+    private static boolean hasName(InputDevice device, String[] fragments) {
         String name = device.getName() == null ? "" : device.getName().toLowerCase(Locale.ROOT);
-        for (String ignored : IGNORED_KEYBOARD_NAMES) {
-            if (name.contains(ignored)) {
-                return false;
+        for (String fragment : fragments) {
+            if (name.contains(fragment)) {
+                return true;
             }
         }
-        return true;
+        return false;
     }
 
     /** Fingerprint readers, GPIO buttons, hall sensors and uinput helpers that
-     *  some phones register as alphabetic keyboards. */
+     *  some phones register as alphabetic keyboards or touchpads. */
     private static final String[] IGNORED_KEYBOARD_NAMES = {
         "uinput", "fingerprint", "fpc", "goodix", "gf_input", "gpio", "_pon",
         "hall", "power", "volume", "headset", "virtual", "sensor",
     };
+
+    /** Pads built into a chassis or into the cover it folds away with. */
+    private static final String[] CHASSIS_POINTER_NAMES = { "touchpad", "trackpad" };
 
     /** vid_touchdetect.c: what the engine's Auto touch mode decides from. */
     private static native void nativeInputDevices(boolean touch, boolean keyboard, boolean mouse);

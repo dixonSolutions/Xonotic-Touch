@@ -161,9 +161,12 @@ cvar_t vid_touchscreen = {CF_CLIENT, "vid_touchscreen", "0", "Use touchscreen-st
 cvar_t vid_touchscreen_mode = {CF_CLIENT | CF_ARCHIVE, "vid_touchscreen_mode", "1", "Touch controls: 0 = off, 1 = auto (enable when touch hardware is detected), 2 = always on"};
 cvar_t vid_touchscreen_touchonly = {CF_CLIENT | CF_ARCHIVE, "vid_touchscreen_touchonly", "1", "When vid_touchscreen_mode is auto, enable only on touch-only devices (touchscreen and no physical keyboard)"};
 cvar_t vid_touchscreen_detected = {CF_CLIENT | CF_READONLY, "vid_touchscreen_detected", "0", "1 if a touchscreen was detected at the last scan"};
+cvar_t vid_keyboard_detected = {CF_CLIENT | CF_READONLY, "vid_keyboard_detected", "0", "1 while the system lists a keyboard the player can type on (no on-screen keyboard is shown then)"};
 cvar_t vid_touchscreen_touchonly_detected = {CF_CLIENT | CF_READONLY, "vid_touchscreen_touchonly_detected", "0", "1 if the last scan classified this machine as a touch-only device"};
 cvar_t vid_touchscreen_showkeyboard = {CF_CLIENT, "vid_touchscreen_showkeyboard", "0", "shows the platform's screen keyboard for text entry, can be set by csqc or menu qc if it wants to receive text input, does nothing if the platform has no screen keyboard"};
 cvar_t vid_touchscreen_supportshowkeyboard = {CF_CLIENT | CF_READONLY, "vid_touchscreen_supportshowkeyboard", "0", "indicates if the platform supports a virtual keyboard"};
+cvar_t vid_touchscreen_mouselook = {CF_CLIENT | CF_READONLY, "vid_touchscreen_mouselook", "0", "1 while a mouse the system lists, and the player has used, aims in the game next to the touch controls (its buttons fire instead of pressing the controls)"};
+cvar_t touch_owns_screen = {CF_CLIENT, "_touch_owns_screen", "0", "internal: set by the touch CSQC while a modal touch sheet needs the mouse as a pointer"};
 cvar_t vid_touchscreen_textinput_x = {CF_CLIENT, "vid_touchscreen_textinput_x", "0", "console X of the focused text field for OSK placement (set by menu QC)"};
 cvar_t vid_touchscreen_textinput_y = {CF_CLIENT, "vid_touchscreen_textinput_y", "0", "console Y of the focused text field for OSK placement (set by menu QC)"};
 cvar_t vid_touchscreen_textinput_w = {CF_CLIENT, "vid_touchscreen_textinput_w", "0", "console width of the focused text field for OSK placement (set by menu QC)"};
@@ -1340,7 +1343,10 @@ void VID_Shared_Init(void)
 	Cvar_RegisterVariable(&vid_touchscreen_touchonly);
 	Cvar_RegisterVariable(&vid_touchscreen_detected);
 	Cvar_RegisterVariable(&vid_touchscreen_touchonly_detected);
+	Cvar_RegisterVariable(&vid_keyboard_detected);
 	Cvar_RegisterVariable(&vid_touchscreen_showkeyboard);
+	Cvar_RegisterVariable(&vid_touchscreen_mouselook);
+	Cvar_RegisterVariable(&touch_owns_screen);
 	Cvar_RegisterVariable(&vid_touchscreen_supportshowkeyboard);
 	Cvar_RegisterVariable(&vid_touchscreen_textinput_x);
 	Cvar_RegisterVariable(&vid_touchscreen_textinput_y);

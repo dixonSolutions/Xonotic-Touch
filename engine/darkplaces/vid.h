@@ -153,8 +153,11 @@ extern cvar_t vid_touchscreen_mode;
 extern cvar_t vid_touchscreen_touchonly;
 extern cvar_t vid_touchscreen_detected;
 extern cvar_t vid_touchscreen_touchonly_detected;
+extern cvar_t vid_keyboard_detected;
 extern cvar_t vid_touchscreen_showkeyboard;
 extern cvar_t vid_touchscreen_supportshowkeyboard;
+extern cvar_t vid_touchscreen_mouselook;
+extern cvar_t touch_owns_screen;
 extern cvar_t vid_touchscreen_textinput_x;
 extern cvar_t vid_touchscreen_textinput_y;
 extern cvar_t vid_touchscreen_textinput_w;
@@ -275,13 +278,16 @@ void VID_TouchDetect_Init(void);
 // Per frame: react to input devices coming and going (event driven; an idle
 // frame is one zero-timeout poll on Linux, one int read on Android).
 void VID_TouchHotplugFrame(void);
-// Last active input, fed from the event loop. Auto mode shows the touch
-// controls on a direct touch at once and hides them after sustained keyboard
-// or mouse play with no finger on the screen.
+// Last active input, fed from the event loop. It only confirms hardware the
+// system lists. Auto mode shows the touch controls on a direct touch at once
+// and hides them after sustained typing on a listed keyboard (with a listed
+// mouse to aim) and no finger on the screen. A mouse never hides them.
 void VID_NoteTouchUse(void);       // a finger or pen went down on a direct touch surface
 void VID_NoteTouchActivity(void);  // a finger moved or lifted
 void VID_NoteKeyboardUse(void);    // a key press (caller filters repeats; counts only with a keyboard listed)
-void VID_NoteMouseUse(float travel, qbool press); // travel in window widths
+void VID_NoteMouseUse(float travel, qbool press); // real pointer use; travel in window widths
+qbool VID_TouchMouseConfirmed(void); // the system lists a mouse and it has been used
+qbool VID_HasKeyboard(void);         // the system lists a keyboard the player can type on
 void VID_TouchscreenMode_c(struct cvar_s *var);
 void VID_Touchscreen_c(struct cvar_s *var);
 void VID_TouchscreenRescan_f(struct cmd_state_s *cmd);

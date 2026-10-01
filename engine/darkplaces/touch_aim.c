@@ -191,9 +191,10 @@ static qbool aim_allowed(void)
 {
 	int me = cl.realplayerentity;
 	// Touch mode only: the engine clears vid_touchscreen when a physical
-	// keyboard is attached (vid_touchdetect.c), so a keyboard and mouse player
-	// never gets any of this.
-	if (!vid_touchscreen.integer)
+	// keyboard is being played on (vid_touchdetect.c), so a keyboard and
+	// mouse player never gets any of this. Nor does a mouse aiming next to
+	// the touch controls: help is for a thumb, not a mouse.
+	if (!vid_touchscreen.integer || vid_touchscreen_mouselook.integer)
 		return false;
 	if (cls.state != ca_connected || cls.signon != SIGNONS || cls.demoplayback)
 		return false;

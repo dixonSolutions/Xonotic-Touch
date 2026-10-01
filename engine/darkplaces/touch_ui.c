@@ -520,13 +520,21 @@ static int TouchUI_LayoutPalette(float x, float y, float w, float h,
 	return n;
 }
 
+/* Keys on the glass only when the system lists no keyboard to type on. The
+ * settings preview shows them regardless: it is a picture of the sheet. */
+static qbool TouchUI_ShowKeys(touchui_sheet_t kind)
+{
+	return kind == TOUCHUI_SHEET_PREVIEW || !VID_HasKeyboard();
+}
+
 static int TouchUI_LayoutHeader(float x, float y, float w, float h,
 	touchui_sheet_t kind, touchui_item_t *out, int maxout, int n)
 {
 	float gap = bound(2.0f, touch_kb_gap.value * w, 12.0f);
 	float th = bound(12.0f, h * 0.42f, 24.0f);
 	float bw, bx;
-	int slots = (kind == TOUCHUI_SHEET_CHAT) ? 2 : 5;
+	qbool keys = TouchUI_ShowKeys(kind);
+	int slots = (kind == TOUCHUI_SHEET_CHAT) ? 2 : (keys ? 5 : 4);
 	const char *close_lab = (kind == TOUCHUI_SHEET_CHAT) ? "CLOSE CHAT" : "CLOSE";
 
 	bw = (w - gap * (float)(slots + 1)) / (float)slots;
@@ -536,12 +544,15 @@ static int TouchUI_LayoutHeader(float x, float y, float w, float h,
 	bx += bw + gap;
 	if (kind != TOUCHUI_SHEET_CHAT)
 	{
+		if (keys)
+		{
+			TouchUI_PushItem(out, &n, maxout, bx, y + gap, bw, h - gap * 2.0f,
+				"KEYS", th, touchui_tab == TOUCHUI_TAB_KEYS ? TOUCHUI_STYLE_ACCENT : TOUCHUI_STYLE_GLASS,
+				TOUCHUI_ACT_TAB_KEYS, 0);
+			bx += bw + gap;
+		}
 		TouchUI_PushItem(out, &n, maxout, bx, y + gap, bw, h - gap * 2.0f,
-			"KEYS", th, touchui_tab == TOUCHUI_TAB_KEYS ? TOUCHUI_STYLE_ACCENT : TOUCHUI_STYLE_GLASS,
-			TOUCHUI_ACT_TAB_KEYS, 0);
-		bx += bw + gap;
-		TouchUI_PushItem(out, &n, maxout, bx, y + gap, bw, h - gap * 2.0f,
-			"COMMANDS", th, touchui_tab == TOUCHUI_TAB_COMMANDS ? TOUCHUI_STYLE_ACCENT : TOUCHUI_STYLE_GLASS,
+			"COMMANDS", th, (touchui_tab == TOUCHUI_TAB_COMMANDS || !keys) ? TOUCHUI_STYLE_ACCENT : TOUCHUI_STYLE_GLASS,
 			TOUCHUI_ACT_TAB_COMMANDS, 0);
 		bx += bw + gap;
 		TouchUI_PushItem(out, &n, maxout, bx, y + gap, bw, h - gap * 2.0f,
@@ -582,6 +593,7 @@ int TouchUI_LayoutSheet(touchui_sheet_t kind, float x, float y, float w, float h
 {
 	int n = 0;
 	float hdr_h, kb_h, kb_frac, body_top, body_h, log_h;
+	qbool keys = TouchUI_ShowKeys(kind);
 
 	if (!out || maxout <= 0 || w < 32.0f || h < 32.0f)
 		return 0;
@@ -591,6 +603,9 @@ int TouchUI_LayoutSheet(touchui_sheet_t kind, float x, float y, float w, float h
 	kb_h = h * kb_frac;
 	if (kb_h < 80.0f)
 		kb_h = min(h * 0.5f, 80.0f);
+	/* Chat with a keyboard attached: just the quick phrases, at the bottom. */
+	if (kind == TOUCHUI_SHEET_CHAT && !keys)
+		kb_h = 0;
 	body_top = y + hdr_h;
 	body_h = h - hdr_h - kb_h;
 	if (body_h < 0)
@@ -606,7 +621,7 @@ int TouchUI_LayoutSheet(touchui_sheet_t kind, float x, float y, float w, float h
 
 	if (kind == TOUCHUI_SHEET_CONSOLE || kind == TOUCHUI_SHEET_PREVIEW)
 	{
-		if (touchui_tab == TOUCHUI_TAB_COMMANDS)
+		if (touchui_tab == TOUCHUI_TAB_COMMANDS || !keys)
 			n = TouchUI_LayoutPalette(x, y + h - kb_h, w, kb_h, out, maxout, n);
 		else
 			n = TouchUI_LayoutKeyboard(x, y + h - kb_h, w, kb_h, out, maxout, n);
@@ -641,7 +656,8 @@ int TouchUI_LayoutSheet(touchui_sheet_t kind, float x, float y, float w, float h
 				}
 			}
 		}
-		n = TouchUI_LayoutKeyboard(x, y + h - kb_h, w, kb_h, out, maxout, n);
+		if (keys)
+			n = TouchUI_LayoutKeyboard(x, y + h - kb_h, w, kb_h, out, maxout, n);
 	}
 	return n;
 }

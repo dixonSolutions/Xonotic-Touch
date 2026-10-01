@@ -19,6 +19,11 @@ bool Touch_Chat_Active(void);
 void Touch_Chat_Open(bool team);
 void Touch_Chat_Close(void);
 
+// A key from a real keyboard while the sheet is open (CSQC_InputEvent types 0
+// and 1). Returns true when the sheet took it: typing, backspace and Enter go
+// into the message, and nothing leaks through to the game's binds.
+bool Touch_Chat_KeyEvent(float bInputType, float nPrimary, float nSecondary);
+
 // Pill in the top bar, alongside MENU and CONSOLE.
 vector Touch_Chat_PillCenter(void);
 vector Touch_Chat_PillHalf(void);
