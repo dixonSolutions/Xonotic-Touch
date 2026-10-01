@@ -85,26 +85,37 @@ trap cleanup EXIT
 # Prefer a target-arch busybox from the archive; fall back to the host binary
 # only for native builds.
 download_busybox() {
+    download_archive_binary "$1" busybox "$BUSYBOX_TMP/busybox" busybox-static busybox
+}
+
+# Unpack <binary> for <arch> from the first of the given packages the archive
+# has, under <workdir>, and print its path.
+download_archive_binary() {
     local arch="$1"
+    local binary="$2"
+    local workdir="$3"
+    shift 3
     local deb package candidate
     local updated=0
-    for package in "busybox-static:${arch}" "busybox:${arch}"; do
-        if ! ( cd "$BUSYBOX_TMP" && apt-get download "$package" >/dev/null 2>&1 ); then
+    for package in "$@"; do
+        rm -rf "$workdir"
+        mkdir -p "$workdir"
+        if ! ( cd "$workdir" && apt-get download "${package}:${arch}" >/dev/null 2>&1 ); then
             # Missing foreign arch or stale lists are the usual causes.
             if [ "$updated" -eq 0 ]; then
                 updated=1
                 dpkg --add-architecture "$arch" >/dev/null 2>&1 || true
                 apt-get update >/dev/null 2>&1 || true
-                ( cd "$BUSYBOX_TMP" && apt-get download "$package" >/dev/null 2>&1 ) || continue
+                ( cd "$workdir" && apt-get download "${package}:${arch}" >/dev/null 2>&1 ) || continue
             else
                 continue
             fi
         fi
-        deb="$(find "$BUSYBOX_TMP" -maxdepth 1 -name '*.deb' -print -quit)"
-        if [ -z "$deb" ] || ! dpkg-deb -x "$deb" "$BUSYBOX_TMP/root" 2>/dev/null; then
+        deb="$(find "$workdir" -maxdepth 1 -name '*.deb' -print -quit)"
+        if [ -z "$deb" ] || ! dpkg-deb -x "$deb" "$workdir/root" 2>/dev/null; then
             continue
         fi
-        for candidate in "$BUSYBOX_TMP/root/bin/busybox" "$BUSYBOX_TMP/root/usr/bin/busybox"; do
+        for candidate in "$workdir/root/bin/$binary" "$workdir/root/usr/bin/$binary"; do
             if [ -f "$candidate" ]; then
                 printf '%s' "$candidate"
                 return 0
@@ -151,6 +162,37 @@ stage_busybox() {
         "$arch" "${#BUSYBOX_APPLETS[@]}"
 }
 
+# busybox wget hands each https:// connection to `openssl s_client` and only
+# falls back to its own TLS when that cannot run. On a phone it cannot: AppArmor
+# denies exec of /usr/bin/openssl, and the asset servers refuse busybox 1.36's
+# TLS (alert 47, "bad MAC"), so no download ever started. An openssl inside the
+# click may run. It links the phone's libssl3, which every Ubuntu Touch 24.04
+# image has, so no libraries are copied with it.
+stage_openssl() {
+    local arch="$1"
+    local openssl=""
+    local candidate
+
+    if [ -x /usr/bin/openssl ] && binary_matches_arch /usr/bin/openssl "$arch"; then
+        openssl=/usr/bin/openssl
+    else
+        if [ -z "$BUSYBOX_TMP" ]; then
+            BUSYBOX_TMP="$(mktemp -d)"
+        fi
+        candidate="$(download_archive_binary "$arch" openssl "$BUSYBOX_TMP/openssl" openssl || true)"
+        if [ -n "$candidate" ] && binary_matches_arch "$candidate" "$arch"; then
+            openssl="$candidate"
+        fi
+    fi
+
+    if [ -z "$openssl" ]; then
+        return 1
+    fi
+    rm -f "$BIN_DIR/openssl"
+    install -m 755 "$openssl" "$BIN_DIR/openssl"
+    printf 'stage-click-utils: staged openssl (%s) for busybox wget https\n' "$arch"
+}
+
 ARCH_NAME="$(target_arch)"
 
 if ! stage_busybox "$ARCH_NAME"; then
@@ -161,6 +203,18 @@ if ! stage_busybox "$ARCH_NAME"; then
         printf 'stage-click-utils: no %s busybox available (apt-get download busybox-static:%s failed)\n' \
             "$ARCH_NAME" "$ARCH_NAME" >&2
         printf 'stage-click-utils: set XONOTIC_ALLOW_MISSING_BUSYBOX=1 to package anyway\n' >&2
+        exit 1
+    fi
+fi
+
+if ! stage_openssl "$ARCH_NAME"; then
+    if [ "${XONOTIC_ALLOW_MISSING_OPENSSL:-0}" = "1" ]; then
+        printf 'stage-click-utils: WARNING no %s openssl staged — game data cannot download on a phone\n' \
+            "$ARCH_NAME" >&2
+    else
+        printf 'stage-click-utils: no %s openssl available (apt-get download openssl:%s failed)\n' \
+            "$ARCH_NAME" "$ARCH_NAME" >&2
+        printf 'stage-click-utils: set XONOTIC_ALLOW_MISSING_OPENSSL=1 to package anyway\n' >&2
         exit 1
     fi
 fi

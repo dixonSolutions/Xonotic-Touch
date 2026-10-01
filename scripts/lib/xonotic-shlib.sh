@@ -291,6 +291,25 @@ xonotic_dp_link_jpeg() {
     fi
 }
 
+# Extra DarkPlaces make arguments for the GL flavour, in XONOTIC_DP_GL_ARGS.
+# XONOTIC_DP_GLES2=1 builds for OpenGL ES 2, as the click does: most Ubuntu
+# Touch phones run the Android GPU driver through libhybris, whose EGL offers
+# GLES and nothing else, so a desktop-GL engine never gets a context there.
+# Video capture reads frames back through GL3.2 pixel-pack buffers that GLES2
+# lacks; the Android build leaves it out for the same reason. With USE_GLES2
+# the engine calls gl* directly instead of loading them through SDL.
+xonotic_dp_gl_args() {
+    XONOTIC_DP_GL_ARGS=()
+    if [ "${XONOTIC_DP_GLES2:-0}" = "1" ]; then
+        XONOTIC_DP_GL_ARGS=(
+            CFLAGS_EXTRA=-DUSE_GLES2
+            DP_VIDEO_CAPTURE=disabled
+            # shellcheck disable=SC2016 # make expands $(SDL_CONFIG), the shell runs the backticks
+            'SDLCONFIG_UNIXLIBS=`$(SDL_CONFIG) --libs` -lGLESv2'
+        )
+    fi
+}
+
 xonotic_compile_engine_only() {
     local root out_dir out_bin darkplaces
     root="$(xonotic_root)"
@@ -306,7 +325,8 @@ xonotic_compile_engine_only() {
     printf 'Building DarkPlaces for %s...\n' "${ARCH:-host}"
     cd "$darkplaces"
     xonotic_maybe_make_clean
-    PATH="/usr/bin:${PATH}" make sdl-release DP_SSE=0 "${MAKEFLAGS:--j$(nproc)}" CC="$(xonotic_dp_cc)" DP_LINK_JPEG="$(xonotic_dp_link_jpeg)"
+    xonotic_dp_gl_args
+    PATH="/usr/bin:${PATH}" make sdl-release DP_SSE=0 "${MAKEFLAGS:--j$(nproc)}" CC="$(xonotic_dp_cc)" DP_LINK_JPEG="$(xonotic_dp_link_jpeg)" "${XONOTIC_DP_GL_ARGS[@]}"
     install -m 755 darkplaces-sdl "$out_bin"
     printf 'Built %s (%s)\n' "$out_bin" "$(file -b "$out_bin")"
 }
@@ -387,7 +407,8 @@ xonotic_compile() {
     cd "$root/engine/darkplaces"
     xonotic_maybe_make_clean
     # Some SDK images ship a broken sdl2-config — ensure /usr/bin/sdl2-config is found first.
-    PATH="/usr/bin:${PATH}" make sdl-release DP_SSE=0 $MAKEFLAGS STRIP=: CC="$(xonotic_dp_cc)" DP_LINK_JPEG="$(xonotic_dp_link_jpeg)"
+    xonotic_dp_gl_args
+    PATH="/usr/bin:${PATH}" make sdl-release DP_SSE=0 $MAKEFLAGS STRIP=: CC="$(xonotic_dp_cc)" DP_LINK_JPEG="$(xonotic_dp_link_jpeg)" "${XONOTIC_DP_GL_ARGS[@]}"
     install -m 755 darkplaces-sdl "$out_bin"
 
     printf 'Built %s (%s)\n' "$out_bin" "$(file -b "$out_bin")"

@@ -93,14 +93,27 @@ else
     USER_BASE="$LEGACY_USER_BASE"
 fi
 USER_DATA="${USER_BASE}/data"
+# The engine's own user directory. DarkPlaces defaults to ~/.xonotic, which a
+# click may not create: AppArmor allows writes only under XDG_*/<APP_PKGNAME>.
+# Its session lock lives there and failing to take it is fatal (host.c), so a
+# click engine read its configs and quit before drawing anything. -nohome
+# makes it write into its basedir instead, which is the cwd it runs from:
+# USER_BASE.
+ENGINE_HOME="${HOME}/.xonotic"
+ENGINE_DIR_ARG=""
+if [ -z "${FLATPAK_ID:-}" ] \
+    && { [ -n "$CLICK_PKGNAME" ] || [ -n "${UBUNTU_APPLICATION_ISOLATION:-}" ]; }; then
+    ENGINE_HOME="$USER_BASE"
+    ENGINE_DIR_ARG="-nohome"
+fi
 LAYOUT_CFG="${USER_DATA}/screen.layout.cfg"
 TOUCH_PROFILE="${XONOTIC_TOUCH_PROFILE:-standard}"
 # Thermal is the default on tablets (Surface / fanless Iris); override with balanced/quality.
 TOUCH_PERF_PROFILE="${XONOTIC_TOUCH_PERF_PROFILE:-thermal}"
 TOUCH_PROFILES_DIR="${USER_DATA}/touch/profiles"
 # CSQC writes layout under the gamedir (data/); keep legacy home path as fallback only.
-USER_TOUCH_LAYOUT="${XONOTIC_TOUCH_LAYOUT:-${HOME}/.xonotic/data/touch.layout.cfg}"
-USER_TOUCH_LAYOUT_LEGACY="${HOME}/.xonotic/touch.layout.cfg"
+USER_TOUCH_LAYOUT="${XONOTIC_TOUCH_LAYOUT:-${ENGINE_HOME}/data/touch.layout.cfg}"
+USER_TOUCH_LAYOUT_LEGACY="${ENGINE_HOME}/touch.layout.cfg"
 
 if [ ! -x "$BIN" ]; then
     xonotic_log "engine binary not found at $BIN"
@@ -202,7 +215,10 @@ if command -v flock >/dev/null 2>&1; then
                 exit 0
             fi
             xonotic_log "flock unavailable (status ${_xonotic_flock_status}) — skipping single-instance guard"
-            exec 7>&- 2>/dev/null || true
+            # No 2>/dev/null: on a bare exec every redirection outlives the
+            # line, and that one discarded all later stderr -- the engine's
+            # fatal errors included -- on every confined click.
+            exec 7>&-
         fi
     else
         xonotic_log "cannot create $INSTANCE_LOCK — continuing without single-instance guard"
@@ -255,8 +271,11 @@ sync_bundle_data() {
 # "Preparing download..." copy. Those packs sort above the Flatpak menu and
 # freeze the wizard even while the shell writes live progress. Quarantine them.
 quarantine_stale_touch_menu_overrides() {
-    _q_home_data="${HOME}/.xonotic/data"
+    _q_home_data="${ENGINE_HOME}/data"
     [ -d "$_q_home_data" ] || return 0
+    # On a click the engine's data dir is USER_DATA, where sync_bundle_data
+    # just put the shipped menu and CSQC; they are no override.
+    [ "$_q_home_data" != "$USER_DATA" ] || return 0
     for _q_dir in \
         "$_q_home_data/zzz-touch-fix.pk3dir" \
         "$_q_home_data/zzzz-touch-fix.pk3dir"
@@ -298,7 +317,7 @@ quarantine_stale_dev_overlays() {
     if [ -f /.flatpak-info ]; then
         _q_app="$(sed -n 's/^app-commit=//p' /.flatpak-info 2>/dev/null | head -n 1)"
     fi
-    for _q_base in "$USER_DATA" "${HOME}/.xonotic/data"; do
+    for _q_base in "$USER_DATA" "${ENGINE_HOME}/data"; do
         [ -d "$_q_base" ] || continue
         for _q_dir in "$_q_base"/*-touch-dev.pk3dir; do
             [ -d "$_q_dir" ] || continue
@@ -312,7 +331,7 @@ quarantine_stale_dev_overlays() {
             rm -rf "$_q_dir" 2>/dev/null || true
         done
     done
-    _q_dir="${HOME}/.xonotic/data/touch/profiles"
+    _q_dir="${ENGINE_HOME}/data/touch/profiles"
     if [ -d "$_q_dir" ] && [ "$_q_dir" != "$TOUCH_PROFILES_DIR" ]; then
         _q_built_for=""
         [ -f "$_q_dir/.built-for" ] && read -r _q_built_for < "$_q_dir/.built-for"
@@ -333,8 +352,8 @@ quarantine_stale_dev_overlays
 # each launch so a stale copy never outlives the pack it came with;
 # cl_csqc_download 2 (touch/xonotic.cfg) keeps the Touch CSQC on servers that
 # run this exact data build and takes the server's CSQC everywhere else.
-if [ -d "${HOME}/.xonotic/data/dlcache" ]; then
-    rm -f "${HOME}/.xonotic/data/dlcache"/csprogs.dat.* 2>/dev/null || true
+if [ -d "${ENGINE_HOME}/data/dlcache" ]; then
+    rm -f "${ENGINE_HOME}/data/dlcache"/csprogs.dat.* 2>/dev/null || true
 fi
 
 
@@ -348,7 +367,7 @@ TOUCH_ASSETS_READY=0
 mkdir -p "$USER_DATA/touch" 2>/dev/null || xonotic_log "cannot create $USER_DATA/touch"
 # Menu QC FILE_WRITE often lands in the engine userdir (~/.xonotic/data), not
 # the Flatpak gamedir — keep both marker directories ready.
-mkdir -p "${HOME}/.xonotic/data/touch" 2>/dev/null || true
+mkdir -p "${ENGINE_HOME}/data/touch" 2>/dev/null || true
 PROGRESS_FILE="$USER_DATA/touch/asset-progress.txt"
 ASSET_FETCH_LIB="${FETCH_ASSETS%/*}/asset-fetch.sh"
 ASSET_DISCOVER_LIB="${FETCH_ASSETS%/*}/asset-discover.sh"
@@ -359,9 +378,9 @@ ASSET_DISCOVER_LIB="${FETCH_ASSETS%/*}/asset-discover.sh"
 # directory is either the gamedir or ~/.xonotic/data depending on how DarkPlaces
 # resolves the user path, so both are checked (same split as touch.layout.cfg).
 RESTART_MARKER="$USER_DATA/touch/relaunch-request.txt"
-RESTART_MARKER_HOME="${HOME}/.xonotic/data/touch/relaunch-request.txt"
+RESTART_MARKER_HOME="${ENGINE_HOME}/data/touch/relaunch-request.txt"
 BACKGROUND_MARKER="$USER_DATA/touch/background-fetch-request.txt"
-BACKGROUND_MARKER_HOME="${HOME}/.xonotic/data/touch/background-fetch-request.txt"
+BACKGROUND_MARKER_HOME="${ENGINE_HOME}/data/touch/background-fetch-request.txt"
 FETCHD_PIDFILE="$USER_BASE/fetchd.pid"
 HELPER_LIB_DIR="$USER_BASE/lib"
 FLATPAK_APP_ID="${FLATPAK_ID:-io.github.dixonSolutions.XonoticTouch}"
@@ -447,8 +466,17 @@ fetchd_can_start() {
 # closes. Reports "free" when flock is unavailable, which is the same platform
 # where fetchd_can_start is already false.
 fetch_lock_is_held() {
+    ( fd9_lock_is_held ) 9>"$USER_DATA/touch/fetch.lock" 2>/dev/null
+}
+
+# Try `flock -n` on fd 9; true only when someone else holds it. flock exits 1
+# for that. A confined click finds the host flock on PATH but may not run it
+# (126), and a lock that cannot be taken is not a lock someone holds: reading
+# it as one quit every download before it started.
+fd9_lock_is_held() {
     command -v flock >/dev/null 2>&1 || return 1
-    ! ( flock -n 9 ) 9>"$USER_DATA/touch/fetch.lock" 2>/dev/null
+    flock -n 9 2>/dev/null
+    [ $? -eq 1 ]
 }
 
 # Stop the in-sandbox download so fetchd can take the lock, then wait for it to
@@ -708,9 +736,7 @@ prepare_assets() {
                     } > "$PROGRESS_FILE"
                     (
                         trap 'kill_orphan_fetch_writers; exit 143' TERM INT
-                        if command -v flock >/dev/null 2>&1; then
-                            flock -n 9 || exit 0
-                        fi
+                        fd9_lock_is_held && exit 0
                         kill_orphan_fetch_writers
                         if declare -F xonotic_resolve_missing_assets >/dev/null 2>&1; then
                             xonotic_resolve_missing_assets "$USER_DATA"
@@ -746,9 +772,7 @@ prepare_assets() {
             } > "$PROGRESS_FILE"
             (
                 trap 'kill_orphan_fetch_writers; exit 143' TERM INT
-                if command -v flock >/dev/null 2>&1; then
-                    flock -n 9 || exit 0
-                fi
+                fd9_lock_is_held && exit 0
                 kill_orphan_fetch_writers
                 "$FETCH_ASSETS_POSIX" "$USER_DATA"
                 sync_bundle_data
@@ -837,7 +861,7 @@ fi
 
 # DarkPlaces session lock (when locksession>0). Only clear a stale file — never
 # delete a lock held by a live engine (that allowed stacked instances).
-XONOTIC_LOCK="${HOME}/.xonotic/lock"
+XONOTIC_LOCK="${ENGINE_HOME}/lock"
 if [ -f "$XONOTIC_LOCK" ] && ! pgrep -f "${BIN}" >/dev/null 2>&1; then
     rm -f "$XONOTIC_LOCK" 2>/dev/null || true
 fi
@@ -905,7 +929,7 @@ cd "$USER_BASE" 2>/dev/null || xonotic_log "cannot enter $USER_BASE — engine m
 # -customgamename also renames the game in master server queries, which then
 # list no servers; -customgamenetworkfiltername puts the stock name back.
 run_engine() {
-    "$BIN" -xonotic \
+    "$BIN" -xonotic ${ENGINE_DIR_ARG:+"$ENGINE_DIR_ARG"} \
         -customgamename "Xonotic Touch" \
         -customgamenetworkfiltername Xonotic \
         +exec xonotic.cfg \

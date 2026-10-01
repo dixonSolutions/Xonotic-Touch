@@ -24,11 +24,13 @@ pass() {
     printf 'ok: %s\n' "$1"
 }
 
-# Stub engine: records argv instead of opening a window.
+# Stub engine: records argv instead of opening a window, and says so on stderr
+# the way the real one reports a fatal error.
 stage_engine_stub() {
     cat > "$APP_ROOT/bin/xonotic" <<EOF
 #!/bin/sh
 printf '%s\n' "\$@" > "$ENGINE_LOG"
+echo 'xonotic-stub: engine stderr' >&2
 exit 0
 EOF
     chmod 755 "$APP_ROOT/bin/xonotic"
@@ -67,6 +69,7 @@ expect_launch() {
     shift 2
 
     local output status=0
+    LAST_OUTPUT=""
     output="$(
         rm -f "$ENGINE_LOG"
         ( cd "$APP_ROOT" && env -i \
@@ -76,6 +79,7 @@ expect_launch() {
             "$@" \
             /bin/sh -c 'exec bin/start.sh' ) 2>&1
     )" || status=$?
+    LAST_OUTPUT="$output"
 
     if [ "$status" -ne 0 ]; then
         fail "$label: launcher exited with status $status"
@@ -123,6 +127,7 @@ expect_launch() {
 expect_posix_fetch() {
     local label="$1"
     local stage_fetchd="$2"
+    local path="${3:-/nonexistent}"
     local fetch_log="$WORK/posix-fetch-invoked.txt"
 
     rm -f "$fetch_log"
@@ -146,7 +151,7 @@ EOF
 
     ( cd "$APP_ROOT" && env -i \
         HOME="$WORK/home" \
-        PATH=/nonexistent \
+        PATH="$path" \
         APP_ID=xonotictouch.dixonsolutions_xonotic_1.2.49 \
         XDG_DATA_HOME="$WORK/home/.local/share" \
         UBUNTU_APPLICATION_ISOLATION=1 \
@@ -174,16 +179,36 @@ EOF
 stage_fake_click
 expect_launch 'launches confined (bash available)' "$USER_BASE" \
     XONOTIC_TOUCH_USER_BASE="$USER_BASE"
+if grep -qx -- '-nohome' "$ENGINE_LOG" 2>/dev/null; then
+    fail 'desktop launch passed -nohome (its engine userdir is ~/.xonotic)'
+else
+    pass 'desktop launch keeps the engine userdir'
+fi
 expect_launch 'launches confined (POSIX sh only)' "$USER_BASE" \
     XONOTIC_TOUCH_USER_BASE="$USER_BASE" XONOTIC_TOUCH_NO_BASH=1
 
 # issue #19: APP_ID selects the AppArmor-writable APP_PKGNAME data dir.
-rm -rf "$CLICK_USER_BASE" "$USER_BASE"
+# The desktop launches above made ~/.xonotic in the same HOME.
+rm -rf "$CLICK_USER_BASE" "$USER_BASE" "$WORK/home/.xonotic"
 expect_launch 'launches confined (APP_ID writable path)' "$CLICK_USER_BASE" \
     APP_ID=xonotictouch.dixonsolutions_xonotic_1.2.42 \
     XDG_DATA_HOME="$WORK/home/.local/share" \
     XONOTIC_TOUCH_NO_BASH=1 \
     UBUNTU_APPLICATION_ISOLATION=1
+
+# AppArmor lets a click create files only under XDG_*/<APP_PKGNAME>. Left at
+# ~/.xonotic, the engine could not take its session lock and quit right after
+# reading its configs; -nohome keeps it in the cwd the launcher gives it.
+if grep -qx -- '-nohome' "$ENGINE_LOG" 2>/dev/null; then
+    pass 'click launch keeps the engine out of ~/.xonotic'
+else
+    fail 'click launch did not pass -nohome (engine would write ~/.xonotic)'
+fi
+if [ -e "$WORK/home/.xonotic" ]; then
+    fail 'click launch created ~/.xonotic'
+else
+    pass 'click launch did not create ~/.xonotic'
+fi
 
 if [ -d "$USER_BASE" ]; then
     fail 'APP_ID launch wrote to legacy ~/.local/share/xonotic-touch'
@@ -205,9 +230,21 @@ expect_launch 'launches when flock exec is denied' "$CLICK_USER_BASE" \
     PATH="$WORK/fake-bin" \
     XONOTIC_TOUCH_NO_BASH=1
 
+# Closing the lock fd as `exec 7>&- 2>/dev/null` sent every later line of
+# stderr to /dev/null -- a bare exec keeps its redirections -- so the engine's
+# fatal error never reached the phone's journal.
+if grep -q 'xonotic-stub: engine stderr' <<<"$LAST_OUTPUT"; then
+    pass 'engine stderr survives the flock fallback'
+else
+    fail 'engine stderr was discarded after the flock fallback'
+fi
+
 # No bash: the POSIX downloader must actually start, in both packaging layouts.
 expect_posix_fetch 'POSIX downloader runs when no fetchd is packaged (click)' 'no-fetchd'
 expect_posix_fetch 'POSIX downloader runs even when fetchd cannot start (bash absent)' 'with-fetchd'
+# The download subshell took any flock failure for "another download holds the
+# lock" and quit; under confinement flock exits 126, so none ever started.
+expect_posix_fetch 'POSIX downloader runs when flock exec is denied' 'no-fetchd' "$WORK/fake-bin"
 
 # Handing an in-flight download to fetchd stops the in-sandbox job first, on the
 # promise that the daemon picks it up. When it does not, the progress file must

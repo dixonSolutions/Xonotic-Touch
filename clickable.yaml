@@ -22,6 +22,7 @@ dependencies_host:
 
 dependencies_target:
   - libsdl2-dev
+  - libgles-dev
   - libjpeg-dev
   - zlib1g-dev
   - libxmp-dev

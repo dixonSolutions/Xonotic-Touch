@@ -7,6 +7,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 export XONOTIC_PACKAGE_BUILD=1
+# Phones drive their GPU through libhybris: EGL + GLES only (xonotic-shlib.sh).
+export XONOTIC_DP_GLES2=1
 
 if [ -f click/.ci-name ]; then
     CLICK_NAME="$(tr -d '\n' < click/.ci-name)"
