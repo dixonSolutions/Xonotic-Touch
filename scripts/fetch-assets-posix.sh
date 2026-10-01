@@ -55,9 +55,11 @@ assets_ready() {
     return 1
 }
 
+# stat, not `wc -c`: busybox wc reads the whole file, and the progress loop
+# asks every second while a zip grows towards 1.2 GB.
 file_size() {
     if [ -f "$1" ]; then
-        wc -c < "$1" | tr -d ' '
+        stat -c %s "$1"
     else
         printf '%s\n' 0
     fi

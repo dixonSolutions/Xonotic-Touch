@@ -27,7 +27,7 @@ collapsed to `/` and the launcher aborted before the engine ever started.
 | `/bin/sh` (dash) runs the desktop hook's `Exec=bin/start.sh` | The launcher must be POSIX until it re-execs into bash |
 | `$0` is relative; `APP_DIR` points at the install root | Resolve the app root from both, never from `pwd`/`dirname` |
 | `APP_ID` is `<pkgname>_<appname>_<version>` | Derive `APP_PKGNAME` as `${APP_ID%%_*}` for the writable data dir |
-| The engine's default userdir `~/.xonotic` is not writable | Click launches pass `-nohome` (section 2) |
+| The engine's default userdir `~/.xonotic` is not writable | Click launches pass `-userdir $USER_BASE/userdir` (section 2) |
 | Most phones (Halium) drive the GPU through libhybris: EGL with GLES, no desktop GL | The click engine is built with `USE_GLES2` (`XONOTIC_DP_GLES2=1` in `scripts/clickable-build.sh`) |
 
 ## 2. Launcher contract (`packaging/start.sh`)
@@ -41,11 +41,13 @@ collapsed to `/` and the launcher aborted before the engine ever started.
    `USER_BASE` is `$XDG_DATA_HOME/${APP_ID%%_*}` — not
    `~/.local/share/xonotic-touch`. Flatpak still uses
    `$XDG_DATA_HOME/xonotic-touch`. Override with `XONOTIC_TOUCH_USER_BASE`.
-   The engine follows it: a click launch passes `-nohome`, so DarkPlaces writes
-   into its basedir, the cwd the launcher gives it (`USER_BASE`), instead of
-   `~/.xonotic`. Without it the session lock failed and the engine quit straight
-   after reading its configs — the "does not start at all" of every review.
-   The launcher's own references to the engine userdir go through `ENGINE_HOME`.
+   The engine follows it: a click launch passes `-userdir $USER_BASE/userdir`,
+   laid out like `~/.xonotic`. Left at `~/.xonotic`, the session lock failed and
+   the engine quit straight after reading its configs — the "does not start at
+   all" of every review. `-nohome` is no substitute: without a userdir
+   DarkPlaces writes QC files one `data/` level deeper, and the wizard's
+   relaunch marker never reached the launcher. The launcher's own references to
+   the engine userdir go through `ENGINE_HOME`.
 4. **Bash is optional.** The asset helpers need bash (arrays, `compgen`, process
    substitution), so the launcher probes bash and re-execs into it. If bash is
    not exec'able it keeps running under `/bin/sh` and uses
@@ -112,7 +114,8 @@ busybox applets are not GNU coreutils. Known constraints already handled:
 
 Every command the launch scripts run must be an applet in `BUSYBOX_APPLETS`:
 the host's is denied. `wc` was missing, so `file_size` failed on a phone and
-with it download resume and the MB progress.
+with it download resume and the MB progress. `file_size` now uses `stat -c %s`:
+busybox `wc -c` reads the whole file, and the progress loop asks every second.
 
 `fetch-assets-posix.sh` is plain POSIX sh, where a function has no local
 variables. `progress_write` once named its temp file `tmp`, the download dir's

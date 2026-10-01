@@ -96,15 +96,17 @@ USER_DATA="${USER_BASE}/data"
 # The engine's own user directory. DarkPlaces defaults to ~/.xonotic, which a
 # click may not create: AppArmor allows writes only under XDG_*/<APP_PKGNAME>.
 # Its session lock lives there and failing to take it is fatal (host.c), so a
-# click engine read its configs and quit before drawing anything. -nohome
-# makes it write into its basedir instead, which is the cwd it runs from:
-# USER_BASE.
+# click engine read its configs and quit before drawing anything. A click
+# gets one inside USER_BASE instead, laid out like ~/.xonotic so every path
+# below holds. Not -nohome: without a userdir DarkPlaces writes one data/ level
+# deeper (QC's touch/relaunch-request.txt landed in data/data/touch/), and the
+# relaunch after the first download never happened.
 ENGINE_HOME="${HOME}/.xonotic"
-ENGINE_DIR_ARG=""
+ENGINE_USERDIR=""
 if [ -z "${FLATPAK_ID:-}" ] \
     && { [ -n "$CLICK_PKGNAME" ] || [ -n "${UBUNTU_APPLICATION_ISOLATION:-}" ]; }; then
-    ENGINE_HOME="$USER_BASE"
-    ENGINE_DIR_ARG="-nohome"
+    ENGINE_HOME="$USER_BASE/userdir"
+    ENGINE_USERDIR="$ENGINE_HOME"
 fi
 LAYOUT_CFG="${USER_DATA}/screen.layout.cfg"
 TOUCH_PROFILE="${XONOTIC_TOUCH_PROFILE:-standard}"
@@ -273,9 +275,6 @@ sync_bundle_data() {
 quarantine_stale_touch_menu_overrides() {
     _q_home_data="${ENGINE_HOME}/data"
     [ -d "$_q_home_data" ] || return 0
-    # On a click the engine's data dir is USER_DATA, where sync_bundle_data
-    # just put the shipped menu and CSQC; they are no override.
-    [ "$_q_home_data" != "$USER_DATA" ] || return 0
     for _q_dir in \
         "$_q_home_data/zzz-touch-fix.pk3dir" \
         "$_q_home_data/zzzz-touch-fix.pk3dir"
@@ -929,7 +928,7 @@ cd "$USER_BASE" 2>/dev/null || xonotic_log "cannot enter $USER_BASE — engine m
 # -customgamename also renames the game in master server queries, which then
 # list no servers; -customgamenetworkfiltername puts the stock name back.
 run_engine() {
-    "$BIN" -xonotic ${ENGINE_DIR_ARG:+"$ENGINE_DIR_ARG"} \
+    "$BIN" -xonotic ${ENGINE_USERDIR:+-userdir "$ENGINE_USERDIR"} \
         -customgamename "Xonotic Touch" \
         -customgamenetworkfiltername Xonotic \
         +exec xonotic.cfg \

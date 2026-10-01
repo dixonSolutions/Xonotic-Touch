@@ -179,8 +179,8 @@ EOF
 stage_fake_click
 expect_launch 'launches confined (bash available)' "$USER_BASE" \
     XONOTIC_TOUCH_USER_BASE="$USER_BASE"
-if grep -qx -- '-nohome' "$ENGINE_LOG" 2>/dev/null; then
-    fail 'desktop launch passed -nohome (its engine userdir is ~/.xonotic)'
+if grep -qx -- '-userdir' "$ENGINE_LOG" 2>/dev/null; then
+    fail 'desktop launch passed -userdir (its engine userdir is ~/.xonotic)'
 else
     pass 'desktop launch keeps the engine userdir'
 fi
@@ -198,11 +198,11 @@ expect_launch 'launches confined (APP_ID writable path)' "$CLICK_USER_BASE" \
 
 # AppArmor lets a click create files only under XDG_*/<APP_PKGNAME>. Left at
 # ~/.xonotic, the engine could not take its session lock and quit right after
-# reading its configs; -nohome keeps it in the cwd the launcher gives it.
-if grep -qx -- '-nohome' "$ENGINE_LOG" 2>/dev/null; then
+# reading its configs; its userdir has to live in the click's own data dir.
+if [ "$(grep -A1 -x -- '-userdir' "$ENGINE_LOG" 2>/dev/null | tail -n 1)" = "$CLICK_USER_BASE/userdir" ]; then
     pass 'click launch keeps the engine out of ~/.xonotic'
 else
-    fail 'click launch did not pass -nohome (engine would write ~/.xonotic)'
+    fail 'click launch did not pass -userdir under its data dir (engine would write ~/.xonotic)'
 fi
 if [ -e "$WORK/home/.xonotic" ]; then
     fail 'click launch created ~/.xonotic'
