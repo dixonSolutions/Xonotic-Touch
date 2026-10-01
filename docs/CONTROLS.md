@@ -1,6 +1,6 @@
 # Touch controls layer
 
-Landscape-first **two-thumb arena** controls for touch-only play on Linux tablets and phones (Flatpak). Ship defaults live in **`touch/xonotic.cfg`** and **`touch/profiles/`**; per-player overrides persist on device. CSQC implementation targets `engine/data/xonotic-data.pk3dir/qcsrc/client/` (see [SOURCES.md](SOURCES.md)).
+Landscape-first **two-thumb arena** controls for touch play on Android, Ubuntu Touch, and Linux phones, tablets and touchscreen PCs (Flatpak). Ship defaults live in **`touch/xonotic.cfg`** and **`touch/profiles/`**; per-player overrides persist on device. CSQC implementation targets `engine/data/xonotic-data.pk3dir/qcsrc/client/` (see [SOURCES.md](SOURCES.md)).
 
 Related: [SCREEN.md](SCREEN.md) (resolution / DPI), [ARCHITECTURE.md](ARCHITECTURE.md) (repo layout).
 

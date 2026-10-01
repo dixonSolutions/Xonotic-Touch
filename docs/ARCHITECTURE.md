@@ -1,13 +1,13 @@
 # Xonotic Touch: Technical Architecture
 
-Native C + QuakeC touch port for Linux touch tablets and phones. **Slim Flatpak and Ubuntu Touch click packages** ship compiled logic and touch configs; large game assets download on first launch into the platform writable data dir (Flatpak: app data under `xonotic-touch/`; Click: `~/.local/share/xonotictouch.dixonsolutions/`; native: `~/.local/share/xonotic-touch/`).
+Native C + QuakeC touch port for Android, Ubuntu Touch, and any Linux touch device via Flatpak. **Slim Flatpak, Ubuntu Touch click, and Android APK packages** ship compiled logic and touch configs; large game assets download on first launch into the platform writable data dir (Flatpak: app data under `xonotic-touch/`; Click: `~/.local/share/xonotictouch.dixonsolutions/`; Android: see [ANDROID.md](ANDROID.md); native: `~/.local/share/xonotic-touch/`).
 
 ## 1. Roles
 
 | Role | Compiles? | Actions |
 |------|-----------|---------|
-| Maintainer | Optional | Edit `engine/`, push; CI builds Flatpak + Click on `main` |
-| User / tester | No | Install from Flatpak remote, `.click`, or GitHub Releases |
+| Maintainer | Optional | Edit `engine/`, push; CI builds Flatpak + Click + APK on `main` |
+| User / tester | No | Install from Flatpak remote, `.click`, `.apk`, or GitHub Releases |
 
 ## 2. Core architecture
 

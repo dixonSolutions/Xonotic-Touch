@@ -4,7 +4,7 @@
     "version": "@CLICK_VERSION@",
     "maintainer": "dixonSolutions <noreply@github.com>",
     "architecture": "@CLICK_ARCH@",
-    "description": "Touch-only arena FPS for Ubuntu Touch. Slim package; textures, maps, and music download on first launch.",
+    "description": "Touch arena FPS for Ubuntu Touch, also on Android and any Linux via Flatpak. Slim package; textures, maps, and music download on first launch.",
     "framework": "@CLICK_FRAMEWORK@",
     "hooks": {
         "xonotic": {
