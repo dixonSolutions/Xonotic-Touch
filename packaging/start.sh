@@ -107,6 +107,10 @@ if [ -z "${FLATPAK_ID:-}" ] \
     && { [ -n "$CLICK_PKGNAME" ] || [ -n "${UBUNTU_APPLICATION_ISOLATION:-}" ]; }; then
     ENGINE_HOME="$USER_BASE/userdir"
     ENGINE_USERDIR="$ENGINE_HOME"
+    # Mesa caches compiled shaders in ~/.cache/mesa_shader_cache, which a click
+    # may not create either, so the cache was off and every launch compiled
+    # them all again. The app's own cache dir is writable.
+    export MESA_SHADER_CACHE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/${CLICK_PKGNAME:-xonotictouch.dixonsolutions}"
 fi
 LAYOUT_CFG="${USER_DATA}/screen.layout.cfg"
 TOUCH_PROFILE="${XONOTIC_TOUCH_PROFILE:-standard}"
@@ -900,8 +904,14 @@ mkdir -p "${DATA_DIR}/touch/profiles" 2>/dev/null || true
     if [ -f "${TOUCH_PROFILES_DIR}/${TOUCH_PERF_PROFILE}.cfg" ]; then
         echo "exec touch/profiles/${TOUCH_PERF_PROFILE}.cfg"
     fi
+    # The menu and CSQC save the layout with fopen, which writes under data/ in
+    # the engine's write dir: <userdir>/data/data/touch.layout.cfg, exec'd as
+    # data/touch.layout.cfg. Looking only at the paths below, a saved layout
+    # was never read back and touch setup reopened on every launch.
+    if [ -f "${ENGINE_HOME}/data/data/touch.layout.cfg" ]; then
+        echo "exec data/touch.layout.cfg"
     # Prefer engine-resolved name so fopen/exec share one file (TOUCH_LAYOUT_SPEC D14).
-    if [ -f "$USER_TOUCH_LAYOUT" ] || [ -f "${DATA_DIR}/touch.layout.cfg" ]; then
+    elif [ -f "$USER_TOUCH_LAYOUT" ] || [ -f "${DATA_DIR}/touch.layout.cfg" ]; then
         echo "exec touch.layout.cfg"
     elif [ -f "$USER_TOUCH_LAYOUT_LEGACY" ]; then
         echo "exec ${USER_TOUCH_LAYOUT_LEGACY}"

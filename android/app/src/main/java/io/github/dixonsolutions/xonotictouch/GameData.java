@@ -141,9 +141,14 @@ final class GameData {
                 // file, so nothing about the controls changes here.
                 .append("exec touch/profiles/standard.cfg\n")
                 .append("exec touch/profiles/battery.cfg\n");
-        // The touch settings screen saves the player's layout here and execs
-        // it by this name; start.sh does the same at launch.
-        if (new File(new File(userDir(baseDir), "data"), "touch.layout.cfg").isFile()) {
+        // The touch settings screen and the CSQC save the player's layout
+        // with fopen, so it lands in engineWriteDir and execs as
+        // data/touch.layout.cfg; start.sh does the same at launch. Looking
+        // only one level up, a saved layout was never read back and touch
+        // setup reopened on every launch.
+        if (new File(engineWriteDir(baseDir), "touch.layout.cfg").isFile()) {
+            text.append("exec data/touch.layout.cfg\n");
+        } else if (new File(new File(userDir(baseDir), "data"), "touch.layout.cfg").isFile()) {
             text.append("exec touch.layout.cfg\n");
         }
         try {

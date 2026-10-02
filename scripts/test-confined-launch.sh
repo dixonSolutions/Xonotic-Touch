@@ -210,6 +210,22 @@ else
     pass 'click launch did not create ~/.xonotic'
 fi
 
+# The menu saves the touch layout with fopen, which lands in
+# <userdir>/data/data/; only `exec data/touch.layout.cfg` finds it there.
+rm -rf "$CLICK_USER_BASE"
+mkdir -p "$CLICK_USER_BASE/userdir/data/data"
+printf 'seta touch_setup_done "1"\n' > "$CLICK_USER_BASE/userdir/data/data/touch.layout.cfg"
+expect_launch 'launches with a saved touch layout' "$CLICK_USER_BASE" \
+    APP_ID=xonotictouch.dixonsolutions_xonotic_1.2.42 \
+    XDG_DATA_HOME="$WORK/home/.local/share" \
+    XONOTIC_TOUCH_NO_BASH=1 \
+    UBUNTU_APPLICATION_ISOLATION=1
+if grep -qx 'exec data/touch.layout.cfg' "$CLICK_USER_BASE/data/touch/startup.cfg"; then
+    pass 'saved touch layout is exec'"'"'d from where the menu wrote it'
+else
+    fail 'saved touch layout is not exec'"'"'d as data/touch.layout.cfg (setup reopens every launch)'
+fi
+
 if [ -d "$USER_BASE" ]; then
     fail 'APP_ID launch wrote to legacy ~/.local/share/xonotic-touch'
 else
