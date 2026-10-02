@@ -943,6 +943,15 @@ cd "$USER_BASE" 2>/dev/null || xonotic_log "cannot enter $USER_BASE — engine m
 #
 # -customgamename also renames the game in master server queries, which then
 # list no servers; -customgamenetworkfiltername puts the stock name back.
+# The download wizard offers "Download in background", which hands the job to
+# fetchd and its tray notification. A confined click has neither (no bash to
+# run fetchd), so that button closed the game and paused the download behind a
+# promise of a notification that never came. Tell the menu.
+BACKGROUND_FETCH_UNAVAILABLE=1
+if fetchd_can_start; then
+    BACKGROUND_FETCH_UNAVAILABLE=0
+fi
+
 run_engine() {
     "$BIN" -xonotic ${ENGINE_USERDIR:+-userdir "$ENGINE_USERDIR"} \
         -customgamename "Xonotic Touch" \
@@ -953,6 +962,7 @@ run_engine() {
         +exec autoexec.cfg \
         +exec touch/startup.cfg \
         +set _touch_asset_fetch_active "$ASSET_FETCH_ACTIVE" \
+        +set _touch_background_fetch_unavailable "$BACKGROUND_FETCH_UNAVAILABLE" \
         +set _touch_assets_ready "$TOUCH_ASSETS_READY" \
         +vid_fullscreen "$FULLSCREEN" \
         +vid_touchscreen_mode "$VID_TOUCHSCREEN_MODE" \

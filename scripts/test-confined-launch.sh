@@ -204,6 +204,13 @@ if [ "$(grep -A1 -x -- '-userdir' "$ENGINE_LOG" 2>/dev/null | tail -n 1)" = "$CL
 else
     fail 'click launch did not pass -userdir under its data dir (engine would write ~/.xonotic)'
 fi
+# A click has no bash, so no fetchd and no tray: the download wizard must not
+# offer to download in the background (that closed the game and paused it).
+if [ "$(grep -A1 -x -- '_touch_background_fetch_unavailable' "$ENGINE_LOG" 2>/dev/null | tail -n 1)" = '1' ]; then
+    pass 'click launch tells the menu there is no background download'
+else
+    fail 'click launch did not set _touch_background_fetch_unavailable 1'
+fi
 if [ -e "$WORK/home/.xonotic" ]; then
     fail 'click launch created ~/.xonotic'
 else

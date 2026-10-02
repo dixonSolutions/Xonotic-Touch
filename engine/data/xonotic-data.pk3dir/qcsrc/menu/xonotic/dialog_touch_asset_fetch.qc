@@ -38,6 +38,13 @@ void TouchAssetFetch_finish(entity me)
 	Dialog_Close(NULL, me);
 }
 
+string TouchAssetFetch_hint()
+{
+	if (cvar("_touch_background_fetch_unavailable"))
+		return _("Keep this open while the game data downloads. If you close it, the download picks up where it stopped the next time you open the app.");
+	return _("Leave this open, or tap Download in background — the tray keeps the download and notifies you when it finishes.");
+}
+
 /** Single primary CTA: Download in background → Close window → Try again. */
 void TouchAssetFetch_Primary_Click(entity btn, entity me)
 {
@@ -46,6 +53,14 @@ void TouchAssetFetch_Primary_Click(entity btn, entity me)
 		if (TouchStartup_requestRelaunch())
 			return;
 		me.relaunchFailed = true;
+		return;
+	}
+
+	// No background downloader here (a confined click): the button only closes,
+	// and the next launch resumes the download where it stopped.
+	if (cvar("_touch_background_fetch_unavailable"))
+	{
+		localcmd("quit\n");
 		return;
 	}
 
@@ -97,6 +112,8 @@ void TouchAssetFetch_syncPrimaryButton(entity me, bool isError, bool isDone)
 		want = _("Please wait…");
 	else if (isError)
 		want = _("Try again");
+	else if (cvar("_touch_background_fetch_unavailable"))
+		want = _("Close (resumes next time)");
 	else if (me.backgroundMode || cvar("_touch_asset_fetch_background"))
 		want = _("Close window");
 	else
@@ -200,7 +217,7 @@ void TouchAssetFetch_updateWidgets(entity me, bool isError, bool isDiscover, boo
 				_("Could not switch to background download. Keep the app open, or close and reopen to resume."));
 		else
 			me.hintLabel.setText(me.hintLabel,
-				_("Leave this open, or tap Download in background — the tray keeps the download and notifies you when it finishes."));
+				TouchAssetFetch_hint());
 		TouchAssetFetch_syncPrimaryButton(me, false, false);
 		return;
 	}
@@ -227,7 +244,7 @@ void TouchAssetFetch_updateWidgets(entity me, bool isError, bool isDiscover, boo
 			_("Could not switch to background download. Keep the app open, or close and reopen to resume."));
 	else
 		me.hintLabel.setText(me.hintLabel,
-			_("Leave this open, or tap Download in background — the tray keeps the download and notifies you when it finishes."));
+			TouchAssetFetch_hint());
 	TouchAssetFetch_syncPrimaryButton(me, false, false);
 }
 
@@ -319,6 +336,6 @@ void XonoticTouchAssetFetchDialog_fill(entity me)
 	me.TR(me);
 	me.gotoRC(me, me.rows - 1, 0);
 		me.TD(me, 1, me.columns, me.hintLabel = makeXonoticTextLabel(0.5,
-			_("Leave this open, or tap Download in background — the tray keeps the download and notifies you when it finishes.")));
+			TouchAssetFetch_hint()));
 		me.hintLabel.allowWrap = true;
 }
