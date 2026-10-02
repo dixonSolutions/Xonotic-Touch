@@ -338,6 +338,31 @@ echo "\${url##*/}" >> "$wget_log"
 cat "$fixture" > "\$out"
 WGET
     chmod 755 "$WORK/fetch-bin/wget"
+    if [ "$curl_mode" = 'working' ]; then
+        # The click's curl with the phone's libcurl: serves the core zip, 404s
+        # the rest, and logs each download the way the fake wget does.
+        cat > "$WORK/fetch-bin/curl" <<CURL
+#!/bin/sh
+out=""; url=""
+while [ \$# -gt 0 ]; do
+    case "\$1" in
+        --version) echo "curl 8.5.0"; exit 0 ;;
+        -o) out="\$2"; shift ;;
+        --user|-C) shift ;;
+        -*) ;;
+        *) url="\$1" ;;
+    esac
+    shift
+done
+case "\$url" in
+    */Xonotic-latest.zip) ;;
+    *) echo "curl: (22) The requested URL returned error: 404" >&2; exit 22 ;;
+esac
+echo "\${url##*/}" >> "$wget_log"
+cat "$fixture" > "\$out"
+CURL
+        chmod 755 "$WORK/fetch-bin/curl"
+    fi
     if [ "$curl_mode" = 'broken' ]; then
         # The click's curl without the phone's libcurl: the loader fails it.
         printf '#!/bin/sh\necho "curl: error while loading shared libraries: libcurl.so.4" >&2\nexit 127\n' \
@@ -386,6 +411,7 @@ WGET
 expect_posix_fetch_completes 'POSIX downloader installs the packs from the core zip alone' 'none'
 expect_posix_fetch_completes 'POSIX downloader does not fetch a complete zip again' 'complete-core-zip'
 expect_posix_fetch_completes 'POSIX downloader falls back to wget when curl cannot run' 'none' 'broken'
+expect_posix_fetch_completes 'POSIX downloader installs the packs through curl' 'none' 'working'
 
 # After the first download the wizard writes touch/relaunch-request.txt and
 # quits, and the launcher has to start the engine again to load the new packs.
