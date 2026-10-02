@@ -1,13 +1,21 @@
 #include "touch_menu_layout.qh"
 
+// Most touch cvars are registered by the client VM, which is not loaded while
+// the menu is up (first launch, main menu). Writing those wrote 0 and "" for
+// every control, which a later exec would apply. Only write what exists, and as
+// seta, so a layout read before the client VM loads can still create them.
 void TouchMenu_ConfigWriteFloat(float fh, string key)
 {
-	fputs(fh, strcat(key, " ", ftos(cvar(key)), "\n"));
+	if (!cvar_type(key))
+		return;
+	fputs(fh, strcat("seta ", key, " ", ftos(cvar(key)), "\n"));
 }
 
 void TouchMenu_ConfigWriteString(float fh, string key)
 {
-	fputs(fh, strcat(key, " \"", cvar_string(key), "\"\n"));
+	if (!cvar_type(key))
+		return;
+	fputs(fh, strcat("seta ", key, " \"", cvar_string(key), "\"\n"));
 }
 
 void TouchMenu_WriteLayoutFile(string path)
@@ -71,6 +79,5 @@ void TouchMenu_WriteLayoutFile(string path)
 	TouchMenu_ConfigWriteFloat(fh, "touch_minimal_more");
 	TouchMenu_ConfigWriteFloat(fh, "touch_hud_scale");
 	TouchMenu_ConfigWriteString(fh, "touch_performance_profile");
-	TouchMenu_ConfigWriteFloat(fh, "touch_setup_done");
 	fclose(fh);
 }

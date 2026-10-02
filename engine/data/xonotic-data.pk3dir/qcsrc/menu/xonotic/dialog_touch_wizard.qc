@@ -12,15 +12,12 @@ bool XonoticTouchSetupDialog_shouldShow()
 
 void TouchSetup_Finish_Click(entity btn, entity me)
 {
-	// The layout file records touch_setup_done and runs last at startup, so it
-	// has to hold the new value: written first, it saved a 0 that reopened the
-	// wizard on every launch. touch_init.qc registers the cvar in the client VM,
-	// which is not loaded while the menu is up, so register it here to set it.
-	registercvar("touch_setup_done", "0", 0);
-	cvar_set("touch_setup_done", "1");
 	TouchMenu_WriteLayoutFile("touch.layout.cfg");
-	// seta archives it in config.cfg too, the same way dialog_firstrun.qc sets
-	// touch_profile_done.
+	// seta, not cvar_set: touch_setup_done is registered by the client VM in
+	// touch_init.qc, which has not loaded while the menu is up, so cvar_set
+	// found nothing and the wizard reopened on every launch. seta creates the
+	// cvar and archives it in config.cfg, the same way dialog_firstrun.qc sets
+	// touch_profile_done. It is a one-time flag, never part of a layout.
 	localcmd("seta touch_setup_done 1\n");
 	localcmd("saveconfig\n");
 	Dialog_Close(btn, me);
@@ -39,12 +36,12 @@ void XonoticTouchSetupDialog_fill(entity me)
 	me.TR(me);
 		me.TD(me, 1, 6, e = makeXonoticHeaderLabel(_("Choose a preset")));
 	me.TR(me);
-		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Standard"), '0 0 0', "exec touch/profiles/standard.cfg; menu_cmd sync", 0));
-		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Casual"), '0 0 0', "exec touch/profiles/casual.cfg; menu_cmd sync", 0));
-		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Competitive"), '0 0 0', "exec touch/profiles/competitive.cfg; menu_cmd sync", 0));
+		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Standard"), '0 0 0', "seta touch_preset standard; exec touch/profiles/standard.cfg; menu_cmd sync", 0));
+		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Casual"), '0 0 0', "seta touch_preset casual; exec touch/profiles/casual.cfg; menu_cmd sync", 0));
+		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Competitive"), '0 0 0', "seta touch_preset competitive; exec touch/profiles/competitive.cfg; menu_cmd sync", 0));
 	me.TR(me);
-		me.TD(me, 2, 3, e = makeXonoticTouchCommandButton(_("Left-handed"), '0 0 0', "exec touch/profiles/left.cfg; menu_cmd sync", 0));
-		me.TD(me, 2, 3, e = makeXonoticTouchCommandButton(_("Minimal"), '0 0 0', "exec touch/profiles/minimal.cfg; menu_cmd sync", 0));
+		me.TD(me, 2, 3, e = makeXonoticTouchCommandButton(_("Left-handed"), '0 0 0', "seta touch_preset left; exec touch/profiles/left.cfg; menu_cmd sync", 0));
+		me.TD(me, 2, 3, e = makeXonoticTouchCommandButton(_("Minimal"), '0 0 0', "seta touch_preset minimal; exec touch/profiles/minimal.cfg; menu_cmd sync", 0));
 	me.TR(me);
 	me.TR(me);
 		me.TD(me, 1, 6, e = makeXonoticCheckBox_T(0, "touch_handedness", _("Left-handed (mirror layout)"), string_null));

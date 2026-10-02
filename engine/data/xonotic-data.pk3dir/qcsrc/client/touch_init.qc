@@ -217,8 +217,13 @@ void Touch_DefineCvars(void)
 	Touch_RegisterCvar("touch_dodge_mode", "0");
 	Touch_RegisterCvar("touch_chat_mode", "1");
 	Touch_RegisterCvar("touch_minimal_more", "0");
-	Touch_RegisterCvar("touch_setup_done", "0");
-	Touch_RegisterCvar("touch_profile_done", "0");
+	// One-time flags, not layout settings: registered straight, like
+	// touch_layout_version below, so Touch_ResetDefaults leaves them alone and no
+	// layout records them. config.cfg keeps them (the menu sets them with seta).
+	// Reset with the rest, the first match after setup cleared touch_setup_done
+	// and the wizard opened again on the next launch.
+	registercvar("touch_setup_done", "0");
+	registercvar("touch_profile_done", "0");
 	// Opt-out, like every other self-updating build here: a player who does
 	// nothing still gets fixes. The platform layer owns the real preference
 	// and mirrors it back through update-status.txt.
@@ -276,11 +281,18 @@ void Touch_MigrateLayout(void)
 	print("Touch: layout file is schema ", ftos(saved), ", this build wants ",
 		ftos(TOUCH_LAYOUT_VERSION), " — backing it up and taking the new defaults.\n");
 	Touch_SaveLayoutFile("touch.layout.bak");
+	// Re-stating the chosen preset keeps a player who picked "competitive" on it.
+	// Read it before the reset, which puts touch_preset back to its default.
+	string preset = cvar_string("touch_preset");
+	if (preset == "")
+		preset = "standard";
+	preset = strzone(preset);
 	Touch_ResetDefaults();
 	cvar_set("touch_layout_version", ftos(TOUCH_LAYOUT_VERSION));
-	// Re-stating the chosen preset keeps a player who picked "competitive" on it.
-	localcmd(strcat("exec touch/profiles/", autocvar_touch_preset, ".cfg\n"));
-	Touch_SaveLayoutFile(autocvar_touch_layout_file);
+	cvar_set("touch_preset", preset);
+	// localcmd queues the exec, so the save has to queue behind it too.
+	localcmd(strcat("exec touch/profiles/", preset, ".cfg\ntouch_save\n"));
+	strunzone(preset);
 }
 
 void Touch_Init(void)
