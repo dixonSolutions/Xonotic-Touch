@@ -34,6 +34,13 @@ progress_write() {
     mv -f "$_pw_tmp" "$PROGRESS"
 }
 
+# The click ships curl without its libraries and leans on the phone's libcurl.
+# Use it only if it actually runs; busybox wget (through openssl) is the
+# fallback, about 2.4 times slower from the autobuild server.
+curl_usable() {
+    command -v curl >/dev/null 2>&1 && curl --version >/dev/null 2>&1
+}
+
 has_pk3() {
     # $1 = glob under DATA_DIR, e.g. 'xonotic-*-data.pk3'
     # Intentional unquoted expand so the glob is evaluated.
@@ -104,7 +111,7 @@ download_zip() {
     progress_write running "$pct_lo" "Downloading ${zip_name}..."
     mkdir -p "$(dirname "$zip_path")"
 
-    if command -v curl >/dev/null 2>&1; then
+    if curl_usable; then
         expected=$(
             curl -sI -L --user "${AUTOBUILD_USER}:${AUTOBUILD_PASS}" "$url" \
                 | awk 'BEGIN{c=0} tolower($1)=="content-length:" {c=$2} END{print c+0}' \
@@ -193,7 +200,7 @@ start_bg_curl() {
     _bg_path="$1"
     _bg_name="$2"
     _bg_url="${AUTOBUILD_URL}/${_bg_name}"
-    if command -v curl >/dev/null 2>&1; then
+    if curl_usable; then
         curl -fL -C - --user "${AUTOBUILD_USER}:${AUTOBUILD_PASS}" \
             -o "$_bg_path" "$_bg_url" >/dev/null 2>&1 &
         echo $! >> "$tmp/pids"

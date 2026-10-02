@@ -94,11 +94,15 @@ Environment overrides: `XONOTIC_TOUCH_APP_ROOT`, `XONOTIC_TOUCH_USER_BASE`,
   ever started. The bundled one runs from the click tree and links the phone's
   `libssl3`; no libraries are copied with it. Override a missing one with
   `XONOTIC_ALLOW_MISSING_OPENSSL=1`.
-- No host `curl` or `unzip` is bundled, even for a native build: phone clicks are
-  cross-built and never could ship them, and a native copy brought its libraries
-  (libc included) and a download path no phone takes. busybox `wget` and `unzip`
-  serve every click. `stage-click.sh` likewise skips `/usr/local` libraries, the
-  build image's own (an sdl2-compat without its SDL3).
+- Stages a target-arch `bin/curl` for the asset download, without libraries: it
+  links the phone's `libcurl4t64`. From the autobuild server it is about 2.4 times
+  faster than busybox `wget` through `openssl` (432 against 183 KB/s, measured
+  back to back), and it checks certificates. `fetch-assets-posix.sh` uses it only
+  if `curl --version` runs, so a phone without libcurl still downloads, through
+  `wget`. No libraries are copied with any tool: a native build's curl copied with
+  its libraries once brought libc into the amd64 test click. `stage-click.sh`
+  likewise skips `/usr/local` libraries, the build image's own (an sdl2-compat
+  without its SDL3).
 - Branches other than `main` also build an **amd64** click (never published), so
   a click can be play-tested at native speed under its real profile on a PC.
 - Staging failure is a build failure. Override with

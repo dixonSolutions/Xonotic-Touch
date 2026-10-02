@@ -177,6 +177,35 @@ stage_openssl() {
     printf 'stage-click-utils: staged openssl (%s) for busybox wget https\n' "$arch"
 }
 
+# curl for the asset download: about 2.4 times faster from the autobuild server
+# than busybox wget through openssl, and it checks certificates. Like openssl it
+# links the phone's own libraries (libcurl4t64); fetch-assets-posix.sh only uses
+# it if it runs, so a phone without libcurl still downloads, through wget.
+stage_curl() {
+    local arch="$1"
+    local curl=""
+    local candidate
+
+    if [ -x /usr/bin/curl ] && binary_matches_arch /usr/bin/curl "$arch"; then
+        curl=/usr/bin/curl
+    else
+        if [ -z "$BUSYBOX_TMP" ]; then
+            BUSYBOX_TMP="$(mktemp -d)"
+        fi
+        candidate="$(download_archive_binary "$arch" curl "$BUSYBOX_TMP/curl" curl || true)"
+        if [ -n "$candidate" ] && binary_matches_arch "$candidate" "$arch"; then
+            curl="$candidate"
+        fi
+    fi
+
+    if [ -z "$curl" ]; then
+        return 1
+    fi
+    rm -f "$BIN_DIR/curl"
+    install -m 755 "$curl" "$BIN_DIR/curl"
+    printf 'stage-click-utils: staged curl (%s) for the asset download\n' "$arch"
+}
+
 ARCH_NAME="$(target_arch)"
 
 if ! stage_busybox "$ARCH_NAME"; then
@@ -191,6 +220,10 @@ if ! stage_busybox "$ARCH_NAME"; then
     fi
 fi
 
+if ! stage_curl "$ARCH_NAME"; then
+    printf 'stage-click-utils: WARNING no %s curl staged — downloads use busybox wget\n' "$ARCH_NAME" >&2
+fi
+
 if ! stage_openssl "$ARCH_NAME"; then
     if [ "${XONOTIC_ALLOW_MISSING_OPENSSL:-0}" = "1" ]; then
         printf 'stage-click-utils: WARNING no %s openssl staged — game data cannot download on a phone\n' \
@@ -203,7 +236,6 @@ if ! stage_openssl "$ARCH_NAME"; then
     fi
 fi
 
-# No host curl or unzip, even when the build host matches the target. A
-# cross-built click (every phone build) never could ship them, and copying a
-# native one dragged in its libraries, libc included: the amd64 test click
-# then took a download path no phone takes. busybox wget and unzip serve all.
+# No libraries are copied with any of these. Copying a native build's curl
+# with its libraries once dragged libc into the amd64 test click; curl and
+# openssl link the phone's own, and busybox serves unzip.

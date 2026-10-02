@@ -274,6 +274,7 @@ expect_posix_fetch 'POSIX downloader runs when flock exec is denied' 'no-fetchd'
 expect_posix_fetch_completes() {
     local label="$1"
     local preload="$2"
+    local curl_mode="${3:-none}"
     local data="$WORK/fetch-data"
     local fixture="$WORK/fixture/Xonotic-latest.zip"
     local wget_log="$WORK/fetch-wget.log"
@@ -330,6 +331,12 @@ echo "\${url##*/}" >> "$wget_log"
 cat "$fixture" > "\$out"
 WGET
     chmod 755 "$WORK/fetch-bin/wget"
+    if [ "$curl_mode" = 'broken' ]; then
+        # The click's curl without the phone's libcurl: the loader fails it.
+        printf '#!/bin/sh\necho "curl: error while loading shared libraries: libcurl.so.4" >&2\nexit 127\n' \
+            > "$WORK/fetch-bin/curl"
+        chmod 755 "$WORK/fetch-bin/curl"
+    fi
 
     local status=0
     ( env -i HOME="$WORK/home" PATH="$WORK/fetch-bin" \
@@ -371,6 +378,7 @@ WGET
 
 expect_posix_fetch_completes 'POSIX downloader installs the packs from the core zip alone' 'none'
 expect_posix_fetch_completes 'POSIX downloader does not fetch a complete zip again' 'complete-core-zip'
+expect_posix_fetch_completes 'POSIX downloader falls back to wget when curl cannot run' 'none' 'broken'
 
 # After the first download the wizard writes touch/relaunch-request.txt and
 # quits, and the launcher has to start the engine again to load the new packs.
