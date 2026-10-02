@@ -347,6 +347,7 @@ out=""; url=""
 while [ \$# -gt 0 ]; do
     case "\$1" in
         --version) echo "curl 8.5.0"; exit 0 ;;
+        -sI) head=1 ;;
         -o) out="\$2"; shift ;;
         --user|-C) shift ;;
         -*) ;;
@@ -358,6 +359,10 @@ case "\$url" in
     */Xonotic-latest.zip) ;;
     *) echo "curl: (22) The requested URL returned error: 404" >&2; exit 22 ;;
 esac
+if [ "\${head:-0}" = 1 ]; then
+    printf 'HTTP/1.1 200 OK\\r\\nContent-Length: %s\\r\\n\\r\\n' "\$(wc -c < "$fixture")"
+    exit 0
+fi
 echo "\${url##*/}" >> "$wget_log"
 cat "$fixture" > "\$out"
 CURL
@@ -412,6 +417,7 @@ expect_posix_fetch_completes 'POSIX downloader installs the packs from the core 
 expect_posix_fetch_completes 'POSIX downloader does not fetch a complete zip again' 'complete-core-zip'
 expect_posix_fetch_completes 'POSIX downloader falls back to wget when curl cannot run' 'none' 'broken'
 expect_posix_fetch_completes 'POSIX downloader installs the packs through curl' 'none' 'working'
+expect_posix_fetch_completes 'POSIX downloader through curl does not fetch a complete zip again' 'complete-core-zip' 'working'
 
 # After the first download the wizard writes touch/relaunch-request.txt and
 # quits, and the launcher has to start the engine again to load the new packs.

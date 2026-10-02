@@ -196,11 +196,26 @@ extract_dir="$tmp/extract"
 # pid files for background curls
 : > "$tmp/pids"
 
+# Total size of the zips the current batch of curls is fetching, for a real
+# percentage; 0 when the server did not say.
+bg_expected=0
+
 start_bg_curl() {
     _bg_path="$1"
     _bg_name="$2"
     _bg_url="${AUTOBUILD_URL}/${_bg_name}"
     if curl_usable; then
+        _bg_len=$(
+            curl -sI -L --user "${AUTOBUILD_USER}:${AUTOBUILD_PASS}" "$_bg_url" \
+                | awk 'BEGIN{c=0} tolower($1)=="content-length:" {c=$2} END{print c+0}' \
+                | tr -d '\r'
+        )
+        # A zip already complete (closed while unpacking) is not asked for again:
+        # -C - on it gets a 416, which -f turns into a failed download, every time.
+        if [ "${_bg_len:-0}" -gt 0 ] && [ "$(file_size "$_bg_path")" -ge "$_bg_len" ]; then
+            return 0
+        fi
+        bg_expected=$((bg_expected + ${_bg_len:-0}))
         curl -fL -C - --user "${AUTOBUILD_USER}:${AUTOBUILD_PASS}" \
             -o "$_bg_path" "$_bg_url" >/dev/null 2>&1 &
         echo $! >> "$tmp/pids"
@@ -231,8 +246,16 @@ wait_bg_downloads() {
             fi
         done < "$tmp/pids"
         mv -f "$tmp/pids.new" "$tmp/pids"
-        progress_write running 20 \
-            "Downloading packs (${mb} MB, ${alive} active)..."
+        if [ "$bg_expected" -gt 0 ]; then
+            # 10..88: the bar used to sit at 20% for the whole download.
+            pct=$((10 + have * 78 / bg_expected))
+            [ "$pct" -gt 88 ] && pct=88
+            progress_write running "$pct" \
+                "Downloading game data (${mb} / $((bg_expected / 1048576)) MB)..."
+        else
+            progress_write running 20 \
+                "Downloading packs (${mb} MB, ${alive} active)..."
+        fi
         [ "$alive" -eq 0 ] && break
         sleep 1
     done
@@ -251,6 +274,7 @@ fi
 
 need_maps=0
 need_music=0
+bg_expected=0
 if ! has_pk3 'xonotic-*-maps.pk3'; then
     need_maps=1
     start_bg_curl "$tmp/xonotic-maps.zip" "Xonotic-latest-mappingsupport.zip"
