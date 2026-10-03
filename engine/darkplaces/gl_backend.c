@@ -960,6 +960,7 @@ static const GLuint drawbuffers[4] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1
 int R_Mesh_CreateFramebufferObject(rtexture_t *depthtexture, rtexture_t *colortexture, rtexture_t *colortexture2, rtexture_t *colortexture3, rtexture_t *colortexture4)
 {
 	int temp;
+	int previousfbo;
 	GLuint status;
 	switch(vid.renderpath)
 	{
@@ -968,10 +969,16 @@ int R_Mesh_CreateFramebufferObject(rtexture_t *depthtexture, rtexture_t *colorte
 		CHECKGLERROR
 		qglGenFramebuffers(1, (GLuint*)&temp);CHECKGLERROR
 
-#ifndef USE_GLES2
-		R_Mesh_SetRenderTargets(temp);  // This breaks GLES2.
-		// GL_ARB_framebuffer_object (GL3-class hardware) - depth stencil attachment
-#endif
+		// Attachments and the status check below act on the bound framebuffer,
+		// so bind the new one first, on GLES2 as well. Without the bind, GLES2
+		// attached to whatever was bound (the window: GL_INVALID_OPERATION),
+		// checked that one (complete) and returned an FBO with nothing in it.
+		// Every view that went through an FBO -- gamma/contrast, saturation,
+		// bloom, the blurs -- then drew nothing and showed an undefined buffer.
+		// Callers bind the FBO they draw into, so put the previous one back:
+		// one made mid-frame must not take over the drawing that follows.
+		previousfbo = gl_state.framebufferobject;
+		R_Mesh_SetRenderTargets(temp);
 
 #ifdef USE_GLES2
 		// FIXME: separate stencil attachment on GLES
@@ -1030,10 +1037,14 @@ int R_Mesh_CreateFramebufferObject(rtexture_t *depthtexture, rtexture_t *colorte
 		if (status != GL_FRAMEBUFFER_COMPLETE)
 		{
 			Con_Printf(CON_ERROR "R_Mesh_CreateFramebufferObject: glCheckFramebufferStatus returned %i\n", status);
-			gl_state.framebufferobject = 0; // GL unbinds it for us
+			// Deleting the bound framebuffer leaves GL on 0, which is not the
+			// window where the default framebuffer is non-zero. Keep the cache
+			// on temp so the restore below binds rather than seeing 0 == 0 and
+			// skipping it.
 			qglDeleteFramebuffers(1, (GLuint*)&temp);CHECKGLERROR
 			temp = 0;
 		}
+		R_Mesh_SetRenderTargets(previousfbo);
 		return temp;
 	}
 	return 0;
