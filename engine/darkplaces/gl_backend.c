@@ -1037,7 +1037,10 @@ int R_Mesh_CreateFramebufferObject(rtexture_t *depthtexture, rtexture_t *colorte
 		if (status != GL_FRAMEBUFFER_COMPLETE)
 		{
 			Con_Printf(CON_ERROR "R_Mesh_CreateFramebufferObject: glCheckFramebufferStatus returned %i\n", status);
-			gl_state.framebufferobject = 0; // GL unbinds it for us
+			// Deleting the bound framebuffer leaves GL on 0, which is not the
+			// window where the default framebuffer is non-zero. Keep the cache
+			// on temp so the restore below binds rather than seeing 0 == 0 and
+			// skipping it.
 			qglDeleteFramebuffers(1, (GLuint*)&temp);CHECKGLERROR
 			temp = 0;
 		}
