@@ -868,8 +868,19 @@ mkdir -p "${DATA_DIR}/touch/profiles" 2>/dev/null || true
     else
         echo "xonotic-touch: touch profile missing: ${TOUCH_PROFILES_DIR}/${TOUCH_PROFILE}.cfg" >&2
     fi
+    # The performance profile is applied once, on the first start
+    # (touch_perf_version, archived; touch/xonotic.cfg defaults it to 0 before
+    # config.cfg runs). Applying it on every start overwrote whatever the
+    # player then chose in the menus. XONOTIC_TOUCH_PERF_PROFILE set by hand
+    # still applies on every start.
     if [ -f "${TOUCH_PROFILES_DIR}/${TOUCH_PERF_PROFILE}.cfg" ]; then
-        echo "exec touch/profiles/${TOUCH_PERF_PROFILE}.cfg"
+        if [ -n "${XONOTIC_TOUCH_PERF_PROFILE:-}" ]; then
+            echo "exec touch/profiles/${TOUCH_PERF_PROFILE}.cfg"
+        else
+            echo "alias _touch_perf_apply0 \"exec touch/profiles/${TOUCH_PERF_PROFILE}.cfg; seta touch_perf_version 1\""
+            echo "alias _touch_perf_apply1 \"\""
+            echo "_touch_perf_apply\$touch_perf_version"
+        fi
     fi
     # Prefer engine-resolved name so fopen/exec share one file (TOUCH_LAYOUT_SPEC D14).
     if [ -f "$USER_TOUCH_LAYOUT" ] || [ -f "${DATA_DIR}/touch.layout.cfg" ]; then
@@ -879,20 +890,20 @@ mkdir -p "${DATA_DIR}/touch/profiles" 2>/dev/null || true
     fi
 } > "$STARTUP_CFG" || xonotic_log "cannot write $STARTUP_CFG"
 
-# Touch controls: auto-detect by default. Desktop test windows have no
-# touchscreen, so they force Always unless XONOTIC_TOUCH_MODE is set.
+# Touch controls: the input mode chosen in Settings -> Touch is archived
+# (vid_touchscreen_mode, default Dynamic) and wins. Passing it on every launch
+# undid that choice at each start. Only an explicit XONOTIC_TOUCH_MODE, or the
+# desktop test window (no touchscreen, so Always), overrides it.
 # Values: auto | always | off
-if [ -z "${XONOTIC_TOUCH_MODE:-}" ]; then
-    if [ "${IS_DESKTOP:-0}" = "1" ]; then
-        XONOTIC_TOUCH_MODE=always
-    else
-        XONOTIC_TOUCH_MODE=auto
-    fi
+TOUCH_MODE_ARGS=""
+if [ -z "${XONOTIC_TOUCH_MODE:-}" ] && [ "${IS_DESKTOP:-0}" = "1" ]; then
+    XONOTIC_TOUCH_MODE=always
 fi
-case "$XONOTIC_TOUCH_MODE" in
-    always|2) VID_TOUCHSCREEN_MODE=2 ;;
-    off|0)    VID_TOUCHSCREEN_MODE=0 ;;
-    *)        VID_TOUCHSCREEN_MODE=1 ;;
+case "${XONOTIC_TOUCH_MODE:-}" in
+    "")       ;;
+    always|2) TOUCH_MODE_ARGS="+vid_touchscreen_mode 2" ;;
+    off|0)    TOUCH_MODE_ARGS="+vid_touchscreen_mode 0" ;;
+    *)        TOUCH_MODE_ARGS="+vid_touchscreen_mode 1" ;;
 esac
 
 # The engine resolves -xonotic gamedirs relative to the cwd.
@@ -916,8 +927,7 @@ run_engine() {
         +set _touch_asset_fetch_active "$ASSET_FETCH_ACTIVE" \
         +set _touch_assets_ready "$TOUCH_ASSETS_READY" \
         +vid_fullscreen "$FULLSCREEN" \
-        +vid_touchscreen_mode "$VID_TOUCHSCREEN_MODE" \
-        +vid_touchscreen_touchonly 1 \
+        $TOUCH_MODE_ARGS \
         +vid_conwidthauto 1 \
         +vid_conheight "$XONOTIC_VID_HEIGHT" \
         +vid_width "$XONOTIC_VID_WIDTH" \

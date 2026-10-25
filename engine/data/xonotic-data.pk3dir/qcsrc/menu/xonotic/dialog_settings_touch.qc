@@ -104,8 +104,18 @@ void XonoticTouchSettingsTab_fill(entity me)
 		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(0.3, 1.0, 0.05, "touch_opacity", _("Control overlay opacity")));
 		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Control scale:")));
 		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(0.7, 1.4, 0.05, "touch_scale", _("Size of move/fire/jump widgets")));
+	// Performance shares the row: the tab has no room for its own header. Each
+	// button runs its profile once; the values are archived from then on, so
+	// a change in Settings -> Effects afterwards sticks (the launchers apply
+	// the default profile only on the first start, touch_perf_version).
 	me.TR(me);
-		me.TD(me, 1, 3, e = makeXonoticCommandButton(_("Customize layout (in game)"), '0 0 0', "touch_customize 1; togglemenu 0", COMMANDBUTTON_CLOSE));
+		me.TD(me, 1, 2, e = makeXonoticCommandButton(_("Customize layout"), '0 0 0', "touch_customize 1; togglemenu 0", COMMANDBUTTON_CLOSE));
+		me.TD(me, 1, 4/3, e = makeXonoticCommandButton_T(_("30 fps saver"), '0 0 0', "exec touch/profiles/battery.cfg; menu_cmd sync", 0,
+			_("Performance: 30 fps, half-size textures, no dynamic lights or water reflections. Coolest and longest on battery")));
+		me.TD(me, 1, 4/3, e = makeXonoticCommandButton_T(_("60 fps"), '0 0 0', "exec touch/profiles/balanced.cfg; menu_cmd sync", 0,
+			_("Performance: 60 fps with vsync, half-size textures, portals at half resolution. The default on phones")));
+		me.TD(me, 1, 4/3, e = makeXonoticCommandButton_T(_("Best quality"), '0 0 0', "exec touch/profiles/quality.cfg; menu_cmd sync", 0,
+			_("Performance: full textures, realtime lights, bloom and full-resolution portals. For a cool or plugged-in device")));
 
 	// Engine-side (touch_aim.c), so they work on public servers too. Touch mode
 	// only: with a keyboard attached none of this runs, whatever is ticked here.

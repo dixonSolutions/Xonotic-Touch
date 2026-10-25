@@ -5,6 +5,7 @@ import android.content.res.Configuration;
 import android.hardware.input.InputManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
 import android.util.Log;
 import android.view.InputDevice;
 import android.view.View;
@@ -73,6 +74,7 @@ public final class XonoticActivity extends SDLActivity {
             baseDir = new GameData(this).baseDir().getAbsolutePath();
         }
         super.onCreate(savedInstanceState);
+        holdSustainedPerformance();
         watchSoftKeyboard();
         watchInputDevices();
         startUpdateService();
@@ -92,6 +94,26 @@ public final class XonoticActivity extends SDLActivity {
         super.onResume();
         reportInputDevices();
         recheckUpdateIfStale();
+    }
+
+    /**
+     * Ask for clocks the device can hold, where it offers that.
+     *
+     * A phone runs a game at peak clocks until it heats up, then throttles
+     * hard: smooth for a minute, then frames that come and go. Sustained
+     * performance mode trades the peak for a level the device keeps up
+     * indefinitely, which is what an even frame rate needs. Devices that do
+     * not support it say so, and nothing changes there.
+     */
+    private void holdSustainedPerformance() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            return;
+        }
+        PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
+        if (power != null && power.isSustainedPerformanceModeSupported()) {
+            getWindow().setSustainedPerformanceMode(true);
+            Log.i("XonoticTouch", "Sustained performance mode on");
+        }
     }
 
     @Override
