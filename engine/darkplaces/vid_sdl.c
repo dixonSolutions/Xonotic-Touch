@@ -1521,6 +1521,8 @@ static void VID_UpdateMouseGrab(void)
 
 	if (vid_touchscreen_mouselook.integer != (vid_touchscreen.integer && vid_usingmouse))
 		Cvar_SetValueQuick(&vid_touchscreen_mouselook, vid_touchscreen.integer && vid_usingmouse);
+	if (vid_mouse_confirmed_cvar.integer != (int)VID_TouchMouseConfirmed())
+		Cvar_SetValueQuick(&vid_mouse_confirmed_cvar, VID_TouchMouseConfirmed());
 }
 
 //#define DEBUGSDLEVENTS
@@ -1601,11 +1603,29 @@ void Sys_SDL_HandleEvents(void)
 					VID_UpdateMouseGrab();
 			}
 			// A real mouse always clicks, touch controls or not: mouse and
-			// fingers work side by side. Only the clicks SDL makes up from a
-			// finger are dropped while the finger path handles that finger.
-			if ((event.button.which != SDL_TOUCH_MOUSEID || !vid_touchscreen.integer || !VID_SDL_HasTouchDevices())
-				&& event.button.button > 0 && event.button.button <= ARRAY_SIZE(buttonremap))
-				Key_Event( buttonremap[event.button.button - 1], 0, event.button.state == SDL_PRESSED );
+			// fingers work side by side. The clicks SDL makes up from a
+			// finger are dropped wherever the finger path handles that
+			// finger: always in the game, and in menus while touch controls
+			// are on. In the game a made-up click used to fire while the
+			// controls were off, and the finger that turned them on then had
+			// its release dropped, which held fire down for good.
+			if (event.button.button > 0 && event.button.button <= ARRAY_SIZE(buttonremap))
+			{
+				static qbool synth_down[ARRAY_SIZE(buttonremap)];
+				int b = event.button.button - 1;
+				qbool pressed = event.button.state == SDL_PRESSED;
+				qbool pass = event.button.which != SDL_TOUCH_MOUSEID || !VID_SDL_HasTouchDevices()
+					|| (!vid_touchscreen.integer && key_dest != key_game);
+				if (event.button.which == SDL_TOUCH_MOUSEID)
+				{
+					// A made-up press that got through gets its release too.
+					if (!pressed && synth_down[b])
+						pass = true;
+					synth_down[b] = pressed && pass;
+				}
+				if (pass)
+					Key_Event( buttonremap[b], 0, pressed );
+			}
 			break;
 			case SDL_MOUSEWHEEL:
 				if (event.wheel.which != SDL_TOUCH_MOUSEID)

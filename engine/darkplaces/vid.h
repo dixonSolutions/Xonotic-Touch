@@ -159,6 +159,7 @@ extern cvar_t vid_keyboard_detected;
 extern cvar_t vid_touchscreen_showkeyboard;
 extern cvar_t vid_touchscreen_supportshowkeyboard;
 extern cvar_t vid_touchscreen_mouselook;
+extern cvar_t vid_mouse_confirmed_cvar;
 extern cvar_t touch_owns_screen;
 extern cvar_t vid_touchscreen_textinput_x;
 extern cvar_t vid_touchscreen_textinput_y;

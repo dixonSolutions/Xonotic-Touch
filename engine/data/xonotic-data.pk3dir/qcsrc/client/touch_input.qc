@@ -161,48 +161,48 @@ void Touch_SetKey(string key, bool down)
 {
 	if (key == "forward")
 	{
-		if (down) { if (!touch_key_forward) { localcmd("+forward\n"); touch_key_forward = true; touch_owns_forward = true; touch_debug_cmds += 1; } }
-		else if (touch_key_forward && touch_owns_forward) { localcmd("-forward\n"); touch_key_forward = false; touch_owns_forward = false; touch_debug_cmds += 1; }
+		if (down) { if (!touch_key_forward) { localcmd("+forward " TOUCH_HOLD_KEY "\n"); touch_key_forward = true; touch_owns_forward = true; touch_debug_cmds += 1; } }
+		else if (touch_key_forward && touch_owns_forward) { localcmd("-forward " TOUCH_HOLD_KEY "\n"); touch_key_forward = false; touch_owns_forward = false; touch_debug_cmds += 1; }
 	}
 	else if (key == "back")
 	{
-		if (down) { if (!touch_key_back) { localcmd("+back\n"); touch_key_back = true; touch_owns_back = true; touch_debug_cmds += 1; } }
-		else if (touch_key_back && touch_owns_back) { localcmd("-back\n"); touch_key_back = false; touch_owns_back = false; touch_debug_cmds += 1; }
+		if (down) { if (!touch_key_back) { localcmd("+back " TOUCH_HOLD_KEY "\n"); touch_key_back = true; touch_owns_back = true; touch_debug_cmds += 1; } }
+		else if (touch_key_back && touch_owns_back) { localcmd("-back " TOUCH_HOLD_KEY "\n"); touch_key_back = false; touch_owns_back = false; touch_debug_cmds += 1; }
 	}
 	else if (key == "moveleft")
 	{
-		if (down) { if (!touch_key_left) { localcmd("+moveleft\n"); touch_key_left = true; touch_owns_left = true; touch_debug_cmds += 1; } }
-		else if (touch_key_left && touch_owns_left) { localcmd("-moveleft\n"); touch_key_left = false; touch_owns_left = false; touch_debug_cmds += 1; }
+		if (down) { if (!touch_key_left) { localcmd("+moveleft " TOUCH_HOLD_KEY "\n"); touch_key_left = true; touch_owns_left = true; touch_debug_cmds += 1; } }
+		else if (touch_key_left && touch_owns_left) { localcmd("-moveleft " TOUCH_HOLD_KEY "\n"); touch_key_left = false; touch_owns_left = false; touch_debug_cmds += 1; }
 	}
 	else if (key == "moveright")
 	{
-		if (down) { if (!touch_key_right) { localcmd("+moveright\n"); touch_key_right = true; touch_owns_right = true; touch_debug_cmds += 1; } }
-		else if (touch_key_right && touch_owns_right) { localcmd("-moveright\n"); touch_key_right = false; touch_owns_right = false; touch_debug_cmds += 1; }
+		if (down) { if (!touch_key_right) { localcmd("+moveright " TOUCH_HOLD_KEY "\n"); touch_key_right = true; touch_owns_right = true; touch_debug_cmds += 1; } }
+		else if (touch_key_right && touch_owns_right) { localcmd("-moveright " TOUCH_HOLD_KEY "\n"); touch_key_right = false; touch_owns_right = false; touch_debug_cmds += 1; }
 	}
 	else if (key == "attack")
 	{
-		if (down) { if (!touch_key_attack) { localcmd("+attack\n"); touch_key_attack = true; touch_owns_attack = true; touch_debug_cmds += 1; } }
-		else if (touch_key_attack && touch_owns_attack) { localcmd("-attack\n"); touch_key_attack = false; touch_owns_attack = false; touch_debug_cmds += 1; }
+		if (down) { if (!touch_key_attack) { localcmd("+attack " TOUCH_HOLD_KEY "\n"); touch_key_attack = true; touch_owns_attack = true; touch_debug_cmds += 1; } }
+		else if (touch_key_attack && touch_owns_attack) { localcmd("-attack " TOUCH_HOLD_KEY "\n"); touch_key_attack = false; touch_owns_attack = false; touch_debug_cmds += 1; }
 	}
 	else if (key == "attack2")
 	{
-		if (down) { if (!touch_key_attack2) { localcmd("+attack2\n"); touch_key_attack2 = true; touch_owns_attack2 = true; touch_debug_cmds += 1; } }
-		else if (touch_key_attack2 && touch_owns_attack2) { localcmd("-attack2\n"); touch_key_attack2 = false; touch_owns_attack2 = false; touch_debug_cmds += 1; }
+		if (down) { if (!touch_key_attack2) { localcmd("+attack2 " TOUCH_HOLD_KEY "\n"); touch_key_attack2 = true; touch_owns_attack2 = true; touch_debug_cmds += 1; } }
+		else if (touch_key_attack2 && touch_owns_attack2) { localcmd("-attack2 " TOUCH_HOLD_KEY "\n"); touch_key_attack2 = false; touch_owns_attack2 = false; touch_debug_cmds += 1; }
 	}
 	else if (key == "jump")
 	{
-		if (down) { if (!touch_key_jump) { localcmd("+jump\n"); touch_key_jump = true; touch_owns_jump = true; touch_debug_cmds += 1; } }
-		else if (touch_key_jump && touch_owns_jump) { localcmd("-jump\n"); touch_key_jump = false; touch_owns_jump = false; touch_debug_cmds += 1; }
+		if (down) { if (!touch_key_jump) { localcmd("+jump " TOUCH_HOLD_KEY "\n"); touch_key_jump = true; touch_owns_jump = true; touch_debug_cmds += 1; } }
+		else if (touch_key_jump && touch_owns_jump) { localcmd("-jump " TOUCH_HOLD_KEY "\n"); touch_key_jump = false; touch_owns_jump = false; touch_debug_cmds += 1; }
 	}
 	else if (key == "crouch")
 	{
-		if (down) { if (!touch_key_crouch) { localcmd("+crouch\n"); touch_key_crouch = true; touch_owns_crouch = true; touch_debug_cmds += 1; } }
-		else if (touch_key_crouch && touch_owns_crouch) { localcmd("-crouch\n"); touch_key_crouch = false; touch_owns_crouch = false; touch_debug_cmds += 1; }
+		if (down) { if (!touch_key_crouch) { localcmd("+crouch " TOUCH_HOLD_KEY "\n"); touch_key_crouch = true; touch_owns_crouch = true; touch_debug_cmds += 1; } }
+		else if (touch_key_crouch && touch_owns_crouch) { localcmd("-crouch " TOUCH_HOLD_KEY "\n"); touch_key_crouch = false; touch_owns_crouch = false; touch_debug_cmds += 1; }
 	}
 	else if (key == "zoom")
 	{
-		if (down) { if (!touch_key_zoom) { localcmd("+zoom\n"); touch_key_zoom = true; touch_owns_zoom = true; touch_debug_cmds += 1; } }
-		else if (touch_key_zoom && touch_owns_zoom) { localcmd("-zoom\n"); touch_key_zoom = false; touch_owns_zoom = false; touch_debug_cmds += 1; }
+		if (down) { if (!touch_key_zoom) { localcmd("+zoom " TOUCH_HOLD_KEY "\n"); touch_key_zoom = true; touch_owns_zoom = true; touch_debug_cmds += 1; } }
+		else if (touch_key_zoom && touch_owns_zoom) { localcmd("-zoom " TOUCH_HOLD_KEY "\n"); touch_key_zoom = false; touch_owns_zoom = false; touch_debug_cmds += 1; }
 	}
 }
 

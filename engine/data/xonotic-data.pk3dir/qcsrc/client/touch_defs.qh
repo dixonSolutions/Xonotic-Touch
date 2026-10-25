@@ -6,6 +6,12 @@ const int TOUCH_MAX_FINGERS = 4;
 const int TOUCH_ENGINE_SLOTS = 10;
 const int TOUCH_SRC_POINTER = 10;
 
+// The key number touch holds its buttons with (+forward 50001, -forward 50001).
+// A bare -forward clears every holder, so letting go of the stick used to drop
+// a W still held on the keyboard as well. Real keys stop below 0xAC00
+// (MAX_KEY_BINDS); the engine's own HUD uses 50000 (touch_hud.c).
+#define TOUCH_HOLD_KEY "50001"
+
 const int TOUCH_ROLE_NONE = -1;
 const int TOUCH_ROLE_IGNORED = -2;
 const int TOUCH_ROLE_MOVE = 0;

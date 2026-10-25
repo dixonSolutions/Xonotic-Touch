@@ -1060,7 +1060,8 @@ void ViewLocation_Mouse()
 
 void HUD_Cursor_Show()
 {
-	if (cvar("vid_touchscreen"))
+	// With touch controls on, only for a mouse in use (vid_mouse_confirmed).
+	if (cvar("vid_touchscreen") && !cvar("vid_mouse_confirmed"))
 		return;
 
 	float cursor_alpha = 1 - autocvar__menu_alpha;

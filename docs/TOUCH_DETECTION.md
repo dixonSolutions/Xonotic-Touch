@@ -138,12 +138,24 @@ fingers keep working alongside it. Mouse and touch are used together:
   so a mouse is no longer turned into fingers.
 - In the game, once a listed mouse has been used, the engine grabs it for
   mouselook next to the touch controls (`VID_TouchMouselook` in
-  `vid_sdl.c`): the stick moves, the mouse aims, both can fire.
+  `vid_sdl.c`): the stick moves, the mouse aims, both can fire. The touch
+  CSQC stops zeroing the mouse's sensitivity while it is grabbed
+  (`Touch_Look_SetOwnership`), so fingers and the mouse both turn the view.
   `vid_touchscreen_mouselook` tells the touch CSQC that `MOUSE1` is fire
   rather than a press on its controls. It needs a real touchscreen (without
   one the mouse stands in for a finger: desktop testing), `key_game`, and
   no modal touch sheet: the CSQC sets `_touch_owns_screen` while the chat
   sheet or edit mode is up, and the mouse goes back to being a pointer.
+- In the game, the clicks SDL makes up from a finger are dropped even with
+  the controls off. One used to fire, the finger then turned the controls on,
+  and the made-up release was dropped, holding fire down for good. A made-up
+  press that does get through (a menu in keyboard-and-mouse mode) always gets
+  its release.
+- Touch holds its buttons under its own key number (`+forward 50000` from
+  the engine HUD, `50001` from the CSQC), as a key would. Letting go of the
+  stick or FIRE no longer drops a W or a mouse button still held.
+- Menus and the CSQC draw their pointer for a mouse in use
+  (`vid_mouse_confirmed`), with touch controls on or off.
 - When a click is what confirms the mouse, the grab is taken before that
   click is handed to the game (`VID_UpdateMouseGrab`), so the first press
   after a mouse is plugged in fires rather than landing on whatever control

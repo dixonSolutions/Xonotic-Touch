@@ -636,6 +636,14 @@ string gettooltip()
 		s = menuTooltipItem.tooltip;
 	return s;
 }
+// The pointer is drawn for a mouse: always without touch controls, and with
+// them once the system lists a mouse the player has used (vid_mouse_confirmed).
+// A finger needs no pointer; a mouse next to the fingers does.
+bool m_pointer_shown()
+{
+	return !cvar("vid_touchscreen") || cvar("vid_mouse_confirmed");
+}
+
 void m_tooltip(vector pos)
 {
 	const float MAX_TOOLTIP_LINES = 16;
@@ -928,11 +936,10 @@ void m_draw(float width, float height)
 			draw_Fill('0 0 0', '1 1 0', SKINCOLOR_BACKGROUND, 1);
 			drawBackground(SKINGFX_BACKGROUND, bound(0, menuLogoAlpha, 1), SKINALIGN_BACKGROUND, true);
 			draw_reset_cropped();
-			if (menuAlpha <= 0 && SKINALPHA_CURSOR_INTRO > 0 && !cvar("vid_touchscreen"))
+			if (menuAlpha <= 0 && SKINALPHA_CURSOR_INTRO > 0 && m_pointer_shown())
 			{
 				draw_alpha = SKINALPHA_CURSOR_INTRO * bound(0, menuLogoAlpha, 1);
-				if (!cvar("vid_touchscreen"))
-		draw_drawMousePointer(menuMousePos);
+				draw_drawMousePointer(menuMousePos);
 				draw_alpha = 1;
 			}
 		}
@@ -1008,7 +1015,7 @@ void m_draw(float width, float height)
 
 	draw_alpha = max(draw_alpha, SKINALPHA_CURSOR_INTRO * bound(0, menuLogoAlpha, 1));
 
-	if (!cvar("vid_touchscreen"))
+	if (m_pointer_shown())
 		draw_drawMousePointer(menuMousePos);
 
 	draw_reset_cropped();

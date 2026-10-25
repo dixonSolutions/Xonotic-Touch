@@ -6,7 +6,7 @@
 |---|---|
 | **Install** | Android `.apk` from GitHub Releases, Flatpak remote (any Linux distro), [OpenStore](https://open-store.io/app/xonotictouch.dixonsolutions) / Ubuntu Touch `.click` — versioned GitHub Releases on each `main` push |
 | **Platforms** | Android: `arm64-v8a` + `armeabi-v7a` + `x86_64` (Waydroid, Chromebooks). Flatpak: any Linux, `x86_64` + `aarch64` (Wayland/X11) — postmarketOS, Mobian, Fedora, Ubuntu, … Click: Ubuntu Touch `arm64` + `armhf` |
-| **Input** | Touchscreen required — mouse-as-touch only for local dev |
+| **Input** | Touch, keyboard and mouse, together or apart, detected from the system: the stick and on-screen buttons next to WASD, a mouse that aims while fingers move, or a plain desktop setup |
 
 <img width="1954" height="1302" alt="image" src="https://github.com/user-attachments/assets/cf918732-3540-4fd4-a9f9-b7550dc1b6d2" />
 
@@ -17,7 +17,7 @@ In-game: glass MOVE stick and FIRE / JUMP / crouch, top **CONSOLE** pill, and th
 |---|---|
 | ![Touch HUD in a local match on a Surface Pro 9](docs/media/local-surface-hud.jpg) | ![The same HUD, drawn by the engine, on a public server](docs/media/server-surface-overlay.jpg) |
 
-*On a public server the client has to run the server's own CSQC, so the engine draws the same HUD itself from the same layout cvars and glass masks; the only addition there is the WEP button, because the stock weapons strip is only tappable through the port's CSQC. Attach a keyboard and every on-screen control disappears until it is unplugged again.*
+*On a public server the client has to run the server's own CSQC, so the engine draws the same HUD itself from the same layout cvars and glass masks; the only addition there is the WEP button, because the stock weapons strip is only tappable through the port's CSQC. Play on an attached keyboard and the on-screen controls step aside; touch the screen and they come back. The keyboard and mouse keep working either way.*
 
 ## Install (Flatpak)
 

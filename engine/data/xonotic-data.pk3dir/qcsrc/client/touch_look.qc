@@ -59,7 +59,11 @@ void Touch_Look_SetOwnership(bool own)
 {
 	// Prefer setsensitivityscale over cvar_set("sensitivity") so config.cfg never
 	// archives sensitivity 0 (B3). GetCurrentFov must honor Touch_Look_BlocksMouse().
-	if (own && autocvar_touch_look_owns_view)
+	// Not while the engine holds a mouse to aim with (vid_touchscreen_mouselook):
+	// then the mouse turns the view as it does without touch, and fingers
+	// alongside it. Zeroing it here left a keyboard-and-mouse player unable to
+	// look around after a single tap on the screen.
+	if (own && autocvar_touch_look_owns_view && !cvar("vid_touchscreen_mouselook"))
 		touch_look_owns_sensitivity = true;
 	else
 		touch_look_owns_sensitivity = false;

@@ -382,13 +382,19 @@ static float look_vel_x, look_vel_y, look_prev_raw_x, look_prev_raw_y, look_dvel
 static qbool look_active;
 static double look_prev_time;
 
+// Touch holds a button under its own key number, as a key would. A bare
+// -forward clears every holder, so letting go of the stick used to drop a W
+// still held on the keyboard too. Real keys stop below 0xAC00
+// (MAX_KEY_BINDS); the port's CSQC uses 50001 (TOUCH_HOLD_KEY).
+#define TOUCH_HUD_HOLD_KEY 50000
+
 static void set_key(const char *name, qbool *state, qbool down)
 {
 	char buf[64];
 	if (*state == down)
 		return;
 	*state = down;
-	dpsnprintf(buf, sizeof(buf), "%s%s\n", down ? "+" : "-", name);
+	dpsnprintf(buf, sizeof(buf), "%s%s %d\n", down ? "+" : "-", name, TOUCH_HUD_HOLD_KEY);
 	Cbuf_AddText(cmd_local, buf);
 }
 
