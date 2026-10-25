@@ -1,4 +1,5 @@
 #include "touch_update_util.qh"
+#include <lib/urllib.qh>
 
 // Parsed mirror of update-status.txt. Globals rather than an entity: the menu
 // is single-threaded and there is exactly one updater, so an entity would only
@@ -146,6 +147,87 @@ bool TouchUpdate_busy()
 		|| s == TOUCH_UPDATE_INSTALLING;
 }
 
+// What's new, as last fetched. Owned strings, like the status mirror above.
+string touchUpdate_changelog;
+string touchUpdate_changelogLatest;
+bool touchUpdate_changelogPending;
+
+.entity changelogBox;
+
+void TouchUpdate_OnChangelog(entity fh, entity listener, int status)
+{
+	switch (status)
+	{
+		case URL_READY_CANREAD:
+		{
+			string text = "", latest = "";
+			for (string s; (s = url_fgets(fh)); )
+			{
+				if (latest == "" && s != "")
+					latest = s;
+				// Version lines stand out; a literal ^ in a commit subject is
+				// escaped so the box does not read it as a colour code.
+				string shown = strreplace("^", "^^", s);
+				if (s != "" && substring(s, 0, 2) != "- ")
+					shown = strcat("^3", shown, "^7");
+				text = (text == "") ? shown : strcat(text, "\n", shown);
+			}
+			url_fclose(fh);
+			touchUpdate_changelogPending = false;
+			strcpy(touchUpdate_changelog, text);
+			strcpy(touchUpdate_changelogLatest, latest);
+			if (listener && listener.changelogBox)
+				listener.changelogBox.setText(listener.changelogBox,
+					(text != "") ? text : _("No release notes yet."));
+			break;
+		}
+		default:
+		{
+			// URL_READY_ERROR, or an HTTP status as its negative (-404 before
+			// the first release that publishes the file).
+			if (status >= 0)
+				break;
+			touchUpdate_changelogPending = false;
+			if (listener && listener.changelogBox && TouchUpdate_changelog() == "")
+				listener.changelogBox.setText(listener.changelogBox,
+					strcat(_("Could not load what's new. It is on GitHub too:"), "\n", TOUCH_UPDATE_RELEASES_URL));
+			break;
+		}
+	}
+}
+
+void TouchUpdate_fetchChangelog(entity listener)
+{
+	if (touchUpdate_changelogPending)
+		return;
+	touchUpdate_changelogPending = true;
+	// _touch_update_changelog_url points it elsewhere: a mirror, or a local
+	// file server when testing this screen.
+	string url = cvar_string("_touch_update_changelog_url");
+	if (url == "")
+		url = TOUCH_UPDATE_CHANGELOG_URL;
+	url_single_fopen(url, FILE_READ, TouchUpdate_OnChangelog, listener);
+}
+
+string TouchUpdate_changelog()
+{
+	return (touchUpdate_changelog != string_null) ? touchUpdate_changelog : "";
+}
+
+string TouchUpdate_changelogLatest()
+{
+	return (touchUpdate_changelogLatest != string_null) ? touchUpdate_changelogLatest : "";
+}
+
+string TouchUpdate_latestKnown()
+{
+	string latest = TouchUpdate_latest();
+	string fromLog = TouchUpdate_changelogLatest();
+	if (latest == "" || (fromLog != "" && vercmp(fromLog, latest) > 0))
+		latest = fromLog;
+	return latest;
+}
+
 bool TouchUpdate_canSelfInstall()
 {
 	// Anything the platform layer marks managed is updated by Flatpak or the
@@ -157,9 +239,16 @@ bool TouchUpdate_isBehind()
 {
 	string s = TouchUpdate_stateName();
 	if (s == TOUCH_UPDATE_AVAILABLE || s == TOUCH_UPDATE_DOWNLOADING
-		|| s == TOUCH_UPDATE_INSTALLING || s == TOUCH_UPDATE_NEEDS_PERMISSION)
+		|| s == TOUCH_UPDATE_INSTALLING || s == TOUCH_UPDATE_NEEDS_PERMISSION
+		|| s == TOUCH_UPDATE_READY || s == TOUCH_UPDATE_PAUSED)
 		return true;
-	return touchUpdate_behind > 0;
+	if (touchUpdate_behind > 0)
+		return true;
+	// Flatpak and the OpenStore check for themselves, out of the menu's sight;
+	// the changelog still says whether a newer build is out.
+	string installed = TouchUpdate_installed();
+	string fromLog = TouchUpdate_changelogLatest();
+	return installed != "" && fromLog != "" && vercmp(fromLog, installed) > 0;
 }
 
 bool TouchUpdate_request(string token)
@@ -197,12 +286,20 @@ string TouchUpdate_shortStatus()
 		return sprintf(_("Downloading update... %d%%"), TouchUpdate_percent());
 	if (s == TOUCH_UPDATE_INSTALLING)
 		return _("Installing update...");
+	if (s == TOUCH_UPDATE_READY)
+		return sprintf(_("%s downloaded - installs next start"), TouchUpdate_latest());
+	if (s == TOUCH_UPDATE_PAUSED)
+		return sprintf(_("Download paused at %d%% - it resumes from there"), TouchUpdate_percent());
 	if (s == TOUCH_UPDATE_NEEDS_PERMISSION)
 		return _("Update ready - permission needed");
 	if (s == TOUCH_UPDATE_ERROR)
 		return _("Update check failed");
 	if (s == TOUCH_UPDATE_MANAGED)
+	{
+		if (TouchUpdate_isBehind())
+			return sprintf(_("%s is out - update through the system"), TouchUpdate_changelogLatest());
 		return _("Updates managed by the system");
+	}
 
 	if (TouchUpdate_behind() == 1)
 		return _("1 version behind");
@@ -214,4 +311,37 @@ string TouchUpdate_shortStatus()
 	if (s == TOUCH_UPDATE_UPTODATE)
 		return _("Up to date");
 	return "";
+}
+
+float touchUpdate_bannerPoll;
+bool touchUpdate_bannerFetched;
+
+void TouchUpdate_drawBanner()
+{
+	if (time >= touchUpdate_bannerPoll)
+	{
+		touchUpdate_bannerPoll = time + 2;
+		TouchUpdate_read();
+		// Once a session: on Flatpak and the OpenStore the changelog is the
+		// only place the menu learns of a newer build.
+		if (!touchUpdate_bannerFetched)
+		{
+			touchUpdate_bannerFetched = true;
+			TouchUpdate_fetchChangelog(NULL);
+		}
+	}
+	if (!TouchUpdate_isBehind())
+		return;
+	string latest = TouchUpdate_latestKnown();
+	if (latest == "")
+		return;
+	string line;
+	if (TouchUpdate_stateName() == TOUCH_UPDATE_READY)
+		line = sprintf(_("Xonotic Touch %s is downloaded and installs the next time you start"), latest);
+	else if (TouchUpdate_stateName() == TOUCH_UPDATE_DOWNLOADING)
+		line = sprintf(_("Downloading Xonotic Touch %s... %d%%"), latest, TouchUpdate_percent());
+	else
+		line = sprintf(_("Xonotic Touch %s is out: Settings > Updates"), latest);
+	vector fs = ((1 / draw_scale.x) * eX + (1 / draw_scale.y) * eY) * 12;
+	draw_CenterText(eX * 0.5 + eY * (1 - 1.6 * fs.y), line, fs, '1 0.85 0.4', 0.9, 0);
 }

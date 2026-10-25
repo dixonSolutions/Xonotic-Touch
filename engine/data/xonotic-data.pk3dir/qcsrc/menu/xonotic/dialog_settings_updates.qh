@@ -1,0 +1,51 @@
+#pragma once
+
+#include "tab.qh"
+#include "touch_update_util.qh"
+
+// Settings -> Updates: the installed build, the newest release, what changed,
+// and the controls for getting it. It used to be a dialog of its own that no
+// button opened; Settings is where players look for it.
+//
+// The updater is platform code (AppUpdater on Android; Flatpak and the
+// OpenStore elsewhere). This tab reads its status file and writes requests,
+// through touch_update_util. What's new comes from the project's Pages site,
+// fetched here, so it reads the same on every platform.
+CLASS(XonoticUpdatesSettingsTab, XonoticTab)
+	METHOD(XonoticUpdatesSettingsTab, fill, void(entity));
+	METHOD(XonoticUpdatesSettingsTab, draw, void(entity));
+	METHOD(XonoticUpdatesSettingsTab, showNotify, void(entity));
+	ATTRIB(XonoticUpdatesSettingsTab, intendedWidth, float, 0.9);
+	// Must equal the Settings TabController height (settings.rows - 3.5).
+	ATTRIB(XonoticUpdatesSettingsTab, rows, float, 15.5);
+	ATTRIB(XonoticUpdatesSettingsTab, columns, float, 6);
+	ATTRIB(XonoticUpdatesSettingsTab, name, string, "updates");
+
+	// Re-pointed from the status file every poll rather than rebuilt: fill()
+	// runs once, and tearing items down under a live touch would drop the
+	// press still travelling through them.
+	ATTRIB(XonoticUpdatesSettingsTab, versionLabel, entity);
+	ATTRIB(XonoticUpdatesSettingsTab, statusLabel, entity);
+	ATTRIB(XonoticUpdatesSettingsTab, messageLabel, entity);
+	ATTRIB(XonoticUpdatesSettingsTab, progressBar, entity);
+	ATTRIB(XonoticUpdatesSettingsTab, checkButton, entity);
+	ATTRIB(XonoticUpdatesSettingsTab, downloadButton, entity);
+	ATTRIB(XonoticUpdatesSettingsTab, installButton, entity);
+	ATTRIB(XonoticUpdatesSettingsTab, skipButton, entity);
+	ATTRIB(XonoticUpdatesSettingsTab, autoBox, entity);
+	ATTRIB(XonoticUpdatesSettingsTab, changelogBox, entity);
+
+	// Poll clock: the status file is written by another process, and once a
+	// second is as fast as anything in it changes.
+	ATTRIB(XonoticUpdatesSettingsTab, nextPoll, float, 0);
+	// Last auto-update value told to the platform layer, so a flip of the
+	// checkbox is sent exactly once.
+	ATTRIB(XonoticUpdatesSettingsTab, publishedAuto, float, -1);
+	// A request that could not be written: said, rather than leaving a button
+	// that silently does nothing.
+	ATTRIB(XonoticUpdatesSettingsTab, requestFailed, bool, false);
+	// When What's new was last asked for; it is fetched again after a while.
+	ATTRIB(XonoticUpdatesSettingsTab, changelogFetched, float, -1000);
+ENDCLASS(XonoticUpdatesSettingsTab)
+
+entity makeXonoticUpdatesSettingsTab();

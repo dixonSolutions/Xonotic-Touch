@@ -124,6 +124,17 @@ Attached assets:
 - `XonoticTouch-<version>-aarch64.flatpak`
 - `xonotictouch.dixonsolutions_<version>_arm64.click`
 - `xonotictouch.dixonsolutions_<version>_armhf.click`
+- `XonoticTouch-<version>-arm64-v8a.apk`
+- `XonoticTouch-<version>-armeabi-v7a.apk`
+- `XonoticTouch-<version>-x86_64.apk`
+
+Each release's notes open with **Changes**: the subjects of the commits since
+the previous release tag (`scripts/release-changelog.sh markdown`). The Pages
+job publishes the same history as plain text at
+https://dixonSolutions.github.io/Xonotic-Touch/changelog.txt (newest release
+first, kept under 15 KB). The in-game Settings → Updates screen shows that file
+under "What's new", on every platform. `scripts/test-release-changelog.sh`
+covers the script in CI.
 
 Browse all versions: https://github.com/dixonSolutions/Xonotic-Touch/releases  
 Latest: https://github.com/dixonSolutions/Xonotic-Touch/releases/latest

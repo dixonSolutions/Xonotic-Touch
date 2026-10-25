@@ -20,4 +20,8 @@
     <string name="update_status_failed">Update failed. Try again later.</string>
     <string name="update_status_check_failed">Could not reach the update server.</string>
     <string name="update_status_permission">Allow installing apps from Xonotic Touch to finish.</string>
+    <string name="update_status_ready">Xonotic Touch %1$s is downloaded. It installs the next time you start the game.</string>
+    <string name="update_status_paused">The download stopped part-way. It carries on from there.</string>
+    <string name="update_status_waiting_wifi">Waiting for Wi-Fi to download the update. Press Download to use mobile data.</string>
+    <string name="update_installing">Installing update…</string>
 </resources>

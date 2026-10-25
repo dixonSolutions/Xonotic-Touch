@@ -19,6 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #undef WIN32_LEAN_AND_MEAN  //hush a warning, SDL.h redefines this
 #include <SDL.h>
 #include <stdio.h>
+#include <ctype.h>
 
 #include "quakedef.h"
 #include "image.h"
@@ -2081,9 +2082,73 @@ static void VID_SetHints_c(cvar_t *var)
 	SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, vid_minimize_on_focus_loss.integer ? "1" : "0");
 }
 
+// The project's own pages, and nothing else: the menu's Updates screen links
+// to the releases and the changelog. A command any server could stuff into the
+// console must not become a way to open arbitrary links on the player's device.
+static qbool VID_OpenURL_Allowed(const char *url)
+{
+	static const char *const prefixes[] =
+	{
+		"https://github.com/dixonSolutions/Xonotic-Touch",
+		"https://dixonsolutions.github.io/Xonotic-Touch",
+		"https://dixonSolutions.github.io/Xonotic-Touch",
+	};
+	size_t i;
+	const char *c;
+	// Characters a URL to those pages needs, so the shell fallback below can
+	// pass it quoted without anything in it meaning something to the shell.
+	for (c = url; *c; c++)
+		if (!isalnum((unsigned char)*c) && !strchr("/:.-_~?=&#%+", *c))
+			return false;
+	if (strstr(url, ".."))
+		return false;
+	for (i = 0; i < sizeof(prefixes) / sizeof(prefixes[0]); i++)
+	{
+		size_t n = strlen(prefixes[i]);
+		if (!strncmp(url, prefixes[i], n) && (url[n] == 0 || url[n] == '/' || url[n] == '#' || url[n] == '?'))
+			return true;
+	}
+	return false;
+}
+
+static void VID_OpenURL_f(cmd_state_t *cmd)
+{
+	const char *url = Cmd_Argv(cmd, 1);
+	if (Cmd_Argc(cmd) != 2 || !VID_OpenURL_Allowed(url))
+	{
+		Con_Printf("openurl: only the Xonotic Touch GitHub and Pages addresses can be opened\n");
+		return;
+	}
+#if SDL_VERSION_ATLEAST(2, 0, 14)
+	// Android: an ACTION_VIEW intent. Linux: xdg-open, which Flatpak routes
+	// through the OpenURI portal.
+	if (SDL_OpenURL(url) == 0)
+	{
+		Con_Printf("Opened %s\n", url);
+		return;
+	}
+	Con_DPrintf("openurl: SDL_OpenURL: %s\n", SDL_GetError());
+#endif
+#if defined(__linux__) && !defined(__ANDROID__)
+	{
+		// Ubuntu Touch ships an SDL older than SDL_OpenURL.
+		char line[MAX_INPUTLINE];
+		dpsnprintf(line, sizeof(line), "xdg-open '%s' >/dev/null 2>&1 &", url);
+		if (system(line) == 0)
+		{
+			Con_Printf("Opened %s\n", url);
+			return;
+		}
+	}
+#endif
+	Con_Printf("openurl: could not open a browser here. The address is %s\n", url);
+}
+
 void VID_Init (void)
 {
 	SDL_version version;
+
+	Cmd_AddCommand(CF_CLIENT, "openurl", VID_OpenURL_f, "open one of the Xonotic Touch project pages (GitHub releases, changelog) in the system browser");
 
 #ifndef __IPHONEOS__
 #ifdef MACOSX

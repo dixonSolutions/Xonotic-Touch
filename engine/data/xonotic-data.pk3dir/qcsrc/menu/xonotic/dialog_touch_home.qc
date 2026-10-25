@@ -58,7 +58,7 @@ void TouchHome_OpenMultiplayer(entity btn, entity dummy)
 
 void TouchHome_OpenUpdates(entity btn, entity dummy)
 {
-	localcmd("menu_cmd directmenu TouchUpdates\n");
+	localcmd("menu_cmd directmenu updates\n");
 }
 
 void XonoticTouchHomeDialog_fill(entity me)

@@ -225,11 +225,33 @@ during `FS_Init` and would not see anything Java staged afterwards.
 ## Updating
 
 A sideloaded app has no store behind it, so it watches its own release feed.
-`BootActivity` asks GitHub for the latest release before unpacking anything —
-an update would replace the payload it was about to extract — and offers it:
 
-* **Update** streams the ABI-matching APK straight into a `PackageInstaller`
-  session and hands it to the system.
+**The update cache.** The ABI-matching APK is downloaded into
+`noBackupFilesDir/updates/` before anything is installed, as
+`<asset>.apk.part` until it is complete. A download that stops (no signal, the
+app closed, the phone off) carries on from those bytes next time with an HTTP
+`Range` request instead of starting the 40 MB over. A finished one is checked
+against the size and the SHA-256 GitHub lists for the asset (`digest`, on
+assets uploaded since mid-2025), then renamed to `<asset>.apk`. A file that
+fails the checksum is deleted and never reaches the installer. Every start
+deletes whatever is not the release the last check found.
+
+**Automatic updates** (the default) never hold the player at the boot screen:
+
+1. While the game runs, `XonoticActivity` downloads the release the last check
+   found into the cache, only on Wi-Fi or another unmetered connection.
+   Otherwise the Updates screen says it is waiting for Wi-Fi, and Download goes
+   ahead on mobile data.
+2. Once it is complete the state is `ready`: "installs the next time you
+   start".
+3. On the next start `BootActivity` installs it from the cache before the
+   engine starts, with no network needed. **Install now** on the Updates screen
+   does it straight away instead.
+
+**With automatic updates off**, `BootActivity` asks GitHub at launch and
+offers what it finds:
+
+* **Update** downloads (or resumes), then installs.
 * **Not now** goes straight into the game and asks again next launch.
 * **Skip this version** suppresses that one release.
 
@@ -244,8 +266,8 @@ falls through to launching.
 
 `BootActivity` checks at launch; `XonoticActivity` checks again from
 `onResume()` once the game has been in the background for more than an hour,
-so a phone that is never cold-started still picks up releases, and installs
-automatically when the Updates screen's automatic setting is on.
+so a phone that is never cold-started still picks up releases. With automatic
+updates on, each resume also retries a download that was waiting for Wi-Fi.
 
 Releases carry `arm64-v8a`, `armeabi-v7a` and `x86_64` APKs; the last one is
 for Chromebooks, Waydroid and the emulator (`scripts/android-build.sh --abi
@@ -285,10 +307,21 @@ the player storage every time.
 `BootActivity` can only ask its question once, before the engine exists, in a
 dialog that is gone by the time anyone is playing. Everything a player wants
 afterwards — which build am I on, how far behind, check again, stop asking —
-lives in the menu instead, under **Updates**, reachable from the version line at
-the bottom of the touch home screen. That line replaces stock Xonotic's `git`
-build tag, which names the engine rather than the build that was installed and
-cannot answer "am I up to date".
+lives in the menu instead, under **Settings → Updates**. It shows:
+
+* the installed build, the newest release, and the state: checking,
+  downloading with a percentage, paused (with how much is cached), downloaded
+  and installing next start, needs permission, failed;
+* the automatic setting;
+* Check now, Download, Install now and Skip version;
+* links to the releases on GitHub (the `openurl` engine command, which only
+  opens the project's own GitHub and Pages addresses);
+* **What's new**: `changelog.txt` from the project's Pages site, which CI
+  builds from the commits between release tags
+  (`scripts/release-changelog.sh`).
+
+The same text is the "Changes" section of each GitHub release. While a newer
+build is known, a line along the bottom of the main menu points there.
 
 The menu is QuakeC: no JNI, no way to call `AppUpdater`. So the two halves talk
 through two files in the gamedir, the same handshake the asset downloader
@@ -306,8 +339,9 @@ searches, so it is where the Java side has to meet the menu. `GameData`'s
 
 The format is documented once, in `qcsrc/menu/xonotic/touch_update_util.qh`;
 `UpdateBridge` points at it rather than repeating it. Requests are `check`,
-`install`, `skip`, `auto-on` and `auto-off`, served by a poll thread in
-`XonoticActivity` — without one, every button on that screen would write a file
+`download` (into the cache, then `ready`), `install` (download if needed, then
+install now), `skip`, `auto-on` and `auto-off`, served by a poll thread in
+`XonoticActivity`. Without one, every button on that screen would write a file
 nothing ever reads.
 
 Auto-update is opt-out, so a player who never opens the screen still gets fixes.
@@ -327,8 +361,10 @@ kept in the same preferences as the skipped tag, so Skip and Install still know
 what they mean in a process that never ran the check itself.
 
 On Linux there is nothing to install: Flatpak and the OpenStore own updates, so
-`packaging/start.sh` publishes the `managed` state and the screen shows the
-version with its buttons disabled rather than offering one that cannot work.
+`packaging/start.sh` publishes the `managed` state. The screen still shows the
+version, What's new and the GitHub links, and it says when the changelog names
+a newer build than the one installed. Download, Install and Skip are disabled
+rather than offered when they cannot work.
 
 ### What survives an update
 

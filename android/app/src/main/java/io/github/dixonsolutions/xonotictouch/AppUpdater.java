@@ -8,6 +8,8 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInstaller;
 import android.content.pm.PackageManager;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
@@ -16,9 +18,15 @@ import android.util.Log;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -33,8 +41,14 @@ import java.nio.charset.StandardCharsets;
  *
  * Nothing here touches the game's data directory. An update is an ordinary
  * same-signature upgrade, so saved configs, downloaded maps and screenshots
- * survive it; the downloaded APK itself lives in the cache directory, which the
- * system may evict at will.
+ * survive it.
+ *
+ * The new APK is downloaded into an update cache first ({@link #cacheDir()}),
+ * not streamed into the installer. A download that stops -- no signal, the app
+ * closed, the phone off -- carries on from the bytes already there the next
+ * time (an HTTP Range request), instead of starting the 40 MB over. A finished
+ * one is checked against the size and SHA-256 GitHub lists for the asset, and
+ * can wait there to be installed the next time the app starts.
  */
 final class AppUpdater {
 
@@ -65,6 +79,8 @@ final class AppUpdater {
     private static final String PREF_FOUND_VERSION = "found_version";
     private static final String PREF_FOUND_URL = "found_url";
     private static final String PREF_FOUND_SIZE = "found_size";
+    private static final String PREF_FOUND_NAME = "found_name";
+    private static final String PREF_FOUND_SHA256 = "found_sha256";
 
     private static final String INSTALL_ACTION =
         "io.github.dixonsolutions.xonotictouch.INSTALL_STATUS";
@@ -84,11 +100,17 @@ final class AppUpdater {
         final String version;
         final String url;
         final long size;
+        /** The asset's file name: what it is cached as. */
+        final String name;
+        /** Lowercase hex SHA-256 GitHub lists for the asset, or "" when it does not. */
+        final String sha256;
 
-        Update(String version, String url, long size) {
+        Update(String version, String url, long size, String name, String sha256) {
             this.version = version;
             this.url = url;
             this.size = size;
+            this.name = name;
+            this.sha256 = sha256 == null ? "" : sha256;
         }
     }
 
@@ -176,17 +198,22 @@ final class AppUpdater {
                 || compareVersions(version, installedVersion()) <= 0) {
             return null;
         }
-        return new Update(version, url, prefs.getLong(PREF_FOUND_SIZE, -1));
+        return new Update(version, url, prefs.getLong(PREF_FOUND_SIZE, -1),
+                prefs.getString(PREF_FOUND_NAME, assetName(url)),
+                prefs.getString(PREF_FOUND_SHA256, ""));
     }
 
     private void rememberFound(Update update) {
         SharedPreferences.Editor edit = prefs(context).edit();
         if (update == null) {
-            edit.remove(PREF_FOUND_VERSION).remove(PREF_FOUND_URL).remove(PREF_FOUND_SIZE);
+            edit.remove(PREF_FOUND_VERSION).remove(PREF_FOUND_URL).remove(PREF_FOUND_SIZE)
+                .remove(PREF_FOUND_NAME).remove(PREF_FOUND_SHA256);
         } else {
             edit.putString(PREF_FOUND_VERSION, update.version)
                 .putString(PREF_FOUND_URL, update.url)
-                .putLong(PREF_FOUND_SIZE, update.size);
+                .putLong(PREF_FOUND_SIZE, update.size)
+                .putString(PREF_FOUND_NAME, update.name)
+                .putString(PREF_FOUND_SHA256, update.sha256);
         }
         edit.apply();
     }
@@ -228,7 +255,13 @@ final class AppUpdater {
                         Log.w(TAG, "Ignoring release asset with an untrusted URL: " + url);
                         continue;
                     }
-                    return new Update(version, url, asset.optLong("size", -1));
+                    // GitHub lists "sha256:<hex>" for assets uploaded since
+                    // mid-2025; older ones have no digest and are checked
+                    // by size alone.
+                    String digest = asset.optString("digest", "");
+                    String sha256 = digest.startsWith("sha256:")
+                            ? digest.substring(7).toLowerCase(java.util.Locale.ROOT) : "";
+                    return new Update(version, url, asset.optLong("size", -1), name, sha256);
                 }
             }
             Log.i(TAG, "Release " + version + " has no build for " + Build.SUPPORTED_ABIS[0]);
@@ -241,36 +274,239 @@ final class AppUpdater {
         return null;
     }
 
+    // ----------------------------------------------------------------- cache
+
+    /**
+     * Where downloaded updates wait. No-backup storage rather than the cache
+     * directory: the system clears the cache under storage pressure, which is
+     * exactly when re-downloading 40 MB hurts most, and a backup has no use for
+     * a build that will be stale by the time it is restored.
+     */
+    File cacheDir() {
+        return new File(context.getNoBackupFilesDir(), "updates");
+    }
+
+    // getName() keeps a name with a path in it inside the cache directory.
+    private File cachedApk(Update update) {
+        return new File(cacheDir(), new File(update.name).getName());
+    }
+
+    private File partFile(Update update) {
+        return new File(cacheDir(), new File(update.name).getName() + ".part");
+    }
+
+    /** Downloaded and verified: ready to install without touching the network. */
+    boolean isReady(Update update) {
+        File apk = cachedApk(update);
+        return apk.isFile() && (update.size <= 0 || apk.length() == update.size);
+    }
+
+    /** Bytes of this update already in the cache, finished or not. */
+    long cachedBytes(Update update) {
+        if (isReady(update)) {
+            return cachedApk(update).length();
+        }
+        File part = partFile(update);
+        return part.isFile() ? part.length() : 0;
+    }
+
+    /** How much of the update is cached, 0-100; 0 when the size is unknown. */
+    int cachedPercent(Update update) {
+        if (update.size <= 0) {
+            return isReady(update) ? 100 : 0;
+        }
+        return (int) Math.min(100, cachedBytes(update) * 100 / update.size);
+    }
+
+    /** The release the last check found, if it is downloaded and waiting. */
+    Update readyUpdate() {
+        Update found = lastFound();
+        return (found != null && isReady(found)) ? found : null;
+    }
+
+    /**
+     * Drop everything in the cache that is not the release the last check
+     * found: builds already installed, skipped, or overtaken by a newer one.
+     * A half-downloaded copy of the current release stays, to be resumed.
+     */
+    void cleanCache() {
+        File[] files = cacheDir().listFiles();
+        if (files == null) {
+            return;
+        }
+        Update keep = lastFound();
+        for (File file : files) {
+            String name = file.getName();
+            if (keep != null && (name.equals(keep.name) || name.equals(keep.name + ".part"))) {
+                continue;
+            }
+            if (!file.delete()) {
+                Log.w(TAG, "Could not remove stale update " + file);
+            }
+        }
+    }
+
+    /**
+     * Whether a download now would be on Wi-Fi or another connection that is
+     * not metered. Background downloads wait for one; a download the player
+     * asked for does not.
+     */
+    static boolean onUnmeteredNetwork(Context context) {
+        ConnectivityManager connectivity =
+                (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (connectivity == null) {
+            return false;
+        }
+        NetworkInfo active = connectivity.getActiveNetworkInfo();
+        return active != null && active.isConnected() && !connectivity.isActiveNetworkMetered();
+    }
+
+    /**
+     * Download the update into the cache, carrying on from whatever an earlier
+     * attempt left there. Returns once the APK is complete and verified.
+     *
+     * Interrupting the calling thread stops it with an InterruptedIOException
+     * and keeps the bytes so far.
+     */
+    void download(Update update, GameData.Progress progress) throws IOException {
+        if (!isTrustedApkUrl(update.url)) {
+            throw new IOException("refusing to download an untrusted APK URL");
+        }
+        if (isReady(update)) {
+            return;
+        }
+        File dir = cacheDir();
+        if (!dir.isDirectory() && !dir.mkdirs()) {
+            throw new IOException("cannot create " + dir);
+        }
+        File part = partFile(update);
+        String status = context.getString(R.string.update_downloading);
+
+        for (int attempt = 0; attempt < 2; attempt++) {
+            long have = part.isFile() ? part.length() : 0;
+            if (update.size > 0 && have > update.size) {
+                // More than the asset holds: not this asset. Start over.
+                deleteQuietly(part);
+                have = 0;
+            }
+            HttpURLConnection connection = (HttpURLConnection) new URL(update.url).openConnection();
+            connection.setConnectTimeout(30_000);
+            connection.setReadTimeout(60_000);
+            connection.setInstanceFollowRedirects(true);
+            connection.setRequestProperty("User-Agent", "XonoticTouch");
+            if (have > 0) {
+                connection.setRequestProperty("Range", "bytes=" + have + "-");
+            }
+            try {
+                int code = connection.getResponseCode();
+                boolean append;
+                if (code == HttpURLConnection.HTTP_PARTIAL && have > 0) {
+                    append = true;
+                } else if (code == HttpURLConnection.HTTP_OK) {
+                    // The server ignored the range: what we have is no use.
+                    append = false;
+                    have = 0;
+                } else if (code == 416 && have > 0) {
+                    // Nothing past what we have. Either it is all there, or the
+                    // file changed under us; the checks below decide which.
+                    break;
+                } else {
+                    throw new IOException("HTTP " + code + " downloading " + update.url);
+                }
+                long total = update.size > 0 ? update.size
+                        : (connection.getContentLength() > 0 ? have + connection.getContentLength() : -1);
+                try (InputStream in = connection.getInputStream();
+                     OutputStream out = new FileOutputStream(part, append)) {
+                    byte[] buffer = new byte[64 * 1024];
+                    long done = have;
+                    long lastReport = -1;
+                    int read;
+                    while ((read = in.read(buffer)) > 0) {
+                        if (Thread.currentThread().isInterrupted()) {
+                            throw new InterruptedIOException("update download stopped");
+                        }
+                        out.write(buffer, 0, read);
+                        done += read;
+                        if (lastReport < 0 || done - lastReport >= 512 * 1024) {
+                            lastReport = done;
+                            progress.update(status, (done >> 20) + " / " + (total > 0 ? (total >> 20) : "?") + " MB",
+                                    total > 0 ? (int) (done * 100 / total) : -1);
+                        }
+                    }
+                }
+                break;
+            } finally {
+                connection.disconnect();
+            }
+        }
+
+        if (update.size > 0 && part.length() != update.size) {
+            if (part.length() > update.size) {
+                deleteQuietly(part);
+            }
+            throw new IOException("update download incomplete (" + part.length() + " of " + update.size + " bytes)");
+        }
+        if (!update.sha256.isEmpty()) {
+            String actual = sha256(part);
+            if (!update.sha256.equals(actual)) {
+                // Corrupt or tampered with: never hand it to the installer, and
+                // do not resume from it either.
+                deleteQuietly(part);
+                throw new IOException("update download failed its checksum; it will start over");
+            }
+        }
+        File apk = cachedApk(update);
+        deleteQuietly(apk);
+        if (!part.renameTo(apk)) {
+            throw new IOException("cannot finish " + apk);
+        }
+        progress.update(status, (apk.length() >> 20) + " MB", 100);
+    }
+
     // --------------------------------------------------------------- install
 
     /**
-     * Downloads and hands the APK to the system installer.
+     * Downloads (or resumes downloading) the update and hands it to the system
+     * installer.
      *
      * @return false when the user has not granted permission to install from
      *         this app; the settings screen for that has been opened.
      */
     boolean install(Update update, GameData.Progress progress, Runnable onFailure)
             throws IOException {
+        download(update, progress);
+        return installCached(update, onFailure);
+    }
+
+    /**
+     * Hands an already downloaded update to the system installer.
+     *
+     * @return false when the user has not granted permission to install from
+     *         this app; the settings screen for that has been opened.
+     */
+    boolean installCached(Update update, Runnable onFailure) throws IOException {
         /*
          * Checked again at the point of use, not only where the URL was picked.
-         * These bytes go straight into a PackageInstaller session, so this check is
-         * the difference between updating this app and installing an arbitrary APK,
+         * These bytes go into a PackageInstaller session, so this check is the
+         * difference between updating this app and installing an arbitrary APK,
          * and it is cheap enough to not depend on a caller having done it.
          */
         if (!isTrustedApkUrl(update.url)) {
             throw new IOException("refusing to install an untrusted APK URL");
+        }
+        if (!isReady(update)) {
+            throw new IOException("the update is not downloaded yet");
         }
         if (!canInstallPackages()) {
             requestInstallPermission();
             return false;
         }
 
+        File apk = cachedApk(update);
         PackageInstaller installer = context.getPackageManager().getPackageInstaller();
         PackageInstaller.SessionParams params =
             new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
-        if (update.size > 0) {
-            params.setSize(update.size);
-        }
+        params.setSize(apk.length());
 
         // Android 12+ lets the app that installed a package update it without
         // the confirm dialog, once it is that package's installer of record.
@@ -288,39 +524,14 @@ final class AppUpdater {
         boolean committed = false;
         InstallStatusIntent statusIntent = null;
         try (PackageInstaller.Session session = installer.openSession(sessionId)) {
-            HttpURLConnection connection = (HttpURLConnection) new URL(update.url).openConnection();
-            connection.setConnectTimeout(30_000);
-            connection.setReadTimeout(60_000);
-            connection.setInstanceFollowRedirects(true);
-            try {
-                int code = connection.getResponseCode();
-                if (code != HttpURLConnection.HTTP_OK) {
-                    throw new IOException("HTTP " + code + " downloading " + update.url);
+            try (InputStream in = new FileInputStream(apk);
+                 OutputStream out = session.openWrite("payload", 0, apk.length())) {
+                byte[] buffer = new byte[64 * 1024];
+                int read;
+                while ((read = in.read(buffer)) > 0) {
+                    out.write(buffer, 0, read);
                 }
-                long total = update.size > 0 ? update.size : connection.getContentLength();
-                String status = context.getString(R.string.update_downloading);
-
-                // Stream straight into the session — a 30 MB detour through the
-                // cache directory buys nothing.
-                try (InputStream in = connection.getInputStream();
-                     OutputStream out = session.openWrite("payload", 0, total)) {
-                    byte[] buffer = new byte[64 * 1024];
-                    long done = 0;
-                    long lastReport = 0;
-                    int read;
-                    while ((read = in.read(buffer)) > 0) {
-                        out.write(buffer, 0, read);
-                        done += read;
-                        if (done - lastReport >= 1024 * 1024) {
-                            lastReport = done;
-                            progress.update(status, (done >> 20) + " MB",
-                                    total > 0 ? (int) (done * 100 / total) : -1);
-                        }
-                    }
-                    session.fsync(out);
-                }
-            } finally {
-                connection.disconnect();
+                session.fsync(out);
             }
 
             statusIntent = installStatusIntent(onFailure);
@@ -452,6 +663,38 @@ final class AppUpdater {
                 && url.startsWith(DOWNLOAD_PREFIX)
                 && url.endsWith(".apk")
                 && !url.contains("..");
+    }
+
+    private static String sha256(File file) throws IOException {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            try (InputStream in = new FileInputStream(file)) {
+                byte[] buffer = new byte[64 * 1024];
+                int read;
+                while ((read = in.read(buffer)) > 0) {
+                    digest.update(buffer, 0, read);
+                }
+            }
+            StringBuilder hex = new StringBuilder();
+            for (byte b : digest.digest()) {
+                hex.append(String.format(java.util.Locale.ROOT, "%02x", b));
+            }
+            return hex.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IOException("no SHA-256 on this device", e);
+        }
+    }
+
+    private static void deleteQuietly(File file) {
+        if (file.exists() && !file.delete()) {
+            Log.w(TAG, "Could not delete " + file);
+        }
+    }
+
+    /** The file name at the end of a release asset URL. */
+    static String assetName(String url) {
+        int slash = url == null ? -1 : url.lastIndexOf('/');
+        return slash >= 0 ? url.substring(slash + 1) : "update.apk";
     }
 
     /** Numeric dotted-version compare; non-numeric parts sort as 0. */

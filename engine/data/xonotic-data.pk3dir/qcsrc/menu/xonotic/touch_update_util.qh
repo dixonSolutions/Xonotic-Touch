@@ -27,7 +27,11 @@
 const string TOUCH_UPDATE_STATUS_FILE = "touch/update-status.txt";
 
 /** Written by the menu, consumed and deleted by the platform layer. One token:
- *  check | install | skip | auto-on | auto-off
+ *  check | download | install | skip | auto-on | auto-off
+ *
+ *  download fetches the new build into the update cache and stops there
+ *  (state ready); install fetches it if it is not cached yet and installs it
+ *  now, which restarts the app.
  */
 const string TOUCH_UPDATE_REQUEST_FILE = "touch/update-request.txt";
 
@@ -45,6 +49,12 @@ const string TOUCH_UPDATE_AVAILABLE = "available";
 const string TOUCH_UPDATE_DOWNLOADING = "downloading";
 /** Handed to the system installer; it owns the screen now. */
 const string TOUCH_UPDATE_INSTALLING = "installing";
+/** Downloaded and verified in the update cache; it installs the next time the
+ *  app starts, or now with the install request. Line 4 is its version. */
+const string TOUCH_UPDATE_READY = "ready";
+/** A download that stopped part-way (no network, metered connection, app
+ *  closed). Line 6 is how much of it is cached; it resumes from there. */
+const string TOUCH_UPDATE_PAUSED = "paused";
 /** Downloaded, but Android will not install until "install unknown apps" is granted. */
 const string TOUCH_UPDATE_NEEDS_PERMISSION = "needs-permission";
 /** The last check or install failed; line 7 says why. */
@@ -54,6 +64,29 @@ const string TOUCH_UPDATE_MANAGED = "managed";
 
 /** Menu-side cvar the auto-update checkbox binds to; mirrored from line 8. */
 const string TOUCH_UPDATE_AUTO_CVAR = "touch_update_auto";
+
+/** What changed in each release, newest first: a version line, then "- " lines,
+ *  then a blank line. Built by scripts/release-changelog.sh and published on
+ *  every release; kept under the 16 KiB a uri_get reply is cut at. */
+const string TOUCH_UPDATE_CHANGELOG_URL = "https://dixonsolutions.github.io/Xonotic-Touch/changelog.txt";
+const string TOUCH_UPDATE_RELEASES_URL = "https://github.com/dixonSolutions/Xonotic-Touch/releases";
+
+/** Ask for What's new. listener, when not NULL, gets its .changelogBox set to
+ *  the text (or to why there is none) when the reply arrives. */
+void TouchUpdate_fetchChangelog(entity listener);
+/** The text last fetched, "" before any. */
+string TouchUpdate_changelog();
+/** The newest release the changelog names, "" before it has arrived. Where the
+ *  platform layer cannot check (Flatpak, OpenStore) this is how the menu knows
+ *  there is a newer build. */
+string TouchUpdate_changelogLatest();
+/** The newest release anything has reported: the platform layer, else the
+ *  changelog. */
+string TouchUpdate_latestKnown();
+
+/** One line along the bottom of the main menu while a newer build is known,
+ *  pointing at Settings -> Updates. Polls the status file itself. */
+void TouchUpdate_drawBanner();
 
 /** Re-read the status file. Cheap enough to call once a frame-ish; the dialog
  *  rate-limits it anyway. Safe when the file is absent or half-written.

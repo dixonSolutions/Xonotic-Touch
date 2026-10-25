@@ -169,8 +169,12 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # Full history and tags: changelog.txt is built from the commits between
+      # release tags (scripts/release-changelog.sh).
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -225,9 +229,13 @@ jobs:
             <li>Ubuntu Touch: <a href="https://open-store.io/app/xonotictouch.dixonsolutions">OpenStore</a>, or <a href="click/">.click downloads</a> (arm64 + armhf)</li>
             <li><a href="https://github.com/dixonSolutions/Xonotic-Touch">Source code and docs on GitHub</a></li>
           </ul>
-          <p>Build ${PACKAGE_VERSION}</p>
+          <p>Build ${PACKAGE_VERSION} &middot; <a href="changelog.txt">What changed</a></p>
           </body></html>
           EOF
+          # What the in-app Updates screen shows under "What's new": the
+          # menu fetches this plain-text file on every platform.
+          bash scripts/release-changelog.sh text "$PACKAGE_VERSION" "$GITHUB_SHA" > site/changelog.txt
+          wc -c site/changelog.txt
 
       - name: Setup Pages
         uses: actions/configure-pages@v6
@@ -255,6 +263,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -280,6 +290,8 @@ jobs:
             echo "## Xonotic Touch ${VERSION}"
             echo
             echo "Immutable release — previous tags are kept."
+            echo
+            bash scripts/release-changelog.sh markdown "$VERSION" "$GITHUB_SHA"
             echo
             echo "### Flatpak (Linux)"
             echo '```bash'

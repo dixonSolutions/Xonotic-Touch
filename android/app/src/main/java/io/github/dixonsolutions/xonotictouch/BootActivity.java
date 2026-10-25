@@ -67,6 +67,23 @@ public final class BootActivity extends Activity {
             AppUpdater updater = new AppUpdater(this);
             UpdateBridge bridge = new UpdateBridge(this, data.baseDir());
             String installed = updater.installedVersion();
+            // Builds already installed, skipped or overtaken go; a half
+            // download of the current release stays, to be resumed.
+            updater.cleanCache();
+
+            // An update the last session downloaded: this start is the "next
+            // time you start" the Updates screen promised. No network needed.
+            AppUpdater.Update ready = updater.readyUpdate();
+            if (ready != null) {
+                bridge.publishReady(installed, ready.version);
+                if (AppUpdater.isAutoInstall(this)) {
+                    ui.post(() -> installUpdate(updater, bridge, ready, data));
+                } else {
+                    ui.post(() -> offerUpdate(ready, data));
+                }
+                return;
+            }
+
             // Publish before asking. The engine reads this file to draw its own
             // version and update screen, and it has to be right even on the
             // launches where the check finds nothing or never returns.
@@ -76,12 +93,18 @@ public final class BootActivity extends Activity {
             // replaces the payload we would otherwise be extracting.
             AppUpdater.Update update = updater.findUpdate();
             if (update != null) {
-                bridge.publishAvailable(installed, update);
-                // Auto-update is the default, and taking it means not stopping
-                // to ask -- the system installer still confirms, so this is not
-                // an unattended install, just one fewer dialog in front of it.
+                if (updater.cachedBytes(update) > 0) {
+                    bridge.publishPaused(installed, update.version, updater.cachedPercent(update),
+                            getString(R.string.update_status_paused));
+                } else {
+                    bridge.publishAvailable(installed, update);
+                }
+                // Automatic updates download in the background while the game
+                // runs (XonoticActivity) and install on the next start, so the
+                // player is never kept waiting at this screen for one. Without
+                // them, ask.
                 if (AppUpdater.isEnabled(this) && AppUpdater.isAutoInstall(this)) {
-                    ui.post(() -> installUpdate(updater, bridge, update, data));
+                    ui.post(() -> continueToGame(data));
                 } else {
                     ui.post(() -> offerUpdate(update, data));
                 }
@@ -131,7 +154,7 @@ public final class BootActivity extends Activity {
     private void installUpdate(AppUpdater updater, UpdateBridge bridge,
                                AppUpdater.Update update, GameData data) {
         progress.setIndeterminate(true);
-        status.setText(R.string.update_downloading);
+        status.setText(updater.isReady(update) ? R.string.update_installing : R.string.update_downloading);
         detail.setText("");
         String installed = updater.installedVersion();
         // The failure callback is a broadcast receiver, so it can land before
@@ -171,10 +194,16 @@ public final class BootActivity extends Activity {
                 // build, so there is nothing left to do here.
             } catch (IOException | RuntimeException e) {
                 // Same reasoning as the callback above: a download that broke
-                // off is a reason to offer the retry, not to take it away.
+                // off is a reason to offer the retry, not to take it away. What
+                // it fetched stays in the cache and the retry resumes it.
                 Log.w(TAG, "Update install failed", e);
-                bridge.publishInstallFailed(installed, update.version,
-                        String.valueOf(e.getMessage()));
+                if (updater.cachedBytes(update) > 0 && !updater.isReady(update)) {
+                    bridge.publishPaused(installed, update.version, updater.cachedPercent(update),
+                            getString(R.string.update_status_paused));
+                } else {
+                    bridge.publishInstallFailed(installed, update.version,
+                            String.valueOf(e.getMessage()));
+                }
                 ui.post(() -> continueToGame(data));
             }
         }, "xonotic-update");

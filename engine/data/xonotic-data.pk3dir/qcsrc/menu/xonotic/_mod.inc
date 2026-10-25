@@ -82,6 +82,7 @@
 #include <menu/xonotic/dialog_settings_misc_cvars.qc>
 #include <menu/xonotic/dialog_settings_misc_reset.qc>
 #include <menu/xonotic/dialog_settings_touch.qc>
+#include <menu/xonotic/dialog_settings_updates.qc>
 #include <menu/xonotic/dialog_settings_user.qc>
 #include <menu/xonotic/dialog_settings_user_languagewarning.qc>
 #include <menu/xonotic/dialog_settings_video.qc>
@@ -91,7 +92,6 @@
 #include <menu/xonotic/dialog_termsofservice.qc>
 #include <menu/xonotic/dialog_touch_asset_fetch.qc>
 #include <menu/xonotic/dialog_touch_home.qc>
-#include <menu/xonotic/dialog_touch_updates.qc>
 #include <menu/xonotic/dialog_touch_wizard.qc>
 #include <menu/xonotic/dialog_uid2name.qc>
 #include <menu/xonotic/dialog_welcome.qc>

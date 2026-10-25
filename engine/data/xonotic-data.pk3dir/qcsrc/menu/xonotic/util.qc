@@ -413,7 +413,12 @@ void UpdateNotification_URI_Get_Callback(float id, float status, string data)
 		}
 	}
 
-	if(un_version != "" && vercmp(cvar_string("g_xonoticversion"), un_version) < 0)
+	// Xonotic Touch has its own releases, and its g_xonoticversion is a name
+	// rather than a number: compared with Xonotic's, it asked every player to
+	// "update" to stock Xonotic. Settings -> Updates, and the line drawn by
+	// TouchUpdate_drawBanner, cover it instead.
+	if(un_version != "" && !startsWith(cvar_string("g_xonoticversion"), "Xonotic Touch")
+		&& vercmp(cvar_string("g_xonoticversion"), un_version) < 0)
 	{
 		// update needed
 		_Nex_ExtResponseSystem_UpdateTo = strzone(un_version);
@@ -543,6 +548,9 @@ void preMenuDraw()
 	vector fs, sz = '0 0 0', line, mid;
 
 	updateCheck();
+
+	if (!(gamestatus & (GAME_CONNECTED | GAME_ISSERVER)))
+		TouchUpdate_drawBanner();
 
 	if(_Nex_ExtResponseSystem_UpdateTo != "" && !(gamestatus & (GAME_CONNECTED | GAME_ISSERVER)))
 	{
