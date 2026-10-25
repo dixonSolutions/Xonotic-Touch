@@ -127,12 +127,21 @@ Override preset at launch (testers):
 XONOTIC_TOUCH_PROFILE=casual bin/start.sh
 ```
 
-Stack a performance profile after a layout preset (CSQC menu or manual `exec`):
+Stack a performance profile after a layout preset (Settings → Touch has
+**30 fps saver**, **60 fps** and **Best quality** buttons, or use a manual
+`exec`):
 
 ```
 exec touch/profiles/competitive.cfg
 exec touch/profiles/battery.cfg
 ```
+
+The launchers apply the default performance profile **once**, on the first
+start: balanced on Android, thermal on Flatpak and Ubuntu Touch. The archived
+`touch_perf_version` records that it ran. After that the values are the
+player's, so a change in Settings → Effects sticks across restarts.
+`XONOTIC_TOUCH_PERF_PROFILE`, set by hand on Linux, still applies on every
+start.
 
 ---
 
@@ -429,8 +438,12 @@ Independent of layout preset; safe to `exec` after a control preset.
 | `touch_performance_profile` | `"battery"` | `"balanced"` | `"quality"` |
 | `cl_maxfps` | `30` | `60` | `0` (uncapped) |
 | `cl_maxidlefps` | `15` | `30` | `30` |
-| `r_picmipworld` | `2` | `1` | `0` |
-| `r_picmipsprites` | `2` | `1` | `0` |
+| `vid_vsync` | `1` | `1` | — |
+| `gl_picmip` | `1` (half-size textures) | `1` | `0` |
+| `r_picmipworld` / `r_picmipsprites` | `1` | `1` | `1` |
+| `r_depthfirst` | `0` | `0` | — |
+| `r_water_resolutionmultiplier_max` | `0.5` | `0.5` | `1` |
+| `r_water_lowquality` | `1` | `1` | `0` |
 | `r_shadow_realtime_world` | `0` | `0` | `1` |
 | `r_shadow_realtime_dlight` | `0` | `0` | `1` |
 | `r_bloom` | `0` | `0` | `1` |
@@ -442,6 +455,14 @@ The frame cap cvar is **`cl_maxfps`**, not `fps_max`. The engine silently
 accepts an unknown cvar name and creates a dud, so a `fps_max` line looks
 correct and caps nothing — every profile carried that bug until 2026-08.
 `thermal.cfg` (30 fps) is the one that matters on a fanless tablet.
+
+`r_picmipworld` and `r_picmipsprites` are on/off switches for whether
+`gl_picmip` applies; the profiles used to set them to 3, which on its own did
+nothing. `r_depthfirst 0` because tile-based phone GPUs reject hidden pixels
+in hardware, so a depth prepass only draws the scene twice.
+`r_water_resolutionmultiplier_max` (engine) caps the multiplier that
+Xonotic's warpzone CSQC forces to 1 on every server, so each portal costs a
+half-resolution scene.
 
 Advanced panel (testers): show `fps` / frame time from `cl_stats` or CSQC timer for bug reports with numbers.
 
@@ -478,7 +499,7 @@ Uses engine volume cvars; port adds an output profile for phone speaker vs headp
 | `left.cfg` | Left-handed | `touch_handedness 1` — the mirror is computed, not a second copy of the geometry |
 | `minimal.cfg` | Small phones | Fewest controls; auto-hop so nothing but move, look and fire is needed |
 | `battery.cfg` | Long sessions | Performance row only |
-| `balanced.cfg` | Default thermal | Matches `touch/xonotic.cfg` graphics |
+| `balanced.cfg` | Default on Android | 60 fps with vsync, half-size textures, half-resolution portals |
 | `thermal.cfg` | Fanless tablets | 30 fps cap; the largest power win available |
 | `quality.cfg` | Plugged in / cool device | Higher picmip / shadows |
 
