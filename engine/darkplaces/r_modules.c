@@ -64,6 +64,19 @@ void R_Modules_Start(void)
 	}
 }
 
+// False while any renderer module is stopped: before the first start, and
+// all through an r_restart / vid_restart, when the modules go down one by one
+// and come back one by one. Nothing may draw then; the mesh models that 2D
+// drawing goes through have no memory pool until CL_MeshEntities restarts.
+qbool R_Modules_AllActive(void)
+{
+	int i;
+	for (i = 0;i < MAXRENDERMODULES;i++)
+		if (rendermodule[i].name != NULL && !rendermodule[i].active)
+			return false;
+	return true;
+}
+
 void R_Modules_Shutdown(void)
 {
 	int i;

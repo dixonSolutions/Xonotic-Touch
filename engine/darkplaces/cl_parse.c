@@ -346,8 +346,11 @@ void CL_KeepaliveMessage (qbool readmessages)
 	// (issue #25). Redraw the loading screen and let the window system hear
 	// from us every tenth of a second, or the progress bar sits still and
 	// GNOME offers to kill the game. Only while the loading screen is up:
-	// in the middle of a match this would draw a half-loaded world.
-	if(!thisrecursive && cls.state != ca_dedicated && scr_loading)
+	// in the middle of a match this would draw a half-loaded world. Nor in
+	// the middle of a renderer restart: the font module loads its pics through
+	// here while the 2D mesh it would draw with is torn down (Mem_Alloc: pool
+	// == NULL on every vid_restart from the menu).
+	if(!thisrecursive && cls.state != ca_dedicated && scr_loading && R_Modules_AllActive())
 	{
 		if(countdownupdate <= 0)
 		{
