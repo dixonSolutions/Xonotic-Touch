@@ -150,7 +150,7 @@ string Touch_CommandLabel(string command)
 	// Xonotic's own binds use +fire; +attack is the engine name underneath it.
 	if ((command == "+fire" || command == "+attack") && autocvar_touch_fire_visible)
 		return TOUCH_LABEL_FIRE;
-	if (command == "+fire2" && autocvar_touch_fire2_visible)
+	if (command == "+fire2" && Touch_Fire2Available())
 		return TOUCH_LABEL_FIRE2;
 	if (command == "+crouch" && autocvar_touch_crouch_visible)
 		return TOUCH_LABEL_CROUCH;
@@ -303,7 +303,7 @@ int Touch_AssignRole(vector p)
 
 	if (autocvar_touch_fire_visible && Touch_HitCircle(p, autocvar_touch_fire_x, autocvar_touch_fire_y, autocvar_touch_fire_size, 1.15))
 		return TOUCH_ROLE_FIRE;
-	if (autocvar_touch_fire2_visible && Touch_HitCircle(p, autocvar_touch_fire2_x, autocvar_touch_fire2_y, autocvar_touch_fire2_size, 1.15))
+	if (Touch_Fire2Available() && Touch_HitCircle(p, autocvar_touch_fire2_x, autocvar_touch_fire2_y, autocvar_touch_fire2_size, 1.15))
 		return TOUCH_ROLE_FIRE2;
 	if (autocvar_touch_jump_visible && Touch_HitRect(p, autocvar_touch_jump_x, autocvar_touch_jump_y, autocvar_touch_jump_size, autocvar_touch_jump_aspect, 1.10))
 		return TOUCH_ROLE_JUMP;
@@ -311,7 +311,7 @@ int Touch_AssignRole(vector p)
 		return TOUCH_ROLE_CROUCH;
 	if (autocvar_touch_weapon_visible && Touch_HitCircle(p, autocvar_touch_weapon_x, autocvar_touch_weapon_y, autocvar_touch_weapon_size, 1.10))
 		return TOUCH_ROLE_WEAPON;
-	if (autocvar_touch_zoom_visible && Touch_HitCircle(p, autocvar_touch_zoom_x, autocvar_touch_zoom_y, autocvar_touch_zoom_size, 1.10))
+	if (Touch_ZoomAvailable() && Touch_HitCircle(p, autocvar_touch_zoom_x, autocvar_touch_zoom_y, autocvar_touch_zoom_size, 1.10))
 		return TOUCH_ROLE_ZOOM;
 	if (autocvar_touch_reload_visible && Touch_HitCircle(p, autocvar_touch_reload_x, autocvar_touch_reload_y, autocvar_touch_reload_size, 1.10))
 		return TOUCH_ROLE_RELOAD;
@@ -824,6 +824,10 @@ void Touch_Frame(void)
 	{
 		if (zoom_down && !touch_zoom_edge)
 			touch_zoom_toggle_state = !touch_zoom_toggle_state;
+		// A toggled zoom lets go when ZOOM goes away (a switch to a weapon
+		// without a scope), or it would stay stuck on with nothing to press.
+		if (!Touch_ZoomAvailable())
+			touch_zoom_toggle_state = false;
 		touch_zoom_edge = zoom_down;
 		Touch_SetKey("zoom", touch_zoom_toggle_state);
 	}
@@ -915,6 +919,102 @@ bool Touch_HopLatched(void)
 bool Touch_Fire2Held(void)
 {
 	return Touch_RoleOwned(TOUCH_ROLE_FIRE2);
+}
+
+// ALT is contextual by default (touch_fire2_visible 2), the way mobile shooters
+// show an ability button only while there is an ability to use: it is there
+// while +fire2 would fire the weapon in hand, and fades out when the weapon has
+// no secondary or it has run dry (out of ammo, no mines left to detonate). The
+// server says which, in STAT(TOUCH_ALTFIRE): only it knows the balance.
+//
+// Availability is the input rule and changes at once, so a fading button
+// already takes no new touch; the fade is only how it looks. A finger already
+// on it keeps it until lifted, like every other role.
+const float TOUCH_FIRE2_FADE_IN = 0.12;
+const float TOUCH_FIRE2_FADE_OUT = 0.35;
+float touch_fire2_fade;
+float touch_fire2_fade_time;
+int touch_fire2_reported = -1;
+float touch_zoom_fade;
+float touch_zoom_fade_time;
+
+// One frame of a contextual button's fade, towards shown or hidden.
+float Touch_FadeStep(float fade, bool shown, float dt)
+{
+	if (shown)
+		return min(1, fade + dt / TOUCH_FIRE2_FADE_IN);
+	return max(0, fade - dt / TOUCH_FIRE2_FADE_OUT);
+}
+
+bool Touch_Fire2Available(void)
+{
+	float mode = autocvar_touch_fire2_visible;
+	if (mode <= 0)
+		return false;
+	if (mode == 1)
+		return true;
+	return STAT(TOUCH_ALTFIRE) == TOUCH_ALTFIRE_READY;
+}
+
+// 0..1 multiplier for drawing ALT; advances the fade, so call it once a frame.
+float Touch_Fire2Alpha(void)
+{
+	float dt = bound(0, time - touch_fire2_fade_time, 0.1);
+	touch_fire2_fade_time = time;
+
+	// _touch_fire2_state: what the server said (0 none, 1 empty, 2 ready), for
+	// tests and the touch_debug readout.
+	int state = STAT(TOUCH_ALTFIRE);
+	if (state != touch_fire2_reported)
+	{
+		touch_fire2_reported = state;
+		cvar_set("_touch_fire2_state", ftos(state));
+	}
+
+	if (autocvar_touch_fire2_visible <= 0)
+		return touch_fire2_fade = 0;
+	// Edit mode places it, and touch_debug 3 previews every control.
+	if (Touch_CustomizeActive() || autocvar_touch_debug >= 3)
+		return touch_fire2_fade = 1;
+	return touch_fire2_fade = Touch_FadeStep(touch_fire2_fade, Touch_Fire2Available(), dt);
+}
+
+// ZOOM is contextual the same way (touch_zoom_visible 2): there while the weapon
+// in hand has a scope, the ones that draw a reticle when zoomed. Every weapon
+// can +zoom, but only those are worth a button. The client knows this one
+// itself, so no stat. An observer holds no weapon; a spectator watching a
+// player sees that player's and may zoom with it.
+bool Touch_ZoomAvailable(void)
+{
+	float mode = autocvar_touch_zoom_visible;
+	if (mode <= 0)
+		return false;
+	if (mode == 1)
+		return true;
+	if (spectatee_status == -1)
+		return false;
+	if (!spectatee_status && STAT(HEALTH) <= 0)
+		return false;
+	Weapon wep = viewmodels[0].switchweapon;
+	return wep != WEP_Null && wep.w_reticle != "";
+}
+
+bool Touch_ZoomHeld(void)
+{
+	return touch_key_zoom;
+}
+
+// 0..1 multiplier for drawing ZOOM; advances the fade, so call it once a frame.
+// It stays while zoomed, so a finger on it can see what it is holding.
+float Touch_ZoomAlpha(void)
+{
+	float dt = bound(0, time - touch_zoom_fade_time, 0.1);
+	touch_zoom_fade_time = time;
+	if (autocvar_touch_zoom_visible <= 0)
+		return touch_zoom_fade = 0;
+	if (Touch_CustomizeActive() || autocvar_touch_debug >= 3)
+		return touch_zoom_fade = 1;
+	return touch_zoom_fade = Touch_FadeStep(touch_zoom_fade, Touch_ZoomAvailable() || touch_key_zoom, dt);
 }
 
 bool Touch_CrouchHeld(void)

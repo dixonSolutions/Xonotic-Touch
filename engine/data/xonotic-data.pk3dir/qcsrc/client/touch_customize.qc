@@ -41,6 +41,8 @@ vector Touch_Customize_GetWidgetPos(int wid)
 			return autocvar_touch_zoom_x * eX + autocvar_touch_zoom_y * eY + autocvar_touch_zoom_size * eZ;
 		case TOUCH_WIDGET_RELOAD:
 			return autocvar_touch_reload_x * eX + autocvar_touch_reload_y * eY + autocvar_touch_reload_size * eZ;
+		case TOUCH_WIDGET_FIRE2:
+			return autocvar_touch_fire2_x * eX + autocvar_touch_fire2_y * eY + autocvar_touch_fire2_size * eZ;
 		default:
 			return autocvar_touch_dodge_x * eX + autocvar_touch_dodge_y * eY + autocvar_touch_dodge_size * eZ;
 	}
@@ -66,6 +68,8 @@ void Touch_Customize_SetWidgetPos(int wid, float nx, float ny)
 			cvar_set("touch_zoom_x", ftos(nx)); cvar_set("touch_zoom_y", ftos(ny)); break;
 		case TOUCH_WIDGET_RELOAD:
 			cvar_set("touch_reload_x", ftos(nx)); cvar_set("touch_reload_y", ftos(ny)); break;
+		case TOUCH_WIDGET_FIRE2:
+			cvar_set("touch_fire2_x", ftos(nx)); cvar_set("touch_fire2_y", ftos(ny)); break;
 		default:
 			cvar_set("touch_dodge_x", ftos(nx)); cvar_set("touch_dodge_y", ftos(ny)); break;
 	}
@@ -84,6 +88,7 @@ string Touch_Customize_WidgetLabel(int wid)
 		case TOUCH_WIDGET_WEAPON: return TOUCH_LABEL_WEAPON;
 		case TOUCH_WIDGET_ZOOM: return "ZOOM";
 		case TOUCH_WIDGET_RELOAD: return TOUCH_LABEL_RELOAD;
+		case TOUCH_WIDGET_FIRE2: return TOUCH_LABEL_FIRE2;
 		default: return TOUCH_LABEL_DODGE;
 	}
 }
@@ -93,7 +98,7 @@ string Touch_Customize_WidgetLabel(int wid)
 // Offering a drag handle for one means inviting the player to carefully place
 // something that will never appear — which is what RLD and ZOOM were doing, while
 // DASH alone was correctly left out. One predicate, so the rule is the same for all
-// eight and the two loops below cannot drift apart.
+// nine and the two loops below cannot drift apart.
 //
 // MOVE is the exception: the move zone stays live with the stick hidden, so its
 // anchor is still worth placing.
@@ -108,6 +113,9 @@ bool Touch_Customize_WidgetEnabled(int wid)
 		case TOUCH_WIDGET_WEAPON: return boolean(autocvar_touch_weapon_visible);
 		case TOUCH_WIDGET_ZOOM: return boolean(autocvar_touch_zoom_visible);
 		case TOUCH_WIDGET_RELOAD: return boolean(autocvar_touch_reload_visible);
+		// Contextual ALT (touch_fire2_visible 2) is placed like any other button,
+		// whatever the weapon in hand: edit mode is where it has to be findable.
+		case TOUCH_WIDGET_FIRE2: return boolean(autocvar_touch_fire2_visible);
 		default: return boolean(autocvar_touch_dodge_visible);
 	}
 }

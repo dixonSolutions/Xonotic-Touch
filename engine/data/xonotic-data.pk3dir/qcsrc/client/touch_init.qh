@@ -14,7 +14,8 @@ void Touch_WriteAllCvars(float fh);
 //   3 = top band split into thirds; CONSOLE moved to the bottom-left corner
 //   4 = ammo folded into the vitals group; its own anchor cvars retired
 //   5 = SCORE pill added beside CONSOLE
-const float TOUCH_LAYOUT_VERSION = 5;
+//   6 = ALT (secondary fire) and ZOOM on by default, both contextual
+const float TOUCH_LAYOUT_VERSION = 6;
 void Touch_MigrateLayout(void);
 
 void Touch_EnforceSquare2D(void);

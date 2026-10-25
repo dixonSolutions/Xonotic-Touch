@@ -18,6 +18,7 @@ applies to both.
 #include "touch_hud.h"
 #include "touch_aim.h"
 #include "touch_ui.h"
+#include "touch_altfire.h"
 
 extern cvar_t vid_touchscreen;
 extern cvar_t vid_conwidth;
@@ -507,6 +508,11 @@ typedef struct wepdef_s { char name[32]; char pic[64]; char ammo_icon[32]; int i
 static wepdef_t weapons[MAX_WEAPONS];
 static int num_weapons = 0;
 static int stat_weapons = -1;
+// STAT_TOUCH_ALTFIRE when the server's CSQC registers it (this port's game
+// code), -1 on any other server: touch_altfire.h then judges from the stock
+// balance.
+static int stat_altfire = -1;
+static float fire2_fade, zoom_fade;
 // The CSQC's viewmodels[0] (the wepent) tells the held weapon and its clip,
 // which no stat does: global offset plus the fields read from it each frame.
 typedef struct qcfield_s { int ofs; int type; } qcfield_t;
@@ -576,6 +582,7 @@ static void bind_weapons(void)
 	int res_none = 0, stat_fuel = -1, stat_plasma = -1;
 	num_weapons = 0;
 	stat_weapons = -1;
+	stat_altfire = -1;
 	viewmodels_ofs = -1;
 	strip_selected_impulse = -1;
 	if (!prog->loaded)
@@ -595,6 +602,13 @@ static void bind_weapons(void)
 		stat_weapons = field_int(prog, ed, f_id);
 		if (stat_weapons < 0 || stat_weapons + 2 >= MAX_CL_STATS)
 			stat_weapons = -1;
+	}
+	ed = global_edict(prog, "STAT_TOUCH_ALTFIRE");
+	if (ed)
+	{
+		stat_altfire = field_int(prog, ed, f_id);
+		if (stat_altfire < 0 || stat_altfire >= MAX_CL_STATS)
+			stat_altfire = -1;
 	}
 	// GetAmmoStat: shells/bullets/rockets/cells are engine stats, fuel and
 	// plasma registered ones; RES_NONE is a weapon that uses no ammo.
@@ -703,6 +717,55 @@ static qbool weapon_owned(int index)
 	if (bit < 48)
 		return (cl.stats[stat_weapons + 1] & (1 << (bit - 24))) != 0;
 	return (cl.stats[stat_weapons + 2] & (1 << (bit - 48))) != 0;
+}
+
+// What +fire2 would do now (TOUCH_ALTFIRE_*): the server's stat when it sends
+// one, else judged from the held weapon and its ammo (touch_altfire.h).
+static int altfire_state(void)
+{
+	prvm_prog_t *prog = CLVM_prog;
+	prvm_edict_t *ve;
+	const wepdef_t *wd;
+	int held, reserve = 0, clip = -1;
+	if (stat_altfire >= 0)
+		return cl.stats[stat_altfire];
+	// A spectator's +fire2 goes back to observing, as the stat would say.
+	if (TouchUI_IsSpectating())
+		return TouchUI_IsWatching() ? TOUCH_ALTFIRE_READY : TOUCH_ALTFIRE_NONE;
+	if (cl.stats[STAT_HEALTH] <= 0)
+		return TOUCH_ALTFIRE_NONE;
+	held = held_weapon_index();
+	if (held < 0)
+		return TOUCH_ALTFIRE_NONE;
+	wd = &weapons[held];
+	if (wd->ammo_stat >= 0)
+		reserve = max(0, cl.stats[wd->ammo_stat]);
+	ve = wepent();
+	if (ve && qcfield_int(prog, ve, f_clip_size) > 0)
+		clip = qcfield_int(prog, ve, f_clip_load);
+	return TouchAltFire_Fallback(wd->name, reserve, clip,
+		(cl.stats[STAT_ITEMS] & 1) || wd->ammo_stat < 0); // IT_UNLIMITED_AMMO
+}
+
+static qbool fire2_available(void)
+{
+	return TouchAltFire_Available((int)cv("touch_fire2_visible", 2), altfire_state());
+}
+
+// ZOOM, contextual like ALT (touch_zoom_visible 2): while the weapon in hand
+// has a scope. Not for an observer, who holds no weapon; a spectator watching
+// a player sees that player's weapon and may zoom with it.
+static qbool zoom_available(void)
+{
+	int mode = (int)cv("touch_zoom_visible", 2), held;
+	if (mode != 2)
+		return TouchZoom_Available(mode, false);
+	if (TouchUI_IsSpectating() && !TouchUI_IsWatching())
+		return false;
+	if (!TouchUI_IsSpectating() && cl.stats[STAT_HEALTH] <= 0)
+		return false;
+	held = held_weapon_index();
+	return held >= 0 && TouchZoom_Scoped(weapons[held].name);
 }
 
 // The HUD skin's pic, like Touch_Hud_SkinPicPath: hud_skin first, default second.
@@ -879,7 +942,7 @@ static int assign_role(float px, float py)
 		return ROLE_IGNORED;
 	if (cv("touch_fire_visible", 1) && hit_circle(px, py, cv("touch_fire_x", 0.855f), cv("touch_fire_y", 0.680f), cv("touch_fire_size", 0.140f), 1.15f))
 		return ROLE_FIRE;
-	if (cv("touch_fire2_visible", 0) && hit_circle(px, py, cv("touch_fire2_x", 0.135f), cv("touch_fire2_y", 0.240f), cv("touch_fire2_size", 0.120f), 1.15f))
+	if (fire2_available() && hit_circle(px, py, cv("touch_fire2_x", 0.770f), cv("touch_fire2_y", 0.755f), cv("touch_fire2_size", 0.100f), 1.15f))
 		return ROLE_FIRE2;
 	if (cv("touch_jump_visible", 1) && hit_rect(px, py, cv("touch_jump_x", 0.855f), cv("touch_jump_y", 0.885f), cv("touch_jump_size", 0.072f), cv("touch_jump_aspect", 2.6f), 1.10f))
 		return ROLE_JUMP;
@@ -887,7 +950,7 @@ static int assign_role(float px, float py)
 		return ROLE_CROUCH;
 	if (weapon_button_shown() && hit_circle(px, py, cv("touch_weapon_x", 0.540f), cv("touch_weapon_y", 0.860f), cv("touch_weapon_size", 0.100f), 1.10f))
 		return ROLE_WEAPON;
-	if (cv("touch_zoom_visible", 0) && hit_circle(px, py, cv("touch_zoom_x", 0.860f), cv("touch_zoom_y", 0.480f), cv("touch_zoom_size", 0.100f), 1.10f))
+	if (zoom_available() && hit_circle(px, py, cv("touch_zoom_x", 0.860f), cv("touch_zoom_y", 0.480f), cv("touch_zoom_size", 0.100f), 1.10f))
 		return ROLE_ZOOM;
 	if (cv("touch_reload_visible", 0) && hit_circle(px, py, cv("touch_reload_x", 0.720f), cv("touch_reload_y", 0.480f), cv("touch_reload_size", 0.100f), 1.10f))
 		return ROLE_RELOAD;
@@ -1266,7 +1329,25 @@ void TouchHUD_Frame(void)
 	// fire: held button, or a look-zone tap; ALT is the secondary
 	set_key("attack", &key_attack, fire_count || now < tapfire_until);
 	set_key("attack2", &key_attack2, fire2_down);
-	set_key("zoom", &key_zoom, zoom_down);
+	// touch_zoom_mode 1 toggles. A toggled zoom lets go when ZOOM goes away
+	// (a switch to a weapon without a scope), or it would stay stuck on.
+	{
+		static qbool zoom_toggled, prev_zoom_down;
+		if (cv("touch_zoom_mode", 0) == 1)
+		{
+			if (zoom_down && !prev_zoom_down)
+				zoom_toggled = !zoom_toggled;
+			if (!zoom_available())
+				zoom_toggled = false;
+			set_key("zoom", &key_zoom, zoom_toggled);
+		}
+		else
+		{
+			zoom_toggled = false;
+			set_key("zoom", &key_zoom, zoom_down);
+		}
+		prev_zoom_down = zoom_down;
+	}
 
 	// hop: hold past touch_hop_latch_ms latches bunny-hop; a tap while latched clears it.
 	// Not for a spectator: jump is "join" there, and a latch would carry into
@@ -1502,10 +1583,20 @@ void TouchHUD_Draw(void)
 		draw_circle_widget("touch_crouch_x", 0.700f, "touch_crouch_y", 0.885f, "touch_crouch_size", 0.066f, "DUCK", key_crouch, a, C_ACCENT);
 	if (weapon_button_shown())
 		draw_circle_widget("touch_weapon_x", 0.540f, "touch_weapon_y", 0.860f, "touch_weapon_size", 0.100f, "WEP", role_owned(ROLE_WEAPON), a, C_ACCENT);
-	if (cv("touch_fire2_visible", 0))
-		draw_circle_widget("touch_fire2_x", 0.135f, "touch_fire2_y", 0.240f, "touch_fire2_size", 0.120f, "ALT", key_attack2, a, C_DANGER);
-	if (cv("touch_zoom_visible", 0))
-		draw_circle_widget("touch_zoom_x", 0.860f, "touch_zoom_y", 0.480f, "touch_zoom_size", 0.100f, "ZOOM", key_zoom, a, C_ACCENT);
+	// ALT fades out rather than vanishing, so the eye sees why it went; it
+	// takes no new touch from the moment it is unavailable (assign_role).
+	// ZOOM does the same for weapons with a scope.
+	{
+		static double fade_time;
+		float fade_dt = (float)bound(0.0, host.realtime - fade_time, 0.1);
+		fade_time = host.realtime;
+		fire2_fade = cv("touch_fire2_visible", 2) > 0 ? TouchAltFire_Fade(fire2_fade, fire2_available(), fade_dt) : 0;
+		zoom_fade = cv("touch_zoom_visible", 2) > 0 ? TouchAltFire_Fade(zoom_fade, zoom_available() || key_zoom, fade_dt) : 0;
+		if (fire2_fade > 0)
+			draw_circle_widget("touch_fire2_x", 0.770f, "touch_fire2_y", 0.755f, "touch_fire2_size", 0.100f, "ALT", key_attack2, a * fire2_fade, C_DANGER);
+		if (zoom_fade > 0)
+			draw_circle_widget("touch_zoom_x", 0.860f, "touch_zoom_y", 0.480f, "touch_zoom_size", 0.100f, "ZOOM", key_zoom, a * zoom_fade, C_ACCENT);
+	}
 	if (cv("touch_reload_visible", 0))
 		draw_circle_widget("touch_reload_x", 0.720f, "touch_reload_y", 0.480f, "touch_reload_size", 0.100f, "RLD", role_owned(ROLE_RELOAD), a, C_ACCENT);
 	if (cv("touch_dodge_visible", 0))

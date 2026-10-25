@@ -164,9 +164,10 @@ void Touch_DrawOverlay(float overlayAlpha)
 	if (autocvar_touch_fire_visible || autocvar_touch_debug)
 		Touch_DrawFireButton(overlayAlpha);
 
-	if (autocvar_touch_fire2_visible)
+	float fire2_alpha = Touch_Fire2Alpha();
+	if (fire2_alpha > 0)
 		Touch_DrawCircleWidget(autocvar_touch_fire2_x, autocvar_touch_fire2_y,
-			autocvar_touch_fire2_size, TOUCH_LABEL_FIRE2, Touch_Fire2Held(), overlayAlpha, TOUCH_C_DANGER);
+			autocvar_touch_fire2_size, TOUCH_LABEL_FIRE2, Touch_Fire2Held(), overlayAlpha * fire2_alpha, TOUCH_C_DANGER);
 
 	if (autocvar_touch_jump_visible || autocvar_touch_debug)
 		Touch_DrawHopBar(overlayAlpha);
@@ -177,9 +178,10 @@ void Touch_DrawOverlay(float overlayAlpha)
 	if (autocvar_touch_weapon_visible || autocvar_touch_debug)
 		Touch_DrawCircleWidget(autocvar_touch_weapon_x, autocvar_touch_weapon_y,
 			autocvar_touch_weapon_size, TOUCH_LABEL_WEAPON, Touch_WeaponWheelOpen(), overlayAlpha, TOUCH_C_ACCENT);
-	if (autocvar_touch_zoom_visible)
+	float zoom_alpha = Touch_ZoomAlpha();
+	if (zoom_alpha > 0)
 		Touch_DrawCircleWidget(autocvar_touch_zoom_x, autocvar_touch_zoom_y,
-			autocvar_touch_zoom_size, "ZOOM", false, overlayAlpha, TOUCH_C_ACCENT);
+			autocvar_touch_zoom_size, "ZOOM", Touch_ZoomHeld(), overlayAlpha * zoom_alpha, TOUCH_C_ACCENT);
 	if (autocvar_touch_reload_visible)
 		Touch_DrawCircleWidget(autocvar_touch_reload_x, autocvar_touch_reload_y,
 			autocvar_touch_reload_size, TOUCH_LABEL_RELOAD, false, overlayAlpha, TOUCH_C_ACCENT);

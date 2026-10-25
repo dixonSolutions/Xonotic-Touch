@@ -66,6 +66,7 @@ feed and the chat feed each get a band that touches neither.
 | Right ~68% | Drag = look | Mouse delta → yaw/pitch (`sensitivity`, `m_pitch`, `m_yaw`) |
 | Look zone | Short tap = fire | `+attack` for one frame |
 | Fire | Hold; sliding off keeps firing and steers | `+attack` (+ look delta) |
+| **ALT** | Hold. Only there while the weapon in hand has a secondary fire it can fire; fades out when it runs dry | `+attack2` — see [Secondary fire](#secondary-fire-alt) |
 | **HOP** | Tap = one jump, hold = latch (keeps hopping hands-free) | `+jump` |
 | DUCK | Tap or hold | `+crouch` |
 | Weapon | WEP button / wheel; the right-edge strip is a readout, not a switcher | `impulse 1`…`9` or cycle |
@@ -172,11 +173,11 @@ keeps its physical size across aspect ratios — `mm = _size × 183.2` on the
 |--------|-------------|-------|--------------------|
 | Move stick | `touch_move_` | — | yes |
 | Fire | `touch_fire_` | — | yes |
-| Second fire (claw) | `touch_fire2_` | — | no |
+| ALT, secondary fire | `touch_fire2_` | `touch_fire2_visible` 0 never / 1 always / 2 contextual | contextual (`2`) |
 | Hop | `touch_jump_` | `touch_jump_aspect` (capsule width ÷ height) | yes |
 | Duck | `touch_crouch_` | — | yes |
 | Weapon | `touch_weapon_` | — | no (HUD strip switches weapons) |
-| Zoom | `touch_zoom_` | — | no |
+| Zoom | `touch_zoom_` | `touch_zoom_visible` 0 never / 1 always / 2 contextual | contextual (`2`) |
 | Dash | `touch_dodge_` | — | no |
 | Reload | `touch_reload_` | — | no |
 
@@ -270,6 +271,61 @@ Engine movement (already in `touch/xonotic.cfg`):
 | `touch_conui_palette_file` | string | path | `touch/console_palette.txt` | COMMANDS tab presets |
 | `touch_minimal_more` | int | 0/1 | `0` | Minimal preset: secondary panel for crouch/zoom/dodge |
 | `touch_setup_done` | int | 0/1 | `0` | First-run wizard completed; skip on next launch |
+
+### Secondary fire (ALT)
+
+Mobile shooters show an ability button only while there is an ability to use,
+and ALT works the same way. With `touch_fire2_visible 2` (the default), it sits
+down and inward of FIRE, inside the right thumb's comfortable reach, but only while `+fire2` would
+fire the weapon in hand. Switch to a weapon without a secondary fire and ALT
+fades out over a third of a second. Run the secondary dry and it fades out too;
+pick up ammo and it fades back in. `1` shows it always (the old behaviour), `0`
+never. The competitive preset moves it to the top-left for a claw grip, and the
+minimal preset turns it off.
+
+A button that is fading out takes no new touch. A finger already on it keeps it
+until lifted, as with every other control. Edit mode always shows ALT, whatever
+the weapon, so it can be placed.
+
+**Who decides.** The server, in `STAT_TOUCH_ALTFIRE`
+(`qcsrc/server/weapons/altfire.qc`): 0 = no secondary, 1 = has one but cannot
+fire it now, 2 = ready. Only the server knows the balance cvars that turn
+secondaries on and off, the ammo each costs, and what is out in the world. The
+CSQC mirrors the value in `_touch_fire2_state` for tests and debugging.
+
+| Weapon | Secondary | ALT fades when |
+|---|---|---|
+| Blaster | — (`+fire2` switches to the last weapon) | always hidden |
+| Vortex | only with `g_balance_vortex_secondary 1`; stock zooms | hidden in stock |
+| MachineGun | burst or first-shot mode; hidden when `+fire2` zooms | not enough bullets for a shot |
+| Shotgun | melee (`secondary 1`) or triple shot (`2`) | triple shot short of shells |
+| Mortar | bounce grenade, or detonate with `remote_detonateprimary` | short of rockets / nothing to detonate |
+| Devastator | detonate rockets in flight | no rocket in flight |
+| Mine Layer | detonate placed mines | no mines placed |
+| Arc, Crylink, Electro, Hagar, HLAC, Rifle, Seeker | their alt fire, where its balance switch is on | short of ammo for one shot |
+| Fireball, Hook, Porto, Tuba, Vaporizer | infinite | never |
+| Weapons from mutators | ready while `wr_checkammo2` allows | hidden otherwise |
+
+Unlimited ammo keeps every ammo-based secondary ready. Spectating another
+player, ALT is there and goes back to observing. Observing, or dead, it is not.
+
+**ZOOM** is contextual the same way (`touch_zoom_visible 2`, the default): it
+fades in while the weapon in hand has a scope — Vortex, Rifle, Vaporizer and
+MachineGun, the weapons that draw a reticle when zoomed — and out for the rest.
+The client knows that itself, so there is no stat; the engine's HUD uses the
+same list from `touch_altfire.h`. With stock balance the Vortex's `+fire2` is
+its zoom, so a Vortex shows ZOOM and no ALT. A toggled zoom
+(`touch_zoom_mode 1`) lets go when ZOOM goes away, so switching to a weapon
+without a scope never leaves the view stuck zoomed in.
+
+**Other servers.** A public server that runs another revision's game code sends
+no such stat. The engine's copy of the HUD (`touch_hud.c`) then judges from the
+stock balance in `engine/darkplaces/touch_altfire.h`: which weapons have a
+secondary, and the ammo one shot costs, against the ammo stats and clip it
+already reads. A server with a different balance can disagree. The Devastator's
+and Mine Layer's ALT stays up there, because only the server knows whether
+anything is out to detonate. `scripts/test-touch-altfire.sh` covers that table
+and the fade; CI runs it.
 
 ### Shoot helpers: auto-shoot and aim assist (engine)
 

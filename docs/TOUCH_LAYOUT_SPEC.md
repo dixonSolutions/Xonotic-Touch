@@ -82,7 +82,7 @@ These are the root causes the implementation must remove. Do not "tune around" t
 
 Default control set is **5 glass controls** + the stock HUD weapons strip: MOVE, FIRE, JUMP,
 CR, CONSOLE. Weapon switching uses the **right-edge weapons panel** (tap icon → `impulse N`);
-the old WEP glass button is off by default (Hick's Law; ZOOM / RELOAD / DODGE stay hidden).
+the old WEP glass button is off by default (Hick's Law; RELOAD / DODGE stay hidden, and ALT and ZOOM only appear for a weapon that can use them).
 
 ### 3.1 Cvar values (right-handed default, `touch_scale 1.0`)
 
@@ -94,7 +94,7 @@ the old WEP glass button is off by default (Hick's Law; ZOOM / RELOAD / DODGE st
 | CR (crouch) | `0.700` | `0.860` | `0.100` | — | `1` | circle |
 | WEP   | `0.540` | `0.860` | `0.100` | — | `1` | circle |
 | CONSOLE | `0.500` | `0.050` | `0.058` | `4.2` | `1` | pill/bar |
-| ZOOM  | `0.860` | `0.480` | `0.100` | — | `0` | circle |
+| ZOOM  | `0.860` | `0.480` | `0.100` | — | `2` (contextual: scoped weapon) | circle |
 | RELOAD| `0.720` | `0.480` | `0.100` | — | `0` | circle |
 | DODGE | `0.165` | `0.480` | `0.100` | — | `0` | circle |
 
@@ -151,7 +151,7 @@ touch_sens_y_mult 0.85
 touch_look_smoothing 1
 touch_look_deadzone_px 4
 touch_stick_deadzone 0.18
-touch_zoom_visible 0
+touch_zoom_visible 2
 touch_reload_visible 0
 touch_dodge_visible 0
 ```

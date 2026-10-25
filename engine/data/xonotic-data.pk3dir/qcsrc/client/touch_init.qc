@@ -49,12 +49,20 @@ void Touch_DefineCvars(void)
 	Touch_RegisterCvar("touch_fire_y", "0.680");
 	Touch_RegisterCvar("touch_fire_size", "0.140"); // 26 mm — hot button
 	Touch_RegisterCvar("touch_fire_visible", "1");
-	// Second fire button for claw grips: costs pixels, not fingers. Off by
-	// default so the resting layout stays sparse.
-	Touch_RegisterCvar("touch_fire2_x", "0.135");
-	Touch_RegisterCvar("touch_fire2_y", "0.240");
-	Touch_RegisterCvar("touch_fire2_size", "0.120");
-	Touch_RegisterCvar("touch_fire2_visible", "0");
+	// ALT, secondary fire (+fire2). Contextual by default (2): shown only while
+	// the weapon in hand has a secondary fire it can fire, so the resting layout
+	// stays as sparse as it was for the weapons that have none. 1 = always,
+	// 0 = never. It rings FIRE on the inward side, the way mobile shooters ring
+	// their secondary actions round the fire button, and low: the right thumb
+	// pivots near the bottom-right corner, so down-and-in keeps it at 56 mm of
+	// reach where up-and-in was 77 mm, past the comfortable 62
+	// (scripts/audit-touch-ergonomics.py). On the 3:2 reference panel its
+	// centre is 0.15 short-axis units from FIRE's, a 0.03 gap between the rims.
+	// The competitive preset moves it to the top-left for a claw grip.
+	Touch_RegisterCvar("touch_fire2_x", "0.770");
+	Touch_RegisterCvar("touch_fire2_y", "0.755");
+	Touch_RegisterCvar("touch_fire2_size", "0.100"); // 18 mm, like ZOOM and RLD
+	Touch_RegisterCvar("touch_fire2_visible", "2");
 	Touch_RegisterCvar("touch_jump_x", "0.855");
 	Touch_RegisterCvar("touch_jump_y", "0.885");
 	Touch_RegisterCvar("touch_jump_size", "0.072"); // 13 mm tall capsule
@@ -71,7 +79,9 @@ void Touch_DefineCvars(void)
 	Touch_RegisterCvar("touch_zoom_x", "0.860");
 	Touch_RegisterCvar("touch_zoom_y", "0.480");
 	Touch_RegisterCvar("touch_zoom_size", "0.100");
-	Touch_RegisterCvar("touch_zoom_visible", "0");
+	// Contextual like ALT (2): only while the weapon in hand has a scope
+	// (Vortex, Rifle, Vaporizer, MachineGun). 1 = always, 0 = never.
+	Touch_RegisterCvar("touch_zoom_visible", "2");
 	Touch_RegisterCvar("touch_dodge_x", "0.165");
 	Touch_RegisterCvar("touch_dodge_y", "0.480");
 	Touch_RegisterCvar("touch_dodge_size", "0.100");
@@ -232,6 +242,8 @@ void Touch_DefineCvars(void)
 	Touch_RegisterTransientCvar("touch_customize", "0");
 	Touch_RegisterTransientCvar("touch_layout_file", "touch.layout.cfg");
 	Touch_RegisterTransientCvar("touch_autoscreenshot", "0");
+	// Read-only: STAT(TOUCH_ALTFIRE) as last seen (Touch_Fire2Alpha).
+	Touch_RegisterTransientCvar("_touch_fire2_state", "0");
 	// Registered here so a saved layout can carry it, but written by
 	// Touch_WriteAllCvars rather than from the table — its value is the schema's,
 	// not a preference, and resetting it would defeat the migration check.

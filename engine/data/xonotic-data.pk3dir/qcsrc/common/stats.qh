@@ -58,6 +58,15 @@ vector weaponsInMapAll;
 REGISTER_STAT(WEAPONS, VECTORI)
 REGISTER_STAT(WEAPONSINMAP, VECTORI, weaponsInMap)
 
+// Xonotic Touch: what secondary fire (+fire2) does for the weapon in hand, so
+// the touch HUD can show its ALT button only when it has something to do.
+// Set every frame by server/weapons/altfire.qc. The engine's own HUD finds this
+// stat by the name of its registry global, so keep the name.
+const int TOUCH_ALTFIRE_NONE = 0;  ///< no secondary fire: hide the button
+const int TOUCH_ALTFIRE_EMPTY = 1; ///< has one, but cannot fire it now: fade the button out
+const int TOUCH_ALTFIRE_READY = 2; ///< secondary fire would fire
+REGISTER_STAT(TOUCH_ALTFIRE, INT)
+
 REGISTER_STAT(PL_VIEW_OFS, VECTOR)
 REGISTER_STAT(PL_CROUCH_VIEW_OFS, VECTOR)
 

@@ -103,6 +103,11 @@ qbool TouchUI_IsSpectating(void)
 	return TouchUI_SpectatorMode() != TOUCHUI_SPEC_NONE;
 }
 
+qbool TouchUI_IsWatching(void)
+{
+	return TouchUI_SpectatorMode() == TOUCHUI_SPEC_WATCHING;
+}
+
 static void TouchUI_UpdateSpectatorEntries(void)
 {
 	touchui_specmode_t mode = TouchUI_SpectatorMode();

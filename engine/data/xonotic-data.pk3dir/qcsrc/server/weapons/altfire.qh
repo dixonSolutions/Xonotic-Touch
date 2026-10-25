@@ -1,0 +1,6 @@
+#pragma once
+
+// Xonotic Touch: STAT(TOUCH_ALTFIRE) — see common/stats.qh.
+
+/** TOUCH_ALTFIRE_NONE, _EMPTY or _READY for what +fire2 would do for this client right now */
+int W_AltFire_State(entity this);
