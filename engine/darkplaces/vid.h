@@ -52,6 +52,10 @@ typedef struct viddef_support_s
 	qbool arb_debug_output;
 	/// 32bit (GL_UNSIGNED_INT) draw indices. Core in GL, an extension in GLES2.
 	qbool element_index_uint;
+	// GLES2: 24bit depth renderbuffers (OES_depth24 or ES 3), and packed
+	// depth+stencil ones (OES_packed_depth_stencil or ES 3). Desktop GL: true.
+	qbool depth24;
+	qbool packed_depth_stencil;
 }
 viddef_support_t;
 

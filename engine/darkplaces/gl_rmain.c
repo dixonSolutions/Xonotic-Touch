@@ -192,6 +192,8 @@ cvar_t r_fxaa = {CF_CLIENT | CF_ARCHIVE, "r_fxaa", "0", "fast approximate anti a
 cvar_t r_water = {CF_CLIENT | CF_ARCHIVE, "r_water", "0", "whether to use reflections and refraction on water surfaces (note: r_wateralpha must be set below 1)"};
 cvar_t r_water_cameraentitiesonly = {CF_CLIENT | CF_ARCHIVE, "r_water_cameraentitiesonly", "0", "whether to only show QC-defined reflections/refractions (typically used for camera- or portal-like effects)"};
 cvar_t r_water_clippingplanebias = {CF_CLIENT | CF_ARCHIVE, "r_water_clippingplanebias", "1", "a rather technical setting which avoids black pixels around water edges"};
+cvar_t r_water_resolutionmultiplier_max = {CF_CLIENT | CF_ARCHIVE, "r_water_resolutionmultiplier_max", "1", "upper limit on r_water_resolutionmultiplier, which games set themselves (Xonotic's warpzones settemp it to 1); lower it on slow GPUs to make every portal, mirror and water surface cheaper"};
+cvar_t r_rendertarget_keeptime = {CF_CLIENT, "r_rendertarget_keeptime", "3", "seconds an unused render target (a portal or reflection out of view) is kept before it is freed; recreating one costs a hitch the next time it comes into view"};
 cvar_t r_water_resolutionmultiplier = {CF_CLIENT | CF_ARCHIVE, "r_water_resolutionmultiplier", "0.5", "multiplier for screen resolution when rendering refracted/reflected scenes, 1 is full quality, lower values are faster"};
 cvar_t r_water_refractdistort = {CF_CLIENT | CF_ARCHIVE, "r_water_refractdistort", "0.01", "how much water refractions shimmer"};
 cvar_t r_water_reflectdistort = {CF_CLIENT | CF_ARCHIVE, "r_water_reflectdistort", "0.01", "how much water reflections shimmer"};
@@ -3362,6 +3364,8 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_water);
 	Cvar_RegisterVariable(&r_water_cameraentitiesonly);
 	Cvar_RegisterVariable(&r_water_resolutionmultiplier);
+	Cvar_RegisterVariable(&r_water_resolutionmultiplier_max);
+	Cvar_RegisterVariable(&r_rendertarget_keeptime);
 	Cvar_RegisterVariable(&r_water_clippingplanebias);
 	Cvar_RegisterVariable(&r_water_refractdistort);
 	Cvar_RegisterVariable(&r_water_reflectdistort);
@@ -4548,7 +4552,7 @@ void R_RenderTarget_FreeUnused(qbool force)
 		// free resources for rendertargets that have not been used for a while
 		// (note: this check is run after the frame render, so any targets used
 		// this frame will not be affected even at low framerates)
-		if (r && (host.realtime - r->lastusetime > 0.2 || force))
+		if (r && (host.realtime - r->lastusetime > r_rendertarget_keeptime.value || force))
 		{
 			if (r->fbo)
 				R_Mesh_DestroyFramebufferObject(r->fbo);
@@ -4615,6 +4619,19 @@ r_rendertarget_t *R_RenderTarget_Get(int texturewidth, int textureheight, textyp
 				r->depthtexture = R_LoadTexture2D(r_main_texturepool, va(vabuf, sizeof(vabuf), "rendertarget%i_depth_type%i", i, (int)r->depthtextype), r->texturewidth, r->textureheight, NULL, r->depthtextype, TEXF_RENDERTARGET | TEXF_FORCELINEAR | TEXF_CLAMP, -1, NULL);
 		}
 		r->fbo = R_Mesh_CreateFramebufferObject(r->depthtexture, r->colortexture[0], r->colortexture[1], r->colortexture[2], r->colortexture[3]);
+#ifdef USE_GLES2
+		// A driver that lists 24bit depth but will not complete a framebuffer
+		// with it gets the 16bit one every ES 2.0 device takes, for the rest
+		// of the session.
+		if (!r->fbo && r->depthtexture && r->depthisrenderbuffer && (vid.support.packed_depth_stencil || vid.support.depth24))
+		{
+			Con_Printf("R_RenderTarget_Get: framebuffer incomplete with 24bit depth, using 16bit\n");
+			vid.support.packed_depth_stencil = vid.support.depth24 = false;
+			R_FreeTexture(r->depthtexture);
+			r->depthtexture = R_LoadTextureRenderBuffer(r_main_texturepool, va(vabuf, sizeof(vabuf), "renderbuffer%i_depth_type%i", i, (int)r->depthtextype), r->texturewidth, r->textureheight, r->depthtextype);
+			r->fbo = R_Mesh_CreateFramebufferObject(r->depthtexture, r->colortexture[0], r->colortexture[1], r->colortexture[2], r->colortexture[3]);
+		}
+#endif
 	}
 	r_refdef.stats[r_stat_rendertargets_used]++;
 	r_refdef.stats[r_stat_rendertargets_pixels] += r->texturewidth * r->textureheight;
@@ -4632,8 +4649,12 @@ static void R_Water_StartFrame(int viewwidth, int viewheight)
 
 	// set waterwidth and waterheight to the water resolution that will be
 	// used (often less than the screen resolution for faster rendering)
-	waterwidth = (int)bound(16, viewwidth * r_water_resolutionmultiplier.value, viewwidth);
-	waterheight = (int)bound(16, viewheight * r_water_resolutionmultiplier.value, viewheight);
+	// r_water_resolutionmultiplier_max caps what a game asks for: Xonotic's
+	// warpzone CSQC, on every server, settemps the multiplier to 1 so players
+	// show clearly through a portal, and each portal then costs a whole extra
+	// scene at screen resolution.
+	waterwidth = (int)bound(16, viewwidth * min(r_water_resolutionmultiplier.value, r_water_resolutionmultiplier_max.value), viewwidth);
+	waterheight = (int)bound(16, viewheight * min(r_water_resolutionmultiplier.value, r_water_resolutionmultiplier_max.value), viewheight);
 
 	if (!r_water.integer || r_showsurfaces.integer || r_lockvisibility.integer || r_lockpvs.integer)
 		waterwidth = waterheight = 0;
@@ -4831,7 +4852,7 @@ static void R_Water_ProcessPlanes(int fbo, rtexture_t *depthtexture, rtexture_t 
 		if (p->materialflags & (MATERIALFLAG_WATERSHADER | MATERIALFLAG_REFLECTION))
 		{
 			rt = R_RenderTarget_Get(r_fb.water.waterwidth, r_fb.water.waterheight, TEXTYPE_DEPTHBUFFER24STENCIL8, true, r_fb.rt_screen->colortextype[0], TEXTYPE_UNUSED, TEXTYPE_UNUSED, TEXTYPE_UNUSED);
-			if (rt->colortexture[0] == NULL || rt->depthtexture == NULL)
+			if (rt->colortexture[0] == NULL || rt->depthtexture == NULL || !rt->fbo)
 				goto error;
 			r_refdef.view = myview;
 			Matrix4x4_Reflect(&r_refdef.view.matrix, p->plane.normal[0], p->plane.normal[1], p->plane.normal[2], p->plane.dist, -2);
@@ -4884,7 +4905,7 @@ static void R_Water_ProcessPlanes(int fbo, rtexture_t *depthtexture, rtexture_t 
 		if (p->materialflags & (MATERIALFLAG_WATERSHADER | MATERIALFLAG_REFRACTION))
 		{
 			rt = R_RenderTarget_Get(r_fb.water.waterwidth, r_fb.water.waterheight, TEXTYPE_DEPTHBUFFER24STENCIL8, true, r_fb.rt_screen->colortextype[0], TEXTYPE_UNUSED, TEXTYPE_UNUSED, TEXTYPE_UNUSED);
-			if (rt->colortexture[0] == NULL || rt->depthtexture == NULL)
+			if (rt->colortexture[0] == NULL || rt->depthtexture == NULL || !rt->fbo)
 				goto error;
 			r_refdef.view = myview;
 			if(r_water_scissormode.integer)
@@ -4946,7 +4967,7 @@ static void R_Water_ProcessPlanes(int fbo, rtexture_t *depthtexture, rtexture_t 
 		else if (p->materialflags & MATERIALFLAG_CAMERA)
 		{
 			rt = R_RenderTarget_Get(r_fb.water.waterwidth, r_fb.water.waterheight, TEXTYPE_DEPTHBUFFER24STENCIL8, true, r_fb.rt_screen->colortextype[0], TEXTYPE_UNUSED, TEXTYPE_UNUSED, TEXTYPE_UNUSED);
-			if (rt->colortexture[0] == NULL || rt->depthtexture == NULL)
+			if (rt->colortexture[0] == NULL || rt->depthtexture == NULL || !rt->fbo)
 				goto error;
 			r_refdef.view = myview;
 

@@ -113,6 +113,21 @@ static textypeinfo_t textype_bgra_alpha                  = {"bgra_alpha",       
 #ifdef __ANDROID__
 static textypeinfo_t textype_etc1                        = {"etc1",                     TEXTYPE_ETC1          ,  1,  3,  0.5f, GL_ETC1_RGB8_OES                         , 0                 , 0                };
 #endif
+// Xonotic's dds/ textures, uploaded as they are where GL_EXT_texture_compression_s3tc
+// is listed (Mesa on Waydroid and Chromebooks, Tegra, some PowerVR): a quarter
+// of the memory and bandwidth of the decoded ones. Without these entries such a
+// device stopped at start-up with "unknown texture format 7"; the rest decode
+// DDS in software (r_texture_dds_swdecode) as before.
+#ifndef GL_COMPRESSED_RGB_S3TC_DXT1_EXT
+#define GL_COMPRESSED_RGB_S3TC_DXT1_EXT 0x83F0
+#define GL_COMPRESSED_RGBA_S3TC_DXT1_EXT 0x83F1
+#define GL_COMPRESSED_RGBA_S3TC_DXT3_EXT 0x83F2
+#define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT 0x83F3
+#endif
+static textypeinfo_t textype_dxt1                        = {"dxt1",                     TEXTYPE_DXT1          ,  4,  0,  0.5f, GL_COMPRESSED_RGB_S3TC_DXT1_EXT       , 0                 , 0                };
+static textypeinfo_t textype_dxt1a                       = {"dxt1a",                    TEXTYPE_DXT1A         ,  4,  0,  0.5f, GL_COMPRESSED_RGBA_S3TC_DXT1_EXT      , 0                 , 0                };
+static textypeinfo_t textype_dxt3                        = {"dxt3",                     TEXTYPE_DXT3          ,  4,  0,  1.0f, GL_COMPRESSED_RGBA_S3TC_DXT3_EXT      , 0                 , 0                };
+static textypeinfo_t textype_dxt5                        = {"dxt5",                     TEXTYPE_DXT5          ,  4,  0,  1.0f, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT      , 0                 , 0                };
 #else
 // framebuffer texture formats
 static textypeinfo_t textype_shadowmap16_comp            = {"shadowmap16_comp",         TEXTYPE_SHADOWMAP16_COMP     ,  2,  2,  2.0f, GL_DEPTH_COMPONENT16              , GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT};
@@ -272,6 +287,10 @@ static textypeinfo_t *R_GetTexTypeInfo(textype_t textype, int flags)
 #ifdef __ANDROID__
 	case TEXTYPE_ETC1: return &textype_etc1;
 #endif
+	case TEXTYPE_DXT1: return &textype_dxt1;
+	case TEXTYPE_DXT1A: return &textype_dxt1a;
+	case TEXTYPE_DXT3: return &textype_dxt3;
+	case TEXTYPE_DXT5: return &textype_dxt5;
 	case TEXTYPE_ALPHA: return &textype_alpha;
 	case TEXTYPE_COLORBUFFER: return &textype_colorbuffer;
 	case TEXTYPE_COLORBUFFER16F: return &textype_colorbuffer16f;
@@ -1413,6 +1432,29 @@ rtexture_t *R_LoadTextureRenderBuffer(rtexturepool_t *rtexturepool, const char *
 	glt->texnum = 0;
 	glt->dirty = false;
 	glt->glisdepthstencil = textype == TEXTYPE_DEPTHBUFFER24STENCIL8;
+#ifdef USE_GLES2
+	// The GLES2 table can only say 16bit depth. Ask for what the device has:
+	// packed 24bit depth with 8bit stencil, else 24bit depth, else 16.
+	if (textype == TEXTYPE_DEPTHBUFFER24STENCIL8 || textype == TEXTYPE_DEPTHBUFFER24)
+	{
+		if (textype == TEXTYPE_DEPTHBUFFER24STENCIL8 && vid.support.packed_depth_stencil)
+			glt->glinternalformat = 0x88F0; // GL_DEPTH24_STENCIL8_OES
+		else if (vid.support.depth24)
+		{
+			glt->glinternalformat = 0x81A6; // GL_DEPTH_COMPONENT24_OES
+			glt->glisdepthstencil = false;
+		}
+		else
+			glt->glisdepthstencil = false;
+		if (glt->glinternalformat != GL_DEPTH_COMPONENT16)
+		{
+			glt->bytesperpixel = 4;
+			glt->inputdatasize = width*height*4;
+		}
+	}
+	else
+		glt->glisdepthstencil = false;
+#endif
 	glt->gltexturetypeenum = GL_TEXTURE_2D;
 	// init the dynamic texture attributes, too [11/22/2007 Black]
 	glt->updatecallback = NULL;

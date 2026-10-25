@@ -793,8 +793,25 @@ void GL_Setup(void)
 	 */
 #ifdef USE_GLES2
 	vid.support.element_index_uint = GL_CheckExtension("GL_OES_element_index_uint", "-noindexuint", false);
+	/*
+	 * ES 2.0 only promises 16bit depth in a renderbuffer, and the render
+	 * targets behind water, mirrors, warpzones and camera portals used it even
+	 * where the window had 24. Those views clip with an oblique projection,
+	 * which spends depth precision badly, and 16 bits of it z-fought through
+	 * every portal. Nearly every phone has the extensions, and an ES 3 context
+	 * (what Android hands out for a 2.0 request on current drivers) has both
+	 * in core.
+	 */
+	{
+		const char *version = (const char *)qglGetString(GL_VERSION);
+		qbool es3 = version && !strncmp(version, "OpenGL ES ", 10) && atoi(version + 10) >= 3;
+		vid.support.depth24 = GL_CheckExtension("GL_OES_depth24", "-nodepth24", false) || (es3 && !Sys_CheckParm("-nodepth24"));
+		vid.support.packed_depth_stencil = GL_CheckExtension("GL_OES_packed_depth_stencil", "-nopackeddepthstencil", false) || (es3 && !Sys_CheckParm("-nopackeddepthstencil"));
+	}
 #else
 	vid.support.element_index_uint = true;
+	vid.support.depth24 = true;
+	vid.support.packed_depth_stencil = true;
 #endif
 	vid.allowalphatocoverage = false;
 
@@ -803,6 +820,8 @@ void GL_Setup(void)
 // COMMANDLINEOPTION: GL: -notexture4 disables GL_AMD_texture_texture4 (which provides fetch4 sampling)
 // COMMANDLINEOPTION: GL: -notexturegather disables GL_ARB_texture_gather (which provides fetch4 sampling)
 // COMMANDLINEOPTION: GL: -nogldebugoutput disables GL_ARB_debug_output (which provides the gl_debug feature, if enabled)
+// COMMANDLINEOPTION: GL: -nodepth24 disables 24bit depth render targets on GLES2 (GL_OES_depth24)
+// COMMANDLINEOPTION: GL: -nopackeddepthstencil disables packed depth+stencil render targets on GLES2 (GL_OES_packed_depth_stencil)
 
 #ifdef WIN32
 	// gl_texturecompression_color is somehow broken on AMD's Windows driver,

@@ -981,9 +981,15 @@ int R_Mesh_CreateFramebufferObject(rtexture_t *depthtexture, rtexture_t *colorte
 		R_Mesh_SetRenderTargets(temp);
 
 #ifdef USE_GLES2
-		// FIXME: separate stencil attachment on GLES
+		// ES 2.0 has no GL_DEPTH_STENCIL_ATTACHMENT: a packed depth+stencil
+		// renderbuffer (GL_DEPTH24_STENCIL8_OES, only made when the device
+		// supports it) goes on both attachment points.
 		if (depthtexture  && depthtexture->texnum ) { qglFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT  , depthtexture->gltexturetypeenum , depthtexture->texnum , 0);CHECKGLERROR }
-		if (depthtexture  && depthtexture->renderbuffernum ) { qglFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT  , GL_RENDERBUFFER, depthtexture->renderbuffernum );CHECKGLERROR }
+		if (depthtexture  && depthtexture->renderbuffernum )
+		{
+			qglFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT  , GL_RENDERBUFFER, depthtexture->renderbuffernum );CHECKGLERROR
+			if (depthtexture->glisdepthstencil) { qglFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT  , GL_RENDERBUFFER, depthtexture->renderbuffernum );CHECKGLERROR }
+		}
 #else
 		if (depthtexture  && depthtexture->texnum )
 		{
