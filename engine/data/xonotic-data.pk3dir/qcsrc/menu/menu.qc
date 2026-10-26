@@ -263,12 +263,13 @@ void menu_touch_keyboard_hide()
 	cvar_set("vid_touchscreen_showkeyboard", "0");
 }
 
-void menu_sync_absolute_mousepos()
+vector menu_absolute_mousepos()
 {
 	vector rawMousePos = getmousepos();
 	vector newMouse = '0 0 0';
 	if (realconheight > realconwidth)
 	{
+		// Portrait: map console pixels directly (no letterbox transform).
 		newMouse.x = rawMousePos.x / max(1, realconwidth);
 		newMouse.y = rawMousePos.y / max(1, realconheight);
 	}
@@ -276,7 +277,12 @@ void menu_sync_absolute_mousepos()
 		newMouse = globalToBox(rawMousePos, draw_shift, draw_scale);
 	newMouse.x = bound(0, newMouse.x, 1);
 	newMouse.y = bound(0, newMouse.y, 1);
-	menuMousePos = newMouse;
+	return newMouse;
+}
+
+void menu_sync_absolute_mousepos()
+{
+	menuMousePos = menu_absolute_mousepos();
 }
 
 void m_keyup(float key, float ascii)
@@ -977,20 +983,10 @@ void m_draw(float width, float height)
 
 	if (menuMouseMode)
 	{
-		if (cvar("vid_touchscreen"))
-			menu_sync_absolute_mousepos();
-		vector rawMousePos = getmousepos();
-		vector newMouse = menuMousePos;
-		if (realconheight > realconwidth)
-		{
-			// Portrait: map console pixels directly (no letterbox transform).
-			newMouse.x = rawMousePos.x / max(1, realconwidth);
-			newMouse.y = rawMousePos.y / max(1, realconheight);
-		}
-		else
-			newMouse = globalToBox(rawMousePos, draw_shift, draw_scale);
-		newMouse.x = bound(0, newMouse.x, 1);
-		newMouse.y = bound(0, newMouse.y, 1);
+		// Compared with where the pointer was, never synced first: with the
+		// touch controls on, syncing here made every frame look still, and a
+		// mouse (or finger) then neither hovered nor dragged a slider.
+		vector newMouse = menu_absolute_mousepos();
 		if (newMouse != menuMousePos)
 		{
 			menuMousePos = newMouse;
