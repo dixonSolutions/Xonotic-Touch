@@ -168,6 +168,7 @@ cvar_t vid_touchscreen_touchonly_detected = {CF_CLIENT | CF_READONLY, "vid_touch
 cvar_t vid_touchscreen_showkeyboard = {CF_CLIENT, "vid_touchscreen_showkeyboard", "0", "shows the platform's screen keyboard for text entry, can be set by csqc or menu qc if it wants to receive text input, does nothing if the platform has no screen keyboard"};
 cvar_t vid_touchscreen_supportshowkeyboard = {CF_CLIENT | CF_READONLY, "vid_touchscreen_supportshowkeyboard", "0", "indicates if the platform supports a virtual keyboard"};
 double vid_swapseconds;
+cvar_t vid_pointer_mouse = {CF_CLIENT | CF_READONLY, "vid_pointer_mouse", "1", "1 while the last pointer input was a mouse, touchpad or pen, 0 after a finger: the menu and HUD draw their cursor only for a mouse, so it goes away with touch and comes back with the mouse"};
 cvar_t vid_mouse_confirmed_cvar = {CF_CLIENT | CF_READONLY, "vid_mouse_confirmed", "0", "1 while the system lists a mouse or touchpad: it aims in the game and menus draw their pointer for it, touch controls or not"};
 cvar_t vid_touchscreen_mouselook = {CF_CLIENT | CF_READONLY, "vid_touchscreen_mouselook", "0", "1 while a mouse the system lists, and the player has used, aims in the game next to the touch controls (its buttons fire instead of pressing the controls)"};
 cvar_t touch_owns_screen = {CF_CLIENT, "_touch_owns_screen", "0", "internal: set by the touch CSQC while a modal touch sheet needs the mouse as a pointer"};
@@ -1374,6 +1375,7 @@ void VID_Shared_Init(void)
 	Cvar_RegisterVariable(&vid_touchscreen_showkeyboard);
 	Cvar_RegisterVariable(&vid_touchscreen_mouselook);
 	Cvar_RegisterVariable(&vid_mouse_confirmed_cvar);
+	Cvar_RegisterVariable(&vid_pointer_mouse);
 	Cvar_RegisterVariable(&touch_owns_screen);
 	Cvar_RegisterVariable(&vid_touchscreen_supportshowkeyboard);
 	Cvar_RegisterVariable(&vid_touchscreen_textinput_x);

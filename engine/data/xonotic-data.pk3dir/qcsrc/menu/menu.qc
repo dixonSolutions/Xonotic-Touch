@@ -636,12 +636,11 @@ string gettooltip()
 		s = menuTooltipItem.tooltip;
 	return s;
 }
-// The pointer is drawn for a mouse: always without touch controls, and with
-// them once the system lists a mouse the player has used (vid_mouse_confirmed).
-// A finger needs no pointer; a mouse next to the fingers does.
+// The pointer is drawn while a mouse is the pointer in use: a finger hides it,
+// moving or clicking the mouse brings it back (vid_pointer_mouse, engine).
 bool m_pointer_shown()
 {
-	return !cvar("vid_touchscreen") || cvar("vid_mouse_confirmed");
+	return cvar("vid_pointer_mouse") != 0;
 }
 
 void m_tooltip(vector pos)

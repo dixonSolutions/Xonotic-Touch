@@ -1543,11 +1543,10 @@ static void VID_UpdateMouseGrab(void)
 	if (!vid_activewindow || key_consoleactive || scr_loading)
 		VID_SetMouse(false, false);
 	else if (key_dest == key_menu || key_dest == key_menu_grabbed)
-		// The menu draws its own pointer without touch controls, and with
-		// them for a listed mouse (m_pointer_shown in menu.qc): the system's
-		// is hidden whenever it does, or the two sat on top of each other.
-		VID_SetMouse(vid_mouse.integer && !in_client_mouse && !vid_touchscreen.integer,
-			!vid_touchscreen.integer || VID_TouchMouseConfirmed());
+		// The system cursor is always hidden in menus: the menu draws its own
+		// while a mouse is the pointer in use (vid_pointer_mouse), and none
+		// after a finger. Showing both put two cursors on top of each other.
+		VID_SetMouse(vid_mouse.integer && !in_client_mouse && !vid_touchscreen.integer, true);
 	else
 	{
 		qbool mouse_aims = !vid_touchscreen.integer || VID_TouchMouselook();

@@ -154,8 +154,13 @@ touchscreen until then, because that is presence too.
 - Touch holds its buttons under its own key number (`+forward 50000` from
   the engine HUD, `50001` from the CSQC), as a key would. Letting go of the
   stick or FIRE never drops a W or a mouse button still held.
-- Menus and the CSQC draw their pointer whenever a mouse is listed
-  (`vid_mouse_confirmed`).
+- **The cursor follows the pointer last used** (`vid_pointer_mouse`). A
+  finger hides it, and moving, clicking or scrolling the mouse brings it back.
+  Mouse events within 0.25 s of a finger don't count, since X11 can follow a
+  touch with pointer events it emulated. It starts hidden on a touchscreen
+  with no mouse listed. The menu and the CSQC draw their cursor from it, and
+  the system cursor is always hidden in menus, so there is never more than
+  one. Only the cursor follows input; the controls follow presence.
 
 *Touch* and *Keyboard & mouse* modes ignore presence for the controls; touch
 and mouse input work the same in them.

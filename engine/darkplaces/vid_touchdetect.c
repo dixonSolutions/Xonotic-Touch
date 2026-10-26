@@ -525,9 +525,19 @@ static void vid_reapply(const char *why, const char *msg_on, const char *msg_off
 	vid_notify(msg);
 }
 
+// The cursor follows the pointer last used (vid_pointer_mouse): a finger hides
+// it, the mouse brings it back. Only the cursor -- not the controls, which
+// follow presence alone.
+static void vid_pointer_is_finger(void)
+{
+	if (vid_pointer_mouse.integer)
+		Cvar_SetValueQuick(&vid_pointer_mouse, 0);
+}
+
 static void vid_touch_used(void)
 {
 	vid_touch_last = host.realtime;
+	vid_pointer_is_finger();
 	if (!vid_touch_finger_seen)
 	{
 		// SDL often reports no touch device until the first finger lands.
@@ -551,6 +561,7 @@ void VID_NoteTouchUse(void)
 void VID_NoteTouchActivity(void)
 {
 	vid_touch_last = host.realtime;
+	vid_pointer_is_finger();
 }
 
 // A play key. It changes nothing: only a keyboard the system lists hides the
@@ -567,6 +578,10 @@ void VID_NoteKeyboardUse(void)
 // keyboard, and fingers keep working alongside it.
 void VID_NoteMouseUse(float travel, qbool press)
 {
+	// Back to the mouse: the cursor shows again. Not within a moment of a
+	// finger, which on X11 can arrive followed by pointer events it emulated.
+	if (!vid_pointer_mouse.integer && (press || travel > 0) && host.realtime - vid_touch_last > 0.25)
+		Cvar_SetValueQuick(&vid_pointer_mouse, 1);
 	if (vid_mouse_confirmed || !vid_presence_get()->mouse)
 		return;
 	if (!press && travel <= 0)
@@ -619,6 +634,9 @@ static void vid_presence_changed(const vid_presence_t *old, const vid_presence_t
 
 	if (old->mouse != now->mouse)
 		vid_mouse_confirmed = false;
+	// The mouse went away: nothing left to show a cursor for.
+	if (old->mouse && !now->mouse && now->touch)
+		vid_pointer_is_finger();
 
 	was_on = vid_touchscreen.integer != 0;
 	VID_ApplyTouchscreenMode();
@@ -1013,6 +1031,18 @@ void VID_ApplyTouchscreenMode(void)
 	int want;
 
 	VID_DetectTouchHardware(&has_touch, &touch_only);
+
+	// The cursor starts hidden on a touchscreen with no mouse listed; the
+	// first mouse movement brings it (vid_pointer_mouse).
+	{
+		static qbool pointer_set;
+		if (!pointer_set && vid_presence_settled())
+		{
+			pointer_set = true;
+			if (has_touch && !vid_presence_get()->mouse)
+				Cvar_SetValueQuick(&vid_pointer_mouse, 0);
+		}
+	}
 
 	vid_touch_applying = true;
 	Cvar_SetValueQuick(&vid_touchscreen_detected, has_touch ? 1 : 0);
