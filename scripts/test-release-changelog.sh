@@ -76,5 +76,21 @@ check "size cap keeps whole releases" "1.2.4
 - On a side branch
 - Fourth" "$capped"
 
+# A release with nothing in its range gets no empty heading.
+git tag v1.2.4
+check "empty releases are left out" "1.2.5
+
+1.2.3
+- Third
+- On a side branch
+- Fourth
+
+1.2.2
+- Second
+- Docs only
+
+1.2.1
+- First" "$(bash "$script" text 1.2.5)"
+
 [ "$fail" = 0 ] && echo "release changelog: markdown, text, re-run and size cap OK"
 exit "$fail"

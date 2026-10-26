@@ -82,7 +82,12 @@ case "$mode" in
             else
                 range="$tag"
             fi
-            block="$(printf '\n%s\n%s\n' "${tag#v}" "$(subjects "$range")")"
+            changes="$(subjects "$range")"
+            # A tag whose range is empty (its commit is not on this branch's
+            # history, as with releases built before squash merges) says
+            # nothing worth a heading.
+            [ -n "$changes" ] || continue
+            block="$(printf '\n%s\n%s\n' "${tag#v}" "$changes")"
             if [ $(( $(wc -c < "$out") + ${#block} )) -gt "$max_bytes" ]; then
                 break
             fi
