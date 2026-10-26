@@ -44,18 +44,29 @@ float Touch_Widget_Elevation(float radius)
 // A dark stroke outside a bright one. Either alone fails on half the maps this
 // game ships — a white rim disappears against a white skybox and a dark rim
 // disappears in a black corridor — so every edge draws both.
+//
+// One border width for every control, in UI units: a big FIRE and a small
+// DUCK, a pill and a key all carry the same outline. It used to be a fraction
+// of each control's radius, so the border thickened with the control. The
+// light line sits centred in a dark band twice its width, so the dark shows
+// evenly on both sides of it.
+float Touch_Widget_Border(void)
+{
+	return TOUCH_W_STROKE * Touch_UIScale();
+}
+
 void Touch_Widget_Rim(vector center, float radius, vector rgb, float alpha)
 {
-	Touch_Shape_Ring(center, radius, TOUCH_W_RING_THIN, TOUCH_C_SHADOW, alpha * TOUCH_A_CONTOUR);
-	Touch_Shape_Ring(center, radius * (1 - TOUCH_W_CONTOUR_INSET), TOUCH_W_RING_THIN, rgb, alpha);
+	float b = Touch_Widget_Border();
+	Touch_Shape_RingStroke(center, radius, b * 2, TOUCH_C_SHADOW, alpha * TOUCH_A_CONTOUR);
+	Touch_Shape_RingStroke(center, radius - b * 0.5, b, rgb, alpha);
 }
 
 void Touch_Widget_CapsuleRim(vector center, vector half, vector rgb, float alpha)
 {
-	Touch_Shape_CapsuleRing(center, half, TOUCH_W_RING_THIN, TOUCH_C_SHADOW,
-		alpha * TOUCH_A_CONTOUR);
-	Touch_Shape_CapsuleRing(center, half * (1 - TOUCH_W_CONTOUR_INSET), TOUCH_W_RING_THIN,
-		rgb, alpha);
+	float b = Touch_Widget_Border();
+	Touch_Shape_CapsuleRingStroke(center, half, b * 2, TOUCH_C_SHADOW, alpha * TOUCH_A_CONTOUR);
+	Touch_Shape_CapsuleRingStroke(center, half - '1 1 0' * (b * 0.5), b, rgb, alpha);
 }
 
 // Pressed is the only state a thumb can actually see, since the thumb covers

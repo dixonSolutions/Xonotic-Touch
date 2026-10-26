@@ -44,6 +44,33 @@ bool Touch_Shape_Ready(void)
 	return touch_shape_ready;
 }
 
+// The engine draws circles, capsules and rounded rectangles as geometry
+// (drawroundedbox, XONOTIC_TOUCH_DRAWROUNDEDBOX): edges antialiased at any
+// size, and a border the same width all the way round and on every control.
+// The masks stay for soft shapes (shadow, glow) and as the fallback.
+bool touch_vector_probed;
+bool touch_vector_ready;
+
+bool Touch_Shape_Vector(void)
+{
+	if (!touch_vector_probed)
+	{
+		touch_vector_probed = true;
+		touch_vector_ready = boolean(checkextension("XONOTIC_TOUCH_DRAWROUNDEDBOX"));
+	}
+	return touch_vector_ready;
+}
+
+void Touch_Shape_Box(vector center, vector half, float radius, float stroke, vector rgb, float alpha)
+{
+	if (half.x < 0.5 || half.y < 0.5 || alpha <= 0)
+		return;
+	center.z = 0;
+	half.z = 0;
+	drawroundedbox(center, half, radius, stroke, rgb, alpha);
+	Touch_DebugAddFills(1);
+}
+
 // ---------------------------------------------------------------------------
 // Round shapes
 // ---------------------------------------------------------------------------
@@ -78,6 +105,11 @@ void Touch_Shape_Centered(string pic, vector center, vector half, vector rgb, fl
 
 void Touch_Shape_Disc(vector center, float radius, vector rgb, float alpha)
 {
+	if (Touch_Shape_Vector())
+	{
+		Touch_Shape_Box(center, '1 1 0' * radius, radius, 0, rgb, alpha);
+		return;
+	}
 	Touch_Shape_Centered(TOUCH_PIC_DISC, center, '1 1 0' * radius, rgb, alpha);
 }
 
@@ -114,7 +146,24 @@ string Touch_Shape_RingPic(float weight)
 
 void Touch_Shape_Ring(vector center, float radius, float weight, vector rgb, float alpha)
 {
+	if (Touch_Shape_Vector())
+	{
+		Touch_Shape_Box(center, '1 1 0' * radius, radius, weight * radius, rgb, alpha);
+		return;
+	}
 	Touch_Shape_Centered(Touch_Shape_RingPic(weight), center, '1 1 0' * radius, rgb, alpha);
+}
+
+// A ring whose border is `stroke` units wide inside `radius`, whatever the
+// radius: what keeps every control's outline the same weight.
+void Touch_Shape_RingStroke(vector center, float radius, float stroke, vector rgb, float alpha)
+{
+	if (Touch_Shape_Vector())
+	{
+		Touch_Shape_Box(center, '1 1 0' * radius, radius, stroke, rgb, alpha);
+		return;
+	}
+	Touch_Shape_Ring(center, radius, stroke / max(1, radius), rgb, alpha);
 }
 
 // ---------------------------------------------------------------------------
@@ -158,12 +207,32 @@ void Touch_Shape_CapsuleFrom(string pic, vector center, vector half, vector rgb,
 
 void Touch_Shape_Capsule(vector center, vector half, vector rgb, float alpha)
 {
+	if (Touch_Shape_Vector())
+	{
+		Touch_Shape_Box(center, half, half.y, 0, rgb, alpha);
+		return;
+	}
 	Touch_Shape_CapsuleFrom(TOUCH_PIC_DISC, center, half, rgb, alpha);
 }
 
 void Touch_Shape_CapsuleRing(vector center, vector half, float weight, vector rgb, float alpha)
 {
+	if (Touch_Shape_Vector())
+	{
+		Touch_Shape_Box(center, half, half.y, weight * half.y, rgb, alpha);
+		return;
+	}
 	Touch_Shape_CapsuleFrom(Touch_Shape_RingPic(weight), center, half, rgb, alpha);
+}
+
+void Touch_Shape_CapsuleRingStroke(vector center, vector half, float stroke, vector rgb, float alpha)
+{
+	if (Touch_Shape_Vector())
+	{
+		Touch_Shape_Box(center, half, half.y, stroke, rgb, alpha);
+		return;
+	}
+	Touch_Shape_CapsuleRing(center, half, stroke / max(1, half.y), rgb, alpha);
 }
 
 void Touch_Shape_CapsuleShadow(vector center, vector half, float alpha)
@@ -179,6 +248,11 @@ void Touch_Shape_RRect(vector center, vector half, float radius, vector rgb, flo
 {
 	if (half.x < 1 || half.y < 1 || alpha <= 0)
 		return;
+	if (Touch_Shape_Vector())
+	{
+		Touch_Shape_Box(center, half, radius, 0, rgb, alpha);
+		return;
+	}
 	// A corner cannot exceed half the box, or opposite corners would overlap.
 	float r = bound(1, radius, min(half.x, half.y));
 	vector pos = center - half;
@@ -236,6 +310,11 @@ void Touch_Shape_RRectRing(vector center, vector half, float radius, float thick
 {
 	if (half.x < 1 || half.y < 1 || alpha <= 0)
 		return;
+	if (Touch_Shape_Vector())
+	{
+		Touch_Shape_Box(center, half, radius, max(0.5, thickness), rgb, alpha);
+		return;
+	}
 	float r = bound(1, radius, min(half.x, half.y));
 	float want = max(1, thickness) / (r * 2);
 	string pic = Touch_Shape_RingPic(want);

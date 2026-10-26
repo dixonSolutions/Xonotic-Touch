@@ -60,6 +60,8 @@ static const float C_WARNING[3]      = {0.784f, 0.533f, 0.000f};
 #define A_CHROME_FILL    0.88f
 #define W_RING_THIN      0.035f
 #define W_CONTOUR_INSET  0.030f
+// Border width of every control, in UI units at the reference size (touch_theme.qh TOUCH_W_STROKE).
+#define W_STROKE         1.5f
 #define UI_REF_SHORT_AXIS 540.0f
 #define ELEVATION_Y      0.045f
 #define FONT_MIN         9.0f
@@ -184,10 +186,14 @@ static void shape_centered(cachepic_t *pic, float cx, float cy, float hx, float 
 	else
 		DrawQ_Fill(cx - hx, cy - hy, hx * 2, hy * 2, rgb[0], rgb[1], rgb[2], alpha, 0);
 }
-static void shape_disc(float cx, float cy, float r, const float *rgb, float a) { shape_centered(pic_disc, cx, cy, r, r, rgb, a); }
+// Discs, rings and capsules are geometry (DrawQ_RoundedBox): antialiased at any
+// size, and a border the same width all the way round. The masks are kept
+// for the soft shapes (glow, shadow).
+static void shape_disc(float cx, float cy, float r, const float *rgb, float a) { DrawQ_RoundedBox(cx, cy, r, r, r, 0, rgb[0], rgb[1], rgb[2], a, 0); }
 static void shape_glow(float cx, float cy, float r, const float *rgb, float a) { shape_centered(pic_disc_soft, cx, cy, r, r, rgb, a); }
 static void shape_shadow(float cx, float cy, float r, float a) { shape_centered(pic_shadow, cx, cy, r, r, C_SHADOW, a); }
-static void shape_ring(float cx, float cy, float r, const float *rgb, float a) { shape_centered(pic_ring_thin, cx, cy, r, r, rgb, a); }
+static void shape_ring_stroke(float cx, float cy, float r, float stroke, const float *rgb, float a) { DrawQ_RoundedBox(cx, cy, r, r, r, stroke, rgb[0], rgb[1], rgb[2], a, 0); }
+static void shape_ring(float cx, float cy, float r, const float *rgb, float a) { shape_ring_stroke(cx, cy, r, r * W_RING_THIN, rgb, a); }
 
 // Left half / right half of a pic, for capsule caps (drawsubpic in QC).
 static void shape_half_pic(cachepic_t *pic, float x, float y, float w, float h, float s0, float s1, const float *rgb, float a)
@@ -225,8 +231,9 @@ static void shape_capsule_from(cachepic_t *pic, float cx, float cy, float hx, fl
 	midw = (hx - cap) * 2;
 	shape_half_pic(pic, cx - hx + cap, cy - cap, midw, cap * 2, 0.5f - CAPSULE_MID_UV, 0.5f + CAPSULE_MID_UV, rgb, a);
 }
-static void shape_capsule(float cx, float cy, float hx, float hy, const float *rgb, float a) { shape_capsule_from(pic_disc, cx, cy, hx, hy, rgb, a); }
-static void shape_capsule_ring(float cx, float cy, float hx, float hy, const float *rgb, float a) { shape_capsule_from(pic_ring_thin, cx, cy, hx, hy, rgb, a); }
+static void shape_capsule(float cx, float cy, float hx, float hy, const float *rgb, float a) { DrawQ_RoundedBox(cx, cy, hx, hy, hy, 0, rgb[0], rgb[1], rgb[2], a, 0); }
+static void shape_capsule_ring_stroke(float cx, float cy, float hx, float hy, float stroke, const float *rgb, float a) { DrawQ_RoundedBox(cx, cy, hx, hy, hy, stroke, rgb[0], rgb[1], rgb[2], a, 0); }
+static void shape_capsule_ring(float cx, float cy, float hx, float hy, const float *rgb, float a) { shape_capsule_ring_stroke(cx, cy, hx, hy, hy * W_RING_THIN, rgb, a); }
 static void shape_capsule_shadow(float cx, float cy, float hx, float hy, float a) { shape_capsule_from(pic_shadow, cx, cy, hx, hy, C_SHADOW, a); }
 
 static float label_width(float fs, const char *label)
@@ -265,15 +272,20 @@ static float label_size(float hx, float hy, const char *label)
 }
 static float elevation(float r) { return max(1.0f, r * ELEVATION_Y); }
 
+// As Touch_Widget_Rim: one border width for every control, the light line
+// centred in a dark band twice its width.
+static float widget_border(void) { return W_STROKE * ui_scale(); }
 static void widget_rim(float cx, float cy, float r, const float *rgb, float a)
 {
-	shape_ring(cx, cy, r, C_SHADOW, a * A_CONTOUR);
-	shape_ring(cx, cy, r * (1 - W_CONTOUR_INSET), rgb, a);
+	float b = widget_border();
+	shape_ring_stroke(cx, cy, r, b * 2, C_SHADOW, a * A_CONTOUR);
+	shape_ring_stroke(cx, cy, r - b * 0.5f, b, rgb, a);
 }
 static void widget_capsule_rim(float cx, float cy, float hx, float hy, const float *rgb, float a)
 {
-	shape_capsule_ring(cx, cy, hx, hy, C_SHADOW, a * A_CONTOUR);
-	shape_capsule_ring(cx, cy, hx * (1 - W_CONTOUR_INSET), hy * (1 - W_CONTOUR_INSET), rgb, a);
+	float b = widget_border();
+	shape_capsule_ring_stroke(cx, cy, hx, hy, b * 2, C_SHADOW, a * A_CONTOUR);
+	shape_capsule_ring_stroke(cx, cy, hx - b * 0.5f, hy - b * 0.5f, b, rgb, a);
 }
 
 // touch_glass_hollow, as Touch_GlassBody in touch_widget.qc: 0 tinted glass,

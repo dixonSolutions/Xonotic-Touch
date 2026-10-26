@@ -1438,6 +1438,114 @@ void DrawQ_Line (float width, float x1, float y1, float x2, float y2, float r, f
 	Mod_Mesh_AddTriangle(mod, surf, e0, e2, e3);
 }
 
+/*
+A rounded box drawn as geometry rather than a stretched mask: circles
+(radius = half), capsules (radius = half height) and rounded rectangles,
+filled or stroked. Every edge carries a one-pixel alpha ramp, so it is
+antialiased at any size, and a stroke is the same width all the way round --
+along the straight sides, through the corners, on a small control and a big
+one alike. The touch HUD draws its controls with this (Xonotic Touch);
+baked ring masks scaled their stroke with the control and were pieced
+together from fragments that did not meet evenly.
+
+cx, cy: centre; hx, hy: half extents; radius: corner radius (clamped to
+the half extents); stroke: border width inside the edge, or 0 to fill. All in
+2D (console) units.
+*/
+// Quads between two consecutive rings of four vertices (outer feather, outer
+// solid, inner solid, inner feather); a fill joins its solid edge to the centre.
+static void DrawQ_RoundedBox_Join(model_t *mod, msurface_t *surf, const int *p, const int *v, qbool stroke, int centre)
+{
+	Mod_Mesh_AddTriangle(mod, surf, p[0], v[0], v[1]);
+	Mod_Mesh_AddTriangle(mod, surf, p[0], v[1], p[1]);
+	if (stroke)
+	{
+		Mod_Mesh_AddTriangle(mod, surf, p[1], v[1], v[2]);
+		Mod_Mesh_AddTriangle(mod, surf, p[1], v[2], p[2]);
+		Mod_Mesh_AddTriangle(mod, surf, p[2], v[2], v[3]);
+		Mod_Mesh_AddTriangle(mod, surf, p[2], v[3], p[3]);
+	}
+	else
+		Mod_Mesh_AddTriangle(mod, surf, centre, p[1], v[1]);
+}
+
+void DrawQ_RoundedBox(float cx, float cy, float hx, float hy, float radius, float stroke, float r, float g, float b, float a, int flags)
+{
+	model_t *mod = CL_Mesh_UI();
+	msurface_t *surf;
+	float px, feather, rad, step, d[4], al[4], ccx[4], ccy[4];
+	int corner, k, j, n, centre = -1, first[4], prev[4], v[4];
+	qbool isstroke = stroke > 0, started = false;
+	if (hx <= 0 || hy <= 0 || a <= 0)
+		return;
+	// One real pixel, in console units.
+	px = 0.5f * (vid_conwidth.value / max(1, vid.mode.width) + vid_conheight.value / max(1, vid.mode.height));
+	feather = px;
+	rad = bound(px * 0.5f, radius, min(hx, hy));
+	// Enough segments that no chord strays more than a quarter pixel from
+	// the arc.
+	step = sqrt(2.0f / max(rad / px, 1.0f));
+	n = bound(2, (int)ceil((M_PI * 0.5) / step), 48);
+
+	if (isstroke)
+	{
+		float sa = a;
+		// A hairline thinner than a pixel draws a pixel wide at lower alpha.
+		if (stroke < feather)
+		{
+			sa = a * stroke / feather;
+			stroke = feather;
+		}
+		d[0] = rad + feather * 0.5f;          al[0] = 0;
+		d[1] = rad - feather * 0.5f;          al[1] = sa;
+		d[2] = rad - stroke + feather * 0.5f; al[2] = sa;
+		d[3] = rad - stroke - feather * 0.5f; al[3] = 0;
+		if (d[2] > d[1])
+			d[2] = d[1];
+	}
+	else
+	{
+		d[0] = rad + feather * 0.5f; al[0] = 0;
+		d[1] = rad - feather * 0.5f; al[1] = a;
+		d[2] = d[3] = 0;             al[2] = al[3] = a;
+	}
+	// A stroke wider than the corner radius closes the corner in.
+	for (j = 0; j < 4; j++)
+		d[j] = max(0, d[j]);
+
+	surf = Mod_Mesh_AddSurface(mod, Mod_Mesh_GetTexture(mod, "white", flags, 0, MATERIALFLAG_WALL | MATERIALFLAG_VERTEXCOLOR | MATERIALFLAG_ALPHAGEN_VERTEX | MATERIALFLAG_ALPHA | MATERIALFLAG_BLENDED | MATERIALFLAG_NOSHADOW), true);
+	// Corner centres, clockwise from the top right (screen y grows down).
+	ccx[0] = cx + hx - rad; ccy[0] = cy - hy + rad;
+	ccx[1] = cx + hx - rad; ccy[1] = cy + hy - rad;
+	ccx[2] = cx - hx + rad; ccy[2] = cy + hy - rad;
+	ccx[3] = cx - hx + rad; ccy[3] = cy - hy + rad;
+	if (!isstroke)
+		centre = Mod_Mesh_IndexForVertex(mod, surf, cx, cy, 0, 0, 0, -1, 0, 0, 0, 0, r, g, b, a);
+	for (corner = 0; corner < 4; corner++)
+	{
+		// The top right's arc starts pointing straight up; a quarter turn per corner.
+		double start = -M_PI * 0.5 + corner * M_PI * 0.5;
+		for (k = 0; k <= n; k++)
+		{
+			double ang = start + (M_PI * 0.5) * k / n;
+			float nx = (float)cos(ang), ny = (float)sin(ang);
+			for (j = 0; j < 4; j++)
+				v[j] = Mod_Mesh_IndexForVertex(mod, surf, ccx[corner] + nx * d[j], ccy[corner] + ny * d[j], 0, 0, 0, -1, 0, 0, 0, 0, r, g, b, al[j]);
+			// The last point of one corner and the first of the next share a
+			// normal, so the quad between them is the straight side.
+			if (started)
+				DrawQ_RoundedBox_Join(mod, surf, prev, v, isstroke, centre);
+			else
+			{
+				memcpy(first, v, sizeof(first));
+				started = true;
+			}
+			memcpy(prev, v, sizeof(prev));
+		}
+	}
+	DrawQ_RoundedBox_Join(mod, surf, prev, first, isstroke, centre);
+}
+
 void DrawQ_SetClipArea(float x, float y, float width, float height)
 {
 	int ix, iy, iw, ih;

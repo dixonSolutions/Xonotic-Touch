@@ -12,10 +12,15 @@ void Touch_Shape_Probe(void);
 void Touch_Shape_Disc(vector center, float radius, vector rgb, float alpha);
 void Touch_Shape_Glow(vector center, float radius, vector rgb, float alpha);
 void Touch_Shape_Ring(vector center, float radius, float weight, vector rgb, float alpha);
+// Border `stroke` units wide inside `radius`, whatever the radius.
+void Touch_Shape_RingStroke(vector center, float radius, float stroke, vector rgb, float alpha);
+// The engine draws shapes as antialiased geometry (drawroundedbox).
+bool Touch_Shape_Vector(void);
 void Touch_Shape_Shadow(vector center, float radius, float alpha);
 
 void Touch_Shape_Capsule(vector center, vector half, vector rgb, float alpha);
 void Touch_Shape_CapsuleRing(vector center, vector half, float weight, vector rgb, float alpha);
+void Touch_Shape_CapsuleRingStroke(vector center, vector half, float stroke, vector rgb, float alpha);
 void Touch_Shape_CapsuleShadow(vector center, vector half, float alpha);
 
 void Touch_Shape_RRect(vector center, vector half, float radius, vector rgb, float alpha);
