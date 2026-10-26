@@ -6,18 +6,23 @@
 |---|---|
 | **Install** | Android `.apk` from GitHub Releases, Flatpak remote (any Linux distro), [OpenStore](https://open-store.io/app/xonotictouch.dixonsolutions) / Ubuntu Touch `.click` — versioned GitHub Releases on each `main` push |
 | **Platforms** | Android: `arm64-v8a` + `armeabi-v7a` + `x86_64` (Waydroid, Chromebooks). Flatpak: any Linux, `x86_64` + `aarch64` (Wayland/X11) — postmarketOS, Mobian, Fedora, Ubuntu, … Click: Ubuntu Touch `arm64` + `armhf` |
-| **Input** | Touch, keyboard and mouse, together or apart, detected from the system: the stick and on-screen buttons next to WASD, a mouse that aims while fingers move, or a plain desktop setup |
+| **Input** | Touch, keyboard and mouse, together or apart, detected from the system. The on-screen controls show on a touchscreen with no keyboard attached and step aside while one is plugged in; touch and a mouse keep working either way (fingers press menus and turn the view, a mouse aims). **Ctrl+Alt+1** switches by hand and **Ctrl+Alt+2** locks the choice — see [TOUCH_DETECTION.md](docs/TOUCH_DETECTION.md) |
 
-<img width="1954" height="1302" alt="image" src="https://github.com/user-attachments/assets/cf918732-3540-4fd4-a9f9-b7550dc1b6d2" />
-
-
-In-game: glass MOVE stick and FIRE / JUMP / crouch, top **CONSOLE** pill, and the stock **right-side weapons strip** (tap an icon to switch — no separate WEP button).
-
-| Local bot match (CSQC Touch HUD) | Public exe.pub CTS server (engine copy of the same HUD) |
+| Local bot match | Stock Xonotic server |
 |---|---|
-| ![Touch HUD in a local match on a Surface Pro 9](docs/media/local-surface-hud.jpg) | ![The same HUD, drawn by the engine, on a public server](docs/media/server-surface-overlay.jpg) |
+| ![The touch HUD in a local bot match](docs/media/touch-local-match.jpg) | ![The same touch HUD on a server running stock Xonotic](docs/media/touch-stock-server.jpg) |
 
-*On a public server the client has to run the server's own CSQC, so the engine draws the same HUD itself from the same layout cvars and glass masks; the only addition there is the WEP button, because the stock weapons strip is only tappable through the port's CSQC. Attach a keyboard and the on-screen controls step aside until it is unplugged. Touch and the mouse keep working either way: fingers press menus and turn the view, a mouse aims.*
+On screen: the **MOVE** stick on the left (drag on the right side of the screen to look), **FIRE**, **ALT** (secondary fire), **HOP** and **DUCK** on the right, **MENU** and **CHAT** at the top, **CONSOLE** and **SCORE** at the bottom left, and the weapons strip on the right edge (tap an icon to switch).
+
+*Why the two look the same: a public server sends its own CSQC, which knows nothing about touch, so the engine draws the touch HUD itself from the same layout settings. A **WEP** button appears there only while you have no weapons to tap on the strip.*
+
+**Plugging a keyboard in mid-match.** The touch controls step aside for the normal Xonotic HUD and come back when the keyboard goes. Fingers and a mouse keep working in between:
+
+| USB keyboard plugged in | Keyboard unplugged |
+|---|---|
+| ![Toast: Keyboard connected: touch controls hidden; the stock HUD is showing](docs/media/keyboard-plugged-in.jpg) | ![Toast: Keyboard disconnected: touch controls shown; the touch HUD is back](docs/media/keyboard-unplugged.jpg) |
+
+*All four are in-game captures of the current build with the default layout, at 1920×1280 scaled to 1440×960.*
 
 ## Install (Flatpak)
 
