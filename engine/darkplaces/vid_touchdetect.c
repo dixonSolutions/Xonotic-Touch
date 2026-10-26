@@ -395,6 +395,13 @@ JNIEXPORT void JNICALL Java_io_github_dixonsolutions_xonotictouch_XonoticActivit
 // not counted (VID_NoteKeyEvent). Cleared when a keyboard comes or goes or
 // tablet mode changes.
 static qbool vid_keyboard_typed;
+// The same for the chassis' touchpad: presence sets it aside with the
+// keyboard while the machine reads as a tablet, yet a folded-away cover's pad
+// sends nothing. Moving the pointer or clicking says it is out and in use, so
+// it aims next to the touch controls instead of its clicks pressing them.
+// vid_pad_travel collects motion first: one stray event is not a player.
+static qbool vid_pad_used;
+static float vid_pad_travel;
 #endif
 
 static void vid_presence_compute(vid_presence_t *p)
@@ -448,7 +455,7 @@ static void vid_presence_compute(vid_presence_t *p)
 		if (as_tablet)
 		{
 			p->keyboard = vid_scan.external_keyboard || (vid_keyboard_typed && vid_scan.keyboard);
-			p->mouse = vid_scan.external_mouse;
+			p->mouse = vid_scan.external_mouse || (vid_pad_used && vid_scan.mouse);
 		}
 	}
 #else
@@ -604,9 +611,7 @@ void VID_NoteMouseUse(float travel, qbool press)
 	// finger, which on X11 can arrive followed by pointer events it emulated.
 	if (!vid_pointer_mouse.integer && (press || travel > 0) && host.realtime - vid_touch_last > 0.25)
 		Cvar_SetValueQuick(&vid_pointer_mouse, 1);
-	if (vid_mouse_confirmed || !vid_presence_get()->mouse)
-		return;
-	if (!press && travel <= 0)
+	if (vid_mouse_confirmed || (!press && travel <= 0))
 		return;
 	// X11 does not mark the pointer events it emulates from a finger.
 	if (host.realtime - vid_touch_last < VID_TOUCH_QUIET)
@@ -617,6 +622,23 @@ void VID_NoteMouseUse(float travel, qbool press)
 	if (vid_pens_open() && vid_linux_poll())
 		vid_presence_refresh();
 	if (host.realtime - vid_pen_last < VID_PEN_QUIET)
+		return;
+	if (!vid_presence_get()->mouse)
+	{
+		// Only the pad the system lists, set aside as folded away.
+		if (vid_pad_used || !vid_scan.mouse)
+			return;
+		vid_pad_travel += travel;
+		if (!press && vid_pad_travel < 0.05f)
+			return;
+		vid_pad_used = true;
+		vid_presence_valid = false;
+		Con_Printf("Input: the listed touchpad is in use, so it is not folded away\n");
+		if (!vid_presence_get()->mouse)
+			return;
+	}
+#else
+	if (!vid_presence_get()->mouse)
 		return;
 #endif
 	vid_mouse_confirmed = true;
@@ -662,6 +684,12 @@ static void vid_presence_changed(const vid_presence_t *old, const vid_presence_t
 	if (vid_keyboard_typed && (old->tablet_mode != now->tablet_mode || !vid_scan.keyboard))
 	{
 		vid_keyboard_typed = false;
+		vid_presence_valid = false;
+	}
+	if ((vid_pad_used || vid_pad_travel > 0) && (old->tablet_mode != now->tablet_mode || !vid_scan.mouse))
+	{
+		vid_pad_used = false;
+		vid_pad_travel = 0;
 		vid_presence_valid = false;
 	}
 #endif

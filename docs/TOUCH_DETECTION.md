@@ -136,7 +136,12 @@ only inputs that count are presence evidence:
   keyboard is plainly attached. Type Covers in the laptop position, and
   tablet-mode switches stuck on, kept the controls up over a keyboard in use.
   On-screen keyboards cannot trigger it, since typing text is not counted.
-  It resets when a keyboard comes or goes, or tablet mode changes.
+  It resets when a keyboard comes or goes, or tablet mode changes;
+- the chassis touchpad set aside the same way moving the pointer (a twentieth
+  of the window's width, so one stray event does not count) or clicking. A
+  folded-away cover's pad sends nothing, so it is out and in use: it then aims
+  next to the controls rather than its clicks pressing them. It never hides
+  the controls, and resets when a mouse comes or goes, or tablet mode changes.
 
 - **Fingers without the controls.** `TouchHUD_LookWithoutControls`
   (`touch_hud.c`) turns a drag anywhere into look, with the touch look
