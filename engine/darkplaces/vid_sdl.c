@@ -1110,12 +1110,33 @@ static qbool VID_TouchMouselook(void)
 		&& !touch_owns_screen.integer;
 }
 
+// SDL reports the pointer in window coordinates; everything that reads
+// in_windowmouse (the menu, the CSQC, the cursor) maps it through vid.mode,
+// which is the drawable in pixels. Where the two differ (a DPI-scaled window,
+// or a surface the compositor sized differently from what was asked) the
+// game's cursor ran ahead of the real one and stopped short of the edge.
+static void VID_SetWindowMouse(int x, int y)
+{
+	int ww = 0, wh = 0;
+	if (window)
+		SDL_GetWindowSize(window, &ww, &wh);
+	if (ww > 0 && wh > 0 && vid.mode.width > 0 && vid.mode.height > 0)
+	{
+		in_windowmouse_x = x * (float)vid.mode.width / ww;
+		in_windowmouse_y = y * (float)vid.mode.height / wh;
+	}
+	else
+	{
+		in_windowmouse_x = x;
+		in_windowmouse_y = y;
+	}
+}
+
 static void VID_SyncDesktopMouse(void)
 {
 	int x, y;
 	SDL_GetMouseState(&x, &y);
-	in_windowmouse_x = x;
-	in_windowmouse_y = y;
+	VID_SetWindowMouse(x, y);
 }
 
 static void VID_SyncTouchFinger(void)
@@ -1287,9 +1308,11 @@ static void IN_Move_TouchScreen_Xonotic(void)
 		}
 		break;
 	}
-
-	if (VID_ShowingKeyboard() && (float)in_windowmouse_y > vid_height.value / 2 - 10)
-		in_windowmouse_y = 128;
+	// No "keyboard showing" clamp here, unlike the Quake path below: it moved
+	// any pointer below mid-screen to y = 128, and desktop SDL reports text
+	// input active all the time, so a mouse in the menu jumped back to the top
+	// every time it crossed the middle. The touch sheets place themselves
+	// above the on-screen keyboard.
 }
 
 static void IN_Move_TouchScreen_Quake(void)
@@ -1472,8 +1495,7 @@ void IN_Move( void )
 	if (!vid_touchscreen.integer)
 	{
 		SDL_GetMouseState(&x, &y);
-		in_windowmouse_x = x;
-		in_windowmouse_y = y;
+		VID_SetWindowMouse(x, y);
 	}
 
 	if (vid_touchscreen.integer && !VID_TouchscreenHasRealDevices())
@@ -1521,7 +1543,11 @@ static void VID_UpdateMouseGrab(void)
 	if (!vid_activewindow || key_consoleactive || scr_loading)
 		VID_SetMouse(false, false);
 	else if (key_dest == key_menu || key_dest == key_menu_grabbed)
-		VID_SetMouse(vid_mouse.integer && !in_client_mouse && !vid_touchscreen.integer, !vid_touchscreen.integer);
+		// The menu draws its own pointer without touch controls, and with
+		// them for a listed mouse (m_pointer_shown in menu.qc): the system's
+		// is hidden whenever it does, or the two sat on top of each other.
+		VID_SetMouse(vid_mouse.integer && !in_client_mouse && !vid_touchscreen.integer,
+			!vid_touchscreen.integer || VID_TouchMouseConfirmed());
 	else
 	{
 		qbool mouse_aims = !vid_touchscreen.integer || VID_TouchMouselook();
@@ -1723,6 +1749,12 @@ void Sys_SDL_HandleEvents(void)
 						}
 						break;
 					case SDL_WINDOWEVENT_SIZE_CHANGED: // internal and external events
+						// Fullscreen and compositor sizing land here, not in
+						// RESIZED. Without this vid.mode kept the size asked for
+						// rather than the surface that was given, and every
+						// pointer and 2D mapping was off by the difference.
+						if (vid_resizable.integer < 2)
+							SDL_GL_GetDrawableSize(window, &vid.mode.width, &vid.mode.height);
 						break;
 					case SDL_WINDOWEVENT_MINIMIZED:
 						break;
@@ -1813,10 +1845,7 @@ void Sys_SDL_HandleEvents(void)
 			// In touchscreen mode update the window-relative cursor position so
 			// VID_TouchscreenCursor can track the pointer and fire K_MOUSE1 correctly.
 			if (vid_touchscreen.integer)
-			{
-				in_windowmouse_x = event.motion.x;
-				in_windowmouse_y = event.motion.y;
-			}
+				VID_SetWindowMouse(event.motion.x, event.motion.y);
 			break;
 			case SDL_FINGERDOWN:
 #ifdef DEBUGSDLEVENTS
