@@ -287,7 +287,8 @@ void m_keyup(float key, float ascii)
 	main.keyUp(main, key, ascii, menuShiftState);
 	if (key >= K_MOUSE1 && key <= K_MOUSE3)
 	{
-		if (menuMouseMode && cvar("vid_touchscreen"))
+		// As on the press: where the finger lifted, controls shown or not.
+		if (menuMouseMode)
 			menu_sync_absolute_mousepos();
 		--mouseButtonsPressed;
 		if (!mouseButtonsPressed) main.mouseRelease(main, menuMousePos);
@@ -329,7 +330,11 @@ void m_keydown(float key, float ascii)
 		draw_reset_cropped();
 		if (!mouseButtonsPressed && key >= K_MOUSE1 && key <= K_MOUSE3)
 		{
-			if (menuMouseMode && cvar("vid_touchscreen"))
+			// Where the press is now, not where the pointer was last frame:
+			// a finger lands somewhere new between frames. Not only with the
+			// touch controls on -- a finger presses the menu with a keyboard
+			// attached too -- and for a mouse it is the same spot anyway.
+			if (menuMouseMode)
 				menu_sync_absolute_mousepos();
 			main.mousePress(main, menuMousePos);
 		}

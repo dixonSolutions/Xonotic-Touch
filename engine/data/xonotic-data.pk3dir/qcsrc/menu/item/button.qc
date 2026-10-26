@@ -29,7 +29,10 @@
 	}
 	float Button_mouseDrag(entity me, vector pos)
 	{
-		float slop = cvar("vid_touchscreen") ? 0.25 : 0;
+		// Finger semantics follow what pressed, not whether the touch controls
+		// are drawn: a finger presses the menu with a keyboard attached too.
+		// vid_pointer_mouse goes to 0 on the finger before its press arrives.
+		float slop = !cvar("vid_pointer_mouse") ? 0.25 : 0;
 		me.pressed = 1;
 		if (pos.x < -slop) me.pressed = 0;
 		if (pos.y < -slop) me.pressed = 0;
@@ -42,7 +45,7 @@
 		this.mouseDrag(this, pos);  // verify coordinates (with touch slop)
 		// Touchscreens: fire on press. Finger release often drifts outside the
 		// 0..1 hit box, so mouseRelease never sees pressed=1 (dead taps).
-		if (cvar("vid_touchscreen") && this.pressed && !this.disabled && this.onClick)
+		if (!cvar("vid_pointer_mouse") && this.pressed && !this.disabled && this.onClick)
 		{
 			this.playClickSound(this);
 			if (this.applyButton)
@@ -58,7 +61,7 @@
 	{
 		// Touch already fired on press. mouseDrag() would re-arm pressed=1 and
 		// a second onClick would run (e.g. Download in background → instant quit).
-		if (cvar("vid_touchscreen"))
+		if (!cvar("vid_pointer_mouse"))
 		{
 			me.pressed = 0;
 			return 1;
