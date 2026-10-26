@@ -385,6 +385,18 @@ JNIEXPORT void JNICALL Java_io_github_dixonsolutions_xonotictouch_XonoticActivit
 }
 #endif
 
+#ifdef VID_LINUX_PROBES
+// A keyboard /proc lists but presence discounted (the chassis' own keyboard
+// while the machine reads as a tablet) has typed play keys: it is plainly not
+// folded away. Tablet chassis types and tablet-mode switches get this wrong
+// on plenty of 2-in-1s -- a Type Cover in the laptop position, a switch stuck
+// on -- and the controls then stayed up over a keyboard in use. On-screen
+// keyboards cannot set this: they only come up for text, and typing text is
+// not counted (VID_NoteKeyEvent). Cleared when a keyboard comes or goes or
+// tablet mode changes.
+static qbool vid_keyboard_typed;
+#endif
+
 static void vid_presence_compute(vid_presence_t *p)
 {
 	memset(p, 0, sizeof(*p));
@@ -435,7 +447,7 @@ static void vid_presence_compute(vid_presence_t *p)
 		// something to type on or aim with.
 		if (as_tablet)
 		{
-			p->keyboard = vid_scan.external_keyboard;
+			p->keyboard = vid_scan.external_keyboard || (vid_keyboard_typed && vid_scan.keyboard);
 			p->mouse = vid_scan.external_mouse;
 		}
 	}
@@ -570,6 +582,16 @@ void VID_NoteTouchActivity(void)
 // them, and so did the attached keyboard while the player still wanted them.
 void VID_NoteKeyboardUse(void)
 {
+#ifdef VID_LINUX_PROBES
+	// The one exception: a keyboard the system lists that presence set aside
+	// as folded away has just typed in the game (vid_keyboard_typed).
+	if (vid_keyboard_typed || !vid_scan.keyboard || vid_presence_get()->keyboard)
+		return;
+	vid_keyboard_typed = true;
+	vid_presence_valid = false;
+	Con_Printf("Input: the listed keyboard is typing, so it is attached\n");
+	vid_reapply("keyboard typing", NULL, "Keyboard in use: touch controls hidden");
+#endif
 }
 
 // Real (not touch-emulated) pointer motion or a click. It confirms the mouse
@@ -634,6 +656,15 @@ static void vid_presence_changed(const vid_presence_t *old, const vid_presence_t
 
 	if (old->mouse != now->mouse)
 		vid_mouse_confirmed = false;
+#ifdef VID_LINUX_PROBES
+	// Folding the cover back, or the keyboard leaving the list, starts over
+	// from what the system says.
+	if (vid_keyboard_typed && (old->tablet_mode != now->tablet_mode || !vid_scan.keyboard))
+	{
+		vid_keyboard_typed = false;
+		vid_presence_valid = false;
+	}
+#endif
 	// The mouse went away: nothing left to show a cursor for.
 	if (old->mouse && !now->mouse && now->touch)
 		vid_pointer_is_finger();

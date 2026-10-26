@@ -128,8 +128,15 @@ With `vid_touchscreen_touchonly 0`, Dynamic shows the controls on any
 touchscreen, keyboard or not. Input never switches anything. A tap does not
 bring the controls back over an attached keyboard, and typing does not take
 them away. Plugging the keyboard in or out does, with Switch mid-game on. The
-only input that counts is the first finger on a device where SDL reported no
-touchscreen until then, because that is presence too.
+only inputs that count are presence evidence:
+
+- the first finger on a device where SDL reported no touchscreen until then;
+- a keyboard that `/proc` lists but presence set aside as folded away (a
+  tablet chassis, or a tablet-mode switch) typing play keys in the game. That
+  keyboard is plainly attached. Type Covers in the laptop position, and
+  tablet-mode switches stuck on, kept the controls up over a keyboard in use.
+  On-screen keyboards cannot trigger it, since typing text is not counted.
+  It resets when a keyboard comes or goes, or tablet mode changes.
 
 - **Fingers without the controls.** `TouchHUD_LookWithoutControls`
   (`touch_hud.c`) turns a drag anywhere into look, with the touch look
