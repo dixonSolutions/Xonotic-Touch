@@ -304,6 +304,10 @@ cvar_t sys_libdir = {CF_READONLY | CF_SHARED, "sys_libdir", "", "Default engine 
 // these are not
 static cvar_t sys_debugsleep = {CF_SHARED, "sys_debugsleep", "0", "write requested and attained sleep times to standard output, to be used with gnuplot"};
 static cvar_t sys_usesdlgetticks = {CF_SHARED, "sys_usesdlgetticks", "0", "use SDL_GetTicks() timer (low precision, for debugging)"};
+#ifdef __ANDROID__
+extern cvar_t cl_maxfps;
+cvar_t sys_perfhint = {CF_CLIENT | CF_ARCHIVE, "sys_perfhint", "1", "Android 13+: report each frame's work to the system's performance hint (ADPF), so it keeps the game thread on cores and clocks that hold cl_maxfps; 0 leaves scheduling to the system's guess"};
+#endif
 static cvar_t sys_usesdldelay = {CF_SHARED, "sys_usesdldelay", "0", "use SDL_Delay() (low precision, for debugging)"};
 #if HAVE_QUERYPERFORMANCECOUNTER
 static cvar_t sys_usequeryperformancecounter = {CF_SHARED | CF_ARCHIVE, "sys_usequeryperformancecounter", "1", "use windows QueryPerformanceCounter timer (which has issues on systems lacking constant-rate TSCs synchronised across all cores, such as ancient PCs or VMs) for timing rather than timeGetTime function (which is low precision and had issues on some old motherboards)"};
@@ -355,6 +359,9 @@ void Sys_Init_Commands (void)
 	Cvar_RegisterVariable(&sys_debugsleep);
 	Cvar_RegisterVariable(&sys_usenoclockbutbenchmark);
 	Cvar_RegisterVariable(&sys_libdir);
+#ifdef __ANDROID__
+	Cvar_RegisterVariable(&sys_perfhint);
+#endif
 #if HAVE_TIMEGETTIME || HAVE_QUERYPERFORMANCECOUNTER || HAVE_CLOCKGETTIME
 	if(sys_supportsdlgetticks)
 	{
@@ -1157,8 +1164,21 @@ static void Sys_Frame(void)
 	host.realtime += time = Sys_UpdateTime(newtime, host.dirtytime);
 	host.dirtytime = newtime;
 
+#ifdef __ANDROID__
+	vid_swapseconds = 0;
+#endif
 	sleeptime = Host_Frame(time);
 	sleeptime -= Sys_DirtyTime() - host.dirtytime; // execution time
+#ifdef __ANDROID__
+	// The frame's work, without the vsync wait inside the swap, against the
+	// frame it has to fit: cl_maxfps, else the panel's refresh.
+	if (cls.state != ca_dedicated)
+	{
+		double target = cl_maxfps.value > 0 ? 1.0 / cl_maxfps.value
+			: 1.0 / (vid.mode.refreshrate > 0 ? vid.mode.refreshrate : 60);
+		Sys_PerfHint_Frame(Sys_DirtyTime() - host.dirtytime - vid_swapseconds, target);
+	}
+#endif
 
 #ifdef __EMSCRIPTEN__
 	// This platform doesn't support a main loop... it will sleep when Sys_Frame() returns.

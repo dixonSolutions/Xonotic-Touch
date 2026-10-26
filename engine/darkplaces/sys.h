@@ -231,6 +231,11 @@ void Sys_SDL_Shutdown(void);
 extern "C"
 #endif
 void Sys_AllowProfiling (qbool enable);
+#ifdef __ANDROID__
+extern struct cvar_s sys_perfhint;
+/* Android performance hint (sys_sdl.c): this frame's work and its budget, in seconds. */
+void Sys_PerfHint_Frame(double work, double target);
+#endif
 
 typedef struct sys_cleantime_s
 {

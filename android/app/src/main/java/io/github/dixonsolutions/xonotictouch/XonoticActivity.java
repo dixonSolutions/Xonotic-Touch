@@ -654,7 +654,7 @@ public final class XonoticActivity extends SDLActivity {
             "-basedir", baseDir,
             "-userdir", GameData.userDir(new File(baseDir)).getAbsolutePath()));
         // The Touch config chain packaging/start.sh runs on Linux.
-        args.addAll(GameData.startupArguments(new File(baseDir)));
+        args.addAll(GameData.startupArguments(this, new File(baseDir)));
         args.addAll(extraArguments());
         return args.toArray(new String[0]);
     }

@@ -166,6 +166,8 @@ extern cvar_t vid_touchscreen_showkeyboard;
 extern cvar_t vid_touchscreen_supportshowkeyboard;
 extern cvar_t vid_touchscreen_mouselook;
 extern cvar_t vid_mouse_confirmed_cvar;
+/* Seconds spent in buffer swaps (vsync waits) since last cleared; Sys_PerfHint_Frame. */
+extern double vid_swapseconds;
 extern cvar_t touch_owns_screen;
 extern cvar_t vid_touchscreen_textinput_x;
 extern cvar_t vid_touchscreen_textinput_y;

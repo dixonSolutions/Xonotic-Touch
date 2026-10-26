@@ -117,8 +117,8 @@ final class GameData {
      * servers at all. start.sh passes it for the window title and puts the
      * query name back with {@code -customgamenetworkfiltername Xonotic}.
      */
-    static List<String> startupArguments(File baseDir) {
-        writeStartupConfig(baseDir);
+    static List<String> startupArguments(Context context, File baseDir) {
+        writeStartupConfig(baseDir, DeviceProfile.detect(context));
         return Arrays.asList(
                 "+exec", "xonotic.cfg",
                 "+exec", "config.cfg",
@@ -129,7 +129,7 @@ final class GameData {
                 "+set", "_touch_assets_ready", "1");
     }
 
-    private static void writeStartupConfig(File baseDir) {
+    private static void writeStartupConfig(File baseDir, DeviceProfile device) {
         File touchDir = new File(new File(userDir(baseDir), "data"), "touch");
         File cfg = new File(touchDir, "startup.cfg");
         StringBuilder text = new StringBuilder()
@@ -148,9 +148,12 @@ final class GameData {
                 // (touch_perf_version, archived; xonotic.cfg defaults it to
                 // 0 before config.cfg runs). It used to be the battery
                 // profile on every start: 30 fps, and every graphics choice
-                // in the menus undone at the next launch. Balanced holds 60
-                // with vsync; the menu offers the others.
-                .append("alias _touch_perf_apply0 \"exec touch/profiles/balanced.cfg; seta touch_perf_version 1\"\n")
+                // in the menus undone at the next launch. Which profile goes
+                // on now depends on the phone (DeviceProfile): balanced (60 fps
+                // with vsync) for most, the 30 fps saver where 60 cannot hold,
+                // full-size textures where there is memory for them.
+                .append(device.startupCvars())
+                .append("alias _touch_perf_apply0 \"" + device.firstRunProfileCommands() + "; seta touch_perf_version 1\"\n")
                 .append("alias _touch_perf_apply1 \"\"\n")
                 .append("_touch_perf_apply$touch_perf_version\n");
         // The touch settings screen saves the player's layout here and execs

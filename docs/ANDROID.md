@@ -390,6 +390,37 @@ This depends on both builds being signed with the same key. Android refuses an
 update whose signature changed, and the only way out of that is uninstalling,
 which takes the data with it. See **Signing** below.
 
+## Performance on ARM phones
+
+- **The first start picks a profile for the phone** (`DeviceProfile.java`).
+  It reads the SoC (`Build.SOC_MANUFACTURER`/`SOC_MODEL` on Android 12+,
+  `Build.HARDWARE`), total memory and the fastest core's clock from the
+  system, with no input involved, and sorts the phone into a tier:
+  - low: under 3.5 GB, a fastest core under 1.9 GHz, or fewer than 4 cores.
+    Gets the 30 fps saver, because a phone that cannot hold 60 stutters
+    instead of pacing evenly.
+  - high: 7.5 GB and 2.8 GHz or more. Gets balanced with full-size textures.
+  - mid: everything else. Gets balanced.
+
+  The facts go to the engine as `_android_soc`, `_android_hardware`,
+  `_android_ram_mb`, `_android_cpu_mhz`, `_android_cores`, `_android_exynos`
+  and `_android_tier`, and to logcat ("Device: ..."). After the first start
+  the player's choices stand.
+- **Performance hint (ADPF).** On Android 13+ the engine opens a performance
+  hint session for its main thread. It reports each frame's work, without the
+  vsync wait inside the buffer swap, against the frame budget (`cl_maxfps`,
+  else the panel's refresh). The scheduler then holds the game on the cores
+  and clocks that keep that pace, instead of guessing from load. This matters
+  most on big.LITTLE SoCs such as Exynos, where a frame that lands on a little
+  core runs long. `sys_perfhint 0` turns it off. The console says
+  "Performance hint: session open" when the device supports it.
+- **Sustained performance mode**, where the device offers it, trades peak
+  clocks for ones it can hold (`XonoticActivity`).
+- **The game thread runs at high priority** (`SDL_SetThreadPriority`).
+- **libmain.so is built** with hidden visibility, no semantic interposition,
+  ThinLTO, gc-sections and ICF (`android/app/src/main/cpp/CMakeLists.txt`).
+  Only `SDL_main` and the JNI entry points are exported.
+
 ## Debugging on a device
 
 A phone has no launcher command line, so `XonoticActivity` appends anything in

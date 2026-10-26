@@ -2533,7 +2533,13 @@ void VID_Finish (void)
 			CHECKGLERROR
 			if (r_speeds.integer == 2 || gl_finish.integer)
 				GL_Finish();
-			SDL_GL_SwapWindow(window);
+			{
+				// The swap blocks on vsync. That is waiting, not work, and the
+				// Android performance hint must not count it (Sys_PerfHint_Frame).
+				double swapstart = Sys_DirtyTime();
+				SDL_GL_SwapWindow(window);
+				vid_swapseconds += Sys_DirtyTime() - swapstart;
+			}
 			break;
 		}
 	}

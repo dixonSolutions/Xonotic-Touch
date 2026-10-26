@@ -85,9 +85,19 @@ target_compile_definitions(main PRIVATE
 set_source_files_properties("${DP_DIR}/sys_sdl.c" PROPERTIES
     COMPILE_DEFINITIONS "main=SDL_main")
 
+# libmain.so is one library that nothing links against: the only symbols
+# anything outside it calls are SDL_main and the JNI entry points, which their
+# headers already mark visible. Hiding the rest and ruling out interposition
+# lets clang call and inline across the engine directly instead of through the
+# PLT, and ThinLTO does that across files. gc-sections and ICF drop what is
+# left unused or duplicated, which also shrinks the APK.
 target_compile_options(main PRIVATE
     -O3 -fno-math-errno -fno-trapping-math -fno-strict-aliasing
+    -fvisibility=hidden -fno-semantic-interposition
+    -ffunction-sections -fdata-sections -flto=thin
     -Wall -Wno-unused-but-set-variable)
+target_link_options(main PRIVATE
+    -O3 -flto=thin -Wl,--gc-sections -Wl,--icf=safe)
 
 # libpng is dlopen()ed at runtime rather than linked; scripts/android-build.sh
 # stages it into jniLibs so it lands in the APK's lib/<abi>/ directory.
