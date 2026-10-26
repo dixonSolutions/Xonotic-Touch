@@ -10,14 +10,18 @@
 // shrinks instead of spilling over the edge.
 float Touch_Widget_LabelSize(vector half, string label)
 {
-	float by_height = half.y * TOUCH_FONT_FIT_H;
-	// Text width scales linearly with font size, so one measurement at unit size
-	// converts the available width straight into a font size. Measured rather than
-	// counted, because "MENU" and "1111" have the same length and not the same
-	// width, and it was the widest label in a set that used to overflow.
-	float unit = max(0.01, Touch_Shape_LabelWidth(1, label));
-	float by_width = (half.x * 2 * TOUCH_FONT_FIT_W) / unit;
-	return bound(TOUCH_FONT_MIN, min(by_height, by_width), TOUCH_FONT_MAX);
+	float fs = bound(TOUCH_FONT_MIN, half.y * TOUCH_FONT_FIT_H, TOUCH_FONT_MAX);
+	// Measured rather than counted, because "MENU" and "1111" have the same
+	// length and not the same width, and it was the widest label in a set that
+	// used to overflow. Measured at the size it will be drawn at: stock
+	// r_font_size_snapping 4 swaps a tiny request for the nearest loaded font,
+	// so a unit-size measurement came back several times too wide and every
+	// label shrank to the minimum.
+	float w = Touch_Shape_LabelWidth(fs, label);
+	float room = half.x * 2 * TOUCH_FONT_FIT_W;
+	if (w > room)
+		fs *= room / w;
+	return bound(TOUCH_FONT_MIN, fs, TOUCH_FONT_MAX);
 }
 
 float Touch_Widget_FontSize(float radius)

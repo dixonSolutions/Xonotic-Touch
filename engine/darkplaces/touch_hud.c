@@ -265,10 +265,14 @@ static void shape_label_right(float rx, float cy, float fs, const char *label, c
 // ---------------------------------------------------------------------------
 static float label_size(float hx, float hy, const char *label)
 {
-	float by_height = hy * FONT_FIT_H;
-	float unit = max(0.01f, label_width(1.0f, label));
-	float by_width = (hx * 2 * FONT_FIT_W) / unit;
-	return bound(FONT_MIN, min(by_height, by_width), FONT_MAX);
+	// Measured at the size it will be drawn at, as in touch_widget.qc: font
+	// size snapping makes a unit-size measurement several times too wide.
+	float fs = bound(FONT_MIN, hy * FONT_FIT_H, FONT_MAX);
+	float w = label_width(fs, label);
+	float room = hx * 2 * FONT_FIT_W;
+	if (w > room)
+		fs *= room / w;
+	return bound(FONT_MIN, fs, FONT_MAX);
 }
 static float elevation(float r) { return max(1.0f, r * ELEVATION_Y); }
 
