@@ -14,6 +14,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -34,6 +36,8 @@ final class GameData {
     /** Bundled payload staged into the APK by scripts/android-stage-assets.sh. */
     private static final String BUNDLE_ASSET = "xonotic-slim-data.zip";
     private static final String BUNDLE_STAMP = ".bundle-version";
+    /** "crc size name" per file of the last unpack (installBundle). */
+    private static final String BUNDLE_MANIFEST = ".bundle-manifest";
 
     private static final String AUTOBUILD = "https://beta.xonotic.org/autobuild";
     private static final String AUTOBUILD_LOGIN = "xonotic:g-23";
@@ -205,6 +209,7 @@ final class GameData {
         String status = context.getString(R.string.boot_unpacking);
         progress.update(status, "", -1);
         Log.i(TAG, "Unpacking " + BUNDLE_ASSET + " for " + version);
+        long started = System.currentTimeMillis();
 
         // The touch masks moved from .tga to .png. Unpacking only adds and
         // overwrites, and the engine tries .tga first, so a previous build's
@@ -219,11 +224,24 @@ final class GameData {
             }
         }
 
+        // Only what changed is written. The bundle is about 94 MB in some 500
+        // files, and between two builds all but the game code (the progs,
+        // a few MB) is the same: rewriting all of it after every update is
+        // what kept the player at "Unpacking game data" for seconds. An entry
+        // whose CRC and size match the last unpack, with that file still in
+        // place at that size, is skipped.
+        File manifestFile = new File(baseDir(), BUNDLE_MANIFEST);
+        Map<String, String> previous = readManifest(manifestFile);
+        Map<String, String> current = new HashMap<>();
+        int[] written = new int[1];
         try (InputStream raw = context.getAssets().open(BUNDLE_ASSET)) {
-            unzip(new ZipInputStream(raw), baseDir(), null, progress, status);
+            unzip(new ZipInputStream(raw), baseDir(), null, progress, status, previous, current, written);
         }
 
+        writeManifest(manifestFile, current);
         writeAll(stamp, version);
+        Log.i(TAG, "Bundle unpacked: " + written[0] + " of " + current.size() + " files changed, "
+                + (System.currentTimeMillis() - started) + " ms");
     }
 
     // -------------------------------------------------------------- download
@@ -357,6 +375,18 @@ final class GameData {
      */
     private static void unzip(ZipInputStream zip, File dest, String strip,
                               Progress progress, String status) throws IOException {
+        unzip(zip, dest, strip, progress, status, null, null, null);
+    }
+
+    /**
+     * @param previous signatures from the last unpack ("crc:size" by name), to
+     *                 skip entries that have not changed; null writes all
+     * @param current  filled with this bundle's signatures; may be null
+     * @param written  written[0] counts the files actually written; may be null
+     */
+    private static void unzip(ZipInputStream zip, File dest, String strip,
+                              Progress progress, String status, Map<String, String> previous,
+                              Map<String, String> current, int[] written) throws IOException {
         String canonicalDest = dest.getCanonicalPath() + File.separator;
         byte[] buffer = new byte[64 * 1024];
         int files = 0;
@@ -383,6 +413,22 @@ final class GameData {
             if (entry.isDirectory()) {
                 mkdirs(out);
                 continue;
+            }
+            // The zip tool writes CRC and size in each local header, so they
+            // are known before the data is read; -1 where not, and such an
+            // entry is always written.
+            String signature = (entry.getCrc() >= 0 && entry.getSize() >= 0)
+                    ? entry.getCrc() + ":" + entry.getSize() : null;
+            if (current != null && signature != null) {
+                current.put(name, signature);
+            }
+            if (previous != null && signature != null && signature.equals(previous.get(name))
+                    && out.isFile() && out.length() == entry.getSize()) {
+                // Unchanged: getNextEntry() steps over the data.
+                continue;
+            }
+            if (written != null) {
+                written[0]++;
             }
             mkdirs(out.getParentFile());
             File target = strip == null
@@ -411,6 +457,35 @@ final class GameData {
                 progress.update(status, files + " files", -1);
             }
         }
+    }
+
+    private static Map<String, String> readManifest(File file) {
+        Map<String, String> map = new HashMap<>();
+        if (!file.isFile()) {
+            return map;
+        }
+        try (java.io.BufferedReader in = new java.io.BufferedReader(new java.io.FileReader(file))) {
+            String line;
+            while ((line = in.readLine()) != null) {
+                int space = line.indexOf(' ');
+                if (space > 0) {
+                    map.put(line.substring(space + 1), line.substring(0, space));
+                }
+            }
+        } catch (IOException e) {
+            // A manifest we cannot read only costs a full unpack.
+            Log.w(TAG, "Could not read " + file, e);
+            map.clear();
+        }
+        return map;
+    }
+
+    private static void writeManifest(File file, Map<String, String> map) throws IOException {
+        StringBuilder text = new StringBuilder();
+        for (Map.Entry<String, String> e : map.entrySet()) {
+            text.append(e.getValue()).append(' ').append(e.getKey()).append('\n');
+        }
+        writeAll(file, text.toString());
     }
 
     private static void mkdirs(File dir) throws IOException {

@@ -256,10 +256,13 @@ Updates fetches it. The next start offers to install it:
 * **Not now** goes straight into the game and asks again next launch.
 * **Skip this version** suppresses that one release.
 
-**The boot screen only shows when there is something to wait for.** That means
-unpacking after an app update, the first-run asset download, installing a
-downloaded update, an install prompt, or an error. Otherwise the game starts
-straight away. The check for a new release no longer runs at boot (it could
+**The boot screen only shows when there is something to wait for.** Unpacking
+after an app update and the first-run asset download show it only once they
+have run for 1.5 s. Installing a downloaded update, an install prompt or an
+error show it at once. Otherwise the game starts straight away. An update
+unpacks only the files that changed: `.bundle-manifest` keeps each file's CRC
+and size from the last unpack, so a new build writes its few MB of game code
+rather than the whole 94 MB bundle. The check for a new release no longer runs at boot (it could
 hold the launch up to 25 s on a bad connection). `XonoticActivity` runs it on
 a background thread from its first `onResume()`.
 

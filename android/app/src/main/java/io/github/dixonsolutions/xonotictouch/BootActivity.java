@@ -230,9 +230,31 @@ public final class BootActivity extends Activity {
         }
     }
 
+    /**
+     * Progress only shows the screen once the work has gone on for a while.
+     * Unpacking after an update writes just the files that changed and is
+     * usually over in well under a second; flashing the screen up for that
+     * was the slide the player saw on every update. The first download, or
+     * a slow phone, still gets it.
+     */
+    private static final long REVEAL_AFTER_MS = 1500;
+    private boolean revealScheduled;
+
+    private void revealIfStillWorking() {
+        if (revealScheduled) {
+            return;
+        }
+        revealScheduled = true;
+        ui.postDelayed(() -> {
+            if (!isFinishing() && !isDestroyed()) {
+                reveal();
+            }
+        }, REVEAL_AFTER_MS);
+    }
+
     private void report(String text, String note, int percent) {
         ui.post(() -> {
-            reveal();
+            revealIfStillWorking();
             status.setText(text);
             detail.setText(note);
             if (percent < 0) {
