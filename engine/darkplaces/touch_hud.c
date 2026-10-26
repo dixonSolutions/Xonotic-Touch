@@ -206,9 +206,13 @@ static void shape_half_pic(cachepic_t *pic, float x, float y, float w, float h, 
 		s1, 1, rgb[0], rgb[1], rgb[2], a, 0);
 }
 
-static void shape_capsule_from(cachepic_t *pic, float cx, float cy, float hx, float hy, const float *rgb, float a, qbool hollow, float stroke)
+// As Touch_Shape_CapsuleFrom: the middle is the mask's centre column stretched
+// across, so its top and bottom edges match the caps' for a fill, a ring or a
+// shadow. Solid fills there gave a ring a thin top edge and a thick bottom one.
+#define CAPSULE_MID_UV 0.001f
+static void shape_capsule_from(cachepic_t *pic, float cx, float cy, float hx, float hy, const float *rgb, float a)
 {
-	float cap = hy, midw, t;
+	float cap = hy, midw;
 	if (hx < 0.5f || hy < 0.5f || a <= 0)
 		return;
 	if (hx <= cap)
@@ -219,18 +223,11 @@ static void shape_capsule_from(cachepic_t *pic, float cx, float cy, float hx, fl
 	shape_half_pic(pic, cx - hx, cy - cap, cap, cap * 2, 0.0f, 0.5f, rgb, a);
 	shape_half_pic(pic, cx + hx - cap, cy - cap, cap, cap * 2, 0.5f, 1.0f, rgb, a);
 	midw = (hx - cap) * 2;
-	if (hollow)
-	{
-		t = max(1.0f, stroke * cap);
-		DrawQ_Fill(cx - hx + cap, cy - cap, midw, t, rgb[0], rgb[1], rgb[2], a, 0);
-		DrawQ_Fill(cx - hx + cap, cy + cap - t, midw, t, rgb[0], rgb[1], rgb[2], a, 0);
-	}
-	else
-		DrawQ_Fill(cx - hx + cap, cy - cap, midw, cap * 2, rgb[0], rgb[1], rgb[2], a, 0);
+	shape_half_pic(pic, cx - hx + cap, cy - cap, midw, cap * 2, 0.5f - CAPSULE_MID_UV, 0.5f + CAPSULE_MID_UV, rgb, a);
 }
-static void shape_capsule(float cx, float cy, float hx, float hy, const float *rgb, float a) { shape_capsule_from(pic_disc, cx, cy, hx, hy, rgb, a, false, 0); }
-static void shape_capsule_ring(float cx, float cy, float hx, float hy, const float *rgb, float a) { shape_capsule_from(pic_ring_thin, cx, cy, hx, hy, rgb, a, true, W_RING_THIN); }
-static void shape_capsule_shadow(float cx, float cy, float hx, float hy, float a) { shape_capsule_from(pic_shadow, cx, cy, hx, hy, C_SHADOW, a, false, 0); }
+static void shape_capsule(float cx, float cy, float hx, float hy, const float *rgb, float a) { shape_capsule_from(pic_disc, cx, cy, hx, hy, rgb, a); }
+static void shape_capsule_ring(float cx, float cy, float hx, float hy, const float *rgb, float a) { shape_capsule_from(pic_ring_thin, cx, cy, hx, hy, rgb, a); }
+static void shape_capsule_shadow(float cx, float cy, float hx, float hy, float a) { shape_capsule_from(pic_shadow, cx, cy, hx, hy, C_SHADOW, a); }
 
 static float label_width(float fs, const char *label)
 {

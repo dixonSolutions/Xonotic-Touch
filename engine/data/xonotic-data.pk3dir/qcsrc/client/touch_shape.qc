@@ -124,11 +124,16 @@ void Touch_Shape_Ring(vector center, float radius, float weight, vector rgb, flo
 // section, so the end caps stay circular however wide the capsule gets. A
 // stretched rounded-rect would flatten them.
 
-// `stroke` is the baked stroke fraction of the cap mask, and is only read when
-// `hollow` is set: the straight edges have to match the caps' thickness exactly
-// or the joint shows a step.
-void Touch_Shape_CapsuleFrom(string pic, vector center, vector half, vector rgb, float alpha,
-	bool hollow, float stroke)
+// The straight middle is the mask's own centre column stretched across the
+// gap: the same antialiased top and bottom edge the caps have, at the same
+// thickness, for a fill, a ring or a soft shadow alike. It used to be solid
+// rectangles, one per edge for a ring, at a thickness worked out from the
+// stroke weight; they landed on different pixel rows top and bottom, so a
+// pill's border was thin along the top and thick along the bottom, and a
+// shadow's middle was a hard block between two soft ends.
+const float TOUCH_CAPSULE_MID_UV = 0.001;
+
+void Touch_Shape_CapsuleFrom(string pic, vector center, vector half, vector rgb, float alpha)
 {
 	if (half.x < 1 || half.y < 1 || alpha <= 0)
 		return;
@@ -147,34 +152,23 @@ void Touch_Shape_CapsuleFrom(string pic, vector center, vector half, vector rgb,
 	Touch_Shape_Pic_Sub(pic, top + eX * (half.x - cap), capsz, '0.5 0 0', '0.5 1 0', rgb, alpha);
 
 	float midw = (half.x - cap) * 2;
-	if (hollow)
-	{
-		// Only the two long edges connect the caps.
-		float t = max(1, stroke * cap);
-		Touch_Shape_Pic(TOUCH_PIC_WHITE, top + eX * (cap - half.x), eX * midw + eY * t, rgb, alpha);
-		Touch_Shape_Pic(TOUCH_PIC_WHITE, center + eY * (cap - t) - eX * (half.x - cap),
-			eX * midw + eY * t, rgb, alpha);
-	}
-	else
-	{
-		Touch_Shape_Pic(TOUCH_PIC_WHITE, top + eX * (cap - half.x), eX * midw + eY * (cap * 2), rgb, alpha);
-	}
+	Touch_Shape_Pic_Sub(pic, top + eX * (cap - half.x), eX * midw + eY * (cap * 2),
+		eX * (0.5 - TOUCH_CAPSULE_MID_UV), eX * (TOUCH_CAPSULE_MID_UV * 2) + eY, rgb, alpha);
 }
 
 void Touch_Shape_Capsule(vector center, vector half, vector rgb, float alpha)
 {
-	Touch_Shape_CapsuleFrom(TOUCH_PIC_DISC, center, half, rgb, alpha, false, 0);
+	Touch_Shape_CapsuleFrom(TOUCH_PIC_DISC, center, half, rgb, alpha);
 }
 
 void Touch_Shape_CapsuleRing(vector center, vector half, float weight, vector rgb, float alpha)
 {
-	Touch_Shape_CapsuleFrom(Touch_Shape_RingPic(weight), center, half, rgb, alpha, true,
-		Touch_Shape_RingWeight(weight));
+	Touch_Shape_CapsuleFrom(Touch_Shape_RingPic(weight), center, half, rgb, alpha);
 }
 
 void Touch_Shape_CapsuleShadow(vector center, vector half, float alpha)
 {
-	Touch_Shape_CapsuleFrom(TOUCH_PIC_SHADOW, center, half, TOUCH_C_SHADOW, alpha, false, 0);
+	Touch_Shape_CapsuleFrom(TOUCH_PIC_SHADOW, center, half, TOUCH_C_SHADOW, alpha);
 }
 
 // ---------------------------------------------------------------------------
