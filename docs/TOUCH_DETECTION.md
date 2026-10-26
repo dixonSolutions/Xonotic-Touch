@@ -11,10 +11,10 @@ Android/iOS, where touch is present; Linux tablets need a real scan.
 
 | User-facing | Cvar | Meaning |
 |-------------|------|---------|
-| Dynamic / Touch / Keyboard & mouse | `vid_touchscreen_mode` (1 / 2 / 0) | Input mode. Dynamic is the default and does everything below; Touch and Keyboard & mouse detect nothing. Archived. |
-| Switch mid-game | `vid_touchscreen_live` | Dynamic only. On (default): switch in real time. Off: decide once at launch, keep it until the game restarts. Archived. |
+| Dynamic / Touch / Keyboard & mouse | `vid_touchscreen_mode` (1 / 2 / 0) | Whether the on-screen controls are drawn. Dynamic (default) follows what the system lists; Touch always, Keyboard & mouse never. Touch and mouse input work in all three. Archived. |
+| Switch mid-game | `vid_touchscreen_live` | Dynamic only. On (default): follow a keyboard being plugged in or out. Off: decide once at launch, keep it until the game restarts. Archived. |
 | Announce switches | `vid_touchscreen_notify` | On (default): a toast when the controls switch by themselves. Off: switch silently. Archived. |
-| Touch-only devices | `vid_touchscreen_touchonly` | Dynamic, until something is used: require a touchscreen and no physical keyboard |
+| Touch-only devices | `vid_touchscreen_touchonly` | Dynamic: on (default), hide the controls while a physical keyboard is attached; off, show them on any touchscreen |
 
 Settings → Touch → Input mode. **Rescan hardware** runs `vid_touchscreen_rescan`
 (with Switch mid-game off, it also takes the launch decision again).
@@ -113,74 +113,52 @@ hidden*, *Keyboard disconnected: touch controls shown*, *Tablet mode: touch
 controls shown* or *Laptop mode: touch controls hidden*. With `vid_touchscreen_notify 0` the
 same switches happen without a toast (the console still logs them).
 
-## Last active input
+## Touch, keyboard and mouse together
 
-Presence answers "what is attached", and it is the source of truth. Auto
-mode also asks "what is the player using", which is how games switch their
-button prompts. Input only ever confirms a device presence already lists:
-a key with no keyboard listed came from an on-screen keyboard, a remote or
-a mouse's macro button, and changes nothing.
+Presence decides, and nothing else. **The mode only decides whether the
+on-screen controls are drawn**. Touch and the mouse work in every state:
 
-| Evidence | Effect |
-|----------|--------|
-| Direct `SDL_FINGERDOWN`, or a pen tip on the screen (evdev `BTN_TOUCH` on a screen pen) | Controls **on at once**, even with a keyboard attached (*Touch detected: touch controls shown*) |
-| 3 play keys within 2 s, in the game, from a listed keyboard, with a listed mouse or touchpad | Controls off (*Keyboard in use: touch controls hidden*) |
-| Real pointer motion or a click from a listed mouse or touchpad | **Controls stay.** The mouse is confirmed (*Input: mouse in use*) and aims next to them |
+| System lists | Dynamic shows the controls | Touch | Mouse |
+|--------------|----------------------------|-------|-------|
+| touchscreen, no keyboard | **yes** | the controls | aims in the game (grabbed) if listed |
+| touchscreen and a keyboard | no | menus; a drag anywhere turns the view | aims if listed |
+| no touchscreen | no | — | aims |
 
-A mouse never hides the controls: it says nothing about a keyboard, and
-fingers keep working alongside it. Mouse and touch are used together:
+With `vid_touchscreen_touchonly 0`, Dynamic shows the controls on any
+touchscreen, keyboard or not. Input never switches anything. A tap does not
+bring the controls back over an attached keyboard, and typing does not take
+them away. Plugging the keyboard in or out does, with Switch mid-game on. The
+only input that counts is the first finger on a device where SDL reported no
+touchscreen until then, because that is presence too.
 
-- A real mouse's buttons always reach the game (`K_MOUSE*`), touch controls
-  or not. Only the clicks SDL makes up from a finger
-  (`SDL_TOUCH_MOUSEID`) are dropped while the finger path handles that
-  finger. On Android, `SDL_HINT_MOUSE_TOUCH_EVENTS` is off and SDL's
-  `mouse_input` touch device (`SDL_MOUSE_TOUCHID`) is not a touchscreen,
-  so a mouse is no longer turned into fingers.
-- In the game, once a listed mouse has been used, the engine grabs it for
-  mouselook next to the touch controls (`VID_TouchMouselook` in
-  `vid_sdl.c`): the stick moves, the mouse aims, both can fire. The touch
-  CSQC stops zeroing the mouse's sensitivity while it is grabbed
-  (`Touch_Look_SetOwnership`), so fingers and the mouse both turn the view.
+- **Fingers without the controls.** `TouchHUD_LookWithoutControls`
+  (`touch_hud.c`) turns a drag anywhere into look, with the touch look
+  settings and filter. It runs under any CSQC, since the touch CSQC stands
+  down with the controls. Taps do nothing in the game. In menus a finger
+  presses as it does with the controls (`VID_TouchMenuFingerEvent`).
+- **The mouse.** Once the system lists a mouse or touchpad, the engine grabs
+  it for mouselook in the game, next to the controls or without them
+  (`VID_TouchMouselook`, `VID_TouchMouseConfirmed`). It does not wait for the
+  mouse to be used first. With the controls shown, the stick moves, the mouse
+  aims, and both can fire. The touch CSQC leaves the mouse's sensitivity
+  alone while it is grabbed (`Touch_Look_SetOwnership`).
   `vid_touchscreen_mouselook` tells the touch CSQC that `MOUSE1` is fire
-  rather than a press on its controls. It needs a real touchscreen (without
-  one the mouse stands in for a finger: desktop testing), `key_game`, and
-  no modal touch sheet: the CSQC sets `_touch_owns_screen` while the chat
-  sheet or edit mode is up, and the mouse goes back to being a pointer.
-- In the game, the clicks SDL makes up from a finger are dropped even with
-  the controls off. One used to fire, the finger then turned the controls on,
-  and the made-up release was dropped, holding fire down for good. A made-up
-  press that does get through (a menu in keyboard-and-mouse mode) always gets
-  its release.
+  rather than a press on its controls. With no real touchscreen, the mouse
+  stands in for a finger (desktop testing). While the chat sheet or edit mode
+  is up (`_touch_owns_screen`), the mouse is a pointer again.
+- **No doubled input.** SDL makes neither fingers from the mouse
+  (`SDL_HINT_MOUSE_TOUCH_EVENTS 0`) nor mouse events from fingers
+  (`SDL_HINT_TOUCH_MOUSE_EVENTS 0`); the engine handles each itself. A
+  made-up click that does arrive is dropped in the game. One that got
+  through elsewhere always gets its release.
 - Touch holds its buttons under its own key number (`+forward 50000` from
   the engine HUD, `50001` from the CSQC), as a key would. Letting go of the
-  stick or FIRE no longer drops a W or a mouse button still held.
-- Menus and the CSQC draw their pointer for a mouse in use
-  (`vid_mouse_confirmed`), with touch controls on or off.
-- When a click is what confirms the mouse, the grab is taken before that
-  click is handed to the game (`VID_UpdateMouseGrab`), so the first press
-  after a mouse is plugged in fires rather than landing on whatever control
-  sits under the ungrabbed cursor.
+  stick or FIRE never drops a W or a mouse button still held.
+- Menus and the CSQC draw their pointer whenever a mouse is listed
+  (`vid_mouse_confirmed`).
 
-Keyboard evidence is ignored:
-- within 1.5 s of any finger event, or while a finger is down (keys then
-  are an elbow on a folded cover);
-- when it is a key repeat, Escape/Back, a function, media or power key, or
-  Super;
-- outside the game, or while a touch sheet owns the screen: typing a
-  message is not playing on the keyboard, and the controls must not vanish
-  halfway through a word;
-- in tablet mode with no usable keyboard (keys from the folded cover);
-- without a listed mouse or touchpad: a keyboard alone leaves nothing to
-  aim with.
-
-Mouse evidence is ignored when it is synthetic touch-mouse input
-(`which == SDL_TOUCH_MOUSEID`), within 1.5 s of a finger (X11 does not mark
-the pointer events it emulates), and within 1 s of pen activity (Wayland
-hands a pen to SDL as a mouse).
-
-Until something is used, presence decides. Plugging a keyboard in or
-removing it starts over from presence; a mouse that is unplugged has to be
-used again once it is back. *Off* and *Always* ignore all of this.
+*Touch* and *Keyboard & mouse* modes ignore presence for the controls; touch
+and mouse input work the same in them.
 
 ## On-screen keyboard
 

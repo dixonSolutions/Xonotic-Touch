@@ -155,10 +155,10 @@ Hardware detection lives in DarkPlaces (`vid_touchdetect.c`). The CSQC overlay s
 
 | Cvar | Type | Range | Default | Notes |
 |------|------|-------|---------|-------|
-| `vid_touchscreen_mode` | int | 0/1/2 | `1` | Input mode: 0 = Keyboard & mouse, 1 = Dynamic, 2 = Touch |
-| `vid_touchscreen_live` | int | 0/1 | `1` | Dynamic: 1 = switch mid-game, 0 = decide once at launch and keep it |
+| `vid_touchscreen_mode` | int | 0/1/2 | `1` | Whether the on-screen controls are drawn: 0 = never (Keyboard & mouse), 1 = Dynamic (touchscreen and no keyboard listed), 2 = always (Touch). Touch and mouse input work in all three |
+| `vid_touchscreen_live` | int | 0/1 | `1` | Dynamic: 1 = follow a keyboard plugged in or out mid-game, 0 = decide once at launch and keep it |
 | `vid_touchscreen_notify` | int | 0/1 | `1` | Toast when the controls switch by themselves; 0 = silent |
-| `vid_touchscreen_touchonly` | int | 0/1 | `1` | Dynamic, before anything is used: on only for touch-only devices (no physical keyboard) |
+| `vid_touchscreen_touchonly` | int | 0/1 | `1` | Dynamic: 1 = hide the controls while a physical keyboard is listed, 0 = show them on any touchscreen |
 | `vid_touchscreen` | int | 0/1 | derived | Runtime switch used by CSQC; do not set in ship cfg |
 | `vid_touchscreen_detected` | int | 0/1 | readonly | Last scan found a touchscreen |
 | `vid_touchscreen_touchonly_detected` | int | 0/1 | readonly | Last scan classified the machine as touch-only |
@@ -341,9 +341,9 @@ and the fade; CI runs it.
 These run in the engine client (`engine/darkplaces/touch_aim.c`), not in
 the CSQC, so they work the same on a public server (where the client runs
 the server's own CSQC and the engine draws the HUD) and in a local match.
-They only run in touch mode: when a physical keyboard is played on the engine
-clears `vid_touchscreen` and all of this switches off, whatever the cvars
-say. They also stand down while a mouse aims next to the touch controls
+They only run while the touch controls are shown: with a physical keyboard
+attached (Dynamic) the engine clears `vid_touchscreen` and all of this
+switches off, whatever the cvars say. They also stand down while a mouse aims next to the touch controls
 (`vid_touchscreen_mouselook`). Settings → Touch → **Shoot helpers** has the two switches and the
 slowdown / pull sliders.
 

@@ -1136,7 +1136,9 @@ static void VID_TouchMenuFingerEvent(qbool down, float nx, float ny)
 {
 	keydest_t keydest = (key_consoleactive & KEY_CONSOLEACTIVE_USER) ? key_console : key_dest;
 
-	if (!vid_touchscreen.integer || !VID_TouchscreenHasRealDevices())
+	// With the controls shown or hidden: a keyboard being attached does not
+	// stop a finger pressing the menu.
+	if (!VID_TouchscreenHasRealDevices())
 		return;
 	if (keydest != key_menu && keydest != key_menu_grabbed)
 		return;
@@ -1425,6 +1427,12 @@ void IN_Move( void )
 			IN_Move_TouchScreen_Quake();
 			break;
 		}
+	}
+	else if (VID_TouchscreenHasRealDevices())
+	{
+		// The controls are hidden (a keyboard is attached), the touchscreen
+		// is not: a finger drag still turns the view.
+		TouchHUD_LookWithoutControls();
 	}
 
 	// Mouselook: always without touch controls, and next to them while a
@@ -1861,7 +1869,7 @@ void Sys_SDL_HandleEvents(void)
 					{
 						multitouch[i][1] = event.tfinger.x;
 						multitouch[i][2] = event.tfinger.y;
-						if (vid_touchscreen.integer)
+						if (VID_TouchscreenHasRealDevices())
 						{
 							keydest_t keydest = (key_consoleactive & KEY_CONSOLEACTIVE_USER) ? key_console : key_dest;
 							if (keydest == key_menu || keydest == key_menu_grabbed)
@@ -2188,6 +2196,14 @@ void VID_Init (void)
 	// A mouse is a mouse. SDL on Android otherwise turns its clicks into
 	// fingers, which pressed the touch controls instead of clicking.
 	SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
+#endif
+#ifdef SDL_HINT_TOUCH_MOUSE_EVENTS
+	// And a finger is a finger. The engine takes every finger itself -- the
+	// touch controls, menu presses (VID_TouchMenuFingerEvent) and look
+	// without the controls -- so the mouse SDL made up from one only doubled
+	// it: a second click in menus, and in the game, with a grabbed mouse, a
+	// second turn of the view through the relative mouse state.
+	SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
 #endif
 
 	if (SDL_Init(SDL_INIT_VIDEO) < 0)

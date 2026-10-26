@@ -17,7 +17,7 @@ In-game: glass MOVE stick and FIRE / JUMP / crouch, top **CONSOLE** pill, and th
 |---|---|
 | ![Touch HUD in a local match on a Surface Pro 9](docs/media/local-surface-hud.jpg) | ![The same HUD, drawn by the engine, on a public server](docs/media/server-surface-overlay.jpg) |
 
-*On a public server the client has to run the server's own CSQC, so the engine draws the same HUD itself from the same layout cvars and glass masks; the only addition there is the WEP button, because the stock weapons strip is only tappable through the port's CSQC. Play on an attached keyboard and the on-screen controls step aside; touch the screen and they come back. The keyboard and mouse keep working either way.*
+*On a public server the client has to run the server's own CSQC, so the engine draws the same HUD itself from the same layout cvars and glass masks; the only addition there is the WEP button, because the stock weapons strip is only tappable through the port's CSQC. Attach a keyboard and the on-screen controls step aside until it is unplugged. Touch and the mouse keep working either way: fingers press menus and turn the view, a mouse aims.*
 
 ## Install (Flatpak)
 

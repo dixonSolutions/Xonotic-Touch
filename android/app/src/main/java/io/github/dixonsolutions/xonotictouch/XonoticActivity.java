@@ -132,11 +132,9 @@ public final class XonoticActivity extends SDLActivity {
      * Tell the engine which input hardware is attached, and keep telling it.
      *
      * This is the engine's source of truth for what the player has; what
-     * they press only ever confirms it (vid_touchdetect.c). The on-screen
-     * controls show for a touch device with no keyboard, and stay with a
-     * mouse, which aims next to them once used. They hide only after
-     * sustained typing on a keyboard listed here, and a touch brings them
-     * straight back. InputManager's listener covers USB and Bluetooth
+     * they press never changes it (vid_touchdetect.c). The on-screen
+     * controls show for a touch device with no keyboard listed here and hide
+     * while one is; touch and a listed mouse work in both states. InputManager's listener covers USB and Bluetooth
      * hot-plug; configuration changes cover a keyboard folded away. None of
      * this needs a permission.
      */

@@ -490,16 +490,12 @@ static qbool vid_linux_poll(void);
 static qbool vid_pens_open(void);
 #endif
 
-// Hysteresis. Touch wins at once; the keyboard has to be used for a moment,
-// with no finger on the glass, before it takes the controls away.
-#define VID_KBM_WINDOW        2.0   // seconds the presses below must fit in
-#define VID_KBM_PRESSES       3     // distinct play-key presses
+// X11 does not mark the pointer events it emulates from a finger, and Wayland
+// hands SDL a pen as a mouse: neither is a mouse, for logging.
 #define VID_TOUCH_QUIET       1.5   // seconds after the last finger event
 #define VID_PEN_QUIET         1.0   // pen hover drives the pointer too
 
 static double vid_touch_last = -1000;
-static double vid_kbm_start = -1000;
-static int vid_kbm_presses;
 
 static const char *vid_mode_name(int mode)
 {
@@ -529,26 +525,22 @@ static void vid_reapply(const char *why, const char *msg_on, const char *msg_off
 	vid_notify(msg);
 }
 
-static void vid_kbm_reset(void)
-{
-	vid_kbm_start = -1000;
-	vid_kbm_presses = 0;
-}
-
 static void vid_touch_used(void)
 {
 	vid_touch_last = host.realtime;
-	vid_kbm_reset();
 	if (!vid_touch_finger_seen)
 	{
 		// SDL often reports no touch device until the first finger lands.
 		vid_touch_finger_seen = true;
 		vid_presence_valid = false;
 	}
-	if (vid_active == VID_ACTIVE_TOUCH && vid_presence_valid)
+	// Presence, not a switch: a first finger can be what tells SDL there is
+	// a touchscreen at all, and that alone may bring the controls up (no
+	// keyboard listed). Over a listed keyboard it changes nothing.
+	if (vid_presence_valid && vid_active == VID_ACTIVE_TOUCH)
 		return;
 	vid_active = VID_ACTIVE_TOUCH;
-	vid_reapply("touch used", "Touch detected: touch controls shown", NULL);
+	vid_reapply("touchscreen found", "Touchscreen found: touch controls shown", NULL);
 }
 
 void VID_NoteTouchUse(void)
@@ -559,42 +551,14 @@ void VID_NoteTouchUse(void)
 void VID_NoteTouchActivity(void)
 {
 	vid_touch_last = host.realtime;
-	vid_kbm_reset();
 }
 
-// A play key. It counts towards hiding the controls only while they are on
-// in Auto, the system lists a keyboard (so this is that keyboard, not an
-// on-screen one) and a mouse or touchpad to aim with, and no finger is on
-// the glass.
+// A play key. It changes nothing: only a keyboard the system lists hides the
+// controls, through presence (vid_dynamic_want). Typing on an on-screen
+// keyboard, a remote or a mouse's macro button used to count towards hiding
+// them, and so did the attached keyboard while the player still wanted them.
 void VID_NoteKeyboardUse(void)
 {
-	const vid_presence_t *p;
-
-	if (vid_active == VID_ACTIVE_KEYBOARD || !vid_touchscreen.integer || vid_touchscreen_mode.integer != 1)
-		return;
-	// A finger is down or has just lifted: keys now are an elbow on a
-	// folded cover.
-	if (host.realtime - vid_touch_last < VID_TOUCH_QUIET)
-	{
-		vid_kbm_reset();
-		return;
-	}
-	// No keyboard the system knows of (none attached, or one folded behind
-	// the screen): whatever sent this, the player cannot type on it. And a
-	// keyboard alone leaves nothing to aim with, so the controls stay.
-	p = vid_presence_get();
-	if (!p->keyboard || !p->mouse)
-		return;
-	if (host.realtime - vid_kbm_start > VID_KBM_WINDOW)
-	{
-		vid_kbm_reset();
-		vid_kbm_start = host.realtime;
-	}
-	if (++vid_kbm_presses < VID_KBM_PRESSES)
-		return;
-	vid_active = VID_ACTIVE_KEYBOARD;
-	vid_reapply("keyboard used", NULL, "Keyboard in use: touch controls hidden");
-	vid_kbm_reset();
 }
 
 // Real (not touch-emulated) pointer motion or a click. It confirms the mouse
@@ -622,9 +586,12 @@ void VID_NoteMouseUse(float travel, qbool press)
 	Con_Printf("Input: mouse in use (the system lists one)\n");
 }
 
+// A mouse or touchpad the system lists aims in the game: presence is the
+// whole test, like the keyboard's. Waiting for it to be used first left the
+// first moves of a freshly paired mouse doing nothing.
 qbool VID_TouchMouseConfirmed(void)
 {
-	return vid_mouse_confirmed && vid_presence_get()->mouse;
+	return vid_presence_get()->mouse;
 }
 
 qbool VID_HasKeyboard(void)
@@ -650,21 +617,8 @@ static void vid_presence_changed(const vid_presence_t *old, const vid_presence_t
 	const char *msg = NULL;
 	qbool was_on, is_on;
 
-	// Plugging a keyboard in or pulling it out is a fresh start: the
-	// hardware answer stands until something is used again.
-	if (old->keyboard != now->keyboard)
-	{
-		vid_active = VID_ACTIVE_NONE;
-		vid_kbm_reset();
-	}
-	// A mouse that went away has to be used again once it is back. Without
-	// one, keyboard play leaves nothing to aim with, so presence decides.
 	if (old->mouse != now->mouse)
-	{
 		vid_mouse_confirmed = false;
-		if (!now->mouse && vid_active == VID_ACTIVE_KEYBOARD)
-			vid_active = VID_ACTIVE_NONE;
-	}
 
 	was_on = vid_touchscreen.integer != 0;
 	VID_ApplyTouchscreenMode();
@@ -1022,13 +976,16 @@ void VID_TouchDetect_Init(void)
 #endif
 }
 
-// What Dynamic says right now: the last input used, else presence.
+// What Dynamic says right now, from what the system lists and nothing else:
+// the on-screen controls are there for a touchscreen with no physical
+// keyboard, and step aside while one is attached. Input never decides it. A
+// tap does not bring them back over an attached keyboard, and typing does not
+// take them away. Touch and the mouse keep working in both states: fingers
+// press the menus and turn the view without the controls
+// (VID_TouchLookWithoutControls in vid_sdl.c), and a listed mouse aims in the
+// game either way.
 static int vid_dynamic_want(qbool has_touch, qbool touch_only)
 {
-	if (vid_active == VID_ACTIVE_TOUCH)
-		return 1;
-	if (vid_active == VID_ACTIVE_KEYBOARD)
-		return 0;
 	if (vid_touchscreen_touchonly.integer)
 		return touch_only ? 1 : 0;
 	return has_touch ? 1 : 0;
@@ -1162,13 +1119,7 @@ static void vid_unlock(void)
 	int mode = vid_touchscreen_mode.integer;
 	const char *msg;
 
-	// Dynamic carries on from what is showing: the next finger, typing or
-	// device change moves it, not the act of unlocking.
-	if (vid_locked >= 0 && mode == 1 && vid_touchscreen_live.integer)
-	{
-		vid_active = vid_locked ? VID_ACTIVE_TOUCH : VID_ACTIVE_KEYBOARD;
-		vid_kbm_reset();
-	}
+	// Unlocked, Dynamic goes back to what the system lists.
 	vid_locked = -1;
 	VID_ApplyTouchscreenMode();
 	if (mode <= 0)

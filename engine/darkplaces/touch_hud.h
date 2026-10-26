@@ -21,6 +21,8 @@ qbool TouchHUD_Active(void);
 // Per-frame input: reads the engine finger table, assigns roles, emits
 // movement keys, view angles, attack/jump/crouch and the chrome pills.
 void TouchHUD_Frame(void);
+/* Controls hidden on a touchscreen: a finger drag still turns the view. */
+void TouchHUD_LookWithoutControls(void);
 
 // Draw the overlay (called from the 2D overlay pass, key_game only).
 void TouchHUD_Draw(void);

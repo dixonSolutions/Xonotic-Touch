@@ -1052,6 +1052,47 @@ static void look_begin(void)
 	look_prev_time = host.realtime;
 }
 
+// The controls are hidden -- a keyboard is attached, or Keyboard & mouse mode
+// -- but the screen is still a touchscreen: a finger dragged anywhere turns
+// the view, with the touch look settings and filter, so a keyboard player with
+// no mouse can still look around. Only one finger looks; taps do nothing.
+// Runs under any CSQC, since the touch CSQC stands down with the controls.
+void TouchHUD_LookWithoutControls(void)
+{
+	static int finger = -1;
+	static float last_x, last_y;
+	double now = host.realtime;
+	int i;
+	if (vid_touchscreen.integer || key_dest != key_game || (key_consoleactive & KEY_CONSOLEACTIVE_USER)
+		|| cls.state != ca_connected || cls.signon != SIGNONS || !CLVM_prog->loaded)
+	{
+		finger = -1;
+		return;
+	}
+	if (finger >= 0 && !multitouch[finger][0])
+		finger = -1;
+	if (finger < 0)
+	{
+		for (i = 0; i < TOUCHHUD_ENGINE_FINGERS - 1; i++)
+			if (multitouch[i][0])
+			{
+				finger = i;
+				last_x = multitouch[i][1] * ui_w();
+				last_y = multitouch[i][2] * ui_h();
+				look_begin();
+				break;
+			}
+		return;
+	}
+	{
+		float x = multitouch[finger][1] * ui_w(), y = multitouch[finger][2] * ui_h();
+		look_apply(x - last_x, y - last_y, (float)(now - look_prev_time));
+		look_prev_time = now;
+		last_x = x;
+		last_y = y;
+	}
+}
+
 static void weapon_gesture(finger_t *f, qbool up)
 {
 	// touch_weapon_mode 2: tap = next weapon, swipe up/down = prev/next.
