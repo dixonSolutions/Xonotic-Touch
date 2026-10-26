@@ -36,9 +36,10 @@ public final class XonoticActivity extends SDLActivity {
     private Thread updateService;
     /** Last release the check found, so Install and Skip know what they mean. */
     private volatile AppUpdater.Update lastSeenUpdate;
-    /** When this process last asked the release feed (elapsedRealtime). The
-     *  boot check counts: it ran moments before this activity started. */
-    private volatile long lastCheckMs = android.os.SystemClock.elapsedRealtime();
+    /** When this process last asked the release feed (elapsedRealtime). Never,
+     *  at first: the boot screen no longer checks, so the first onResume does,
+     *  in the background, while the game starts. */
+    private volatile long lastCheckMs = -RECHECK_AFTER_MS;
     /** A game left in the background for hours comes back through onResume(),
      *  not through BootActivity. Looking again after this long keeps a phone
      *  that is never cold-started from missing every release. */
@@ -306,6 +307,10 @@ public final class XonoticActivity extends SDLActivity {
         final AppUpdater updater = new AppUpdater(this);
         resumeCheck = new Thread(() -> {
             String installed = updater.installedVersion();
+            if (downloading.get()) {
+                return;
+            }
+            bridge.publishChecking(installed);
             AppUpdater.Update update = updater.findUpdate();
             publishFindings(bridge, updater, installed, update);
             if (update != null && AppUpdater.isAutoInstall(this)) {

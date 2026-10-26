@@ -248,12 +248,20 @@ deletes whatever is not the release the last check found.
    engine starts, with no network needed. **Install now** on the Updates screen
    does it straight away instead.
 
-**With automatic updates off**, `BootActivity` asks GitHub at launch and
-offers what it finds:
+**With automatic updates off**, the game still checks in the background, and
+a line on the main menu says when a release is out. Download in Settings →
+Updates fetches it. The next start offers to install it:
 
-* **Update** downloads (or resumes), then installs.
+* **Update** installs it.
 * **Not now** goes straight into the game and asks again next launch.
 * **Skip this version** suppresses that one release.
+
+**The boot screen only shows when there is something to wait for.** That means
+unpacking after an app update, the first-run asset download, installing a
+downloaded update, an install prompt, or an error. Otherwise the game starts
+straight away. The check for a new release no longer runs at boot (it could
+hold the launch up to 25 s on a bad connection). `XonoticActivity` runs it on
+a background thread from its first `onResume()`.
 
 Android confirms the first in-app install itself. On Android 12 and newer the
 app then becomes the package's *installer of record*, and every later update
@@ -264,8 +272,8 @@ of record is the file manager or browser that placed it. There is no path
 where a failed or slow check keeps anyone out of the game — any error just
 falls through to launching.
 
-`BootActivity` checks at launch; `XonoticActivity` checks again from
-`onResume()` once the game has been in the background for more than an hour,
+`XonoticActivity` checks when the game starts, and again from `onResume()` once
+the game has been in the background for more than an hour,
 so a phone that is never cold-started still picks up releases. With automatic
 updates on, each resume also retries a download that was waiting for Wi-Fi.
 

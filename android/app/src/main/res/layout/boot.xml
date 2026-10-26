@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Starts invisible: BootActivity shows it only when there is something to
+     wait for (unpacking, the first download, an update install, an error). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/boot_root"
+    android:visibility="invisible"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"

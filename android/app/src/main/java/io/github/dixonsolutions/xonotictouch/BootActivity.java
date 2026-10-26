@@ -27,6 +27,7 @@ public final class BootActivity extends Activity {
     private static final String TAG = "XonoticTouch";
 
     private final Handler ui = new Handler(Looper.getMainLooper());
+    private View root;
     private TextView status;
     private TextView detail;
     private ProgressBar progress;
@@ -38,6 +39,7 @@ public final class BootActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.boot);
 
+        root = findViewById(R.id.boot_root);
         status = findViewById(R.id.boot_status);
         detail = findViewById(R.id.boot_detail);
         progress = findViewById(R.id.boot_progress);
@@ -84,43 +86,25 @@ public final class BootActivity extends Activity {
                 return;
             }
 
-            // Publish before asking. The engine reads this file to draw its own
-            // version and update screen, and it has to be right even on the
-            // launches where the check finds nothing or never returns.
-            bridge.publishChecking(installed);
-
-            // Ask about a new build before unpacking anything: an update
-            // replaces the payload we would otherwise be extracting.
-            AppUpdater.Update update = updater.findUpdate();
-            if (update != null) {
-                if (updater.cachedBytes(update) > 0) {
-                    bridge.publishPaused(installed, update.version, updater.cachedPercent(update),
-                            getString(R.string.update_status_paused));
-                } else {
-                    bridge.publishAvailable(installed, update);
-                }
-                // Automatic updates download in the background while the game
-                // runs (XonoticActivity) and install on the next start, so the
-                // player is never kept waiting at this screen for one. Without
-                // them, ask.
-                if (AppUpdater.isEnabled(this) && AppUpdater.isAutoInstall(this)) {
-                    ui.post(() -> continueToGame(data));
-                } else {
-                    ui.post(() -> offerUpdate(update, data));
-                }
+            // No network here. The check for a new release used to run before
+            // the game could start, behind this screen, for every launch -- up
+            // to 25 s on a bad connection. XonoticActivity now asks in the
+            // background once the game is up; automatic updates download there
+            // and install on the next start, and without them the main menu
+            // says a release is out. Until that check answers, the menu shows
+            // what the last one found.
+            AppUpdater.Update known = updater.lastFound();
+            if (known == null) {
+                bridge.publishIdle(installed);
+            } else if (updater.cachedBytes(known) > 0) {
+                bridge.publishPaused(installed, known.version, updater.cachedPercent(known),
+                        getString(R.string.update_status_paused));
             } else {
-                // "Nothing newer" and "could not ask" come back from
-                // findUpdate() as the same null. Publishing them alike would
-                // tell a player on a flaky connection that they are current,
-                // and drop the release the last check that did reach the feed
-                // found. Either way the game still starts.
-                if (updater.lastCheckFailed()) {
-                    bridge.publishCheckFailed(installed, updater.lastFound());
-                } else {
-                    bridge.publishUpToDate(installed);
-                }
-                ui.post(() -> continueToGame(data));
+                bridge.publishAvailable(installed, known);
             }
+            // Straight into the game when the data is in place: prepare()
+            // reports, and so shows this screen, only when it has work to do.
+            ui.post(() -> continueToGame(data));
         }, "xonotic-update-check");
         worker.start();
     }
@@ -131,6 +115,7 @@ public final class BootActivity extends Activity {
      * player's back, and declining drops straight into the game.
      */
     private void offerUpdate(AppUpdater.Update update, GameData data) {
+        reveal();
         AppUpdater updater = new AppUpdater(this);
         UpdateBridge bridge = new UpdateBridge(this, data.baseDir());
         new AlertDialog.Builder(this)
@@ -153,6 +138,7 @@ public final class BootActivity extends Activity {
 
     private void installUpdate(AppUpdater updater, UpdateBridge bridge,
                                AppUpdater.Update update, GameData data) {
+        reveal();
         progress.setIndeterminate(true);
         status.setText(updater.isReady(update) ? R.string.update_installing : R.string.update_downloading);
         detail.setText("");
@@ -237,8 +223,16 @@ public final class BootActivity extends Activity {
         worker.start();
     }
 
+    /** Show the screen: something is happening that the player waits for. */
+    private void reveal() {
+        if (root != null) {
+            root.setVisibility(View.VISIBLE);
+        }
+    }
+
     private void report(String text, String note, int percent) {
         ui.post(() -> {
+            reveal();
             status.setText(text);
             detail.setText(note);
             if (percent < 0) {
@@ -262,6 +256,7 @@ public final class BootActivity extends Activity {
     }
 
     private void showFailure(Throwable cause) {
+        reveal();
         progress.setIndeterminate(false);
         progress.setProgress(0);
         status.setText(R.string.boot_failed);
