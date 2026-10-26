@@ -25,6 +25,17 @@ float Touch_Widget_FontSize(float radius)
 	return Touch_Widget_LabelSize('1 1 0' * radius, "AAAA");
 }
 
+// touch_glass_hollow: 0 is tinted glass, 1 is hollow -- outline and label
+// only, nothing between the player and the game. It scales the surface fill
+// and the drop shadow; rims, labels and the press glow stay, so a hollow
+// control still reads as a control. A press keeps some fill at any setting:
+// under the thumb, fill and rim are the only feedback.
+float Touch_GlassBody(bool pressed)
+{
+	float body = 1 - bound(0, autocvar_touch_glass_hollow, 1);
+	return pressed ? max(body, 0.45) : body;
+}
+
 float Touch_Widget_Elevation(float radius)
 {
 	return max(1, radius * TOUCH_ELEVATION_Y);
@@ -70,8 +81,8 @@ void Touch_Widget_Button(vector center, float radius, string label, bool pressed
 	}
 
 	Touch_Shape_Shadow(center + eY * Touch_Widget_Elevation(radius), radius * 1.12,
-		alpha * TOUCH_A_SHADOW);
-	Touch_Shape_Disc(center, radius, surface, alpha * a_surface);
+		alpha * TOUCH_A_SHADOW * Touch_GlassBody(false));
+	Touch_Shape_Disc(center, radius, surface, alpha * a_surface * Touch_GlassBody(pressed));
 	if (pressed)
 		Touch_Shape_Glow(center, radius * 1.35, accent, alpha * TOUCH_A_GLOW);
 	Touch_Widget_Rim(center, radius, rim, alpha * a_rim);
@@ -109,8 +120,8 @@ void Touch_Widget_Capsule(vector center, vector half, string label, bool pressed
 	}
 
 	Touch_Shape_CapsuleShadow(center + eY * Touch_Widget_Elevation(half.y),
-		half + '1 1 0' * (half.y * 0.10), alpha * TOUCH_A_SHADOW);
-	Touch_Shape_Capsule(center, half, surface, alpha * a_surface);
+		half + '1 1 0' * (half.y * 0.10), alpha * TOUCH_A_SHADOW * Touch_GlassBody(false));
+	Touch_Shape_Capsule(center, half, surface, alpha * a_surface * Touch_GlassBody(tinted));
 	if (pressed)
 		Touch_Shape_Capsule(center, half + '1 1 0' * (half.y * 0.18), accent, alpha * TOUCH_A_GLOW);
 	Touch_Widget_CapsuleRim(center, half, rim, alpha * a_rim);
@@ -242,7 +253,7 @@ void Touch_Widget_ChromePill(vector center, vector half, string label, bool pres
 		return;
 	}
 
-	Touch_Shape_Capsule(center, half, surface, a * TOUCH_A_CHROME_FILL);
+	Touch_Shape_Capsule(center, half, surface, a * TOUCH_A_CHROME_FILL * Touch_GlassBody(pressed));
 	// The dual-stroke rim, same as every other control: the single light stroke it
 	// used to draw vanished against a bright background, taking the pill's outline
 	// with it, so the label floated on nothing.

@@ -279,6 +279,15 @@ static void widget_capsule_rim(float cx, float cy, float hx, float hy, const flo
 	shape_capsule_ring(cx, cy, hx * (1 - W_CONTOUR_INSET), hy * (1 - W_CONTOUR_INSET), rgb, a);
 }
 
+// touch_glass_hollow, as Touch_GlassBody in touch_widget.qc: 0 tinted glass,
+// 1 hollow (outline and label only). Scales fill and shadow; a press keeps
+// some fill, since under the thumb it is the only feedback left.
+static float glass_body(qbool pressed)
+{
+	float body = 1 - bound(0.0f, cv("touch_glass_hollow", 0), 1.0f);
+	return pressed ? max(body, 0.45f) : body;
+}
+
 static void widget_button(float cx, float cy, float r, const char *label, qbool pressed, float alpha, const float *accent)
 {
 	const float *surface = pressed ? accent : C_SURFACE;
@@ -289,8 +298,8 @@ static void widget_button(float cx, float cy, float r, const char *label, qbool 
 	if (r < 2 || alpha <= 0)
 		return;
 	fs = label_size(r, r, label);
-	shape_shadow(cx, cy + elevation(r), r * 1.12f, alpha * A_SHADOW);
-	shape_disc(cx, cy, r, surface, alpha * a_surface);
+	shape_shadow(cx, cy + elevation(r), r * 1.12f, alpha * A_SHADOW * glass_body(false));
+	shape_disc(cx, cy, r, surface, alpha * a_surface * glass_body(pressed));
 	if (pressed)
 		shape_glow(cx, cy, r * 1.35f, accent, alpha * A_GLOW);
 	widget_rim(cx, cy, r, rim, alpha * a_rim);
@@ -312,8 +321,8 @@ static void widget_capsule(float cx, float cy, float hx, float hy, const char *l
 	else if (latched)
 		a_surface = A_SURFACE_LATCH;
 	fs = label_size(hx, hy, label);
-	shape_capsule_shadow(cx, cy + elevation(hy), hx + hy * 0.10f, hy + hy * 0.10f, alpha * A_SHADOW);
-	shape_capsule(cx, cy, hx, hy, surface, alpha * a_surface);
+	shape_capsule_shadow(cx, cy + elevation(hy), hx + hy * 0.10f, hy + hy * 0.10f, alpha * A_SHADOW * glass_body(false));
+	shape_capsule(cx, cy, hx, hy, surface, alpha * a_surface * glass_body(tinted));
 	if (pressed)
 		shape_capsule(cx, cy, hx + hy * 0.18f, hy + hy * 0.18f, accent, alpha * A_GLOW);
 	widget_capsule_rim(cx, cy, hx, hy, rim, alpha * a_rim);
@@ -336,7 +345,7 @@ static void widget_chrome_pill(float cx, float cy, float hx, float hy, const cha
 	if (hx < 2 || hy < 2)
 		return;
 	fs = min(label_size(hx, hy, label), label_size(hx, hy, "CONSOLE"));
-	shape_capsule(cx, cy, hx, hy, surface, a * A_CHROME_FILL);
+	shape_capsule(cx, cy, hx, hy, surface, a * A_CHROME_FILL * glass_body(pressed));
 	widget_capsule_rim(cx, cy, hx, hy, rim, a * A_RIM);
 	shape_label(cx, cy, fs, label, C_INK, a * A_INK);
 }
@@ -892,7 +901,7 @@ static void draw_weapon_strip(float a)
 	num_fs = 12 * u * 0.8f;
 	num_slot = label_width(num_fs, "9");
 	(void)r;
-	draw_rrect(cx, top + n * h * 0.5f, w * 0.5f + pad, n * h * 0.5f + pad, C_SURFACE, a * A_SURFACE);
+	draw_rrect(cx, top + n * h * 0.5f, w * 0.5f + pad, n * h * 0.5f + pad, C_SURFACE, a * A_SURFACE * glass_body(false));
 	for (i = 0; i < n; i++)
 	{
 		const wepdef_t *wd = &weapons[idx[i]];
@@ -1450,7 +1459,7 @@ static void draw_bar(float lx, float cy, float w, float h, float frac, const flo
 {
 	float hx = w * 0.5f, hy = h * 0.5f, fw;
 	frac = bound(0, frac, 1);
-	shape_capsule(lx + hx, cy, hx, hy, C_SHADOW, a * A_SURFACE);
+	shape_capsule(lx + hx, cy, hx, hy, C_SHADOW, a * A_SURFACE * glass_body(false));
 	shape_capsule_ring(lx + hx, cy, hx, hy, C_RIM, a * A_GHOST);
 	fw = w * frac;
 	if (fw > h)
@@ -1569,8 +1578,8 @@ static void draw_move_stick(float a)
 	knob_r = r * 0.34f;
 	knob_x = cx + move_off_x * (r - knob_r);
 	knob_y = cy + move_off_y * (r - knob_r);
-	shape_shadow(cx, cy + elevation(r), r * 1.06f, a * A_SHADOW * 0.6f);
-	shape_disc(cx, cy, r, C_SURFACE, a * A_SURFACE * 0.75f);
+	shape_shadow(cx, cy + elevation(r), r * 1.06f, a * A_SHADOW * 0.6f * glass_body(false));
+	shape_disc(cx, cy, r, C_SURFACE, a * A_SURFACE * 0.75f * glass_body(false));
 	widget_rim(cx, cy, r, C_RIM, a * A_RIM * 0.85f);
 	if (active)
 	{
@@ -1578,8 +1587,9 @@ static void draw_move_stick(float a)
 		knob_a = A_RIM_ACTIVE;
 		shape_glow(knob_x, knob_y, knob_r * 1.6f, C_ACCENT, a * A_GLOW);
 	}
-	shape_shadow(knob_x, knob_y + elevation(knob_r), knob_r * 1.20f, a * A_SHADOW);
-	shape_disc(knob_x, knob_y, knob_r, knob_rgb, a * knob_a);
+	shape_shadow(knob_x, knob_y + elevation(knob_r), knob_r * 1.20f, a * A_SHADOW * glass_body(false));
+	// The knob is what moves, so it keeps a body even when hollow.
+	shape_disc(knob_x, knob_y, knob_r, knob_rgb, a * knob_a * glass_body(true));
 	widget_rim(knob_x, knob_y, knob_r, C_RIM, a * A_RIM_ACTIVE);
 }
 

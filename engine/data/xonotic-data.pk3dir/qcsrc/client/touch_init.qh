@@ -29,6 +29,7 @@ void Touch_ApplyNotifyPanel(void);
 #define autocvar_touch_preset cvar_string("touch_preset")
 #define autocvar_touch_scale cvar("touch_scale")
 #define autocvar_touch_opacity cvar("touch_opacity")
+#define autocvar_touch_glass_hollow cvar("touch_glass_hollow")
 #define autocvar_touch_move_x cvar("touch_move_x")
 #define autocvar_touch_move_y cvar("touch_move_y")
 #define autocvar_touch_move_size cvar("touch_move_size")

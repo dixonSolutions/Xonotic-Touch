@@ -61,8 +61,8 @@ void Touch_DrawMoveStick(float theAlpha)
 
 	// The base stays quieter than the buttons: it is the largest object on
 	// screen, and at button opacity it would dominate the view.
-	Touch_Shape_Shadow(base + eY * Touch_Widget_Elevation(r), r * 1.06, theAlpha * TOUCH_A_SHADOW * 0.6);
-	Touch_Shape_Disc(base, r, TOUCH_C_SURFACE, theAlpha * TOUCH_A_SURFACE * 0.75);
+	Touch_Shape_Shadow(base + eY * Touch_Widget_Elevation(r), r * 1.06, theAlpha * TOUCH_A_SHADOW * 0.6 * Touch_GlassBody(false));
+	Touch_Shape_Disc(base, r, TOUCH_C_SURFACE, theAlpha * TOUCH_A_SURFACE * 0.75 * Touch_GlassBody(false));
 	Touch_Widget_Rim(base, r, TOUCH_C_RIM, theAlpha * TOUCH_A_RIM * 0.85);
 
 	vector knob_rgb = TOUCH_C_RIM;
@@ -73,8 +73,9 @@ void Touch_DrawMoveStick(float theAlpha)
 		knob_a = TOUCH_A_RIM_ACTIVE;
 		Touch_Shape_Glow(knob_c, knob_r * 1.6, TOUCH_C_ACCENT, theAlpha * TOUCH_A_GLOW);
 	}
-	Touch_Shape_Shadow(knob_c + eY * Touch_Widget_Elevation(knob_r), knob_r * 1.20, theAlpha * TOUCH_A_SHADOW);
-	Touch_Shape_Disc(knob_c, knob_r, knob_rgb, theAlpha * knob_a);
+	Touch_Shape_Shadow(knob_c + eY * Touch_Widget_Elevation(knob_r), knob_r * 1.20, theAlpha * TOUCH_A_SHADOW * Touch_GlassBody(false));
+	// The knob is what moves, so it keeps a body even when hollow.
+	Touch_Shape_Disc(knob_c, knob_r, knob_rgb, theAlpha * knob_a * Touch_GlassBody(true));
 	Touch_Widget_Rim(knob_c, knob_r, TOUCH_C_RIM, theAlpha * TOUCH_A_RIM_ACTIVE);
 }
 
@@ -107,8 +108,8 @@ void Touch_DrawWeaponWheel(float theAlpha)
 		Touch_Glass_DrawCircleOutline(center, radius, TOUCH_C_RIM, theAlpha * 0.4, 2);
 		return;
 	}
-	Touch_Shape_Shadow(center + eY * Touch_Widget_Elevation(radius), radius * 1.06, theAlpha * TOUCH_A_SHADOW);
-	Touch_Shape_Disc(center, radius, TOUCH_C_SURFACE, theAlpha * TOUCH_A_SURFACE_ACTIVE);
+	Touch_Shape_Shadow(center + eY * Touch_Widget_Elevation(radius), radius * 1.06, theAlpha * TOUCH_A_SHADOW * Touch_GlassBody(false));
+	Touch_Shape_Disc(center, radius, TOUCH_C_SURFACE, theAlpha * TOUCH_A_SURFACE_ACTIVE * Touch_GlassBody(false));
 	Touch_Widget_Rim(center, radius, TOUCH_C_RIM, theAlpha * TOUCH_A_RIM);
 }
 

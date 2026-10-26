@@ -20,6 +20,7 @@ void TouchMenu_WriteLayoutFile(string path)
 	TouchMenu_ConfigWriteString(fh, "touch_preset");
 	TouchMenu_ConfigWriteFloat(fh, "touch_scale");
 	TouchMenu_ConfigWriteFloat(fh, "touch_opacity");
+	TouchMenu_ConfigWriteFloat(fh, "touch_glass_hollow");
 	TouchMenu_ConfigWriteFloat(fh, "touch_move_x");
 	TouchMenu_ConfigWriteFloat(fh, "touch_move_y");
 	TouchMenu_ConfigWriteFloat(fh, "touch_move_size");

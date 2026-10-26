@@ -100,11 +100,15 @@ void XonoticTouchSettingsTab_fill(entity me)
 		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Vertical:")));
 		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(0.5, 1.5, 0.05, "touch_sens_y_mult", _("Pitch vs yaw multiplier")));
 		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "touch_invert_y", _("Invert look Y"), string_null));
+	// Three sliders to a row: the tab has no spare rows (15.5 must hold).
 	me.TR(me);
-		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Opacity:")));
-		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(0.3, 1.0, 0.05, "touch_opacity", _("Control overlay opacity")));
-		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Control scale:")));
-		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(0.7, 1.4, 0.05, "touch_scale", _("Size of move/fire/jump widgets")));
+		me.TD(me, 1, 0.9, e = makeXonoticTextLabel(0, _("Opacity:")));
+		me.TD(me, 1, 1.1, e = makeXonoticSlider_T(0.3, 1.0, 0.05, "touch_opacity", _("Control overlay opacity")));
+		me.TD(me, 1, 0.9, e = makeXonoticTextLabel(0, _("Scale:")));
+		me.TD(me, 1, 1.1, e = makeXonoticSlider_T(0.7, 1.4, 0.05, "touch_scale", _("Size of move/fire/jump widgets")));
+		me.TD(me, 1, 0.9, e = makeXonoticTextLabel(0, _("Glass tint:")));
+		me.TD(me, 1, 1.1, e = makeXonoticSlider_T(0, 1, 0.05, "touch_glass_hollow",
+			_("How much of each control is glass. Left: tinted glass. All the way right: hollow, only the outline and label, nothing between you and the game")));
 	// Performance shares the row: the tab has no room for its own header. Each
 	// button runs its profile once; the values are archived from then on, so
 	// a change in Settings -> Effects afterwards sticks (the launchers apply

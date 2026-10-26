@@ -807,11 +807,13 @@ void GL_Setup(void)
 		qbool es3 = version && !strncmp(version, "OpenGL ES ", 10) && atoi(version + 10) >= 3;
 		vid.support.depth24 = GL_CheckExtension("GL_OES_depth24", "-nodepth24", false) || (es3 && !Sys_CheckParm("-nodepth24"));
 		vid.support.packed_depth_stencil = GL_CheckExtension("GL_OES_packed_depth_stencil", "-nopackeddepthstencil", false) || (es3 && !Sys_CheckParm("-nopackeddepthstencil"));
+		vid.support.npot_mipmap = es3 || GL_CheckExtension("GL_OES_texture_npot", "-nonpotmipmap", false);
 	}
 #else
 	vid.support.element_index_uint = true;
 	vid.support.depth24 = true;
 	vid.support.packed_depth_stencil = true;
+	vid.support.npot_mipmap = true;
 #endif
 	vid.allowalphatocoverage = false;
 

@@ -39,6 +39,8 @@ void Touch_DefineCvars(void)
 	Touch_RegisterCvar("touch_preset", "standard");
 	Touch_RegisterCvar("touch_scale", "1.0");
 	Touch_RegisterCvar("touch_opacity", "0.90");
+	// Glass tint: 0 tinted, 1 hollow (outline and label only). Touch_GlassBody.
+	Touch_RegisterCvar("touch_glass_hollow", "0");
 	// MOVE and FIRE share a centre line: the old layout put them 0.04 apart,
 	// which is exactly the misalignment §1 of the redesign doc complains about.
 	Touch_RegisterCvar("touch_move_x", "0.170");

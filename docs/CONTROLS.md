@@ -200,6 +200,7 @@ duplicated here — three copies of a coordinate is two too many.
 | `touch_preset` | string | — | `"standard"` | Active preset id; shown in UI |
 | `touch_scale` | float | 0.8–1.3 | `1.0` | Multiplier on `vid_touchscreen_density` for all widgets |
 | `touch_opacity` | float | 0.3–1.0 | `0.65` | Overlay alpha |
+| `touch_glass_hollow` | float | 0–1 | `0` | Glass tint (Settings → Touch): 0 tinted glass, 1 hollow, only outline and label. Scales the fill and drop shadow; a press keeps some fill, and the stick knob keeps its body |
 | `touch_move_zone_w` | float | 0–1 | `0.32` | Left band where a touch grabs the move stick |
 | `touch_look_zone_left` | float | 0–1 | `0.32` | Left edge of look drag region |
 | `touch_look_zone_right` | float | 0–1 | `1.0` | Right edge (usually full width) |

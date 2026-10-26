@@ -12,6 +12,8 @@
 float Touch_Widget_LabelSize(vector half, string label);
 float Touch_Widget_FontSize(float radius);
 float Touch_Widget_Elevation(float radius);
+// 0..1 multiplier for glass fill and shadow from touch_glass_hollow.
+float Touch_GlassBody(bool pressed);
 
 // Paired dark-outside / bright-inside edge stroke. Use this rather than a bare
 // Touch_Shape_Ring for anything that must stay visible over live gameplay.

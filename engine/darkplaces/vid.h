@@ -56,6 +56,8 @@ typedef struct viddef_support_s
 	// depth+stencil ones (OES_packed_depth_stencil or ES 3). Desktop GL: true.
 	qbool depth24;
 	qbool packed_depth_stencil;
+	// Mipmaps on non-power-of-two textures: desktop GL, ES 3, OES_texture_npot.
+	qbool npot_mipmap;
 }
 viddef_support_t;
 

@@ -89,6 +89,19 @@ cachepic_t *Draw_CachePic_Flags(const char *path, unsigned int cachepicflags)
 	cachepic_t *pic;
 	int texflags;
 
+	// Xonotic Touch: the overlay's masks (gfx/touch, 256 px, antialiased) and
+	// the HUD's icons are drawn at many sizes, mostly well under their own, and
+	// unmipmapped minification turned their edges to stair steps. Whoever loads
+	// a pic first decides its flags, so decide here, for the port's CSQC, a
+	// server's CSQC and the engine HUD alike. The masks also stay uncompressed:
+	// DXT blocks smear an alpha edge, and the profiles turn compression on.
+	// HUD icons can be any size, and ES 2.0 cannot mipmap a non-power-of-two
+	// texture, so only where the GPU can.
+	if (!strncmp(path, "gfx/touch/", 10))
+		cachepicflags |= CACHEPICFLAG_MIPMAP | CACHEPICFLAG_LINEAR | CACHEPICFLAG_NOCOMPRESSION;
+	else if (!strncmp(path, "gfx/hud/", 8) && vid.support.npot_mipmap)
+		cachepicflags |= CACHEPICFLAG_MIPMAP | CACHEPICFLAG_LINEAR;
+
 	texflags = TEXF_ALPHA;
 	if (!(cachepicflags & CACHEPICFLAG_NOCLAMP))
 		texflags |= TEXF_CLAMP;

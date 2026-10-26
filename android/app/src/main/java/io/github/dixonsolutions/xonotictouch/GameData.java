@@ -203,6 +203,19 @@ final class GameData {
         progress.update(status, "", -1);
         Log.i(TAG, "Unpacking " + BUNDLE_ASSET + " for " + version);
 
+        // The touch masks moved from .tga to .png. Unpacking only adds and
+        // overwrites, and the engine tries .tga first, so a previous build's
+        // masks would keep winning over the new ones.
+        File[] staleMasks = new File(baseDir(), "data/xonotic-data.pk3dir/gfx/touch")
+                .listFiles((dir, name) -> name.endsWith(".tga"));
+        if (staleMasks != null) {
+            for (File mask : staleMasks) {
+                if (!mask.delete()) {
+                    Log.w(TAG, "Could not remove old " + mask);
+                }
+            }
+        }
+
         try (InputStream raw = context.getAssets().open(BUNDLE_ASSET)) {
             unzip(new ZipInputStream(raw), baseDir(), null, progress, status);
         }

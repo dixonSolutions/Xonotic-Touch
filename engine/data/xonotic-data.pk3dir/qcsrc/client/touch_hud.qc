@@ -139,7 +139,7 @@ void Touch_Hud_DrawBar(vector left_mid, float width, float height, float frac,
 		return;
 	}
 
-	Touch_Shape_Capsule(center, half, TOUCH_C_SHADOW, alpha * TOUCH_A_SURFACE);
+	Touch_Shape_Capsule(center, half, TOUCH_C_SHADOW, alpha * TOUCH_A_SURFACE * Touch_GlassBody(false));
 	Touch_Shape_CapsuleRing(center, half, TOUCH_W_RING_THIN, TOUCH_C_RIM,
 		alpha * TOUCH_A_GHOST);
 
@@ -375,7 +375,7 @@ void Touch_Hud_DrawWeapons(float alpha)
 	// is nine draws, so per-slot plates put the overlay at 175 draw calls.
 	Touch_Shape_RRect(eX * center.x + eY * center.y,
 		eX * (w * 0.5 + pad) + eY * (n * h * 0.5 + pad), r + pad,
-		TOUCH_C_SURFACE, alpha * TOUCH_A_SURFACE);
+		TOUCH_C_SURFACE, alpha * TOUCH_A_SURFACE * Touch_GlassBody(false));
 
 	entity wepent = viewmodels[0];
 	WepSet owned = STAT(WEAPONS);
