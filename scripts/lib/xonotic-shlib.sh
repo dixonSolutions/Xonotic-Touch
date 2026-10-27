@@ -403,6 +403,8 @@ xonotic_stage_touch_runtime() {
     local touch_perf="${XONOTIC_TOUCH_PERF_PROFILE:-thermal}"
     local user_layout="${XONOTIC_TOUCH_LAYOUT:-${HOME}/.xonotic/data/touch.layout.cfg}"
     local user_layout_legacy="${HOME}/.xonotic/touch.layout.cfg"
+    # Where touch_save writes it (fopen adds a data/); see packaging/start.sh.
+    local engine_layout="${HOME}/.xonotic/data/data/touch.layout.cfg"
 
     install -m 644 "$root/touch/xonotic.cfg" "$data_dir/xonotic.cfg"
     mkdir -p "$data_dir/touch/profiles"
@@ -420,7 +422,9 @@ xonotic_stage_touch_runtime() {
         if [ -f "$data_dir/touch/profiles/${touch_perf}.cfg" ]; then
             echo "exec touch/profiles/${touch_perf}.cfg"
         fi
-        if [ -f "$user_layout" ] || [ -f "$data_dir/touch.layout.cfg" ]; then
+        if [ -f "$engine_layout" ]; then
+            echo "exec data/touch.layout.cfg"
+        elif [ -f "$user_layout" ] || [ -f "$data_dir/touch.layout.cfg" ]; then
             echo "exec touch.layout.cfg"
         elif [ -f "$user_layout_legacy" ]; then
             echo "exec ${user_layout_legacy}"

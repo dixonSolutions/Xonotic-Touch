@@ -24,7 +24,8 @@ void TouchMenu_Export_Click(entity me, entity other)
 void TouchMenu_Import_Click(entity me, entity other)
 {
 	TouchMenu_WriteLayoutFile("touch.layout.bak");
-	localcmd("exec touch.layout.cfg\nmenu_cmd sync\n");
+	// fopen saved it one data/ deeper than exec looks; see GameData.java.
+	localcmd("exec data/touch.layout.cfg\nmenu_cmd sync\n");
 }
 
 void TouchMenu_ResetPreset_Click(entity me, entity other)

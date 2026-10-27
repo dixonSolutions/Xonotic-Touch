@@ -98,7 +98,13 @@ TOUCH_PROFILE="${XONOTIC_TOUCH_PROFILE:-standard}"
 # Thermal is the default on tablets (Surface / fanless Iris); override with balanced/quality.
 TOUCH_PERF_PROFILE="${XONOTIC_TOUCH_PERF_PROFILE:-thermal}"
 TOUCH_PROFILES_DIR="${USER_DATA}/touch/profiles"
-# CSQC writes layout under the gamedir (data/); keep legacy home path as fallback only.
+# Where touch_save and the menu's Touch tab actually put the layout: QuakeC
+# fopen prefixes a data/ of its own inside the userdir's gamedir, so the file
+# is ~/.xonotic/data/data/touch.layout.cfg and `exec data/touch.layout.cfg`
+# is the name that finds it. A bare `exec touch.layout.cfg` never did, and the
+# schema check then saved the defaults over the unread file at every launch.
+ENGINE_TOUCH_LAYOUT="${HOME}/.xonotic/data/data/touch.layout.cfg"
+# Hand-placed copies at the old paths still load when there is no saved one.
 USER_TOUCH_LAYOUT="${XONOTIC_TOUCH_LAYOUT:-${HOME}/.xonotic/data/touch.layout.cfg}"
 USER_TOUCH_LAYOUT_LEGACY="${HOME}/.xonotic/touch.layout.cfg"
 
@@ -883,7 +889,9 @@ mkdir -p "${DATA_DIR}/touch/profiles" 2>/dev/null || true
         fi
     fi
     # Prefer engine-resolved name so fopen/exec share one file (TOUCH_LAYOUT_SPEC D14).
-    if [ -f "$USER_TOUCH_LAYOUT" ] || [ -f "${DATA_DIR}/touch.layout.cfg" ]; then
+    if [ -f "$ENGINE_TOUCH_LAYOUT" ]; then
+        echo "exec data/touch.layout.cfg"
+    elif [ -f "$USER_TOUCH_LAYOUT" ] || [ -f "${DATA_DIR}/touch.layout.cfg" ]; then
         echo "exec touch.layout.cfg"
     elif [ -f "$USER_TOUCH_LAYOUT_LEGACY" ]; then
         echo "exec ${USER_TOUCH_LAYOUT_LEGACY}"

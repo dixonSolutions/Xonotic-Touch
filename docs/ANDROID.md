@@ -389,6 +389,28 @@ Android keeps the app's storage as-is, and:
 * the bundled slim payload is re-extracted on a version change — it overwrites
   its own files and deletes nothing else.
 
+Keeping the files is only half of it: the next launch also has to read them.
+An update always means a cold start, because Android kills the old process to
+install the new APK, and two things used to lose settings there:
+
+* `config.cfg` (mouse sensitivity, binds, video, name, and the
+  `touch_perf_version` that keeps the first-start performance profile from
+  going on again) was only written by a clean quit, and an Android app never
+  gets one. The engine now saves it when
+  SDL reports the app going to the background (`vid_sdl.c`), so a kill from an
+  update, from recents or from the low-memory killer costs nothing.
+* the touch layout (look speed and every other touch setting) is saved with
+  QuakeC `fopen`, which puts it at `userdata/data/data/touch.layout.cfg`.
+  `startup.cfg` execs it as `data/touch.layout.cfg`; the bare
+  `touch.layout.cfg` it used before never found it, and the CSQC's schema
+  check then saved the defaults over it. The menu's Touch tab saves the layout
+  whenever the menu closes, so its sliders need no Save press. A schema bump
+  (`TOUCH_LAYOUT_VERSION`) still resets positions, but keeps look speed,
+  sensitivity, handedness and the chosen preset (`TOUCH_MIGRATE_KEEP`).
+
+A layout lost to the old behaviour cannot be recovered: the defaults were
+written over both `touch.layout.cfg` and `touch.layout.bak`.
+
 This depends on both builds being signed with the same key. Android refuses an
 update whose signature changed, and the only way out of that is uninstalling,
 which takes the data with it. See **Signing** below.

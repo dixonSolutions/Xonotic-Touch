@@ -1580,6 +1580,17 @@ void Sys_SDL_HandleEvents(void)
 #endif
 				host.state = host_shutdown;
 				break;
+			// config.cfg is otherwise only written by a clean quit, and an
+			// Android app never gets one: an update, a swipe out of recents or
+			// the low-memory killer ends the process while it sits in the
+			// background. Everything set since launch went with it. Saving on
+			// the way out means a backgrounded game can be killed at no cost.
+			// SDL raises both from the Java side and this loop sees them before
+			// it next blocks on the pause; desktops never send them.
+			case SDL_APP_WILLENTERBACKGROUND:
+			case SDL_APP_TERMINATING:
+				Host_SaveConfig(CONFIGFILENAME);
+				break;
 			case SDL_KEYDOWN:
 			case SDL_KEYUP:
 #ifdef DEBUGSDLEVENTS

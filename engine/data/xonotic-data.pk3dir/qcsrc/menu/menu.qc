@@ -12,6 +12,7 @@
 #include "xonotic/mainwindow.qh"
 #include "xonotic/serverlist.qh"
 #include "xonotic/slider_resolution.qh"
+#include "xonotic/touch_menu_layout.qh"
 
 .string controlledCvar;
 
@@ -1051,6 +1052,14 @@ void m_hide()
 	menu_touch_keyboard_hide();
 	main.focusLeave(main);
 	main.hideNotify(main);
+
+	// The Touch tab's sliders set live cvars, and only the layout file carries
+	// them into the next launch: without this a look speed set there and never
+	// followed by "Save layout" was gone at the next cold start, which on
+	// Android is every update. Not while the in-game editor is open, whose
+	// unsaved drags belong to its own SAVE and CANCEL.
+	if (cvar("vid_touchscreen") && !cvar("touch_customize"))
+		TouchMenu_WriteLayoutFile("touch.layout.cfg");
 }
 
 void m_toggle(int mode)

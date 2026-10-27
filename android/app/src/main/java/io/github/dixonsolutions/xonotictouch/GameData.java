@@ -160,9 +160,16 @@ final class GameData {
                 .append("alias _touch_perf_apply0 \"" + device.firstRunProfileCommands() + "; seta touch_perf_version 1\"\n")
                 .append("alias _touch_perf_apply1 \"\"\n")
                 .append("_touch_perf_apply$touch_perf_version\n");
-        // The touch settings screen saves the player's layout here and execs
-        // it by this name; start.sh does the same at launch.
-        if (new File(new File(userDir(baseDir), "data"), "touch.layout.cfg").isFile()) {
+        // The player's saved layout, sensitivity included. Both savers (the
+        // in-game customize screen and the menu's Touch tab) write it with
+        // fopen, which lands in engineWriteDir -- one data/ deeper than a
+        // bare `exec touch.layout.cfg` looks. That name never found it, and
+        // the schema check then took the missing file for an old one and
+        // saved the defaults over it on every cold start. Android cold-starts
+        // after every update, so that is when the settings went.
+        if (new File(engineWriteDir(baseDir), "touch.layout.cfg").isFile()) {
+            text.append("exec data/touch.layout.cfg\n");
+        } else if (new File(new File(userDir(baseDir), "data"), "touch.layout.cfg").isFile()) {
             text.append("exec touch.layout.cfg\n");
         }
         try {

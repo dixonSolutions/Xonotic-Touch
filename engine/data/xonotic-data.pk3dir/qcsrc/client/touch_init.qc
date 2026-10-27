@@ -279,6 +279,22 @@ void Touch_WriteAllCvars(float fh)
 //
 // This runs from Touch_EnsureReady, not Touch_Init: localcmd queues, so at init
 // time the layout file has not been exec'd yet and its version is not readable.
+//
+// A schema bump is about geometry: a default that moved, a control that
+// appeared. The settings below are the player's own feel and choices, which no
+// bump has ever changed the meaning of, so they ride through it. Resetting them
+// too took the player's look speed away with every release that moved a button.
+const string TOUCH_MIGRATE_KEEP =
+	"touch_handedness touch_sens_base touch_sens_y_mult touch_invert_y "
+	"touch_look_smoothing touch_look_deadzone_px touch_look_filter "
+	"touch_look_fcmin touch_look_beta touch_look_tap_fire touch_look_tap_ms "
+	"touch_look_escape_carry touch_look_max_deg_per_s touch_look_owns_view "
+	"touch_look_glide touch_stick_deadzone touch_stick_range touch_aim_assist "
+	"touch_gyro_enabled touch_gyro_sens touch_gyro_ads_only touch_finger_grace_ms "
+	"touch_weapon_slot1 touch_weapon_slot2 touch_weapon_slot3 "
+	"touch_opacity touch_glass_hollow "
+	"touch_setup_done touch_profile_done touch_update_auto";
+
 void Touch_MigrateLayout(void)
 {
 	if (!cvar("vid_touchscreen"))
@@ -290,11 +306,21 @@ void Touch_MigrateLayout(void)
 	print("Touch: layout file is schema ", ftos(saved), ", this build wants ",
 		ftos(TOUCH_LAYOUT_VERSION), " — backing it up and taking the new defaults.\n");
 	Touch_SaveLayoutFile("touch.layout.bak");
+	// Read before the reset: the preset is the table's first entry.
+	string preset = autocvar_touch_preset;
+	string keep = "";
+	float n = tokenize_console(TOUCH_MIGRATE_KEEP);
+	for (float i = 0; i < n; ++i)
+		keep = strcat(keep, "seta ", argv(i), " \"", cvar_string(argv(i)), "\"\n");
 	Touch_ResetDefaults();
 	cvar_set("touch_layout_version", ftos(TOUCH_LAYOUT_VERSION));
-	// Re-stating the chosen preset keeps a player who picked "competitive" on it.
-	localcmd(strcat("exec touch/profiles/", autocvar_touch_preset, ".cfg\n"));
-	Touch_SaveLayoutFile(autocvar_touch_layout_file);
+	cvar_set("touch_preset", preset);
+	// Re-stating the chosen preset keeps a player who picked "competitive" on
+	// it; the kept settings go on top, and the save is queued behind both, so
+	// the file holds what they set rather than the bare defaults.
+	localcmd(strcat("exec touch/profiles/", preset, ".cfg\n"));
+	localcmd(keep);
+	localcmd("touch_save\n");
 }
 
 void Touch_Init(void)
