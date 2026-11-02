@@ -166,6 +166,7 @@ cvar_t r_viewscale_fpsscaling_multiply = {CF_CLIENT | CF_ARCHIVE, "r_viewscale_f
 cvar_t r_viewscale_fpsscaling_stepsize = {CF_CLIENT | CF_ARCHIVE, "r_viewscale_fpsscaling_stepsize", "0.01", "smallest adjustment to hit the target framerate (this value prevents minute oscillations)"};
 cvar_t r_viewscale_fpsscaling_stepmax = {CF_CLIENT | CF_ARCHIVE, "r_viewscale_fpsscaling_stepmax", "1.00", "largest adjustment to hit the target framerate (this value prevents wild overshooting of the estimate)"};
 cvar_t r_viewscale_fpsscaling_target = {CF_CLIENT | CF_ARCHIVE, "r_viewscale_fpsscaling_target", "70", "desired framerate"};
+cvar_t r_viewscale_maxheight = {CF_CLIENT | CF_ARCHIVE, "r_viewscale_maxheight", "0", "draw the 3D view at no more than this many pixel rows and scale it up to the screen, the HUD stays at full resolution (0 = off); a phone or tablet panel has far more pixels than its GPU fills at 60 fps"};
 
 cvar_t r_glsl_skeletal = {CF_CLIENT | CF_ARCHIVE, "r_glsl_skeletal", "1", "render skeletal models faster using a gpu-skinning technique"};
 cvar_t r_glsl_deluxemapping = {CF_CLIENT | CF_ARCHIVE, "r_glsl_deluxemapping", "1", "use per pixel lighting on deluxemap-compiled q3bsp maps (or a value of 2 forces deluxemap shading even without deluxemaps)"};
@@ -3339,6 +3340,7 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_viewscale_fpsscaling_stepsize);
 	Cvar_RegisterVariable(&r_viewscale_fpsscaling_stepmax);
 	Cvar_RegisterVariable(&r_viewscale_fpsscaling_target);
+	Cvar_RegisterVariable(&r_viewscale_maxheight);
 	Cvar_RegisterVariable(&r_glsl_deluxemapping);
 	Cvar_RegisterVariable(&r_glsl_offsetmapping);
 	Cvar_RegisterVariable(&r_glsl_offsetmapping_steps);
@@ -4895,6 +4897,8 @@ static void R_Water_ProcessPlanes(int fbo, rtexture_t *depthtexture, rtexture_t 
 			if(r_water_scissormode.integer & 1)
 				GL_Scissor(myscissor[0], myscissor[1], myscissor[2], myscissor[3]);
 			R_RenderScene(rt->fbo, rt->depthtexture, rt->colortexture[0], 0, 0, rt->texturewidth, rt->textureheight);
+			R_Mesh_SetRenderTargets(rt->fbo);
+			R_Mesh_InvalidateDepthStencil();
 
 			r_fb.water.hideplayer = false;
 			p->rt_reflection = rt;
@@ -4960,6 +4964,8 @@ static void R_Water_ProcessPlanes(int fbo, rtexture_t *depthtexture, rtexture_t 
 			if(r_water_scissormode.integer & 1)
 				GL_Scissor(myscissor[0], myscissor[1], myscissor[2], myscissor[3]);
 			R_RenderScene(rt->fbo, rt->depthtexture, rt->colortexture[0], 0, 0, rt->texturewidth, rt->textureheight);
+			R_Mesh_SetRenderTargets(rt->fbo);
+			R_Mesh_InvalidateDepthStencil();
 
 			r_fb.water.hideplayer = false;
 			p->rt_refraction = rt;
@@ -5019,6 +5025,8 @@ static void R_Water_ProcessPlanes(int fbo, rtexture_t *depthtexture, rtexture_t 
 			R_View_Update(NULL);
 			R_AnimCache_CacheVisibleEntities();
 			R_RenderScene(rt->fbo, rt->depthtexture, rt->colortexture[0], 0, 0, rt->texturewidth, rt->textureheight);
+			R_Mesh_SetRenderTargets(rt->fbo);
+			R_Mesh_InvalidateDepthStencil();
 
 			r_fb.water.hideplayer = false;
 			p->rt_camera = rt;
@@ -5100,6 +5108,12 @@ static void R_Bloom_StartFrame(void)
 		viewscalefpsadjusted = 1.0f;
 
 	scale = r_viewscale.value * sqrt(viewscalefpsadjusted);
+	// Xonotic Touch: a cap on rows rather than a fixed factor, so one setting
+	// suits a 720p phone (untouched), a 1080p one (two thirds) and a 1600p
+	// tablet (under half) alike. Every view shrinks by the same factor, from
+	// the window's height, so a CSQC camera view is not sharper than the main one.
+	if (r_viewscale_maxheight.integer > 0 && vid.mode.height > r_viewscale_maxheight.integer)
+		scale *= (double)r_viewscale_maxheight.integer / vid.mode.height;
 	if (vid.mode.samples)
 		scale *= sqrt(vid.mode.samples); // supersampling
 	scale = bound(0.03125f, scale, 4.0f);
@@ -5609,13 +5623,29 @@ static r_refdef_scene_t r_scenes_store[ RST_COUNT ];
 R_SelectScene
 ================
 */
+/*
+ * Copy a scene, but of its templights only the ones in use: the array holds
+ * MAX_DLIGHTS whole rtlights, hundreds of KB, and the menu's scene swaps in
+ * and out around m_draw on every frame, menu open or not. Every templight in
+ * use sits below numlights (they are handed out in order, and lights[] points
+ * into them).
+ */
+static void R_CopyScene(r_refdef_scene_t *out, const r_refdef_scene_t *in)
+{
+	const size_t head = offsetof(r_refdef_scene_t, templights);
+	const size_t tail = head + sizeof(in->templights);
+	memcpy(out, in, head);
+	memcpy(out->templights, in->templights, bound(0, in->numlights, MAX_DLIGHTS) * sizeof(in->templights[0]));
+	memcpy((unsigned char *)out + tail, (const unsigned char *)in + tail, sizeof(*in) - tail);
+}
+
 void R_SelectScene( r_refdef_scene_type_t scenetype ) {
 	if( scenetype != r_currentscenetype ) {
 		// store the old scenetype
-		r_scenes_store[ r_currentscenetype ] = r_refdef.scene;
+		R_CopyScene(&r_scenes_store[ r_currentscenetype ], &r_refdef.scene);
 		r_currentscenetype = scenetype;
 		// move in the new scene
-		r_refdef.scene = r_scenes_store[ r_currentscenetype ];
+		R_CopyScene(&r_refdef.scene, &r_scenes_store[ r_currentscenetype ]);
 	}
 }
 
@@ -5827,7 +5857,12 @@ void R_RenderView(int fbo, rtexture_t *depthtexture, rtexture_t *colortexture, i
 
 	R_MotionBlurView(viewfbo, viewdepthtexture, viewcolortexture, viewx, viewy, viewwidth, viewheight);
 	if (!skipblend)
+	{
+		// Only the colour of the scene goes on to the screen.
+		R_Mesh_SetRenderTargets(viewfbo);
+		R_Mesh_InvalidateDepthStencil();
 		R_BlendView(viewcolortexture, fbo, depthtexture, colortexture, x, y, width, height);
+	}
 	if (r_timereport_active)
 		R_TimeReport("blendview");
 

@@ -810,6 +810,15 @@ void GL_Setup(void)
 		vid.support.depth24 = GL_CheckExtension("GL_OES_depth24", "-nodepth24", false) || (es3 && !Sys_CheckParm("-nodepth24"));
 		vid.support.packed_depth_stencil = GL_CheckExtension("GL_OES_packed_depth_stencil", "-nopackeddepthstencil", false) || (es3 && !Sys_CheckParm("-nopackeddepthstencil"));
 		vid.support.npot_mipmap = es3 || GL_CheckExtension("GL_OES_texture_npot", "-nonpotmipmap", false);
+		vid.support.invalidateframebuffer = NULL;
+		if (!Sys_CheckParm("-noinvalidateframebuffer"))
+		{
+			if (es3)
+				vid.support.invalidateframebuffer = (void (*)(unsigned int, int, const unsigned int *))GL_GetProcAddress("glInvalidateFramebuffer");
+			if (!vid.support.invalidateframebuffer && GL_CheckExtension("GL_EXT_discard_framebuffer", "-nodiscardframebuffer", false))
+				vid.support.invalidateframebuffer = (void (*)(unsigned int, int, const unsigned int *))GL_GetProcAddress("glDiscardFramebufferEXT");
+		}
+		Con_DPrintf("Discarding depth and stencil after use: %s\n", vid.support.invalidateframebuffer ? "yes" : "no");
 	}
 #else
 	vid.support.element_index_uint = true;
@@ -826,6 +835,7 @@ void GL_Setup(void)
 // COMMANDLINEOPTION: GL: -nogldebugoutput disables GL_ARB_debug_output (which provides the gl_debug feature, if enabled)
 // COMMANDLINEOPTION: GL: -nodepth24 disables 24bit depth render targets on GLES2 (GL_OES_depth24)
 // COMMANDLINEOPTION: GL: -nopackeddepthstencil disables packed depth+stencil render targets on GLES2 (GL_OES_packed_depth_stencil)
+// COMMANDLINEOPTION: GL: -noinvalidateframebuffer disables discarding depth and stencil after use on GLES (glInvalidateFramebuffer, GL_EXT_discard_framebuffer)
 
 #ifdef WIN32
 	// gl_texturecompression_color is somehow broken on AMD's Windows driver,
