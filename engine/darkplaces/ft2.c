@@ -1968,6 +1968,16 @@ static inline qbool get_char_from_incmap(ft2_font_map_t *map, Uchar ch, ft2_font
  * Query for or load a font map for a character, with the character's place on it.
  * Supports the incremental map mechanism; returning if the operation is done successfully
  */
+// Whether the font or one of its fallbacks has a glyph for ch, so it draws as
+// itself and not as the missing-glyph box.
+qbool Font_HasGlyph(ft2_font_t *font, Uchar ch)
+{
+	for (; font; font = font->next)
+		if (font->face && qFT_Get_Char_Index((FT_Face)font->face, ch) != 0)
+			return true;
+	return false;
+}
+
 qbool Font_GetMapForChar(ft2_font_t *font, int map_index, Uchar ch, ft2_font_map_t **outmap, int *outmapch)
 {
 	qbool use_incmap;

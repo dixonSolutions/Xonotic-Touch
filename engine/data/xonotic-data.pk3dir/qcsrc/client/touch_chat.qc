@@ -21,11 +21,13 @@ vector touch_chat_pill_down;
 int touch_chat_hot_row;
 int touch_chat_hot_cell;
 int touch_chat_hot_button;
+float touch_chat_hot_time;
 
 const int TOUCH_CHAT_BTN_NONE  = -1;
 const int TOUCH_CHAT_BTN_CLOSE = 0;
 const int TOUCH_CHAT_BTN_TEAM  = 1;
-const int TOUCH_CHAT_BTN_COUNT = 2;
+const int TOUCH_CHAT_BTN_KEYS  = 2;
+const int TOUCH_CHAT_BTN_COUNT = 3;
 
 void Touch_Chat_Reset(void)
 {
@@ -209,7 +211,8 @@ bool Touch_Chat_KeyEvent(float bInputType, float nPrimary, float nSecondary)
 	{
 		// strcpy frees the old text before it reads the new one.
 		string next = Touch_Kb_Type(touch_chat_text, nPrimary, nSecondary);
-		strcpy(touch_chat_text, next);
+		if (next != touch_chat_text)
+			strcpy(touch_chat_text, next);
 	}
 	return true;
 }
@@ -295,7 +298,13 @@ vector Touch_Chat_FieldCenter(void)
 vector Touch_Chat_ButtonHalf(void)
 {
 	float h = Touch_MMToUnits(TOUCH_MM_COMFORT) * 0.6;
-	return eX * (h * 2.4) + eY * h;
+	// As wide as they comfortably go, but never over the title on the left.
+	float fs = TOUCH_FONT_READOUT * Touch_UIScale();
+	float title = stringwidth("TEAM MESSAGE", false, '1 1 0' * fs);
+	float gap = TOUCH_SPACE_2 * Touch_UIScale();
+	float room = Touch_Chat_InnerHalf().x * 2 - title - gap * TOUCH_CHAT_BTN_COUNT;
+	float w = min(h * 2.4, room / TOUCH_CHAT_BTN_COUNT * 0.5);
+	return eX * max(h, w) + eY * h;
 }
 
 vector Touch_Chat_ButtonCenter(int idx)
@@ -331,6 +340,7 @@ void Touch_Chat_PointerDown(vector p)
 	{
 		touch_chat_hot_row = Touch_Kb_HitRow();
 		touch_chat_hot_cell = Touch_Kb_HitCell();
+		touch_chat_hot_time = time;
 	}
 }
 
@@ -340,6 +350,11 @@ void Touch_Chat_PointerMove(vector p)
 	{
 		if (Touch_Chat_HitButton(p) != touch_chat_hot_button)
 			touch_chat_hot_button = TOUCH_CHAT_BTN_NONE;
+		return;
+	}
+	if (Touch_Kb_PopupOpen())
+	{
+		Touch_Kb_PopupSlide(p);
 		return;
 	}
 	if (touch_chat_hot_row < 0)
@@ -367,6 +382,25 @@ void Touch_Chat_PointerUp(void)
 		touch_chat_hot_button = TOUCH_CHAT_BTN_NONE;
 		return;
 	}
+	if (touch_chat_hot_button == TOUCH_CHAT_BTN_KEYS)
+	{
+		Touch_Kb_ToggleHidden();
+		touch_chat_hot_button = TOUCH_CHAT_BTN_NONE;
+		return;
+	}
+	if (Touch_Kb_PopupOpen())
+	{
+		touch_chat_hot_row = -1;
+		touch_chat_hot_cell = -1;
+		string c = Touch_Kb_PopupPick();
+		if (c != "" && strlen(touch_chat_text) < autocvar_touch_kb_maxlen)
+		{
+			string picked = strcat(touch_chat_text, c);
+			strcpy(touch_chat_text, picked);
+		}
+		Touch_Kb_ReleaseShift();
+		return;
+	}
 	if (touch_chat_hot_row < 0)
 		return;
 
@@ -385,7 +419,10 @@ void Touch_Chat_PointerUp(void)
 	// evaluates the argument, so f() reads a freed string. Every keypress read
 	// the buffer as empty and the field held only the last character typed.
 	string next = Touch_Kb_Apply(touch_chat_text, row, cell);
-	strcpy(touch_chat_text, next);
+	// Shift and ?123 hand back the text itself; strcpy would free it before
+	// copying it, and the message was gone after every shift.
+	if (next != touch_chat_text)
+		strcpy(touch_chat_text, next);
 }
 
 void Touch_Chat_Frame(void)
@@ -402,7 +439,13 @@ void Touch_Chat_Frame(void)
 	else if (Touch_Pointer_Released())
 		Touch_Chat_PointerUp();
 	else if (Touch_Pointer_IsDown())
+	{
 		Touch_Chat_PointerMove(Touch_Pointer_Pos());
+		// Held on a character with variants: they pop up over the key. Keys
+		// type on release, so the timer never holds back a tap.
+		if (touch_chat_hot_row >= 0)
+			Touch_Kb_HoldCheck(touch_chat_hot_row, touch_chat_hot_cell, time - touch_chat_hot_time);
+	}
 }
 
 void Touch_Chat_DrawHistory(float alpha)
@@ -480,6 +523,12 @@ void Touch_Chat_Draw(void)
 		TOUCH_C_DANGER);
 	Touch_Widget_Key(Touch_Chat_ButtonCenter(TOUCH_CHAT_BTN_TEAM), bhalf, "TEAM",
 		touch_chat_hot_button == TOUCH_CHAT_BTN_TEAM, touch_chat_team, false, alpha,
+		TOUCH_C_ACCENT);
+	// With a keyboard attached the glass keys start hidden; this brings them
+	// back, and hides them again.
+	Touch_Widget_Key(Touch_Chat_ButtonCenter(TOUCH_CHAT_BTN_KEYS), bhalf,
+		(Touch_Kb_Hidden() ? "KEYBOARD" : "HIDE KEYS"),
+		touch_chat_hot_button == TOUCH_CHAT_BTN_KEYS, false, false, alpha,
 		TOUCH_C_ACCENT);
 
 	Touch_Chat_DrawHistory(alpha);

@@ -1579,6 +1579,17 @@ static void SCR_DrawTouchscreenOverlay(void)
 		DrawQ_Fill(0, 0, vid_conwidth.integer, vid_conheight.integer, 0.02f, 0.04f, 0.08f, shade, 0);
 	}
 
+	// The keys cover the HUD chat panel and the line being typed on it: show
+	// that line again just above them. Drawn before the keys so a hold popup
+	// on the top row lands over it.
+	if (kd == key_message && scr_numtouchscreenareas > 0 && TouchUI_ChatKeysTop() > 0)
+	{
+		float size = bound(14.0f, vid_conheight.value * 0.035f, 24.0f);
+		float top = TouchUI_ChatKeysTop() - size - 12.0f;
+		DrawQ_Fill(0, top, vid_conwidth.integer, size + 12.0f, 0.02f, 0.04f, 0.08f, 0.85f, 0);
+		Con_DrawChatInputAt(8.0f, top + 6.0f, size);
+	}
+
 	for (i = 0, a = scr_touchscreenareas;i < scr_numtouchscreenareas;i++, a++)
 	{
 		if (vid_touchscreen_outlinealpha.value > 0 && a->rect[0] >= 0 && a->rect[1] >= 0 && a->rect[2] >= 4 && a->rect[3] >= 4

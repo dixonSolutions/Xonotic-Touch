@@ -7,6 +7,18 @@ bool touch_kb_shift;
 bool touch_kb_symbols;
 int touch_kb_hit_row;
 int touch_kb_hit_cell;
+int touch_kb_shown_override = -1; // -1 = follow vid_keyboard_detected
+bool touch_kb_shown_override_for;
+
+bool touch_kb_pop_open;
+string touch_kb_pop_chars;        // the key's own character, then its variants
+int touch_kb_pop_sel;             // -1 = away from the row
+vector touch_kb_pop_key_c;
+vector touch_kb_pop_key_half;
+vector touch_kb_pop_cell_half;
+float touch_kb_pop_left;          // left edge of the row
+float touch_kb_pop_y;             // centre line of the row
+bool touch_kb_pop_rtl;            // own character on the right, near the screen edge
 
 void Touch_Kb_Reset(void)
 {
@@ -14,6 +26,7 @@ void Touch_Kb_Reset(void)
 	touch_kb_symbols = false;
 	touch_kb_hit_row = -1;
 	touch_kb_hit_cell = -1;
+	touch_kb_pop_open = false;
 }
 
 bool Touch_Kb_Shifted(void)
@@ -126,7 +139,20 @@ float Touch_Kb_CellOffset(int row, int cell)
 
 bool Touch_Kb_Hidden(void)
 {
-	return cvar("vid_keyboard_detected") > 0;
+	bool def = cvar("vid_keyboard_detected") > 0;
+	if (touch_kb_shown_override >= 0 && touch_kb_shown_override_for != def)
+		touch_kb_shown_override = -1;
+	if (touch_kb_shown_override >= 0)
+		return !touch_kb_shown_override;
+	return def;
+}
+
+void Touch_Kb_ToggleHidden(void)
+{
+	bool hidden = Touch_Kb_Hidden();
+	touch_kb_shown_override_for = cvar("vid_keyboard_detected") > 0;
+	touch_kb_shown_override = hidden ? 1 : 0;
+	touch_kb_pop_open = false;
 }
 
 float Touch_Kb_Height(void)
@@ -370,5 +396,154 @@ void Touch_Kb_Draw(float alpha, int hot_row, int hot_cell)
 			Touch_Widget_Key(c, half, Touch_Kb_CellLabel(row, cell), hot, on,
 				act == TOUCH_KB_SEND, alpha, accent);
 		}
+	}
+	Touch_Kb_DrawPopup(alpha);
+}
+
+// ---------------------------------------------------------------------------
+// Hold for special characters
+// ---------------------------------------------------------------------------
+// Checked against Xolonium (the HUD font, unifont behind it): every one of these
+// has a glyph, so none draws as a box. The engine sheet checks its fonts at
+// run time (Font_HasGlyph).
+
+string Touch_Kb_VariantsOf(string c)
+{
+	if (c == "a") return "àáâäæãåā";   if (c == "A") return "ÀÁÂÄÆÃÅĀ";
+	if (c == "e") return "èéêëē";      if (c == "E") return "ÈÉÊËĒ";
+	if (c == "i") return "ìíîïī";      if (c == "I") return "ÌÍÎÏĪ";
+	if (c == "o") return "òóôöõøœō";   if (c == "O") return "ÒÓÔÖÕØŒŌ";
+	if (c == "u") return "ùúûüū";      if (c == "U") return "ÙÚÛÜŪ";
+	if (c == "c") return "çćč";        if (c == "C") return "ÇĆČ";
+	if (c == "n") return "ñń";         if (c == "N") return "ÑŃ";
+	if (c == "s") return "ßśš";        if (c == "S") return "ẞŚŠ";
+	if (c == "y") return "ýÿ";         if (c == "Y") return "ÝŸ";
+	if (c == "z") return "žźż";        if (c == "Z") return "ŽŹŻ";
+	if (c == "l") return "ł";          if (c == "L") return "Ł";
+	if (c == "-") return "–—";
+	if (c == "'") return "‘’";
+	if (c == "\"") return "“”";
+	if (c == "?") return "¿";
+	if (c == "!") return "¡";
+	if (c == "$") return "€£¥";
+	if (c == ".") return "…";
+	return "";
+}
+
+bool Touch_Kb_PopupOpen(void)
+{
+	return touch_kb_pop_open;
+}
+
+float Touch_Kb_PopupCellX(int i)
+{
+	float w = touch_kb_pop_cell_half.x * 2;
+	int n = strlen(touch_kb_pop_chars);
+	// Own character over the key, the others running away from the near edge.
+	return touch_kb_pop_left + w * ((touch_kb_pop_rtl ? (n - 1 - i) : i) + 0.5);
+}
+
+bool Touch_Kb_HoldCheck(int row, int cell, float held)
+{
+	float hold = cvar("touch_kb_hold_time");
+	if (touch_kb_pop_open || hold <= 0 || held < hold)
+		return false;
+	if (Touch_Kb_CellAction(row, cell) != TOUCH_KB_CHAR)
+		return false;
+	string c = Touch_Kb_CellText(row, cell);
+	string v = Touch_Kb_VariantsOf(c);
+	if (c == "" || v == "")
+		return false;
+
+	vector ui = Touch_UISize();
+	float m = Touch_Kb_SideMargin();
+	strcpy(touch_kb_pop_chars, strcat(c, v));
+	int n = strlen(touch_kb_pop_chars);
+	touch_kb_pop_key_c = Touch_Kb_CellCenter(row, cell);
+	touch_kb_pop_key_half = Touch_Kb_CellHalf(row, cell);
+	touch_kb_pop_cell_half = eX * max(touch_kb_pop_key_half.x, touch_kb_pop_key_half.y * 0.8)
+		+ eY * (touch_kb_pop_key_half.y * 1.1);
+	float w = touch_kb_pop_cell_half.x * 2;
+	float own_left = touch_kb_pop_key_c.x - touch_kb_pop_cell_half.x;
+	touch_kb_pop_rtl = false;
+	touch_kb_pop_left = own_left;
+	if (own_left + n * w > ui.x - m)
+	{
+		touch_kb_pop_rtl = true;
+		touch_kb_pop_left = own_left + w - n * w;
+		if (touch_kb_pop_left < m)
+		{
+			touch_kb_pop_rtl = false;
+			touch_kb_pop_left = max(m, ui.x - m - n * w);
+		}
+	}
+	touch_kb_pop_y = touch_kb_pop_key_c.y - touch_kb_pop_key_half.y
+		- touch_kb_pop_cell_half.y - touch_kb_pop_key_half.y * 0.3;
+	touch_kb_pop_sel = 0;
+	touch_kb_pop_open = true;
+	return true;
+}
+
+// From the row down to the held key the nearest cell is picked; well away from
+// that band nothing is, and releasing there types nothing.
+void Touch_Kb_PopupSlide(vector p)
+{
+	if (!touch_kb_pop_open)
+		return;
+	int n = strlen(touch_kb_pop_chars);
+	float w = touch_kb_pop_cell_half.x * 2;
+	float top = touch_kb_pop_y - touch_kb_pop_cell_half.y * 2.5;
+	float bottom = touch_kb_pop_key_c.y + touch_kb_pop_key_half.y * 2;
+	if (p.y < top || p.y > bottom || p.x < touch_kb_pop_left - w * 0.5
+		|| p.x > touch_kb_pop_left + n * w + w * 0.5)
+	{
+		touch_kb_pop_sel = -1;
+		return;
+	}
+	int i;
+	float best = 1000000;
+	for (i = 0; i < n; i += 1)
+	{
+		float d = fabs(p.x - Touch_Kb_PopupCellX(i));
+		if (d < best)
+		{
+			best = d;
+			touch_kb_pop_sel = i;
+		}
+	}
+}
+
+void Touch_Kb_ReleaseShift(void)
+{
+	touch_kb_shift = false;
+}
+
+string Touch_Kb_PopupPick(void)
+{
+	if (!touch_kb_pop_open)
+		return "";
+	touch_kb_pop_open = false;
+	if (touch_kb_pop_sel < 0)
+		return "";
+	return substring(touch_kb_pop_chars, touch_kb_pop_sel, 1);
+}
+
+void Touch_Kb_DrawPopup(float alpha)
+{
+	if (!touch_kb_pop_open || Touch_Kb_Hidden())
+		return;
+	int n = strlen(touch_kb_pop_chars);
+	vector half = touch_kb_pop_cell_half;
+	// Opaque, so the keys it covers do not read through it.
+	drawfill_builtin(eX * (touch_kb_pop_left - 2) + eY * (touch_kb_pop_y - half.y - 2),
+		eX * (n * half.x * 2 + 4) + eY * (half.y * 2 + 4), TOUCH_C_SURFACE, alpha,
+		DRAWFLAG_NORMAL);
+	Touch_DebugAddFills(1);
+	int i;
+	for (i = 0; i < n; i += 1)
+	{
+		vector c = eX * Touch_Kb_PopupCellX(i) + eY * touch_kb_pop_y;
+		Touch_Widget_Key(c, half - '2 2 0', substring(touch_kb_pop_chars, i, 1),
+			i == touch_kb_pop_sel, false, false, alpha, TOUCH_C_ACCENT);
 	}
 }
