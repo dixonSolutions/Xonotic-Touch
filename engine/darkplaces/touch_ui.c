@@ -33,10 +33,10 @@ static int touchui_bksp_finger = -1;
  * Keys shown or hidden. With the touch controls on and no keyboard listed the
  * sheet shows its keys, as it always has; otherwise they start hidden and the
  * KEYBOARD toggle in the header opens them. The player's choice holds until
- * that default changes (a keyboard plugged in, a switch of input mode).
+ * a keyboard is plugged in or out or the input mode switches.
  */
 static int touchui_keys_override = -1;
-static qbool touchui_keys_override_for;
+static int touchui_keys_override_for;
 
 static float touchui_chat_keys_top = -1;
 
@@ -275,28 +275,30 @@ void TouchUI_ResetInputState(void)
 	memset(touchui_press, 0, sizeof(touchui_press));
 }
 
-static qbool TouchUI_KeysByDefault(void)
+/* Touch controls on or off, keyboard listed or not. */
+static int TouchUI_KeysContext(void)
 {
-	return vid_touchscreen.integer && !VID_HasKeyboard();
+	return (vid_touchscreen.integer ? 2 : 0) | (VID_HasKeyboard() ? 1 : 0);
 }
 
 qbool TouchUI_KeysShown(touchui_sheet_t kind)
 {
-	qbool def;
+	int ctx;
 	/* The settings preview is a picture of the touch sheet. */
 	if (kind == TOUCHUI_SHEET_PREVIEW)
 		return true;
-	def = TouchUI_KeysByDefault();
-	if (touchui_keys_override >= 0 && touchui_keys_override_for != def)
+	ctx = TouchUI_KeysContext();
+	if (touchui_keys_override >= 0 && touchui_keys_override_for != ctx)
 		touchui_keys_override = -1;
-	return touchui_keys_override >= 0 ? touchui_keys_override != 0 : def;
+	if (touchui_keys_override >= 0)
+		return touchui_keys_override != 0;
+	return ctx == 2; /* touch controls on, no keyboard */
 }
 
 static void TouchUI_ToggleKeys(void)
 {
-	qbool def = TouchUI_KeysByDefault();
 	touchui_keys_override = TouchUI_KeysShown(TOUCHUI_SHEET_CONSOLE) ? 0 : 1;
-	touchui_keys_override_for = def;
+	touchui_keys_override_for = TouchUI_KeysContext();
 	touchui_popup.open = false;
 }
 
