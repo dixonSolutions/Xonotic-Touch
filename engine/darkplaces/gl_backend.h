@@ -54,6 +54,9 @@ void GL_CaptureVideo_EndVideo(void);
 int R_Mesh_CreateFramebufferObject(rtexture_t *depthtexture, rtexture_t *colortexture, rtexture_t *colortexture2, rtexture_t *colortexture3, rtexture_t *colortexture4);
 void R_Mesh_DestroyFramebufferObject(int fbo);
 void R_Mesh_SetRenderTargets(int fbo);
+/// Tell the GPU the bound framebuffer's depth and stencil will not be read
+/// again (GLES only, no-op elsewhere): a tiled GPU then skips writing them out.
+void R_Mesh_InvalidateDepthStencil(void);
 
 unsigned int GL_Backend_CompileProgram(int vertexstrings_count, const char **vertexstrings_list, int geometrystrings_count, const char **geometrystrings_list, int fragmentstrings_count, const char **fragmentstrings_list);
 void GL_Backend_FreeProgram(unsigned int prog);

@@ -2609,6 +2609,11 @@ void VID_Finish (void)
 			CHECKGLERROR
 			if (r_speeds.integer == 2 || gl_finish.integer)
 				GL_Finish();
+			// Nothing reads the window's depth or stencil after this frame
+			// (the next one starts with a clear), so a tiled GPU need not
+			// write them out.
+			R_Mesh_SetRenderTargets(0);
+			R_Mesh_InvalidateDepthStencil();
 			{
 				// The swap blocks on vsync. That is waiting, not work, and the
 				// Android performance hint must not count it (Sys_PerfHint_Frame).

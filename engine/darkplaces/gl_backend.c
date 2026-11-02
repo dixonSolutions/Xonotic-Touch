@@ -1089,6 +1089,20 @@ void R_Mesh_SetRenderTargets(int fbo)
 	}
 }
 
+void R_Mesh_InvalidateDepthStencil(void)
+{
+	// GL_DEPTH_ATTACHMENT/GL_STENCIL_ATTACHMENT name a framebuffer object's
+	// buffers; the window's own are GL_DEPTH/GL_STENCIL (the same values as
+	// EXT_discard_framebuffer's GL_DEPTH_EXT/GL_STENCIL_EXT).
+	static const unsigned int fboattachments[2] = {0x8D00, 0x8D20};
+	static const unsigned int windowattachments[2] = {0x1801, 0x1802};
+	if (vid.renderpath != RENDERPATH_GLES2 || !vid.support.invalidateframebuffer)
+		return;
+	CHECKGLERROR
+	vid.support.invalidateframebuffer(GL_FRAMEBUFFER, 2, (gl_state.framebufferobject || gl_state.defaultframebufferobject) ? fboattachments : windowattachments);
+	CHECKGLERROR
+}
+
 static void GL_Backend_ResetState(void)
 {
 	gl_state.active = true;

@@ -700,10 +700,21 @@ float cvar (string)
 void VM_cvar(prvm_prog_t *prog)
 {
 	char string[VM_TEMPSTRING_MAXSIZE];
+	const char *name = string;
+	cvar_t *cvar;
 	VM_SAFEPARMCOUNTRANGE(1,8,VM_cvar);
-	VM_VarString(prog, 0, string, sizeof(string));
-	VM_CheckEmptyString(prog, string);
-	PRVM_G_FLOAT(OFS_RETURN) = PRVM_Cvar_ReadOk(prog, string) ? Cvar_VariableValue(prog->console_cmd->cvars, string, prog->console_cmd->cvars_flagsmask) : 0;
+	// The HUDs call this a couple of hundred times a frame, nearly always
+	// with one name: read that name where it is instead of copying it, look
+	// it up once instead of twice (ReadOk, then VariableValue), and return
+	// the number the cvar already holds (value is atof(string), kept in step
+	// by every set) instead of parsing its string again.
+	if (prog->argc == 1)
+		name = PRVM_G_STRING(OFS_PARM0);
+	else
+		VM_VarString(prog, 0, string, sizeof(string));
+	VM_CheckEmptyString(prog, name);
+	cvar = Cvar_FindVar(prog->console_cmd->cvars, name, prog->console_cmd->cvars_flagsmask);
+	PRVM_G_FLOAT(OFS_RETURN) = (cvar && !(cvar->flags & CF_PRIVATE)) ? cvar->value : 0;
 }
 
 /*

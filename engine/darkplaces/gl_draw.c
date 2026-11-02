@@ -1473,7 +1473,7 @@ void DrawQ_RoundedBox(float cx, float cy, float hx, float hy, float radius, floa
 {
 	model_t *mod = CL_Mesh_UI();
 	msurface_t *surf;
-	float px, feather, rad, step, d[4], al[4], ccx[4], ccy[4];
+	float px, feather, rad, step, d[4], al[4], ccx[4], ccy[4], arcx[49], arcy[49];
 	int corner, k, j, n, centre = -1, first[4], prev[4], v[4];
 	qbool isstroke = stroke > 0, started = false;
 	if (hx <= 0 || hy <= 0 || a <= 0)
@@ -1519,18 +1519,33 @@ void DrawQ_RoundedBox(float cx, float cy, float hx, float hy, float radius, floa
 	ccx[1] = cx + hx - rad; ccy[1] = cy + hy - rad;
 	ccx[2] = cx - hx + rad; ccy[2] = cy + hy - rad;
 	ccx[3] = cx - hx + rad; ccy[3] = cy - hy + rad;
+	// One quarter arc's directions, turned a quarter at a time for the other
+	// corners. The top right's arc starts pointing straight up.
+	for (k = 0; k <= n; k++)
+	{
+		double ang = -M_PI * 0.5 + (M_PI * 0.5) * k / n;
+		arcx[k] = (float)cos(ang);
+		arcy[k] = (float)sin(ang);
+	}
+	// No vertex repeats (each ring point is its own), so they are appended
+	// rather than looked up: Mod_Mesh_IndexForVertex's search was most of
+	// what these shapes cost.
 	if (!isstroke)
-		centre = Mod_Mesh_IndexForVertex(mod, surf, cx, cy, 0, 0, 0, -1, 0, 0, 0, 0, r, g, b, a);
+		centre = Mod_Mesh_AddVertex(mod, surf, cx, cy, 0, 0, 0, -1, 0, 0, 0, 0, r, g, b, a);
 	for (corner = 0; corner < 4; corner++)
 	{
-		// The top right's arc starts pointing straight up; a quarter turn per corner.
-		double start = -M_PI * 0.5 + corner * M_PI * 0.5;
 		for (k = 0; k <= n; k++)
 		{
-			double ang = start + (M_PI * 0.5) * k / n;
-			float nx = (float)cos(ang), ny = (float)sin(ang);
+			float nx, ny;
+			switch (corner)
+			{
+			case 0: nx = arcx[k]; ny = arcy[k]; break;
+			case 1: nx = -arcy[k]; ny = arcx[k]; break;
+			case 2: nx = -arcx[k]; ny = -arcy[k]; break;
+			default: nx = arcy[k]; ny = -arcx[k]; break;
+			}
 			for (j = 0; j < 4; j++)
-				v[j] = Mod_Mesh_IndexForVertex(mod, surf, ccx[corner] + nx * d[j], ccy[corner] + ny * d[j], 0, 0, 0, -1, 0, 0, 0, 0, r, g, b, al[j]);
+				v[j] = Mod_Mesh_AddVertex(mod, surf, ccx[corner] + nx * d[j], ccy[corner] + ny * d[j], 0, 0, 0, -1, 0, 0, 0, 0, r, g, b, al[j]);
 			// The last point of one corner and the first of the next share a
 			// normal, so the quad between them is the straight side.
 			if (started)

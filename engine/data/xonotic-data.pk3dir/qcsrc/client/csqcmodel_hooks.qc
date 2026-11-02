@@ -92,6 +92,17 @@ void CSQCModel_LOD_Apply(entity this, bool isplayer)
 	}
 }
 
+// Xonotic Touch: whether a player model far enough away to be drawn with its
+// last LOD model skips the upper/lower body blend (cl_lod_skeletonblend 0).
+// Only models that have a separate farthest LOD count: one that has none is
+// drawn the same at every distance.
+bool CSQCModel_SkipSkeletonBlend(entity this)
+{
+	if (autocvar_cl_lod_skeletonblend)
+		return false;
+	return this.lodmodelindex2 != this.lodmodelindex0 && this.modelindex == this.lodmodelindex2;
+}
+
 // FEATURE: forcemodel and model color selection (MUST be called BEFORE LOD!)
 string forceplayermodels_model;
 bool forceplayermodels_modelisgoodmodel;
@@ -744,7 +755,7 @@ void CSQCModel_Hook_PreDraw(entity this, bool isplayer)
 		if(!isplayer)
 		{
 			skeleton_loadinfo(this);
-			bool doblend = (this.bone_upperbody >= 0);
+			bool doblend = (this.bone_upperbody >= 0) && !CSQCModel_SkipSkeletonBlend(this);
 			CSQCPlayer_FallbackFrame_Apply(this);
 			if(doblend)
 			{
@@ -762,7 +773,7 @@ void CSQCModel_Hook_PreDraw(entity this, bool isplayer)
 		{
 			// we know that frame3 and frame4 fields, used by InterpolateAnimation, are left alone - but that is all we know!
 			skeleton_loadinfo(this);
-			bool doblend = (this.bone_upperbody >= 0);
+			bool doblend = (this.bone_upperbody >= 0) && !CSQCModel_SkipSkeletonBlend(this);
 			bool onground = 0;
 			if(this == csqcplayer)
 			{
