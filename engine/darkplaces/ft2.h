@@ -84,5 +84,6 @@ float           Font_VirtualToRealSize(float sz);
 float           Font_SnapTo(float val, float snapwidth);
 // since this is used on a font_map_t, let's name it FontMap_*
 ft2_font_map_t *FontMap_FindForChar(ft2_font_map_t *start, Uchar ch);
+qbool           Font_HasGlyph(ft2_font_t *font, Uchar ch);
 qbool           Font_GetMapForChar(ft2_font_t *font, int map_index, Uchar ch, ft2_font_map_t **outmap, int *outmapch);
 #endif // DP_FREETYPE2_H__

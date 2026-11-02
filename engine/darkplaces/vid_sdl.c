@@ -1217,6 +1217,41 @@ static void VID_TouchTextSheet(touchui_sheet_t kind, qbool *buttons)
 	}
 }
 
+/* The real mouse presses the sheet's keys too, as the spare finger slot: SDL
+ * makes no mouse from a finger here (SDL_HINT_TOUCH_MOUSE_EVENTS 0). */
+static qbool vid_sheet_mouse;
+static void VID_SheetMouseFinger(qbool use)
+{
+	int x, y;
+	Uint32 b;
+	if (!use)
+	{
+		if (vid_sheet_mouse)
+			multitouch[MAXFINGERS-1][0] = 0;
+		vid_sheet_mouse = false;
+		return;
+	}
+	b = SDL_GetMouseState(&x, &y);
+	vid_sheet_mouse = true;
+	multitouch[MAXFINGERS-1][0] = (b & SDL_BUTTON_LMASK) ? 11 : 0;
+	if (vid.mode.width > 0 && vid.mode.height > 0)
+	{
+		multitouch[MAXFINGERS-1][1] = (float)x / vid.mode.width;
+		multitouch[MAXFINGERS-1][2] = (float)y / vid.mode.height;
+	}
+}
+
+/* Touch controls off: the classic console, plus the sheet's KEYBOARD toggle
+ * and, once opened, its keys (TouchUI_LayoutSheet). */
+static void VID_TouchSheetWithoutControls(keydest_t keydest)
+{
+	static qbool buttons[128];
+	qbool sheet = keydest == key_console || keydest == key_message;
+	VID_SheetMouseFinger(sheet);
+	if (sheet)
+		VID_TouchTextSheet(keydest == key_console ? TOUCHUI_SHEET_CONSOLE : TOUCHUI_SHEET_CHAT, buttons);
+}
+
 static void IN_Move_TouchScreen_Xonotic(void)
 {
 	int i, numfingers;
@@ -1239,8 +1274,8 @@ static void IN_Move_TouchScreen_Xonotic(void)
 		multitouch[MAXFINGERS-1][1] = (float)x / vid.mode.width;
 		multitouch[MAXFINGERS-1][2] = (float)y / vid.mode.height;
 	}
-	else if (numfingers > 0)
-		multitouch[MAXFINGERS-1][0] = 0;
+	else if (keydest == key_console || keydest == key_message)
+		VID_SheetMouseFinger(true);
 	else
 		multitouch[MAXFINGERS-1][0] = 0;
 
@@ -1451,11 +1486,13 @@ void IN_Move( void )
 			break;
 		}
 	}
-	else if (VID_TouchscreenHasRealDevices())
+	else
 	{
+		VID_TouchSheetWithoutControls(keydest);
 		// The controls are hidden (a keyboard is attached), the touchscreen
 		// is not: a finger drag still turns the view.
-		TouchHUD_LookWithoutControls();
+		if (VID_TouchscreenHasRealDevices())
+			TouchHUD_LookWithoutControls();
 	}
 
 	// Mouselook: always without touch controls, and next to them while a

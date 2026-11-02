@@ -69,6 +69,7 @@ void Con_CenterPrint(const char *str);
 
 void Con_Clear_f(cmd_state_t *cmd);
 void Con_DrawNotify (void);
+void Con_DrawChatInputAt(float x, float y, float size);
 
 /// Clear all notify lines.
 void Con_ClearNotify (void);

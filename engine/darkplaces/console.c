@@ -2031,6 +2031,15 @@ void Con_DrawNotify (void)
 	if (con_mutex) Thread_UnlockMutex(con_mutex);
 }
 
+/* The chat input line drawn somewhere else: above the touch sheet's keys,
+ * which cover the HUD chat panel it normally sits on. */
+void Con_DrawChatInputAt(float x, float y, float size)
+{
+	if (con_mutex) Thread_LockMutex(con_mutex);
+	Con_DrawInput(false, x, y, size);
+	if (con_mutex) Thread_UnlockMutex(con_mutex);
+}
+
 /*
 ================
 Con_LineHeight

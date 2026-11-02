@@ -4,6 +4,8 @@
 #include "quakedef.h"
 #include "touch_ui.h"
 #include "draw.h"
+#include "ft2.h"
+#include "utf8lib.h"
 
 cvar_t touch_kb_height = {CF_CLIENT | CF_ARCHIVE, "touch_kb_height", "0.46", "fraction of sheet height used by the touch keyboard"};
 cvar_t touch_kb_gap = {CF_CLIENT | CF_ARCHIVE, "touch_kb_gap", "0.008", "gap between keys as a fraction of sheet width"};
@@ -11,6 +13,7 @@ cvar_t touch_kb_opacity = {CF_CLIENT | CF_ARCHIVE, "touch_kb_opacity", "0.92", "
 cvar_t touch_kb_layout = {CF_CLIENT | CF_ARCHIVE, "touch_kb_layout", "0", "0 = qwerty, 1 = compact"};
 cvar_t touch_kb_split = {CF_CLIENT | CF_ARCHIVE, "touch_kb_split", "0", "1 = split keyboard under both thumbs in landscape"};
 cvar_t touch_kb_minkey_px = {CF_CLIENT | CF_ARCHIVE, "touch_kb_minkey_px", "36", "warn when a key's smaller dimension is below this (device pixels)"};
+cvar_t touch_kb_hold_time = {CF_CLIENT | CF_ARCHIVE, "touch_kb_hold_time", "0.45", "seconds a key is held before its accented and special characters pop up (0 = never)"};
 cvar_t touch_conui_shade = {CF_CLIENT | CF_ARCHIVE, "touch_conui_shade", "0.62", "console sheet background shade alpha"};
 cvar_t touch_conui_palette_file = {CF_CLIENT | CF_ARCHIVE, "touch_conui_palette_file", "touch/console_palette.txt", "file of preset console commands for the COMMANDS tab"};
 #define TOUCHUI_MAX_FINGERS 11
@@ -24,6 +27,81 @@ static double touchui_bksp_next;
 static qbool touchui_bksp_held;
 static qbool touchui_minkey_warned;
 static char touchui_palette_loaded_path[MAX_QPATH];
+static int touchui_bksp_finger = -1;
+
+/*
+ * Keys shown or hidden. With the touch controls on and no keyboard listed the
+ * sheet shows its keys, as it always has; otherwise they start hidden and the
+ * KEYBOARD toggle in the header opens them. The player's choice holds until
+ * a keyboard is plugged in or out or the input mode switches.
+ */
+static int touchui_keys_override = -1;
+static int touchui_keys_override_for;
+
+static float touchui_chat_keys_top = -1;
+
+float TouchUI_ChatKeysTop(void)
+{
+	return touchui_chat_keys_top;
+}
+
+/* Sheet rect of the last layout, to keep the hold popup on screen. */
+static float touchui_sheet_x, touchui_sheet_y, touchui_sheet_w, touchui_sheet_h;
+
+/*
+ * Hold for special characters, as on iOS. A tap types at once, as before:
+ * the character goes in on the press. Held for touch_kb_hold_time on a key
+ * with variants, a row of them opens above the key, the key's own character
+ * first. Sliding picks one, and releasing replaces the typed character with
+ * it. Released on the key's own character it stays; released away from the
+ * row it is taken back.
+ */
+static const struct { char base; const char *variants; } touchui_variant_table[] = {
+	{ 'a', "àáâäæãåā" }, { 'A', "ÀÁÂÄÆÃÅĀ" },
+	{ 'e', "èéêëē" },    { 'E', "ÈÉÊËĒ" },
+	{ 'i', "ìíîïī" },    { 'I', "ÌÍÎÏĪ" },
+	{ 'o', "òóôöõøœō" }, { 'O', "ÒÓÔÖÕØŒŌ" },
+	{ 'u', "ùúûüū" },    { 'U', "ÙÚÛÜŪ" },
+	{ 'c', "çćč" },      { 'C', "ÇĆČ" },
+	{ 'n', "ñń" },       { 'N', "ÑŃ" },
+	{ 's', "ßśš" },      { 'S', "ẞŚŠ" },
+	{ 'y', "ýÿ" },       { 'Y', "ÝŸ" },
+	{ 'z', "žźż" },      { 'Z', "ŽŹŻ" },
+	{ 'l', "ł" },        { 'L', "Ł" },
+	{ '-', "–—" },
+	{ '\'', "‘’" },
+	{ '"', "“”" },
+	{ '?', "¿" },
+	{ '!', "¡" },
+	{ '$', "€£¥" },
+	{ '.', "…" },
+};
+#define TOUCHUI_VARIANT_COUNT ((int)(sizeof(touchui_variant_table) / sizeof(touchui_variant_table[0])))
+#define TOUCHUI_POPUP_MAX 10
+
+typedef struct touchui_popup_s
+{
+	qbool open;
+	int finger;
+	int count;                       /* cells; [0] is the key's own character */
+	Uchar ch[TOUCHUI_POPUP_MAX];
+	float cx[TOUCHUI_POPUP_MAX];     /* cell left edges */
+	float y, cw, chh;                /* row top, cell size */
+	float key_y, key_h;              /* the held key, for the slide band */
+	int sel;                         /* picked cell, -1 = away from the row */
+}
+touchui_popup_t;
+static touchui_popup_t touchui_popup;
+
+/* Where each finger first pressed a character key, for the hold timer. */
+static struct
+{
+	qbool armed;
+	double time;
+	int ch;
+	float x, y, w, h;
+}
+touchui_press[TOUCHUI_MAX_FINGERS];
 
 /*
  * Spectator actions (issue #26). While spectating or observing on a server the
@@ -145,6 +223,7 @@ void TouchUI_RegisterCvars(void)
 	Cvar_RegisterVariable(&touch_kb_layout);
 	Cvar_RegisterVariable(&touch_kb_split);
 	Cvar_RegisterVariable(&touch_kb_minkey_px);
+	Cvar_RegisterVariable(&touch_kb_hold_time);
 	Cvar_RegisterVariable(&touch_conui_shade);
 	Cvar_RegisterVariable(&touch_conui_palette_file);
 }
@@ -191,6 +270,36 @@ void TouchUI_ResetInputState(void)
 	touchui_typed_mask = 0;
 	touchui_bksp_held = false;
 	touchui_bksp_next = 0;
+	touchui_bksp_finger = -1;
+	touchui_popup.open = false;
+	memset(touchui_press, 0, sizeof(touchui_press));
+}
+
+/* Touch controls on or off, keyboard listed or not. */
+static int TouchUI_KeysContext(void)
+{
+	return (vid_touchscreen.integer ? 2 : 0) | (VID_HasKeyboard() ? 1 : 0);
+}
+
+qbool TouchUI_KeysShown(touchui_sheet_t kind)
+{
+	int ctx;
+	/* The settings preview is a picture of the touch sheet. */
+	if (kind == TOUCHUI_SHEET_PREVIEW)
+		return true;
+	ctx = TouchUI_KeysContext();
+	if (touchui_keys_override >= 0 && touchui_keys_override_for != ctx)
+		touchui_keys_override = -1;
+	if (touchui_keys_override >= 0)
+		return touchui_keys_override != 0;
+	return ctx == 2; /* touch controls on, no keyboard */
+}
+
+static void TouchUI_ToggleKeys(void)
+{
+	touchui_keys_override = TouchUI_KeysShown(TOUCHUI_SHEET_CONSOLE) ? 0 : 1;
+	touchui_keys_override_for = TouchUI_KeysContext();
+	touchui_popup.open = false;
 }
 
 static void TouchUI_AddBuiltinPalette(void)
@@ -447,7 +556,8 @@ static int TouchUI_LayoutKeyboard(float x, float y, float w, float h,
 			{ "NEXT", TOUCHUI_ACT_KEY, K_DOWNARROW, 1.0f, TOUCHUI_STYLE_DIM },
 			{ "<", TOUCHUI_ACT_KEY, K_LEFTARROW, 0.8f, TOUCHUI_STYLE_DIM },
 			{ ">", TOUCHUI_ACT_KEY, K_RIGHTARROW, 0.8f, TOUCHUI_STYLE_DIM },
-			{ "SPACE", TOUCHUI_ACT_KEY, K_SPACE, 2.4f, TOUCHUI_STYLE_GLASS },
+			/* A character: K_SPACE carries none, and the console types only text. */
+			{ "SPACE", TOUCHUI_ACT_CHAR, ' ', 2.4f, TOUCHUI_STYLE_GLASS },
 			{ "PGUP", TOUCHUI_ACT_KEY, K_PGUP, 1.0f, TOUCHUI_STYLE_DIM },
 			{ "PGDN", TOUCHUI_ACT_KEY, K_PGDN, 1.0f, TOUCHUI_STYLE_DIM },
 			{ "ENTER", TOUCHUI_ACT_KEY, K_ENTER, 1.4f, TOUCHUI_STYLE_ACCENT },
@@ -531,21 +641,15 @@ static int TouchUI_LayoutPalette(float x, float y, float w, float h,
 	return n;
 }
 
-/* Keys on the glass only when the system lists no keyboard to type on. The
- * settings preview shows them regardless: it is a picture of the sheet. */
-static qbool TouchUI_ShowKeys(touchui_sheet_t kind)
-{
-	return kind == TOUCHUI_SHEET_PREVIEW || !VID_HasKeyboard();
-}
-
 static int TouchUI_LayoutHeader(float x, float y, float w, float h,
 	touchui_sheet_t kind, touchui_item_t *out, int maxout, int n)
 {
 	float gap = bound(2.0f, touch_kb_gap.value * w, 12.0f);
 	float th = bound(12.0f, h * 0.42f, 24.0f);
 	float bw, bx;
-	qbool keys = TouchUI_ShowKeys(kind);
-	int slots = (kind == TOUCHUI_SHEET_CHAT) ? 2 : (keys ? 5 : 4);
+	qbool keys = TouchUI_KeysShown(kind);
+	qbool toggle = kind != TOUCHUI_SHEET_PREVIEW;
+	int slots = ((kind == TOUCHUI_SHEET_CHAT) ? 2 : (keys ? 5 : 4)) + (toggle ? 1 : 0);
 	const char *close_lab = (kind == TOUCHUI_SHEET_CHAT) ? "CLOSE CHAT" : "CLOSE";
 
 	bw = (w - gap * (float)(slots + 1)) / (float)slots;
@@ -571,12 +675,17 @@ static int TouchUI_LayoutHeader(float x, float y, float w, float h,
 		bx += bw + gap;
 		TouchUI_PushItem(out, &n, maxout, bx, y + gap, bw, h - gap * 2.0f,
 			"PGDN", th, TOUCHUI_STYLE_DIM, TOUCHUI_ACT_KEY, K_PGDN);
+		bx += bw + gap;
 	}
 	else
 	{
 		TouchUI_PushItem(out, &n, maxout, bx, y + gap, bw, h - gap * 2.0f,
 			"SAY", th, TOUCHUI_STYLE_ACCENT, TOUCHUI_ACT_KEY, K_ENTER);
+		bx += bw + gap;
 	}
+	if (toggle)
+		TouchUI_PushItem(out, &n, maxout, bx, y + gap, bw, h - gap * 2.0f,
+			keys ? "HIDE KEYS" : "KEYBOARD", th, TOUCHUI_STYLE_GLASS, TOUCHUI_ACT_KB_TOGGLE, 0);
 	return n;
 }
 
@@ -599,15 +708,193 @@ static int TouchUI_LayoutSampleLog(float x, float y, float w, float h,
 	return n;
 }
 
+/* Draws in the console and chat fonts as itself, not as a missing-glyph box. */
+static qbool TouchUI_GlyphDraws(Uchar ch)
+{
+	if (!utf8_enable.integer)
+		return false;
+	if (!FONT_CONSOLE->ft2 || !Font_HasGlyph(FONT_CONSOLE->ft2, ch))
+		return false;
+	if (!FONT_CHAT->ft2 || !Font_HasGlyph(FONT_CHAT->ft2, ch))
+		return false;
+	return true;
+}
+
+/* The key's character, then its variants the fonts can draw. 0 if none. */
+static int TouchUI_Variants(int base, Uchar *out, int maxout)
+{
+	int i, n = 0;
+	const char *p;
+	Uchar c;
+
+	for (i = 0; i < TOUCHUI_VARIANT_COUNT; i++)
+	{
+		if (touchui_variant_table[i].base != base)
+			continue;
+		out[n++] = (Uchar)base;
+		for (p = touchui_variant_table[i].variants; *p && n < maxout; )
+		{
+			c = u8_getchar_utf8_enabled(p, &p);
+			if (!c)
+				break;
+			if (TouchUI_GlyphDraws(c))
+				out[n++] = c;
+		}
+		break;
+	}
+	return n > 1 ? n : 0;
+}
+
+static void TouchUI_OpenPopup(int finger)
+{
+	touchui_popup_t *pp = &touchui_popup;
+	float minx = touchui_sheet_x + 2.0f, maxx = touchui_sheet_x + touchui_sheet_w - 2.0f;
+	float kx = touchui_press[finger].x, kw = touchui_press[finger].w;
+	float start;
+	int i, n = TouchUI_Variants(touchui_press[finger].ch, pp->ch, TOUCHUI_POPUP_MAX);
+
+	if (!n)
+		return;
+	pp->count = n;
+	/* Taller than the key, as on a phone: the row is read under a thumb. */
+	pp->chh = max(touchui_press[finger].h * 1.6f, 32.0f);
+	pp->cw = max(kw, pp->chh * 0.9f);
+	pp->key_y = touchui_press[finger].y;
+	pp->key_h = touchui_press[finger].h;
+	pp->y = max(touchui_sheet_y, pp->key_y - pp->chh - pp->key_h * 0.15f);
+	/* The key's own character sits over the key, the others run right of
+	 * it, or left of it near the right edge. */
+	start = kx + (kw - pp->cw) * 0.5f;
+	if (start + (float)n * pp->cw <= maxx)
+		for (i = 0; i < n; i++)
+			pp->cx[i] = start + (float)i * pp->cw;
+	else if (start + pp->cw - (float)n * pp->cw >= minx)
+		for (i = 0; i < n; i++)
+			pp->cx[i] = start - (float)i * pp->cw;
+	else
+	{
+		start = max(minx, maxx - (float)n * pp->cw);
+		for (i = 0; i < n; i++)
+			pp->cx[i] = start + (float)i * pp->cw;
+	}
+	pp->sel = 0;
+	pp->finger = finger;
+	pp->open = true;
+}
+
+static void TouchUI_PopupSpan(float *lo, float *hi)
+{
+	int i;
+	*lo = touchui_popup.cx[0];
+	*hi = touchui_popup.cx[0];
+	for (i = 1; i < touchui_popup.count; i++)
+	{
+		*lo = min(*lo, touchui_popup.cx[i]);
+		*hi = max(*hi, touchui_popup.cx[i]);
+	}
+	*hi += touchui_popup.cw;
+}
+
+static qbool TouchUI_InPopup(float fx, float fy)
+{
+	float lo, hi;
+	TouchUI_PopupSpan(&lo, &hi);
+	return fx >= lo && fx < hi && fy >= touchui_popup.y && fy < touchui_popup.y + touchui_popup.chh;
+}
+
+/* Sliding picks the nearest cell, from the row down to the held key; well
+ * away from that band nothing is picked. */
+static void TouchUI_PopupSlide(float fx, float fy)
+{
+	touchui_popup_t *pp = &touchui_popup;
+	float lo, hi, d, best = 1e9f;
+	int i;
+
+	TouchUI_PopupSpan(&lo, &hi);
+	if (fy < pp->y - pp->chh * 0.75f || fy > pp->key_y + pp->key_h * 1.5f
+		|| fx < lo - pp->cw * 0.5f || fx >= hi + pp->cw * 0.5f)
+	{
+		pp->sel = -1;
+		return;
+	}
+	for (i = 0; i < pp->count; i++)
+	{
+		d = fabs(fx - (pp->cx[i] + pp->cw * 0.5f));
+		if (d < best)
+		{
+			best = d;
+			pp->sel = i;
+		}
+	}
+}
+
+static int TouchUI_LayoutPopup(touchui_item_t *out, int maxout, int n)
+{
+	touchui_popup_t *pp = &touchui_popup;
+	char lab[8];
+	int i, len;
+
+	if (!pp->open)
+		return n;
+	for (i = 0; i < pp->count; i++)
+	{
+		len = u8_fromchar(pp->ch[i], lab, sizeof(lab) - 1);
+		lab[len > 0 ? len : 0] = 0;
+		TouchUI_PushItem(out, &n, maxout, pp->cx[i], pp->y, pp->cw, pp->chh,
+			lab, bound(14.0f, pp->chh * 0.6f, 36.0f),
+			i == pp->sel ? TOUCHUI_STYLE_POPUP_SEL : TOUCHUI_STYLE_POPUP, TOUCHUI_ACT_POPUP, i);
+	}
+	return n;
+}
+
+/*
+ * Keyboard and mouse (touch controls off): the classic console, with a small
+ * KEYBOARD toggle in the corner that brings up the same keys, closed until
+ * the player opens them.
+ */
+static int TouchUI_LayoutMouseSheet(touchui_sheet_t kind, float x, float y, float w, float h,
+	touchui_item_t *out, int maxout)
+{
+	int n = 0;
+	qbool keys = TouchUI_KeysShown(kind);
+	float bh = bound(28.0f, h * 0.06f, 44.0f);
+	float bw = bh * 4.0f;
+	float kb_h = h * bound(0.28f, touch_kb_height.value, 0.70f);
+
+	float by;
+
+	if (keys)
+		n = TouchUI_LayoutKeyboard(x, y + h - kb_h, w, kb_h, out, maxout, n);
+	if (kind == TOUCHUI_SHEET_CHAT)
+		touchui_chat_keys_top = keys ? y + h - kb_h : -1;
+	/* Hung under the right end of the console, or of the chat line at the top,
+	 * and never over the keys. */
+	by = y + 8.0f;
+	if (kind == TOUCHUI_SHEET_CONSOLE)
+		by = y + (float)min(scr_con_current, (unsigned int)h) + 6.0f;
+	if (keys)
+		by = min(by, y + h - kb_h - bh - 6.0f);
+	by = bound(y, by, y + h - bh);
+	TouchUI_PushItem(out, &n, maxout, x + w - bw - 8.0f, by, bw, bh,
+		keys ? "HIDE KEYS" : "KEYBOARD", bh * 0.42f, TOUCHUI_STYLE_GLASS, TOUCHUI_ACT_KB_TOGGLE, 0);
+	return TouchUI_LayoutPopup(out, maxout, n);
+}
+
 int TouchUI_LayoutSheet(touchui_sheet_t kind, float x, float y, float w, float h,
 	touchui_item_t *out, int maxout)
 {
 	int n = 0;
 	float hdr_h, kb_h, kb_frac, body_top, body_h, log_h;
-	qbool keys = TouchUI_ShowKeys(kind);
+	qbool keys = TouchUI_KeysShown(kind);
 
 	if (!out || maxout <= 0 || w < 32.0f || h < 32.0f)
 		return 0;
+	touchui_sheet_x = x;
+	touchui_sheet_y = y;
+	touchui_sheet_w = w;
+	touchui_sheet_h = h;
+	if (!vid_touchscreen.integer && kind != TOUCHUI_SHEET_PREVIEW)
+		return TouchUI_LayoutMouseSheet(kind, x, y, w, h, out, maxout);
 
 	kb_frac = bound(0.28f, touch_kb_height.value, 0.70f);
 	hdr_h = bound(36.0f, h * 0.10f, 64.0f);
@@ -639,6 +926,7 @@ int TouchUI_LayoutSheet(touchui_sheet_t kind, float x, float y, float w, float h
 	}
 	else /* chat */
 	{
+		touchui_chat_keys_top = keys ? y + h - kb_h : -1;
 		/* Quick phrases strip above keyboard */
 		if (body_h > 24.0f)
 		{
@@ -665,18 +953,39 @@ int TouchUI_LayoutSheet(touchui_sheet_t kind, float x, float y, float w, float h
 						touchui_palette[idx].label, th,
 						TOUCHUI_STYLE_ACCENT, TOUCHUI_ACT_PALETTE, idx);
 				}
+				if (keys)
+					touchui_chat_keys_top = y + h - kb_h - strip_h;
 			}
 		}
 		if (keys)
 			n = TouchUI_LayoutKeyboard(x, y + h - kb_h, w, kb_h, out, maxout, n);
 	}
-	return n;
+	return TouchUI_LayoutPopup(out, maxout, n);
 }
 
 static void TouchUI_EmitKey(int key)
 {
 	Key_Event(key, 0, true);
 	Key_Event(key, 0, false);
+}
+
+static void TouchUI_EmitText(Uchar ch)
+{
+	Key_Event(K_TEXT, ch, true);
+	Key_Event(K_TEXT, ch, false);
+}
+
+/* Released: the picked character replaces the one typed on the press. */
+static void TouchUI_ClosePopup(void)
+{
+	touchui_popup_t *pp = &touchui_popup;
+	pp->open = false;
+	if (pp->sel == 0)
+		return;
+	Key_Event(K_BACKSPACE, 0, true);
+	Key_Event(K_BACKSPACE, 0, false);
+	if (pp->sel > 0 && pp->sel < pp->count)
+		TouchUI_EmitText(pp->ch[pp->sel]);
 }
 
 static void TouchUI_EmitChar(int ch)
@@ -710,6 +1019,11 @@ static void TouchUI_FireAction(const touchui_item_t *it, double realtime)
 		break;
 	case TOUCHUI_ACT_TAB_KEYS:
 		touchui_tab = TOUCHUI_TAB_KEYS;
+		break;
+	case TOUCHUI_ACT_KB_TOGGLE:
+		TouchUI_ToggleKeys();
+		if (TouchUI_KeysShown(TOUCHUI_SHEET_CONSOLE))
+			touchui_tab = TOUCHUI_TAB_KEYS;
 		break;
 	case TOUCHUI_ACT_TAB_COMMANDS:
 		touchui_tab = TOUCHUI_TAB_COMMANDS;
@@ -755,22 +1069,59 @@ qbool TouchUI_ProcessFinger(int finger, float fx, float fy, qbool finger_down,
 {
 	int k, hit = -1;
 	const touchui_item_t *it;
+	unsigned int bit;
 
 	if (finger < 0 || finger >= TOUCHUI_MAX_FINGERS)
 		return false;
+	bit = 1u << finger;
 
 	if (!finger_down)
 	{
-		touchui_typed_mask &= ~(1u << finger);
-		if (finger == 0)
+		if (touchui_popup.open && touchui_popup.finger == finger)
+			TouchUI_ClosePopup();
+		touchui_press[finger].armed = false;
+		touchui_typed_mask &= ~bit;
+		if (finger == touchui_bksp_finger)
+		{
 			touchui_bksp_held = false;
+			touchui_bksp_finger = -1;
+		}
 		return false;
+	}
+
+	if (touchui_popup.open)
+	{
+		if (touchui_popup.finger == finger)
+		{
+			TouchUI_PopupSlide(fx, fy);
+			return true;
+		}
+		/* The row covers keys; another finger on it presses none of them. */
+		if (TouchUI_InPopup(fx, fy))
+			return true;
+	}
+
+	/* Held on the character it typed: open its variants. A tap typed on the
+	 * press already, so the timer never delays one. */
+	if ((touchui_typed_mask & bit) && touchui_press[finger].armed)
+	{
+		float hold = touch_kb_hold_time.value;
+		if (hold > 0 && realtime - touchui_press[finger].time >= hold)
+		{
+			touchui_press[finger].armed = false;
+			if (!touchui_popup.open
+				&& fx >= touchui_press[finger].x && fx < touchui_press[finger].x + touchui_press[finger].w
+				&& fy >= touchui_press[finger].y && fy < touchui_press[finger].y + touchui_press[finger].h)
+				TouchUI_OpenPopup(finger);
+			if (touchui_popup.open)
+				return true;
+		}
 	}
 
 	for (k = 0; k < nitems; k++)
 	{
 		it = &items[k];
-		if (it->action == TOUCHUI_ACT_NONE)
+		if (it->action == TOUCHUI_ACT_NONE || it->action == TOUCHUI_ACT_POPUP)
 			continue;
 		if (it->w <= 0 || it->h <= 0)
 			continue;
@@ -782,7 +1133,7 @@ qbool TouchUI_ProcessFinger(int finger, float fx, float fy, qbool finger_down,
 	}
 
 	/* Hold-repeat backspace */
-	if (touchui_bksp_held && hit >= 0 && items[hit].action == TOUCHUI_ACT_BKSP_HOLD)
+	if (touchui_bksp_held && finger == touchui_bksp_finger && hit >= 0 && items[hit].action == TOUCHUI_ACT_BKSP_HOLD)
 	{
 		if (realtime >= touchui_bksp_next)
 		{
@@ -795,11 +1146,21 @@ qbool TouchUI_ProcessFinger(int finger, float fx, float fy, qbool finger_down,
 	if (hit < 0)
 		return false;
 
-	if ((touchui_typed_mask & (1u << finger)) != 0)
+	if ((touchui_typed_mask & bit) != 0)
 		return true;
 
-	touchui_typed_mask |= (1u << finger);
-	TouchUI_FireAction(&items[hit], realtime);
+	touchui_typed_mask |= bit;
+	it = &items[hit];
+	touchui_press[finger].armed = it->action == TOUCHUI_ACT_CHAR;
+	touchui_press[finger].time = realtime;
+	touchui_press[finger].ch = it->action_arg;
+	touchui_press[finger].x = it->x;
+	touchui_press[finger].y = it->y;
+	touchui_press[finger].w = it->w;
+	touchui_press[finger].h = it->h;
+	if (it->action == TOUCHUI_ACT_BKSP_HOLD)
+		touchui_bksp_finger = finger;
+	TouchUI_FireAction(it, realtime);
 	return true;
 }
 
@@ -834,7 +1195,18 @@ void TouchUI_DrawGlassItem(const touchui_item_t *it, float pressed, float opacit
 		b = 0.22f;
 	}
 
-	if (it->style != TOUCHUI_STYLE_TEXT)
+	if (it->style == TOUCHUI_STYLE_POPUP || it->style == TOUCHUI_STYLE_POPUP_SEL)
+	{
+		/* Opaque, so the keys it covers do not show through. */
+		qbool sel = it->style == TOUCHUI_STYLE_POPUP_SEL;
+		DrawQ_Fill(it->x, it->y, it->w, it->h, 0.05f, 0.07f, 0.10f, 1.0f, 0);
+		if (sel)
+			DrawQ_Fill(it->x + 2, it->y + 2, it->w - 4, it->h - 4,
+				TOUCHUI_ACCENT_R * 0.55f, TOUCHUI_ACCENT_G * 0.65f, TOUCHUI_ACCENT_B * 0.85f, 1.0f, 0);
+		else
+			DrawQ_Fill(it->x + 1, it->y + 1, it->w - 2, it->h - 2, 0.16f, 0.20f, 0.27f, 1.0f, 0);
+	}
+	else if (it->style != TOUCHUI_STYLE_TEXT)
 	{
 		DrawQ_Fill(it->x, it->y, it->w, it->h,
 			r + 0.10f * pressed, g + 0.12f * pressed, b + 0.14f * pressed,
