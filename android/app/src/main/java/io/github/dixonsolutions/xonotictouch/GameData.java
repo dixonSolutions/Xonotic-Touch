@@ -156,9 +156,12 @@ final class GameData {
                 // on now depends on the phone (DeviceProfile): balanced (60 fps
                 // with vsync) for most, the 30 fps saver where 60 cannot hold,
                 // full-size textures where there is memory for them.
+                // Version 2 added the resolution cap and render-lite.cfg; an
+                // install already on 1 gets just those, once.
                 .append(device.startupCvars())
-                .append("alias _touch_perf_apply0 \"" + device.firstRunProfileCommands() + "; seta touch_perf_version 1\"\n")
-                .append("alias _touch_perf_apply1 \"\"\n")
+                .append("alias _touch_perf_apply0 \"" + device.firstRunProfileCommands() + "; seta touch_perf_version 2\"\n")
+                .append("alias _touch_perf_apply1 \"" + device.upgradeProfileCommands() + "; seta touch_perf_version 2\"\n")
+                .append("alias _touch_perf_apply2 \"\"\n")
                 .append("_touch_perf_apply$touch_perf_version\n");
         // The player's saved layout, sensitivity included. Both savers (the
         // in-game customize screen and the menu's Touch tab) write it with
