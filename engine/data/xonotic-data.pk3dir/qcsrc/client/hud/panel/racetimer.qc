@@ -8,7 +8,6 @@
 float racetimer_lastcheckpoint;
 string racetimer_checkpoint_comparison;
 string racetimer_checkpoint_time;
-bool racetimer_have_stored_splits;
 float racetimer_have_stored_splits_player;
 
 // Race timer (#8)

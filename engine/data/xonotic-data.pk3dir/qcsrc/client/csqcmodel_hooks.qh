@@ -5,6 +5,10 @@ int autocvar_cl_playerdetailreduction;
 int autocvar_cl_modeldetailreduction;
 float autocvar_cl_loddistance1 = 768;
 float autocvar_cl_loddistance2 = 2048;
+// Xonotic Touch: false animates a player drawn with its farthest LOD model as
+// one body instead of blending upper and lower body on a skeleton built in
+// QuakeC every frame (most of the client's per-frame QuakeC in a bot match).
+bool autocvar_cl_lod_skeletonblend = true;
 bool autocvar_cl_forceplayermodels;
 bool autocvar_cl_forceplayercolors;
 bool autocvar_cl_forceuniqueplayercolors;

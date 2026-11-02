@@ -4,14 +4,26 @@
 // VF_SIZE can be the Wayland surface (e.g. 1440×960) while 2D is clipped to
 // 960×640 — laying out in VF_SIZE pushed FIRE/JUMP off the right edge.
 
+// Every control asks for this several times a frame; the two cvar lookups
+// are done once per frame (and again whenever the console size changes).
+float touch_uisize_time = -1;
+int touch_uisize_cw, touch_uisize_ch;
+vector touch_uisize_cached;
+
 vector Touch_UISize(void)
 {
+	if (time == touch_uisize_time && autocvar_vid_conwidth == touch_uisize_cw && autocvar_vid_conheight == touch_uisize_ch)
+		return touch_uisize_cached;
 	float cw = max(1, cvar("vid_conwidth"));
 	float ch = max(1, cvar("vid_conheight"));
 	// Fallback if cvars are unset during early frames.
 	if (cw < 2 || ch < 2)
 		return getpropertyvec(VF_SIZE);
-	return eX * cw + eY * ch;
+	touch_uisize_time = time;
+	touch_uisize_cw = autocvar_vid_conwidth;
+	touch_uisize_ch = autocvar_vid_conheight;
+	touch_uisize_cached = eX * cw + eY * ch;
+	return touch_uisize_cached;
 }
 
 float Touch_ScreenMin(void)
