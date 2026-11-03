@@ -2,7 +2,14 @@ package io.github.dixonsolutions.xonotictouch;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -21,12 +28,35 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * This cannot live inside {@link XonoticActivity}. SDLActivity starts the native
  * thread from its own onCreate, and darkplaces scans the basedir during
  * FS_Init — long before any work we posted from Java would finish.
+ *
+ * Preparation belongs to the process, not to this screen: leaving the screen
+ * during a download leaves the download running. If it finishes while nobody is
+ * looking, a notification says so, and tapping it comes back here.
  */
 public final class BootActivity extends Activity {
 
     private static final String TAG = "XonoticTouch";
 
-    private final Handler ui = new Handler(Looper.getMainLooper());
+    private static final String CHANNEL_PROGRESS = "downloads";
+    private static final String CHANNEL_DONE = "downloads-done";
+    private static final int NOTICE_PROGRESS = 1;
+    private static final int NOTICE_DONE = 2;
+
+    private static final Handler ui = new Handler(Looper.getMainLooper());
+
+    /** The screen the player is looking at, or null when none is. */
+    private static volatile BootActivity showing;
+    private static volatile Context appContext;
+    /** One preparation at a time for the whole process, whichever screen asked. */
+    private static final AtomicBoolean preparing = new AtomicBoolean();
+    /** What the last progress report said, so a screen that comes back shows it. */
+    private static volatile String lastStatus = "";
+    private static volatile String lastDetail = "";
+    private static volatile int lastPercent = -1;
+    /** Finished while no boot screen was showing; the next one resumed takes it. */
+    private static volatile GameData readyData;
+    private static volatile boolean failedWhileAway;
+
     private View root;
     private TextView status;
     private TextView detail;
@@ -46,14 +76,39 @@ public final class BootActivity extends Activity {
         retry = findViewById(R.id.boot_retry);
         retry.setOnClickListener(v -> start());
 
+        appContext = getApplicationContext();
+        readyData = null;
+        showing = this;
         start();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        showing = this;
+        GameData ready = readyData;
+        if (ready != null) {
+            readyData = null;
+            launchEngine(ready);
+        } else if (failedWhileAway) {
+            failedWhileAway = false;
+            start();
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (showing == this) {
+            showing = null;
+        }
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (worker != null) {
-            worker.interrupt();
+        if (showing == this) {
+            showing = null;
         }
     }
 
@@ -196,31 +251,62 @@ public final class BootActivity extends Activity {
         worker.start();
     }
 
-    /**
-     * Several paths can end in here for the same launch -- a failed-install
-     * broadcast and the exception from the same install, say -- and each used
-     * to start its own preparation thread. Only the first one counts.
-     */
-    private final AtomicBoolean continued = new AtomicBoolean();
-
     private void continueToGame(GameData data) {
-        if (!continued.compareAndSet(false, true)) {
+        if (!preparing.compareAndSet(false, true)) {
+            // Already preparing, started by an earlier screen: show where it is.
+            if (data.assetsMissing()) {
+                reveal();
+            }
+            applyProgress(lastStatus, lastDetail, lastPercent);
             return;
         }
-        worker = new Thread(() -> {
+        if (data.assetsMissing()) {
+            // Something to wait for from the first frame: the screen shows at
+            // once, not after the delay that hides the quick unpack.
+            reveal();
+            requestNotificationPermission();
+        }
+        Thread preparation = new Thread(() -> {
             try {
-                data.prepare(this::report);
-                ui.post(() -> launchEngine(data));
+                data.prepare(BootActivity::report);
+                ui.post(() -> prepared(data));
             } catch (IOException | RuntimeException e) {
                 Log.e(TAG, "Game data preparation failed", e);
-                ui.post(() -> {
-                    // Retry goes through start() and may come back here.
-                    continued.set(false);
-                    showFailure(e);
-                });
+                ui.post(() -> failed(e));
             }
         }, "xonotic-bootstrap");
-        worker.start();
+        worker = preparation;
+        preparation.start();
+    }
+
+    /** The screen the player can see right now, or null once it has gone. */
+    private static BootActivity visibleScreen() {
+        BootActivity live = showing;
+        return live != null && !live.isFinishing() && !live.isDestroyed() ? live : null;
+    }
+
+    private static void prepared(GameData data) {
+        preparing.set(false);
+        BootActivity live = visibleScreen();
+        if (live != null) {
+            live.launchEngine(data);
+        } else {
+            readyData = data;
+            notifyDone(appContext.getString(R.string.boot_notice_ready_title),
+                    appContext.getString(R.string.boot_notice_ready_text));
+        }
+    }
+
+    private static void failed(Throwable cause) {
+        preparing.set(false);
+        BootActivity live = visibleScreen();
+        if (live != null) {
+            live.showFailure(cause);
+        } else {
+            failedWhileAway = true;
+            notifyDone(appContext.getString(R.string.boot_notice_failed_title),
+                    appContext.getString(R.string.boot_notice_failed_text));
+        }
     }
 
     /** Show the screen: something is happening that the player waits for. */
@@ -234,8 +320,8 @@ public final class BootActivity extends Activity {
      * Progress only shows the screen once the work has gone on for a while.
      * Unpacking after an update writes just the files that changed and is
      * usually over in well under a second; flashing the screen up for that
-     * was the slide the player saw on every update. The first download, or
-     * a slow phone, still gets it.
+     * was the slide the player saw on every update. A download always shows
+     * at once (continueToGame), so this only covers the quick unpack.
      */
     private static final long REVEAL_AFTER_MS = 1500;
     private boolean revealScheduled;
@@ -252,18 +338,30 @@ public final class BootActivity extends Activity {
         }, REVEAL_AFTER_MS);
     }
 
-    private void report(String text, String note, int percent) {
+    private static void report(String text, String note, int percent) {
+        lastStatus = text;
+        lastDetail = note;
+        lastPercent = percent;
         ui.post(() -> {
-            revealIfStillWorking();
-            status.setText(text);
-            detail.setText(note);
-            if (percent < 0) {
-                progress.setIndeterminate(true);
+            BootActivity live = visibleScreen();
+            if (live != null) {
+                live.revealIfStillWorking();
+                live.applyProgress(text, note, percent);
             } else {
-                progress.setIndeterminate(false);
-                progress.setProgress(percent);
+                notifyProgress(text, note, percent);
             }
         });
+    }
+
+    private void applyProgress(String text, String note, int percent) {
+        status.setText(text);
+        detail.setText(note);
+        if (percent < 0) {
+            progress.setIndeterminate(true);
+        } else {
+            progress.setIndeterminate(false);
+            progress.setProgress(percent);
+        }
     }
 
     private void launchEngine(GameData data) {
@@ -284,5 +382,64 @@ public final class BootActivity extends Activity {
         status.setText(R.string.boot_failed);
         detail.setText(String.valueOf(cause.getMessage()));
         retry.setVisibility(View.VISIBLE);
+    }
+
+    private void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission("android.permission.POST_NOTIFICATIONS")
+                        != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[] { "android.permission.POST_NOTIFICATIONS" }, 1);
+        }
+    }
+
+    private static void notifyProgress(String text, String note, int percent) {
+        NotificationManager manager = notifications();
+        createChannel(manager, CHANNEL_PROGRESS, NotificationManager.IMPORTANCE_LOW);
+        manager.notify(NOTICE_PROGRESS, builder(CHANNEL_PROGRESS)
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setContentTitle(text)
+                .setContentText(note)
+                .setOngoing(true)
+                .setProgress(100, Math.max(0, percent), percent < 0)
+                .setContentIntent(openBoot())
+                .build());
+    }
+
+    private static void notifyDone(String title, String text) {
+        NotificationManager manager = notifications();
+        manager.cancel(NOTICE_PROGRESS);
+        createChannel(manager, CHANNEL_DONE, NotificationManager.IMPORTANCE_DEFAULT);
+        manager.notify(NOTICE_DONE, builder(CHANNEL_DONE)
+                .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setAutoCancel(true)
+                .setContentIntent(openBoot())
+                .build());
+    }
+
+    private static NotificationManager notifications() {
+        return (NotificationManager) appContext.getSystemService(Context.NOTIFICATION_SERVICE);
+    }
+
+    private static void createChannel(NotificationManager manager, String id, int importance) {
+        if (Build.VERSION.SDK_INT >= 26) {
+            manager.createNotificationChannel(new NotificationChannel(id,
+                    appContext.getString(R.string.boot_notice_channel), importance));
+        }
+    }
+
+    private static Notification.Builder builder(String channel) {
+        return Build.VERSION.SDK_INT >= 26
+                ? new Notification.Builder(appContext, channel)
+                : new Notification.Builder(appContext);
+    }
+
+    private static PendingIntent openBoot() {
+        Intent intent = new Intent(appContext, BootActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT
+                | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
+        return PendingIntent.getActivity(appContext, 0, intent, flags);
     }
 }

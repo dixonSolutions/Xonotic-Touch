@@ -4,19 +4,28 @@ import android.content.Context;
 import android.util.Base64;
 import android.util.Log;
 
+import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
+import java.io.SequenceInputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
-import java.util.Map;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -260,98 +269,268 @@ final class GameData {
 
     // -------------------------------------------------------------- download
 
+    /** Parallel byte ranges while the mirror honours them; one stream otherwise. */
+    private static final int DOWNLOAD_STREAMS = 4;
+    private static final int DOWNLOAD_ATTEMPTS = 4;
+    private static final long DOWNLOAD_RETRY_MS = 3000;
+    private static final String ASSET_STAGING = "download";
+
+    boolean assetsMissing() {
+        File data = dataDir();
+        for (String suffix : REQUIRED_PK3S) {
+            if (!hasPk3(data, suffix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void downloadAssets(Progress progress) throws IOException {
         File data = dataDir();
         if (!data.isDirectory() && !data.mkdirs()) {
             throw new IOException("Cannot create " + data);
         }
-
-        boolean complete = true;
-        for (String suffix : REQUIRED_PK3S) {
-            if (!hasPk3(data, suffix)) {
-                complete = false;
-                break;
-            }
-        }
-        if (complete) {
+        if (!assetsMissing()) {
             return;
         }
 
         String status = context.getString(R.string.boot_downloading);
         Log.i(TAG, "Fetching " + ASSET_ARCHIVE);
-        // Extract as it arrives instead of staging the archive first: the zip is
-        // over a gigabyte, and a copy in the cache directory both doubles the
-        // space needed and invites Android to evict it mid-download.
-        HttpURLConnection connection =
-                (HttpURLConnection) new URL(AUTOBUILD + "/" + ASSET_ARCHIVE).openConnection();
-        try {
-            connection.setRequestProperty("Authorization", autobuildAuthHeader());
-            connection.setConnectTimeout(30_000);
-            connection.setReadTimeout(60_000);
-            connection.setInstanceFollowRedirects(true);
-
-            int code = connection.getResponseCode();
-            if (code != HttpURLConnection.HTTP_OK) {
-                throw new IOException("HTTP " + code + " for " + ASSET_ARCHIVE);
-            }
-
-            try (InputStream raw = new ProgressStream(connection.getInputStream(),
-                    connection.getContentLength(), progress, status)) {
-                // Everything nests under Xonotic/; only the pk3 payloads matter,
-                // and they belong in <basedir>/data.
-                unzip(new ZipInputStream(raw), data, "Xonotic/data/", progress, status);
-            }
-        } finally {
-            connection.disconnect();
+        // The archive is staged in parts rather than streamed into the pk3s: a
+        // stopped run then resumes from the bytes on disk, and an unzip that
+        // fails can be retried without fetching the gigabyte again.
+        ArchiveFetch archive = new ArchiveFetch(new File(context.getFilesDir(), ASSET_STAGING), progress, status);
+        archive.fetch();
+        try (InputStream raw = archive.open()) {
+            unzip(new ZipInputStream(raw), data, "Xonotic/data/", progress, status);
         }
+        archive.discard();
 
-        for (String suffix : REQUIRED_PK3S) {
-            if (!hasPk3(data, suffix)) {
-                throw new IOException(ASSET_ARCHIVE + " did not yield a *" + suffix);
-            }
+        if (assetsMissing()) {
+            throw new IOException(ASSET_ARCHIVE + " did not yield a required pk3");
         }
     }
 
-    /** Counts bytes off the wire so the bar tracks the download, not the unzip. */
-    private static final class ProgressStream extends java.io.FilterInputStream {
-        private final long total;
+    /**
+     * The asset archive as parallel byte ranges, each on disk as its own part
+     * file. The meta file pins the server's ETag and size: a changed archive
+     * discards the parts rather than splicing two builds together.
+     */
+    private final class ArchiveFetch {
+        private final File dir;
         private final Progress progress;
         private final String status;
+        private final String url = AUTOBUILD + "/" + ASSET_ARCHIVE;
+        private boolean ranged;
+        private int streams;
+        private long total;
+        private long[] starts;
+        private long[] lengths;
         private long done;
         private long lastReport;
 
-        ProgressStream(InputStream in, long total, Progress progress, String status) {
-            super(in);
-            this.total = total;
+        ArchiveFetch(File dir, Progress progress, String status) {
+            this.dir = dir;
             this.progress = progress;
             this.status = status;
         }
 
-        @Override
-        public int read() throws IOException {
-            int b = super.read();
-            if (b >= 0) {
-                advance(1);
+        void fetch() throws IOException {
+            mkdirs(dir);
+            String etag;
+            HttpURLConnection probe = request("bytes=0-0");
+            try {
+                int code = probe.getResponseCode();
+                if (code != HttpURLConnection.HTTP_OK && code != HttpURLConnection.HTTP_PARTIAL) {
+                    throw new IOException("HTTP " + code + " for " + ASSET_ARCHIVE);
+                }
+                etag = String.valueOf(probe.getHeaderField("ETag"));
+                String contentRange = probe.getHeaderField("Content-Range");
+                ranged = code == HttpURLConnection.HTTP_PARTIAL && contentRange != null
+                        && contentRange.contains("/");
+                total = ranged
+                        ? Long.parseLong(contentRange.substring(contentRange.lastIndexOf('/') + 1).trim())
+                        : Long.parseLong(probe.getHeaderField("Content-Length"));
+            } catch (NumberFormatException e) {
+                throw new IOException("No size from " + url, e);
+            } finally {
+                probe.disconnect();
             }
-            return b;
+            if (total <= 0) {
+                throw new IOException("No size from " + url);
+            }
+            streams = ranged ? DOWNLOAD_STREAMS : 1;
+
+            String identity = etag + "\n" + total + "\n" + streams;
+            File meta = new File(dir, "meta");
+            if (!meta.isFile() || !identity.equals(readAll(meta))) {
+                clearParts();
+                writeAll(meta, identity);
+            }
+
+            starts = new long[streams];
+            lengths = new long[streams];
+            for (int n = 0; n < streams; n++) {
+                starts[n] = total * n / streams;
+                lengths[n] = total * (n + 1) / streams - starts[n];
+            }
+            done = 0;
+            for (int n = 0; n < streams; n++) {
+                done += ranged ? Math.min(partFile(n).length(), lengths[n]) : 0;
+            }
+            if (done < total) {
+                fetchParts();
+            }
         }
 
-        @Override
-        public int read(byte[] buffer, int offset, int length) throws IOException {
-            int read = super.read(buffer, offset, length);
-            if (read > 0) {
-                advance(read);
+        InputStream open() throws IOException {
+            List<InputStream> parts = new ArrayList<>();
+            for (int n = 0; n < streams; n++) {
+                parts.add(new FileInputStream(partFile(n)));
             }
-            return read;
+            return new BufferedInputStream(
+                    new SequenceInputStream(Collections.enumeration(parts)), 256 * 1024);
         }
 
-        private void advance(int count) {
+        void discard() {
+            clearParts();
+            File meta = new File(dir, "meta");
+            if (!meta.delete() && meta.exists()) {
+                Log.w(TAG, "Could not remove " + meta);
+            }
+            if (!dir.delete() && dir.exists()) {
+                Log.w(TAG, "Could not remove " + dir);
+            }
+        }
+
+        private void fetchParts() throws IOException {
+            ExecutorService pool = Executors.newFixedThreadPool(streams, runnable -> {
+                Thread thread = new Thread(runnable, "xonotic-download");
+                thread.setDaemon(true);
+                return thread;
+            });
+            List<Future<?>> jobs = new ArrayList<>();
+            try {
+                for (int n = 0; n < streams; n++) {
+                    final int part = n;
+                    jobs.add(pool.submit(() -> {
+                        fetchPart(part);
+                        return null;
+                    }));
+                }
+                for (Future<?> job : jobs) {
+                    job.get();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new InterruptedIOException("Download cancelled");
+            } catch (ExecutionException e) {
+                Throwable cause = e.getCause();
+                if (cause instanceof IOException) {
+                    throw (IOException) cause;
+                }
+                throw new IOException(String.valueOf(cause), cause);
+            } finally {
+                pool.shutdownNow();
+            }
+        }
+
+        private void fetchPart(int n) throws IOException {
+            for (int attempt = 1; ; attempt++) {
+                try {
+                    transfer(n);
+                    return;
+                } catch (IOException e) {
+                    if (attempt >= DOWNLOAD_ATTEMPTS || Thread.currentThread().isInterrupted()) {
+                        throw e;
+                    }
+                    Log.w(TAG, "Part " + n + " stopped, retrying", e);
+                    try {
+                        Thread.sleep(DOWNLOAD_RETRY_MS);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw new InterruptedIOException("Download cancelled");
+                    }
+                }
+            }
+        }
+
+        private void transfer(int n) throws IOException {
+            File part = partFile(n);
+            long have = ranged ? part.length() : 0;
+            if (have > lengths[n]) {
+                have = 0;
+            }
+            if (have == lengths[n]) {
+                return;
+            }
+            long from = starts[n] + have;
+            long to = starts[n] + lengths[n] - 1;
+            HttpURLConnection connection = request(ranged ? "bytes=" + from + "-" + to : null);
+            try {
+                int code = connection.getResponseCode();
+                if (code != (ranged ? HttpURLConnection.HTTP_PARTIAL : HttpURLConnection.HTTP_OK)) {
+                    throw new IOException("HTTP " + code + " for " + ASSET_ARCHIVE);
+                }
+                byte[] buffer = new byte[64 * 1024];
+                long remaining = lengths[n] - have;
+                try (InputStream in = connection.getInputStream();
+                     FileOutputStream out = new FileOutputStream(part, have > 0)) {
+                    int read;
+                    while (remaining > 0
+                            && (read = in.read(buffer, 0, (int) Math.min(buffer.length, remaining))) > 0) {
+                        if (Thread.currentThread().isInterrupted()) {
+                            throw new InterruptedIOException("Download cancelled");
+                        }
+                        out.write(buffer, 0, read);
+                        remaining -= read;
+                        advance(read);
+                    }
+                }
+                if (remaining != 0) {
+                    throw new IOException("Connection closed early on part " + n);
+                }
+            } finally {
+                connection.disconnect();
+            }
+        }
+
+        private HttpURLConnection request(String range) throws IOException {
+            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setRequestProperty("Authorization", autobuildAuthHeader());
+            connection.setRequestProperty("Accept-Encoding", "identity");
+            if (range != null) {
+                connection.setRequestProperty("Range", range);
+            }
+            connection.setConnectTimeout(30_000);
+            connection.setReadTimeout(60_000);
+            connection.setInstanceFollowRedirects(true);
+            return connection;
+        }
+
+        private synchronized void advance(long count) {
             done += count;
             // One UI post per megabyte; per-chunk posts flood the looper.
-            if (done - lastReport >= 1024 * 1024) {
+            if (done - lastReport >= 1024 * 1024 || done >= total) {
                 lastReport = done;
                 progress.update(status, (done >> 20) + " / " + (total >> 20) + " MB",
-                        total > 0 ? (int) (done * 100 / total) : -1);
+                        (int) (done * 100 / total));
+            }
+        }
+
+        private File partFile(int n) {
+            return new File(dir, "part." + n);
+        }
+
+        private void clearParts() {
+            File[] entries = dir.listFiles();
+            if (entries == null) {
+                return;
+            }
+            for (File entry : entries) {
+                if (!entry.delete() && entry.exists()) {
+                    Log.w(TAG, "Could not remove " + entry);
+                }
             }
         }
     }

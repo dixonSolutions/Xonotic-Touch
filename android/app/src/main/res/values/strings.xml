@@ -7,6 +7,11 @@
     <string name="boot_failed">Could not prepare game data</string>
     <string name="boot_retry">Retry</string>
     <string name="boot_quit">Quit</string>
+    <string name="boot_notice_channel">Game downloads</string>
+    <string name="boot_notice_ready_title">Xonotic is ready</string>
+    <string name="boot_notice_ready_text">Game data is downloaded. Tap to play.</string>
+    <string name="boot_notice_failed_title">Xonotic download stopped</string>
+    <string name="boot_notice_failed_text">Tap to carry on from where it stopped.</string>
     <string name="update_title">Xonotic Touch %1$s</string>
     <string name="update_message">You have %1$s. Updating keeps your settings, keybinds and downloaded maps.</string>
     <string name="update_install">Update</string>
