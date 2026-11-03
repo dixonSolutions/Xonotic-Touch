@@ -228,7 +228,7 @@ METHOD(HLAC, wr_impacteffect, void(entity thiswep, entity actor))
 			? EFFECT_BLASTER_IMPACT // compatible with Xonotic v0.8.6 or lower
 			: EFFECT_GREEN_HLAC_IMPACT;
 
-	vector org2 = w_org + w_backoff * 2;
+	vector org2 = w_impactorg;
 	pointparticles(eff, org2, w_backoff * 1000, 1);
 	if (!w_issilent)
 		sound(actor, CH_SHOTS, SND_LASERIMPACT, VOL_BASE, ATTN_NORM);

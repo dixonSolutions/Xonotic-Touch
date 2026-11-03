@@ -212,7 +212,7 @@ METHOD(Rifle, wr_zoom, bool(entity thiswep, entity actor))
 
 METHOD(Rifle, wr_impacteffect, void(entity thiswep, entity actor))
 {
-	vector org2 = w_org + w_backoff * 2;
+	vector org2 = w_impactorg;
 	pointparticles(EFFECT_RIFLE_IMPACT, org2, w_backoff * 1000, 1);
 	if (!w_issilent)
 		sound(actor, CH_SHOTS, SND_RIC_RANDOM(), VOL_BASE, ATTN_NORM);

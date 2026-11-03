@@ -574,7 +574,7 @@ METHOD(Devastator, wr_killmessage, Notification(entity thiswep))
 
 METHOD(Devastator, wr_impacteffect, void(entity thiswep, entity actor))
 {
-	vector org2 = w_org + w_backoff * 2;
+	vector org2 = w_impactorg;
 	pointparticles(EFFECT_ROCKET_EXPLODE, org2, '0 0 0', 1);
 	if (!w_issilent)
 		sound(actor, CH_SHOTS, SND_ROCKET_IMPACT, VOL_BASE, ATTN_NORM);

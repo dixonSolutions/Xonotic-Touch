@@ -594,7 +594,7 @@ METHOD(Seeker, wr_impacteffect, void(entity thiswep, entity actor))
 			? EFFECT_HAGAR_EXPLODE // compatible with Xonotic v0.8.6 or lower
 			: EFFECT_SEEKER_EXPLODE;
 
-	vector org2 = w_org + w_backoff * 2;
+	vector org2 = w_impactorg;
 	if (w_deathtype & HITTYPE_BOUNCE)
 	{
 		if (w_deathtype & HITTYPE_SECONDARY)

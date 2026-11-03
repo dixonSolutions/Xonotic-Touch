@@ -17,7 +17,9 @@ float autocvar_cl_damageeffect_lifetime_max;
 
 int w_deathtype;
 float w_issilent, w_random;
-vector w_org, w_backoff;
+vector w_org, w_backoff, w_impactorg;
+const float IMPACT_BACKOFF_HITSCAN = 2;
+const float IMPACT_BACKOFF_EXPLOSION = 40;
 
 .float damageforcescale;
 const float MIN_DAMAGEEXTRARADIUS = 2;
