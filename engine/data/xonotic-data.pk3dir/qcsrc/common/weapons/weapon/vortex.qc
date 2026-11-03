@@ -332,7 +332,7 @@ METHOD(Vortex, wr_zoom, bool(entity thiswep, entity actor))
 METHOD(Vortex, wr_impacteffect, void(entity thiswep, entity actor))
 {
 	entity this = actor;
-	vector org2 = w_org + w_backoff * 2;
+	vector org2 = w_impactorg;
 	bool usecolor = ((teamplay && autocvar_cl_tracers_teamcolor == 1) || autocvar_cl_tracers_teamcolor == 2);
 	boxparticles(particleeffectnum(EFFECT_VORTEX_IMPACT), NULL, org2, org2, '0 0 0', '0 0 0', 1, (usecolor ? PARTICLES_USECOLOR : 0));
 	if (!w_issilent)

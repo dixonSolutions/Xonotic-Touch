@@ -384,7 +384,7 @@ METHOD(Fireball, wr_impacteffect, void(entity thiswep, entity actor))
 	}
 	else
 	{
-		vector org2 = w_org + w_backoff * 2;
+		vector org2 = w_impactorg;
 		pointparticles(EFFECT_FIREBALL_EXPLODE, org2, '0 0 0', 1);
 		if (!w_issilent)
 			sound(actor, CH_SHOTS, SND_FIREBALL_IMPACT2, VOL_BASE, ATTEN_NORM * 0.25); // long range boom

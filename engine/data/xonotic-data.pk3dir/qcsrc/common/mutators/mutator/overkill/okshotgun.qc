@@ -102,7 +102,7 @@ METHOD(OverkillShotgun, wr_killmessage, Notification(entity thiswep))
 
 METHOD(OverkillShotgun, wr_impacteffect, void(entity thiswep, entity actor))
 {
-	vector org2 = w_org + w_backoff * 2;
+	vector org2 = w_impactorg;
 	pointparticles(EFFECT_SHOTGUN_IMPACT, org2, w_backoff * 1000, 1);
 	if (!w_issilent && time - actor.prevric > 0.25)
 	{

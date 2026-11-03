@@ -453,6 +453,8 @@ NET_HANDLE(ENT_CLIENT_DAMAGEINFO, bool isNew)
 			w_backoff = -force_dir;
 		setorigin(this, w_org + w_backoff * 2); // for sound() calls
 
+		w_impactorg = w_org + w_backoff * (rad ? IMPACT_BACKOFF_EXPLOSION : IMPACT_BACKOFF_HITSCAN);
+
 		if(!(trace_dphitq3surfaceflags & Q3SURFACEFLAG_SKY))
 		{
 			if(!MUTATOR_CALLHOOK(Weapon_ImpactEffect, hitwep, this))
