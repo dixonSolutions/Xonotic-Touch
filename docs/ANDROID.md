@@ -431,16 +431,14 @@ which takes the data with it. See **Signing** below.
   `_android_ram_mb`, `_android_cpu_mhz`, `_android_cores`, `_android_exynos`
   and `_android_tier`, and to logcat ("Device: ..."). After the first start
   the player's choices stand.
-- **Performance hint (ADPF).** On Android 13+ the engine opens a performance
-  hint session for its main thread. It reports each frame's work, without the
-  vsync wait inside the buffer swap, against the frame budget (`cl_maxfps`,
-  else the panel's refresh). The scheduler then holds the game on the cores
-  and clocks that keep that pace, instead of guessing from load. This matters
-  most on big.LITTLE SoCs such as Exynos, where a frame that lands on a little
-  core runs long. `sys_perfhint 0` turns it off. The console says
-  "Performance hint: session open" when the device supports it.
-- **Sustained performance mode**, where the device offers it, trades peak
-  clocks for ones it can hold (`XonoticActivity`).
+- **Performance hint (ADPF), off by default.** With `sys_perfhint 1`, on
+  Android 13+ the engine opens a performance hint session for its main thread
+  and reports each frame's work, without the vsync wait inside the buffer
+  swap, against the frame budget (`cl_maxfps`, else the panel's refresh). Off
+  until it is measured on the target devices; the console says "Performance
+  hint: session open" when it is on.
+- **Sustained performance mode is not requested.** `XonoticActivity` no longer
+  asks for it, pending the same measurement.
 - **The game thread runs at high priority** (`SDL_SetThreadPriority`).
 - **libmain.so is built** with hidden visibility, no semantic interposition,
   ThinLTO, gc-sections and ICF (`android/app/src/main/cpp/CMakeLists.txt`).

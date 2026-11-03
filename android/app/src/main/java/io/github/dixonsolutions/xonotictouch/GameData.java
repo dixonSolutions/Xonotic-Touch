@@ -157,12 +157,15 @@ final class GameData {
                 // with vsync) for most, the 30 fps saver where 60 cannot hold,
                 // full-size textures where there is memory for them.
                 // Version 3 removed the 3D view cap from the defaults: installs
-                // on 1 or 2 get it reset to full resolution, once.
+                // on 1 or 2 get it reset to full resolution, once. Version 4
+                // turns the performance hint off, once, on installs that saved
+                // it on.
                 .append(device.startupCvars())
                 .append("alias _touch_perf_apply0 \"" + device.firstRunProfileCommands() + "; seta touch_perf_version 3\"\n")
                 .append("alias _touch_perf_apply1 \"r_viewscale_maxheight 0; seta touch_perf_version 3\"\n")
                 .append("alias _touch_perf_apply2 \"r_viewscale_maxheight 0; seta touch_perf_version 3\"\n")
-                .append("alias _touch_perf_apply3 \"\"\n")
+                .append("alias _touch_perf_apply3 \"sys_perfhint 0; seta touch_perf_version 4\"\n")
+                .append("alias _touch_perf_apply4 \"\"\n")
                 .append("_touch_perf_apply$touch_perf_version\n");
         // The player's saved layout, sensitivity included. Both savers (the
         // in-game customize screen and the menu's Touch tab) write it with

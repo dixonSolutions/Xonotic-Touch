@@ -306,7 +306,7 @@ static cvar_t sys_debugsleep = {CF_SHARED, "sys_debugsleep", "0", "write request
 static cvar_t sys_usesdlgetticks = {CF_SHARED, "sys_usesdlgetticks", "0", "use SDL_GetTicks() timer (low precision, for debugging)"};
 #ifdef __ANDROID__
 extern cvar_t cl_maxfps;
-cvar_t sys_perfhint = {CF_CLIENT | CF_ARCHIVE, "sys_perfhint", "1", "Android 13+: report each frame's work to the system's performance hint (ADPF), so it keeps the game thread on cores and clocks that hold cl_maxfps; 0 leaves scheduling to the system's guess"};
+cvar_t sys_perfhint = {CF_CLIENT | CF_ARCHIVE, "sys_perfhint", "0", "Android 13+: report each frame's work to the system's performance hint (ADPF), so it keeps the game thread on cores and clocks that hold cl_maxfps; 0 leaves scheduling to the system's guess"};
 #endif
 static cvar_t sys_usesdldelay = {CF_SHARED, "sys_usesdldelay", "0", "use SDL_Delay() (low precision, for debugging)"};
 #if HAVE_QUERYPERFORMANCECOUNTER
