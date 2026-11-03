@@ -58,10 +58,6 @@ typedef struct viddef_support_s
 	qbool packed_depth_stencil;
 	// Mipmaps on non-power-of-two textures: desktop GL, ES 3, OES_texture_npot.
 	qbool npot_mipmap;
-	// GLES: glInvalidateFramebuffer (ES 3) or glDiscardFramebufferEXT
-	// (EXT_discard_framebuffer), so a tiled GPU can drop depth and stencil it
-	// will never read again instead of writing them out to memory. NULL if neither.
-	void (*invalidateframebuffer)(unsigned int target, int numattachments, const unsigned int *attachments);
 }
 viddef_support_t;
 

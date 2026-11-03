@@ -140,10 +140,6 @@ The launchers apply the default performance profile **once**, on the first
 start: balanced on Android, thermal on Flatpak and Ubuntu Touch. The archived
 `touch_perf_version` records that it ran. After that the values are the
 player's, so a change in Settings → Effects sticks across restarts.
-An install that ran its first start before `touch_perf_version` 2 gets the
-render savings added then (`render-lite.cfg` and the resolution cap) once, on
-its next start, without its frame cap or texture size changing — see
-[PERFORMANCE.md](PERFORMANCE.md).
 `XONOTIC_TOUCH_PERF_PROFILE`, set by hand on Linux, still applies on every
 start.
 
@@ -449,24 +445,12 @@ Independent of layout preset; safe to `exec` after a control preset.
 | `r_depthfirst` | `0` | `0` | — |
 | `r_water_resolutionmultiplier_max` | `0.5` | `0.5` | `1` |
 | `r_water_lowquality` | `1` | `1` | `0` |
-| `r_viewscale_maxheight` | `540` | `720` | `0` (full resolution) |
-| `r_glsl_deluxemapping` | `0` | `0` | `1` |
-| `r_shadow_gloss` | `0` | — | `1` |
-| `hud_postprocessing` | `0` | `0` | `1` |
-| `cl_playerdetailreduction` / `cl_modeldetailreduction` | `6` / `3` | `6` / `3` | `4` / `1` |
-| `cl_lod_skeletonblend` | `0` | `0` | `1` |
-| `cl_casings` | `0` | `0` | `1` |
-| `r_shadow_realtime_world` | `0` | `0` | `0` |
+| `r_shadow_realtime_world` | `0` | `0` | `1` |
 | `r_shadow_realtime_dlight` | `0` | `0` | `1` |
 | `r_bloom` | `0` | `0` | `1` |
 | `r_motionblur` | `0` | `0` | `0` |
 | `gl_texturecompression` | `1` | `1` | `0` |
 | `r_particles` | `0` | `1` | `1` |
-
-battery, balanced and thermal (`720` rows, gloss off) share their render
-savings through `touch/profiles/render-lite.cfg`; the table lists its values in
-those columns. `thermal` caps the view at 720 rows rather than 540 because it
-is also the Linux default, desktops included.
 
 The frame cap cvar is **`cl_maxfps`**, not `fps_max`. The engine silently
 accepts an unknown cvar name and creates a dud, so a `fps_max` line looks

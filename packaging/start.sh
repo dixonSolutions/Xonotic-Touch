@@ -883,12 +883,12 @@ mkdir -p "${DATA_DIR}/touch/profiles" 2>/dev/null || true
         if [ -n "${XONOTIC_TOUCH_PERF_PROFILE:-}" ]; then
             echo "exec touch/profiles/${TOUCH_PERF_PROFILE}.cfg"
         else
-            echo "alias _touch_perf_apply0 \"exec touch/profiles/${TOUCH_PERF_PROFILE}.cfg; seta touch_perf_version 2\""
-            # Version 2 added the resolution cap and render-lite.cfg. An
-            # install already on 1 gets just those, once, and keeps the frame
-            # cap and texture size it has.
-            echo "alias _touch_perf_apply1 \"exec touch/profiles/render-lite.cfg; r_viewscale_maxheight 720; seta touch_perf_version 2\""
-            echo "alias _touch_perf_apply2 \"\""
+            # Version 3 removed the 3D view cap from the defaults: installs on
+            # 1 or 2 get it reset to full resolution, once.
+            echo "alias _touch_perf_apply0 \"exec touch/profiles/${TOUCH_PERF_PROFILE}.cfg; seta touch_perf_version 3\""
+            echo "alias _touch_perf_apply1 \"r_viewscale_maxheight 0; seta touch_perf_version 3\""
+            echo "alias _touch_perf_apply2 \"r_viewscale_maxheight 0; seta touch_perf_version 3\""
+            echo "alias _touch_perf_apply3 \"\""
             echo "_touch_perf_apply\$touch_perf_version"
         fi
     fi

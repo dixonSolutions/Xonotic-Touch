@@ -4897,8 +4897,6 @@ static void R_Water_ProcessPlanes(int fbo, rtexture_t *depthtexture, rtexture_t 
 			if(r_water_scissormode.integer & 1)
 				GL_Scissor(myscissor[0], myscissor[1], myscissor[2], myscissor[3]);
 			R_RenderScene(rt->fbo, rt->depthtexture, rt->colortexture[0], 0, 0, rt->texturewidth, rt->textureheight);
-			R_Mesh_SetRenderTargets(rt->fbo);
-			R_Mesh_InvalidateDepthStencil();
 
 			r_fb.water.hideplayer = false;
 			p->rt_reflection = rt;
@@ -4964,8 +4962,6 @@ static void R_Water_ProcessPlanes(int fbo, rtexture_t *depthtexture, rtexture_t 
 			if(r_water_scissormode.integer & 1)
 				GL_Scissor(myscissor[0], myscissor[1], myscissor[2], myscissor[3]);
 			R_RenderScene(rt->fbo, rt->depthtexture, rt->colortexture[0], 0, 0, rt->texturewidth, rt->textureheight);
-			R_Mesh_SetRenderTargets(rt->fbo);
-			R_Mesh_InvalidateDepthStencil();
 
 			r_fb.water.hideplayer = false;
 			p->rt_refraction = rt;
@@ -5025,8 +5021,6 @@ static void R_Water_ProcessPlanes(int fbo, rtexture_t *depthtexture, rtexture_t 
 			R_View_Update(NULL);
 			R_AnimCache_CacheVisibleEntities();
 			R_RenderScene(rt->fbo, rt->depthtexture, rt->colortexture[0], 0, 0, rt->texturewidth, rt->textureheight);
-			R_Mesh_SetRenderTargets(rt->fbo);
-			R_Mesh_InvalidateDepthStencil();
 
 			r_fb.water.hideplayer = false;
 			p->rt_camera = rt;
@@ -5857,12 +5851,7 @@ void R_RenderView(int fbo, rtexture_t *depthtexture, rtexture_t *colortexture, i
 
 	R_MotionBlurView(viewfbo, viewdepthtexture, viewcolortexture, viewx, viewy, viewwidth, viewheight);
 	if (!skipblend)
-	{
-		// Only the colour of the scene goes on to the screen.
-		R_Mesh_SetRenderTargets(viewfbo);
-		R_Mesh_InvalidateDepthStencil();
 		R_BlendView(viewcolortexture, fbo, depthtexture, colortexture, x, y, width, height);
-	}
 	if (r_timereport_active)
 		R_TimeReport("blendview");
 

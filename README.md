@@ -96,7 +96,6 @@ First launch downloads game data into the platform writable dir (see [docs/RELEA
 ## Docs
 
 - [docs/ANDROID.md](docs/ANDROID.md) — Android APK: what the port needed, signing, first-launch download
-- [docs/PERFORMANCE.md](docs/PERFORMANCE.md) — phone and tablet frame rate: what costs what, and how to measure it
 - [docs/RELEASES.md](docs/RELEASES.md) — Flatpak + Click, CI, GitHub Releases
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — technical overview
 - [docs/MAINTAINING.md](docs/MAINTAINING.md) — source maintainer guide

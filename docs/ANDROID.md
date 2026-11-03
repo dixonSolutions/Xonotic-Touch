@@ -424,8 +424,7 @@ which takes the data with it. See **Signing** below.
   - low: under 3.5 GB, a fastest core under 1.9 GHz, or fewer than 4 cores.
     Gets the 30 fps saver, because a phone that cannot hold 60 stutters
     instead of pacing evenly.
-  - high: 7.5 GB and 2.8 GHz or more. Gets balanced with full-size textures,
-    the 3D view at up to 1080 rows and bump-mapped lighting.
+  - high: 7.5 GB and 2.8 GHz or more. Gets balanced with full-size textures.
   - mid: everything else. Gets balanced.
 
   The facts go to the engine as `_android_soc`, `_android_hardware`,
@@ -440,17 +439,6 @@ which takes the data with it. See **Signing** below.
   most on big.LITTLE SoCs such as Exynos, where a frame that lands on a little
   core runs long. `sys_perfhint 0` turns it off. The console says
   "Performance hint: session open" when the device supports it.
-- **The 3D view is drawn at no more than 720 rows** (540 on the low tier,
-  1080 on the high one) and scaled up, with the HUD and the touch controls at
-  full resolution (`r_viewscale_maxheight`). A phone panel has far more
-  pixels than its GPU fills at 60 fps. The balanced profile also turns off
-  bump-mapped world lighting, HUD blur passes and bullet casings, and draws
-  distant players with their LOD models as one body (`render-lite.cfg`).
-  Measurements and the reasoning are in [PERFORMANCE.md](PERFORMANCE.md).
-- **Depth and stencil are discarded** once a pass no longer needs them
-  (`glInvalidateFramebuffer` on ES 3, `GL_EXT_discard_framebuffer` on ES 2),
-  so a tile-based GPU (Mali, Adreno, PowerVR) does not write them out to
-  memory every frame. `-noinvalidateframebuffer` turns it off.
 - **Sustained performance mode**, where the device offers it, trades peak
   clocks for ones it can hold (`XonoticActivity`).
 - **The game thread runs at high priority** (`SDL_SetThreadPriority`).

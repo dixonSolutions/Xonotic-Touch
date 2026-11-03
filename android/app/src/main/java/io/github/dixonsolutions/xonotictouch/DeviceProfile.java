@@ -111,33 +111,9 @@ final class DeviceProfile {
             return "exec touch/profiles/battery.cfg";
         }
         if (tier == TIER_HIGH) {
-            return "exec touch/profiles/balanced.cfg; " + HIGH_TIER_RENDER;
+            return "exec touch/profiles/balanced.cfg; gl_picmip 0";
         }
         return "exec touch/profiles/balanced.cfg";
-    }
-
-    /**
-     * A flagship GPU fills 1080 rows with bump-mapped lighting at 60 fps; it
-     * keeps full-size textures too.
-     */
-    private static final String HIGH_TIER_RENDER =
-            "gl_picmip 0; r_viewscale_maxheight 1080; r_glsl_deluxemapping 1";
-
-    /**
-     * Once, for an install whose first start ran an older profile
-     * (touch_perf_version 1): the render savings that profile did not have
-     * (touch/profiles/render-lite.cfg and the resolution cap), without
-     * touching its frame cap or texture size, which the player may have
-     * changed since.
-     */
-    String upgradeProfileCommands() {
-        if (tier == TIER_LOW) {
-            return "exec touch/profiles/render-lite.cfg; r_viewscale_maxheight 540; r_shadow_gloss 0";
-        }
-        if (tier == TIER_HIGH) {
-            return "hud_postprocessing 0; r_viewscale_maxheight 1080";
-        }
-        return "exec touch/profiles/render-lite.cfg; r_viewscale_maxheight 720";
     }
 
     /** Lines for touch/startup.cfg: the facts as read-only-by-convention cvars. */
