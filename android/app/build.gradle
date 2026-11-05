@@ -24,6 +24,10 @@ android {
             cmake {
                 arguments "-DXONOTIC_DEPS_PREFIX=${depsPrefix}",
                           "-DXONOTIC_VERSION=${appVersion}"
+                // Test builds only: extra engine defines, e.g. ANDYSU_NO_HEALTHY.
+                if (project.findProperty('andysu_test_defs')) {
+                    arguments "-DANDYSU_TEST_DEFS=${project.findProperty('andysu_test_defs')}"
+                }
                 // ccache when the host has it: the NDK compiler call is
                 // wrapped and the second build of a commit costs seconds.
                 def ccacheBin = ['/usr/bin/ccache', '/usr/local/bin/ccache',

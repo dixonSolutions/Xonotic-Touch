@@ -205,6 +205,41 @@ final class GameData {
      */
     private static final Object PREPARE_LOCK = new Object();
 
+    /** The release the unpacked bundle belongs to (the stamp written when an unpack finished), or null. */
+    String bundleVersion() {
+        File stamp = new File(baseDir(), BUNDLE_STAMP);
+        try {
+            return stamp.isFile() ? readAll(stamp) : null;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /** Forget what was unpacked: the next {@link #prepare} unpacks the whole bundle again. */
+    void invalidateBundle() {
+        for (String name : new String[] { BUNDLE_STAMP, BUNDLE_MANIFEST }) {
+            File file = new File(baseDir(), name);
+            if (file.exists() && !file.delete()) {
+                Log.w(TAG, "Could not delete " + file);
+            }
+        }
+    }
+
+    /**
+     * In-process rollback: the game data must belong to the release that runs again, not to
+     * {@code failedVersion}, which has been unpacking over it. When the failed release's unpack
+     * finished (its stamp is there) the manifest it left is exact and only what differs is
+     * written; otherwise files of both releases may be mixed, so everything is unpacked again.
+     */
+    void prepareAfterRollback(Progress progress, String failedVersion) throws IOException {
+        synchronized (PREPARE_LOCK) {
+            if (!failedVersion.equals(bundleVersion())) {
+                invalidateBundle();
+            }
+            prepare(progress);
+        }
+    }
+
     void prepare(Progress progress) throws IOException {
         synchronized (PREPARE_LOCK) {
             File base = baseDir();
@@ -688,6 +723,10 @@ final class GameData {
     }
 
     private String appVersion() {
+        // Under AndySU the installed APK is a frozen host; the running payload's version is what
+        // the bundled data belongs to.
+        String payload = AndySUCompat.payloadVersion();
+        if (payload != null) return payload;
         try {
             return context.getPackageManager()
                     .getPackageInfo(context.getPackageName(), 0).versionName;

@@ -53,6 +53,25 @@ set(DP_SDL
 
 add_library(main SHARED ${DP_COMMON} ${DP_MENU} ${DP_SND} ${DP_SDL})
 
+##### AndySU resident loader and live engine swap ################################
+set(ANDYSU_DIR "${CMAKE_CURRENT_SOURCE_DIR}/andysu")
+target_sources(main PRIVATE "${ANDYSU_DIR}/andysu_engine.c")
+target_include_directories(main PRIVATE "${ANDYSU_DIR}")
+target_compile_definitions(main PRIVATE
+    ANDYSU_SWAP
+    ANDYSU_BUILD_ID="${XONOTIC_VERSION}")
+foreach(def IN LISTS ANDYSU_TEST_DEFS)
+    target_compile_definitions(main PRIVATE ${def})
+endforeach()
+target_link_options(main PRIVATE
+    "-Wl,--version-script=${ANDYSU_DIR}/andysu_engine.map"
+    -Wl,--exclude-libs,ALL)
+
+add_library(andysu_xonotic_loader SHARED "${ANDYSU_DIR}/andysu_loader.c")
+target_include_directories(andysu_xonotic_loader PRIVATE "${ANDYSU_DIR}")
+target_compile_options(andysu_xonotic_loader PRIVATE -O2 -Wall)
+target_link_libraries(andysu_xonotic_loader android log dl)
+
 ##### Prebuilt dependencies ####################################################
 
 add_library(SDL2 SHARED IMPORTED)

@@ -1746,6 +1746,14 @@ void Sys_SDL_HandleEvents(void)
 						vid_hidden = false;
 						break;
 					case  SDL_WINDOWEVENT_HIDDEN:
+#if defined(__ANDROID__) && defined(ANDYSU_SWAP)
+						// A live engine swap leaves the previous engine's window events in SDL's queue (its window was
+						// destroyed and hidden; SDL is not shut down; the new window gets the same id, so the id cannot tell
+						// them apart). Taken for ours, a stale HIDDEN leaves vid_hidden set and the new engine never draws
+						// again. SDL has already updated the flags of the current window when it posted a real one.
+						if (window && (SDL_GetWindowFlags(window) & SDL_WINDOW_SHOWN))
+							break;
+#endif
 						vid_hidden = true;
 						break;
 					case SDL_WINDOWEVENT_EXPOSED:

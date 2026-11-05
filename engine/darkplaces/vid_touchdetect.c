@@ -375,6 +375,15 @@ static qbool vid_chassis_is_handheld_or_tablet(int chassis)
 static int vid_android_state;
 static int vid_android_seen;
 
+#ifdef ANDYSU_SWAP
+// The resident loader owns the JNI symbol and forwards device presence to the
+// currently running engine generation.
+void Andysu_InputDevices(int touch, int keyboard, int mouse)
+{
+	int v = VID_ANDROID_VALID | (touch ? VID_ANDROID_TOUCH : 0) | (keyboard ? VID_ANDROID_KEYBOARD : 0) | (mouse ? VID_ANDROID_MOUSE : 0);
+	__atomic_store_n(&vid_android_state, v, __ATOMIC_RELEASE);
+}
+#else
 JNIEXPORT void JNICALL Java_io_github_dixonsolutions_xonotictouch_XonoticActivity_nativeInputDevices(JNIEnv *env, jclass cls, jboolean touch, jboolean keyboard, jboolean mouse);
 JNIEXPORT void JNICALL Java_io_github_dixonsolutions_xonotictouch_XonoticActivity_nativeInputDevices(JNIEnv *env, jclass cls, jboolean touch, jboolean keyboard, jboolean mouse)
 {
@@ -383,7 +392,8 @@ JNIEXPORT void JNICALL Java_io_github_dixonsolutions_xonotictouch_XonoticActivit
 	(void)cls;
 	__atomic_store_n(&vid_android_state, v, __ATOMIC_RELEASE);
 }
-#endif
+#endif // ANDYSU_SWAP
+#endif // __ANDROID__
 
 #ifdef VID_LINUX_PROBES
 // A keyboard /proc lists but presence discounted (the chassis' own keyboard

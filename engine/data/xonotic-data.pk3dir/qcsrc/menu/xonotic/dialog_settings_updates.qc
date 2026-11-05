@@ -55,6 +55,16 @@ void TouchUpdates_Skip_Click(entity btn, entity tab)
 	TouchUpdates_Request(tab, "skip", _("This version will be skipped."));
 }
 
+void TouchUpdates_PayloadCheck_Click(entity btn, entity tab)
+{
+	tab.requestFailed = !TouchAndySU_request("check");
+}
+
+void TouchUpdates_PayloadApply_Click(entity btn, entity tab)
+{
+	tab.requestFailed = !TouchAndySU_request("apply");
+}
+
 void TouchUpdates_Releases_Click(entity btn, entity tab)
 {
 	localcmd(strcat("openurl ", TOUCH_UPDATE_RELEASES_URL, "\n"));
@@ -128,6 +138,24 @@ void XonoticUpdatesSettingsTab_fill(entity me)
 			e.onClick = TouchUpdates_Latest_Click;
 			e.onClickEntity = me;
 
+	// The Android bridge publishes before the menu starts. Other platforms have
+	// no payload updater and keep the original layout.
+	TouchUpdate_read();
+	if (TouchUpdate_canSelfInstall() && TouchAndySU_state() != "unavailable" && TouchAndySU_state() != "incompatible")
+	{
+		me.TR(me);
+			me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Live updates")));
+		me.TR(me);
+			me.TD(me, 1, me.columns, me.payloadLabel = makeXonoticTextLabel(0, ""));
+		me.TR(me);
+			me.TD(me, 1, 3, me.payloadCheck = makeXonoticButton(_("Check now"), '0 0 0'));
+			me.payloadCheck.onClick = TouchUpdates_PayloadCheck_Click;
+			me.payloadCheck.onClickEntity = me;
+			me.TD(me, 1, 3, me.payloadApply = makeXonoticButton(_("Apply update"), '0 0 0'));
+			me.payloadApply.onClick = TouchUpdates_PayloadApply_Click;
+			me.payloadApply.onClickEntity = me;
+	}
+
 	me.TR(me);
 		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("What's new")));
 	me.TR(me);
@@ -158,6 +186,8 @@ void XonoticUpdatesSettingsTab_draw(entity me)
 	{
 		me.publishedAuto = wantAuto;
 		me.requestFailed = !TouchUpdate_request(wantAuto ? "auto-on" : "auto-off");
+		if (me.payloadLabel) // one setting covers full app updates and live updates
+			TouchAndySU_request(wantAuto ? "auto-on" : "auto-off");
 	}
 
 	string state = TouchUpdate_stateName();
@@ -165,6 +195,22 @@ void XonoticUpdatesSettingsTab_draw(entity me)
 	bool busy = TouchUpdate_busy();
 	bool behind = TouchUpdate_isBehind();
 	bool ready = (state == TOUCH_UPDATE_READY);
+
+	if (me.payloadLabel)
+	{
+		string payloadState = TouchAndySU_state();
+		bool payloadReady = false;
+		if (payloadState == "staged")
+			payloadReady = true;
+		bool payloadBlocked = TouchAndySU_busy();
+		if (payloadState == "unavailable")
+			payloadBlocked = true;
+		if (payloadState == "incompatible")
+			payloadBlocked = true;
+		me.payloadLabel.setText(me.payloadLabel, TouchAndySU_statusText());
+		me.payloadCheck.disabled = payloadBlocked;
+		me.payloadApply.disabled = !payloadReady;
+	}
 
 	me.versionLabel.setText(me.versionLabel, TouchUpdate_versionLine());
 	string status = TouchUpdate_shortStatus();
