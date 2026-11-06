@@ -1,0 +1,82 @@
+# Clients reject an expired manifest, and a live channel's signature lasts 30 days. Releases sign
+# it, so this only has work to do when no release has shipped for a while.
+#
+# Not in the release concurrency group: GitHub keeps one pending run per group, so a scheduled run
+# could cancel a queued release. This skips while a release is active and tries again next week,
+# well before the 14-day margin runs out.
+name: resign-live
+on:
+  schedule:
+    - cron: "23 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Re-sign even if the manifest has plenty of time left
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: resign-live
+  cancel-in-progress: false
+
+env:
+  ANDYSU_VERSION: 0.1.120
+
+jobs:
+  resign:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suffix: [arm64, arm32, x64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Re-sign the channel if it is close to expiry
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANNEL: live-${{ matrix.suffix }}
+          ANDYSU_SIGNING_KEY: ${{ secrets.ANDYSU_SIGNING_KEY }}
+          ANDYSU_SIGNING_CERT: ${{ secrets.ANDYSU_SIGNING_CERT }}
+          MIN_DAYS: ${{ inputs.force && '31' || '14' }}
+        run: |
+          set -euo pipefail
+          active=$(gh run list --workflow build-and-publish.yml --limit 20 --json status --jq '[.[] | select(.status != "completed")] | length')
+          if [ "$active" != 0 ]; then
+            echo "::notice::a release is active; it signs the channel itself"
+            exit 0
+          fi
+          base="https://github.com/dixonSolutions/AndySU"
+          curl -fsSL "$base/releases/download/v$ANDYSU_VERSION/andysu-x86_64-unknown-linux-musl" -o "$RUNNER_TEMP/andysu"
+          curl -fsSL "https://raw.githubusercontent.com/dixonSolutions/AndySU/v$ANDYSU_VERSION/scripts/resign-channel.sh" -o "$RUNNER_TEMP/resign-channel.sh"
+          chmod +x "$RUNNER_TEMP/andysu"
+          site="$RUNNER_TEMP/site"
+          mkdir -p "$site/$CHANNEL"
+          gh release download "channel-$CHANNEL" --repo "$GITHUB_REPOSITORY" --dir "$site/$CHANNEL" --pattern 'update.json*'
+          before=$(sha256sum "$site/$CHANNEL/update.json")
+          umask 077
+          printf '%s\n' "$ANDYSU_SIGNING_KEY" > "$RUNNER_TEMP/key"
+          printf '%s\n' "$ANDYSU_SIGNING_CERT" > "$RUNNER_TEMP/cert.json"
+          trap 'rm -f "$RUNNER_TEMP/key" "$RUNNER_TEMP/cert.json"' EXIT
+          ANDYSU_CLI="$RUNNER_TEMP/andysu" ANDYSU_KEY_FILE="$RUNNER_TEMP/key" ANDYSU_CERT_FILE="$RUNNER_TEMP/cert.json" \
+            sh "$RUNNER_TEMP/resign-channel.sh" "$site" "$CHANNEL" keys/xonotic-touch-public.pem
+          if [ "$before" != "$(sha256sum "$site/$CHANNEL/update.json")" ]; then
+            gh release upload "channel-$CHANNEL" --repo "$GITHUB_REPOSITORY" --clobber \
+              "$site/$CHANNEL/update.json" "$site/$CHANNEL/update.json.sig"
+          fi
+      - name: The release key's certificate is not about to run out
+        env:
+          ANDYSU_SIGNING_CERT: ${{ secrets.ANDYSU_SIGNING_CERT }}
+        run: |
+          python3 - <<'PY'
+          import datetime, json, os, sys
+          until = json.loads(os.environ["ANDYSU_SIGNING_CERT"])["not_after"].replace("Z", "+00:00")
+          left = (datetime.datetime.fromisoformat(until) - datetime.datetime.now(datetime.timezone.utc)).days
+          print(f"certificate valid for {left} more days")
+          if left < 30:
+              print(f"::error::the release key certificate expires in {left} days; certify a new one")
+              sys.exit(1)
+          PY
