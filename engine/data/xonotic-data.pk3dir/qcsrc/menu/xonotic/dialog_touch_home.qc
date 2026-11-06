@@ -92,7 +92,8 @@ void XonoticTouchHomeDialog_fill(entity me)
 	// answer "am I up to date". This shows the Touch version instead, and is
 	// the way in to the update screen — the place people look for it.
 	me.gotoRC(me, me.rows - 1, 0);
-		me.TD(me, 1, me.columns, me.versionButton = makeXonoticButton(TouchUpdate_versionLine(), '0 0 0'));
+		me.TD(me, 1, me.columns, me.versionButton = makeXonoticButton(TouchUpdate_buildLine(), '0 0 0'));
+			me.versionButton.fontSize = SKINFONTSIZE_NORMAL * 0.75;
 			me.versionButton.onClick = TouchHome_OpenUpdates;
 			me.versionButton.onClickEntity = NULL;
 }
@@ -107,7 +108,7 @@ void XonoticTouchHomeDialog_draw(entity me)
 		me.nextVersionPoll = time + 2;
 		TouchUpdate_read();
 
-		string caption = TouchUpdate_versionLine();
+		string caption = TouchUpdate_buildLine();
 		string status = TouchUpdate_shortStatus();
 		// Only badge the button when there is something to act on. "Up to date"
 		// on the home screen is noise; "4 versions behind" is not.

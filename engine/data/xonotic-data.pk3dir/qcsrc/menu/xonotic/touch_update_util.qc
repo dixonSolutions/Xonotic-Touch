@@ -352,9 +352,22 @@ bool TouchUpdate_request(string token)
 	return true;
 }
 
+// The version that is running. On a live build the APK updater stands down, so its value goes stale.
+string TouchUpdate_runningVersion()
+{
+	string v = TouchAndySU_installed();
+	return (v != "") ? v : TouchUpdate_installed();
+}
+
+string TouchUpdate_buildLine()
+{
+	string v = TouchUpdate_runningVersion();
+	return (v != "") ? strcat(_("Build"), " ", v) : "";
+}
+
 string TouchUpdate_versionLine()
 {
-	string v = TouchUpdate_installed();
+	string v = TouchUpdate_runningVersion();
 	if (v == "")
 		return _("Xonotic Touch (development build)");
 	return strcat(_("Xonotic Touch"), " ", v);
