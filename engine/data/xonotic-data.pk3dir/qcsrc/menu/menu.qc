@@ -418,7 +418,7 @@ void drawBuildVersion(float a)
 		return;
 	float h = 0.016 * menuLayerSize.y;
 	vector size = eY * h + eX * (h * draw_scale.y / draw_scale.x);
-	vector pos = menuLayerOrigin + eX * (0.2942 * menuLayerSize.x) + eY * (0.2235 * menuLayerSize.y);
+	vector pos = menuLayerOrigin + eX * (0.2942 * menuLayerSize.x) + eY * (0.2135 * menuLayerSize.y);
 	draw_CenterText(pos, line, size, '0.75 0.85 1', a, false);
 }
 

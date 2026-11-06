@@ -9,7 +9,7 @@ CLASS(XonoticTouchHomeDialog, XonoticDialog)
 	// runs when the text actually changed.
 	ATTRIB(XonoticTouchHomeDialog, versionCaption, string, string_null);
 	ATTRIB(XonoticTouchHomeDialog, nextVersionPoll, float, 0);
-	ATTRIB(XonoticTouchHomeDialog, title, string, _("Xonotic Touch"));
+	ATTRIB(XonoticTouchHomeDialog, title, string, _("Play"));
 	ATTRIB(XonoticTouchHomeDialog, name, string, "touchhome");
 	ATTRIB(XonoticTouchHomeDialog, tooltip, string, _("Quick play, campaign, multiplayer, and touch controls"));
 	ATTRIB(XonoticTouchHomeDialog, color, vector, SKINCOLOR_DIALOG_SINGLEPLAYER);
