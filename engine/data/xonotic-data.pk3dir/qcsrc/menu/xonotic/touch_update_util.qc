@@ -171,7 +171,7 @@ string TouchAndySU_statusText()
 	if (state == "staged")
 		return sprintf(_("Version %s is ready to apply."), TouchAndySU_latest());
 	if (state == "shell-update")
-		return _("This update needs a full app update. Use Install below.");
+		return _("This update needs a new app install. Press Apply update.");
 	if (state == "error")
 		return _("The last update check failed. Xonotic Touch will try again.");
 	if (state == "uptodate")

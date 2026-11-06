@@ -88,6 +88,8 @@ final class AndySUBridge {
                 JSONObject status = new JSONObject(AndySUCompat.updateStatus());
                 state = normalize(status.optString("state", "idle"));
                 latest = status.optString("release", status.optString("id", ""));
+                // The host's status keeps saying "staged" after that release has committed.
+                if ("staged".equals(state) && latest.equals(installed)) state = "uptodate";
                 if (message.isEmpty()) {
                     message = status.optString("message",
                             status.optString("reason", status.optString("code", "")));

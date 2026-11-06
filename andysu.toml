@@ -1,0 +1,17 @@
+app = "io.github.dixonsolutions.xonotictouch"
+host_api = 3
+public_key = "keys/xonotic-touch-public.pem"
+
+[remote]
+type = "github"
+repo = "dixonSolutions/Xonotic-Touch"
+# The workflow substitutes a distinct channel for each APK ABI.
+channel = "live-arm64"
+
+[policy]
+mode = "auto"
+apply = "live"
+live_fallback = "next_start"
+# The engine has to load its game data before it can report healthy. Slow phones need the time:
+# past this deadline the host rolls a good update back.
+watchdog_ms = 45000
