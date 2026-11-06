@@ -126,6 +126,9 @@ final class AppUpdater {
     // ----------------------------------------------------------------- check
 
     static boolean isEnabled(Context context) {
+        // On a live build AndySU updates the app and replaces the host itself when one is needed; the
+        // installed versionName is frozen, so this check would offer an install on every release.
+        if (AndySUCompat.present()) return false;
         return prefs(context).getBoolean(PREF_ENABLED, true);
     }
 
@@ -243,25 +246,28 @@ final class AppUpdater {
             if (assets == null) {
                 return null;
             }
+            // Prefer a live host for the best supported ABI, then its plain APK.
             for (String abi : Build.SUPPORTED_ABIS) {
-                for (int i = 0; i < assets.length(); i++) {
-                    JSONObject asset = assets.getJSONObject(i);
-                    String name = asset.optString("name", "");
-                    String url = asset.optString("browser_download_url", "");
-                    if (!name.endsWith(".apk") || !name.contains(abi)) {
-                        continue;
+                for (int pass = 0; pass < 2; pass++) {
+                    for (int i = 0; i < assets.length(); i++) {
+                        JSONObject asset = assets.getJSONObject(i);
+                        String name = asset.optString("name", "");
+                        String url = asset.optString("browser_download_url", "");
+                        if (!ReleaseAsset.matches(name, version, abi, Build.VERSION.SDK_INT, pass == 0)) {
+                            continue;
+                        }
+                        if (!isTrustedApkUrl(url)) {
+                            Log.w(TAG, "Ignoring release asset with an untrusted URL: " + url);
+                            continue;
+                        }
+                        // GitHub lists "sha256:<hex>" for assets uploaded since
+                        // mid-2025; older ones have no digest and are checked
+                        // by size alone.
+                        String digest = asset.optString("digest", "");
+                        String sha256 = digest.startsWith("sha256:")
+                                ? digest.substring(7).toLowerCase(java.util.Locale.ROOT) : "";
+                        return new Update(version, url, asset.optLong("size", -1), name, sha256);
                     }
-                    if (!isTrustedApkUrl(url)) {
-                        Log.w(TAG, "Ignoring release asset with an untrusted URL: " + url);
-                        continue;
-                    }
-                    // GitHub lists "sha256:<hex>" for assets uploaded since
-                    // mid-2025; older ones have no digest and are checked
-                    // by size alone.
-                    String digest = asset.optString("digest", "");
-                    String sha256 = digest.startsWith("sha256:")
-                            ? digest.substring(7).toLowerCase(java.util.Locale.ROOT) : "";
-                    return new Update(version, url, asset.optLong("size", -1), name, sha256);
                 }
             }
             Log.i(TAG, "Release " + version + " has no build for " + Build.SUPPORTED_ABIS[0]);

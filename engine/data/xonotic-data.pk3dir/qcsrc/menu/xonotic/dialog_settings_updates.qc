@@ -55,6 +55,16 @@ void TouchUpdates_Skip_Click(entity btn, entity tab)
 	TouchUpdates_Request(tab, "skip", _("This version will be skipped."));
 }
 
+void TouchUpdates_PayloadCheck_Click(entity btn, entity tab)
+{
+	tab.requestFailed = !TouchAndySU_request("check");
+}
+
+void TouchUpdates_PayloadApply_Click(entity btn, entity tab)
+{
+	tab.requestFailed = !TouchAndySU_request("apply");
+}
+
 void TouchUpdates_Releases_Click(entity btn, entity tab)
 {
 	localcmd(strcat("openurl ", TOUCH_UPDATE_RELEASES_URL, "\n"));
@@ -87,6 +97,11 @@ void XonoticUpdatesSettingsTab_fill(entity me)
 {
 	entity e;
 
+	// The Android bridge publishes before the menu starts. On a live build AndySU does the updating,
+	// so the APK controls go. Other platforms keep the original layout.
+	TouchUpdate_read();
+	bool live = TouchUpdate_canSelfInstall() && TouchAndySU_state() != "unavailable" && TouchAndySU_state() != "incompatible";
+
 	me.TR(me);
 		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("This build")));
 	me.TR(me);
@@ -100,7 +115,10 @@ void XonoticUpdatesSettingsTab_fill(entity me)
 	me.TR(me);
 		me.TD(me, 1, me.columns, me.autoBox = makeXonoticCheckBox_T(0, TOUCH_UPDATE_AUTO_CVAR,
 			_("Update automatically"),
-			_("Download new builds in the background on Wi-Fi. A downloaded update installs the next time you start Xonotic Touch, or now with Install now. Android may still ask you to confirm.")));
+			live ? _("Download and apply updates in the background, while you play. A failed update rolls back on its own.")
+				: _("Download new builds in the background on Wi-Fi. A downloaded update installs the next time you start Xonotic Touch, or now with Install now. Android may still ask you to confirm.")));
+	if (!live)
+	{
 	me.TR(me);
 		me.TD(me, 1, 1.5, me.checkButton = makeXonoticButton_T(_("Check now"), '0 0 0',
 			_("Ask GitHub for the newest release, and load what's new")));
@@ -118,6 +136,7 @@ void XonoticUpdatesSettingsTab_fill(entity me)
 			_("Do not offer this version again; the next one will be")));
 			me.skipButton.onClick = TouchUpdates_Skip_Click;
 			me.skipButton.onClickEntity = me;
+	}
 	me.TR(me);
 		me.TD(me, 1, 3, e = makeXonoticButton_T(_("All releases on GitHub"), '0 0 0',
 			_("Open the releases page: every build, its downloads and its notes")));
@@ -127,6 +146,21 @@ void XonoticUpdatesSettingsTab_fill(entity me)
 			_("Open the newest release: its APK, Flatpak and click downloads")));
 			e.onClick = TouchUpdates_Latest_Click;
 			e.onClickEntity = me;
+
+	if (live)
+	{
+		me.TR(me);
+			me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Live updates")));
+		me.TR(me);
+			me.TD(me, 1, me.columns, me.payloadLabel = makeXonoticTextLabel(0, ""));
+		me.TR(me);
+			me.TD(me, 1, 3, me.payloadCheck = makeXonoticButton(_("Check now"), '0 0 0'));
+			me.payloadCheck.onClick = TouchUpdates_PayloadCheck_Click;
+			me.payloadCheck.onClickEntity = me;
+			me.TD(me, 1, 3, me.payloadApply = makeXonoticButton(_("Apply update"), '0 0 0'));
+			me.payloadApply.onClick = TouchUpdates_PayloadApply_Click;
+			me.payloadApply.onClickEntity = me;
+	}
 
 	me.TR(me);
 		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("What's new")));
@@ -158,6 +192,8 @@ void XonoticUpdatesSettingsTab_draw(entity me)
 	{
 		me.publishedAuto = wantAuto;
 		me.requestFailed = !TouchUpdate_request(wantAuto ? "auto-on" : "auto-off");
+		if (me.payloadLabel) // one setting covers full app updates and live updates
+			TouchAndySU_request(wantAuto ? "auto-on" : "auto-off");
 	}
 
 	string state = TouchUpdate_stateName();
@@ -165,6 +201,24 @@ void XonoticUpdatesSettingsTab_draw(entity me)
 	bool busy = TouchUpdate_busy();
 	bool behind = TouchUpdate_isBehind();
 	bool ready = (state == TOUCH_UPDATE_READY);
+
+	if (me.payloadLabel)
+	{
+		string payloadState = TouchAndySU_state();
+		bool payloadReady = false;
+		if (payloadState == "staged")
+			payloadReady = true;
+		if (payloadState == "shell-update")
+			payloadReady = true;
+		bool payloadBlocked = TouchAndySU_busy();
+		if (payloadState == "unavailable")
+			payloadBlocked = true;
+		if (payloadState == "incompatible")
+			payloadBlocked = true;
+		me.payloadLabel.setText(me.payloadLabel, TouchAndySU_statusText());
+		me.payloadCheck.disabled = payloadBlocked;
+		me.payloadApply.disabled = !payloadReady;
+	}
 
 	me.versionLabel.setText(me.versionLabel, TouchUpdate_versionLine());
 	string status = TouchUpdate_shortStatus();
@@ -218,10 +272,20 @@ void XonoticUpdatesSettingsTab_draw(entity me)
 	// Disable rather than hide. A control that vanishes mid-gesture hands the
 	// press to whatever moves into its place, which on a touchscreen means
 	// installing an update the player was trying not to.
-	me.checkButton.disabled = busy;
-	me.downloadButton.disabled = (managed || busy || !behind || ready);
-	me.installButton.disabled = (managed || busy || !behind);
-	me.skipButton.disabled = (managed || busy || !behind);
+	if (me.checkButton)
+	{
+		me.checkButton.disabled = busy;
+		me.downloadButton.disabled = (managed || busy || !behind || ready);
+		me.installButton.disabled = (managed || busy || !behind);
+		me.skipButton.disabled = (managed || busy || !behind);
+	}
+	else
+	{
+		// AppUpdater stands down on a live build: its version and status lines would be stale.
+		me.versionLabel.setText(me.versionLabel, strcat(_("Xonotic Touch"), " ", TouchAndySU_installed()));
+		me.statusLabel.setText(me.statusLabel, "");
+		me.messageLabel.setText(me.messageLabel, "");
+	}
 	me.autoBox.disabled = managed;
 
 	SUPER(XonoticUpdatesSettingsTab).draw(me);

@@ -34,6 +34,9 @@ CLASS(XonoticUpdatesSettingsTab, XonoticTab)
 	ATTRIB(XonoticUpdatesSettingsTab, skipButton, entity);
 	ATTRIB(XonoticUpdatesSettingsTab, autoBox, entity);
 	ATTRIB(XonoticUpdatesSettingsTab, changelogBox, entity);
+	ATTRIB(XonoticUpdatesSettingsTab, payloadLabel, entity);
+	ATTRIB(XonoticUpdatesSettingsTab, payloadCheck, entity);
+	ATTRIB(XonoticUpdatesSettingsTab, payloadApply, entity);
 
 	// Poll clock: the status file is written by another process, and once a
 	// second is as fast as anything in it changes.

@@ -35,3 +35,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Ranges between tags, order and the 16 KiB cap
         run: bash scripts/test-release-changelog.sh
+
+  andysu-release:
+    name: AndySU release naming
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check updater selection and configuration
+        run: bash scripts/test-andysu-release.sh
