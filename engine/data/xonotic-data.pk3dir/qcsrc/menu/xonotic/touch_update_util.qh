@@ -125,4 +125,6 @@ string TouchAndySU_message();
 float TouchAndySU_percent();
 bool TouchAndySU_busy();
 string TouchAndySU_statusText();
+string TouchUpdate_runningVersion();
+string TouchUpdate_buildLine();
 bool TouchAndySU_request(string token);

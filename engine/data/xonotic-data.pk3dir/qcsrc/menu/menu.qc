@@ -1,4 +1,5 @@
 #include "menu.qh"
+#include "xonotic/touch_update_util.qh"
 
 #include "item.qh"
 
@@ -374,6 +375,8 @@ enum {
 	SCALEMODE_HEIGHT,
 	SCALEMODE_STRETCH,
 };
+vector menuLayerOrigin;
+vector menuLayerSize;
 void draw_Picture_Aligned(vector algn, float scalemode, string img, float a)
 {
 	vector sz = draw_PictureSize(img);
@@ -402,6 +405,21 @@ void draw_Picture_Aligned(vector algn, float scalemode, string img, float a)
 	}
 	vector org = eX * (algn.x * (1 - isz.x)) + eY * (algn.y * (1 - isz.y));
 	draw_Picture(org, img, isz, '1 1 1', a);
+	menuLayerOrigin = org;
+	menuLayerSize = isz;
+}
+
+// The build version, small and directly under the logo in the top background layer. It is drawn, not
+// baked into the image, because a live update changes it without touching the artwork.
+void drawBuildVersion(float a)
+{
+	string line = TouchUpdate_buildLine();
+	if (line == "")
+		return;
+	float h = 0.016 * menuLayerSize.y;
+	vector size = eY * h + eX * (h * draw_scale.y / draw_scale.x);
+	vector pos = menuLayerOrigin + eX * (0.2942 * menuLayerSize.x) + eY * (0.2135 * menuLayerSize.y);
+	draw_CenterText(pos, line, size, '0.75 0.85 1', a, false);
 }
 
 void drawBackground(string img, float a, string algn, float force1)
@@ -946,6 +964,7 @@ void m_draw(float width, float height)
 			draw_reset_full();
 			draw_Fill('0 0 0', '1 1 0', SKINCOLOR_BACKGROUND, 1);
 			drawBackground(SKINGFX_BACKGROUND, bound(0, menuLogoAlpha, 1), SKINALIGN_BACKGROUND, true);
+			drawBuildVersion(bound(0, menuLogoAlpha, 1));
 			draw_reset_cropped();
 			if (menuAlpha <= 0 && SKINALPHA_CURSOR_INTRO > 0 && m_pointer_shown())
 			{
