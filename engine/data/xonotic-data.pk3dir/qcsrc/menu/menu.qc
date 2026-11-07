@@ -422,6 +422,18 @@ void drawBuildVersion(float a)
 	draw_CenterText(pos, line, size, '0.75 0.85 1', a, false);
 }
 
+// Downloaded game data carries its own background_l2, which outranks one we ship, so the branded logo
+// has a name only we use. Stock data still draws if the file is missing.
+int menuBrandedLogo; // 0 not looked yet, 1 present, -1 absent
+string menuLayerImage(string img, float layer)
+{
+	if (!menuBrandedLogo)
+		menuBrandedLogo = draw_PictureExists("touch_background_l2") ? 1 : -1;
+	if (menuBrandedLogo > 0 && layer == 2 && img == SKINGFX_BACKGROUND)
+		return "touch_background_l2";
+	return strcat(img, "_l", ftos(layer));
+}
+
 void drawBackground(string img, float a, string algn, float force1)
 {
 	if (main.mainNexposee.ModalController_state == 0
@@ -488,11 +500,11 @@ void drawBackground(string img, float a, string algn, float force1)
 			// force all secondary layers to use alpha 1. Prevents ugly issues
 			// with overlap. It's a flag because it cannot be used for the
 			// ingame background
-			draw_Picture_Aligned(v, scalemode, strcat(img, "_l", ftos(l + 1)), 1);
+			draw_Picture_Aligned(v, scalemode, menuLayerImage(img, l + 1), 1);
 		}
 		else
 		{
-			draw_Picture_Aligned(v, scalemode, strcat(img, "_l", ftos(l + 1)), a);
+			draw_Picture_Aligned(v, scalemode, menuLayerImage(img, l + 1), a);
 		}
 		++l;
 LABEL(nopic)
