@@ -14,4 +14,4 @@ apply = "live"
 live_fallback = "next_start"
 # The engine has to load its game data before it can report healthy. Slow phones need the time:
 # past this deadline the host rolls a good update back.
-watchdog_ms = 45000
+watchdog_ms = 120000
