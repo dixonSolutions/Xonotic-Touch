@@ -485,9 +485,9 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$ANDROID_KEYSTORE_BASE64" && test -n "$ANDROID_KEYSTORE_PASSWORD" && test -n "$ANDROID_KEY_ALIAS"
-          base=https://github.com/dixonSolutions/AndySU/releases/download/v0.1.120
+          base=https://github.com/dixonSolutions/AndySU/releases/download/v0.1.130
           curl -fsSL "$base/andysu-x86_64-unknown-linux-musl" -o "$RUNNER_TEMP/andysu"
-          curl -fsSL "$base/andysu-host-template-0.1.120.zip" -o "$RUNNER_TEMP/host-template.zip"
+          curl -fsSL "$base/andysu-host-template-0.1.130.zip" -o "$RUNNER_TEMP/host-template.zip"
           chmod +x "$RUNNER_TEMP/andysu"
           sed "s/channel = \"live-arm64\"/channel = \"live-$SUFFIX\"/" andysu.toml > andysu-abi.toml
           "$RUNNER_TEMP/andysu" host-config --toml andysu-abi.toml --config-out "$RUNNER_TEMP/config.json" --host-out "$RUNNER_TEMP/host.json"
@@ -518,7 +518,7 @@ jobs:
           fi
       - name: Publish signed ABI channel
         if: steps.published.outputs.exists != 'true'
-        uses: dixonSolutions/AndySU/actions/publish@v0.1.120
+        uses: dixonSolutions/AndySU/actions/publish@v0.1.130
         with:
           payload: split/payload
           config: andysu-abi.toml
@@ -526,7 +526,7 @@ jobs:
           signing-cert: ${{ secrets.ANDYSU_SIGNING_CERT }}
           version: ${{ needs.version.outputs.version }}
           pack-args: --no-rename
-          andysu-version: 0.1.120
+          andysu-version: 0.1.130
       - name: Attach live APK to app release
         env:
           GH_TOKEN: ${{ github.token }}
