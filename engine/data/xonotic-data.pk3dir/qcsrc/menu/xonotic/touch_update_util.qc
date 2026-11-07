@@ -321,6 +321,10 @@ bool TouchUpdate_canSelfInstall()
 
 bool TouchUpdate_isBehind()
 {
+	// A live build updates itself and Settings shows it. The APK version here is frozen, so every
+	// check below would call the build behind for ever.
+	if (TouchAndySU_installed() != "")
+		return false;
 	string s = TouchUpdate_stateName();
 	if (s == TOUCH_UPDATE_AVAILABLE || s == TOUCH_UPDATE_DOWNLOADING
 		|| s == TOUCH_UPDATE_INSTALLING || s == TOUCH_UPDATE_NEEDS_PERMISSION

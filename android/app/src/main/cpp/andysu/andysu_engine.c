@@ -149,7 +149,9 @@ void Andysu_FrameHook(void)
 	if (frames == 60)
 		*(volatile int *)0 = 1;
 #endif
-	if (frames == 180 && andysu_in_trial)
+	// 90 frames show the engine draws. Any more only costs time on slow devices, where a good update
+	// can miss the host's watchdog and roll back.
+	if (frames == 90 && andysu_in_trial)
 	{
 		andysu_in_trial = false;
 #ifndef ANDYSU_NO_HEALTHY // test variant (build.sh ":nohealthy"): never reports healthy
