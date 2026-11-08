@@ -24,7 +24,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  ANDYSU_VERSION: 0.1.130
+  ANDYSU_VERSION: 0.1.135
 
 jobs:
   resign:
