@@ -137,6 +137,18 @@ void XonoticUpdatesSettingsTab_fill(entity me)
 			me.skipButton.onClick = TouchUpdates_Skip_Click;
 			me.skipButton.onClickEntity = me;
 	}
+	else
+	{
+		// One status line above (the version line's neighbour), and the two actions a live build has.
+		me.payloadLabel = me.statusLabel;
+		me.TR(me);
+			me.TD(me, 1, 3, me.payloadCheck = makeXonoticButton(_("Check now"), '0 0 0'));
+			me.payloadCheck.onClick = TouchUpdates_PayloadCheck_Click;
+			me.payloadCheck.onClickEntity = me;
+			me.TD(me, 1, 3, me.payloadApply = makeXonoticButton(_("Apply update"), '0 0 0'));
+			me.payloadApply.onClick = TouchUpdates_PayloadApply_Click;
+			me.payloadApply.onClickEntity = me;
+	}
 	me.TR(me);
 		me.TD(me, 1, 3, e = makeXonoticButton_T(_("All releases on GitHub"), '0 0 0',
 			_("Open the releases page: every build, its downloads and its notes")));
@@ -147,20 +159,6 @@ void XonoticUpdatesSettingsTab_fill(entity me)
 			e.onClick = TouchUpdates_Latest_Click;
 			e.onClickEntity = me;
 
-	if (live)
-	{
-		me.TR(me);
-			me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Live updates")));
-		me.TR(me);
-			me.TD(me, 1, me.columns, me.payloadLabel = makeXonoticTextLabel(0, ""));
-		me.TR(me);
-			me.TD(me, 1, 3, me.payloadCheck = makeXonoticButton(_("Check now"), '0 0 0'));
-			me.payloadCheck.onClick = TouchUpdates_PayloadCheck_Click;
-			me.payloadCheck.onClickEntity = me;
-			me.TD(me, 1, 3, me.payloadApply = makeXonoticButton(_("Apply update"), '0 0 0'));
-			me.payloadApply.onClick = TouchUpdates_PayloadApply_Click;
-			me.payloadApply.onClickEntity = me;
-	}
 
 	me.TR(me);
 		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("What's new")));
@@ -221,11 +219,14 @@ void XonoticUpdatesSettingsTab_draw(entity me)
 	}
 
 	me.versionLabel.setText(me.versionLabel, TouchUpdate_versionLine());
-	string status = TouchUpdate_shortStatus();
-	string latest = TouchUpdate_latestKnown();
-	if (status == "" && latest != "")
-		status = strcat(_("Latest release:"), " ", latest);
-	me.statusLabel.setText(me.statusLabel, status);
+	if (!me.payloadLabel)
+	{
+		string status = TouchUpdate_shortStatus();
+		string latest = TouchUpdate_latestKnown();
+		if (status == "" && latest != "")
+			status = strcat(_("Latest release:"), " ", latest);
+		me.statusLabel.setText(me.statusLabel, status);
+	}
 
 	if (me.requestFailed)
 		me.messageLabel.setText(me.messageLabel,
@@ -245,7 +246,21 @@ void XonoticUpdatesSettingsTab_draw(entity me)
 	else
 		me.messageLabel.setText(me.messageLabel, TouchUpdate_message());
 
-	if (state == TOUCH_UPDATE_DOWNLOADING || state == TOUCH_UPDATE_PAUSED || ready)
+	// An empty track on an up-to-date copy reads as stuck: the bar shows only while it has news.
+	me.progressBar.alphaTrack = 0.15;
+	me.progressBar.alphaBar = 0.9;
+	if (me.payloadLabel)
+	{
+		me.progressBar.indeterminate = false;
+		me.progressBar.color = TOUCH_UPDATE_COLOR_PROGRESS;
+		me.progressBar.setProgress(me.progressBar, TouchAndySU_percent() / 100);
+		if (TouchAndySU_state() != "downloading")
+		{
+			me.progressBar.alphaTrack = 0;
+			me.progressBar.alphaBar = 0;
+		}
+	}
+	else if (state == TOUCH_UPDATE_DOWNLOADING || state == TOUCH_UPDATE_PAUSED || ready)
 	{
 		me.progressBar.indeterminate = false;
 		me.progressBar.color = (state == TOUCH_UPDATE_PAUSED) ? TOUCH_UPDATE_COLOR_PAUSED : TOUCH_UPDATE_COLOR_PROGRESS;
@@ -267,6 +282,8 @@ void XonoticUpdatesSettingsTab_draw(entity me)
 		me.progressBar.indeterminate = false;
 		me.progressBar.color = TOUCH_UPDATE_COLOR_PROGRESS;
 		me.progressBar.setProgress(me.progressBar, 0);
+		me.progressBar.alphaTrack = 0;
+		me.progressBar.alphaBar = 0;
 	}
 
 	// Disable rather than hide. A control that vanishes mid-gesture hands the
@@ -283,7 +300,6 @@ void XonoticUpdatesSettingsTab_draw(entity me)
 	{
 		// AppUpdater stands down on a live build: its version and status lines would be stale.
 		me.versionLabel.setText(me.versionLabel, strcat(_("Xonotic Touch"), " ", TouchAndySU_installed()));
-		me.statusLabel.setText(me.statusLabel, "");
 		me.messageLabel.setText(me.messageLabel, "");
 	}
 	me.autoBox.disabled = managed;
