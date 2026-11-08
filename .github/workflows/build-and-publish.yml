@@ -435,6 +435,12 @@ jobs:
                 "https://open-store.io/api/v3/manage/${CLICK_NAME}/revision?apikey=${OPENSTORE_API_KEY}"
             )"
             echo "HTTP ${http_code}"
+            # A re-run after a partial publish (one ABI accepted, the other got a 500)
+            # must skip what is already there, or it can never reach the missing one.
+            if [ "$http_code" = "400" ] && grep -q 'already exists with this version and architecture' /tmp/openstore-resp.json; then
+              echo "Already on OpenStore, skipping $(basename "$f")."
+              continue
+            fi
             python3 -c 'import json,sys; d=json.load(open("/tmp/openstore-resp.json")); print(json.dumps({"success": d.get("success"), "message": d.get("message")}, indent=2)); sys.exit(0 if d.get("success") else 1)' \
               || { echo "OpenStore response:"; cat /tmp/openstore-resp.json; exit 1; }
             if [ "$http_code" != "200" ]; then
