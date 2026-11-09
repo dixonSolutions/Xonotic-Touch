@@ -71,6 +71,16 @@ jobs:
         id: merge
         if: steps.check.outputs.updates == 'true'
         run: |
+          # An earlier run, or a hand-merge, may already propose this vendor
+          # commit on the sync branch; main's lock only catches up once that
+          # PR is merged. Leave it alone rather than merge (or report) again.
+          new=$(git rev-parse "refs/heads/$VENDOR_BRANCH")
+          if git fetch --no-tags --depth=1 origin "refs/heads/$SYNC_BRANCH" 2>/dev/null \
+            && [ "$(git show FETCH_HEAD:upstream.lock | awk '$1 == "vendor" { print $2 }')" = "$new" ]; then
+            echo "origin/$SYNC_BRANCH already merges $new; waiting for its PR."
+            echo "state=proposed" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           set +e
           python3 scripts/upstream-sync.py merge --onto HEAD --branch "$SYNC_BRANCH" --report report.md
           rc=$?
