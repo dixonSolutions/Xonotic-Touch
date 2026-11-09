@@ -68,7 +68,7 @@ User config and touch layout overrides remain in `~/.xonotic/`.
 
 Click packages target Ubuntu Touch devices (ARM). App ID: `xonotictouch.dixonsolutions` (must match the [OpenStore](https://open-store.io/app/xonotictouch.dixonsolutions) listing).
 
-There is no OSTree/apt remote for `.click` like Flatpak — instead each `main` push publishes a **stable download remote** on GitHub Pages (always-latest URLs) plus versioned files and GitHub Release attachments. The `openstore` CI job uploads arm64 + armhf revisions when the `OPENSTORE_API_KEY` repository secret is set (required for that job to pass).
+There is no OSTree/apt remote for `.click` like Flatpak — instead each `main` push publishes a **stable download remote** on GitHub Pages (always-latest URLs) plus versioned files and GitHub Release attachments. OpenStore gets the arm64 + armhf revisions from `.github/workflows/openstore.yml`, weekly and on demand, not on every push (see **OpenStore** below).
 
 ### Public download remote (GitHub Pages)
 
@@ -156,7 +156,7 @@ flatpak install --user XonoticTouch-1.2.<N>-x86_64.flatpak
 | `click` (matrix `arm64`, `armhf`) | push to `main` | Versioned `.click` packages |
 | `publish-pages` | push to `main` | GitHub Pages: Flatpak OSTree + Click downloads |
 | `release` | push to `main` | New GitHub Release tag (old tags kept) |
-| `openstore` | push to `main` | OpenStore revision upload (`OPENSTORE_API_KEY` required) |
+| `openstore.yml` | Mondays 03:17 UTC, or **Run workflow** (optional `tag`) | Uploads the latest release's clicks to OpenStore (`OPENSTORE_API_KEY` required) |
 
 ### OpenStore
 
@@ -170,9 +170,10 @@ flatpak install --user XonoticTouch-1.2.<N>-x86_64.flatpak
 | **Public page** | https://open-store.io/app/xonotictouch.dixonsolutions |
 | **Secret** | Repo secret `OPENSTORE_API_KEY` |
 | **Icon** | Official `engine/misc/logos/icons_png/xonotic_256.png` inside the `.click` (extracted on revision upload) |
-| **Changelog** | Leave the general store changelog blank; each CI upload sets a **revision** changelog (`Xonotic Touch <version>: …`) |
+| **Changelog** | Each upload sets a short revision changelog linking the GitHub release notes; OpenStore prepends it to the app's changelog |
+| **Schedule** | Weekly, not per push. Until 2026-11-08 every push to `main` uploaded a pair: 151 revisions and 3.9 GiB of clicks stored there, about four times the next largest app. From then on every new upload got HTTP 500 while re-uploads of existing versions and metadata edits still worked. Old revisions cannot be deleted through the API; ask the OpenStore maintainers if it happens again |
 
-After the first successful `openstore` job, open the manage page and set **Published = Yes** once automated review passes.
+After the first successful OpenStore upload, open the manage page and set **Published = Yes** once automated review passes.
 
 ### GitHub Pages setup
 

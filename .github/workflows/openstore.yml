@@ -1,0 +1,120 @@
+# Publishes a GitHub release's Click packages to OpenStore.
+#
+# Not part of build-and-publish.yml on purpose. That runs on every push to
+# main, and uploading a ~29 MB revision for each ABI on every push filled the
+# app's storage on OpenStore: 151 revisions, 3.9 GiB of clicks, about four times
+# the next largest app. From 2026-11-08 21:22 UTC every upload got HTTP 500
+# ("There was an error updating your app"), while re-uploading an existing
+# version still got the normal 400 and a no-op metadata save still worked:
+# OpenStore received, reviewed and parsed the package, then failed storing it.
+# Weekly keeps users current without growing the app there by gigabytes a month.
+name: OpenStore
+
+on:
+  schedule:
+    - cron: '17 3 * * 1'   # Mondays 03:17 UTC
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish (default: the latest release)'
+        required: false
+        default: ''
+
+concurrency:
+  group: openstore
+  cancel-in-progress: false
+
+env:
+  # Must match the OpenStore app id exactly (createRevisionFromClick rejects mismatches).
+  CLICK_NAME: xonotictouch.dixonsolutions
+
+jobs:
+  openstore:
+    name: OpenStore
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch the release's Click packages
+        id: fetch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${TAG:-}"
+          if [ -z "$tag" ]; then
+            tag="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
+          fi
+          version="${tag#v}"
+          mkdir -p artifacts/click-arm64 artifacts/click-armhf
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir artifacts/click-arm64 --pattern "${CLICK_NAME}_${version}_arm64.click"
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir artifacts/click-armhf --pattern "${CLICK_NAME}_${version}_armhf.click"
+          find artifacts -name '*.click' -printf '%s %p\n'
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Skip versions OpenStore already has
+        id: need
+        env:
+          VERSION: ${{ steps.fetch.outputs.version }}
+        run: |
+          set -euo pipefail
+          have="$(curl -fsS "https://open-store.io/api/v4/apps/${CLICK_NAME}" | python3 -c '
+          import json, os, sys
+          v = os.environ["VERSION"]
+          revs = json.load(sys.stdin)["data"]["revisions"]
+          print(" ".join(sorted({r["architecture"] for r in revs if r["version"] == v and r["channel"] == "focal"})))')"
+          echo "OpenStore already has ${VERSION} for: ${have:-nothing}"
+          if [ "$have" = "arm64 armhf" ]; then echo "skip=true" >> "$GITHUB_OUTPUT"; else echo "skip=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: click-review packages (must be clean)
+        if: steps.need.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          # OpenStore rejects both click-review errors and warnings.
+          docker run --rm \
+            -v "$PWD/artifacts:/artifacts:ro" \
+            -v "$PWD/scripts/click-review-clean.py:/review-clean.py:ro" \
+            clickable/ci-ut24.04-1.x-amd64 \
+            bash -lc 'set -euo pipefail
+              for f in /artifacts/click-arm64/*.click /artifacts/click-armhf/*.click; do
+                echo "click-review $f"
+                click-review --json "$f" | python3 /review-clean.py
+              done'
+
+      - name: Publish revisions to OpenStore
+        if: steps.need.outputs.skip != 'true'
+        env:
+          OPENSTORE_API_KEY: ${{ secrets.OPENSTORE_API_KEY }}
+          VERSION: ${{ steps.fetch.outputs.version }}
+          TAG: ${{ steps.fetch.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENSTORE_API_KEY:-}" ]; then
+            echo "OPENSTORE_API_KEY secret is missing — cannot publish to OpenStore." >&2
+            exit 1
+          fi
+          # OpenStore prepends each revision's changelog to the app's changelog.
+          CHANGELOG="Xonotic Touch ${VERSION}. Release notes: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+          for f in artifacts/click-arm64/*.click artifacts/click-armhf/*.click; do
+            for attempt in 1 2 3; do
+              echo "Publishing $(basename "$f") (attempt $attempt)..."
+              code="$(curl -sS -o resp.json -w '%{http_code}' --connect-timeout 30 --max-time 900 -X POST \
+                -F "file=@${f}" -F "channel=focal" -F "changelog=${CHANGELOG}" \
+                "https://open-store.io/api/v3/manage/${CLICK_NAME}/revision?apikey=${OPENSTORE_API_KEY}")"
+              echo "HTTP ${code}: $(head -c 300 resp.json)"
+              if [ "$code" = 200 ]; then break; fi
+              if [ "$code" = 400 ] && grep -q 'already exists with this version and architecture' resp.json; then
+                echo "Already on OpenStore."; code=200; break
+              fi
+              # 4xx is a real rejection; only a 5xx is worth another try.
+              case "$code" in 5*) sleep $((attempt * 60)) ;; *) break ;; esac
+            done
+            if [ "$code" != 200 ]; then
+              echo "::error::OpenStore did not take $(basename "$f") (HTTP ${code})."
+              exit 1
+            fi
+          done
+          echo "OpenStore revisions uploaded for ${CLICK_NAME} ${VERSION}."
