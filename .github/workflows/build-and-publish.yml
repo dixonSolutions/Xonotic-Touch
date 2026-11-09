@@ -523,6 +523,14 @@ jobs:
           version: ${{ needs.version.outputs.version }}
           pack-args: --no-rename
           andysu-version: 0.1.135
+      # The AndySU action creates its channel release as a pre-release, and the
+      # app's updater ignores pre-releases. Users get full releases, so clear the flag.
+      - name: Make the AndySU channel release a full release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          SUFFIX: ${{ matrix.suffix }}
+        run: gh release edit "andysu-live-$SUFFIX-$VERSION" --prerelease=false --latest=false
       - name: Attach live APK to app release
         env:
           GH_TOKEN: ${{ github.token }}
