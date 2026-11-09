@@ -59,6 +59,18 @@ void Sys_EM_MouseGrab(qbool on)
 	js_MouseGrab(on);
 }
 
+// Whether the page has the keyboard: visible and focused. SDL tracks focus
+// from window focus/blur events, and a blur with no focus after it (seen on
+// a first visit, around fullscreen and browser UI) leaves the engine sure it
+// is in the background while the page plainly has focus.
+EM_JS(int, js_PageFocused, (void), {
+	return (!document.hidden && document.hasFocus()) ? 1 : 0;
+});
+qbool Sys_EM_PageFocused(void)
+{
+	return js_PageFocused() != 0;
+}
+
 EM_JS(void, js_ScreenKeyboard, (int on), {
 	if (Module.xt && Module.xt.screenKeyboard) Module.xt.screenKeyboard(!!on);
 });

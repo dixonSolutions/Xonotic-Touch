@@ -153,14 +153,25 @@ are needed:
   the Emscripten SDK, kept in `.vercel/cache` between builds.
 - `buildCommand` (`scripts/vercel-build.sh`): `scripts/build-web.sh`, then
   the stock data from the same upstream autobuild archive the Android app
-  downloads, staged with `scripts/stage-web-data.sh`. About 10 minutes.
+  downloads, staged with `scripts/stage-web-data.sh`. About 3½ minutes on
+  the Hobby build machine (2 cores); the SDK comes from the build cache.
 - `headers`: `data/` is served with `Access-Control-Allow-Origin: *` (the
   Pages shell reads it from another origin) and cached for good, since every
   piece's name carries its content hash.
 
-No tokens or repository secrets are involved. To set it up again: Vercel →
-Add New → Project → import `dixonSolutions/Xonotic-Touch`, name it
-`xonotic-web`, leave every setting at its default, Deploy.
+No tokens or repository secrets are involved. The project is `xonotic-web`
+in the `dixonsolutions-projects` Vercel team. To set it up again, either
+import `dixonSolutions/Xonotic-Touch` in the dashboard (Add New → Project,
+every setting at its default), or with the CLI:
+
+```bash
+npx vercel login                 # device code, approved in a browser
+npx vercel project create xonotic-web
+npx vercel link --yes --project xonotic-web
+npx vercel git connect https://github.com/dixonSolutions/Xonotic-Touch --yes
+```
+
+then push to `main`, or start a deploy of `main` from the dashboard.
 
 To test the build without Vercel, run it in a container of the same base
 image:

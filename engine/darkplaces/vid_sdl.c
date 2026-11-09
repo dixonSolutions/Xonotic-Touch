@@ -1993,6 +1993,11 @@ void Sys_SDL_HandleEvents(void)
 				break;
 		}
 
+#ifdef __EMSCRIPTEN__
+	// Ask the page: SDL's focus state follows browser focus/blur events, and
+	// one stray blur left the game ignoring every key and click.
+	vid_hasfocus = Sys_EM_PageFocused();
+#endif
 	vid_activewindow = !vid_hidden && vid_hasfocus;
 
 	VID_UpdateMouseGrab();
