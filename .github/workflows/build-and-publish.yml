@@ -488,12 +488,21 @@ jobs:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           test -n "$ANDROID_KEYSTORE_BASE64" && test -n "$ANDROID_KEYSTORE_PASSWORD" && test -n "$ANDROID_KEY_ALIAS"
-          base=https://github.com/dixonSolutions/AndySU/releases/download/v0.1.135
-          curl -fsSL "$base/andysu-x86_64-unknown-linux-musl" -o "$RUNNER_TEMP/andysu"
-          curl -fsSL "$base/andysu-host-template-0.1.135.zip" -o "$RUNNER_TEMP/host-template.zip"
+          # Through the API with the job's token, and retried: anonymous
+          # releases/download URLs time out (504) whenever GitHub sheds
+          # anonymous load, which failed every live channel of 1.2.124.
+          for i in 1 2 3 4 5 6; do
+            gh release download v0.1.135 --repo dixonSolutions/AndySU --dir "$RUNNER_TEMP" --clobber \
+              --pattern andysu-x86_64-unknown-linux-musl --pattern andysu-host-template-0.1.135.zip && break
+            test "$i" -lt 6
+            sleep $((i * 15))
+          done
+          mv "$RUNNER_TEMP/andysu-x86_64-unknown-linux-musl" "$RUNNER_TEMP/andysu"
+          mv "$RUNNER_TEMP/andysu-host-template-0.1.135.zip" "$RUNNER_TEMP/host-template.zip"
           chmod +x "$RUNNER_TEMP/andysu"
           sed "s/channel = \"live-arm64\"/channel = \"live-$SUFFIX\"/" andysu.toml > andysu-abi.toml
           "$RUNNER_TEMP/andysu" host-config --toml andysu-abi.toml --config-out "$RUNNER_TEMP/config.json" --host-out "$RUNNER_TEMP/host.json"
