@@ -142,6 +142,20 @@ final class GameData {
                 "+set", "_touch_assets_ready", "1");
     }
 
+    /**
+     * touch_perf_version 5, once per install. Until 1.2.124 the GLES renderer
+     * streamed its per-frame vertex data with glBufferSubData, which Mali and
+     * other tile-based GPUs answer by copying the whole buffer, and the
+     * particle atlas decoded to half-opaque blocks. Players turned particles
+     * off (every explosion with them) to get a playable frame rate, and the
+     * engine doubled r_buffermegs_* each time a frame overflowed them and
+     * archived the result, which made each copy bigger still: 16 MB on a
+     * Galaxy Tab Active5 that then ran at 7 fps. Both are fixed in the engine;
+     * this puts the settings they left behind back to the defaults.
+     */
+    static final String V5_RESET =
+            "cl_particles 1; r_buffermegs_vertex 4; r_buffermegs_index16 1; r_buffermegs_index32 1";
+
     private static void writeStartupConfig(File baseDir, DeviceProfile device) {
         File touchDir = new File(new File(userDir(baseDir), "data"), "touch");
         File cfg = new File(touchDir, "startup.cfg");
@@ -168,13 +182,17 @@ final class GameData {
                 // Version 3 removed the 3D view cap from the defaults: installs
                 // on 1 or 2 get it reset to full resolution, once. Version 4
                 // turns the performance hint off, once, on installs that saved
-                // it on.
+                // it on. Version 5 puts particles back on and the per-frame
+                // vertex buffers back to their default size, once: both were
+                // switched off or grown while the GLES renderer was too slow
+                // to play (see V5_RESET).
                 .append(device.startupCvars())
-                .append("alias _touch_perf_apply0 \"" + device.firstRunProfileCommands() + "; seta touch_perf_version 3\"\n")
-                .append("alias _touch_perf_apply1 \"r_viewscale_maxheight 0; seta touch_perf_version 3\"\n")
-                .append("alias _touch_perf_apply2 \"r_viewscale_maxheight 0; seta touch_perf_version 3\"\n")
-                .append("alias _touch_perf_apply3 \"sys_perfhint 0; seta touch_perf_version 4\"\n")
-                .append("alias _touch_perf_apply4 \"\"\n")
+                .append("alias _touch_perf_apply0 \"" + device.firstRunProfileCommands() + "; seta touch_perf_version 5\"\n")
+                .append("alias _touch_perf_apply1 \"r_viewscale_maxheight 0; sys_perfhint 0; " + V5_RESET + "; seta touch_perf_version 5\"\n")
+                .append("alias _touch_perf_apply2 \"r_viewscale_maxheight 0; sys_perfhint 0; " + V5_RESET + "; seta touch_perf_version 5\"\n")
+                .append("alias _touch_perf_apply3 \"sys_perfhint 0; " + V5_RESET + "; seta touch_perf_version 5\"\n")
+                .append("alias _touch_perf_apply4 \"" + V5_RESET + "; seta touch_perf_version 5\"\n")
+                .append("alias _touch_perf_apply5 \"\"\n")
                 .append("_touch_perf_apply$touch_perf_version\n");
         // The player's saved layout, sensitivity included. Both savers (the
         // in-game customize screen and the menu's Touch tab) write it with

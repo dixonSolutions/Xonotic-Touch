@@ -417,6 +417,33 @@ which takes the data with it. See **Signing** below.
 
 ## Performance on ARM phones
 
+- **Per-frame vertex data goes through an unsynchronized map.** Every
+  animated model, particle and HUD shape is streamed each frame into one
+  buffer (`R_BufferData_Store`), with draws from it between the writes. With
+  `glBufferSubData`, a tile-based GPU (Mali above all, which runs every draw
+  at the end of the frame) copies the whole buffer before each write: the
+  Galaxy Tab Active5 (Exynos 1380, Mali-G68) ran the benchmark demo at 7 fps,
+  with the game thread mostly idle and the driver's worker thread busy
+  copying. The writes now use `glMapBufferRange` with
+  `GL_MAP_UNSYNCHRONIZED_BIT` (ES 3 and desktop GL 3, looked up at run time;
+  `gl_mapbufferunsync 0` or `-nomapbufferrange` goes back), and the same demo
+  runs at 125 fps. The console says "Dynamic buffers: unsynchronized
+  glMapBufferRange".
+- **DDS textures are decoded properly on GPUs without S3TC**, which is most
+  phone GPUs. Xonotic ships most textures, the particle atlas among them, only
+  as DXT. The engine's old fallback coloured each 4x4 block with the average
+  of its two endpoints, so the soft-edged sprites behind every explosion,
+  flame and flash came out as half-opaque boxes, and solid textures washed
+  out. `gl_textures.c` now decodes DXT1/3/5 texel by texel, at the same size
+  as before (two mip levels below full, or the picmip level if smaller).
+- **The particle atlas is sized from the texture that was made**, not from
+  `image_width`, which the DDS loader never sets.
+- **`touch_perf_version 5`** puts `cl_particles` back on and `r_buffermegs_*`
+  back to their defaults, once per install. Players turned particles off
+  while the renderer was slow, and the engine doubles and archives
+  `r_buffermegs_*` whenever a frame overflows them, which made each copy
+  above bigger still.
+
 - **The first start picks a profile for the phone** (`DeviceProfile.java`).
   It reads the SoC (`Build.SOC_MANUFACTURER`/`SOC_MODEL` on Android 12+,
   `Build.HARDWARE`), total memory and the fastest core's clock from the

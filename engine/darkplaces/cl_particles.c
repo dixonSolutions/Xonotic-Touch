@@ -2320,10 +2320,24 @@ static void R_InitParticleTexture (void)
 	{
 		particlefonttexture = decalskinframe->base;
 		// TODO maybe allow custom grid size?
-		particlefontwidth = image_width;
-		particlefontheight = image_height;
-		particlefontcellwidth = image_width / 8;
-		particlefontcellheight = image_height / 8;
+		// The size of the texture that was made, not image_width/height:
+		// those globals are only set by the image loaders, and Xonotic's
+		// atlas comes from dds/particles/particlefont.dds, whose loader
+		// leaves them at whatever image was loaded before. The cells then
+		// came out a few texels wide, and every sprite in the atlas
+		// (explosions, flashes, smoke, sparks) drew a sliver of it: a
+		// blank or flat quad. A DDS decoded in software on GPUs without
+		// S3TC (most phones) is also smaller than the file says.
+		particlefontwidth = R_TextureWidth(particlefonttexture);
+		particlefontheight = R_TextureHeight(particlefonttexture);
+		if (particlefontwidth < 8 || particlefontheight < 8)
+		{
+			particlefontwidth = image_width;
+			particlefontheight = image_height;
+		}
+		particlefontcellwidth = particlefontwidth / 8;
+		particlefontcellheight = particlefontheight / 8;
+		Con_DPrintf("particle font: %ix%i (image loader said %ix%i)\n", particlefontwidth, particlefontheight, image_width, image_height);
 		particlefontcols = 8;
 		particlefontrows = 8;
 	}

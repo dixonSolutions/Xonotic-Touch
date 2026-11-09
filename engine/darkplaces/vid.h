@@ -58,6 +58,10 @@ typedef struct viddef_support_s
 	qbool packed_depth_stencil;
 	// Mipmaps on non-power-of-two textures: desktop GL, ES 3, OES_texture_npot.
 	qbool npot_mipmap;
+	// glMapBufferRange and glUnmapBuffer: desktop GL 3, ES 3. Dynamic vertex
+	// data is written through an unsynchronized map when this is set; see
+	// R_Mesh_UpdateMeshBuffer.
+	qbool mapbufferrange;
 }
 viddef_support_t;
 

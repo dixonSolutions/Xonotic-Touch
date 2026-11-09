@@ -884,11 +884,17 @@ mkdir -p "${DATA_DIR}/touch/profiles" 2>/dev/null || true
             echo "exec touch/profiles/${TOUCH_PERF_PROFILE}.cfg"
         else
             # Version 3 removed the 3D view cap from the defaults: installs on
-            # 1 or 2 get it reset to full resolution, once.
-            echo "alias _touch_perf_apply0 \"exec touch/profiles/${TOUCH_PERF_PROFILE}.cfg; seta touch_perf_version 3\""
-            echo "alias _touch_perf_apply1 \"r_viewscale_maxheight 0; seta touch_perf_version 3\""
-            echo "alias _touch_perf_apply2 \"r_viewscale_maxheight 0; seta touch_perf_version 3\""
-            echo "alias _touch_perf_apply3 \"\""
+            # 1 or 2 get it reset to full resolution, once. Version 5 (4 is
+            # Android's performance-hint step) puts particles back on and the
+            # per-frame vertex buffers back to their default size, once; see
+            # V5_RESET in GameData.java.
+            v5="cl_particles 1; r_buffermegs_vertex 4; r_buffermegs_index16 1; r_buffermegs_index32 1"
+            echo "alias _touch_perf_apply0 \"exec touch/profiles/${TOUCH_PERF_PROFILE}.cfg; seta touch_perf_version 5\""
+            echo "alias _touch_perf_apply1 \"r_viewscale_maxheight 0; ${v5}; seta touch_perf_version 5\""
+            echo "alias _touch_perf_apply2 \"r_viewscale_maxheight 0; ${v5}; seta touch_perf_version 5\""
+            echo "alias _touch_perf_apply3 \"${v5}; seta touch_perf_version 5\""
+            echo "alias _touch_perf_apply4 \"${v5}; seta touch_perf_version 5\""
+            echo "alias _touch_perf_apply5 \"\""
             echo "_touch_perf_apply\$touch_perf_version"
         fi
     fi

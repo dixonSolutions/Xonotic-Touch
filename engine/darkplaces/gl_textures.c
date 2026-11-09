@@ -1621,11 +1621,125 @@ int R_SaveTextureDDSFile(rtexture_t *rt, const char *filename, qbool skipuncompr
 #include "ktx10/include/ktx.h"
 #endif
 
+/*
+ * Software S3TC (DXT1, DXT3, DXT5) to BGRA, for GPUs without
+ * EXT_texture_compression_s3tc. Xonotic ships most of its textures, the
+ * particle atlas among them, only as DDS. The decoder that was here turned
+ * each 4x4 block into one pixel coloured by the average of its two
+ * endpoints and its two alpha endpoints, which ignores the per-texel
+ * indices: soft-edged sprites (every explosion, flame and flash in the
+ * particle atlas) came out as half-opaque rectangles, and solid ones
+ * washed out.
+ */
+static void DDS_DecodeColorBlock(const unsigned char *b, qbool fourcolor, unsigned char out[16][4])
+{
+	unsigned int c0 = b[0] | (b[1] << 8), c1 = b[2] | (b[3] << 8);
+	unsigned int bits = b[4] | (b[5] << 8) | (b[6] << 16) | ((unsigned int)b[7] << 24);
+	unsigned char pal[4][4];
+	int k;
+	pal[0][2] = (unsigned char)(((c0 >> 11) & 31) * 255 / 31);
+	pal[0][1] = (unsigned char)(((c0 >> 5) & 63) * 255 / 63);
+	pal[0][0] = (unsigned char)((c0 & 31) * 255 / 31);
+	pal[0][3] = 255;
+	pal[1][2] = (unsigned char)(((c1 >> 11) & 31) * 255 / 31);
+	pal[1][1] = (unsigned char)(((c1 >> 5) & 63) * 255 / 63);
+	pal[1][0] = (unsigned char)((c1 & 31) * 255 / 31);
+	pal[1][3] = 255;
+	if (fourcolor || c0 > c1)
+	{
+		for (k = 0;k < 3;k++)
+		{
+			pal[2][k] = (unsigned char)((2 * pal[0][k] + pal[1][k] + 1) / 3);
+			pal[3][k] = (unsigned char)((pal[0][k] + 2 * pal[1][k] + 1) / 3);
+		}
+		pal[2][3] = pal[3][3] = 255;
+	}
+	else
+	{
+		for (k = 0;k < 3;k++)
+		{
+			pal[2][k] = (unsigned char)((pal[0][k] + pal[1][k]) / 2);
+			pal[3][k] = 0;
+		}
+		pal[2][3] = 255;
+		pal[3][3] = 0;
+	}
+	for (k = 0;k < 16;k++)
+		memcpy(out[k], pal[(bits >> (2 * k)) & 3], 4);
+}
+
+static void DDS_DecodeToBGRA(const unsigned char *in, textype_t textype, qbool fourcolor, int width, int height, unsigned char *out)
+{
+	int bx, by, x, y, k;
+	int bw = (width + 3) / 4, bh = (height + 3) / 4;
+	int blocksize = (textype == TEXTYPE_DXT3 || textype == TEXTYPE_DXT5) ? 16 : 8;
+	unsigned char texels[16][4];
+	for (by = 0;by < bh;by++)
+	{
+		for (bx = 0;bx < bw;bx++, in += blocksize)
+		{
+			if (textype == TEXTYPE_DXT3)
+			{
+				DDS_DecodeColorBlock(in + 8, true, texels);
+				for (k = 0;k < 16;k++)
+					texels[k][3] = (unsigned char)(((in[k >> 1] >> ((k & 1) * 4)) & 15) * 17);
+			}
+			else if (textype == TEXTYPE_DXT5)
+			{
+				unsigned char a[8];
+				unsigned int a0 = in[0], a1 = in[1];
+				unsigned long long abits = 0;
+				DDS_DecodeColorBlock(in + 8, true, texels);
+				a[0] = (unsigned char)a0;
+				a[1] = (unsigned char)a1;
+				if (a0 > a1)
+				{
+					for (k = 1;k < 7;k++)
+						a[k + 1] = (unsigned char)(((7 - k) * a0 + k * a1 + 3) / 7);
+				}
+				else
+				{
+					for (k = 1;k < 5;k++)
+						a[k + 1] = (unsigned char)(((5 - k) * a0 + k * a1 + 2) / 5);
+					a[6] = 0;
+					a[7] = 255;
+				}
+				for (k = 0;k < 6;k++)
+					abits |= (unsigned long long)in[2 + k] << (8 * k);
+				for (k = 0;k < 16;k++)
+					texels[k][3] = a[(abits >> (3 * k)) & 7];
+			}
+			else
+			{
+				// DXT1 picks its mode per block (c0 > c1: four colours, else
+				// three and transparent black); colour blocks taken out of
+				// DXT3/5 always have four.
+				DDS_DecodeColorBlock(in, fourcolor, texels);
+				if (textype == TEXTYPE_DXT1)
+					for (k = 0;k < 16;k++)
+						texels[k][3] = 255;
+			}
+			for (y = 0;y < 4;y++)
+			{
+				if (by * 4 + y >= height)
+					break;
+				for (x = 0;x < 4;x++)
+				{
+					if (bx * 4 + x >= width)
+						break;
+					memcpy(out + ((size_t)(by * 4 + y) * width + bx * 4 + x) * 4, texels[y * 4 + x], 4);
+				}
+			}
+		}
+	}
+}
+
 rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filename, qbool srgb, int flags, qbool *hasalphaflag, float *avgcolor, int miplevel, qbool optionaltexture) // DDS textures are opaque, so miplevel isn't a pointer but just seen as a hint
 {
 	int i, size, dds_format_flags, dds_miplevels, dds_width, dds_height;
 	//int dds_flags;
 	textype_t textype;
+	qbool dxt1fromdxt35 = false;
 	int bytesperblock, bytesperpixel;
 	int mipcomplete;
 	gltexture_t *glt;
@@ -1951,6 +2065,7 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 	// when requesting a non-alpha texture and we have DXT3/5, convert to DXT1
 	if(!(flags & TEXF_ALPHA) && (textype == TEXTYPE_DXT3 || textype == TEXTYPE_DXT5))
 	{
+		dxt1fromdxt35 = true;
 		textype = TEXTYPE_DXT1;
 		bytesperblock = 8;
 		ddssize -= 128;
@@ -1984,15 +2099,14 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 	if (hasalphaflag)
 		*hasalphaflag = (flags & TEXF_ALPHA) != 0;
 
-	// if we SW decode, choose 2 sizes bigger
-	if(force_swdecode)
-	{
-		// this is quarter res, so do not scale down more than we have to
-		miplevel -= 2;
-
-		if(miplevel < 0)
-			Con_DPrintf("WARNING: fake software decoding of compressed texture %s degraded quality\n", filename);
-	}
+	// A GPU without S3TC (Mali, PowerVR and most other phone GPUs) gets the
+	// DXT blocks decoded in software (DDS_DecodeToBGRA below). The texture
+	// is kept at the size the old block-per-pixel shortcut produced, two
+	// mip levels below full size or the picmip level if that is smaller, so
+	// texture memory does not grow; what changes is that the texels are the
+	// real ones.
+	if(force_swdecode && miplevel < 2)
+		miplevel = 2;
 
 	// this is where we apply gl_picmip
 	mippixels_start = ddspixels;
@@ -2016,46 +2130,55 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 
 	// from here on, we do not need the ddspixels and ddssize any more (apart from the statistics entry in glt)
 
-	// fake decode S3TC if needed
+	// decode S3TC in software if the GPU cannot sample it
 	if(force_swdecode)
 	{
-		int mipsize_new = mipsize_total / bytesperblock * 4;
-		unsigned char *mipnewpixels = (unsigned char *) Mem_Alloc(tempmempool, mipsize_new);
-		unsigned char *p = mipnewpixels;
-		for (i = bytesperblock == 16 ? 8 : 0;i < (int)mipsize_total;i += bytesperblock, p += 4)
+		int w = mipwidth, h = mipheight, levels = 0, total = 0, lw, lh;
+		unsigned char *top = (unsigned char *) Mem_Alloc(tempmempool, (size_t)w * h * 4);
+		unsigned char *chain, *dst;
+		DDS_DecodeToBGRA(mippixels_start, textype, dxt1fromdxt35, w, h, top);
+		// the file ran out of mip levels before the size above: box-filter
+		// the rest of the way
+		while (miplevel >= 1 && (w > 1 || h > 1))
 		{
-			// UBSan: unsigned literals because promotion to int causes signed overflow when mippixels_start >= 128
-			c = mippixels_start[i] + 256u*mippixels_start[i+1] + 65536u*mippixels_start[i+2] + 16777216u*mippixels_start[i+3];
-			p[2] = (((c >> 11) & 0x1F) + ((c >> 27) & 0x1F)) * (0.5f / 31.0f * 255.0f);
-			p[1] = (((c >>  5) & 0x3F) + ((c >> 21) & 0x3F)) * (0.5f / 63.0f * 255.0f);
-			p[0] = (((c      ) & 0x1F) + ((c >> 16) & 0x1F)) * (0.5f / 31.0f * 255.0f);
-			if(textype == TEXTYPE_DXT5)
-				p[3] = (0.5 * mippixels_start[i-8] + 0.5 * mippixels_start[i-7]);
-			else if(textype == TEXTYPE_DXT3)
-				p[3] = (
-					  (mippixels_start[i-8] & 0x0F)
-					+ (mippixels_start[i-8] >> 4)
-					+ (mippixels_start[i-7] & 0x0F)
-					+ (mippixels_start[i-7] >> 4)
-					+ (mippixels_start[i-6] & 0x0F)
-					+ (mippixels_start[i-6] >> 4)
-					+ (mippixels_start[i-5] & 0x0F)
-					+ (mippixels_start[i-5] >> 4)
-				       ) * (0.125f / 15.0f * 255.0f);
-			else
-				p[3] = 255;
+			int d = 1;
+			Image_MipReduce32(top, top, &w, &h, &d, 1, 1, 1);
+			--miplevel;
+		}
+		// a full chain down to 1x1, so the texture filters the same as the
+		// compressed one would
+		for (lw = w, lh = h;;)
+		{
+			total += lw * lh * 4;
+			levels++;
+			if (lw <= 1 && lh <= 1)
+				break;
+			lw = lw > 1 ? lw >> 1 : 1;
+			lh = lh > 1 ? lh >> 1 : 1;
+		}
+		chain = (unsigned char *) Mem_Alloc(tempmempool, total);
+		memcpy(chain, top, (size_t)w * h * 4);
+		Mem_Free(top);
+		dst = chain;
+		for (lw = w, lh = h; lw > 1 || lh > 1;)
+		{
+			int nw = lw, nh = lh, nd = 1;
+			unsigned char *next = dst + lw * lh * 4;
+			Image_MipReduce32(dst, next, &nw, &nh, &nd, 1, 1, 1);
+			dst = next;
+			lw = nw;
+			lh = nh;
 		}
 
 		textype = TEXTYPE_BGRA;
 		bytesperblock = 0;
 		bytesperpixel = 4;
-
-		// as each block becomes a pixel, we must use pixel count for this
-		mipwidth = (mipwidth + 3) / 4;
-		mipheight = (mipheight + 3) / 4;
+		mipwidth = w;
+		mipheight = h;
 		mipsize = bytesperpixel * mipwidth * mipheight;
-		mippixels_start = mipnewpixels;
-		mipsize_total = mipsize_new;
+		mippixels_start = chain;
+		mipsize_total = total;
+		dds_miplevels = levels - 1;
 	}
 
 	// start mip counting
