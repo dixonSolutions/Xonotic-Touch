@@ -158,7 +158,7 @@ Hardware detection lives in DarkPlaces (`vid_touchdetect.c`). The CSQC overlay s
 | `vid_touchscreen_mode` | int | 0/1/2 | `1` | Whether the on-screen controls are drawn: 0 = never (Keyboard & mouse), 1 = Dynamic (touchscreen and no keyboard listed), 2 = always (Touch). Touch and mouse input work in all three |
 | `vid_touchscreen_live` | int | 0/1 | `1` | Dynamic: 1 = follow a keyboard plugged in or out mid-game, 0 = decide once at launch and keep it |
 | `vid_touchscreen_notify` | int | 0/1 | `1` | Toast when the controls switch by themselves; 0 = silent |
-| `vid_touchscreen_touchonly` | int | 0/1 | `1` | Dynamic: 1 = hide the controls while a physical keyboard is listed, 0 = show them on any touchscreen |
+| `vid_touchscreen_touchonly` | int | 0/1 | `1` | Dynamic: 1 = hide the controls while a keyboard and a mouse are both listed (the desktop), 0 = show them on any touchscreen. A keyboard alone keeps them on |
 | `vid_touchscreen` | int | 0/1 | derived | Runtime switch used by CSQC; do not set in ship cfg |
 | `vid_touchscreen_detected` | int | 0/1 | readonly | Last scan found a touchscreen |
 | `vid_touchscreen_touchonly_detected` | int | 0/1 | readonly | Last scan classified the machine as touch-only |

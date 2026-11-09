@@ -161,7 +161,7 @@ cvar_t vid_touchscreen = {CF_CLIENT, "vid_touchscreen", "0", "Use touchscreen-st
 cvar_t vid_touchscreen_mode = {CF_CLIENT | CF_ARCHIVE, "vid_touchscreen_mode", "1", "Input mode: 0 = keyboard & mouse (touch controls off), 1 = dynamic (follow the hardware and the input in use), 2 = touch (controls always on)"};
 cvar_t vid_touchscreen_live = {CF_CLIENT | CF_ARCHIVE, "vid_touchscreen_live", "1", "In dynamic mode: 1 = switch between touch and keyboard & mouse while playing, 0 = decide once at launch and keep it for the session"};
 cvar_t vid_touchscreen_notify = {CF_CLIENT | CF_ARCHIVE, "vid_touchscreen_notify", "1", "Show a message when the touch controls switch on or off by themselves (Ctrl+Alt+1 / Ctrl+Alt+2 always say what they did)"};
-cvar_t vid_touchscreen_touchonly = {CF_CLIENT | CF_ARCHIVE, "vid_touchscreen_touchonly", "1", "When vid_touchscreen_mode is auto, enable only on touch-only devices (touchscreen and no physical keyboard)"};
+cvar_t vid_touchscreen_touchonly = {CF_CLIENT | CF_ARCHIVE, "vid_touchscreen_touchonly", "1", "When vid_touchscreen_mode is auto, enable only on touch devices that have no keyboard and mouse together (a keyboard alone keeps the controls)"};
 cvar_t vid_touchscreen_detected = {CF_CLIENT | CF_READONLY, "vid_touchscreen_detected", "0", "1 if a touchscreen was detected at the last scan"};
 cvar_t vid_keyboard_detected = {CF_CLIENT | CF_READONLY, "vid_keyboard_detected", "0", "1 while the system lists a keyboard the player can type on (no on-screen keyboard is shown then)"};
 cvar_t vid_touchscreen_touchonly_detected = {CF_CLIENT | CF_READONLY, "vid_touchscreen_touchonly_detected", "0", "1 if the last scan classified this machine as a touch-only device"};

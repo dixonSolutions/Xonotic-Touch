@@ -207,7 +207,18 @@ void Touch_Draw(void)
 		cvar_set("_touch_owns_screen", ftos(owns));
 
 	if (!Touch_Active())
+	{
+		// Play at a desk, with a mouse and a keyboard: the controls are off, but the
+		// weapon strip stays in view. Not over a vote, intermission or scoreboard,
+		// which own the screen then.
+		if (!mv_active && !intermission && !scoreboard_ui_enabled)
+		{
+			drawresetcliparea();
+			HUD_Scale_Disable();
+			Touch_Hud_Draw(bound(0.3, autocvar_touch_opacity, 1.0));
+		}
 		return;
+	}
 
 	// HUD panels may leave a clip rect / dynamic scale armed — clear before glass.
 	drawresetcliparea();

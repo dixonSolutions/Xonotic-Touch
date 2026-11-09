@@ -491,7 +491,9 @@ void VID_DetectTouchHardware(qbool *has_touchscreen, qbool *is_touch_only)
 {
 	const vid_presence_t *p = vid_presence_get();
 	*has_touchscreen = p->touch;
-	*is_touch_only = p->touch && !p->keyboard;
+	// A keyboard alone leaves the touch controls on: there is still nothing
+	// else to aim with. Only a keyboard and a mouse together are the desktop.
+	*is_touch_only = p->touch && !(p->keyboard && p->mouse);
 }
 
 // ---------------------------------------------------------------------------

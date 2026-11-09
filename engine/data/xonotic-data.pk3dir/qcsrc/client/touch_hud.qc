@@ -23,7 +23,7 @@
 
 bool Touch_Hud_ShouldDraw(void)
 {
-	return cvar("vid_touchscreen") && autocvar__menu_alpha < 1 && autocvar_touch_mobile_hud;
+	return autocvar__menu_alpha < 1 && autocvar_touch_mobile_hud;
 }
 
 // A skin's pics are not square — weapon icons are roughly 2:1 — so drawing them
@@ -410,6 +410,9 @@ void Touch_Hud_Draw(float alpha)
 	if (spectatee_status == -1 || STAT(HEALTH) <= 0)
 		return;
 
-	Touch_Hud_DrawStatus(alpha);
+	// The vitals are a touch-control readout, like the stock panels they replace; the
+	// weapon strip stays up at the desk too (see TouchHUD_SyncStockPanels).
+	if (cvar("vid_touchscreen"))
+		Touch_Hud_DrawStatus(alpha);
 	Touch_Hud_DrawWeapons(alpha);
 }

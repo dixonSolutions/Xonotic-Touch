@@ -487,9 +487,17 @@ void TouchHUD_Init(void)
 // stopped looking once a keyboard hid the controls, so a keyboard player had
 // no health, armour, ammo or weapons in a local match or on a server.
 // ---------------------------------------------------------------------------
+// The vitals and ammo are for the touch controls. The weapon strip is not:
+// with a keyboard and a mouse at the desk it stays in view, as long as a CSQC
+// is there to draw the HUD (the port's, or a server's).
 static qbool readouts_shown(void)
 {
 	return vid_touchscreen.integer && cv("touch_mobile_hud", 1);
+}
+
+static qbool strip_shown(void)
+{
+	return CLVM_prog->loaded && cv("touch_mobile_hud", 1) && cv("touch_weplist_visible", 1);
 }
 
 static void stock_panel(const char *name, qbool on)
@@ -504,7 +512,7 @@ void TouchHUD_SyncStockPanels(void)
 	qbool stock = !readouts_shown();
 	stock_panel("hud_panel_healtharmor", stock);
 	stock_panel("hud_panel_ammo", stock);
-	stock_panel("hud_panel_weapons", stock);
+	stock_panel("hud_panel_weapons", !strip_shown());
 }
 
 qbool TouchHUD_Active(void)
@@ -1621,12 +1629,31 @@ static void draw_pill(const char *xk, float dx, const char *yk, float dy, const 
 	widget_chrome_pill(cx, cy, hx, hy, label, pressed, a, C_ACCENT);
 }
 
+// The weapon strip with the touch controls off: play at a desk keeps its
+// weapons in view. The same play state as TouchHUD_Active, minus the touch
+// check. Not while a touch CSQC is running, since it draws the strip itself.
+static void draw_strip_only(void)
+{
+	if (!strip_shown() || cl_touch_csqc_active)
+		return;
+	if (cls.state != ca_connected || cls.signon != SIGNONS)
+		return;
+	if (key_dest != key_game || (key_consoleactive & KEY_CONSOLEACTIVE_USER))
+		return;
+	if (cl.stats[STAT_HEALTH] <= 0)
+		return;
+	draw_weapon_strip(bound(0.1f, cv("touch_opacity", 0.90f), 1.0f));
+}
+
 void TouchHUD_Draw(void)
 {
 	float a;
 	float cx, cy, hx, hy;
 	if (!TouchHUD_Active())
+	{
+		draw_strip_only();
 		return;
+	}
 	shapes_probe();
 	a = bound(0.1f, cv("touch_opacity", 0.90f), 1.0f);
 
