@@ -1,0 +1,19 @@
+# Upstream Xonotic sources vendored under engine/.
+#
+# Read and rewritten by scripts/upstream-sync.py; see docs/UPSTREAM_SYNC.md.
+# Each component row names the upstream commit its files under <path> were
+# taken from. The superproject (path "engine") owns every file under engine/
+# that no other component claims. Paths ignored by this repo's .gitignore
+# (textures, models, sounds, ...) are never vendored.
+#
+# The vendor line names the commit on the upstream/vendor branch that holds
+# exactly these upstream files. It is the merge base for the next sync.
+#
+# name        path                             branch  commit                                    url
+xonotic       engine                           master  85dc7f07b7b9fbc1a86182ae1811691af15a8828  https://gitlab.com/xonotic/xonotic.git
+darkplaces    engine/darkplaces                master  d93f9c4292039354a2b8d40d11bc386891e55fe5  https://gitlab.com/xonotic/darkplaces.git
+data          engine/data/xonotic-data.pk3dir  master  8bca8a41e806e658485dddd221b6be5dc0d123f1  https://gitlab.com/xonotic/xonotic-data.pk3dir.git
+gmqcc         engine/gmqcc                     main    b2a319efb41069b9a250e76991dbe505ff8d030d  https://gitlab.com/xonotic/gmqcc.git
+d0_blind_id   engine/d0_blind_id               master  64983f4156e860a94a6f5e264c67a1c2df69d7e9  https://gitlab.com/xonotic/d0_blind_id.git
+
+vendor 62d7dc6edd9e8beeb89c6e279166a86d90f72d05
