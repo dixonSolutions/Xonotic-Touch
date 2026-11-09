@@ -67,7 +67,7 @@ On top of that, the player decides how much of this runs:
 // Everything that looks at the host (procfs, sysfs, /dev/input, os-release,
 // DMI, Click/Lomiri) is desktop-Linux only. Android answers through
 // InputManager instead; probing the filesystem there would be pointless.
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(__linux__) && !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
 #define VID_LINUX_PROBES 1
 #include <errno.h>
 #include <fcntl.h>
@@ -82,6 +82,24 @@ On top of that, the player decides how much of this runs:
 
 #ifdef __ANDROID__
 #include <jni.h>
+#endif
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+// A browser lists no devices, but CSS media queries say what pointers exist:
+// "any-pointer: coarse" is a finger, "any-pointer: fine" a mouse, trackpad or
+// pen, and "hover: none" on the primary pointer means a phone or tablet. The
+// page can only learn about a keyboard from a key press, so a device with a
+// fine pointer is assumed to have one (a laptop, a desktop, an iPad with a
+// Magic Keyboard); a coarse-only device starts touch-only and the keyboard
+// hysteresis below takes over once someone types on a paired keyboard.
+EM_JS(int, vid_web_pointers, (void), {
+	var mq = function(q) { try { return window.matchMedia(q).matches; } catch (e) { return false; } };
+	var touch = (navigator.maxTouchPoints || 0) > 0 || mq('(any-pointer: coarse)');
+	var fine = mq('(any-pointer: fine)');
+	var hoverless = mq('(hover: none)');
+	return (touch ? 1 : 0) | (fine ? 2 : 0) | (hoverless ? 4 : 0);
+});
 #endif
 
 extern cvar_t vid_touchscreen;
@@ -430,6 +448,14 @@ static void vid_presence_compute(vid_presence_t *p)
 #elif defined(DP_MOBILETOUCH)
 	p->touch = true;
 	p->keyboard = false;
+#elif defined(__EMSCRIPTEN__)
+	{
+		int w = vid_web_pointers();
+		p->touch = (w & 1) || VID_SDL_HasTouchDevices() || vid_touch_finger_seen;
+		p->mouse = (w & 2) != 0;
+		p->keyboard = p->mouse && !(w & 4);
+		p->tablet_mode = p->touch && (w & 4);
+	}
 #else
 	p->touch = VID_SDL_HasTouchDevices() || vid_touch_finger_seen;
 #ifdef VID_LINUX_PROBES

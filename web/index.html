@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b0f14">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Xonotic Touch, the free arena shooter with touch controls, running in your browser.">
+<title>Xonotic Touch</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="shell.css">
+</head>
+<body>
+<canvas id="canvas" tabindex="-1" aria-label="Xonotic Touch game view"></canvas>
+
+<!-- Soft keyboards only open for a focused text field: the shim focuses this
+     one while the engine wants text (chat, console, menu fields). -->
+<input id="xt-kbd" type="text" autocomplete="off" autocorrect="off" autocapitalize="off"
+       spellcheck="false" enterkeyhint="send" aria-hidden="true" tabindex="-1">
+
+<div id="xt-rotate" hidden>
+  <div class="xt-rotate-icon" aria-hidden="true"></div>
+  <p>Turn your device sideways to play.</p>
+</div>
+
+<div id="xt-overlay">
+  <main class="xt-card">
+    <h1 class="xt-title">Xonotic <span>Touch</span></h1>
+
+    <section id="xt-status" class="xt-panel" aria-live="polite">
+      <p class="xt-line" id="xt-status-text">Checking your browser…</p>
+    </section>
+
+    <section id="xt-download" class="xt-panel" hidden>
+      <p class="xt-line">The game needs <strong id="xt-dl-size">—</strong> of data. It downloads once and stays in this browser.</p>
+      <label class="xt-check"><input type="checkbox" id="xt-dl-music" checked><span>Include music (<span id="xt-dl-music-size">—</span>)</span></label>
+      <p class="xt-hint" id="xt-dl-quota" hidden></p>
+      <button class="xt-btn" id="xt-dl-go" type="button">Download</button>
+    </section>
+
+    <section id="xt-progress" class="xt-panel" hidden>
+      <p class="xt-line" id="xt-progress-label">Downloading…</p>
+      <div class="xt-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="xt-bar"><div id="xt-bar-fill"></div></div>
+      <p class="xt-hint" id="xt-progress-detail"></p>
+    </section>
+
+    <section id="xt-ready" class="xt-panel" hidden>
+      <button class="xt-btn xt-play" id="xt-play" type="button">Play</button>
+      <label class="xt-check"><input type="checkbox" id="xt-opt-fullscreen" checked><span>Fullscreen</span></label>
+      <p class="xt-hint" id="xt-ready-hint"></p>
+    </section>
+
+    <section id="xt-error" class="xt-panel" hidden>
+      <p class="xt-line xt-err" id="xt-error-text"></p>
+      <button class="xt-btn" type="button" onclick="location.reload()">Reload</button>
+    </section>
+
+    <details class="xt-more" id="xt-more">
+      <summary>Settings and storage</summary>
+      <label class="xt-row"><span>Render resolution</span>
+        <select id="xt-opt-scale">
+          <option value="auto">Automatic</option>
+          <option value="0.5">Low (½ per CSS pixel)</option>
+          <option value="0.75">Medium (¾)</option>
+          <option value="1">Standard (1×)</option>
+          <option value="1.5">High (1.5×)</option>
+          <option value="3">Native (every screen pixel)</option>
+        </select>
+      </label>
+      <p class="xt-hint" id="xt-diag"></p>
+      <button class="xt-btn xt-quiet" id="xt-clear" type="button">Delete downloaded data</button>
+    </details>
+  </main>
+  <footer class="xt-foot">Free software, GPLv2+. Game data © the Xonotic team. Runs on WebAssembly and WebGL 2.</footer>
+</div>
+
+<div id="xt-toast" role="status" hidden></div>
+
+<script src="config.js"></script>
+<script src="shell.js"></script>
+</body>
+</html>

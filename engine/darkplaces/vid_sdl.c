@@ -427,6 +427,12 @@ void VID_ShowKeyboard(qbool show)
 	if (!VID_NeedsScreenKeyboard())
 		show = true;
 
+#ifdef __EMSCRIPTEN__
+	// A browser raises its on-screen keyboard only for a focused text field:
+	// the page shim keeps a hidden one and forwards what is typed into it.
+	Sys_EM_ScreenKeyboard(show && VID_NeedsScreenKeyboard());
+#endif
+
 	if (!show)
 	{
 		if (SDL_IsTextInputActive())
@@ -474,6 +480,11 @@ static void VID_SetMouse(qbool relative, qbool hidecursor)
 		vid_usingmouse = relative;
 		cl_ignoremousemoves = 2;
 		vid_usingmouse_relativeworks = SDL_SetRelativeMouseMode(relative ? SDL_TRUE : SDL_FALSE) == 0;
+#ifdef __EMSCRIPTEN__
+		// Pointer lock needs a click; the page shim re-locks on the next one
+		// and treats a lock the browser dropped (Esc) as the menu key.
+		Sys_EM_MouseGrab(relative);
+#endif
 //		Con_Printf("VID_SetMouse(%i, %i) relativeworks = %i\n", (int)relative, (int)hidecursor, (int)vid_usingmouse_relativeworks);
 #ifdef MACOSX
 		if(relative)
@@ -1580,10 +1591,17 @@ static void VID_UpdateMouseGrab(void)
 	if (!vid_activewindow || key_consoleactive || scr_loading)
 		VID_SetMouse(false, false);
 	else if (key_dest == key_menu || key_dest == key_menu_grabbed)
+#ifdef __EMSCRIPTEN__
+		// Menus follow the absolute pointer in a browser: relative mode means
+		// pointer lock, which needs a click to get and the browser drops on
+		// Esc, leaving the menu cursor frozen until the next click.
+		VID_SetMouse(false, true);
+#else
 		// The system cursor is always hidden in menus: the menu draws its own
 		// while a mouse is the pointer in use (vid_pointer_mouse), and none
 		// after a finger. Showing both put two cursors on top of each other.
 		VID_SetMouse(vid_mouse.integer && !in_client_mouse && !vid_touchscreen.integer, true);
+#endif
 	else
 	{
 		qbool mouse_aims = !vid_touchscreen.integer || VID_TouchMouselook();
@@ -2002,6 +2020,21 @@ static void VID_ApplyDisplayMode(const viddef_mode_t *mode)
 	uint32_t fullscreenwanted;
 	int displaywanted = bound(0, mode->display, vid_info_displaycount.integer - 1);
 	SDL_DisplayMode modefinal;
+
+#ifdef __EMSCRIPTEN__
+	// In a browser the page owns fullscreen (it needs a user gesture, and the
+	// whole page goes fullscreen, not the canvas) and the canvas always fills
+	// the page: vid_width/vid_height follow the viewport, see sys_wasm.c.
+	// vid_fullscreen is only a request to the page shim.
+	Sys_EM_SetFullscreen(mode->fullscreen);
+	SDL_SetWindowSize(window, vid.mode.width = mode->width, vid.mode.height = mode->height);
+	vid.mode.fullscreen = vid.mode.desktopfullscreen = false;
+	vid.mode.bitsperpixel = 32;
+	vid.mode.refreshrate = 0;
+	vid.stencil = true;
+	(void)displaywanted; (void)modefinal; (void)fullscreenwanted;
+	return;
+#endif
 
 	if (mode->fullscreen)
 		fullscreenwanted = mode->desktopfullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : SDL_WINDOW_FULLSCREEN;
@@ -2447,6 +2480,12 @@ static qbool VID_InitModeGL(const viddef_mode_t *mode)
 	((viddef_mode_t *)mode)->fullscreen = true;
 	// hide the menu with SDL_WINDOW_BORDERLESS
 	windowflags |= SDL_WINDOW_FULLSCREEN | SDL_WINDOW_BORDERLESS;
+#endif
+
+#ifdef __EMSCRIPTEN__
+	// See VID_ApplyDisplayMode(): the page enters fullscreen, SDL stays windowed.
+	Sys_EM_SetFullscreen(mode->fullscreen);
+	((viddef_mode_t *)mode)->fullscreen = false;
 #endif
 
 	// SDL_CreateWindow() supports only width and height modesetting,

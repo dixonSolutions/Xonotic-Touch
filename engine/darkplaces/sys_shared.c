@@ -424,6 +424,9 @@ static void Sys_SetTimerResolution(void)
 }
 #endif // WIN32
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 double Sys_DirtyTime(void)
 {
 	// first all the OPTIONAL timers
@@ -470,6 +473,12 @@ double Sys_DirtyTime(void)
 	}
 #endif
 
+#ifdef __EMSCRIPTEN__
+	// performance.now(): monotonic, sub-millisecond. Emscripten rejects
+	// CLOCK_MONOTONIC_RAW and leaves the timespec below uninitialised.
+	return emscripten_get_now() * 0.001;
+#endif
+
 #if HAVE_CLOCKGETTIME
 	{
 		struct timespec ts;
@@ -512,6 +521,13 @@ double Sys_Sleep(double time)
 	double dt;
 	uint32_t msec, usec, nsec;
 
+#ifdef __EMSCRIPTEN__
+	// The browser's main thread must not block: nanosleep() there spins the
+	// CPU and starves rendering, input and audio. Sys_Frame() hands the idle
+	// time to emscripten_set_main_loop_timing() instead.
+	(void)time;
+	return 0;
+#endif
 	if (time < 1.0/1000000.0 || host.restless)
 		return 0; // not sleeping this frame
 	if (time >= 1)

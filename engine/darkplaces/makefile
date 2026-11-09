@@ -122,6 +122,10 @@ ifeq ($(DP_MAKE_TARGET), wasm)
 	              -s USE_LIBPNG=1 \
 	              -s USE_LIBJPEG=1 \
 	              -s USE_ZLIB=1 \
+	              -s USE_OGG=1 \
+	              -s USE_VORBIS=1 \
+	              -DLINK_TO_LIBPNG \
+	              -DLINK_TO_LIBVORBIS \
 	              -DNOSUPPORTIPV6 \
 	              -DUSE_GLES2
 
@@ -132,7 +136,8 @@ ifeq ($(DP_MAKE_TARGET), wasm)
 
 	DP_LINK_SDL?=shared
 	DP_LINK_ZLIB?=shared
-	DP_LINK_JPEG?=dlopen
+	# The ports above are linked in: WebAssembly has no dlopen.
+	DP_LINK_JPEG?=shared
 	DP_LINK_ODE?=
 	DP_LINK_CRYPTO?=dlopen
 	DP_LINK_CRYPTO_RIJNDAEL?=dlopen

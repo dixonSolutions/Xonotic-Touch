@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Install** | Android `.apk` from GitHub Releases, Flatpak remote (any Linux distro), [OpenStore](https://open-store.io/app/xonotictouch.dixonsolutions) / Ubuntu Touch `.click` — versioned GitHub Releases on each `main` push |
+| **Install** | Android `.apk` from GitHub Releases, Flatpak remote (any Linux distro), [OpenStore](https://open-store.io/app/xonotictouch.dixonsolutions) / Ubuntu Touch `.click`, or [in the browser](https://xonotic-web.vercel.app) — versioned GitHub Releases on each `main` push |
 | **Platforms** | Android: `arm64-v8a` + `armeabi-v7a` + `x86_64` (Waydroid, Chromebooks). Flatpak: any Linux, `x86_64` + `aarch64` (Wayland/X11) — postmarketOS, Mobian, Fedora, Ubuntu, … Click: Ubuntu Touch `arm64` + `armhf` |
 | **Input** | Touch, keyboard and mouse, together or apart, detected from the system. The on-screen controls show on a touchscreen with no keyboard attached and step aside while one is plugged in; touch and a mouse keep working either way (fingers press menus and turn the view, a mouse aims). **Ctrl+Alt+1** switches by hand and **Ctrl+Alt+2** locks the choice — see [TOUCH_DETECTION.md](docs/TOUCH_DETECTION.md) |
 
@@ -23,6 +23,10 @@ On screen: the **MOVE** stick on the left (drag on the right side of the screen 
 | ![Toast: Keyboard connected: touch controls hidden; the stock HUD is showing](docs/media/keyboard-plugged-in.jpg) | ![Toast: Keyboard disconnected: touch controls shown; the touch HUD is back](docs/media/keyboard-unplugged.jpg) |
 
 *All four are in-game captures of the current build with the default layout, at 1920×1280 scaled to 1440×960.*
+
+## Play in the browser
+
+**https://xonotic-web.vercel.app**: nothing to install. The first visit downloads about 1 GB of game data, which the browser keeps; settings and touch layouts are saved in the browser too. Touch and keyboard and mouse work; local games against bots, not online servers yet. Mirror on [GitHub Pages](https://dixonSolutions.github.io/Xonotic-Touch/web/). Details, limits and self-hosting: [docs/WEB.md](docs/WEB.md).
 
 ## Install (Flatpak)
 

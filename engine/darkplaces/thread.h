@@ -6,6 +6,11 @@
 // enable Sys_Printf calls on nearly every threading call
 //#define THREADDEBUG
 //#define THREADDISABLE
+// WebAssembly without -pthread cannot start threads (SDL_CreateThread fails):
+// run every task on the main thread.
+#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
+#define THREADDISABLE
+#endif
 // use recursive mutex (non-posix) extensions in thread_pthread
 #define THREADRECURSIVE
 

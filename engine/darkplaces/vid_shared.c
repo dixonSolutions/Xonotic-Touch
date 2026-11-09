@@ -785,6 +785,20 @@ void GL_Setup(void)
 	vid.support.amd_texture_texture4 = GL_CheckExtension("GL_AMD_texture_texture4", "-notexture4", false);
 	vid.support.arb_texture_gather = GL_CheckExtension("GL_ARB_texture_gather", "-notexturegather", false);
 	vid.support.ext_texture_compression_s3tc = GL_CheckExtension("GL_EXT_texture_compression_s3tc", "-nos3tc", false);
+#ifdef __EMSCRIPTEN__
+	// WebGL names it WEBGL_compressed_texture_s3tc (desktop browsers have it,
+	// phones mostly do not). Without this, Xonotic's DDS-only textures would be
+	// decoded in software at a quarter of their resolution even on desktops.
+	if (!vid.support.ext_texture_compression_s3tc
+	&& GL_CheckExtension("GL_WEBGL_compressed_texture_s3tc", "-nos3tc", false))
+	{
+		char extstr[MAX_INPUTLINE];
+		vid.support.ext_texture_compression_s3tc = true;
+		// The menu QC looks for the desktop name in gl_info_extensions.
+		dpsnprintf(extstr, sizeof(extstr), "%s GL_EXT_texture_compression_s3tc ", gl_info_extensions.string);
+		Cvar_SetQuick(&gl_info_extensions, extstr);
+	}
+#endif
 	vid.support.ext_texture_filter_anisotropic = GL_CheckExtension("GL_EXT_texture_filter_anisotropic", "-noanisotropy", false);
 #ifndef USE_GLES2
 	vid.support.ext_texture_srgb = true; // GL3 core, but not GLES2
@@ -835,6 +849,12 @@ void GL_Setup(void)
 		havemap = version && !strncmp(version, "OpenGL ES ", 10) && atoi(version + 10) >= 3;
 #else
 		(void)version;
+#endif
+#ifdef __EMSCRIPTEN__
+		// WebGL has no buffer mapping. Emscripten emulates glMapBufferRange
+		// with a heap copy and a glBufferSubData on unmap, and refuses
+		// GL_MAP_UNSYNCHRONIZED_BIT outright (an error per draw, 13 fps).
+		havemap = false;
 #endif
 		if (havemap && !Sys_CheckParm("-nomapbufferrange"))
 		{

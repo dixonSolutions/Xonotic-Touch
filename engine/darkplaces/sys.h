@@ -264,6 +264,9 @@ char *Sys_SDL_GetClipboardData (void);
 #ifdef __EMSCRIPTEN__ //WASM-specific functions
 bool js_syncFS (bool x);
 void Sys_EM_Register_Commands(void);
+void Sys_EM_SetFullscreen(qbool on); ///< ask the page shim to enter or leave fullscreen
+void Sys_EM_MouseGrab(qbool on); ///< the engine wants (or releases) pointer lock
+void Sys_EM_ScreenKeyboard(qbool on); ///< raise or drop the browser's on-screen keyboard
 #endif
 
 extern qbool sys_supportsdlgetticks;
