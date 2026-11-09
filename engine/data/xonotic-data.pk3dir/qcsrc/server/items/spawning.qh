@@ -1,0 +1,65 @@
+#pragma once
+
+/// \file
+/// \brief Header file that describes the functions related to game items.
+/// \copyright GNU GPLv2 or any later version.
+
+bool startitem_failed;
+
+/// \brief lifetime < 0 means permanent (not loot), lifetime > 0 overrides the default
+.float lifetime;
+/// \brief Holds whether item is loot.
+.bool m_isloot;
+/// \brief Holds whether strength, shield or superweapon timers expire while this item is on the ground.
+.bool m_isexpiring;
+
+/// \brief Checks whether the items with the specified definition are allowed to
+/// spawn.
+/// \param[in] definition Item definition to check.
+/// \return True items with the specified definition are allowed to spawn, false
+/// otherwise.
+bool Item_IsDefinitionAllowed(entity definition);
+
+/// \brief An optimised and generic way to initialise items (loot or permanent)
+/// \param[in] item The item entity to initialise
+/// \return True on success, false otherwise.
+/// \nore required field: itemdef (faster, preferred) OR classname
+/// optional fields: origin, velocity, lifetime, noalign
+/// lifetime < 0 means permanent (not loot), lifetime > 0 overrides the default
+/// permanent items only: noalign means the item is suspended (won't drop to floor)
+bool Item_Initialise(entity item);
+
+/// Takes a space-separated list of netnames,
+/// returns the itemdef of one of them (or NULL if none are available).
+entity Item_RandomFromList(string itemlist);
+
+/// \brief Returns whether the item is loot.
+/// \param[in] item Item to check.
+/// \return True if the item is loot, false otherwise.
+#define ITEM_IS_LOOT(item) (item.m_isloot || item.classname == "droppedweapon")
+
+/// \brief Sets the item loot status.
+/// \param[in,out] item Item to adjust.
+/// \param[in] loot Whether item is loot.
+/// \return No return.
+#define ITEM_SET_LOOT(item, loot) (item.m_isloot = loot)
+
+/// \brief Returns whether item should keep its position or be dropped to the
+/// ground.
+/// \param[in] item Item to check.
+/// \return True if item should keep its position or false if it should be
+/// dropped to the ground.
+#define ITEM_SHOULD_KEEP_POSITION(item) (item.noalign || (item.spawnflags & 1))
+
+/// \brief Returns whether the item is expiring (i.e. its strength, shield and
+/// superweapon timers expire while it is on the ground).
+/// \param[in] item Item to check.
+/// \return True if the item is expiring, false otherwise.
+#define ITEM_IS_EXPIRING(item) (item.m_isexpiring)
+
+/// \brief Sets the item expiring status (i.e. whether its strength, shield
+/// and superweapon timers expire while it is on the ground).
+/// \param[in,out] item Item to adjust.
+/// \param[in] expiring Whether item is expiring.
+/// \return No return.
+#define ITEM_SET_EXPIRING(item, expiring) (item.m_isexpiring = expiring)

@@ -1,0 +1,162 @@
+#include "net.qh"
+
+#ifdef GAMEQC
+
+#include "nades.qh"
+
+#ifdef CSQC
+#include <client/view.qh>
+
+void orb_draw(entity this)
+{
+	float age = time - (this.ltime - this.lifetime);
+	float dt = time - this.update_time;
+	this.update_time = time;
+
+	if (dt > 0)
+	{
+		this.avelocity *= 24 ** (dt / this.lifetime); // speed up, frametime independent
+		this.angles += dt * this.avelocity;
+	}
+	if (age > 0)
+	{
+		this.scale = this.radius * (age >= this.animstate_endtime
+			? 1
+			: (this.height * age * (age - this.animstate_endtime * 2))); // increases at decreasing pace up to .radius, as age -> .animstate_endtime
+		this.alpha = sqrt(1 - age / this.lifetime); // slowly fade out
+	}
+}
+
+void orb_draw2d(entity this)
+{
+	static float orb_drawtime; // last drawn orb frame, to counter overlapping orbs
+	if (time <= orb_drawtime)
+		return;
+
+	if (boxesoverlap(view_origin - '1 1 1', view_origin + '1 1 1', this.absmin, this.absmax)) // nade orbs actually act as a cube
+	{
+		orb_drawtime = time; // prevent rendering more than one of these per frame!
+		float orb_alpha = this.alpha * 0.6;
+		drawfill('0 0 0', vec2(vid_conwidth, vid_conheight), this.colormod, autocvar_hud_colorflash_alpha * orb_alpha, DRAWFLAG_ADDITIVE);
+	}
+}
+
+void orb_setup(entity orb)
+{
+	orb.update_time = time; // used to calculate dt
+	orb.animstate_endtime = 0.25 * min(orb.lifetime, 1); // when the orb will stop expanding
+	orb.height = -4 * (2 * orb.animstate_endtime) ** -2; // amplitude used in scaling calculation
+
+	setmodel(orb, MDL_NADE_ORB);
+	orb.skin = 1;
+
+	float model_radius = orb.maxs.x;
+	vector size = '0.5 0.5 0.5' * orb.radius;
+	setsize(orb, -size, size);
+	orb.radius *= 0.6 / model_radius;
+
+	orb.draw = orb_draw;
+	orb.draw2d = orb_draw2d;
+	IL_PUSH(g_drawables, orb);
+	IL_PUSH(g_drawables_2d, orb);
+	SetResourceExplicit(orb, RES_HEALTH, 255);
+	set_movetype(orb, MOVETYPE_NONE);
+	orb.solid = SOLID_NOT;
+	orb.drawmask = MASK_NORMAL;
+	orb.renderflags |= RF_ADDITIVE;
+	orb.scale = 0.01;
+	float spin_dir = 2*M_PI * random();
+	orb.avelocity = '6 0 0' * sin(spin_dir) + '0 0 6' * cos(spin_dir);
+
+	float age = time - (orb.ltime - orb.lifetime);
+	if (age > 0)
+		orb.avelocity *= 24 ** (age / orb.lifetime);
+}
+#endif // CSQC
+
+REGISTER_NET_LINKED(Nade_Orb)
+
+#ifdef CSQC
+NET_HANDLE(Nade_Orb, bool isNew)
+{
+	Net_Accept(Nade_Orb);
+
+	int sf = ReadByte();
+	this.colormod = ReadRegistered(Nades).m_color;
+	setorigin(this, ReadVector());
+	this.ltime = ReadFloat();
+	//this.ltime = time + ReadByte() / 10.0;
+	this.lifetime = (sf & SF_NADEORB_LIFETIME_FLOAT)
+		? ReadFloat()
+		: (ReadByte() + 1) * 0.125;
+	this.radius = (sf & SF_NADEORB_RADIUS_FLOAT)
+		? ReadFloat()
+		: (ReadByte() + 1) * 5;
+
+	if (isNew)
+		orb_setup(this);
+	return true;
+}
+#elifdef SVQC
+bool orb_send(entity this, entity to, int sf)
+{
+	sf = 0;
+	float byte_lifetime = this.lifetime * 8 - 1; // range: 0.125..32 in increments of 0.125
+	if (byte_lifetime < 0 || byte_lifetime >= BIT(8) || byte_lifetime != floor(byte_lifetime))
+		sf |= SF_NADEORB_LIFETIME_FLOAT;
+	float byte_radius = this.radius * 0.2 - 1; // range: 5..1280 in increments of 5
+	if (byte_radius < 0 || byte_radius >= BIT(8) || byte_radius != floor(byte_radius))
+		sf |= SF_NADEORB_RADIUS_FLOAT;
+
+	WriteHeader(MSG_ENTITY, Nade_Orb);
+	WriteByte(MSG_ENTITY, sf);
+	WriteRegistered(Nades, MSG_ENTITY, REGISTRY_GET(Nades, STAT(NADE_BONUS_TYPE, this)));
+	WriteVector(MSG_ENTITY, this.origin);
+	WriteFloat(MSG_ENTITY, this.ltime);
+	//WriteByte(MSG_ENTITY, (this.ltime - time) * 10.0 + 0.5); // round time delta to a 1/10th of a second
+	if (sf & SF_NADEORB_LIFETIME_FLOAT)
+		WriteFloat(MSG_ENTITY, this.lifetime);
+	else
+		WriteByte(MSG_ENTITY, rint(byte_lifetime));
+	if (sf & SF_NADEORB_RADIUS_FLOAT)
+		WriteFloat(MSG_ENTITY, this.radius);
+	else
+		WriteByte(MSG_ENTITY, rint(byte_radius));
+
+	return true;
+}
+#endif
+
+REGISTER_NET_TEMP(Nade_Orb_Effect)
+
+#ifdef CSQC
+NET_HANDLE(Nade_Orb_Effect, bool isNew)
+{
+	entity player = CSQCModel_server2csqc(ReadByte() - 1);
+	int cnt_and_type = ReadByte();
+	if (player)
+	{
+		vector org = CENTER_OF_ENT(player);
+		vector vel = vec2(player.velocity);
+		particles_alphamin = particles_alphamax = (!player.alpha ? 1 : player.alpha); // scale by player alpha
+		boxparticles(particleeffectnum((cnt_and_type & 1) ? EFFECT_AMMO_REGEN : EFFECT_HEALING), player, org, org, vel, vel, cnt_and_type >> 1, PARTICLES_USEALPHA);
+	}
+	return true;
+}
+#elifdef SVQC
+void nade_Effect(entity player, entity eff, int eff_cnt)
+{
+	if (time < player.nade_special_time)
+		return;
+	player.nade_special_time = time + 1/16; // 0.0625; prevent spam
+
+	if (player.alpha >= 0 && eff_cnt)
+	{
+		WriteHeader(MSG_BROADCAST, Nade_Orb_Effect);
+		WriteByte(MSG_BROADCAST, etof(player));
+		WriteByte(MSG_BROADCAST, (min(eff_cnt, BITS(7)) << 1) | (eff == EFFECT_AMMO_REGEN)); // bit 0 is the effect type, remaining are the count (right-shifted by 1)
+	}
+}
+#endif
+
+#endif // GAMEQC

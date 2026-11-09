@@ -1,0 +1,71 @@
+#pragma once
+
+#ifdef GAMEQC
+MODEL(HLAC_VIEW, W_Model("h_hlac.iqm"));
+MODEL(HLAC_WORLD, W_Model("v_hlac.md3"));
+MODEL(HLAC_ITEM, W_Model("g_hlac.md3"));
+
+SOUND(HLAC_FIRE, W_Sound("lasergun_fire"));
+#endif
+
+CLASS(HLAC, Weapon)
+#ifdef SVQC
+/* spawnfunc */ ATTRIB(HLAC, m_canonical_spawnfunc, string, "weapon_hlac");
+/* rating    */ ATTRIB(HLAC, bot_pickupbasevalue, float, 4000);
+#endif
+/* ammotype  */ ATTRIB(HLAC, ammo_type, Resource, RES_CELLS);
+/* impulse   */ ATTRIB(HLAC, impulse, int, 6);
+/* flags     */ ATTRIB(HLAC, spawnflags, int, WEP_FLAG_MUTATORBLOCKED | WEP_FLAG_RELOADABLE | WEP_TYPE_SPLASH);
+/* color     */ ATTRIB(HLAC, m_color, vector, '0.506 0.945 0.239');
+#ifdef GAMEQC
+/* modelname */ ATTRIB(HLAC, mdl, string, "hlac");
+/* model     */ ATTRIB(HLAC, m_model, Model, MDL_HLAC_ITEM);
+/* flash mdl */ ATTRIB(HLAC, m_muzzlemodel, Model, MDL_Null);
+/* flash eff */ ATTRIB(HLAC, m_muzzleeffect, entity,
+	(particleeffectnum(EFFECT_GREEN_HLAC_MUZZLEFLASH) < 0)
+		? EFFECT_BLASTER_MUZZLEFLASH // compatible with Xonotic v0.8.6 or lower
+		: EFFECT_GREEN_HLAC_MUZZLEFLASH);
+#endif
+#ifdef CSQC
+/* crosshair */ ATTRIB(HLAC, w_crosshair, string, "gfx/crosshairhlac");
+/* crosshair */ ATTRIB(HLAC, w_crosshair_size, float, 0.6);
+#endif
+/* wepimg    */ ATTRIB(HLAC, model2, string, "weaponhlac");
+/* refname   */ ATTRIB(HLAC, netname, string, "hlac");
+/* wepname   */ ATTRIB(HLAC, m_name, string, _("Heavy Laser Assault Cannon"));
+
+#define X(BEGIN, P, END, class, prefix) \
+	BEGIN(class) \
+		P(class, prefix, ammo, float, BOTH) \
+		P(class, prefix, animtime, float, BOTH) \
+		P(class, prefix, damage, float, BOTH) \
+		P(class, prefix, edgedamage, float, BOTH) \
+		P(class, prefix, force, float, BOTH) \
+		P(class, prefix, lifetime, float, BOTH) \
+		P(class, prefix, pickup_ammo, float, NONE) \
+		P(class, prefix, radius, float, BOTH) \
+		P(class, prefix, refire, float, BOTH) \
+		P(class, prefix, reload_ammo, float, NONE) \
+		P(class, prefix, reload_time, float, NONE) \
+		P(class, prefix, secondary, float, NONE) \
+		P(class, prefix, shots, float, SEC) \
+		P(class, prefix, speed, float, BOTH) \
+		P(class, prefix, spread, float, SEC) \
+		P(class, prefix, spread_add, float, PRI) \
+		P(class, prefix, spread_crouchmod, float, BOTH) \
+		P(class, prefix, spread_max, float, PRI) \
+		P(class, prefix, spread_min, float, PRI) \
+		P(class, prefix, switchdelay_drop, float, NONE) \
+		P(class, prefix, switchdelay_raise, float, NONE) \
+		P(class, prefix, weaponreplace, string, NONE) \
+		P(class, prefix, weaponstartoverride, float, NONE) \
+		P(class, prefix, weaponstart, float, NONE) \
+		P(class, prefix, weaponthrowable, float, NONE) \
+	END()
+	W_PROPS(X, HLAC, hlac)
+#undef X
+
+ENDCLASS(HLAC)
+REGISTER_WEAPON(HLAC, NEW(HLAC));
+
+SPAWNFUNC_WEAPON(weapon_hlac, WEP_HLAC)

@@ -1,0 +1,168 @@
+#pragma once
+
+REGISTRY(IMPULSES, 255)
+REGISTER_REGISTRY(IMPULSES)
+REGISTRY_SORT(IMPULSES)
+
+REGISTRY_DEFINE_GET(IMPULSES, NULL)
+STATIC_INIT(IMPULSES_renumber)
+{
+	FOREACH(IMPULSES, true, it.m_id = i);
+}
+REGISTRY_CHECK(IMPULSES)
+
+.void(entity this) impulse_handle;
+
+#ifdef CSQC
+void Impulse_Send(entity imp)
+{
+	localcmd(sprintf("\nimpulse %d\n", imp.impulse));
+}
+
+#define IMPULSE_ALIAS(alias, n) localcmd("\nalias " #alias " \"impulse " #n "\"\n")
+#else
+#define IMPULSE_ALIAS(alias, n)
+#endif
+
+// keep xonotic-client.cfg up to date
+#define REGISTER_IMPULSE(id, n) _REGISTER_IMPULSE(IMP_##id, id, n)
+#define _REGISTER_IMPULSE(id, alias, n) \
+	REGISTER(IMPULSES, id, m_id, new_pure(Impulse)) \
+	{ \
+		this.impulse = n; \
+		IMPULSE_ALIAS(alias, n); \
+	}
+
+#define X(slot, imp) \
+	REGISTER_IMPULSE(weapon_group_##slot, imp)
+X(1, 1)
+X(2, 2)
+X(3, 3)
+X(4, 4)
+X(5, 5)
+X(6, 6)
+X(7, 7)
+X(8, 8)
+X(9, 9)
+X(0, 14)
+#undef X
+
+#define X(slot, dir, imp) \
+	REGISTER_IMPULSE(weapon_priority_##slot##_##dir, imp)
+X(0, prev, 200)
+X(1, prev, 201)
+X(2, prev, 202)
+X(3, prev, 203)
+X(4, prev, 204)
+X(5, prev, 205)
+X(6, prev, 206)
+X(7, prev, 207)
+X(8, prev, 208)
+X(9, prev, 209)
+
+X(0, best, 210)
+X(1, best, 211)
+X(2, best, 212)
+X(3, best, 213)
+X(4, best, 214)
+X(5, best, 215)
+X(6, best, 216)
+X(7, best, 217)
+X(8, best, 218)
+X(9, best, 219)
+
+X(0, next, 220)
+X(1, next, 221)
+X(2, next, 222)
+X(3, next, 223)
+X(4, next, 224)
+X(5, next, 225)
+X(6, next, 226)
+X(7, next, 227)
+X(8, next, 228)
+X(9, next, 229)
+#undef X
+
+// direct weapons
+#define X(i, imp) \
+	REGISTER_IMPULSE(weapon_byid_##i, imp)
+X(0, 230)
+X(1, 231)
+X(2, 232)
+X(3, 233)
+X(4, 234)
+X(5, 235)
+X(6, 236)
+X(7, 237)
+X(8, 238)
+X(9, 239)
+X(10, 240)
+X(11, 241)
+X(12, 242)
+X(13, 243)
+X(14, 244)
+X(15, 245)
+X(16, 246)
+X(17, 247)
+X(18, 248)
+X(19, 249)
+X(20, 250)
+X(21, 251)
+X(22, 252)
+X(23, 253)
+#undef X
+
+REGISTER_IMPULSE(weapon_next_byid, 10)
+REGISTER_IMPULSE(weapon_prev_byid, 12)
+REGISTER_IMPULSE(weapon_next_bygroup, 18)
+REGISTER_IMPULSE(weapon_prev_bygroup, 19)
+REGISTER_IMPULSE(weapon_next_bypriority, 15)
+REGISTER_IMPULSE(weapon_prev_bypriority, 16)
+
+REGISTER_IMPULSE(weapon_last, 11)
+REGISTER_IMPULSE(weapon_best, 13)
+REGISTER_IMPULSE(weapon_drop, 17)
+REGISTER_IMPULSE(weapon_reload, 20)
+
+// umm...
+#pragma push_macro("use")
+#undef use
+REGISTER_IMPULSE(use, 21)
+#pragma pop_macro("use")
+
+REGISTER_IMPULSE(waypoint_personal_here, 30)
+REGISTER_IMPULSE(waypoint_personal_crosshair, 31)
+REGISTER_IMPULSE(waypoint_personal_death, 32)
+REGISTER_IMPULSE(waypoint_here_follow, 33)
+REGISTER_IMPULSE(waypoint_here_here, 34)
+REGISTER_IMPULSE(waypoint_here_crosshair, 35)
+REGISTER_IMPULSE(waypoint_here_death, 36)
+REGISTER_IMPULSE(waypoint_danger_here, 37)
+REGISTER_IMPULSE(waypoint_danger_crosshair, 38)
+REGISTER_IMPULSE(waypoint_danger_death, 39)
+REGISTER_IMPULSE(waypoint_clear_personal, 47)
+REGISTER_IMPULSE(waypoint_clear, 48)
+
+
+// cheat impulses
+#define CHIMPULSE(id, n) _CHIMPULSE(CHIMPULSE_##id, n)
+#define _CHIMPULSE(id, n) \
+	REGISTER(IMPULSES, id, m_id, new_pure(Impulse)) \
+	{ \
+		this.impulse = n; \
+	}
+
+CHIMPULSE(SPEEDRUN_INIT, 30)
+CHIMPULSE(GIVE_ALL, 99)
+CHIMPULSE(CLONE_MOVING, 140)
+CHIMPULSE(SPEEDRUN, 141)
+CHIMPULSE(CLONE_STANDING, 142)
+CHIMPULSE(TELEPORT, 143)
+CHIMPULSE(R00T, 148)
+
+
+#undef IMPULSE_ALIAS
+#undef REGISTER_IMPULSE
+#undef _REGISTER_IMPULSE
+#undef CHIMPULSE
+#undef _CHIMPULSE

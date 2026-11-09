@@ -1,0 +1,26 @@
+#pragma once
+
+#include "vehicle.qh"
+
+REGISTRY(Vehicles, BITS(4))
+REGISTER_REGISTRY(Vehicles)
+REGISTRY_CHECK(Vehicles)
+
+const int VEH_FIRST = 1;
+#define VEH_LAST (REGISTRY_COUNT(Vehicles) - 1)
+
+#define REGISTER_VEHICLE(id, inst) REGISTER(Vehicles, VEH, id, vehicleid, inst)
+
+#if defined(SVQC)
+	#include "sv_vehicles.qh"
+#elif defined(CSQC)
+	#include "cl_vehicles.qh"
+#endif
+
+CLASS(NullVehicle, Vehicle)
+	ATTRIB(NullVehicle, m_hidden, bool, true);
+ENDCLASS(NullVehicle)
+REGISTER_VEHICLE(Null, NEW(NullVehicle));
+REGISTRY_DEFINE_GET(Vehicles, VEH_Null)
+
+#include "vehicle/_mod.qh"

@@ -1,0 +1,502 @@
+#pragma once
+
+#ifdef CSQC
+#include <client/draw.qh>
+#include <client/view.qh>
+#include <common/resources/cl_resources.qh>
+#endif
+
+
+// This includes some functions useful for debugging.
+// Some more bot-specific ones are in server/pathlib/debug.qc.
+// Look for other useful commands under prvm_* in console (apropos / search).
+
+
+#ifdef CSQC
+.entity tag_entity;
+#endif
+
+
+#ifdef GAMEQC
+.bool debug;
+.int sv_entnum;
+REGISTER_NET_TEMP(net_debug)
+#endif
+
+#ifdef CSQC
+	NET_HANDLE(net_debug, bool isNew)
+	{
+		Net_Accept(net_debug);
+		this.sv_entnum = ReadShort();
+		if (ReadByte()) make_pure(this);
+		this.origin = ReadVector();
+		setorigin(this, this.origin);
+		this.debug = true;  // identify server entities by this
+		this.classname = strzone(ReadString());
+		this.sourceLoc = strzone(ReadString());
+		return true;
+	}
+#endif
+
+#ifdef SVQC
+	bool debug_send(entity this, entity to, int sf)
+	{
+		int channel = MSG_ONE;
+		msg_entity = to;
+		WriteHeader(channel, net_debug);
+		WriteShort(channel, etof(this));
+		WriteByte(channel, is_pure(this));
+		vector o = this.origin;
+		if (o == '0 0 0') // brushes
+			o = (this.absmin + this.absmax) * 0.5;
+		if (this.tag_entity)
+			o += this.tag_entity.origin;
+		WriteVector(channel, o);
+		WriteString(channel, this.classname);
+		WriteString(channel, this.sourceLoc);
+		return true;
+	}
+#endif
+
+
+#if ENABLE_DEBUGDRAW
+#ifdef GAMEQC
+/**
+ * 0: off
+ * 1: on
+ * 2: on (pure)
+ * 3: on (.entnum != 0)
+ * 4: on (.origin == '0 0 0')
+ * 5: on (.debug != 0), server only
+ * 6: on (.solid != 0)
+ */
+bool autocvar_debugdraw;
+#endif // GAMEQC
+
+#ifdef CSQC
+	string autocvar_debugdraw_filter, autocvar_debugdraw_filterout;
+	.int debugdraw_last;
+	vector project_3d_to_2d(vector vec);
+	void Debug_Draw()
+	{
+		if (!autocvar_debugdraw) return;
+		static int debugdraw_frame;
+		++debugdraw_frame;
+		const int sz = 8;
+		FOREACH_ENTITY(true, {
+			if (it.debugdraw_last == debugdraw_frame) continue;
+			int ofs = 0;
+			FOREACH_ENTITY_RADIUS(it.origin, 100, it.debugdraw_last != debugdraw_frame, {
+				it.debugdraw_last = debugdraw_frame;
+				vector rgb = (it.debug) ? '0 0 1' : '1 0 0';
+				if (autocvar_debugdraw_filterout != "" && strhasword(autocvar_debugdraw_filterout, it.classname)) continue;
+				if (autocvar_debugdraw_filter != "" && !strhasword(autocvar_debugdraw_filter, it.classname)) continue;
+				if (autocvar_debugdraw == 3)
+				{
+					if (!it.entnum) continue;
+				}
+				if (autocvar_debugdraw == 4)
+				{
+					if (it.origin) continue;
+				}
+				if (autocvar_debugdraw == 5)
+				{
+					if (!it.debug) continue;
+				}
+				else if (autocvar_debugdraw > 5)
+				{
+					bool flag = true;
+					do {
+//						if (it.modelindex) break;
+//						if (it.absmin) break;
+//						if (it.absmax) break;
+//						if (it.entnum) break;
+//						if (it.drawmask) break;
+//						if (it.predraw) break;
+//						if (it.move_movetype) break;
+						if (it.solid) break;
+//						if (it.origin) break;
+//						if (it.oldorigin) break;
+//						if (it.velocity) break;
+//						if (it.angles) break;
+//						if (it.avelocity) break;
+//						if (it.classname) break;
+//						if (it.model) break;
+//						if (it.frame) break;
+//						if (it.skin) break;
+//						if (it.effects) break;
+//						if (it.mins) break;
+//						if (it.maxs) break;
+//						if (it.size) break;
+//						if (it.touch) break;
+//						if (it.use) break;
+//						if (it.think) break;
+//						if (it.blocked) break;
+//						if (it.nextthink) break;
+//						if (it.chain) break;
+//						if (it.netname) break;
+//						if (it.enemy) break;
+//						if (it.flags) break;
+//						if (it.colormap) break;
+//						if (it.owner) break;
+						flag = false;
+					} while (0);
+					if (!flag) continue;
+				}
+				else if (is_pure(it))
+				{
+					if (autocvar_debugdraw < 2) continue;
+					rgb.y = 1;
+				}
+				vector o = it.origin;
+				if (it.tag_entity)
+					o += it.tag_entity.origin;
+				vector pos = project_3d_to_2d(o);
+				if (pos.z < 0) continue;
+				pos.z = 0;
+				pos.y += ofs * sz;
+				drawcolorcodedstring2_builtin(pos,
+					sprintf("%d: '%s'@%s", (it.debug ? it.sv_entnum : etof(it)),
+					it.classname, it.sourceLoc),
+					sz * '1 1 0', rgb, 0.5, DRAWFLAG_NORMAL);
+				++ofs;
+            });
+		});
+	}
+#endif // CSQC
+
+#ifdef SVQC
+	COMMON_COMMAND(debugdraw_sv, "Dump all server entities")
+	{
+		switch (request)
+		{
+			case CMD_REQUEST_COMMAND:
+			{
+				if (!autocvar_debugdraw) return;
+				int n = 1000;
+				int rem = n;
+				for (entity e = NULL; (e = findfloat(e, debug, 0)) && rem > 0; )
+				{
+					if (autocvar_debugdraw < 2 && is_pure(e)) continue;
+					debug_send(e, caller, 0);
+					e.debug = true;
+					--rem;
+				}
+				LOG_INFOF("%d server entities sent", n - rem);
+				return;
+			}
+
+			default:
+			case CMD_REQUEST_USAGE:
+			{
+				LOG_HELP("Usage:^3 ", GetProgramCommandPrefix(), " debugdraw_sv");
+				return;
+			}
+		}
+	}
+#endif // SVQC
+#endif // ENABLE_DEBUGDRAW
+
+
+GENERIC_COMMAND(bufstr_get, "Examine a string buffer object", false)
+{
+	switch (request)
+	{
+		case CMD_REQUEST_COMMAND:
+		{
+			int bufhandle = stof(argv(1));
+			int string_index = stof(argv(2));
+			LOG_INFO(bufstr_get(bufhandle, string_index));
+			return;
+		}
+
+		default:
+		case CMD_REQUEST_USAGE:
+		{
+			LOG_HELP("Usage:^3 ", GetProgramCommandPrefix(), " bufstr_get <bufhandle> <string_index>");
+			return;
+		}
+	}
+}
+
+
+GENERIC_COMMAND(version, "Print the current version", false)
+{
+	switch (request)
+	{
+		case CMD_REQUEST_COMMAND:
+		{
+			LOG_INFO(PROGNAME, " version: ", WATERMARK);
+			return;
+		}
+		default:
+		case CMD_REQUEST_USAGE:
+		{
+			LOG_HELP("Usage:^3 ", GetProgramCommandPrefix(), " version");
+			return;
+		}
+	}
+}
+
+
+#ifdef CSQC
+void(float bufhandle, string pattern, string antipattern) buf_cvarlist = #517;
+#endif
+
+GENERIC_COMMAND(cvar_localchanges, "Print locally changed cvars", false)
+{
+	switch (request)
+	{
+		case CMD_REQUEST_COMMAND:
+		{
+			string s = "";
+			int h = buf_create();
+			buf_cvarlist(h, "", "_"); // exclude all _ cvars as they are temporary
+			int n = buf_getsize(h);
+			for (int i = 0; i < n; ++i) {
+				string k = bufstr_get(h, i);
+				string v = cvar_string(k);
+				string d = cvar_defstring(k);
+				if (v == d)
+					continue;
+				s = strcat(s, k, " \"", v, "\" // \"", d, "\"\n");
+			}
+			buf_del(h);
+			LOG_INFO(s);
+			return;
+		}
+		default:
+		case CMD_REQUEST_USAGE:
+		{
+			LOG_HELP("Usage:^3 ", GetProgramCommandPrefix(), " cvar_localchanges");
+			return;
+		}
+	}
+}
+
+
+#if ENABLE_DEBUGTRACE
+REGISTER_STAT(TRACE_ENT, INT)
+
+#ifdef SVQC
+bool autocvar_debugtrace;
+
+REGISTER_MUTATOR(trace, autocvar_debugtrace);
+
+.bool debug_trace_button;
+.int solid_prev;
+MUTATOR_HOOKFUNCTION(trace, SV_StartFrame)
+{
+	FOREACH_CLIENT(true, {
+		bool skip = false;
+		bool btn = PHYS_INPUT_BUTTON_HOOK(it);
+		if (btn == it.debug_trace_button) skip = true;
+		it.debug_trace_button = btn;
+		if (!btn || skip) continue;
+		FOREACH_ENTITY(true, {
+			it.solid_prev = it.solid;
+			it.solid = SOLID_BBOX;
+		});
+		vector forward = '0 0 0'; vector right = '0 0 0'; vector up = '0 0 0';
+		MAKE_VECTORS(it.v_angle, forward, right, up);
+		vector pos = it.origin + it.view_ofs;
+		traceline(pos, pos + forward * max_shot_distance, MOVE_NORMAL, it);
+		FOREACH_ENTITY(true, {
+			it.solid = it.solid_prev;
+			it.solid_prev = 0;
+		});
+		entity e = trace_ent;
+		int i = etof(e);
+		STAT(TRACE_ENT, it) = i;
+		if (!e) continue;
+		setorigin(e, e.origin + '0 0 100');
+		stuffcmd(it, sprintf("prvm_edict server %d\n", i));
+	});
+}
+#endif // SVQC
+
+#ifdef CSQC
+entity TRACE_ENT;
+void Trace_draw2d(entity this)
+{
+	int e = STAT(TRACE_ENT);
+	if (!e) return;
+	vector pos = '0 0 0';
+	pos.y += vid_conheight / 2;
+	drawstring(pos, sprintf("prvm_edict server %d", e), '10 10 0', '1 1 1', 1, DRAWFLAG_NORMAL);
+}
+
+STATIC_INIT(TRACE_ENT)
+{
+	entity e = TRACE_ENT = new_pure(TRACE_ENT);
+	e.draw2d = Trace_draw2d;
+	IL_PUSH(g_drawables_2d, e);
+}
+#endif // CSQC
+
+#endif
+
+
+GENERIC_COMMAND(findent, "Search through entities for matching classname", false)
+{
+	switch (request)
+	{
+		case CMD_REQUEST_COMMAND:
+		{
+			int entcnt = 0;
+			FOREACH_ENTITY_CLASS_ORDERED(argv(1), true,
+			{
+				LOG_HELPF("%i (%s)", it, it.classname);
+				++entcnt;
+			});
+			if(entcnt)
+				LOG_HELPF("Found %d entities", entcnt);
+			return;
+		}
+
+		default:
+			LOG_INFOF("Incorrect parameters for ^2%s^7", argv(0));
+		case CMD_REQUEST_USAGE:
+		{
+			LOG_HELP("Usage:^3 " GetProgramCommandPrefix() " find <classname>");
+			LOG_HELP("  Where <classname> is the classname to search for.");
+			return;
+		}
+	}
+}
+
+
+GENERIC_COMMAND(findat, "Search through entities for matching origin", false)
+{
+	switch (request)
+	{
+		case CMD_REQUEST_COMMAND:
+		{
+			vector org = stov(argv(1));
+			float dist = stof(argv(2));
+			int entcnt = 0;
+			FOREACH_ENTITY_ORDERED(true,
+			{
+				if (dist > 0)
+				{
+					if (!vdist(it.origin - org, <, dist))
+						continue;
+				}
+				else if (it.origin != org)
+					continue;
+				LOG_HELPF("%i (%s)", it, it.classname);
+				++entcnt;
+			});
+			if(entcnt)
+				LOG_HELPF("Found %d entities", entcnt);
+			return;
+		}
+
+		default:
+			LOG_INFOF("Incorrect parameters for ^2%s^7", argv(0));
+		case CMD_REQUEST_USAGE:
+		{
+			LOG_HELP("Usage:^3 " GetProgramCommandPrefix() " findat <position> [<dist>]");
+			LOG_HELP("  Where <position> is a vector \"x y z\"");
+			return;
+		}
+	}
+}
+
+
+// debug_test() allows drawing text from server on the client anywhere in world coordinates.
+
+#ifdef GAMEQC
+REGISTER_NET_TEMP(debug_text_3d);
+#endif
+
+#ifdef CSQC
+
+CLASS(DebugText3d, Object)
+	// reusing existing fields
+	ATTRIB(DebugText3d, origin, vector);
+	ATTRIB(DebugText3d, message, string); // the text (i wanted to use the .text field but then this whole macro-based-inheritance thing shat itself)
+	ATTRIB(DebugText3d, health, float); // text alignment (recycled field)
+	ATTRIB(DebugText3d, hit_time, float); // when it was created
+	ATTRIB(DebugText3d, fade_rate, float); // how fast it should disappear
+	ATTRIB(DebugText3d, velocity, vector);
+
+	CONSTRUCTOR(DebugText3d, vector pos, string msg, float align, float fade_rate_, vector vel) {
+		CONSTRUCT(DebugText3d);
+		this.origin = pos;
+		this.message = strzone(msg);
+		SetResource(this, RES_HEALTH, align);
+		this.hit_time = time;
+		this.fade_rate = fade_rate_;
+		this.velocity = vel;
+		IL_PUSH(g_drawables_2d, this);
+	}
+
+	DESTRUCTOR(DebugText3d) {
+		strfree(this.message);
+	}
+
+	void DebugText3d_draw2d(DebugText3d this) {
+		float since_created = time - this.hit_time;
+		float alpha_ = 1 - since_created * this.fade_rate;
+
+		if (alpha_ < 0) {
+			delete(this);
+			return;
+		}
+
+		int size = 11;
+		vector screen_pos = project_3d_to_2d(this.origin) + since_created * this.velocity;
+		if (screen_pos.z < 0) return; // behind camera
+
+		screen_pos.z = 0;
+		float align = GetResource(this, RES_HEALTH);
+		string msg;
+		vector msg_pos;
+
+		int n = tokenizebyseparator(this.message, "\n");
+		for(int k = 0; k < n; ++k)
+		{
+			msg = argv(k);
+			msg_pos = screen_pos + k * 1.25 * size * eY;
+			if (align > 0)
+				msg_pos.x -= stringwidth(msg, true, size * '1 1 0') * min(1, align);
+
+			drawcolorcodedstring_builtin(msg_pos, msg, size * '1 1 0', alpha_, DRAWFLAG_NORMAL);
+		}
+	}
+	ATTRIB(DebugText3d, draw2d, void(DebugText3d), DebugText3d_draw2d);
+ENDCLASS(DebugText3d)
+
+NET_HANDLE(debug_text_3d, bool is_new) {
+	vector pos = ReadVector();
+	string msg = ReadString();
+	float align = ReadFloat();
+	float duration = ReadFloat();
+	vector vel = ReadVector();
+	make_impure(NEW(DebugText3d, pos, msg, align, 1 / duration, vel));
+	return true;
+}
+
+#endif // CSQC
+
+#ifdef SVQC
+
+// can't use autocvars because they give unused warning unless the macros are expanded
+#define debug_text_3d(...) EVAL(OVERLOAD(debug_text_3d, __VA_ARGS__))
+#define debug_text_3d_2(pos, msg) debug_text_3d_3(pos, msg, cvar("debug_text_3d_default_align"))
+#define debug_text_3d_3(pos, msg, align) debug_text_3d_4(pos, msg, align, cvar("debug_text_3d_default_duration"))
+#define debug_text_3d_4(pos, msg, align, dur) debug_text_3d_5(pos, msg, align, dur, stov(cvar_string("debug_text_3d_default_velocity")))
+#define debug_text_3d_5(pos, msg, align, dur, vel) debug_text_3d_fn(pos, msg, align, dur, vel)
+
+ERASEABLE
+void debug_text_3d_fn(vector pos, string msg, float align, float duration, vector vel) {
+	WriteHeader(MSG_BROADCAST, debug_text_3d);
+	WriteVector(MSG_BROADCAST, pos);
+	WriteString(MSG_BROADCAST, msg);
+	WriteFloat(MSG_BROADCAST, align);
+	WriteFloat(MSG_BROADCAST, duration);
+	WriteVector(MSG_BROADCAST, vel);
+}
+
+#endif // SVQC

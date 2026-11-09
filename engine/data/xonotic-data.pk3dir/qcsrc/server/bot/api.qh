@@ -1,0 +1,156 @@
+#pragma once
+
+#include <common/weapons/_all.qh>
+#include <common/stats.qh>
+#include <common/weapons/_all.qh>
+#include <common/physics/player.qh>
+
+bool autocvar_g_waypoints_for_items;
+bool bot_waypoints_for_items;
+
+const int WAYPOINTFLAG_GENERATED = BIT(23);
+const int WAYPOINTFLAG_ITEM = BIT(22);
+const int WAYPOINTFLAG_TELEPORT = BIT(21); // teleports, warpzones and jumppads
+//const int WAYPOINTFLAG_NORELINK = BIT(20); // deprecated, see explanation below. Do not recycle this bit.
+const int WAYPOINTFLAG_PERSONAL = BIT(19);
+const int WAYPOINTFLAG_PROTECTED = BIT(18);  // Useless WP detection never kills these.
+const int WAYPOINTFLAG_USEFUL = BIT(17);  // Useless WP detection temporary flag.
+const int WAYPOINTFLAG_DEAD_END = BIT(16);  // Useless WP detection temporary flag.
+const int WAYPOINTFLAG_LADDER = BIT(15);
+const int WAYPOINTFLAG_JUMP = BIT(14);
+const int WAYPOINTFLAG_CUSTOM_JP = BIT(13);  // jumppad with different destination waypoint (changed in the editor)
+const int WAYPOINTFLAG_CROUCH = BIT(12);
+const int WAYPOINTFLAG_SUPPORT = BIT(11);
+
+// removed WAYPOINTFLAG_NORELINK since it breaks backward compatibility
+// e.g. support waypoints would have no outgoing links in old Xonotic versions
+// In general, old Xonotic versions should spawn a normal waypoint for each unknown waypoint type
+const int WAYPOINTFLAG_NORELINK__DEPRECATED = BIT(20);
+const int WPFLAGMASK_NORELINK = (WAYPOINTFLAG_TELEPORT | WAYPOINTFLAG_LADDER | WAYPOINTFLAG_JUMP | WAYPOINTFLAG_CUSTOM_JP | WAYPOINTFLAG_SUPPORT);
+
+float bot_custom_weapon;
+float bot_weapons_close[REGISTRY_MAX(Weapons)];
+float bot_weapons_far[REGISTRY_MAX(Weapons)];
+float bot_weapons_mid[REGISTRY_MAX(Weapons)];
+float skill;
+
+.float bot_tracewalk_time;
+.float bot_attack;
+.float bot_dodgerating;
+.float bot_dodge;
+.float bot_forced_team;
+.float bot_moveskill; // moving technique
+.float bot_pickup;
+.float(entity player, entity item) bot_pickupevalfunc;
+.string cleanname;
+.float havocbot_role_timeout;
+.void(entity this) havocbot_role;
+.void(entity this) havocbot_previous_role;
+.float isbot; // true if this client is actually a bot
+.float lastteleporttime;
+.vector lastteleport_origin;
+.float navigation_hasgoals;
+.float nearestwaypointtimeout;
+.entity nearestwaypoint;
+.float speed;
+.entity wp00, wp01, wp02, wp03, wp04, wp05, wp06, wp07, wp08, wp09, wp10, wp11, wp12, wp13, wp14, wp15;
+.entity wp16, wp17, wp18, wp19, wp20, wp21, wp22, wp23, wp24, wp25, wp26, wp27, wp28, wp29, wp30, wp31;
+.float wp00mincost, wp01mincost, wp02mincost, wp03mincost, wp04mincost, wp05mincost, wp06mincost, wp07mincost;
+.float wp08mincost, wp09mincost, wp10mincost, wp11mincost, wp12mincost, wp13mincost, wp14mincost, wp15mincost;
+.float wp16mincost, wp17mincost, wp18mincost, wp19mincost, wp20mincost, wp21mincost, wp22mincost, wp23mincost;
+.float wp24mincost, wp25mincost, wp26mincost, wp27mincost, wp28mincost, wp29mincost, wp30mincost, wp31mincost;
+.float wpconsidered;
+.float wpcost;
+.int wpflags;
+.entity wphw00, wphw01, wphw02, wphw03, wphw04, wphw05, wphw06, wphw07;
+
+bool bot_aim(entity this, .entity weaponentity, float shotspeed, float shotspeedupward, float maxshottime, float applygravity, bool shot_accurate);
+void bot_aim_reset(entity this);
+void bot_clientconnect(entity this);
+void bot_clientdisconnect(entity this);
+void bot_cmdhelp(string scmd);
+void bot_endgame();
+bool bot_fixcount(bool multiple_per_frame);
+void bot_list_commands();
+void bot_queuecommand(entity bot, string cmdstring);
+void bot_relinkplayerlist();
+void bot_resetqueues();
+void bot_serverframe();
+bool bot_shouldattack(entity this, entity e);
+void bot_think(entity this);
+
+entity find_bot_by_name(string name);
+entity find_bot_by_number(float number);
+
+void havocbot_goalrating_enemyplayers(entity this, float ratingscale, vector org, float sradius);
+void havocbot_goalrating_items(entity this, float ratingscale, vector org, float sradius);
+void havocbot_goalrating_waypoints(entity this, float ratingscale, vector org, float sradius);
+
+bool havocbot_goalrating_item_pickable_check_players(entity this, vector org, entity item, vector item_org);
+
+vector havocbot_middlepoint;
+float havocbot_middlepoint_radius;
+float havocbot_symmetry_axis_m;
+float havocbot_symmetry_axis_q;
+float havocbot_symmetry_origin_order;
+
+.float goalentity_lock_timeout;
+.float ignoregoaltime;
+.entity ignoregoal;
+
+int bots_would_leave; ///< how many bots would leave so humans can replace them
+
+int player_count;
+int currentbots;
+
+.entity bot_basewaypoint;
+.bool navigation_dynamicgoal;
+void navigation_dynamicgoal_init(entity this, bool initially_static);
+void navigation_dynamicgoal_set(entity this, entity dropper);
+void navigation_dynamicgoal_unset(entity this);
+entity navigation_findnearestwaypoint(entity ent, float walkfromwp);
+void navigation_goalrating_end(entity this);
+void navigation_goalrating_start(entity this);
+void navigation_goalrating_timeout_set(entity this);
+void navigation_goalrating_timeout_force(entity this);
+void navigation_goalrating_timeout_expire(entity this, float seconds);
+bool navigation_goalrating_timeout(entity this);
+void navigation_goalrating_timeout_extend_if_needed(entity this, float seconds);
+bool navigation_goalrating_timeout_can_be_anticipated(entity this);
+void navigation_markroutes(entity this, entity fixed_source_waypoint);
+void navigation_markroutes_inverted(entity fixed_source_waypoint);
+void navigation_routerating(entity this, entity e, float f, float rangebias);
+
+vector get_closer_dest(entity ent, vector org);
+
+void set_tracewalk_dest(entity ent, vector org, bool fix_player_dest);
+vector set_tracewalk_dest_2(entity ent, vector org);
+bool tracewalk(entity e, vector start, vector m1, vector m2, vector end, float end_height, float movemode);
+
+void waypoint_remove_fromeditor(entity pl);
+void waypoint_remove(entity wp);
+void waypoint_saveall();
+void waypoint_schedulerelinkall();
+void waypoint_schedulerelink(entity wp);
+void waypoint_spawnforitem(entity e);
+void waypoint_spawnforitem_force(entity e, vector org);
+void waypoint_spawnforteleporter(entity e, vector destination, float timetaken, entity tracetest_ent);
+void waypoint_spawnforteleporter_wz(entity e, entity tracetest_ent);
+void waypoint_spawn_fromeditor(entity pl, bool at_crosshair, bool is_jump_wp, bool is_crouch_wp, bool is_support_wp);
+entity waypoint_spawn(vector m1, vector m2, float f);
+void waypoint_unreachable(entity pl);
+void waypoint_start_hardwiredlink(entity pl, bool at_crosshair);
+void waypoint_lock(entity pl);
+
+void waypoint_getSymmetricalOrigin_cmd(entity caller, bool save, int arg_idx);
+void waypoint_getSymmetricalAxis_cmd(entity caller, bool save, int arg_idx);
+
+IntrusiveList g_waypoints;
+IntrusiveList g_bot_targets;
+IntrusiveList g_bot_dodge;
+STATIC_INIT(botapi)
+{
+	g_waypoints = IL_NEW();
+	g_bot_targets = IL_NEW();
+	g_bot_dodge = IL_NEW();
+}

@@ -1,0 +1,9 @@
+#pragma once
+
+#include "commandbutton.qh"
+CLASS(XonoticBigCommandButton, XonoticCommandButton)
+	ATTRIB(XonoticBigCommandButton, image, string, SKINGFX_BUTTON_BIG);
+	ATTRIB(XonoticBigCommandButton, grayImage, string, SKINGFX_BUTTON_BIG_GRAY);
+ENDCLASS(XonoticBigCommandButton)
+entity makeXonoticBigCommandButton_T(string theText, vector theColor, string theCommand, int theFlags, string theTooltip);
+entity makeXonoticBigCommandButton(string theText, vector theColor, string theCommand, int theFlags);

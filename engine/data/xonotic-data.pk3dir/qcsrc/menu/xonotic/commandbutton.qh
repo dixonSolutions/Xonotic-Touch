@@ -1,0 +1,18 @@
+#pragma once
+
+#include "button.qh"
+CLASS(XonoticCommandButton, XonoticButton)
+	METHOD(XonoticCommandButton, configureXonoticCommandButton, void(entity, string, vector, string, int, string));
+	ATTRIB(XonoticCommandButton, onClickCommand, string);
+	ATTRIB(XonoticCommandButton, flags, int, 0);
+ENDCLASS(XonoticCommandButton)
+
+entity makeXonoticCommandButton_T(string theText, vector theColor, string theCommand, int theFlags, string theTooltip);
+entity makeXonoticCommandButton(string theText, vector theColor, string theCommand, int theFlags);
+void XonoticCommandButton_Click(entity me, entity other);
+
+#ifndef COMMANDBUTTON_CLOSE
+# define COMMANDBUTTON_CLOSE 1
+# define COMMANDBUTTON_APPLY 2
+//# define COMMANDBUTTON_REVERT 4
+#endif

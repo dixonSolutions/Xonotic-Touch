@@ -1,0 +1,62 @@
+#pragma once
+
+#include <common/items/all.qh>
+#include <common/mutators/mutator/powerups/powerups.qh>
+#ifdef SVQC
+    // For FL_POWERUP
+    #include <common/constants.qh>
+    #include <server/items/items.qh>
+#endif
+
+#ifdef GAMEQC
+MODEL(Strength_ITEM, Item_Model("g_strength.md3"));
+SOUND(Strength, Item_Sound("powerup"));
+#endif
+
+#ifdef SVQC
+bool autocvar_g_powerups_strength;
+float autocvar_g_balance_powerup_strength_damage;
+float autocvar_g_balance_powerup_strength_force;
+float autocvar_g_balance_powerup_strength_selfdamage;
+float autocvar_g_balance_powerup_strength_selfforce;
+float autocvar_g_balance_powerup_strength_time;
+void powerup_strength_init(Pickup def, entity item)
+{
+    if(!autocvar_g_powerups || !autocvar_g_powerups_strength)
+        def.spawnflags |= ITEM_FLAG_MUTATORBLOCKED;
+
+    if(!item.strength_finished)
+        item.strength_finished = (item.count) ? item.count : autocvar_g_balance_powerup_strength_time;
+}
+#endif
+
+CLASS(StrengthItem, Powerup)
+    ATTRIB(StrengthItem, m_canonical_spawnfunc, string, "item_strength");
+#ifdef SVQC
+    ATTRIB(StrengthItem, m_iteminit, void(Pickup def, entity item), powerup_strength_init);
+#endif
+#ifdef GAMEQC
+    ATTRIB(StrengthItem, spawnflags, int, ITEM_FLAG_NORMAL);
+    ATTRIB(StrengthItem, m_itemid, int, IT_STRENGTH);
+    ATTRIB(StrengthItem, m_model, Model, MDL_Strength_ITEM);
+    ATTRIB(StrengthItem, m_sound, Sound, SND_Strength);
+    ATTRIB(StrengthItem, m_glow, bool, true);
+    ATTRIB(StrengthItem, m_respawnsound, Sound, SND_STRENGTH_RESPAWN);
+#endif
+    ATTRIB(StrengthItem, netname, string, "strength");
+    ATTRIB(StrengthItem, m_name, string, _("Strength"));
+    ATTRIB(StrengthItem, m_icon, string, "strength");
+    ATTRIB(StrengthItem, m_color, vector, '0 0 1');
+    ATTRIB(StrengthItem, m_waypoint, string, _("Strength"));
+    ATTRIB(StrengthItem, m_waypointblink, int, 2);
+ENDCLASS(StrengthItem)
+REGISTER_ITEM(Strength, NEW(StrengthItem));
+
+SPAWNFUNC_ITEM(item_strength, ITEM_Strength)
+
+CLASS(StrengthStatusEffect, PowerupStatusEffect)
+	ATTRIB(StrengthStatusEffect, netname, string, "strength");
+	ATTRIB(StrengthStatusEffect, m_name, string, _("Strength"));
+	ATTRIB(StrengthStatusEffect, m_icon, string, "strength");
+ENDCLASS(StrengthStatusEffect)
+REGISTER_STATUSEFFECT(Strength, NEW(StrengthStatusEffect));

@@ -1,0 +1,53 @@
+#pragma once
+
+#include <common/mutators/base.qh>
+
+#include "buffs.qh"
+
+void buffs_Initialize();
+
+AUTOCVAR(g_buffs, int, -1, "enable buffs; \\\"-1\\\" = enabled but no auto location or replacing powerups, \\\"1\\\" = enabled and can replace them");
+
+REGISTER_MUTATOR(buffs, autocvar_g_buffs)
+{
+	MUTATOR_ONADD
+	{
+		buffs_Initialize();
+	}
+}
+
+bool autocvar_g_buffs_effects;
+float autocvar_g_buffs_waypoint_distance;
+bool autocvar_g_buffs_pickup_anyway = false;
+float autocvar_g_buffs_pickup_delay = 0.7;
+int autocvar_g_buffs_randomize;
+float autocvar_g_buffs_random_lifetime;
+bool autocvar_g_buffs_random_location;
+int autocvar_g_buffs_random_location_attempts;
+int autocvar_g_buffs_spawn_count;
+bool autocvar_g_buffs_replace_powerups;
+bool autocvar_g_buffs_replace_available = true;
+bool autocvar_g_buffs_drop = false;
+float autocvar_g_buffs_cooldown_activate;
+float autocvar_g_buffs_cooldown_respawn;
+
+// common buff variables
+.float buff_effect_delay;
+
+// buff definitions
+.bool buff_active;
+.float buff_activetime;
+.bool buff_activetime_updated;
+.entity buff_waypoint;
+.entity oldbuffs; // for updating effects
+.float buff_shield; // delay for players to keep them from spamming buff pickups
+.entity buff_model; // controls effects (TODO: make csqc)
+
+float buff_Available(entity buff);
+
+void buff_RemoveAll(entity actor, int removal_type);
+
+entity buff_FirstFromFlags(entity actor);
+
+/// Spawn effects on a player with a buff
+void buff_Effect(entity player, entity eff, vector eff_loc, vector eff_vel, int eff_cnt, bool hide);

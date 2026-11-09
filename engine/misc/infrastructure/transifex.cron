@@ -1,0 +1,28 @@
+#!/bin/sh
+
+set -ex
+
+export PATH=$HOME/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games
+export GIT_SSH_COMMAND='ssh -i $HOME/.ssh/id_xonotic'
+
+cd ~/xonotic/data/xonotic-data.pk3dir
+git checkout master
+git fetch origin master
+if git rev-list origin/master..master | grep .; then
+	echo "Blocked by local changes. Bailing out."
+	exit 1
+fi
+git reset --hard origin/master
+
+# Mode parameter:
+#   po:  just update the translations.
+#   all: also update the translation template. Will create a new commit every time, as the date header changes.
+export BATCH=true
+sh tx.sh "${1:-po}"
+
+if [ x"`git ls-files -dm`" = x".tx/merge-base" ]; then
+	git reset --hard
+	exit 0
+fi
+git commit -a -m'Transifex autosync'
+git push origin master

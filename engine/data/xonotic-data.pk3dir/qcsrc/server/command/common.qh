@@ -1,0 +1,191 @@
+#pragma once
+
+string autocvar_sv_adminnick;
+bool autocvar_sv_status_privacy;
+bool autocvar_sv_timeout;
+float autocvar_sv_timeout_leadtime;
+float autocvar_sv_timeout_length;
+int autocvar_sv_timeout_number;
+float autocvar_sv_timeout_resumetime;
+
+#include <common/command/_mod.qh>
+REGISTRY(COMMON_COMMANDS, BITS(7))
+REGISTER_REGISTRY(COMMON_COMMANDS)
+REGISTRY_SORT(COMMON_COMMANDS)
+
+REGISTRY_DEFINE_GET(COMMON_COMMANDS, NULL)
+
+#define COMMON_COMMAND(id, description) \
+	CLASS(commoncommand_##id, Command) \
+		ATTRIB(commoncommand_##id, m_name, string, #id); \
+    	ATTRIB(commoncommand_##id, m_description, string, description); \
+	ENDCLASS(commoncommand_##id) \
+    REGISTER(COMMON_COMMANDS, CMD_SV, id, m_id, NEW(commoncommand_##id)); \
+	METHOD(commoncommand_##id, m_invokecmd, void(commoncommand_##id this, int request, entity caller, int arguments, string command))
+
+STATIC_INIT(COMMON_COMMANDS_aliases) {
+	FOREACH(COMMON_COMMANDS, true, { localcmd(sprintf("alias %1$s \"%2$s %1$s ${* ?}\"\n", it.m_name, "qc_cmd_svcmd")); });
+}
+
+#include "vote.qh"
+#include <common/monsters/sv_spawn.qh>
+
+#include <common/command/_mod.qh>
+
+// ============================================================
+//  Shared declarations for server commands, written by Samual
+//  Last updated: December 30th, 2011
+// ============================================================
+
+// client verification results
+const float CLIENT_ACCEPTABLE = 1;
+const float CLIENT_DOESNT_EXIST = -1;
+const float CLIENT_NOT_REAL = -2;
+const float CLIENT_NOT_BOT = -3;
+
+// definitions for timeouts
+const float TIMEOUT_INACTIVE = 0;
+const float TIMEOUT_LEADTIME = 1;
+const float TIMEOUT_ACTIVE = 2;
+
+// timeout which pauses the game by setting the slowmo value extremely low.
+const float TIMEOUT_SLOWMO_VALUE = 0.0001;
+
+// global timeout information declarations
+entity timeout_caller;   // contains the entity of the player who started the last timeout
+entity timeout_handler;  // responsible for centerprinting the timeout countdowns and playing sounds
+float sys_frametime;     // gets initialised in worldspawn, saves the value from autocvar_sys_ticrate
+float orig_slowmo;       // contains the value of autocvar_slowmo so that, after timeout finished, it isn't set to slowmo 1 necessarily
+float timeout_time;      // contains the time in seconds that the active timeout has left
+float timeout_leadtime;  // contains the number of seconds left of the leadtime (before the timeout starts)
+.float allowed_timeouts; // contains the number of allowed timeouts for each player
+.vector lastV_angle;     // used when pausing the game in order to force the player to keep their old view angle fixed
+
+// allow functions to be used in other code like world.qc and teamplay.qc
+void timeout_handler_think(entity this);
+
+// used by common/command/generic.qc:GenericCommand_dumpcommands to list all commands into a .txt file
+void CommonCommand_macro_write_aliases(int fh);
+
+// keep track of the next token to use for argc
+int next_token;
+
+// select the proper prefix for usage and other messages
+string GetCommandPrefix(entity caller);
+
+// if client return player nickname, or if server return admin nickname
+string GetCallerName(entity caller);
+
+// verify that the client provided is acceptable for kicking
+int VerifyKickableEntity(entity client);
+
+// verify that the client provided is acceptable for use
+int VerifyClientEntity(entity client, bool must_be_real, bool must_be_bots);
+
+// if the client is not acceptable, return a string to be used for error messages
+string GetClientErrorString_color(int clienterror, string original_input, string col);
+#define GetClientErrorString(clienterror, original_input) GetClientErrorString_color(clienterror, original_input, "^7")
+
+// is this entity number even in the possible range of entities?
+bool VerifyClientNumber(int num);
+
+entity GetIndexedEntity(int argc, int start_index);
+
+// find a player which matches the input string, and return their entity
+entity GetFilteredEntity(string input);
+
+// switch between sprint and print depending on whether the receiver is the server or a player
+void print_to(entity to, string input);
+
+// ==========================================
+//  Supporting functions for common commands
+// ==========================================
+
+// used by CommonCommand_timeout() and CommonCommand_timein() to handle game pausing and messaging and such.
+void timeout_handler_reset(entity this);
+
+void timeout_handler_think(entity this);
+
+// ===================================================
+//  Common commands used in both sv_cmd.qc and cmd.qc
+// ===================================================
+
+void CommonCommand_cvar_changes(int request, entity caller);
+
+void CommonCommand_cvar_purechanges(int request, entity caller);
+
+void CommonCommand_editmob(int request, entity caller, int argc);
+
+void CommonCommand_info(int request, entity caller, int argc);
+
+void CommonCommand_ladder(int request, entity caller);
+
+void CommonCommand_lsmaps(int request, entity caller);
+
+void CommonCommand_printmaplist(int request, entity caller);
+
+void CommonCommand_rankings(int request, entity caller);
+
+void CommonCommand_records(int request, entity caller);
+
+void CommonCommand_teamstatus(int request, entity caller);
+
+void CommonCommand_time(int request, entity caller);
+
+void CommonCommand_timein(int request, entity caller);
+
+void CommonCommand_timeout(int request, entity caller);
+
+void CommonCommand_who(int request, entity caller, int argc);
+
+
+// ==================================
+//  Macro system for common commands
+// ==================================
+
+// Do not hard code aliases for these, instead create them in commands.cfg... also: keep in alphabetical order, please ;)
+COMMON_COMMAND(cvar_changes, "Prints a list of all changed server cvars") { CommonCommand_cvar_changes(request, caller); }
+COMMON_COMMAND(cvar_purechanges, "Prints a list of all changed gameplay cvars") { CommonCommand_cvar_purechanges(request, caller); }
+COMMON_COMMAND(editmob, "Modifies a monster or all monsters") { CommonCommand_editmob(request, caller, arguments); }
+COMMON_COMMAND(info, "Request for unique server information set up by admin") { CommonCommand_info(request, caller, arguments); }
+COMMON_COMMAND(ladder, "Get information about top players if supported") { CommonCommand_ladder(request, caller); }
+COMMON_COMMAND(lsmaps, "List maps which can be used with the current gametype") { CommonCommand_lsmaps(request, caller); }
+COMMON_COMMAND(printmaplist, "Display full server maplist reply") { CommonCommand_printmaplist(request, caller); }
+COMMON_COMMAND(rankings, "Print information about rankings") { CommonCommand_rankings(request, caller); }
+COMMON_COMMAND(records, "Print records for the current gametype") { CommonCommand_records(request, caller); }
+COMMON_COMMAND(teamstatus, "Show information about player and team scores") { CommonCommand_teamstatus(request, caller); }
+COMMON_COMMAND(time, "Print different formats/readouts of time") { CommonCommand_time(request, caller); }
+COMMON_COMMAND(timein, "Resume the game from being paused with a timeout") { CommonCommand_timein(request, caller); }
+COMMON_COMMAND(timeout, "Call a timeout which pauses the game for certain amount of time unless unpaused") { CommonCommand_timeout(request, caller); }
+COMMON_COMMAND(vote, "Request an action to be voted upon by players") { VoteCommand(request, caller, arguments, command); }
+COMMON_COMMAND(who, "Display detailed client information about all players") { CommonCommand_who(request, caller, arguments);}
+
+void CommonCommand_macro_help(entity caller)
+{
+	FOREACH(COMMON_COMMANDS, true, { print_to(caller, sprintf("  ^2%s^7: %s", it.m_name, it.m_description)); });
+}
+
+float CommonCommand_macro_command(int argc, entity caller, string command)
+{
+	string c = strtolower(argv(0));
+	FOREACH(COMMON_COMMANDS, it.m_name == c, {
+		it.m_invokecmd(it, CMD_REQUEST_COMMAND, caller, argc, command);
+		return true;
+	});
+	return false;
+}
+
+float CommonCommand_macro_usage(int argc, entity caller)
+{
+	string c = strtolower(argv(1));
+	FOREACH(COMMON_COMMANDS, it.m_name == c, {
+		it.m_invokecmd(it, CMD_REQUEST_USAGE, caller, argc, "");
+		return true;
+	});
+	return false;
+}
+
+void CommonCommand_macro_write_aliases(int fh)
+{
+	FOREACH(COMMON_COMMANDS, true, { CMD_Write_Alias("qc_cmd_svcmd", it.m_name, it.m_description); });
+}

@@ -1,0 +1,152 @@
+#include "darkness.qh"
+
+#ifdef SVQC
+
+float nade_current_dark_time;
+bool nade_darkness_think_cond(entity e)
+{
+	return (e != WarpZone_SearchInRadius_otherent && e.takedamage
+		&& !IS_DEAD(e) && GetResource(e, RES_HEALTH) > 0 && nade_current_dark_time > 0 && IS_REAL_CLIENT(e));
+}
+void nade_darkness_think(entity this)
+{
+	if (round_handler_IsActive() && !round_handler_IsRoundStarted())
+	{
+		delete(this);
+		return;
+	}
+
+	if (time >= this.ltime)
+	{
+		if (autocvar_g_nades_darkness_explode)
+		{
+			vector expcol_min = nades_PlayerColor(this.realowner, false);
+			vector expcol_max = nades_PlayerColor(this.realowner, true);
+			Send_Effect_Core(EFFECT_NADE_EXPLODE, this.origin + '0 0 1', '0 0 0', 1, expcol_min, expcol_max, -1, -1, -1, NULL);
+			sound(this, CH_SHOTS, SND_ROCKET_IMPACT, VOL_BASE, ATTEN_NORM);
+
+			nade_normal_boom(this);
+		}
+		else
+			Send_Effect_Core(EFFECT_SPAWN, this.origin + '0 0 1', '0 0 0', 1, '0.5 0 0.5', '0.5 0 0.5', -1, -1, -1, NULL);
+
+		delete(this);
+		return;
+	}
+
+	this.nextthink = time + 0.1;
+
+	// gaussian
+	float randomr = random();
+	randomr = exp(-5 * randomr * randomr) * autocvar_g_nades_darkness_radius;
+	float randomw = random() * (2 * M_PI);
+	vector randomp;
+	randomp.x = randomr * cos(randomw);
+	randomp.y = randomr * sin(randomw);
+	randomp.z = 1;
+	Send_Effect(EFFECT_DARKFIELD, this.origin + randomp, '0 0 0', 1);
+
+	if (time >= this.nade_special_time)
+	{
+		this.nade_special_time = time + 5/16; // 0.3125
+		Send_Effect(EFFECT_DARKFIELD, this.origin, '0 0 0', 1);
+	}
+
+	nade_current_dark_time = this.ltime - this.nextthink;
+	WarpZone_SearchInRadius_otherent = this;
+	entity head = WarpZone_SearchInRadius(this.origin, autocvar_g_nades_darkness_radius, MOVE_NOTHING, nade_darkness_think_cond);
+	for (; head; head = head.chain)
+	{
+		switch (autocvar_g_nades_darkness_teamcheck)
+		{
+			case 0:  break; // affect everyone
+			default:
+			case 2:  if (SAME_TEAM(head, this.realowner)) continue; // don't affect teammates
+			         // fall through (check case 1 condition too)
+			case 1:  if (head == this.realowner) continue; // don't affect the player who threw the nade
+		}
+		STAT(NADE_DARKNESS_TIME, head) = this.nextthink;
+	}
+}
+
+void nade_darkness_boom(entity this)
+{
+	entity fountain = new(nade_darkness_fountain);
+	fountain.owner = this.owner;
+	fountain.realowner = this.realowner;
+	fountain.origin = this.origin;
+	fountain.flags = FL_PROJECTILE;
+	IL_PUSH(g_projectiles, fountain);
+	setorigin(fountain, fountain.origin);
+	setthink(fountain, nade_darkness_think);
+	fountain.nextthink = time;
+	fountain.pushltime = fountain.wait = fountain.ltime = time + autocvar_g_nades_darkness_time;
+	fountain.team = this.team;
+	set_movetype(fountain, MOVETYPE_TOSS);
+	fountain.projectiledeathtype = DEATH_NADE_DARKNESS.m_id;
+	fountain.bot_dodge = false;
+	setsize(fountain, '-16 -16 -16', '16 16 16');
+	fountain.nade_special_time = time + 0.3;
+	fountain.angles = this.angles;
+
+	if (autocvar_g_nades_darkness_explode)
+	{
+		setmodel(fountain, MDL_PROJECTILE_GRENADE);
+		entity timer = new(nade_timer);
+		setmodel(timer, MDL_NADE_TIMER);
+		setattachment(timer, fountain, "");
+		timer.colormap = this.colormap;
+		timer.glowmod = this.glowmod;
+		setthink(timer, nade_timer_think);
+		timer.nextthink = time;
+		timer.wait = fountain.wait;
+		timer.nade_lifetime = this.nade_lifetime;
+		timer.owner = fountain;
+		timer.skin = 10;
+	}
+	else
+		setmodel(fountain, MDL_Null);
+}
+
+#endif // SVQC
+#ifdef CSQC
+
+bool darkness_fadealpha;
+
+void HUD_DarkBlinking()
+{
+	drawfill('0 0 0', vec2(vid_conwidth, vid_conheight), NADE_TYPE_DARKNESS.m_color, darkness_fadealpha, DRAWFLAG_NORMAL);
+}
+
+MUTATOR_HOOKFUNCTION(cl_nades, HUD_Draw_overlay)
+{
+	if (STAT(NADE_DARKNESS_TIME) > time)
+	{
+		if (!darkness_fadealpha)
+			sound(csqcplayer, CH_PAIN, SND_BLIND, VOL_BASE, ATTEN_NORM);
+		darkness_fadealpha = min(0.986, darkness_fadealpha + frametime * 7);
+	}
+	else if (darkness_fadealpha > 0)
+		darkness_fadealpha = max(0, darkness_fadealpha - frametime * 7);
+
+	if (darkness_fadealpha > 0)
+	{
+		HUD_DarkBlinking();
+		M_ARGV(1, float) = 0; // alpha_multipl 0, don't draw normal overlay
+		return true;
+	}
+	return false;
+}
+#endif // CSQC
+#ifdef MENUQC
+#include "darkness.qh"
+
+METHOD(DarknessNade, describe, string(DarknessNade this))
+{
+	TC(DarknessNade, this);
+	PAGE_TEXT_INIT();
+	PAR(_("The %s detonates after a short delay, creating a dark field which temporarily blinds enemies who enter it."), COLORED_NAME(this));
+	PAR(_("This is sort of the opposite of the %s."), COLORED_NAME(NADE_TYPE_VEIL));
+	return PAGE_TEXT;
+}
+#endif // MENUQC

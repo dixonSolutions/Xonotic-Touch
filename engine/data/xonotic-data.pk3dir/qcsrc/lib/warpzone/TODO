@@ -1,0 +1,23 @@
+Open issues:
+- grep for TODO and FIXME
+- when shot origin is inside warpzone, vortex shot fails (and is even drawn in totally wrong direction). WHY? Possibly v_forward got lost?
+
+Weapon support:
+
+- blaster: YES
+- shotgun: YES
+- machinegun: YES
+- mortar: YES
+- electro: YES
+- crylink: YES
+- vortex: YES
+- hagar: YES
+- devastator: YES (except for trail bug)
+- porto: YES (bwahahahaha)
+- hlac: YES
+- vaporizer: YES
+- rifle: YES
+- fireball: YES (BFG effect cannot work through warpzones by design, so it's not available through warpzones)
+- hook: YES
+
+- tuba: NO (sound)

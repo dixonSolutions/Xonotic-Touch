@@ -1,0 +1,122 @@
+#pragma once
+
+#include "all.qh"
+
+bool autocvar_g_turrets;
+float autocvar_g_turrets_aimidle_delay;
+bool autocvar_g_turrets_nofire;
+bool autocvar_g_turrets_reloadcvars;
+float autocvar_g_turrets_targetscan_maxdelay;
+float autocvar_g_turrets_targetscan_mindelay;
+
+entity turret_projectile(entity actor, Sound _snd, float _size, float _health, float _death, float _proj_type, float _cull, float _cli_anim);
+void turret_projectile_explode(entity this);
+float turret_validate_target(entity e_turret, entity e_target, float validate_flags);
+bool turret_firecheck(entity this);
+entity turret_select_target(entity this);
+
+// turret fields
+
+#define X(class, prefix, fld, type) .type fld;
+TR_PROPS_COMMON(X, , )
+#undef X
+/*
+.float shot_volly; // smaller than 1 = shoot # times at target
+.float shot_volly_refire; // refire after completed volly
+*/
+
+.entity tur_head; // top part of the turret
+.entity tur_defend; // defend this entity
+.vector tur_shotorg; // shot origin
+.vector tur_aimpos; // aiming location
+.float tur_impacttime; // predicted projectile impact time
+.entity tur_impactent; // entity the projectile hit
+.float tur_dist_enemy; // distance to enemy
+.float tur_dist_aimpos; // distance to aim location
+.float tur_dist_impact_to_aimpos; // distance impact<->aim
+.float volly_counter; // decrement counter from .shot_volly to 0
+
+.float target_select_time; // last time turret had a valid target
+.float target_validate_time; // throttle re-validation of current target
+
+
+.float ammo; // current ammo
+.vector idle_aim;
+
+/// Map time control over pain inflicted
+.float turret_scale_damage;
+/// Map time control targetting range
+.float turret_scale_range;
+/// Map time control refire
+.float turret_scale_refire;
+/// Map time control ammo held and recharged
+.float turret_scale_ammo;
+/// Map time control aim speed
+.float turret_scale_aim;
+/// Map time control health
+.float turret_scale_health;
+/// Map time control respawn time
+.float turret_scale_respawn;
+
+// tracking type
+const float TFL_TRACKTYPE_STEPMOTOR = 1; // hard angle increments, ugly for fast turning with best accuracy
+const float TFL_TRACKTYPE_FLUIDPRECISE = 2; // smooth absolute movement, looks OK with fair accuracy
+const float TFL_TRACKTYPE_FLUIDINERTIA = 3; // simulated inertia ("wobbly" mode), worst accuracy, depends on below flags
+
+void turret_respawn(entity this);
+
+/// updates aim org, shot org, shot dir and enemy org for selected turret
+void turret_do_updates(entity e_turret);
+.vector tur_shotdir_updated;
+
+.float(entity this) turret_firecheckfunc; // TODO: deprecate!
+
+void turrets_setframe(entity this, float _frame, float client_only);
+
+bool turret_initialize(entity this, Turret tur);
+
+// returns true when box overlaps with a given location
+bool turret_closetotarget(entity this, vector targ, float range);
+
+/// Function to use for target evaluation. usualy turret_targetscore_generic
+.float(entity _turret, entity _target) turret_score_target;
+
+.bool(entity this, entity e_target, entity e_sender) turret_addtarget;
+
+.entity pathcurrent;
+
+.entity pathgoal;
+
+float turret_count;
+
+// The value of this const should be != 0 and different from normal team numbers.
+// If multiple of 256 gets automatically converted to 0 when sent to the client with WriteByte;
+// this behaviour is intentional since the client doesn't use it.
+const int TURRET_TEAM = 256;
+
+// debugging
+// Uncomment below to enable various debug output.
+//#define TURRET_DEBUG
+//#define TURRET_DEBUG_TARGETVALIDATE
+//#define TURRET_DEBUG_TARGETSELECT
+#ifdef TURRET_DEBUG
+.float tur_debug_dmg_t_h; // total damage that hit something (can be more than tur_debug_dmg_t_f since it should count radius damage)
+.float tur_debug_dmg_t_f; // total damage
+.float tur_debug_start; // turret initialization time
+.float tur_debug_tmr1; // random timer
+.float tur_debug_tmr2; // random timer
+.float tur_debug_tmr3; // random timer
+.vector tur_debug_rvec; // random vector
+#endif
+
+// aiming
+vector tvt_thadv; // turret head angle diff vector, updated by a successful call to turret_validate_target
+vector tvt_tadv; // turret angle diff vector, updated by a successful call to turret_validate_target
+float tvt_thadf; // turret head angle diff float, updated by a successful call to turret_validate_target
+float tvt_dist; // turret distance, updated by a successful call to turret_validate_target
+
+IntrusiveList g_turrets;
+STATIC_INIT(g_turrets)
+{
+	g_turrets = IL_NEW();
+}

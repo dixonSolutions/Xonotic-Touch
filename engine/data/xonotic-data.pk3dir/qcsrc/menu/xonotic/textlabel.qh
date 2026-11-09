@@ -1,0 +1,11 @@
+#pragma once
+
+#include "../item/label.qh"
+CLASS(XonoticTextLabel, Label)
+	METHOD(XonoticTextLabel, draw, void(entity));
+	ATTRIB(XonoticTextLabel, fontSize, float, SKINFONTSIZE_NORMAL);
+	ATTRIB(XonoticTextLabel, alpha, float, SKINALPHA_TEXT);
+	ATTRIB(XonoticTextLabel, disabledAlpha, float, SKINALPHA_DISABLED);
+ENDCLASS(XonoticTextLabel)
+entity makeXonoticTextLabel(float theAlign, string theText);
+entity makeXonoticHeaderLabel(string theText);

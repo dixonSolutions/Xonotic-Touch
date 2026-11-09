@@ -1,0 +1,217 @@
+#pragma once
+
+// TODO: rename to 'netvars'
+
+#include "registry.qh"
+#include "sort.qh"
+
+.int m_id;
+
+const int STATS_ENGINE_RESERVE = 32;
+// must be listed in ascending order
+#define MAGIC_STATS(_, x) \
+	_(x, MOVEVARS_AIRACCEL_QW_STRETCHFACTOR, 220) \
+	_(x, MOVEVARS_AIRCONTROL_PENALTY, 221) \
+	_(x, MOVEVARS_AIRSPEEDLIMIT_NONQW, 222) \
+	_(x, MOVEVARS_AIRSTRAFEACCEL_QW, 223) \
+	_(x, MOVEVARS_AIRCONTROL_POWER, 224) \
+	_(x, MOVEFLAGS, 225) \
+	_(x, MOVEVARS_WARSOWBUNNY_AIRFORWARDACCEL, 226) \
+	_(x, MOVEVARS_WARSOWBUNNY_ACCEL, 227) \
+	_(x, MOVEVARS_WARSOWBUNNY_TOPSPEED, 228) \
+	_(x, MOVEVARS_WARSOWBUNNY_TURNACCEL, 229) \
+	_(x, MOVEVARS_WARSOWBUNNY_BACKTOSIDERATIO, 230) \
+	_(x, MOVEVARS_AIRSTOPACCELERATE, 231) \
+	_(x, MOVEVARS_AIRSTRAFEACCELERATE, 232) \
+	_(x, MOVEVARS_MAXAIRSTRAFESPEED, 233) \
+	_(x, MOVEVARS_AIRCONTROL, 234) \
+	_(x, FRAGLIMIT, 235) \
+	_(x, TIMELIMIT, 236) \
+	_(x, MOVEVARS_WALLFRICTION, 237) \
+	_(x, MOVEVARS_FRICTION, 238) \
+	_(x, MOVEVARS_WATERFRICTION, 239) \
+	_(x, MOVEVARS_TICRATE, 240) \
+	_(x, MOVEVARS_TIMESCALE, 241) \
+	_(x, MOVEVARS_GRAVITY, 242) \
+	_(x, MOVEVARS_STOPSPEED, 243) \
+	_(x, MOVEVARS_MAXSPEED, 244) \
+	_(x, MOVEVARS_SPECTATORMAXSPEED, 245) \
+	_(x, MOVEVARS_ACCELERATE, 246) \
+	_(x, MOVEVARS_AIRACCELERATE, 247) \
+	_(x, MOVEVARS_WATERACCELERATE, 248) \
+	_(x, MOVEVARS_ENTGRAVITY, 249) \
+	_(x, MOVEVARS_JUMPVELOCITY, 250) \
+	_(x, MOVEVARS_EDGEFRICTION, 251) \
+	_(x, MOVEVARS_MAXAIRSPEED, 252) \
+	_(x, MOVEVARS_STEPHEIGHT, 253) \
+	_(x, MOVEVARS_AIRACCEL_QW, 254) \
+	_(x, MOVEVARS_AIRACCEL_SIDEWAYS_FRICTION, 255) \
+	/**/
+
+int g_magic_stats_hole = 0;
+
+#define MAGIC_STATS_FIX_MANUAL(it, var, id) \
+	if (it.registered_id == "STAT_" #var) \
+	{ \
+		--g_magic_stats_hole; \
+		it.m_id = id; \
+	} \
+	else
+
+#define MAGIC_STATS_FIX_AUTO(it, var, id) \
+	if (it.m_id == id) \
+	{ \
+		++g_magic_stats_hole; \
+		++it.m_id; \
+	}
+
+#define MAGIC_STATS_FIX(it) \
+	it.m_id += g_magic_stats_hole; \
+	MAGIC_STATS(MAGIC_STATS_FIX_MANUAL, it) \
+	{ \
+		MAGIC_STATS(MAGIC_STATS_FIX_AUTO, it) \
+	}
+
+#define type_INT     int
+#define type_BOOL    bool
+#define type_FLOAT   float
+#define type_VECTOR  vector
+#define type_VECTORI vector
+
+#define _REGISTRY_RESERVE_INT(Stats, m_id, id)
+#define _REGISTRY_RESERVE_BOOL(Stats, m_id, id)
+#define _REGISTRY_RESERVE_FLOAT(Stats, m_id, id)
+#define _REGISTRY_RESERVE_VECTOR(Stats, m_id, id) \
+	REGISTRY_RESERVE(Stats, m_id, STAT_##id, y); \
+	REGISTRY_RESERVE(Stats, m_id, STAT_##id, z);
+#define _REGISTRY_RESERVE_VECTORI(Stats, m_id, id) _REGISTRY_RESERVE_VECTOR(Stats, m_id, id)
+
+#define REGISTER_STAT(...) EVAL_REGISTER_STAT(OVERLOAD(REGISTER_STAT, __VA_ARGS__))
+#define EVAL_REGISTER_STAT(...) __VA_ARGS__
+#ifdef CSQC
+	/// Get all stats and store them as globals, access with `STAT(ID)`
+	void stats_get() {}
+	#define STAT(...) EVAL_STAT(OVERLOAD(STAT, __VA_ARGS__))
+	#define EVAL_STAT(...) __VA_ARGS__
+	#define STAT_1(id) (RVALUE, _STAT(id))
+	#define STAT_2(id, cl) STAT_1(id)
+
+	#define getstat_INT(id) getstati(id, 0, 24)
+	#define getstat_BOOL(id) boolean(getstati(id))
+	#define getstat_FLOAT(id) getstatf(id)
+	#define getstat_VECTOR(id) vec3(getstat_FLOAT(id + 0), getstat_FLOAT(id + 1), getstat_FLOAT(id + 2))
+	#define getstat_VECTORI(id) vec3(getstat_INT(id + 0), getstat_INT(id + 1), getstat_INT(id + 2))
+
+	#define _STAT(id) g_stat_##id
+	#define REGISTER_STAT_2(id, T) \
+		type_##T _STAT(id); \
+		/* T CAT(_STAT(id), _prev); */ \
+		REGISTER(Stats, STAT_##id, m_id, new_pure(stat)) \
+		{ \
+			_REGISTRY_RESERVE_##T(Stats, m_id, id) \
+		} \
+		ACCUMULATE void stats_get() \
+		{ \
+			type_##T it = getstat_##T(STAT_##id.m_id); \
+			/* if (it != CAT(_STAT(id), _prev)) \
+				CAT(_STAT(id), _prev) = */ _STAT(id) = it; \
+		}
+	#define REGISTER_STAT_3(id, T, expr) REGISTER_STAT_2(id, T)
+#elifdef SVQC
+	/// Internal use only
+	entity STATS;
+	/// Add all registered stats, access with `STAT(ID, player)` or `.type stat = _STAT(ID); player.stat`
+	void stats_add() {}
+	#define STAT(...) EVAL_STAT(OVERLOAD_(STAT, __VA_ARGS__))
+	#define EVAL_STAT(...) __VA_ARGS__
+	#define STAT_1(id) (RVALUE, STAT_2(id, STATS))
+	#define STAT_2(id, cl) (cl)._STAT(id)
+
+	#define addstat_INT(id, fld) addstat(id, AS_INT, fld)
+	#define addstat_BOOL(id, fld) addstat(id, AS_INT, fld)
+	#define addstat_FLOAT(id, fld) addstat(id, AS_FLOAT, fld)
+	#define addstat_VECTOR(id, fld) MACRO_BEGIN \
+		addstat_FLOAT(id + 0, fld##_x); \
+		addstat_FLOAT(id + 1, fld##_y); \
+		addstat_FLOAT(id + 2, fld##_z); \
+	MACRO_END
+	#define addstat_VECTORI(id, fld) MACRO_BEGIN \
+		addstat_INT(id + 0, fld##_x); \
+		addstat_INT(id + 1, fld##_y); \
+		addstat_INT(id + 2, fld##_z); \
+	MACRO_END
+	const int AS_STRING = 1;
+	const int AS_INT = 2;
+	const int AS_FLOAT = 8;
+
+	.int __stat_null;
+	STATIC_INIT(stats)
+	{
+		STATS = new_pure(stats);
+		// Prevent engine stats being sent
+		int r = STATS_ENGINE_RESERVE;
+		for (int i = 0, n = 256 - r; i < n; ++i)
+		{
+			#define X(_, name, id) if (i == id) continue;
+			MAGIC_STATS(X, );
+			#undef X
+			addstat(r + i, AS_INT, __stat_null);
+		}
+	}
+
+	#define _STAT(id) stat_##id
+	#define REGISTER_STAT_2(id, T) \
+		.type_##T _STAT(id); \
+		REGISTER(Stats, STAT_##id, m_id, new_pure(stat)) \
+		{ \
+			_REGISTRY_RESERVE_##T(Stats, m_id, id) \
+		} \
+		ACCUMULATE void stats_add() \
+		{ \
+			.type_##T fld = _STAT(id); \
+			addstat_##T(STAT_##id.m_id, fld); \
+		}
+	void GlobalStats_update(entity this) {}
+	void GlobalStats_updateglobal() {}
+	/** TODO: do we want the global copy to update? */
+	#define REGISTER_STAT_3(id, T, expr) \
+		REGISTER_STAT_2(id, T); \
+		ACCUMULATE void GlobalStats_update(entity this) \
+		{ \
+			STAT(id, this) = (expr); \
+		} \
+		ACCUMULATE void GlobalStats_updateglobal() \
+		{ \
+			entity this = STATS; \
+			STAT(id, this) = (expr); \
+		} \
+		STATIC_INIT(worldstat_##id) \
+		{ \
+			entity this = STATS; \
+			STAT(id, this) = (expr); \
+		}
+#else
+	#define REGISTER_STAT_2(id, T)
+	#define REGISTER_STAT_3(id, T, expr)
+#endif
+
+REGISTRY(Stats, 256 - STATS_ENGINE_RESERVE)
+REGISTER_REGISTRY(Stats)
+REGISTRY_SORT(Stats)
+REGISTRY_CHECK(Stats)
+
+REGISTRY_DEFINE_GET(Stats, NULL)
+STATIC_INIT(Stats_renumber)
+{
+	FOREACH(Stats, true,
+	{
+		it.m_id = STATS_ENGINE_RESERVE + i;
+		MAGIC_STATS_FIX(it);
+	});
+}
+#ifdef SVQC
+STATIC_INIT(stats_add)
+{
+	stats_add();
+}
+#endif

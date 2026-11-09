@@ -1,0 +1,382 @@
+#pragma once
+
+#include "lib/float.qh"
+
+ERASEABLE
+void mean_accumulate(entity e, .float a, .float c, float mean, float value, float weight)
+{
+	if (weight == 0)
+		return;
+	if (mean == 0)
+		e.(a) *= (value ** weight);
+	else
+		e.(a) += (value ** mean) * weight;
+	e.(c) += weight;
+}
+
+ERASEABLE
+float mean_evaluate(entity e, .float a, .float c, float mean)
+{
+	if (e.(c) == 0)
+		return 0;
+	if (mean == 0)
+		return (e.(a) ** (1.0 / e.(c)));
+	return ((e.(a) / e.(c)) ** (1.0 / mean));
+}
+
+#define MEAN_ACCUMULATE(s, prefix, v, w) mean_accumulate(s, prefix##_accumulator, prefix##_count, prefix##_mean, v, w)
+#define MEAN_EVALUATE(s, prefix) mean_evaluate(s, prefix##_accumulator, prefix##_count, prefix##_mean)
+#define MEAN_DECLARE(prefix, m) float prefix##_mean = m; .float prefix##_count, prefix##_accumulator
+
+
+/*
+==================
+Angc used for animations
+==================
+*/
+
+
+ERASEABLE
+float angc(float a1, float a2)
+{
+	while (a1 > 180)
+		a1 -= 360;
+	while (a1 < -179)
+		a1 += 360;
+	while (a2 > 180)
+		a2 -= 360;
+	while (a2 < -179)
+		a2 += 360;
+	float a = a1 - a2;
+	while (a > 180)
+		a -= 360;
+	while (a < -179)
+		a += 360;
+	return a;
+}
+
+ERASEABLE
+float fsnap(float val, float fsize)
+{
+	return rint(val / fsize) * fsize;
+}
+
+ERASEABLE
+vector vsnap(vector point, float fsize)
+{
+	vector vret;
+	vret.x = rint(point.x / fsize) * fsize;
+	vret.y = rint(point.y / fsize) * fsize;
+	vret.z = ceil(point.z / fsize) * fsize;
+	return vret;
+}
+
+ERASEABLE
+float lerpratio(float f0, float f1, float ratio)
+{
+	return f0 * (1 - ratio) + f1 * ratio;
+}
+
+ERASEABLE
+float lerp(float t0, float f0, float t1, float f1, float t)
+{
+	return lerpratio(f0, f1, (t - t0) / (t1 - t0));
+}
+
+ERASEABLE
+float lerp3ratio(float f0, float f1, float f2, float ratio)
+{
+	float mid = 0.5;
+	return ratio < mid ? lerpratio(f0, f1, ratio / mid) : ratio > mid ? lerpratio(f1, f2, (ratio - mid) / mid) : f1;
+}
+
+
+ERASEABLE
+vector lerpvratio(vector f0, vector f1, float ratio)
+{
+	return f0 * (1 - ratio) + f1 * ratio;
+}
+
+ERASEABLE
+vector lerpv3ratio(vector f0, vector f1, vector f2, float ratio)
+{
+	float mid = 0.5;
+	return ratio < mid ? lerpvratio(f0, f1, ratio / mid) : ratio > mid ? lerpvratio(f1, f2, (ratio - mid) / mid) : f1;
+}
+
+ERASEABLE
+vector lerpv(float t0, vector v0, float t1, vector v1, float t)
+{
+	return v0 + (v1 - v0) * ((t - t0) / (t1 - t0));
+}
+
+ERASEABLE
+vector bezier_quadratic_getpoint(vector a, vector b, vector c, float t)
+{
+	return (c - 2 * b + a) * (t * t)
+	       + (b - a) * (2 * t)
+	       + a;
+}
+
+ERASEABLE
+vector bezier_quadratic_getderivative(vector a, vector b, vector c, float t)
+{
+	return (c - 2 * b + a) * (2 * t)
+	       + (b - a) * 2;
+}
+
+ERASEABLE
+float cubic_speedfunc(float startspeedfactor, float endspeedfactor, float spd)
+{
+	return (((startspeedfactor + endspeedfactor - 2
+	         ) * spd - 2 * startspeedfactor - endspeedfactor + 3
+	        ) * spd + startspeedfactor
+	       ) * spd;
+}
+
+ERASEABLE
+bool cubic_speedfunc_is_sane(float startspeedfactor, float endspeedfactor)
+{
+	if (startspeedfactor < 0 || endspeedfactor < 0)
+		return false;
+
+	/*
+	// if this is the case, the possible zeros of the first derivative are outside
+	// 0..1
+	We can calculate this condition as condition
+	if (se <= 3)
+		return true;
+	*/
+
+	// better, see below:
+	if (startspeedfactor <= 3 && endspeedfactor <= 3)
+		return true;
+
+	// if this is the case, the first derivative has no zeros at all
+	float se = startspeedfactor + endspeedfactor;
+	float s_e = startspeedfactor - endspeedfactor;
+	if (3 * (se - 4) * (se - 4) + s_e * s_e <= 12)  // an ellipse
+		return true;
+
+	// Now let s <= 3, s <= 3, s+e >= 3 (triangle) then we get se <= 6 (top right corner).
+	// we also get s_e <= 6 - se
+	// 3 * (se - 4)^2 + (6 - se)^2
+	// is quadratic, has value 12 at 3 and 6, and value < 12 in between.
+	// Therefore, above "better" check works!
+
+	return false;
+
+	// known good cases:
+	// (0, [0..3])
+	// (0.5, [0..3.8])
+	// (1, [0..4])
+	// (1.5, [0..3.9])
+	// (2, [0..3.7])
+	// (2.5, [0..3.4])
+	// (3, [0..3])
+	// (3.5, [0.2..2.3])
+	// (4, 1)
+
+	/*
+	   On another note:
+	   inflection point is always at (2s + e - 3) / (3s + 3e - 6).
+
+	   s + e - 2 == 0: no inflection
+
+	   s + e > 2:
+	   0 < inflection < 1 if:
+	   0 < 2s + e - 3 < 3s + 3e - 6
+	   2s + e > 3 and 2e + s > 3
+
+	   s + e < 2:
+	   0 < inflection < 1 if:
+	   0 > 2s + e - 3 > 3s + 3e - 6
+	   2s + e < 3 and 2e + s < 3
+
+	   Therefore: there is an inflection point iff:
+	   e outside (3 - s)/2 .. 3 - s*2
+
+	   in other words, if (s,e) in triangle (1,1)(0,3)(0,1.5) or in triangle (1,1)(3,0)(1.5,0)
+	*/
+}
+
+/// Continuous function mapping all reals into -1..1
+ERASEABLE
+float float2range11(float f)
+{
+	return f / (fabs(f) + 1);
+}
+
+/// Continuous function mapping all reals into 0..1
+ERASEABLE
+float float2range01(float f)
+{
+	return 0.5 + 0.5 * float2range11(f);
+}
+
+ERASEABLE
+float median(float a, float b, float c)
+{
+	return (a < c) ? bound(a, b, c) : bound(c, b, a);
+}
+
+ERASEABLE
+float almost_equals(float a, float b)
+{
+	float eps = (max(a, -a) + max(b, -b)) * 0.001;
+	return a - b < eps && b - a < eps;
+}
+
+ERASEABLE
+float almost_equals_eps(float a, float b, float times_eps)
+{
+	float eps = max(fabs(a), fabs(b)) * FLOAT_EPSILON * times_eps;
+	return a - b < eps && b - a < eps;
+}
+
+ERASEABLE
+float almost_in_bounds(float a, float b, float c)
+{
+	float eps = (max(a, -a) + max(c, -c)) * 0.001;
+	if (a > c)
+		eps = -eps;
+	return b == median(a - eps, b, c + eps);
+}
+
+ERASEABLE
+float ExponentialFalloff(float mindist, float maxdist, float halflifedist, float d)
+{
+	if (halflifedist > 0)
+		return (0.5 ** ((bound(mindist, d, maxdist) - mindist) / halflifedist));
+	else if (halflifedist < 0)
+		return (0.5 ** ((bound(mindist, d, maxdist) - maxdist) / halflifedist));
+	return 1;
+}
+
+#define power2of(e) (2 ** e)
+
+ERASEABLE
+float log2of(float e)
+{
+	// NOTE: generated code
+	if (e > 2048)
+		if (e > 131072)
+			if (e > 1048576)
+				if (e > 4194304) return 23;
+				else
+					if (e > 2097152) return 22;
+					else return 21;
+			else
+				if (e > 524288) return 20;
+				else
+					if (e > 262144) return 19;
+					else return 18;
+		else
+			if (e > 16384)
+				if (e > 65536) return 17;
+				else
+					if (e > 32768) return 16;
+					else return 15;
+			else
+				if (e > 8192) return 14;
+				else
+					if (e > 4096) return 13;
+					else return 12;
+	else
+		if (e > 32)
+			if (e > 256)
+				if (e > 1024) return 11;
+				else
+					if (e > 512) return 10;
+					else return 9;
+			else
+				if (e > 128) return 8;
+				else
+					if (e > 64) return 7;
+					else return 6;
+		else
+			if (e > 4)
+				if (e > 16) return 5;
+				else
+					if (e > 8) return 4;
+					else return 3;
+			else
+				if (e > 2) return 2;
+				else
+					if (e > 1) return 1;
+					else return 0;
+}
+
+/// ax^2 + bx + c = 0
+ERASEABLE
+vector solve_quadratic(float a, float b, float c)
+{
+	vector v;
+	if (a == 0)
+	{
+		if (b != 0)
+		{
+			v.x = v.y = -c / b;
+			v.z = 1;
+		}
+		else if (c == 0)
+			v.z = 1; // actually, every number solves the equation!
+		else
+			v.z = 0;
+		v.x = 0;
+		v.y = 0;
+	}
+	else
+	{
+		float D = b * b - 4 * a * c; // discriminant
+		if (D >= 0)
+		{
+			D = sqrt(D);
+			if (a > 0)  // put the smaller solution first
+			{
+				v.x = ((-b) - D) / (2 * a);
+				v.y = ((-b) + D) / (2 * a);
+			}
+			else
+			{
+				v.x = (-b + D) / (2 * a);
+				v.y = (-b - D) / (2 * a);
+			}
+			v.z = 1;
+		}
+		else
+		{
+			// complex solutions!
+			D = sqrt(-D);
+			v.x = -b / (2 * a);
+			if (a > 0)
+				v.y =  D / (2 * a);
+			else
+				v.y = -D / (2 * a);
+			v.z = 0;
+		}
+	}
+	return v;
+}
+
+/// Maps values between the src and dest range: src_min to dest_min, src_max to dest_max, values between them
+/// to the corresponding values between and extrapolates for values outside the range.
+/// src_min and src_max must not be the same or division by zero occurs.
+/// dest_max can be smaller than dest_min if you want the resulting range to be inverted, all values can be negative.
+ERASEABLE
+float map_ranges(float value, float src_min, float src_max, float dest_min, float dest_max)
+{
+	float src_diff = src_max - src_min;
+	float dest_diff = dest_max - dest_min;
+	float ratio = (value - src_min) / src_diff;
+	return dest_min + dest_diff * ratio;
+}
+
+/// Same as `map_ranges` except that values outside the source range are clamped to min or max.
+ERASEABLE
+float map_bound_ranges(float value, float src_min, float src_max, float dest_min, float dest_max)
+{
+	if (value <= src_min)  return dest_min;
+	if (value >= src_max)  return dest_max;
+	return map_ranges(value, src_min, src_max, dest_min, dest_max);
+}

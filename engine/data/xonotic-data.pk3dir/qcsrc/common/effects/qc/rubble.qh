@@ -1,0 +1,18 @@
+#pragma once
+
+#ifdef GAMEQC
+entityclass(Rubble);
+classfield(Rubble).float creationtime;
+
+#ifdef CSQC
+IntrusiveList CasingsNGibs;
+STATIC_INIT(CasingsNGibs) { CasingsNGibs = IL_NEW(); }
+#endif
+
+void LimitedChildrenRubble(IntrusiveList list, string cname, int limit, void(entity) deleteproc, entity parent);
+
+entity ReplaceOldListedChildRubble(IntrusiveList list, entity child, entity oldChild);
+
+entity ListNewChildRubble(IntrusiveList list, entity child);
+
+#endif

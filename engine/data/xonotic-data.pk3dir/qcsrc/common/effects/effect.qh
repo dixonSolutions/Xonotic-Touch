@@ -1,0 +1,28 @@
+#pragma once
+
+#define particleeffectnum(e) _particleeffectnum((e).eent_eff_name)
+
+#ifdef SVQC
+	#define pointparticles(effect, org, vel, howmany) \
+		Send_Effect(effect, org, vel, howmany)
+	#define trailparticles(e, effect, org, vel) (!(e) \
+		? Send_Effect(effect, org, vel, 0) \
+		: __trailparticles(e, particleeffectnum(effect), org, vel))
+#elifdef CSQC
+	#define pointparticles(effect, org, vel, howmany) \
+		__pointparticles(particleeffectnum(effect), org, vel, howmany)
+	#define trailparticles(e, effect, org, vel) \
+		__trailparticles(e, particleeffectnum(effect), org, vel)
+#endif
+
+.int m_id;
+.string eent_eff_name;
+.bool eent_eff_trail;
+
+entity Create_Effect_Entity(string eff_name, bool eff_trail)
+{
+	entity eff = new_pure(effect_entity);
+	eff.eent_eff_name = eff_name;
+	eff.eent_eff_trail = eff_trail;
+	return eff;
+}

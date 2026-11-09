@@ -1,0 +1,19 @@
+#pragma once
+
+#include "image.qh"
+CLASS(XonoticScreenshotImage, XonoticImage)
+	METHOD(XonoticScreenshotImage, configureXonoticScreenshotImage, void(entity));
+	METHOD(XonoticScreenshotImage, load, void(entity, string));
+	METHOD(XonoticScreenshotImage, draw, void(entity));
+	ATTRIB(XonoticScreenshotImage, focusable, bool, true);  // mousePress and mouseDrag work only if focusable is set
+	METHOD(XonoticScreenshotImage, mousePress, bool(XonoticScreenshotImage this, vector pos));
+	METHOD(XonoticScreenshotImage, mouseDrag, float(entity, vector));
+	METHOD(XonoticScreenshotImage, mouseMove, float(entity, vector));
+	METHOD(XonoticScreenshotImage, resizeNotify, void(entity, vector, vector, vector, vector));
+	ATTRIB(XonoticScreenshotImage, realFontSize, vector, '0 0 0');
+	ATTRIB(XonoticScreenshotImage, fontSize, float, SKINFONTSIZE_NORMAL);
+	ATTRIB(XonoticScreenshotImage, showTitle, bool, true);
+	ATTRIB(XonoticScreenshotImage, screenshotTime, float, 0);
+	ATTRIB(XonoticScreenshotImage, screenshotTitle, string);
+ENDCLASS(XonoticScreenshotImage)
+entity makeXonoticScreenshotImage();

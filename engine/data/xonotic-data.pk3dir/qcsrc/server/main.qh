@@ -1,0 +1,60 @@
+#pragma once
+
+float autocvar_g_balance_contents_damagerate;
+float autocvar_g_balance_contents_drowndelay;
+int autocvar_g_balance_contents_playerdamage_drowning;
+int autocvar_g_balance_contents_playerdamage_lava;
+int autocvar_g_balance_contents_playerdamage_lava_burn; // 10 is a nice value
+float autocvar_g_balance_contents_playerdamage_lava_burn_time = 2.5; // note: damage is total across this time (not by dps)
+int autocvar_g_balance_contents_playerdamage_slime;
+int autocvar_g_balance_contents_projectiledamage;
+float autocvar_g_balance_falldamage_deadminspeed;
+float autocvar_g_balance_falldamage_factor;
+int autocvar_g_balance_falldamage_maxdamage;
+float autocvar_g_balance_falldamage_minspeed;
+bool autocvar_g_balance_falldamage_onlyvertical;
+#define autocvar_slowmo cvar("slowmo")
+float autocvar_sys_ticrate;
+
+bool autocvar_sv_autopause;
+void Pause_TryPause_Dedicated(entity this);
+
+bool dropclient_schedule(entity this);
+
+/** print(), but only print if the server is not local */
+void dedicated_print(string input);
+
+.float remove_except_protected_forbidden;
+void remove_except_protected(entity e);
+
+void remove_safely(entity e);
+
+void remove_unsafely(entity e);
+
+#ifdef PROFILING
+float client_cefc_accumulator;
+float client_cefc_accumulatortime;
+#endif
+
+float servertime, serverprevtime, serverframetime;
+
+// set in CreatureFrame_All for entities that can be damaged by fall (players) and contents (projectiles)
+.vector oldvelocity;
+
+.float watersound_finished;
+
+.bool iscreature;
+.float species;
+
+.float contents_damagetime;
+
+string GetField_fullspawndata(entity e, string fieldname, bool vfspath);
+
+/*
+==================
+main
+
+unused but required by the engine
+==================
+*/
+void main ();

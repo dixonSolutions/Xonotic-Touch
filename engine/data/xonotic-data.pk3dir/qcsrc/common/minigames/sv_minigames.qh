@@ -1,0 +1,78 @@
+#pragma once
+
+enum
+{
+	MINIGAME_COMMON_CMD_ID_CREATE,
+	MINIGAME_COMMON_CMD_ID_JOIN,
+	MINIGAME_COMMON_CMD_ID_LIST,
+	MINIGAME_COMMON_CMD_ID_LIST_SESSIONS,
+	MINIGAME_COMMON_CMD_ID_END,
+	MINIGAME_COMMON_CMD_ID_PART,
+	MINIGAME_COMMON_CMD_ID_INVITE,
+	MINIGAME_COMMON_CMD_COUNT
+};
+string MINIGAME_COMMON_CMD[MINIGAME_COMMON_CMD_COUNT] =
+	{"create", "join", "list", "list-sessions", "end", "part", "invite"};
+
+bool autocvar_sv_minigames;
+bool autocvar_sv_minigames_observer;
+
+/// Create a new minigame session
+/// \return minigame session entity
+entity start_minigame(entity player, string minigame );
+
+/// Join an existing minigame session
+/// \return minigame session entity
+entity join_minigame(entity player, string game_id );
+
+/// Invite a player to join in a minigame
+/// \return Error string
+string invite_minigame(entity inviter, entity player);
+
+// Part minigame session
+void part_minigame(entity player);
+
+// Ends a minigame session
+void end_minigame(entity minigame_session);
+
+// Ends all minigame sessions
+void end_minigames();
+
+// Only sends entities to players who joined the minigame
+// Use on customizeentityforclient for gameplay entities
+bool minigame_CheckSend(entity this, entity client);
+
+// Check for minigame impulses
+bool MinigameImpulse(entity this, int imp);
+
+// Parse a client command ( cmd minigame ... )
+void ClientCommand_minigame(entity caller, int request, int argc, string command);
+
+// Find the minigame_player entity for the given client entity
+entity minigame_find_player(entity client);
+
+/// For players: Minigame being played
+.entity active_minigame;
+
+/// For minigame sessions: list of players
+/// For minigame_player: client entity
+.entity minigame_players;
+
+entity minigame_sessions;
+
+bool minigame_SendEntity(entity this, entity to, int sf);
+
+REGISTRY(Minigames, BITS(4))
+REGISTER_REGISTRY(Minigames)
+REGISTRY_CHECK(Minigames)
+
+REGISTRY_DEFINE_GET(Minigames, NULL)
+#define REGISTER_MINIGAME(name,nicename) \
+    REGISTER(Minigames, MINIGAME_##name, m_id, new_pure(minigame_descriptor)); \
+    int name##_server_event(entity, string, ...); \
+    REGISTER_INIT(MINIGAME_##name) { \
+        this.netname = strzone(strtolower(#name)); \
+        this.message = nicename; \
+		this.minigame_event = name##_server_event; \
+    } \
+    REGISTER_INIT(MINIGAME_##name)

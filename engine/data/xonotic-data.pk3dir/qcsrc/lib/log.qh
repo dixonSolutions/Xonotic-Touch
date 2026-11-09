@@ -1,0 +1,118 @@
+#pragma once
+
+#include "progname.qh"
+
+void print_assertfailed_severe(string expr);
+void print_assertfailed_fatal(string expr);
+
+#define assert(expr, ...) _assert(print_assertfailed_severe, expr, __VA_ARGS__)
+#define devassert(...) MACRO_BEGIN if (autocvar_developer > 0) assert(__VA_ARGS__); MACRO_END
+
+#define assert_once(expr, ...) MACRO_BEGIN \
+	static bool __once; \
+	if (!__once) \
+	{ \
+		assert(expr, __VA_ARGS__); \
+		__once = true; \
+	} \
+MACRO_END
+#define devassert_once(...) MACRO_BEGIN if (autocvar_developer > 0) assert_once(__VA_ARGS__); MACRO_END
+
+#define demand(expr, ...) _assert(print_assertfailed_fatal, expr, __VA_ARGS__)
+#define devdemand(...) MACRO_BEGIN if (autocvar_developer > 0) demand(__VA_ARGS__); MACRO_END
+
+#define _assert(f, expr, then) MACRO_BEGIN \
+	if (!(expr)) \
+	{ \
+		f(#expr); \
+		then; \
+	} \
+MACRO_END
+
+#define ASSERT_LESS(name, var, const) noref int name[(const - var + 1)];
+
+
+// would be nice if __FUNC__ could be concatenated at compile time
+#if 0
+	// less work, bigger binary
+	#define __SOURCELOC__ (sprintf("^7%s^9(^9"__FILE__"^7:^9"STR(__LINE__)"^7)\n", __FUNC__))
+#else
+	#define __SOURCELOC__ (sprintf("^7%s^9(^9%s^7:^9%s^7)\n", __FUNC__, __FILE__, STR(__LINE__)))
+#endif
+
+#define _LOG_HEADER(level, full) strcat("^9[::^7", PROGNAME, "^9::", level, "^9] ", ((full) ? __SOURCELOC__ : ""))
+
+#define _LOG(func_header, level, func_msg, s) MACRO_BEGIN \
+	func_header(_LOG_HEADER(level, autocvar_developer > 0)); \
+	func_msg(strcat("^7", s, "\n")); \
+MACRO_END
+
+#define  LOG_FATAL(...) _LOG_FATAL(strcat(__VA_ARGS__))
+#define  LOG_FATALF(...) _LOG_FATAL(sprintf(__VA_ARGS__))
+#define _LOG_FATAL(s) _LOG(print, "^1FATAL", error, s)
+
+#define  LOG_SEVERE(...) _LOG_SEVERE(strcat(__VA_ARGS__))
+#define  LOG_SEVEREF(...) _LOG_SEVERE(sprintf(__VA_ARGS__))
+#define _LOG_SEVERE(s) _LOG(print, "^1SEVERE", backtrace, s)
+
+#define  LOG_WARN(...) _LOG_WARN(strcat(__VA_ARGS__))
+#define  LOG_WARNF(...) _LOG_WARN(sprintf(__VA_ARGS__))
+#define _LOG_WARN(s) _LOG(print, "^3WARNING", print, s)
+
+#define  LOG_INFO(...) _LOG_INFO(strcat(__VA_ARGS__))
+#define  LOG_INFOF(...) _LOG_INFO(sprintf(__VA_ARGS__))
+#define _LOG_INFO(s) MACRO_BEGIN \
+	if (autocvar_developer > 0) \
+		print(_LOG_HEADER("^5INFO", autocvar_developer > 1)); \
+	string __s = s; \
+	print("^7", __s); \
+	/* TODO: unconditionally add a newline when possible */ \
+	if (str2chr(__s, strlen(__s) - 1) != '\n') \
+		print("\n"); \
+MACRO_END
+
+#define  LOG_TRACE(...) _LOG_TRACE(strcat(__VA_ARGS__))
+#define  LOG_TRACEF(...) _LOG_TRACE(sprintf(__VA_ARGS__))
+#define _LOG_TRACE(s) _LOG(dprint, "^6TRACE", dprint, s)
+
+#define  LOG_DEBUG(...) _LOG_DEBUG(strcat(__VA_ARGS__))
+#define  LOG_DEBUGF(...) _LOG_DEBUG(sprintf(__VA_ARGS__))
+#define _LOG_DEBUG(s) if (autocvar_developer > 1) _LOG(dprint, "^2DEBUG", dprint, s)
+
+// same as LOG_INFO but without any debug information that bloats console output and compiled program files
+#define  LOG_HELP(...) _LOG_HELP(strcat(__VA_ARGS__))
+#define  LOG_HELPF(...) _LOG_HELP(sprintf(__VA_ARGS__))
+#define _LOG_HELP(s) MACRO_BEGIN \
+	string __s = s; \
+	print("^7", __s, (str2chr(__s, strlen(__s) - 1) != '\n') ? "\n" : ""); \
+MACRO_END
+
+// TODO: this sucks, lets find a better way to do backtraces?
+#define _backtrace() builtin_remove(NULL)
+
+noref int autocvar_developer;
+noref bool autocvar_prvm_backtraceforwarnings;
+
+#define backtrace(msg) MACRO_BEGIN \
+	int dev = autocvar_developer; \
+	bool war = autocvar_prvm_backtraceforwarnings; \
+	cvar_set("developer", "1"); \
+	cvar_set("prvm_backtraceforwarnings", "1"); \
+	print("\n--- CUT HERE ---\n", msg); \
+	_backtrace(); \
+	print("\n--- CUT UNTIL HERE ---\n"); \
+	cvar_set("developer", ftos(dev)); \
+	cvar_set("prvm_backtraceforwarnings", ftos(war)); \
+MACRO_END
+
+void print_assertfailed_severe(string expr)
+{
+	// this is inside a function to avoid expanding it on compilation everytime
+	LOG_SEVERE("assertion failed: `", expr, "`\n");
+}
+
+void print_assertfailed_fatal(string expr)
+{
+	// this is inside a function to avoid expanding it on compilation everytime
+	LOG_FATAL("assertion failed: `", expr, "`\n");
+}

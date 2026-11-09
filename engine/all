@@ -1,0 +1,125 @@
+#!/bin/sh
+# vim: filetype=zsh
+
+set -e
+if [ -n "$ZSH_VERSION" ]; then
+	setopt SH_WORD_SPLIT
+fi
+if [ -z "$ECHO" ]; then
+	if echo "\\\\" | grep .. >/dev/null; then
+		ECHO=echo
+	else
+		ECHO=`which echo`
+	fi
+fi
+
+# I use this in EVERY shell script ;)
+LF="
+"
+ESC=""
+
+d00=`pwd`
+case "$0" in
+	/*/all)
+		export d0="${0%/all}"
+		;;
+	*/all)
+		export d0="$d00/${0%/all}"
+		;;
+	*/all.xonotic.sh)
+		;;
+	*)
+		$ECHO "Cannot find myself."
+		$ECHO "Please run this script with the working directory inside a Xonotic checkout."
+		;;
+esac
+cd "$d0"
+d0=`pwd`
+SELF="$d0/all"
+
+# If we are on WINDOWS:
+case "$0" in
+	all|*/all)
+		case "`uname`" in
+			MINGW*|Win*)
+				# Windows hates users. So this script has to copy itself elsewhere first...
+				cp "$SELF" ../all.xonotic.sh
+				export WE_HATE_OUR_USERS=1
+				exec ../all.xonotic.sh "$@"
+				;;
+		esac
+		;;
+esac
+
+msg()
+{
+	$ECHO >&2 "$ESC""[1m$*$ESC""[m"
+}
+
+self=`git hash-object "$SELF"`
+checkself()
+{
+	self_new=`git hash-object "$SELF"`
+	if [ x"$self" != x"$self_new" ]; then
+		msg "./all has changed."
+		if [ -z "$XONOTIC_FORBID_RERUN_ALL" ]; then
+			msg "Rerunning the requested operation to make sure."
+			export XONOTIC_FORBID_RERUN_ALL=1
+			exec "$SELF" "$@"
+		else
+			msg "Please try $SELF update, and then retry your requested operation."
+			exit 1
+		fi
+	fi
+	return 0
+}
+
+verbose()
+{
+	msg "+ $*"
+	"$@"
+}
+
+yesno()
+{
+	yesno=
+	while [ x"$yesno" != x"y" -a x"$yesno" != x"n" ]; do
+		eval "$2"
+		$ECHO "$1"
+		if ! IFS= read -r yesno; then
+			yesno=n
+			break
+		fi
+	done
+	[ x"$yesno" = x"y" ]
+}
+
+enter()
+{
+	$2 cd "$1" || exit 1
+	check_mergeconflict "$1" # defined in git.subr
+}
+
+if [ "$#" = 0 ]; then
+	set -- help
+fi
+cmd=$1
+shift
+
+# project config
+. "$d0/misc/tools/all/config.subr"
+
+# shared commands
+handled=false
+. "$d0/misc/tools/all/git.subr" "$@"
+
+# optional modules
+$handled || . "$d0/misc/tools/all/release.subr" "$@"
+$handled || . "$d0/misc/tools/all/xonotic.subr" "$@"
+
+if ! $handled; then
+	if [ x"$cmd" != x"help" ]; then
+		$ECHO "Run $SELF help for help."
+		exit 1
+	fi
+fi

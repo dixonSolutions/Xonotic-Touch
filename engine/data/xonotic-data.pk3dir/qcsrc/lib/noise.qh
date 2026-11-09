@@ -1,0 +1,41 @@
+#pragma once
+
+#include "random.qh"
+
+// noises "usually" start in the range -1..1
+entityclass(Noise);
+classfield(Noise).float noise_baccum;
+classfield(Noise).float noise_paccum;
+classfield(Noise).float noise_paccum2;
+classfield(Noise).float noise_paccum3;
+classfield(Noise).float noise_bstate;
+
+ERASEABLE
+float Noise_Brown(entity e, float dt)
+{
+	e.noise_baccum += random() * sqrt(dt);  // same stddev for all dt
+	return e.noise_baccum;
+}
+ERASEABLE
+float Noise_Pink(entity e, float dt)
+{
+	float f = dt * 60;
+	// http://home.earthlink.net/~ltrammell/tech/pinkalg.htm
+	if (random() > (0.3190 ** f))  e.noise_paccum  = 0.34848 * crandom();
+	if (random() > (0.7756 ** f))  e.noise_paccum2 = 0.28768 * crandom();
+	if (random() > (0.9613 ** f))  e.noise_paccum3 = 0.43488 * crandom();
+	return e.noise_paccum + e.noise_paccum2 + e.noise_paccum3;
+}
+ERASEABLE
+float Noise_White(entity e, float dt)
+{
+	return random() * 2 - 1;
+}
+/// +1 or -1
+ERASEABLE
+float Noise_Burst(entity e, float dt, float p)
+{
+	if (random() > (p ** dt))
+		e.noise_bstate = !e.noise_bstate;
+	return 2 * e.noise_bstate - 1;
+}

@@ -1,0 +1,39 @@
+#include "sv_vampire.qh"
+
+string autocvar_g_vampire;
+float autocvar_g_vampire_factor = 1.0;
+bool autocvar_g_vampire_use_total_damage = false;
+
+REGISTER_MUTATOR(vampire, expr_evaluate(autocvar_g_vampire) && !MUTATOR_IS_ENABLED(mutator_instagib));
+
+MUTATOR_HOOKFUNCTION(vampire, PlayerDamage_SplitHealthArmor)
+{
+	// NOTE: vampire buff PlayerDamage_SplitHealthArmor code is similar
+	entity frag_attacker = M_ARGV(1, entity);
+	entity frag_target = M_ARGV(2, entity);
+	float health_take = M_ARGV(4, float);
+	float armor_take = M_ARGV(5, float);
+	float damage_take = (autocvar_g_vampire_use_total_damage) ? health_take + armor_take : health_take;
+
+	if (!StatusEffects_active(STATUSEFFECT_SpawnShield, frag_target)
+		&& frag_target != frag_attacker
+		&& IS_PLAYER(frag_attacker) && !IS_DEAD(frag_target) && !STAT(FROZEN, frag_target))
+	{
+		float regen = autocvar_g_vampire_factor * damage_take;
+		GiveResource(frag_attacker, RES_HEALTH, regen);
+		float pl_alpha = (!frag_attacker.alpha ? 1 : frag_attacker.alpha);
+		if (pl_alpha > 0)
+			Send_Effect_Core(EFFECT_VAMPIRE, CENTER_OF_ENT(frag_attacker), vec2(frag_attacker.velocity), min(ceil(regen * 0.5), 50),
+				'0 0 0', '0 0 0', pl_alpha, pl_alpha, -1, NULL);
+	}
+}
+
+MUTATOR_HOOKFUNCTION(vampire, BuildMutatorsString)
+{
+	M_ARGV(0, string) = strcat(M_ARGV(0, string), ":Vampire");
+}
+
+MUTATOR_HOOKFUNCTION(vampire, BuildMutatorsPrettyString)
+{
+	M_ARGV(0, string) = strcat(M_ARGV(0, string), ", Vampire");
+}

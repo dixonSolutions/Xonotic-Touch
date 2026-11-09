@@ -1,0 +1,64 @@
+#pragma once
+
+#include <common/items/all.qh>
+#include <common/mutators/mutator/powerups/powerups.qh>
+#ifdef SVQC
+    // For FL_POWERUP
+    #include <common/constants.qh>
+    #include <server/items/items.qh>
+#endif
+
+#ifdef GAMEQC
+//MODEL(Invisibility_ITEM, Item_Model("g_strength.md3")); // TODO: new model required
+SOUND(Invisibility, Item_Sound("powerup"));
+#endif
+
+#ifdef SVQC
+.float invisibility_finished;
+
+bool autocvar_g_powerups_invisibility;
+float autocvar_g_balance_powerup_invisibility_alpha;
+float autocvar_g_balance_powerup_invisibility_time;
+void powerup_invisibility_init(Pickup def, entity item)
+{
+    if(!autocvar_g_powerups || !autocvar_g_powerups_invisibility)
+        def.spawnflags |= ITEM_FLAG_MUTATORBLOCKED;
+
+    if(!item.invisibility_finished)
+        item.invisibility_finished = (item.count) ? item.count : autocvar_g_balance_powerup_invisibility_time;
+}
+#endif
+
+CLASS(InvisibilityItem, Powerup)
+    ATTRIB(InvisibilityItem, m_canonical_spawnfunc, string, "item_invisibility");
+#ifdef SVQC
+    ATTRIB(InvisibilityItem, m_iteminit, void(Pickup def, entity item), powerup_invisibility_init);
+#endif
+#ifdef GAMEQC
+    ATTRIB(InvisibilityItem, spawnflags, int, ITEM_FLAG_NORMAL);
+    ATTRIB(InvisibilityItem, m_itemid, int, IT_INVISIBILITY);
+    ATTRIB(InvisibilityItem, m_model, Model, MDL_BUFF); // TODO: MDL_Invisibility_ITEM when new model available
+    ATTRIB(InvisibilityItem, m_skin, int, 12);
+    ATTRIB(InvisibilityItem, m_sound, Sound, SND_Invisibility);
+    ATTRIB(InvisibilityItem, m_glow, bool, true);
+    ATTRIB(InvisibilityItem, m_respawnsound, Sound, SND_STRENGTH_RESPAWN);
+#endif
+    ATTRIB(InvisibilityItem, netname, string, "invisibility");
+    ATTRIB(InvisibilityItem, m_name, string, _("Invisibility"));
+    ATTRIB(InvisibilityItem, m_icon, string, "buff_invisible");
+    ATTRIB(InvisibilityItem, m_color, vector, '0.5 0.5 1');
+    ATTRIB(InvisibilityItem, m_waypoint, string, _("Invisibility"));
+    ATTRIB(InvisibilityItem, m_waypointblink, int, 2);
+ENDCLASS(InvisibilityItem)
+REGISTER_ITEM(Invisibility, NEW(InvisibilityItem));
+
+SPAWNFUNC_ITEM(item_invisibility, ITEM_Invisibility)
+SPAWNFUNC_ITEM(item_buff_invisibility, ITEM_Invisibility)
+
+CLASS(InvisibilityStatusEffect, PowerupStatusEffect)
+	ATTRIB(InvisibilityStatusEffect, netname, string, "invisibility");
+	ATTRIB(InvisibilityStatusEffect, m_name, string, _("Invisibility"));
+	ATTRIB(InvisibilityStatusEffect, m_color, vector, '0.5 0.5 1');
+	ATTRIB(InvisibilityStatusEffect, m_icon, string, "buff_invisible");
+ENDCLASS(InvisibilityStatusEffect)
+REGISTER_STATUSEFFECT(Invisibility, NEW(InvisibilityStatusEffect));

@@ -1,0 +1,13 @@
+#pragma once
+
+// ==========================================================
+//  Declarations for markup command code, reworked by Samual
+//  Last updated: December 28th, 2011
+// ==========================================================
+
+const int NUM_MARKUPS = 41;
+bool markup_init;
+string markup_from[NUM_MARKUPS];
+string markup_to[NUM_MARKUPS];
+
+string GenericCommand_markup(string s2);

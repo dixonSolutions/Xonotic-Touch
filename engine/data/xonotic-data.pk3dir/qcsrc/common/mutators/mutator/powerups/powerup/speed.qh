@@ -1,0 +1,65 @@
+#pragma once
+
+#include <common/items/all.qh>
+#include <common/mutators/mutator/powerups/powerups.qh>
+#ifdef SVQC
+    // For FL_POWERUP
+    #include <common/constants.qh>
+    #include <server/items/items.qh>
+#endif
+
+#ifdef GAMEQC
+//MODEL(Speed_ITEM, Item_Model("g_invincible.md3")); // TODO: new model required
+SOUND(Speed, Item_Sound("powerup_shield"));
+#endif
+
+#ifdef SVQC
+.float speed_finished;
+
+bool autocvar_g_powerups_speed;
+float autocvar_g_balance_powerup_speed_attack_time_multiplier;
+float autocvar_g_balance_powerup_speed_highspeed;
+float autocvar_g_balance_powerup_speed_time;
+void powerup_speed_init(Pickup def, entity item)
+{
+    if(!autocvar_g_powerups || !autocvar_g_powerups_speed)
+        def.spawnflags |= ITEM_FLAG_MUTATORBLOCKED;
+
+    if(!item.speed_finished)
+        item.speed_finished = (item.count) ? item.count : autocvar_g_balance_powerup_speed_time;
+}
+#endif
+
+CLASS(SpeedItem, Powerup)
+    ATTRIB(SpeedItem, m_canonical_spawnfunc, string, "item_speed");
+#ifdef SVQC
+    ATTRIB(SpeedItem, m_iteminit, void(Pickup def, entity item), powerup_speed_init);
+#endif
+#ifdef GAMEQC
+    ATTRIB(SpeedItem, spawnflags, int, ITEM_FLAG_NORMAL);
+    ATTRIB(SpeedItem, m_itemid, int, IT_SPEED);
+    ATTRIB(SpeedItem, m_model, Model, MDL_BUFF); // TODO: MDL_Speed_ITEM when new model available
+    ATTRIB(SpeedItem, m_skin, int, 9);
+    ATTRIB(SpeedItem, m_sound, Sound, SND_Speed);
+    ATTRIB(SpeedItem, m_glow, bool, true);
+    ATTRIB(SpeedItem, m_respawnsound, Sound, SND_SHIELD_RESPAWN);
+#endif
+    ATTRIB(SpeedItem, netname, string, "speed");
+    ATTRIB(SpeedItem, m_name, string, _("Speed"));
+    ATTRIB(SpeedItem, m_icon, string, "buff_speed");
+    ATTRIB(SpeedItem, m_color, vector, '0.1 1 0.84');
+    ATTRIB(SpeedItem, m_waypoint, string, _("Speed"));
+    ATTRIB(SpeedItem, m_waypointblink, int, 2);
+ENDCLASS(SpeedItem)
+REGISTER_ITEM(Speed, NEW(SpeedItem));
+
+SPAWNFUNC_ITEM(item_speed, ITEM_Speed)
+SPAWNFUNC_ITEM(item_buff_speed, ITEM_Speed)
+
+CLASS(SpeedStatusEffect, PowerupStatusEffect)
+	ATTRIB(SpeedStatusEffect, netname, string, "speed");
+	ATTRIB(SpeedStatusEffect, m_name, string, _("Speed"));
+	ATTRIB(SpeedStatusEffect, m_color, vector, '0.1 1 0.84');
+	ATTRIB(SpeedStatusEffect, m_icon, string, "buff_speed");
+ENDCLASS(SpeedStatusEffect)
+REGISTER_STATUSEFFECT(Speed, NEW(SpeedStatusEffect));

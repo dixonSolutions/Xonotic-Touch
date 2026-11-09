@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.xonotic.Xonotic</id>
+  <project_license>GPL-3.0-or-later</project_license>
+  <metadata_license>CC0-1.0</metadata_license>
+  <provides>
+    <binary>xonotic-sdl</binary>
+  </provides>
+  <launchable type="desktop-id">xonotic.desktop</launchable>
+  <name>Xonotic</name>
+  <developer id="org.xonotic">
+    <name>Team Xonotic</name>
+  </developer>
+  <branding>
+    <color type="primary" scheme_preference="light">#04264a</color>
+    <color type="primary" scheme_preference="dark">#001021</color>
+  </branding>
+  <!-- Flathub wants summary to be 35 chars max (at least in English) -->
+  <!-- <summary> values should match the Comment= values in xonotic.desktop -->
+  <summary>The Free and Fast Arena Shooter</summary>
+  <summary xml:lang="de">Der freie und schnelle Arena-Shooter</summary>
+  <summary xml:lang="fr">Le jeu de tir Arena-shooter libre et rapide</summary>
+  <summary xml:lang="it">Lo sparatutto arena libero e veloce</summary>
+  <description>
+    <p>
+      Xonotic is a free and fast-paced first person shooter which combines
+      addictive, arena-style gameplay with rapid movement and a wide array of
+      weapons.
+    </p>
+    <p xml:lang="de">
+      Xonotic ist ein freier und schneller Ego-Shooter, der ein
+      Gameplay im Arenastil mit hektischen Manövern und einer großen Auswahl
+      an Waffen kombiniert.
+    </p>
+    <p xml:lang="fr">
+      Xonotic est un jeu de tir à la première personne gratuit, qui combine un
+      style de jeu en arène rapide et addictif avec une large sélection d'armes.
+    </p>
+    <p xml:lang="it">
+      Xonotic è uno sparatutto arena in prima persona libero e veloce che
+      combina uno stile di gioco arena e additivo con un movimento veloce e una
+      vasta selezione di armi.
+    </p>
+    <p>
+      Xonotic is easy to learn, but hard to master! Besides thrilling action for
+      the casual player, the game also provides e-sport opportunities for those
+      interested in its competitive aspects.
+      From mapping contests and monthly quick cups to sponsored tournaments,
+      Xonotic allows every e-sport enthusiast to participate in competitions
+      hosted by its open-minded community.
+    </p>
+    <p xml:lang="de">
+      Xonotic ist leicht zu erlernen, aber schwer zu meistern. Neben einer
+      aufregenden Action für den Gelegenheitsspieler bietet das Spiel außerdem
+      Möglichkeiten für den E-Sport für alle, die an Wettkämpfen Spaß haben.
+      Von Kartengestaltungswettbewerben über monatlichen Schnellwettbewerben
+      bis zu gesponsorten Turnieren ermöglicht Xonotic jedem E-Sport-Liebhaber
+      eine Teilnahme in Wettbewerben, die von der aufgeschlossenen Gemeinschaft
+      veranstaltet werden.
+    </p>
+    <p xml:lang="fr">
+      Xonotic est facile à apprendre, mais difficile à maîtriser ! Outre une
+      action intense pour les joueurs débutants, le jeu propose aussi des
+      opportunités e-sport pour ceux qui sont intéressés par l'aspect
+      compétitif.
+    </p>
+    <p xml:lang="it">
+      Xonotic è facile da imparare ma è difficile diventare esperti! A parte
+      l'entusiasmante azione per il giocatore occasionale, il gioco regala anche
+      opportunità di e-sport per quelli che sono interessati nei suoi aspetti
+      competitivi. Da gare di creazione di mappe e tornei veloci mensili a
+      tornei sponsorizzati, Xonotic permette ad ogni appassionato di e-sport di
+      participare alle competizioni organizzate dalla sua comunità di larghe
+      vedute.
+    </p>
+    <p>
+      Features such as simple items, fully customizable configs and servers, a
+      functioning anticheat system, the spectator mode, and the opportunity to
+      watch and record games makes Xonotic attractive to competitive players.
+    </p>
+    <p xml:lang="de">
+      Features wie z.B. einfache Gegenstände, vollständig anpassbare
+      Einstellungen und Server, ein funktionierendes Anti-Cheat-System,
+      der Zuschauermodus, und die Möglichkeit, Spielen zuzusehen und
+      sie aufzuzeichnen, machen Xonotic interessant für wetteifernde Spieler.
+    </p>
+    <p xml:lang="fr">
+      Des fonctionnalités comme les items à apparence simplifiée, des
+      configurations et serveurs entièrement personnalisables, un système
+      anti-triche, un mode spectateur, ainsi que la possibilité d'enregistrer et
+      visionner des démos rendent Xonotic attrayant pour les joueurs
+      compétitifs.
+    </p>
+    <p xml:lang="it">
+      Caratteristiche come oggetti semplici, configurazioni e server interamente
+      personalizzabili, un funzionante sistema anti imbroglio, la modalità
+      spettatore, e la possibilità di guardare e registrare le partite rende
+      Xonotic attraente per i giocatori competitivi.
+    </p>
+  </description>
+  <url type="bugtracker">https://gitlab.com/groups/xonotic/-/issues</url>
+  <url type="homepage">https://xonotic.org</url>
+  <url type="contact">https://xonotic.org/chat/</url>
+  <url type="faq">https://gitlab.com/xonotic/xonotic#documentation</url>
+  <url type="translate">https://gitlab.com/xonotic/xonotic/-/wikis/home#translating</url>
+  <url type="contribute">https://gitlab.com/xonotic/xonotic#developing</url>
+  <url type="vcs-browser">https://gitlab.com/xonotic</url>
+  <screenshots>
+    <screenshot type="default"><image>https://xonotic.org/m/uploads/2012/07/frontpage_005.jpg</image></screenshot>
+    <screenshot><image>https://xonotic.org/m/uploads/2012/07/frontpage_006.jpg</image></screenshot>
+    <screenshot><image>https://xonotic.org/m/uploads/2012/07/frontpage_007.jpg</image></screenshot>
+    <screenshot><image>https://xonotic.org/m/uploads/2012/07/frontpage_008.jpg</image></screenshot>
+    <screenshot><image>https://xonotic.org/m/uploads/2012/07/frontpage_003.jpg</image></screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1">
+    <content_attribute id="violence-fantasy">moderate</content_attribute>
+    <content_attribute id="violence-bloodshed">mild</content_attribute>
+    <content_attribute id="social-chat">intense</content_attribute>
+  </content_rating>
+  <releases>
+    <release version="0.8.6" date="2023-06-20">
+      <description>
+        <p>
+          This release should have been nerfed by the balance council because there’s a lot here for a point version.
+          Two maps popular for years have been polished up and included. There’s new gametypes and moderation features, new bot capabilities, new HUD and interface features, quality of life and customisation features for players and server admins, XonStat upgrades, and as usual more fixes and optimisations than you can swing a shotgun at.
+        </p>
+      </description>
+      <url type="details">https://xonotic.org/posts/2023/xonotic-0-8-6-release/</url>
+    </release>
+    <release version="0.8.5" date="2022-06-30"/>
+    <release version="0.8.2" date="2017-04-01"/>
+  </releases>
+</component>

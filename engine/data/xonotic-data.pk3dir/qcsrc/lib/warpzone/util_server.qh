@@ -1,0 +1,5 @@
+#pragma once
+
+#ifdef SVQC
+void WarpZoneLib_ExactTrigger_Init(entity this, bool unsetmodel);
+#endif

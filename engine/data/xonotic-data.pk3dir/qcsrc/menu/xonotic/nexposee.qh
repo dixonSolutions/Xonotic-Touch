@@ -1,0 +1,7 @@
+#pragma once
+
+#include "../item/nexposee.qh"
+CLASS(XonoticNexposee, Nexposee)
+	METHOD(XonoticNexposee, close, void(entity));
+ENDCLASS(XonoticNexposee)
+entity makeXonoticNexposee();

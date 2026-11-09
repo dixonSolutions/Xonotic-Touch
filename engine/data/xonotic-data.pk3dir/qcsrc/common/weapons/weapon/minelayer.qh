@@ -1,0 +1,92 @@
+#pragma once
+
+#ifdef GAMEQC
+MODEL(MINELAYER_MUZZLEFLASH, "models/flash.md3");
+MODEL(MINELAYER_MINE, "models/mine.md3");
+MODEL(MINELAYER_VIEW, W_Model("h_minelayer.iqm"));
+MODEL(MINELAYER_WORLD, W_Model("v_minelayer.md3"));
+MODEL(MINELAYER_ITEM, W_Model("g_minelayer.md3"));
+
+SOUND(MINE_DET, W_Sound("mine_det"));
+SOUND(MINE_EXP, W_Sound("mine_exp"));
+SOUND(MINE_FIRE, W_Sound("mine_fire"));
+SOUND(MINE_STICK, W_Sound("mine_stick"));
+SOUND(MINE_TRIGGER, W_Sound("mine_trigger"));
+#endif
+
+CLASS(MineLayer, Weapon)
+#ifdef SVQC
+/* spawnfunc */ ATTRIB(MineLayer, m_canonical_spawnfunc, string, "weapon_minelayer");
+/* rating    */ ATTRIB(MineLayer, bot_pickupbasevalue, float, 7000);
+#endif
+/* ammotype  */ ATTRIB(MineLayer, ammo_type, Resource, RES_ROCKETS);
+/* impulse   */ ATTRIB(MineLayer, impulse, int, 4);
+/* flags     */ ATTRIB(MineLayer, spawnflags, int, WEP_FLAG_MUTATORBLOCKED | WEP_FLAG_RELOADABLE | WEP_TYPE_SPLASH);
+/* color     */ ATTRIB(MineLayer, m_color, vector, '0.988 0.514 0.392');
+#ifdef GAMEQC
+/* modelname */ ATTRIB(MineLayer, mdl, string, "minelayer");
+/* model     */ ATTRIB(MineLayer, m_model, Model, MDL_MINELAYER_ITEM);
+/* flash mdl */ ATTRIB(MineLayer, m_muzzlemodel, Model, MDL_MINELAYER_MUZZLEFLASH);
+/* flash eff */ ATTRIB(MineLayer, m_muzzleeffect, entity, EFFECT_ROCKET_MUZZLEFLASH);
+#endif
+#ifdef CSQC
+/* crosshair */ ATTRIB(MineLayer, w_crosshair, string, "gfx/crosshairminelayer");
+/* crosshair */ ATTRIB(MineLayer, w_crosshair_size, float, 0.9);
+#endif
+/* wepimg    */ ATTRIB(MineLayer, model2, string, "weaponminelayer");
+/* refname   */ ATTRIB(MineLayer, netname, string, "minelayer");
+/* wepname   */ ATTRIB(MineLayer, m_name, string, _("Mine Layer"));
+
+#define X(BEGIN, P, END, class, prefix) \
+	BEGIN(class) \
+		P(class, prefix, ammo, float, NONE) \
+		P(class, prefix, animtime, float, NONE) \
+		P(class, prefix, damageforcescale, float, NONE) \
+		P(class, prefix, damage, float, NONE) \
+		P(class, prefix, detonatedelay, float, NONE) \
+		P(class, prefix, edgedamage, float, NONE) \
+		P(class, prefix, force, float, NONE) \
+		P(class, prefix, health, float, NONE) \
+		P(class, prefix, lifetime, float, NONE) \
+		P(class, prefix, lifetime_countdown, float, NONE) \
+		P(class, prefix, limit, float, NONE) \
+		P(class, prefix, pickup_ammo, float, NONE) \
+		P(class, prefix, protection, float, NONE) \
+		P(class, prefix, proximity_radius, float, NONE) \
+		P(class, prefix, proximity_time_core, float, NONE) \
+		P(class, prefix, proximity_time_edge, float, NONE) \
+		P(class, prefix, radius, float, NONE) \
+		P(class, prefix, refire, float, NONE) \
+		P(class, prefix, reload_ammo, float, NONE) \
+		P(class, prefix, reload_time, float, NONE) \
+		P(class, prefix, remote_damage, float, NONE) \
+		P(class, prefix, remote_edgedamage, float, NONE) \
+		P(class, prefix, remote_force, float, NONE) \
+		P(class, prefix, remote_radius, float, NONE) \
+		P(class, prefix, speed, float, NONE) \
+		P(class, prefix, switchdelay_drop, float, NONE) \
+		P(class, prefix, switchdelay_raise, float, NONE) \
+		P(class, prefix, weaponreplace, string, NONE) \
+		P(class, prefix, weaponstartoverride, float, NONE) \
+		P(class, prefix, weaponstart, float, NONE) \
+		P(class, prefix, weaponthrowable, float, NONE) \
+	END()
+	W_PROPS(X, MineLayer, minelayer)
+#undef X
+
+ENDCLASS(MineLayer)
+REGISTER_WEAPON(MINE_LAYER, NEW(MineLayer));
+
+SPAWNFUNC_WEAPON(weapon_minelayer, WEP_MINE_LAYER)
+
+#ifdef SVQC
+void W_MineLayer_Think(entity this);
+.float minelayer_detonate, mine_explodeanyway;
+.float mine_time;
+
+IntrusiveList g_mines;
+STATIC_INIT(g_mines)
+{
+	g_mines = IL_NEW();
+}
+#endif

@@ -1,0 +1,32 @@
+#pragma once
+
+// convenience
+#include "skin.qh"
+#include "draw.qh"
+#include "menu.qh"
+
+CLASS(MenuItem, Object)
+	METHOD(MenuItem, draw, void(MenuItem));
+	METHOD(MenuItem, keyDown, float(MenuItem, float, float, float));
+	METHOD(MenuItem, keyUp, float(MenuItem, float, float, float));
+	METHOD(MenuItem, mouseMove, float(MenuItem, vector));
+	METHOD(MenuItem, mousePress, bool(MenuItem this, vector pos));
+	METHOD(MenuItem, mouseDrag, float(MenuItem, vector));
+	METHOD(MenuItem, mouseRelease, float(MenuItem, vector));
+	METHOD(MenuItem, focusEnter, void(MenuItem));
+	METHOD(MenuItem, focusLeave, void(MenuItem));
+	METHOD(MenuItem, resizeNotify, void(MenuItem, vector, vector, vector, vector));
+	METHOD(MenuItem, relinquishFocus, void(MenuItem));
+	METHOD(MenuItem, showNotify, void(MenuItem));
+	METHOD(MenuItem, hideNotify, void(MenuItem));
+	METHOD(MenuItem, toString, string(MenuItem));
+	METHOD(MenuItem, destroy, void(MenuItem));
+	ATTRIB(MenuItem, focused, bool, false);
+	ATTRIB(MenuItem, focusable, bool, false);
+	ATTRIB(MenuItem, allowFocusSound, bool, false);
+	ATTRIB(MenuItem, parent, entity);
+	ATTRIB(MenuItem, preferredFocusPriority, float, 0);
+	ATTRIB(MenuItem, origin, vector, '0 0 0');
+	ATTRIB(MenuItem, size, vector, '0 0 0');
+	ATTRIB(MenuItem, tooltip, string);
+ENDCLASS(MenuItem)

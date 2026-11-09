@@ -1,0 +1,40 @@
+#pragma once
+/*
+ * Globals and Fields
+ */
+
+entity tracetossent;
+entity tracetossfaketarget;
+vector findtrajectory_velocity;
+
+vector shotorg;
+vector shotdir;
+
+.bool bot_aimdir_executed;
+.float bot_badaimtime;
+.float bot_aimthinktime;
+.float bot_prevaimtime;
+.float bot_firetimer;
+.float bot_aimlatency;
+
+.vector bot_mouseaim;
+.vector bot_badaimoffset;
+.vector bot_1st_order_aimfilter;
+.vector bot_2nd_order_aimfilter;
+.vector bot_3th_order_aimfilter;
+.vector bot_4th_order_aimfilter;
+.vector bot_5th_order_aimfilter;
+.vector bot_olddesiredang;
+
+
+/*
+ * Functions
+ */
+
+float bot_shouldattack(entity this, entity targ);
+void bot_aimdir(entity this, vector v, float maxfiredeviation);
+bool bot_aim(entity this, .entity weaponentity, float shotspeed, float shotspeedupward, float maxshottime, bool applygravity, bool shot_accurate);
+void bot_aim_reset(entity this);
+float findtrajectorywithleading(vector org, vector m1, vector m2, entity targ, float shotspeed, float shotspeedupward, float maxtime, float shotdelay, entity ignore);
+
+vector bot_shotlead(vector targorigin, vector targvelocity, float shotspeed, float shotdelay);

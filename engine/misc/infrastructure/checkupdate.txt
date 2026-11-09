@@ -1,0 +1,66 @@
+# Current released version.
+V 0.8.6
+
+# Download URL.
+D https://dl.xonotic.org/xonotic-0.8.6.zip
+
+# When releasing, create this string by:
+# date -u +%Y%m%d%H%M%S -d'now + 3 months'
+C 20230921103619
+
+# Website URL.
+U https://xonotic.org
+
+# Terms of Service revision number (integer).
+# Increase by 1 every time tos.txt is updated.
+T 1
+
+# List of startswith tests for banned servers, separated by space.
+# Supports up to 16 banned servers.
+# Possible items:
+#   IPv4 address:
+#     a.b.c.d:
+#   IPv4 subnet:
+#     a.b.c.
+#     a.b.
+#   IPv6 address:
+#     [a:b:c:d:e:f:g:h]:
+#   IPv6 subnet:
+#     [a:b:c:d:
+#     [a:b:c:
+# B 8.8.8.8:
+# rexuiz:
+B 104.238.159.167:
+B 108.61.164.188:
+B 85.25.139.30:
+B 51.15.46.239:
+B 51.38.113.134:
+B 178.162.196.237:
+# fpsclassico.de - faking activity (adds a spectator bot posing as a client when empty)
+B 85.10.203.92:
+# Xonotic 0.8.2 server - faking activity
+B 37.157.255.36:
+
+# Emergency packs. Specify as:
+# E http://packurl/pack.pk3 file-in-pack.txt
+#E http://dl.xonotic.org/zzzz-xonotic-0.8hotfix_chatbubble.pk3 scripts/chatbubble_hotfix.shader
+
+# 0.8.2 doesn't have ruleset-xonotic.cfg (or https), 0.8.5 does
+E http://update.xonotic.org/zzzz-menu_hotfix_0.8.2.pk3 ruleset-xonotic.cfg
+
+# 0.8.5 doesn't have weapons.cfg, 0.8.2 does
+E https://update.xonotic.org/zzzz-menu_hotfix_0.8.5.pk3 weapons.cfg
+
+# Recommended servers.
+# R <key or IP here>
+#R 3TgWwpTKPPdrrunW27tMQDg5O/Ch2q4YtH6w1dSVXFg=
+#R J9JepdOZjvCBXYfz8fj3civ4PulKF4/asnK9u5ZojYg=
+#R 6QtAVwbWcJFYZDvSeuZHEaaJE4JoTzmNni/LPZUSOKE=
+#R Lh+WWOrY7IjXqP7pekmlgy6R+N+tTBm6DBV1gUZvtZ4=
+#R ggH3OBVqbVeCCBkLQZtFLvwxuTpfBAz+/scg3OwsPVo=
+#R kV3UkVGqke8UhrgIWKhTOU/nDhk3f+OT7TVEfqh9xy0=
+#R AaQzHJT+/f6XHfZ4Zabz2KR7dXwQsoKJ1XYICRNo7to=
+
+# Promoted servers. Always show up as recommended, even if "slow".
+# P <key or IP here>
+#P P53x9uwIDVsztgRkFBJwflFw8vAFQBsVmT9UuL1fs9A=

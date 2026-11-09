@@ -1,0 +1,8 @@
+#pragma once
+
+#include "button.qh"
+CLASS(XonoticBigButton, XonoticButton)
+	ATTRIB(XonoticBigButton, image, string, SKINGFX_BUTTON_BIG);
+	ATTRIB(XonoticBigButton, grayImage, string, SKINGFX_BUTTON_BIG_GRAY);
+ENDCLASS(XonoticBigButton)
+entity makeXonoticBigButton(string theText, vector theColor);

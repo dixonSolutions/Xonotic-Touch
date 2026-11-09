@@ -1,0 +1,13 @@
+#pragma once
+
+// =================================================
+//  Declarations for server side game commands
+// =================================================
+
+bool shuffleteams_on_reset_map;
+void shuffleteams();
+
+void race_deleteTime(string map, float pos);
+
+// used by common/command/generic.qc:GenericCommand_dumpcommands to list all commands into a .txt file
+void GameCommand_macro_write_aliases(float fh);

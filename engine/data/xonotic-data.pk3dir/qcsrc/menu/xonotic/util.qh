@@ -1,0 +1,70 @@
+#pragma once
+
+.string cvar1_setDependent;
+.float cvar1Min_setDependent;
+.float cvar1Max_setDependent;
+.string cvar2_setDependent;
+.float cvar2Min_setDependent;
+.float cvar2Max_setDependent;
+.string cvar3_setDependent;
+.float cvar3Min_setDependent;
+.float cvar3Max_setDependent;
+.int op_setDependent;
+.string cvarString_setDependent;
+.string cvarValue_setDependent;
+.float(entity) func_setDependent;
+.bool disabled;
+
+bool GL_CheckExtension(string ext);
+bool GL_Have_TextureCompression();
+
+void forAllDescendants(entity root, void(entity, entity) funcPre, void(entity, entity) funcPost, entity pass);
+void saveAllCvars(entity root);
+void loadAllCvars(entity root);
+
+void makeMulti(entity me, string otherCvars);
+string getCvarsMulti(entity me);
+void makeCallback(entity me, entity cbent, void(entity, entity) cbfunc);
+
+void setDependent(entity e, string theCvarName, float theCvarMin, float theCvarMax);
+void setDependentNOT(entity e, string theCvarName, float theCvarValue);
+void setDependentAND(entity e, string theCvarName, float theCvarMin, float theCvarMax);
+void setDependentOR(entity e, string theCvarName, float theCvarMin, float theCvarMax);
+void setDependentStringNotEqual(entity e, string theCvarName, string theCvarValue);
+void setDependentWeird(entity e, float(entity) func);
+
+void setZonedTooltip(entity e, string theTooltip, string theCvar);
+void clearTooltip(entity e);
+
+string resolvemod(string m);
+
+void updateCompression();
+
+void UpdateNotification_URI_Get_Callback(float id, float status, string data);
+
+// gametype list box stuff (does not NEED to contain all gametypes, other
+// types stay available via console)
+entity GameType_GetID(int cnt);
+string GameType_GetName(int cnt);
+string GameType_GetIcon(int cnt);
+//string GameType_GetTeams(float cnt);
+int GameType_GetCount();
+int GameType_GetTotalCount();
+
+void dialog_hudpanel_main_checkbox(entity me, string panelname);
+void dialog_hudpanel_main_settings(entity me, string panelname);
+
+bool isServerSingleplayer();
+void makeServerSingleplayer();
+
+float getFadedAlpha(float currentAlpha, float startAlpha, float targetAlpha);
+
+string _Nex_ExtResponseSystem_BannedServers;
+float _Nex_ExtResponseSystem_BannedServersNeedsRefresh;
+string _Nex_ExtResponseSystem_PromotedServers;
+float _Nex_ExtResponseSystem_PromotedServersNeedsRefresh;
+string _Nex_ExtResponseSystem_RecommendedServers;
+float _Nex_ExtResponseSystem_RecommendedServersNeedsRefresh;
+float _Nex_ExtResponseSystem_NewToS;
+
+void CheckSendCvars(entity me, string cvarnamestring);
