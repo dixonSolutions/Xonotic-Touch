@@ -5,6 +5,7 @@
 #define MAX_RENDERTARGETS 4
 
 cvar_t gl_debug = {CF_CLIENT, "gl_debug", "0", "enables OpenGL 4.3 debug output, 0 = off, 1 = HIGH severity only, 2 = also MEDIUM severity, 3 = also LOW severity messages.  (note: enabling may not take effect until vid_restart on some drivers, and only X11 and Windows are known to support the debug context)"};
+cvar_t gl_mapbufferunsync = {CF_CLIENT, "gl_mapbufferunsync", "1", "write per-frame vertex and index data through an unsynchronized glMapBufferRange instead of glBufferSubData (GL 3 / ES 3); glBufferSubData makes tile-based phone GPUs copy the whole buffer on every write"};
 cvar_t gl_paranoid = {CF_CLIENT, "gl_paranoid", "0", "enables OpenGL error checking and other tests"};
 cvar_t gl_printcheckerror = {CF_CLIENT, "gl_printcheckerror", "0", "prints all OpenGL error checks, useful to identify location of driver crashes"};
 
@@ -369,6 +370,7 @@ void gl_backend_init(void)
 	Cvar_RegisterVariable(&v_flipped);
 	Cvar_RegisterVariable(&gl_debug);
 	Cvar_RegisterVariable(&gl_paranoid);
+	Cvar_RegisterVariable(&gl_mapbufferunsync);
 #ifdef DEBUGGL // gl_printcheckerror does nothing in normal builds
 	Cvar_RegisterVariable(&gl_printcheckerror);
 #endif
@@ -1949,7 +1951,30 @@ void R_Mesh_UpdateMeshBuffer(r_meshbuffer_t *buffer, const void *data, size_t si
 				buffertype = GL_UNIFORM_BUFFER;
 #endif
 			CHECKGLERROR
-			if (subdata)
+			if (subdata && buffer->isdynamic && vid.support.mapbufferrange && gl_mapbufferunsync.integer)
+			{
+				/*
+				 * The per-frame streams (R_BufferData_Store) append to one
+				 * buffer and draw from it between appends. glBufferSubData
+				 * into a buffer that queued draws still read makes a
+				 * tile-based driver (Mali above all, which defers every draw
+				 * to the end of the frame) copy the whole buffer first, on
+				 * every append: hundreds of multi-megabyte copies a frame,
+				 * 7 fps on a Galaxy Tab Active5. Appends never touch a range
+				 * a draw has used (the buffer is orphaned when the frame
+				 * starts over at offset 0, and grows into a new one), so an
+				 * unsynchronized map is safe and copies nothing.
+				 */
+				void *p = qglMapBufferRangeDyn(buffertype, (GLintptr)offset, (GLsizeiptr)size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_RANGE_BIT | GL_MAP_UNSYNCHRONIZED_BIT);
+				if (p)
+				{
+					memcpy(p, data, size);
+					qglUnmapBufferDyn(buffertype);
+				}
+				else
+					qglBufferSubData(buffertype, offset, size, data);
+			}
+			else if (subdata)
 				qglBufferSubData(buffertype, offset, size, data);
 			else
 				qglBufferData(buffertype, size, data, buffer->isdynamic ? GL_STREAM_DRAW : GL_STATIC_DRAW);

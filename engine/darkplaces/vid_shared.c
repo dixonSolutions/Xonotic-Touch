@@ -208,6 +208,9 @@ const char *gl_vendor;
 const char *gl_renderer;
 // begins with 1.0.0, 1.1.0, 1.2.0, 1.2.1, 1.3.0, 1.3.1, or 1.4.0
 const char *gl_version;
+// Looked up at run time in GL_Setup; NULL where the context lacks them.
+void *(GLAPIENTRY *qglMapBufferRangeDyn)(GLenum target, GLintptr offset, GLsizeiptr length, GLbitfield access);
+GLboolean (GLAPIENTRY *qglUnmapBufferDyn)(GLenum target);
 
 #ifndef USE_GLES2
 GLboolean (GLAPIENTRY *qglIsBuffer) (GLuint buffer);
@@ -817,6 +820,31 @@ void GL_Setup(void)
 	vid.support.packed_depth_stencil = true;
 	vid.support.npot_mipmap = true;
 #endif
+	/*
+	 * Mapping for the per-frame vertex and index streams. These are core in
+	 * desktop GL 3 and in ES 3 (which every current phone driver hands out),
+	 * but not in the ES 2.0 headers this path builds against, so they are
+	 * looked up at run time rather than linked.
+	 */
+	qglMapBufferRangeDyn = NULL;
+	qglUnmapBufferDyn = NULL;
+	{
+		const char *version = (const char *)qglGetString(GL_VERSION);
+		qbool havemap = true;
+#ifdef USE_GLES2
+		havemap = version && !strncmp(version, "OpenGL ES ", 10) && atoi(version + 10) >= 3;
+#else
+		(void)version;
+#endif
+		if (havemap && !Sys_CheckParm("-nomapbufferrange"))
+		{
+			qglMapBufferRangeDyn = (void *(GLAPIENTRY *)(GLenum, GLintptr, GLsizeiptr, GLbitfield))GL_GetProcAddress("glMapBufferRange");
+			qglUnmapBufferDyn = (GLboolean (GLAPIENTRY *)(GLenum))GL_GetProcAddress("glUnmapBuffer");
+		}
+		vid.support.mapbufferrange = qglMapBufferRangeDyn && qglUnmapBufferDyn;
+		Con_Printf("Dynamic buffers: %s\n", vid.support.mapbufferrange ? "unsynchronized glMapBufferRange" : "glBufferSubData");
+	}
+// COMMANDLINEOPTION: GL: -nomapbufferrange writes dynamic vertex data with glBufferSubData instead of an unsynchronized glMapBufferRange
 	vid.allowalphatocoverage = false;
 
 // COMMANDLINEOPTION: GL: -noanisotropy disables GL_EXT_texture_filter_anisotropic (allows higher quality texturing)
