@@ -98,8 +98,10 @@ One-time setup:
 
 - The vendor branch is on GitHub (`upstream/vendor`). Done 2026-11-09.
 - Settings → Actions → General → **Allow GitHub Actions to create and approve pull
-  requests**. Not set as of 2026-11-09: until it is (or the token below exists),
-  the clean path pushes `upstream-sync` but cannot open the PR, and that job fails.
+  requests**. Done 2026-11-10. Without it (and without the token below) the clean
+  path pushes `upstream-sync` but cannot open the PR, and that job fails. To check:
+  `gh api repos/dixonSolutions/Xonotic-Touch/actions/permissions/workflow` should
+  show `"can_approve_pull_request_reviews":true`.
 - Optional: a fine-grained PAT as secret `UPSTREAM_SYNC_TOKEN` (contents, pull requests,
   issues, actions). Pushes made with it trigger the branch workflows themselves;
   without it the workflow dispatches `tests.yml` and `android.yml` on the branch.
