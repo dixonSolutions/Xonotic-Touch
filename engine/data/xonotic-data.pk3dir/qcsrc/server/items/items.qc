@@ -25,6 +25,7 @@
 #include <server/teamplay.qh>
 #include <server/weapons/common.qh>
 #include <server/weapons/selection.qh>
+#include <server/weapons/spawning.qh>
 #include <server/weapons/weaponsystem.qh>
 #include <server/world.qh>
 
@@ -120,7 +121,7 @@ bool have_pickup_item(entity this)
 			return true;
 		if(autocvar_g_pickup_items == 0)
 			return false;
-		if(g_weaponarena)
+		if(g_weaponarena_type != WEPARENA_OFF)
 			if(STAT(WEAPONS, this) || this.itemdef.instanceOfAmmo) // no item or ammo pickups in weaponarena
 				return false;
 	}
@@ -782,7 +783,8 @@ LABEL(pickup)
 
 void Item_Reset(entity this)
 {
-	if (this.targetname != "" && !(this.spawnflags & 16)) // q3compat
+	if (this.targetname != "" && !(this.spawnflags & 16)) // q3compat and/or target_give
+	if (this.move_movetype != MOVETYPE_FOLLOW && !this.tag_entity) // misc_follow compat
 	{
 		Item_Show(this, -1);
 		if (this.waypointsprite_attached)
@@ -859,6 +861,15 @@ void Item_CopyFields(entity this, entity to)
 	// TODO: copy respawn times? this may not be desirable in some cases
 	//to.respawntime = this.respawntime;
 	//to.respawntimejitter = this.respawntimejitter;
+
+	// misc_follow compat
+	if (this.move_movetype == MOVETYPE_FOLLOW)
+		to.move_movetype = this.move_movetype;
+	if (this.tag_entity)
+	{
+		gettaginfo(this.tag_entity, this.tag_index); // resolve .tag_index back to its name (awkward)
+		setattachment(to, this.tag_entity, gettaginfo_name);
+	}
 }
 
 // Savage: used for item garbage-collection
@@ -962,7 +973,7 @@ float healtharmor_pickupevalfunc(entity player, entity item)
 	float itemarmor = GetResource(item, RES_ARMOR);
 	float itemhealth = GetResource(item, RES_HEALTH);
 
-	if(item.item_group)
+	if (item.item_group)
 	{
 		itemarmor *= min(4, item.item_group_count);
 		itemhealth *= min(4, item.item_group_count);
@@ -1004,15 +1015,23 @@ void item_setactive(entity this, int act)
 		Item_Show(this, ((this.active == ACTIVE_ACTIVE) ? 1 : -1));
 }
 
-void StartItem(entity this, entity def)
+void StartItem(entity this)
 {
-	if (def.m_spawnfunc_hookreplace)
-		def = def.m_spawnfunc_hookreplace(def, this);
-	this.itemdef = def;
-	if (def.m_canonical_spawnfunc != "") // FIXME why do weapons set itemdef to an entity that doesn't have this?
-		this.classname = def.m_canonical_spawnfunc;
-
-	startitem_failed = true; // early return means failure
+	entity def = this.itemdef;
+	if (def.instanceOfWeapon)
+	{
+		weapon_defaultspawnfunc(this, def);
+		if (wasfreed(this))
+			return;
+		def = this.itemdef;
+	}
+	else
+	{
+		if (def.m_spawnfunc_hookreplace)
+			def = this.itemdef = def.m_spawnfunc_hookreplace(def, this);
+		if (def.m_canonical_spawnfunc != "")
+			this.classname = def.m_canonical_spawnfunc;
+	}
 
 	// some mutators check for resources set by m_iteminit in FilterItem
 	if(def.m_iteminit)
@@ -1096,7 +1115,7 @@ void StartItem(entity this, entity def)
 			return;
 		}
 	}
-	else
+	else // it's a level item
 	{
 		// must be done after def.m_iteminit() as that may set ITEM_FLAG_MUTATORBLOCKED
 		if(!have_pickup_item(this))
@@ -1134,18 +1153,22 @@ void StartItem(entity this, entity def)
 			setorigin(this, this.origin);
 		}
 
-		// it's a level item
 		if(this.spawnflags & 1)
 			this.noalign = 1;
-		if (this.noalign > 0)
+		if (this.noalign > 0 && this.move_movetype != MOVETYPE_FOLLOW) // misc_follow compat
 			set_movetype(this, MOVETYPE_NONE);
 		else
-			set_movetype(this, MOVETYPE_TOSS);
-		// do item filtering according to gametype and other things
-		if (this.noalign <= 0)
 		{
 			if (!this.noalign)
-				DropToFloor_QC_DelayedInit(this);
+			{
+				DropToFloor_QC(this);
+				if (wasfreed(this))
+					return;
+			}
+
+			if (this.move_movetype != MOVETYPE_FOLLOW) // misc_follow compat
+				set_movetype(this, MOVETYPE_TOSS);
+
 			waypoint_spawnforitem(this);
 		}
 
@@ -1167,6 +1190,7 @@ void StartItem(entity this, entity def)
 			this.is_item = true;
 		}
 
+		// DO NOT DELETE AFTER THIS POINT //
 		weaponsInMap |= WepSet_FromWeapon(REGISTRY_GET(Weapons, this.weapon));
 
 		if (	    def.instanceOfPowerup
@@ -1220,7 +1244,7 @@ void StartItem(entity this, entity def)
 			this.cnt = 1; // item probability weight
 
 		this.effects |= EF_NOGUNBOB; // marker for item team search
-		InitializeEntity(this, Item_FindTeam, INITPRIO_FINDTARGET);
+		InitializeEntity(this, Item_FindTeam, INITPRIO_SETLOCATION);
 		this.reset = Item_FindTeam;
 	}
 	else
@@ -1229,11 +1253,7 @@ void StartItem(entity this, entity def)
 	Net_LinkEntity(this, !(def.instanceOfPowerup || def.instanceOfHealth || def.instanceOfArmor), 0, ItemSend);
 
 	// call this hook after everything else has been done
-	if (MUTATOR_CALLHOOK(Item_Spawn, this))
-	{
-		delete(this);
-		return;
-	}
+	MUTATOR_CALLHOOK(Item_Spawn, this);
 
 	// we should be sure this item will spawn before loading its assets
 	// CSQC handles model precaching: it may not use this model (eg simple items) and may not have connected yet
@@ -1241,12 +1261,9 @@ void StartItem(entity this, entity def)
 	precache_sound(this.item_pickupsound);
 
 	setItemGroup(this);
-
-	startitem_failed = false;
 }
 
 #define IS_SMALL(def) ((def.instanceOfHealth && def == ITEM_HealthSmall) || (def.instanceOfArmor && def == ITEM_ArmorSmall))
-int group_count = 1;
 
 bool setItemGroup_cond(entity e)
 {
@@ -1263,10 +1280,7 @@ void setItemGroup(entity this)
 		if (!this.item_group)
 		{
 			if (!head.item_group)
-			{
-				head.item_group = group_count;
-				++group_count;
-			}
+				head.item_group = ++item_group_last;
 			this.item_group = head.item_group;
 		}
 		else // spawning item is already part of a item_group X
@@ -1285,12 +1299,12 @@ void setItemGroup(entity this)
 
 void setItemGroupCount()
 {
-	for (int k = 1; k <= group_count; ++k)
+	for (int k = 1; k <= item_group_last; ++k)
 	{
 		int count = 0;
-		IL_EACH(g_items, IS_SMALL(it.itemdef) && it.item_group == k, { ++count; });
+		IL_EACH(g_items, it.item_group == k, { ++count; });
 		if (count)
-			IL_EACH(g_items, IS_SMALL(it.itemdef) && it.item_group == k, { it.item_group_count = count; });
+			IL_EACH(g_items, it.item_group == k, { it.item_group_count = count; });
 	}
 }
 
@@ -1619,7 +1633,7 @@ float GiveItems(entity e, float beginarg, float endarg)
 	if(!StatusEffects_active(STATUSEFFECT_Superweapon, e))
 	{
 		// also give default superweapon time if player had no superweapons and just got one
-		if(!g_weaponarena && !(save_weapons & WEPSET_SUPERWEAPONS) && (STAT(WEAPONS, e) & WEPSET_SUPERWEAPONS))
+		if(g_weaponarena_type == WEPARENA_OFF && !(save_weapons & WEPSET_SUPERWEAPONS) && (STAT(WEAPONS, e) & WEPSET_SUPERWEAPONS))
 			StatusEffects_apply(STATUSEFFECT_Superweapon, e, time + autocvar_g_balance_superweapons_time, 0);
 	}
 

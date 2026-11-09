@@ -1164,8 +1164,8 @@ bool ClientCommand_antispam(entity this, string command, .float antispam_fld, fl
 	float mod_time = gettime(GETTIME_FRAMESTART) + antispam_count * antispam_time;
 	if (mod_time < store.(antispam_fld))
 	{
-		sprint(this, strcat("^3CMD FLOOD CONTROL: wait ^1", ftos(store.(antispam_fld) - mod_time),
-			"^3 seconds, command was: ", command, "\n"));
+		sprint(this, strcat("^3CMD FLOOD CONTROL: ^7wait ^1", ftos(store.(antispam_fld) - mod_time),
+			"^7 seconds, command was: ", command, "\n"));
 		return true; // too much spam, halt
 	}
 	else
@@ -1237,7 +1237,10 @@ void SV_ParseClientCommand(entity this, string command)
 		case "c2s": Net_ClientCommand(this, command); return; // handled by net.qh
 
 		// on connection, client sends all of these
-		case "name": case "rate": case "rate_burstsize": case "playermodel": case "playerskin": case "clientversion":
+		case "name":
+			if(IS_CLIENT(this) && CS(this).muted)
+				return; // muted players' name changes are not forwarded, so they can't be broadcast to others
+		case "rate": case "rate_burstsize": case "playermodel": case "playerskin": case "clientversion":
 			if(!IS_CLIENT(this)) break;
 			// else fall through to default: flood control
 		default:

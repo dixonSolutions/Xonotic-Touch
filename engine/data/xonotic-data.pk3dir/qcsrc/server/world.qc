@@ -458,6 +458,8 @@ void cvar_changes_init()
 		BADCVAR("gametype");
 		BADCVAR("g_antilag");
 		BADCVAR("g_balance_teams");
+		BADVALUE("g_balance_teams_maxdifference", "0");
+		BADVALUE("g_balance_teams_maxdifference", "1");
 		BADCVAR("g_balance_teams_queue");
 		BADCVAR("g_balance_teams_remove");
 		BADCVAR("g_balance_teams_remove_wait");
@@ -542,7 +544,6 @@ void cvar_changes_init()
 		BADPREFIX("g_warmup");
 		BADPREFIX("sv_info_");
 		BADPREFIX("sv_ready_restart_");
-		BADCVAR("sv_teamnagger");
 
 		BADPRESUFFIXVALUE("g_", "_weaponarena", "standard");
 		BADPRESUFFIXVALUE("g_", "_weaponarena", "standard_available");
@@ -712,16 +713,36 @@ void InitGameplayMode()
 	VoteReset(false);
 
 	// find out good world mins/maxs bounds, either the static bounds found by looking for solid, or the mapinfo specified bounds
+	// also sets MapInfo_Map_fog
 	get_mi_min_max(1);
-	// assign reflectively to avoid "assignment to world" warning
-	for (int i = 0, done = 0, n = numentityfields(); i < n; ++i)
+
+	if (!cvar_value_issafe(world.fog))
 	{
-		string k = entityfieldname(i);
-		vector v = (k == "mins") ? mi_min : (k == "maxs") ? mi_max : '0 0 0';
-		if (v)
+		if (MapInfo_Map_fog == "")
+			MapInfo_Map_fog = string_null; // clear world.fog
+		LOG_WARN("The current map contains a potentially harmful fog setting, ignored");
+	}
+
+	if (MapInfo_Map_fog == "none")
+		MapInfo_Map_fog = string_null;
+
+	// assign reflectively to avoid "assignment to world" warning
+	for (int i = 0, done = 0, n = numentityfields(); i < n && done < 3; ++i)
+	{
+		switch (entityfieldname(i))
 		{
-			putentityfieldstring(i, world, sprintf("%v", v));
-			if (++done == 2) break;
+			case "fog":
+				if (MapInfo_Map_fog != "" || !MapInfo_Map_fog)
+					putentityfieldstring(i, world, MapInfo_Map_fog);
+				++done;
+				continue;
+			case "mins":
+				putentityfieldstring(i, world, sprintf("%v", mi_min));
+				++done;
+				continue;
+			case "maxs":
+				putentityfieldstring(i, world, sprintf("%v", mi_max));
+				++done;
 		}
 	}
 	// currently, NetRadiant's limit is 131072 qu for each side
@@ -733,18 +754,6 @@ void InitGameplayMode()
 	MapInfo_LoadMapSettings(mapname);
 	GameRules_teams(false);
 
-	if (!cvar_value_issafe(world.fog))
-	{
-		LOG_INFO("The current map contains a potentially harmful fog setting, ignored");
-		world.fog = string_null;
-	}
-	if(MapInfo_Map_fog != "")
-	{
-		if(MapInfo_Map_fog == "none")
-			world.fog = string_null;
-		else
-			world.fog = strzone(MapInfo_Map_fog);
-	}
 	clientstuff = strzone(MapInfo_Map_clientstuff);
 
 	MapInfo_ClearTemps();
@@ -1903,9 +1912,9 @@ int want_weapon(entity weaponinfo, int allguns)
 WepSet weapons_start()
 {
 	WepSet ret = '0 0 0';
-	FOREACH(Weapons, it != WEP_Null, {
-		int w = want_weapon(it, false);
-		if (w & 1)
+	FOREACH(Weapons, it != WEP_Null,
+	{
+		if (want_weapon(it, false) & 1)
 			ret |= it.m_wepset;
 	});
 	return ret;
@@ -1914,7 +1923,8 @@ WepSet weapons_start()
 WepSet weapons_all()
 {
 	WepSet ret = '0 0 0';
-	FOREACH(Weapons, it != WEP_Null, {
+	FOREACH(Weapons, it != WEP_Null,
+	{
 		if (!(it.spawnflags & (WEP_FLAG_MUTATORBLOCKED | WEP_FLAG_HIDDEN)))
 			ret |= it.m_wepset;
 	});
@@ -1924,17 +1934,15 @@ WepSet weapons_all()
 WepSet weapons_devall()
 {
 	WepSet ret = '0 0 0';
-	FOREACH(Weapons, it != WEP_Null,
-	{
-		ret |= it.m_wepset;
-	});
+	FOREACH(Weapons, it != WEP_Null, ret |= it.m_wepset);
 	return ret;
 }
 
 WepSet weapons_standard()
 {
 	WepSet ret = '0 0 0';
-	FOREACH(Weapons, it != WEP_Null, {
+	FOREACH(Weapons, it != WEP_Null,
+	{
 		if ((it.spawnflags & WEP_FLAG_NORMAL) && !(it.spawnflags & (WEP_FLAG_MUTATORBLOCKED | WEP_FLAG_HIDDEN)))
 			ret |= it.m_wepset;
 	});
@@ -1962,171 +1970,155 @@ void weaponarena_available_update(entity this)
 void readplayerstartcvars()
 {
 	// initialize starting values for players
-	start_weapons = '0 0 0';
-	start_weapons_default = '0 0 0';
-	start_weapons_defaultmask = '0 0 0';
+	start_weapons              = '0 0 0';
+	start_weapons_default      = '0 0 0';
+	start_weapons_defaultmask  = '0 0 0';
 	start_items = 0;
-	start_ammo_shells = 0;
-	start_ammo_nails = 0;
-	start_ammo_rockets = 0;
-	start_ammo_cells = 0;
+	start_ammo_shells   = 0;
+	start_ammo_nails    = 0;
+	start_ammo_rockets  = 0;
+	start_ammo_cells    = 0;
 	if (random_start_ammo == NULL)
-	{
 		random_start_ammo = new_pure(random_start_ammo);
-	}
-	start_health = cvar("g_balance_health_start");
-	start_armorvalue = cvar("g_balance_armor_start");
-
-	g_weaponarena = 1;
-	g_weaponarena_weapons = '0 0 0';
+	start_health      = cvar("g_balance_health_start");
+	start_armorvalue  = cvar("g_balance_armor_start");
 
 	string s = cvar_string("g_weaponarena");
-
 	MUTATOR_CALLHOOK(SetWeaponArena, s);
 	s = M_ARGV(0, string);
-
 	switch (s)
 	{
-	case "0": case "": case "off":
-		g_weaponarena = 0;
-		break;
-	case "all": case "1":
-		g_weaponarena_list = "All Weapons Arena";
-		g_weaponarena_weapons = weapons_all();
-		break;
-	case "devall":
-		g_weaponarena_list = "Dev All Weapons Arena";
-		g_weaponarena_weapons = weapons_devall();
-		break;
-	case "standard": case "most":
-		g_weaponarena_list = "Standard Weapons Arena";
-		g_weaponarena_weapons = weapons_standard();
-		break;
-	case "extended":
-		g_weaponarena_list = "Extended Weapons Arena";
-		g_weaponarena_weapons = weapons_extended();
-		break;
-	case "extended_available":
-		g_weaponarena_list = "Extended Available Weapons Arena";
-		g_weaponarena_weapons = weapons_extended();
-
-		// this needs to run after weaponsInMapAll is initialized
-		InitializeEntity(NULL, weaponarena_available_update, INITPRIO_FINDTARGET);
-		break;
-	case "all_available":
-		g_weaponarena_list = "All Available Weapons Arena";
-		g_weaponarena_weapons = weapons_all();
-
-		// this needs to run after weaponsInMapAll is initialized
-		InitializeEntity(NULL, weaponarena_available_update, INITPRIO_FINDTARGET);
-		break;
-	case "devall_available":
-		g_weaponarena_list = "Dev All Available Weapons Arena";
-		g_weaponarena_weapons = weapons_devall();
-
-		// this needs to run after weaponsInMapAll is initialized
-		InitializeEntity(NULL, weaponarena_available_update, INITPRIO_FINDTARGET);
-		break;
-	case "standard_available": case "most_available":
-		g_weaponarena_list = "Standard Available Weapons Arena";
-		g_weaponarena_weapons = weapons_standard();
-
-		// this needs to run after weaponsInMapAll is initialized
-		InitializeEntity(NULL, weaponarena_available_update, INITPRIO_FINDTARGET);
-		break;
-	case "none":
-		g_weaponarena_list = "No Weapons Arena";
-		break;
-	default:
-	{
-		float t = tokenize_console(s);
-		g_weaponarena_list = "";
-		for (int j = 0; j < t; ++j)
+		case "0": case "": case "off":
+			g_weaponarena_type = WEPARENA_OFF;
+			g_weaponarena_weapons = '0 0 0';
+			break;
+		case "all": case "1":
+			g_weaponarena_type = WEPARENA_ALL;
+			g_weaponarena_weapons = weapons_all();
+			break;
+		case "devall":
+			g_weaponarena_type = WEPARENA_DEVALL;
+			g_weaponarena_weapons = weapons_devall();
+			break;
+		case "standard": case "most":
+			g_weaponarena_type = WEPARENA_STANDARD;
+			g_weaponarena_weapons = weapons_standard();
+			break;
+		case "extended":
+			g_weaponarena_type = WEPARENA_EXTENDED;
+			g_weaponarena_weapons = weapons_extended();
+			break;
+		case "extended_available":
+			g_weaponarena_type = WEPARENA_EXTENDED_AVAILABLE;
+			g_weaponarena_weapons = weapons_extended();
+			// this needs to run after weaponsInMapAll is initialized
+			InitializeEntity(NULL, weaponarena_available_update, INITPRIO_SETLOCATION);
+			break;
+		case "all_available":
+			g_weaponarena_type = WEPARENA_ALL_AVAILABLE;
+			g_weaponarena_weapons = weapons_all();
+			// this needs to run after weaponsInMapAll is initialized
+			InitializeEntity(NULL, weaponarena_available_update, INITPRIO_SETLOCATION);
+			break;
+		case "devall_available":
+			g_weaponarena_type = WEPARENA_DEVALL_AVAILABLE;
+			g_weaponarena_weapons = weapons_devall();
+			// this needs to run after weaponsInMapAll is initialized
+			InitializeEntity(NULL, weaponarena_available_update, INITPRIO_SETLOCATION);
+			break;
+		case "standard_available": case "most_available":
+			g_weaponarena_type = WEPARENA_STANDARD_AVAILABLE;
+			g_weaponarena_weapons = weapons_standard();
+			// this needs to run after weaponsInMapAll is initialized
+			InitializeEntity(NULL, weaponarena_available_update, INITPRIO_SETLOCATION);
+			break;
+		case "none":
+			g_weaponarena_type = WEPARENA_NONE;
+			g_weaponarena_weapons = '0 0 0';
+			break;
+		default:
 		{
-			s = argv(j);
-			Weapon wep = Weapon_from_name(s);
-			if(wep != WEP_Null)
+			g_weaponarena_weapons = '0 0 0';
+			Weapon wep;
+			int t = tokenize_console(s);
+			for (int j = 0; j < t; ++j)
 			{
-				g_weaponarena_weapons |= (wep.m_wepset);
-				g_weaponarena_list = strcat(g_weaponarena_list, wep.netname, " & ");
+				wep = Weapon_from_name(argv(j));
+				if (wep != WEP_Null)
+					g_weaponarena_weapons |= wep.m_wepset;
 			}
+			g_weaponarena_type = (g_weaponarena_weapons) ? WEPARENA_CUSTOM : WEPARENA_NONE;
 		}
-		if (g_weaponarena_list != "") // remove trailing " & "
-			g_weaponarena_list = substring(g_weaponarena_list, 0, strlen(g_weaponarena_list) - 3);
-		else // no valid weapon found
-			g_weaponarena_list = "No Weapons Arena";
-	}}
+	}
 
-	if (g_weaponarena)
+	if (g_weaponarena_type != WEPARENA_OFF)
 	{
 		g_weapon_stay = 0; // incompatible
 		start_weapons = g_weaponarena_weapons;
 		start_items |= IT_UNLIMITED_AMMO | IT_UNLIMITED_SUPERWEAPONS;
-		g_weaponarena_list = strzone(g_weaponarena_list);
 	}
 	else
-	{
-		FOREACH(Weapons, it != WEP_Null, {
+		FOREACH(Weapons, it != WEP_Null,
+		{
 			int w = want_weapon(it, false);
-			WepSet s = it.m_wepset;
-			if(w & 1)
-				start_weapons |= s;
-			if(w & 2)
-				start_weapons_default |= s;
-			if(w & 4)
-				start_weapons_defaultmask |= s;
+			WepSet set = it.m_wepset;
+			if (w & 1)
+				start_weapons |= set;
+			if (w & 2)
+				start_weapons_default |= set;
+			if (w & 4)
+				start_weapons_defaultmask |= set;
 		});
-	}
 
-	if(cvar("g_balance_superweapons_time") < 0)
+	if (cvar("g_balance_superweapons_time") < 0)
 		start_items |= IT_UNLIMITED_SUPERWEAPONS;
-
-	if(!cvar("g_use_ammunition"))
+	if (!cvar("g_use_ammunition"))
 		start_items |= IT_UNLIMITED_AMMO;
 
-	start_ammo_shells = cvar("g_start_ammo_shells");
-	start_ammo_nails = cvar("g_start_ammo_nails");
-	start_ammo_rockets = cvar("g_start_ammo_rockets");
-	start_ammo_cells = cvar("g_start_ammo_cells");
-	start_ammo_fuel = cvar("g_start_ammo_fuel");
+	start_ammo_shells   = cvar("g_start_ammo_shells");
+	start_ammo_nails    = cvar("g_start_ammo_nails");
+	start_ammo_rockets  = cvar("g_start_ammo_rockets");
+	start_ammo_cells    = cvar("g_start_ammo_cells");
+	start_ammo_fuel     = cvar("g_start_ammo_fuel");
 	random_start_weapons_count = cvar("g_random_start_weapons_count");
-	SetResource(random_start_ammo, RES_SHELLS, cvar("g_random_start_shells"));
+	SetResource(random_start_ammo, RES_SHELLS,  cvar("g_random_start_shells"));
 	SetResource(random_start_ammo, RES_BULLETS, cvar("g_random_start_bullets"));
 	SetResource(random_start_ammo, RES_ROCKETS, cvar("g_random_start_rockets"));
-	SetResource(random_start_ammo, RES_CELLS, cvar("g_random_start_cells"));
+	SetResource(random_start_ammo, RES_CELLS,   cvar("g_random_start_cells"));
 
-	warmup_start_ammo_shells = start_ammo_shells;
-	warmup_start_ammo_nails = start_ammo_nails;
-	warmup_start_ammo_rockets = start_ammo_rockets;
-	warmup_start_ammo_cells = start_ammo_cells;
-	warmup_start_ammo_fuel = start_ammo_fuel;
-	warmup_start_health = start_health;
-	warmup_start_armorvalue = start_armorvalue;
-	warmup_start_weapons = start_weapons;
-	warmup_start_weapons_default = start_weapons_default;
-	warmup_start_weapons_defaultmask = start_weapons_defaultmask;
+	warmup_start_ammo_shells   = start_ammo_shells;
+	warmup_start_ammo_nails    = start_ammo_nails;
+	warmup_start_ammo_rockets  = start_ammo_rockets;
+	warmup_start_ammo_cells    = start_ammo_cells;
+	warmup_start_ammo_fuel     = start_ammo_fuel;
+	warmup_start_health        = start_health;
+	warmup_start_armorvalue    = start_armorvalue;
+	warmup_start_weapons              = start_weapons;
+	warmup_start_weapons_default      = start_weapons_default;
+	warmup_start_weapons_defaultmask  = start_weapons_defaultmask;
 
-	if (!g_weaponarena)
+	if (g_weaponarena_type == WEPARENA_OFF)
 	{
-		warmup_start_ammo_shells = cvar("g_warmup_start_ammo_shells");
-		warmup_start_ammo_nails = cvar("g_warmup_start_ammo_nails");
-		warmup_start_ammo_rockets = cvar("g_warmup_start_ammo_rockets");
-		warmup_start_ammo_cells = cvar("g_warmup_start_ammo_cells");
-		warmup_start_ammo_fuel = cvar("g_warmup_start_ammo_fuel");
-		warmup_start_health = cvar("g_warmup_start_health");
-		warmup_start_armorvalue = cvar("g_warmup_start_armor");
-		warmup_start_weapons = '0 0 0';
-		warmup_start_weapons_default = '0 0 0';
-		warmup_start_weapons_defaultmask = '0 0 0';
-		FOREACH(Weapons, it != WEP_Null, {
+		warmup_start_ammo_shells   = cvar("g_warmup_start_ammo_shells");
+		warmup_start_ammo_nails    = cvar("g_warmup_start_ammo_nails");
+		warmup_start_ammo_rockets  = cvar("g_warmup_start_ammo_rockets");
+		warmup_start_ammo_cells    = cvar("g_warmup_start_ammo_cells");
+		warmup_start_ammo_fuel     = cvar("g_warmup_start_ammo_fuel");
+		warmup_start_health        = cvar("g_warmup_start_health");
+		warmup_start_armorvalue    = cvar("g_warmup_start_armor");
+		warmup_start_weapons              = '0 0 0';
+		warmup_start_weapons_default      = '0 0 0';
+		warmup_start_weapons_defaultmask  = '0 0 0';
+		FOREACH(Weapons, it != WEP_Null,
+		{
 			int w = want_weapon(it, autocvar_g_warmup_allguns);
-			WepSet s = it.m_wepset;
-			if(w & 1)
-				warmup_start_weapons |= s;
-			if(w & 2)
-				warmup_start_weapons_default |= s;
-			if(w & 4)
-				warmup_start_weapons_defaultmask |= s;
+			WepSet set = it.m_wepset;
+			if (w & 1)
+				warmup_start_weapons |= set;
+			if (w & 2)
+				warmup_start_weapons_default |= set;
+			if (w & 4)
+				warmup_start_weapons_defaultmask |= set;
 		});
 	}
 
@@ -2142,21 +2134,21 @@ void readplayerstartcvars()
 		warmup_start_ammo_fuel = max(warmup_start_ammo_fuel, cvar("g_balance_fuel_rotstable"));
 	}
 
-	start_ammo_shells = max(0, start_ammo_shells);
-	start_ammo_nails = max(0, start_ammo_nails);
-	start_ammo_rockets = max(0, start_ammo_rockets);
-	start_ammo_cells = max(0, start_ammo_cells);
-	start_ammo_fuel = max(0, start_ammo_fuel);
-	SetResource(random_start_ammo, RES_SHELLS, max(0, GetResource(random_start_ammo, RES_SHELLS)));
+	start_ammo_shells   = max(0, start_ammo_shells);
+	start_ammo_nails    = max(0, start_ammo_nails);
+	start_ammo_rockets  = max(0, start_ammo_rockets);
+	start_ammo_cells    = max(0, start_ammo_cells);
+	start_ammo_fuel     = max(0, start_ammo_fuel);
+	SetResource(random_start_ammo, RES_SHELLS,  max(0, GetResource(random_start_ammo, RES_SHELLS)));
 	SetResource(random_start_ammo, RES_BULLETS, max(0, GetResource(random_start_ammo, RES_BULLETS)));
 	SetResource(random_start_ammo, RES_ROCKETS, max(0, GetResource(random_start_ammo, RES_ROCKETS)));
-	SetResource(random_start_ammo, RES_CELLS, max(0, GetResource(random_start_ammo, RES_CELLS)));
+	SetResource(random_start_ammo, RES_CELLS,   max(0, GetResource(random_start_ammo, RES_CELLS)));
 
-	warmup_start_ammo_shells = max(0, warmup_start_ammo_shells);
-	warmup_start_ammo_nails = max(0, warmup_start_ammo_nails);
-	warmup_start_ammo_rockets = max(0, warmup_start_ammo_rockets);
-	warmup_start_ammo_cells = max(0, warmup_start_ammo_cells);
-	warmup_start_ammo_fuel = max(0, warmup_start_ammo_fuel);
+	warmup_start_ammo_shells   = max(0, warmup_start_ammo_shells);
+	warmup_start_ammo_nails    = max(0, warmup_start_ammo_nails);
+	warmup_start_ammo_rockets  = max(0, warmup_start_ammo_rockets);
+	warmup_start_ammo_cells    = max(0, warmup_start_ammo_cells);
+	warmup_start_ammo_fuel     = max(0, warmup_start_ammo_fuel);
 }
 
 void readlevelcvars()
@@ -2188,8 +2180,10 @@ void readlevelcvars()
 	}
 
 	g_weapon_stay = cvar(strcat("g_", GetGametype(), "_weapon_stay"));
-	if(!g_weapon_stay)
+	if (!g_weapon_stay)
 		g_weapon_stay = cvar("g_weapon_stay");
+	MUTATOR_CALLHOOK(SetWeaponStay, g_weapon_stay);
+	g_weapon_stay = M_ARGV(0, int);
 
 	MUTATOR_CALLHOOK(ReadLevelCvars);
 
@@ -2337,23 +2331,27 @@ void DropToFloor_QC(entity this)
 		end.z -= 256; // Quake, QuakeWorld
 	tracebox(this.origin, this.mins, this.maxs, end, MOVE_NOMONSTERS, this);
 
-	if (!autocvar_sv_mapformat_is_quake3 && !autocvar_sv_mapformat_is_quake2 && (trace_allsolid || trace_fraction == 1)) // Quake
+	if (autocvar_sv_mapformat_is_quake3 || autocvar_sv_mapformat_is_quake2)
 	{
-		// Quake games just delete badly placed items (and misc_explobox)...
+		if (trace_dphitq3surfaceflags & Q3SURFACEFLAG_SKY
+		|| (trace_startsolid && (trace_fraction == 1 || Q3COMPAT_COMMON)))
+		{
+			LOG_WARNF("DropToFloor_QC at \"%v\": \"%s\" fell out of the world", this.origin, this.classname);
+			delete(this);
+			return;
+		}
+	}
+	else if (trace_allsolid || trace_fraction == 1) // Quake
+	{
+		// Quake just deletes badly placed items (and misc_explobox)...
 		if (this.flags & FL_ITEM)
 		{
 			LOG_WARNF("DropToFloor_QC at \"%v\" (Quake compat): DELETING badly placed item \"%s\"", this.origin, this.classname);
 			delete(this);
 			return;
 		}
-		// ...not monsters though...
+		// ...not monsters though.
 		LOG_WARNF("DropToFloor_QC at \"%v\" (Quake compat): badly placed entity \"%s\"", this.origin, this.classname);
-	}
-	else if ((Q3COMPAT_COMMON || autocvar_sv_mapformat_is_quake2) && trace_startsolid) // Q3, Q2
-	{
-		// ...but we can't do that on Q3 maps like jamdm1
-		// because our tracebox hits things Q3's trace doesn't (patches?).
-		LOG_WARNF("DropToFloor_QC at \"%v\" (Quake 3 compat): badly placed entity \"%s\"", this.origin, this.classname);
 	}
 
 	/* NOTE: sv_gameplayfix_droptofloorstartsolid (fallback from tracebox to traceline) isn't implemented.
