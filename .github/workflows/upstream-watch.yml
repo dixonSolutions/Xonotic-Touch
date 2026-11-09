@@ -81,12 +81,16 @@ jobs:
             echo "state=proposed" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # upstream-sync.py exits 0 merged, 1 conflicts, 2 error, 3 nothing to merge.
           set +e
           python3 scripts/upstream-sync.py merge --onto HEAD --branch "$SYNC_BRANCH" --report report.md
           rc=$?
           set -e
           if [ "$rc" -eq 1 ]; then
             echo "state=conflict" >> "$GITHUB_OUTPUT"
+          elif [ "$rc" -eq 3 ]; then
+            echo "state=none" >> "$GITHUB_OUTPUT"
+            exit 0
           elif [ "$rc" -ne 0 ]; then
             exit "$rc"
           elif git diff --quiet HEAD "$SYNC_BRANCH" -- . ':(exclude)upstream.lock'; then
@@ -105,22 +109,24 @@ jobs:
 
       - name: Push sync branch
         if: steps.merge.outputs.state == 'clean'
-        run: |
-          # Leave an open PR alone when it already proposes this vendor commit,
-          # so fixes pushed onto it by hand are not overwritten.
-          new=$(git show "$SYNC_BRANCH:upstream.lock" | awk '$1 == "vendor" { print $2 }')
-          if git fetch --no-tags --depth=1 origin "refs/heads/$SYNC_BRANCH" 2>/dev/null \
-            && [ "$(git show FETCH_HEAD:upstream.lock | awk '$1 == "vendor" { print $2 }')" = "$new" ]; then
-            echo "origin/$SYNC_BRANCH already proposes $new"
-          else
-            git push --force origin "refs/heads/$SYNC_BRANCH"
-          fi
+        # The merge step already stopped if the branch proposes this vendor
+        # commit, so whatever is there is older and can be replaced.
+        run: git push --force origin "refs/heads/$SYNC_BRANCH"
 
       - uses: actions/upload-artifact@v4
         if: steps.merge.outputs.state == 'clean' || steps.merge.outputs.state == 'conflict'
         with:
           name: upstream-report
           path: report.md
+
+      - name: Close a stale hand-merge issue
+        # Up to date, merged cleanly, or already proposed: an open
+        # "needs a hand merge" issue no longer describes anything.
+        if: steps.check.outputs.updates == 'false' || (steps.merge.outputs.state != '' && steps.merge.outputs.state != 'conflict')
+        run: |
+          for issue in $(gh issue list --label "$LABEL" --state open --json number --jq '.[].number' 2>/dev/null); do
+            gh issue close "$issue" --comment "Closed by the upstream watch: ${{ steps.merge.outputs.state || 'up to date' }} (${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          done
 
   build:
     name: Build merged tree
@@ -147,10 +153,17 @@ jobs:
           . scripts/lib/xonotic-shlib.sh
           xonotic_compile_engine_only
 
-      - name: Touch tests
+      - name: Tests from tests.yml
+        # Every script tests.yml runs, as the sync branch has it, so this list
+        # never goes stale.
         run: |
-          bash scripts/test-input-presence.sh
-          bash scripts/test-touch-altfire.sh
+          scripts=$(grep -oE 'bash scripts/test-[A-Za-z0-9_.-]+\.sh' .github/workflows/tests.yml | awk '{ print $2 }' | sort -u)
+          [ -n "$scripts" ] || { echo "no test scripts found in tests.yml"; exit 1; }
+          for t in $scripts; do
+            echo "::group::$t"
+            bash "$t"
+            echo "::endgroup::"
+          done
 
   propose:
     name: Open or refresh PR

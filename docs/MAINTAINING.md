@@ -40,41 +40,19 @@ clickable build --arch arm64
 | Method | When |
 |--------|------|
 | **Commit in this repo** | Default — edit under `engine/`, `git add`, push (run `prepare-engine-for-git.sh` once if nested `.git` dirs remain) |
-| **GitLab fork sub-repos** | Push `engine/darkplaces`, `engine/data/xonotic-data.pk3dir` to your forks; sync upstream with `sync-upstream-fork.sh` |
 
 Large textures/models/sound are **not** in git and **not** in release packages. They download on first launch to `~/.local/share/xonotic-touch/`. For engine work without packaging, prefetch with `./scripts/fetch-sources.sh assets`.
 
-## Fork workflow (pull upstream, keep touch changes)
+## Pulling upstream, keeping Touch changes
 
-Touch-specific changes live **in the codebase** under `engine/` — not as separate overlay dirs or patch files.
+Touch-specific changes live **in the codebase** under `engine/`, not as overlay dirs or
+patch files. Upstream Xonotic arrives through `scripts/upstream-sync.py` and the daily
+`upstream-watch` workflow, which open a PR from `upstream-sync`. Never copy upstream
+files in by hand. See [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md).
 
-**Preferred (monorepo):** overlay upstream tips, restore Touch-only files, re-port shared hotspots. Record SHAs in [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md).
-
-**Optional nested-git / GitLab forks:**
-
-1. Fork on GitLab: [xonotic](https://gitlab.com/xonotic/xonotic), [darkplaces](https://gitlab.com/xonotic/darkplaces), [xonotic-data.pk3dir](https://gitlab.com/xonotic/xonotic-data.pk3dir).
-2. Initialize git in sub-repos (once, if vendored without `.git`):
-
-```bash
-./scripts/sync-upstream-fork.sh --init-git --allow-unrelated
-```
-
-3. Merge upstream (push only if `FORK_*` is set):
-
-```bash
-FORK_DARKPLACES=https://gitlab.com/you/darkplaces.git \
-FORK_DATA=https://gitlab.com/you/xonotic-data.pk3dir.git \
-  ./scripts/sync-upstream-fork.sh
-```
-
-Resolve merge conflicts in `engine/` — touch port files include `touch_*.qc`, menu touch dialogs, and darkplaces multitouch builtins.
-
-4. Re-vendor for monorepo commit if needed:
-
-```bash
-./scripts/prepare-engine-for-git.sh --yes
-git add engine/
-```
+To keep those syncs cheap, put Touch logic in `touch_*` files and add only one-line
+hooks to upstream files; `python3 scripts/upstream-sync.py patched <file>` says whether
+a file is upstream code. The rules are in [AGENTS.md](../AGENTS.md).
 
 ## Disk usage
 

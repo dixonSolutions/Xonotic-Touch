@@ -40,13 +40,7 @@ QuakeC HUD layout should use `vid_width`, `vid_height`, and touch DPI cvars set 
 
 ## Syncing upstream
 
-Preferred for this monorepo: overlay GitLab tips and re-port Touch hotspots — see [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md).
+Upstream Xonotic arrives through `scripts/upstream-sync.py` and the daily
+`upstream-watch` workflow, which open a PR from `upstream-sync`. Never copy upstream
+files in by hand. See [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md).
 
-Optional nested-git / fork path:
-
-```bash
-./scripts/sync-upstream-fork.sh --init-git --allow-unrelated   # once
-FORK_DARKPLACES=… FORK_DATA=… ./scripts/sync-upstream-fork.sh
-```
-
-See [MAINTAINING.md](MAINTAINING.md).

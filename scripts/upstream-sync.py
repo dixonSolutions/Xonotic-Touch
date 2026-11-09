@@ -10,15 +10,17 @@ was last merged from. A sync is a three-way merge with an explicit base:
     theirs = new vendor commit                              (new upstream)
 
 Nothing here touches the working tree or the index except `resolve`, so the
-check, vendor, merge and hooks commands are safe in a checkout other agents
-are editing.
+other commands are safe in a checkout other agents are editing.
 
 Commands:
   check    compare upstream.lock with the upstream branch heads
   vendor   build a vendor commit from upstream (or from the lock's commits)
   merge    merge a vendor commit into a revision, write the result to a branch
-  resolve  start the same merge in a clean checkout, conflicts staged
-  hooks    verify every token Touch added to a shared file survived a merge
+  resolve  start the same merge in a clean, current checkout, conflicts staged
+  hooks    verify a merge kept every Touch addition and left no conflict markers
+  patched  show which files are upstream code and how much Touch changed them
+
+Exit status: 0 done, 1 conflicts or problems found, 2 error, 3 nothing to merge.
 """
 
 import argparse
@@ -27,6 +29,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -35,6 +38,13 @@ LOCK_NAME = "upstream.lock"
 VENDOR_REF = "refs/heads/upstream/vendor"
 ZERO = "0" * 40
 TRAILER = "Upstream-{}"
+
+EXIT_PROBLEMS, EXIT_ERROR, EXIT_NOTHING = 1, 2, 3
+
+
+def die(msg):
+    print(f"upstream-sync: {msg}", file=sys.stderr)
+    sys.exit(EXIT_ERROR)
 
 
 # --------------------------------------------------------------------------
@@ -45,18 +55,24 @@ def git(*args, cwd=ROOT, env=None, input=None, check=True, binary=False):
     full_env = dict(os.environ)
     if env:
         full_env.update(env)
-    res = subprocess.run(
-        ["git", *args],
-        cwd=cwd,
-        env=full_env,
-        input=input,
-        capture_output=True,
-        text=not binary,
-    )
+    res = subprocess.run(["git", *args], cwd=cwd, env=full_env, input=input,
+                         capture_output=True, text=not binary)
     if check and res.returncode != 0:
         err = res.stderr if not binary else res.stderr.decode(errors="replace")
-        sys.exit(f"git {' '.join(args[:3])} failed ({res.returncode}): {err.strip()}")
+        die(f"git {' '.join(args[:3])} failed ({res.returncode}): {err.strip()}")
     return res
+
+
+def git_net(*args, cwd=ROOT, tries=3):
+    """A git command that talks to a remote, retried on failure."""
+    for attempt in range(1, tries + 1):
+        res = git(*args, cwd=cwd, check=False)
+        if res.returncode == 0:
+            return res
+        if attempt < tries:
+            print(f"  git {args[0]} failed, retrying ({res.stderr.strip()[:200]})", file=sys.stderr)
+            time.sleep(5 * attempt)
+    die(f"git {' '.join(args[:3])} failed after {tries} tries: {res.stderr.strip()}")
 
 
 def out(*args, **kw):
@@ -84,6 +100,13 @@ def ls_tree(rev, cwd=ROOT):
         if typ == "blob":
             entries[path] = (mode, sha)
     return entries
+
+
+def need_vendor(rev, what="vendor commit"):
+    if rev == ZERO or not rev_exists(rev):
+        die(f"{what} {rev[:12]} is not in this repository; run\n"
+            f"  git fetch origin upstream/vendor:upstream/vendor\n"
+            f"(a vendor commit that is not on that branch was never pushed)")
 
 
 # --------------------------------------------------------------------------
@@ -119,18 +142,24 @@ class Lock:
                 continue
             if fields[0] == "vendor" and len(fields) == 2:
                 self.vendor = fields[1]
-            elif len(fields) == 5:
+            elif len(fields) == 5 and re.fullmatch(r"[0-9a-f]{40}", fields[3]):
                 self.components.append(Component(*fields))
             else:
-                sys.exit(f"{LOCK_NAME}: cannot parse line: {line}")
+                die(f"{LOCK_NAME}: cannot parse line: {line}")
         if not self.components:
-            sys.exit(f"{LOCK_NAME}: no components")
+            die(f"{LOCK_NAME}: no components")
 
     def get(self, name):
         for c in self.components:
             if c.name == name:
                 return c
-        sys.exit(f"{LOCK_NAME}: no component {name}")
+        die(f"{LOCK_NAME}: no component {name}")
+
+    def owner(self, path):
+        for c in self.components:
+            if c.owns(path, self.components):
+                return c
+        return None
 
     def render(self, commits=None, vendor=None):
         """The lock text with new commits and vendor line; layout kept."""
@@ -150,11 +179,11 @@ def read_lock(rev=None):
     if rev is None:
         path = ROOT / LOCK_NAME
         if not path.exists():
-            sys.exit(f"missing {path}")
+            die(f"missing {path}")
         return Lock(path.read_text())
     text = show(rev, LOCK_NAME)
     if text is None:
-        sys.exit(f"{rev} has no {LOCK_NAME}")
+        die(f"{rev} has no {LOCK_NAME}")
     return Lock(text)
 
 
@@ -169,9 +198,9 @@ def vendor_commits(rev):
 
 
 def remote_head(c):
-    res = git("ls-remote", c.url, f"refs/heads/{c.branch}", check=False)
-    if res.returncode != 0 or not res.stdout.strip():
-        sys.exit(f"cannot read {c.branch} of {c.url}: {res.stderr.strip()}")
+    res = git_net("ls-remote", c.url, f"refs/heads/{c.branch}")
+    if not res.stdout.strip():
+        die(f"{c.url} has no branch {c.branch}")
     return res.stdout.split()[0]
 
 
@@ -210,7 +239,7 @@ def fetch_component(c, commit, components, workdir, keep=None):
     git("init", "-q", str(repo), cwd=workdir)
     git("remote", "add", "origin", c.url, cwd=repo)
     print(f"  fetching {c.name} {commit[:12]}", flush=True)
-    git("fetch", "-q", "--depth", "1", "--filter=blob:none", "origin", commit, cwd=repo)
+    git_net("fetch", "-q", "--depth", "1", "--filter=blob:none", "origin", commit, cwd=repo)
 
     entries = {}
     for path, (mode, sha) in ls_tree(commit, cwd=repo).items():
@@ -223,16 +252,26 @@ def fetch_component(c, commit, components, workdir, keep=None):
     # Never vendor what this repo ignores (textures, models, sounds, ...).
     paths = sorted(entries)
     res = git("check-ignore", "--no-index", "-z", "--stdin", input="\0".join(paths) + "\0", check=False)
+    if res.returncode not in (0, 1):
+        die(f"git check-ignore failed: {res.stderr.strip()}")
     ignored = set(p for p in res.stdout.split("\0") if p)
     for p in ignored:
         del entries[p]
     print(f"  {c.name}: {len(entries)} files vendored, {len(ignored)} ignored", flush=True)
+    if not entries:
+        return entries
 
     # A sparse checkout of just those files pulls their blobs in one batch.
     strip = len(c.path) + 1 if c.path else 0
     patterns = "\n".join(escape_sparse(p[strip:]) for p in sorted(entries)) + "\n"
     git("sparse-checkout", "set", "--no-cone", "--stdin", cwd=repo, input=patterns)
-    git("-c", "advice.detachedHead=false", "checkout", "-q", commit, cwd=repo)
+    for attempt in range(1, 4):
+        res = git("-c", "advice.detachedHead=false", "checkout", "-q", commit, cwd=repo, check=False)
+        if res.returncode == 0:
+            break
+        if attempt == 3:
+            die(f"checkout of {c.name} {commit[:12]} failed: {res.stderr.strip()}")
+        time.sleep(5 * attempt)
 
     shas = "\n".join(sorted(set(sha for _, sha in entries.values()))) + "\n"
     pack = git("pack-objects", "-q", "--stdout", cwd=repo, input=shas.encode(), binary=True).stdout
@@ -246,6 +285,7 @@ def build_vendor(lock, wanted, parent, outside=None):
     outside maps a component name to (subdir, sha): files of that component
     outside subdir come from sha instead. Only the first vendor commit needs
     this, to describe a tree that was synced one directory at a time.
+    Returns parent unchanged when no vendored file changed.
     """
     outside = outside or {}
     parent_commits = vendor_commits(parent) if parent else {}
@@ -275,12 +315,16 @@ def build_vendor(lock, wanted, parent, outside=None):
             if old:
                 git("update-index", "-z", "--force-remove", "--stdin", env=env,
                     input="\0".join(old) + "\0")
-            info = "".join(f"{mode} {sha}\t{path}\0" for path, (mode, sha) in sorted(entries.items()))
-            git("update-index", "-z", "--index-info", env=env, input=info)
+            if entries:
+                info = "".join(f"{mode} {sha}\t{path}\0" for path, (mode, sha) in sorted(entries.items()))
+                git("update-index", "-z", "--index-info", env=env, input=info)
         tree = out("write-tree", env=env)
 
     if parent and out("rev-parse", parent + "^{tree}") == tree:
-        print("upstream changes touch no vendored file; vendor tree unchanged")
+        # Upstream only changed files this repo does not vendor (assets).
+        # An empty vendor commit would only make every sync look new.
+        print("upstream changed no vendored file; vendor branch left as it is")
+        return parent
     lines = ["Vendor upstream Xonotic sources [skip ci]", ""]
     changed = [c.name for c in stale]
     lines.append(f"Updated: {', '.join(changed)}." if parent else "Initial vendor tree.")
@@ -312,10 +356,10 @@ def cmd_vendor(args):
         name, _, sub = spec.partition(":")
         lock.get(name)
         if not sub or not re.fullmatch(r"[0-9a-f]{40}", sha):
-            sys.exit(f"--outside wants NAME:SUBDIR=SHA40, got {item}")
+            die(f"--outside wants NAME:SUBDIR=SHA40, got {item}")
         outside[name] = (sub.strip("/"), sha)
     commit = build_vendor(lock, wanted, parent, outside)
-    if args.ref:
+    if args.ref and commit != old:
         git("update-ref", "-m", "upstream-sync vendor", args.ref, commit, old or ZERO)
         print(f"{args.ref} -> {commit}")
     print(commit)
@@ -330,7 +374,7 @@ def merge_tree(base, ours, theirs):
     """Returns (tree, conflict_entries, messages, clean)."""
     res = git("merge-tree", "--write-tree", "-z", f"--merge-base={base}", ours, theirs, check=False)
     if res.returncode not in (0, 1):
-        sys.exit(f"git merge-tree failed: {res.stderr.strip()}")
+        die(f"git merge-tree failed: {res.stderr.strip()}")
     parts = res.stdout.split("\0")
     tree = parts[0]
     entries = []
@@ -375,25 +419,30 @@ def prepare_merge(args):
     ours = out("rev-parse", "--verify", args.onto + "^{commit}")
     lock = read_lock(ours) if show(ours, LOCK_NAME) is not None else read_lock()
     base = args.base or lock.vendor
-    if base == ZERO or not rev_exists(base):
-        sys.exit(f"merge base {base} is not available; fetch {VENDOR_REF} first")
+    need_vendor(base, "merge base")
+    if not rev_exists(args.vendor):
+        die(f"vendor commit {args.vendor} is not in this repository; run\n"
+            f"  git fetch origin upstream/vendor:upstream/vendor")
     theirs = out("rev-parse", "--verify", args.vendor + "^{commit}")
     new_commits = vendor_commits(theirs)
+    if not new_commits:
+        die(f"{theirs[:12]} is not a vendor commit (no Upstream-* lines in its message)")
     new_lock = lock.render(new_commits, vendor=theirs)
-    return ours, lock, base, theirs, new_commits, new_lock
+    nothing = base == theirs or out("rev-parse", base + "^{tree}") == out("rev-parse", theirs + "^{tree}")
+    return ours, lock, base, theirs, new_commits, new_lock, nothing
 
 
 def cmd_merge(args):
-    ours, lock, base, theirs, new_commits, new_lock = prepare_merge(args)
-    if base == theirs:
-        print("already merged: upstream.lock names this vendor commit")
-        return 0
+    ours, lock, base, theirs, new_commits, new_lock, nothing = prepare_merge(args)
+    if nothing:
+        print("nothing to merge: the vendor commit holds the same upstream files as the base")
+        return EXIT_NOTHING
     tree, entries, messages, clean = merge_tree(base, ours, theirs)
     conflicts = sorted(set(p for _, _, _, p in entries))
     print(report(lock, new_commits, conflicts, messages, args.report))
     if not clean:
         print(f"{len(conflicts)} conflicted files; run `{Path(__file__).name} resolve` in a clean clone")
-        return 1
+        return EXIT_PROBLEMS
 
     with tempfile.TemporaryDirectory(prefix="upstream-merge-") as tmp:
         env = {"GIT_INDEX_FILE": str(Path(tmp) / "index")}
@@ -420,15 +469,33 @@ def merge_message(lock, new_commits):
     return "\n".join(lines) + "\n"
 
 
+def ensure_current(remote, branch):
+    """Refuse to start a merge from a branch that is behind the remote's."""
+    if git("remote", "get-url", remote, check=False).returncode != 0:
+        print(f"note: no remote {remote}; not checking that HEAD is current")
+        return
+    res = git("fetch", "-q", remote, branch, check=False)
+    if res.returncode != 0:
+        print(f"note: could not fetch {remote}/{branch}; not checking that HEAD is current")
+        return
+    if git("merge-base", "--is-ancestor", "FETCH_HEAD", "HEAD", check=False).returncode != 0:
+        die(f"HEAD does not contain {remote}/{branch}. Resolving on a stale branch drops the Touch\n"
+            f"changes made since (and `hooks` would compare against the stale side). Start from\n"
+            f"  git checkout -B {branch} {remote}/{branch}\n"
+            f"or pass --allow-stale if this is deliberate.")
+
+
 def cmd_resolve(args):
     if git("status", "--porcelain", "--untracked-files=no").stdout.strip():
-        sys.exit("working tree or index has changes; resolve needs a clean checkout "
-                 "(use a separate clone, not a git worktree, in this repo)")
+        die("working tree or index has changes; resolve needs a clean checkout\n"
+            "(a fresh `git clone --shared` of this repo, not a git worktree)")
+    if not args.allow_stale:
+        ensure_current(args.remote, args.main)
     args.onto = "HEAD"
-    ours, lock, base, theirs, new_commits, new_lock = prepare_merge(args)
-    if base == theirs:
-        print("already merged")
-        return 0
+    ours, lock, base, theirs, new_commits, new_lock, nothing = prepare_merge(args)
+    if nothing:
+        print("nothing to merge")
+        return EXIT_NOTHING
     tree, entries, messages, clean = merge_tree(base, ours, theirs)
     git("read-tree", "-u", "-m", "HEAD", tree)
     conflicts = sorted(set(p for _, _, _, p in entries))
@@ -443,7 +510,9 @@ def cmd_resolve(args):
     (gitdir / "MERGE_MSG").write_text(merge_message(lock, new_commits))
     print(report(lock, new_commits, conflicts, messages, None))
     if conflicts:
-        print("Resolve the files above (keep every Touch hook), `git add` them, then `git commit`.")
+        print("Edit the conflict markers in the files above, keeping every Touch change;\n"
+              "do not paste in a copy of the file from anywhere else. Then `git add` them\n"
+              "and `git commit`.")
     else:
         print("Merged cleanly; review and `git commit`.")
     print(f"Afterwards: python3 {Path(__file__).relative_to(ROOT)} hooks")
@@ -456,6 +525,7 @@ def cmd_resolve(args):
 TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{3,}")
 TEXT_EXT = {".c", ".h", ".qc", ".qh", ".inc", ".cfg", ".txt", ".sh", ".cmake"}
 TEXT_NAMES = {"makefile", "Makefile", "BSDmakefile"}
+MARKER = re.compile(r"^(<{7} |>{7} |\|{7} )", re.M)
 
 
 def blob_text(sha):
@@ -469,14 +539,24 @@ def cmd_hooks(args):
     ours = out("rev-parse", "--verify", (args.ours or merged + "^1") + "^{commit}")
     old_base = args.old_base or read_lock(ours).vendor
     new_base = args.new_base or read_lock(merged).vendor
-    for name, rev in (("old base", old_base), ("new base", new_base)):
-        if not rev_exists(rev):
-            sys.exit(f"{name} {rev} not available; fetch {VENDOR_REF}")
+    need_vendor(old_base, "old base")
+    need_vendor(new_base, "new base")
     lock = read_lock(merged)
 
     trees = {k: ls_tree(r) for k, r in
              (("old", old_base), ("ours", ours), ("new", new_base), ("merged", merged))}
     problems = []
+
+    # Conflict markers committed by mistake, in any file the merge changed.
+    for path, (_, sha) in sorted(trees["merged"].items()):
+        if trees["ours"].get(path, (None, None))[1] == sha:
+            continue
+        data = git("cat-file", "blob", sha, binary=True).stdout
+        if b"\0" in data[:8000]:
+            continue
+        if MARKER.search(data.decode(errors="replace")):
+            problems.append(f"{path}: conflict markers left in the file")
+
     checked = 0
     for path, (_, sha) in sorted(trees["ours"].items()):
         if not any(under(path, c.path) for c in lock.components):
@@ -512,8 +592,58 @@ def cmd_hooks(args):
     if problems:
         print("\n".join(problems))
         print(f"\n{len(problems)} problems: a Touch change did not survive the merge")
-        return 1
-    print("every Touch addition survived")
+        return EXIT_PROBLEMS
+    print("every Touch addition survived; no conflict markers")
+    return 0
+
+
+# --------------------------------------------------------------------------
+# patched
+
+
+def cmd_patched(args):
+    rev = out("rev-parse", "--verify", args.rev + "^{commit}")
+    lock = read_lock(rev)
+    need_vendor(lock.vendor)
+    vendor = ls_tree(lock.vendor)
+    ours = ls_tree(rev)
+    stats = {}
+    res = git("diff", "--numstat", "-z", "--no-renames", lock.vendor, rev, "--",
+              *sorted({c.path for c in lock.components}))
+    for item in res.stdout.split("\0"):
+        if item.count("\t") == 2:
+            a, d, path = item.split("\t")
+            stats[path] = (a, d)
+
+    if args.paths:
+        for raw in args.paths:
+            path = os.path.relpath(os.path.abspath(raw), ROOT) if os.path.exists(raw) else raw
+            if lock.owner(path) is None:
+                print(f"{path}: not under a vendored component (Touch-owned)")
+            elif path in vendor and path in ours:
+                if path in stats:
+                    a, d = stats[path]
+                    print(f"{path}: UPSTREAM code, already patched by Touch (+{a} -{d}); "
+                          f"every extra line is a future sync conflict")
+                else:
+                    print(f"{path}: UPSTREAM code, untouched; prefer a hook into a touch_* file")
+            elif path in ours:
+                print(f"{path}: Touch-only file (not in upstream); edit freely")
+            elif path in vendor:
+                print(f"{path}: upstream file that Touch deleted")
+            else:
+                print(f"{path}: new file; edit freely (name it touch_* so it is clearly ours)")
+        return 0
+
+    patched = [(int(a) + int(d), path, a, d) for path, (a, d) in stats.items()
+               if path in vendor and path in ours and a != "-"]
+    touch_only = [p for p in ours if lock.owner(p) and p not in vendor]
+    for _, path, a, d in sorted(patched, reverse=True)[: args.top or None]:
+        print(f"  +{a:>5} -{d:>5}  {path}")
+    total_a = sum(int(a) for _, _, a, _ in patched)
+    total_d = sum(int(d) for _, _, _, d in patched)
+    print(f"{len(patched)} upstream files patched by Touch (+{total_a} -{total_d} lines); "
+          f"{len(touch_only)} Touch-only files under vendored paths")
     return 0
 
 
@@ -541,21 +671,31 @@ def main():
 
     for name, func in (("merge", cmd_merge), ("resolve", cmd_resolve)):
         p = sub.add_parser(name, help="merge a vendor commit" if name == "merge"
-                           else "start the merge in this (clean) checkout, conflicts staged")
+                           else "start the merge in this (clean, current) checkout, conflicts staged")
         if name == "merge":
             p.add_argument("--onto", default="HEAD", help="revision to merge into (default HEAD)")
             p.add_argument("--branch", default="upstream-sync", help="branch to write ('' for none)")
             p.add_argument("--report", help="write a markdown summary here")
+        else:
+            p.add_argument("--remote", default="origin", help="remote whose main HEAD must contain")
+            p.add_argument("--main", default="main", help="that remote's branch (default main)")
+            p.add_argument("--allow-stale", action="store_true", help="skip the up-to-date check")
         p.add_argument("--vendor", default=VENDOR_REF, help="vendor commit to merge")
         p.add_argument("--base", help="override the merge base (default: vendor line of upstream.lock)")
         p.set_defaults(func=func)
 
-    p = sub.add_parser("hooks", help="check that Touch additions survived a merge")
+    p = sub.add_parser("hooks", help="check that a merge kept every Touch addition")
     p.add_argument("--merged", default="HEAD", help="the merge result (default HEAD)")
     p.add_argument("--ours", help="Touch side before the merge (default MERGED^1)")
     p.add_argument("--old-base", help="vendor commit ours was based on (default: its upstream.lock)")
     p.add_argument("--new-base", help="vendor commit merged in (default: MERGED's upstream.lock)")
     p.set_defaults(func=cmd_hooks)
+
+    p = sub.add_parser("patched", help="which files are upstream code, and how much Touch changed them")
+    p.add_argument("paths", nargs="*", help="classify these files instead of listing all patched files")
+    p.add_argument("--rev", default="HEAD", help="revision to inspect (default HEAD)")
+    p.add_argument("--top", type=int, default=0, help="list only the N most-patched files")
+    p.set_defaults(func=cmd_patched)
 
     args = ap.parse_args()
     sys.exit(args.func(args))
