@@ -106,6 +106,7 @@
 #include <menu/xonotic/mainwindow.qc>
 #include <menu/xonotic/maplist.qc>
 #include <menu/xonotic/mixedslider.qc>
+#include <menu/xonotic/mutatortab.qc>
 #include <menu/xonotic/nexposee.qc>
 #include <menu/xonotic/picker.qc>
 #include <menu/xonotic/playerlist.qc>
@@ -136,7 +137,6 @@
 #include <menu/xonotic/touch_update_util.qc>
 #include <menu/xonotic/touchbutton.qc>
 #include <menu/xonotic/util.qc>
-#include <menu/xonotic/weaponarenacheckbox.qc>
 #include <menu/xonotic/weaponslist.qc>
 
 #include <menu/xonotic/guide/_mod.inc>
