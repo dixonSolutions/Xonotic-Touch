@@ -191,6 +191,11 @@ final class AppUpdater {
      * happened since: an update already installed, or since skipped, is gone.
      */
     Update lastFound() {
+        // A live build is updated by AndySU, and its APK version is frozen at the one first
+        // installed, so a release the plain build found (or downloaded) would look newer forever.
+        if (AndySUCompat.present()) {
+            return null;
+        }
         SharedPreferences prefs = prefs(context);
         String version = prefs.getString(PREF_FOUND_VERSION, "");
         String url = prefs.getString(PREF_FOUND_URL, "");
@@ -336,6 +341,9 @@ final class AppUpdater {
      * A half-downloaded copy of the current release stays, to be resumed.
      */
     void cleanCache() {
+        if (AndySUCompat.present()) {
+            rememberFound(null);
+        }
         File[] files = cacheDir().listFiles();
         if (files == null) {
             return;
