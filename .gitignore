@@ -73,3 +73,6 @@ android/app/src/main/java/org/libsdl/
 android/app/src/main/jniLibs/
 android/app/src/main/res/mipmap-*/
 android/local.properties
+
+# Vercel CLI link and build cache
+.vercel/

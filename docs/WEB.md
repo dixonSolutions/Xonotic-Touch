@@ -6,9 +6,12 @@ controls and keyboard and mouse work; gamepads go through the browser's
 Gamepad API (not tested yet). Local games against bots run entirely in the
 page.
 
-- Vercel: https://xonotic-web.vercel.app (page and game data)
-- GitHub Pages: https://dixonSolutions.github.io/Xonotic-Touch/web/ (page;
-  game data comes from the Vercel deployment)
+- Vercel: https://xonotic-web.vercel.app (page and game data), rebuilt by
+  Vercel on every push to `main`
+- GitHub Pages: https://dixonSolutions.github.io/Xonotic-Touch/web/, a shell
+  like the apps: the page, engine and this fork's game code (about 15 MB) are
+  on Pages, and the stock Xonotic data is fetched from the Vercel deployment
+  on first launch
 - Every GitHub release carries `xonotic-touch-web-<version>.zip`: the page and
   engine without game data, for hosting elsewhere
 
@@ -50,12 +53,13 @@ Not in the browser build yet:
 web/index.html, shell.css     loader UI: download, Play, settings
 web/shell.js                  the platform layer (below)
 web/manifest.webmanifest      installable app: fullscreen, landscape
-web/vercel.json               headers for the Vercel deployment
 web/serve.py                  local dev server
+vercel.json                   Vercel: build commands, main-only, headers
+scripts/vercel-build.sh       Vercel's build (tools, SDK, engine, data)
 engine/darkplaces/sys_wasm.c  engine side of the shim (Module.xt, xt_web_*)
 scripts/build-web.sh          engine + QuakeC + page -> build/web
 scripts/stage-web-data.sh     game data -> build/web/data + manifest.json
-.github/workflows/web.yml     build, release asset, Vercel, GitHub Pages
+.github/workflows/web.yml     build, release asset, GitHub Pages shell
 ```
 
 `shell.js` is what an OS would otherwise provide:
@@ -138,27 +142,51 @@ Debugging:
 
 ## Deploying
 
-`.github/workflows/web.yml` runs after every successful "Build and publish"
-run (each push to `main`), or by hand from the Actions tab.
+**Vercel** (page and game data) builds itself from Git. The project imports
+this repository; `vercel.json` sets the commands, so no dashboard settings
+are needed:
 
-**Vercel** (page and data). One-time setup:
+- `ignoreCommand`: only `main` is built; other branches and pull requests
+  are skipped (each build stages 1.1 GB of data).
+- `installCommand` (`scripts/vercel-build.sh --install`): build tools,
+  Python 3.10+ and GCC 12+ from `dnf` where the build image lacks them, and
+  the Emscripten SDK, kept in `.vercel/cache` between builds.
+- `buildCommand` (`scripts/vercel-build.sh`): `scripts/build-web.sh`, then
+  the stock data from the same upstream autobuild archive the Android app
+  downloads, staged with `scripts/stage-web-data.sh`. About 10 minutes.
+- `headers`: `data/` is served with `Access-Control-Allow-Origin: *` (the
+  Pages shell reads it from another origin) and cached for good, since every
+  piece's name carries its content hash.
 
-1. Create a Vercel project named `xonotic-web` (any framework preset; the
-   workflow uploads a ready-made static site).
-2. Create a token at https://vercel.com/account/tokens.
-3. Add the repository secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID` and
-   `VERCEL_PROJECT_ID` (the IDs are in the project's settings, or in
-   `.vercel/project.json` after `vercel link`).
+No tokens or repository secrets are involved. To set it up again: Vercel →
+Add New → Project → import `dixonSolutions/Xonotic-Touch`, name it
+`xonotic-web`, leave every setting at its default, Deploy.
 
-Without the token the Vercel step is skipped and the rest still runs.
+To test the build without Vercel, run it in a container of the same base
+image:
+
+```bash
+podman run --rm -v "$PWD:/vercel/path0" -w /vercel/path0 \
+  -e VERCEL_GIT_COMMIT_REF=main docker.io/library/amazonlinux:2023 \
+  bash -c 'bash scripts/vercel-build.sh --install && bash scripts/vercel-build.sh'
+```
 
 Bandwidth: each new player downloads about 1 GB. Vercel's Hobby plan includes
-100 GB of transfer a month, about 100 new players. Pro, or another host for
-`data/` (any static host that sends `Access-Control-Allow-Origin: *`), raises
-that. Point the page at it with the repository variable `XT_WEB_DATA_URL`.
+100 GB of transfer a month, about 100 new players, and is for non-commercial
+use. Pro, or another host for the stock data (any static host that sends
+`Access-Control-Allow-Origin: *`), raises that; point the Pages shell at it
+with the repository variable `XT_WEB_DATA_URL`.
 
-**GitHub Pages** (page only). Pages serves one site per repository, already
-used by the Flatpak and Click remotes, and caps it at 1 GB. The workflow takes
-the site that "Build and publish" deployed, adds `web/`, and deploys it again.
-The page there loads its data from `XT_WEB_DATA_URL` (default
-`https://xonotic-web.vercel.app/data/`).
+**GitHub Pages** (shell). `.github/workflows/web.yml` runs after every
+successful "Build and publish" run (each push to `main`), or by hand from the
+Actions tab. It builds the page and engine, stages only this fork's files
+(`stage-web-data.sh --shell`), attaches `xonotic-touch-web-<version>.zip` to
+the release, then takes the site "Build and publish" deployed (the Flatpak
+and Click remotes), adds `web/` and deploys it again. Pages caps a site at
+1 GB, so the stock pk3s stay on Vercel: the shell's `data/manifest.json`
+names that host (`"stock"`), and the page reads the stock file list from it
+at each start, so Vercel can move to a newer upstream build without the
+shell being republished. `?stock=URL` overrides the host for one visit.
+
+"Build and publish" deploys Pages without `web/`, so the shell is missing
+for the few minutes between the two workflows.

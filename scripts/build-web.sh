@@ -101,7 +101,7 @@ echo "$want" > "$stamp"
 mkdir -p "$OUT"
 install -m 644 xonotic-touch.js xonotic-touch.wasm "$OUT/"
 install -m 644 "$ROOT/web/index.html" "$ROOT/web/shell.js" "$ROOT/web/shell.css" \
-    "$ROOT/web/manifest.webmanifest" "$ROOT/web/serve.py" "$ROOT/web/vercel.json" "$OUT/"
+    "$ROOT/web/manifest.webmanifest" "$ROOT/web/serve.py" "$OUT/"
 for icon in "$ROOT"/web/icon-*.png; do
     [ -f "$icon" ] && install -m 644 "$icon" "$OUT/"
 done
@@ -109,7 +109,8 @@ done
 # (the GitHub Pages copy uses the data deployed with the Vercel copy).
 printf 'window.XT_CONFIG = %s;\n' "$(python3 -c 'import json,os; print(json.dumps({k: v for k, v in {"dataUrl": os.environ.get("XT_WEB_DATA_URL", "")}.items() if v}))')" > "$OUT/config.js"
 # The page uses this to tell builds apart (cache-busting the engine).
-build_id="$(date -u +%Y%m%d%H%M%S)-$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo local)"
+rev="${VERCEL_GIT_COMMIT_SHA:-$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo local)}"
+build_id="$(date -u +%Y%m%d%H%M%S)-${rev:0:7}"
 printf '{"build":"%s"}\n' "$build_id" > "$OUT/build.json"
 
 printf 'Built %s (%s)\n' "$OUT" "$(du -sh "$OUT/xonotic-touch.wasm" | cut -f1) wasm)"

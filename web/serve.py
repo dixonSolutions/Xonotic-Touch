@@ -41,7 +41,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # if the engine is ever built with -pthread.
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
         self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
-        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        if path.startswith("/data/"):
+            # As on Vercel: a shell copy of the page on another origin (see
+            # stage-web-data.sh --shell) reads the stock pk3s from here.
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cross-Origin-Resource-Policy", "cross-origin")
+        else:
+            self.send_header("Cross-Origin-Resource-Policy", "same-origin")
         super().end_headers()
 
     def do_POST(self):

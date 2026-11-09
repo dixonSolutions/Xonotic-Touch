@@ -3,6 +3,11 @@
 #
 #   scripts/stage-web-data.sh --stock <dir-with-stock-pk3s>
 #   scripts/stage-web-data.sh --zip <Xonotic-latest.zip>
+#   scripts/stage-web-data.sh --shell <stock-data-url>
+#
+# --shell stages only this fork's own files (about 15 MB) and points the page
+# at another deployment's data/ for the stock pk3s, which the page reads at
+# run time. GitHub Pages uses it: the stock data does not fit there.
 #
 # What goes in, and in which download group:
 #   core   this fork's game code and touch assets, packed into zz-*.pk3 so
@@ -22,12 +27,14 @@ ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 OUT="${XT_WEB_OUT:-$ROOT/build/web}/data"
 STOCK=""
 ZIP=""
+SHELL_STOCK=""
 
-usage() { sed -n '2,18p' "$0" >&2; exit 2; }
+usage() { sed -n '2,23p' "$0" >&2; exit 2; }
 while [ $# -gt 0 ]; do
     case "$1" in
         --stock) STOCK="${2:?}"; shift 2 ;;
         --zip) ZIP="${2:?}"; shift 2 ;;
+        --shell) SHELL_STOCK="${2:?}"; shift 2 ;;
         --out) OUT="${2:?}/data"; shift 2 ;;
         -h|--help) usage ;;
         *) echo "stage-web-data: unknown argument: $1" >&2; usage ;;
@@ -43,9 +50,14 @@ if [ -n "$ZIP" ]; then
     unzip -q -j -o "$ZIP" 'Xonotic/data/*.pk3' -d "$work/stock"
     STOCK="$work/stock"
 fi
-[ -n "$STOCK" ] || { echo "stage-web-data: pass --stock DIR or --zip FILE" >&2; usage; }
-[ -d "$STOCK" ] || { echo "stage-web-data: $STOCK is not a directory" >&2; exit 1; }
-ls "$STOCK"/xonotic-*-data.pk3 >/dev/null 2>&1 || { echo "stage-web-data: no xonotic-*-data.pk3 in $STOCK" >&2; exit 1; }
+if [ -n "$SHELL_STOCK" ]; then
+    STOCK="$work/none"
+    mkdir -p "$STOCK"
+else
+    [ -n "$STOCK" ] || { echo "stage-web-data: pass --stock DIR, --zip FILE or --shell URL" >&2; usage; }
+    [ -d "$STOCK" ] || { echo "stage-web-data: $STOCK is not a directory" >&2; exit 1; }
+    ls "$STOCK"/xonotic-*-data.pk3 >/dev/null 2>&1 || { echo "stage-web-data: no xonotic-*-data.pk3 in $STOCK" >&2; exit 1; }
+fi
 
 # The fork's own data, exactly as the Android and Flatpak packages ship it.
 # The stock data pk3 has the menu skin, so the boot-asset fetch is not needed.
@@ -54,10 +66,10 @@ XONOTIC_SKIP_BOOT_ASSETS=1 bash "$ROOT/scripts/stage-slim-data.sh" "$work/slim" 
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
-python3 -I - "$work/slim" "$STOCK" "$OUT" <<'PY'
+python3 -I - "$work/slim" "$STOCK" "$OUT" "$SHELL_STOCK" <<'PY'
 import hashlib, json, os, sys, zipfile
 
-slim, stock, out = sys.argv[1:4]
+slim, stock, out, shell_stock = sys.argv[1:5]
 files = []
 
 def rev(path):
@@ -69,7 +81,7 @@ def rev(path):
 
 PART = int(os.environ.get('XT_WEB_PART_MB', '40')) * 1024 * 1024
 
-def add(name, group):
+def add(name, group, stock=False):
     """Record a file; split anything over PART into name.partNN pieces.
 
     Static hosts cap single files (GitHub Pages and Vercel at 100 MB), and
@@ -79,6 +91,8 @@ def add(name, group):
     p = os.path.join(out, name)
     size, r = os.path.getsize(p), rev(p)
     entry = {'name': os.path.basename(name), 'path': 'data/' + name, 'size': size, 'rev': r, 'group': group}
+    if stock:
+        entry['stock'] = True  # a shell copy of the page takes these from here
     if size > PART:
         parts = []
         with open(p, 'rb') as src:
@@ -141,9 +155,11 @@ for f in sorted(os.listdir(stock)):
     except OSError:
         import shutil
         shutil.copyfile(os.path.join(stock, f), dst)
-    add(f, 'music' if f.endswith('-music.pk3') else 'core')
+    add(f, 'music' if f.endswith('-music.pk3') else 'core', stock=True)
 
 manifest = {'format': 2, 'files': files}
+if shell_stock:
+    manifest['stock'] = shell_stock
 with open(os.path.join(out, 'manifest.json'), 'w') as m:
     json.dump(manifest, m, indent=1)
 core = sum(f['size'] for f in files if f['group'] == 'core')

@@ -362,10 +362,34 @@
   const CONFIG = window.XT_CONFIG || {};
   const dataBase = new URL(params.get('data') || CONFIG.dataUrl || 'data/', location.href);
 
+  async function fetchManifest(base) {
+    const url = new URL('manifest.json', base);
+    let res;
+    try {
+      res = await fetch(url, { cache: 'no-cache' });
+    } catch (e) {
+      throw new Error(`The game data is not available right now (${url.host}: ${e.message}). Try again later.`);
+    }
+    if (!res.ok) throw new Error(`The game data is not available right now (${url.host}: HTTP ${res.status}). Try again later.`);
+    const m = await res.json();
+    for (const f of m.files) f.base = base.href;
+    return m;
+  }
+
+  // A shell copy of the page (GitHub Pages) carries only this fork's own
+  // files and names a "stock" host for the stock Xonotic pk3s, the way the
+  // apps carry the game code and download the rest on first launch. The
+  // stock list is read from that host each visit, so it can move to a newer
+  // upstream build without the shell being republished.
   async function loadManifest() {
-    const res = await fetch(new URL('manifest.json', dataBase), { cache: 'no-cache' });
-    if (!res.ok) throw new Error(`The game data is not available right now (${new URL('manifest.json', dataBase).host}: HTTP ${res.status}). Try again later.`);
-    return res.json();
+    const m = await fetchManifest(dataBase);
+    if (m.stock) {
+      const stockBase = new URL(params.get('stock') || m.stock, dataBase);
+      const remote = await fetchManifest(stockBase);
+      const have = new Set(m.files.map((f) => f.name));
+      for (const f of remote.files) if (f.stock && !have.has(f.name)) m.files.push(f);
+    }
+    return m;
   }
 
   // Where downloaded files live between visits.
@@ -410,7 +434,7 @@
     const PART = 32 * 1024 * 1024;
     const store = await openStore();
     state.store = store.kind;
-    const key = (f, i) => new URL(`${f.path}?rev=${f.rev}&part=${i}`, dataBase).href;
+    const key = (f, i) => new URL(`${f.path}?rev=${f.rev}&part=${i}`, f.base || dataBase).href;
     const parts = (f) => Math.max(1, Math.ceil(f.size / PART));
     return {
       kind: 'cache',
@@ -489,7 +513,7 @@
       let lastErr;
       for (let attempt = 0; attempt < 4; attempt++) {
         try {
-          const res = await fetch(new URL(part.url, dataBase), { cache: 'no-store' });
+          const res = await fetch(new URL(part.url, f.base || dataBase), { cache: 'no-store' });
           if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
           return res.body.getReader();
         } catch (e) {
