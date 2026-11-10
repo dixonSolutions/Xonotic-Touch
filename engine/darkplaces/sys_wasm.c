@@ -421,10 +421,17 @@ static void em_savefs_f(cmd_state_t *cmd)
 	js_syncFS(false);
 }
 
+// The engine has shut down (menu Quit, the quit command). exit() does not
+// end a page whose runtime is kept alive, so Module.onExit never runs: tell
+// the page, which offers to start again.
+EM_JS(void, js_quit, (void), {
+	if (Module.xt && Module.xt.quit) Module.xt.quit();
+});
 void Sys_SDL_Shutdown(void)
 {
 	js_syncFS(false);
 	SDL_Quit();
+	js_quit();
 }
 
 // A fatal error: the page shows it over the game (and the last console

@@ -659,7 +659,7 @@
     // at end of file.
     stdin: () => null,
     xt: {
-      renderSize, setFullscreen, mouseGrab, screenKeyboard,
+      renderSize, setFullscreen, mouseGrab, screenKeyboard, quit,
       syncFS: () => syncFS(false),
       fatal(title, text) {
         state.aborted = true;
@@ -673,7 +673,7 @@
       if (state.aborted) return;
       state.started = false;
       if (code) fail(`The game exited with code ${code}.\n\n` + logTail.slice(-8).join('\n').replace(/\x1b\[[0-9;]*m/g, ''));
-      else { $('xt-overlay').classList.remove('xt-gone'); status('The game has quit. Reload the page to play again.'); }
+      else quit();
     },
     print(text) {
       if (LOGSINK) sink(text);
@@ -696,6 +696,22 @@
       fail(`The game stopped: ${what}\n\n${tail}`);
     },
   };
+
+  // The engine shut down cleanly (menu Quit): offer a fresh start, which
+  // is a reload, since the engine cannot be started twice in one page.
+  function quit() {
+    if (state.aborted || state.quit) return;
+    state.quit = true;
+    state.started = false;
+    state.wantLock = false;
+    state.kbdOn = false;
+    if (document.pointerLockElement) document.exitPointerLock();
+    if (inFullscreen()) setFullscreen(false);
+    $('xt-overlay').classList.remove('xt-gone');
+    status('The game has quit.');
+    $('xt-again').hidden = false;
+    $('xt-again').focus();
+  }
 
   function loadEngine() {
     const s = document.createElement('script');
