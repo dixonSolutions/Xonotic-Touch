@@ -678,6 +678,18 @@
     document.body.appendChild(s);
   }
 
+  /**
+   * The browser's preferred languages for the menu's first start ("pl_PL,pl,en_US"), most preferred first. The menu
+   * picks the closest language it has a translation for; a language chosen in the game afterwards stands.
+   */
+  function browserLanguages() {
+    const tags = (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language]) || [];
+    return tags
+      .filter(t => typeof t === 'string' && /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(t))
+      .map(t => t.replace(/-/g, '_'))
+      .join(',');
+  }
+
   function engineArgs(fullscreen) {
     const [w, h] = renderSize();
     const args = [
@@ -691,6 +703,8 @@
       '+vid_height', String(h),
     ];
     if (state.sampleRate) args.push('+snd_speed', String(state.sampleRate));
+    const languages = browserLanguages();
+    if (languages) args.push('+set', '_menu_system_languages', languages);
     const extra = params.get('args');
     if (extra) args.push(...extra.split(' ').filter(Boolean));
     return args;

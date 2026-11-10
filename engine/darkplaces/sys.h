@@ -46,6 +46,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 # define DP_OS_NAME		"Browser"
 # define DP_OS_STR		"browser"
 # define DP_ARCH_STR	"WASM-32"
+// A browser can't dlopen libfreetype: link Emscripten's FreeType port (-sUSE_FREETYPE=1). Without it every TTF
+// font falls back to the bitmap charset, which has no accented letters (ñ, ó, ą, ł draw as boxes).
+# define DP_FREETYPE_STATIC 1
 #elif defined(__linux__)
 # define DP_OS_NAME		"Linux"
 # define DP_OS_STR		"linux"

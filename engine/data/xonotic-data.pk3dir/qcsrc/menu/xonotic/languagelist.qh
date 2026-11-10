@@ -35,3 +35,8 @@ ENDCLASS(XonoticLanguageList)
 
 entity makeXonoticLanguageList();
 void SetLanguage_Click(entity btn, entity me);
+
+/** The game's language closest to the system's preferred ones (comma-separated tags); "" when none matches. */
+string LanguageList_bestSystemMatch(string tags);
+/** First start only: switch to the system's language (true when the menu is about to restart in it). */
+bool LanguageList_applySystemLanguage();

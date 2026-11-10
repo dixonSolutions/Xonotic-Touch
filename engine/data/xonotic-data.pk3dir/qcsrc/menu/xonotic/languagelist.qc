@@ -220,3 +220,84 @@ void XonoticLanguageList_focusedItemChangeNotify(entity me)
 	else
 		clearTooltip(me);
 }
+
+/** "pl_PL" -> "pl"; "ast" -> "ast". */
+string LanguageList_baseLanguage(string id)
+{
+	float u = strstrofs(id, "_", 0);
+	return (u > 0) ? substring(id, 0, u) : id;
+}
+
+string LanguageList_bestSystemMatch(string tags)
+{
+	// Tags as browsers and systems write them ("pl-PL", "en_AU.UTF-8"), most preferred first.
+	float want = buf_create();
+	float m = tokenizebyseparator(tags, ",");
+	for (int i = 0; i < m; ++i)
+	{
+		string tag = strtolower(strreplace("-", "_", argv(i)));
+		float dot = strstrofs(tag, ".", 0);
+		if (dot > 0) tag = substring(tag, 0, dot);
+		bufstr_set(want, i, tag);
+	}
+
+	float ids = buf_create();
+	float n = 0;
+	float fh = fopen("languages.txt", FILE_READ);
+	if (fh >= 0)
+	{
+		string line;
+		while ((line = fgets(fh)))
+		{
+			if (tokenize_console(line) < 3) continue;
+			bufstr_set(ids, n, argv(0));
+			++n;
+		}
+		fclose(fh);
+	}
+
+	// For each preferred tag in turn: the exact language and region, then the language
+	// itself, then any regional variant of it ("id" finds "id_ID").
+	string found = "";
+	for (int i = 0; i < m && found == ""; ++i)
+	{
+		string tag = bufstr_get(want, i);
+		if (tag == "") continue;
+		string base = LanguageList_baseLanguage(tag);
+		for (int pass = 0; pass < 3 && found == ""; ++pass)
+		{
+			for (int k = 0; k < n; ++k)
+			{
+				string id = bufstr_get(ids, k);
+				string lid = strtolower(id);
+				if ((pass == 0 && lid == tag)
+					|| (pass == 1 && lid == base)
+					|| (pass == 2 && LanguageList_baseLanguage(lid) == base))
+				{
+					found = id;
+					break;
+				}
+			}
+		}
+	}
+
+	buf_del(want);
+	buf_del(ids);
+	return found;
+}
+
+bool LanguageList_applySystemLanguage()
+{
+	// Once per install: after this the player's own choice (saved with the profile) stands.
+	if (cvar("_menu_language_from_system")) return false;
+	cvar_set("_menu_language_from_system", "1");
+
+	string tags = cvar_string("_menu_system_languages");
+	if (tags == "") return false;
+	string lang = LanguageList_bestSystemMatch(tags);
+	if (lang == "" || lang == prvm_language) return false;
+
+	cvar_set("_menu_prvm_language", lang);
+	localcmd("\nprvm_language \"$_menu_prvm_language\"; menu_restart\n");
+	return true;
+}

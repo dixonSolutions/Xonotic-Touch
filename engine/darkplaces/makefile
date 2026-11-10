@@ -124,6 +124,7 @@ ifeq ($(DP_MAKE_TARGET), wasm)
 	              -s USE_ZLIB=1 \
 	              -s USE_OGG=1 \
 	              -s USE_VORBIS=1 \
+	              -s USE_FREETYPE=1 \
 	              -DLINK_TO_LIBPNG \
 	              -DLINK_TO_LIBVORBIS \
 	              -DNOSUPPORTIPV6 \

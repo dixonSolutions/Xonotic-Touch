@@ -37,6 +37,7 @@
 #include "dialog_settings_misc_cvars.qh"
 #include "dialog_settings_misc_reset.qh"
 #include "dialog_settings_user_languagewarning.qh"
+#include "languagelist.qh"
 #include "dialog_settings_game_hudconfirm.qh"
 #include "dialog_singleplayer_winner.qh"
 #include "dialog_multiplayer_join_serverinfo.qh"
@@ -95,6 +96,9 @@ void MainWindow_tryOpenStartupDialogs(entity me)
 	}
 	if (me.firstRunDialog.shouldShow())
 	{
+		// Start in the system's language (the browser's, on the web); the menu restarts in it and comes back here.
+		if (LanguageList_applySystemLanguage())
+			return;
 		DialogOpenButton_Click_withCoords(NULL, me.firstRunDialog, '0 0 0', eX * conwidth + eY * conheight);
 		return;
 	}
