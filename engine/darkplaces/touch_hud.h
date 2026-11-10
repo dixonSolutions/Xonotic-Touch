@@ -5,7 +5,10 @@ The on-screen controls normally live in the port's CSQC (touch_*.qc). On a
 public server the client has to run that server's own CSQC, so the HUD would
 vanish there. This module draws and drives the same layout from the same cvars
 and the same gfx/touch masks, so a server looks and plays like a local match.
-It is active only while a foreign CSQC is loaded (see cl_touch_csqc_active).
+It is active only while a foreign CSQC is loaded (see cl_touch_csqc_active),
+with the controls on, or off on a touchscreen (strip, grip and pills only).
+Under any CSQC it also makes a finger the pointer of the CSQC's own pointer
+screens, such as the end-of-match vote (TouchHUD_CursorFrame).
 */
 #ifndef TOUCH_HUD_H
 #define TOUCH_HUD_H
