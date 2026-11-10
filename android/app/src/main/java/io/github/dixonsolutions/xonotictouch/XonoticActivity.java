@@ -173,6 +173,9 @@ public final class XonoticActivity extends SDLActivity {
             if (folded && isChassisPad(pointer)) {
                 continue;
             }
+            if (!keyboard && isBuiltInTouchpad(pointer)) {
+                continue;
+            }
             mouse = true;
             names.append(" mouse=\"").append(pointer.getName()).append('"');
         }
@@ -238,6 +241,17 @@ public final class XonoticActivity extends SDLActivity {
      */
     private static boolean isChassisPad(InputDevice pointer) {
         return hasName(pointer, CHASSIS_POINTER_NAMES);
+    }
+
+    /**
+     * A touchpad built into the device, on a device with no keyboard listed:
+     * a Galaxy Tab's sec_touchpad, which sits on the touchscreen's own
+     * controller and is never a pad anyone aims with. A laptop's built-in pad
+     * comes with its built-in keyboard, so it still counts there.
+     */
+    private static boolean isBuiltInTouchpad(InputDevice pointer) {
+        return Build.VERSION.SDK_INT >= 29 && !pointer.isExternal()
+                && hasSource(pointer.getSources(), InputDevice.SOURCE_TOUCHPAD);
     }
 
     private static boolean hasIgnoredName(InputDevice device) {
