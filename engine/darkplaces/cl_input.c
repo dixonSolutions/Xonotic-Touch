@@ -1809,6 +1809,7 @@ void CL_SendMove(void)
 	if ((in_attack.state & 3) || TouchAim_AutoFiring()) bits |= 1;
 	if (in_jump.state     & 3) bits |=   2;
 	if (in_button3.state  & 3) bits |=   4;
+	if (TouchAim_AutoFire2()) bits |= 4; // Touch: auto-shoot's secondary fire (+fire2)
 	if (in_button4.state  & 3) bits |=   8;
 	if (in_button5.state  & 3) bits |=  16;
 	if (in_button6.state  & 3) bits |=  32;
