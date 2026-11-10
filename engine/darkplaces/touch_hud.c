@@ -2197,3 +2197,53 @@ void TouchHUD_Draw(void)
 		draw_weapon_strip(a);
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Read-only weapon state for touch auto-shoot (touch_aim.c), from the same
+// binding of the loaded CSQC the weapon strip uses, so it holds under the
+// port's CSQC and a public server's alike.
+// ---------------------------------------------------------------------------
+int TouchHUD_NumWeapons(void)
+{
+	return num_weapons;
+}
+
+const char *TouchHUD_WeaponName(int index)
+{
+	return index >= 0 && index < num_weapons ? weapons[index].name : "";
+}
+
+qbool TouchHUD_WeaponOwned(int index)
+{
+	return index >= 0 && index < num_weapons && weapon_owned(index);
+}
+
+int TouchHUD_WeaponAmmo(int index)
+{
+	const wepdef_t *wd;
+	if (index < 0 || index >= num_weapons)
+		return 0;
+	wd = &weapons[index];
+	if (wd->ammo_stat < 0 || (cl.stats[STAT_ITEMS] & 1)) // IT_UNLIMITED_AMMO
+		return -1;
+	return max(0, cl.stats[wd->ammo_stat]);
+}
+
+int TouchHUD_HeldWeapon(void)
+{
+	return held_weapon_index();
+}
+
+int TouchHUD_HeldClip(void)
+{
+	prvm_prog_t *prog = CLVM_prog;
+	prvm_edict_t *ve = wepent();
+	if (!ve || qcfield_int(prog, ve, f_clip_size) <= 0)
+		return -1;
+	return qcfield_int(prog, ve, f_clip_load);
+}
+
+int TouchHUD_AltFireState(void)
+{
+	return altfire_state();
+}
