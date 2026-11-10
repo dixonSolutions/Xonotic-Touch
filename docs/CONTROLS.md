@@ -69,7 +69,8 @@ feed and the chat feed each get a band that touches neither.
 | **ALT** | Hold. Only there while the weapon in hand has a secondary fire it can fire; fades out when it runs dry | `+attack2` — see [Secondary fire](#secondary-fire-alt) |
 | **HOP** | Tap = one jump, hold = latch (keeps hopping hands-free) | `+jump` |
 | DUCK | Tap or hold | `+crouch` |
-| Weapon | WEP button / wheel; the right-edge strip is a readout, not a switcher | `impulse 1`…`9` or cycle |
+| Weapon strip (right edge) | Tap a weapon to switch to it; drag the grip under the strip to resize it — see [Weapon strip](#weapon-strip) | `impulse N` of the row |
+| WEP | Off by default (the strip switches); `touch_weapon_visible 1` brings the button back | cycle, wheel or 3-slot (`touch_weapon_mode`) |
 | Reload | Tap; hidden by default | `weapon_reload` |
 | **MENU** (top row) | Tap → Escape / GameMenu | Native Xonotic pause menu — see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md) |
 | **CONSOLE** (bottom-left) | Tap → `toggleconsole`, drag to reposition | Text sheet: layered keyboard (only with no keyboard attached), COMMANDS palette — see [TOUCH_CONSOLE_SPEC.md](TOUCH_CONSOLE_SPEC.md) |
@@ -77,6 +78,7 @@ feed and the chat feed each get a band that touches neither.
 | **SCORE** (bottom-left) | Tap → full scoreboard, tap again to clear; Escape also clears | `+showscores` / `-showscores`; also the `touch_scores` command |
 | Mobile HUD | Health, armour and ammo as one group, top-left | Bars for the two that have a maximum; reserve rounds beside the clip for weapons that reload |
 | Respawn / join | Tap **HOP** | `+jump`; the prompts name the button, not a key — see below |
+| **YES / NO** | Beside the vote panel while a called vote waits for your answer — see [Votes](#votes) | `vyes` / `vno` |
 
 Prompts that would normally name a key name the on-screen control instead in a touch
 session: "You are dead, press **HOP** to respawn", "Press **HOP** to join", "Press
@@ -91,6 +93,79 @@ there: no hop latch, and auto-hop does not hold it while the stick moves, or the
 observer would join the moment they flew anywhere. A finger still on HOP when
 the join lands is spent on the join: the first life starts with jump up, and
 the latch waits for the next press.
+
+### Weapon strip
+
+The column of owned weapons on the right edge is the weapon switcher: tap a row
+and the game switches to that weapon (`impulse N`), the same as its number key.
+The held weapon's row is washed in the accent colour. Under the last row is a
+grip, two short lines inside the strip's plate: put a finger on it and drag down
+to make the strip bigger, up to make it smaller. The size follows the finger
+and is kept when it lifts.
+
+| Cvar | Default | Range | Notes |
+|------|---------|-------|-------|
+| `cl_touch_weplist_scale` | `1.3` | 0.7–2.4 | Size. An **engine** cvar, archived in `config.cfg` (saved again when a grip drag ends) |
+| `touch_weplist_x` | `0.962` | 0–1 | Centre across; mirrored when left-handed. Layout file |
+| `touch_weplist_y` | `0.360` | 0–1 | Centre down. Layout file |
+| `touch_weplist_visible` | `1` | 0/1 | Layout file |
+
+The size is not a `touch_*` cvar on purpose: those are pinned by
+`touch.layout.cfg` every launch, so a size dragged on a public server, where
+no layout file is written, would be lost at the next start (the
+`cl_touch_aimassist*` cvars live in the engine for the same reason).
+`touch_hud_scale` no longer touches the strip; it sizes only the vitals.
+
+Geometry (`u` = the short axis ÷ 540 × `cl_touch_weplist_scale`): rows 26u high
+and 46u wide inside a 4u pad, the grip 12u high, about 75 px rows on a
+1920×1200 tablet at the default. A long inventory shrinks the strip until it
+and its grip fit 92% of the screen height, and wherever it is anchored the
+strip stays on screen. The grip's touch area reaches at least 7% of the short
+axis below its top edge, never up over the last row. A strip that is not drawn
+(dead, observing, hidden) takes no taps. The exact contract is in
+[TOUCH_LAYOUT_SPEC.md §3.1](TOUCH_LAYOUT_SPEC.md); the port's CSQC
+(`touch_hud.qc`, local matches) and the engine's HUD (`touch_hud.c`, public
+servers) draw the same strip with the same grip.
+
+Settings → Mobile → HUD has the size, both position sliders and visibility.
+
+### With a keyboard and mouse attached
+
+When a keyboard is attached to a touchscreen device, Dynamic mode hides the
+touch controls (`vid_touchscreen 0`) and the mouse aims, as on a desktop. The
+screen is still a touchscreen, so what a finger can usefully reach stays:
+
+* the weapon strip: tap to switch, drag the grip to resize;
+* **MENU**, **CHAT**, **SCORE** and **CONSOLE**, dimmed, unless
+  `touch_desk_pills` is `0` (Settings → Mobile → HUD: *Keep MENU, CHAT and SCORE
+  on screen with a keyboard*);
+* **YES** / **NO** while a vote waits on you.
+
+The move stick, FIRE, ALT, HOP, DUCK and ZOOM stay hidden. A finger anywhere
+else turns the view (`TouchHUD_LookWithoutControls`, engine). "A touchscreen"
+means the engine's scan found one (`vid_touchscreen_detected`), or a finger is
+on the glass; on a machine with no touchscreen nothing of this applies, and the
+strip is drawn as a plain readout as before. The port's CSQC publishes the
+engine finger slots it holds in this state in `_cl_touch_desk_fingers` (a bit
+per slot), so the engine's finger look can leave them alone. On public servers
+the engine HUD does the same (`touch_hud.c`, reading the same
+`touch_desk_pills`).
+
+### Votes
+
+**Map and gametype vote** (match end): the touch controls step aside, as they
+do for every stock screen that asks for the cursor (the quick menu, minigames, a
+clickable radar), and the first finger is the cursor: tap an option to vote for
+it. The engine moves the cursor to the finger and clicks only once the vote
+screen has drawn a frame with it there, so the vote goes to the option under
+the finger; dragging across options votes for none of them. A mouse keeps
+working as before.
+
+**A vote called mid-match** (`vcall`, the vote panel): **YES** and **NO** pills
+sit beside the vote panel while the vote is pending and you have not answered,
+and send `vyes` / `vno`. They go as soon as the server has your answer. They
+are there with a keyboard attached too, and on public servers the engine HUD
+shows the same pair.
 
 Geometry, sizing rationale and the input model are specified in
 [TOUCH_UX_REDESIGN.md](TOUCH_UX_REDESIGN.md); the coordinate contract is in
@@ -111,7 +186,7 @@ flowchart TB
   A[touch/xonotic.cfg] --> B[data/screen.layout.cfg]
   B --> C[touch/profiles/standard.cfg]
   C --> D["$HOME/.xonotic/touch.layout.cfg"]
-  D --> E[In-game pause / wizard saves]
+  D --> E[In-game pause / Settings saves]
 ```
 
 | Step | File | Writable | Role |
@@ -185,7 +260,8 @@ keeps its physical size across aspect ratios — `mm = _size × 183.2` on the
 | ALT, secondary fire | `touch_fire2_` | `touch_fire2_visible` 0 never / 1 always / 2 contextual | contextual (`2`) |
 | Hop | `touch_jump_` | `touch_jump_aspect` (capsule width ÷ height) | yes |
 | Duck | `touch_crouch_` | — | yes |
-| Weapon | `touch_weapon_` | — | no (HUD strip switches weapons) |
+| Weapon | `touch_weapon_` | — | no (the weapon strip switches weapons) |
+| Weapon strip | `touch_weplist_` | `_x`, `_y`, `_visible` only: sized by `cl_touch_weplist_scale` — see [Weapon strip](#weapon-strip) | yes |
 | Zoom | `touch_zoom_` | `touch_zoom_visible` 0 never / 1 always / 2 contextual | contextual (`2`) |
 | Dash | `touch_dodge_` | — | no |
 | Reload | `touch_reload_` | — | no |
@@ -206,6 +282,9 @@ duplicated here — three copies of a coordinate is two too many.
 | `touch_look_zone_right` | float | 0–1 | `1.0` | Right edge (usually full width) |
 | `touch_edge_deadzone_px` | int | 8–24 | `16` | Ignore touches near bezels (GNOME edge gestures) |
 | `touch_handedness` | int | 0/1 | `0` | `0` = right-hand look zone; `1` = mirrored |
+| `touch_weplist_x` / `_y` | float | 0–1 | `0.962` / `0.360` | Weapon strip centre; kept on screen whatever the value |
+| `touch_weplist_visible` | int | 0/1 | `1` | Weapon strip shown |
+| `touch_desk_pills` | int | 0/1 | `1` | Keyboard attached on a touchscreen: keep MENU, CHAT, SCORE and CONSOLE, dimmed and tappable |
 
 **Left-handed mirror:** `x' = 1.0 - touch_*_x` about the widget centre (`Touch_MirrorX`),
 applied when `touch_handedness 1` or `left.cfg` is loaded. The look and move
@@ -266,7 +345,7 @@ Engine movement (already in `touch/xonotic.cfg`):
 | `touch_look_tap_fire` | int | 0/1 | `1` | Short tap in the look zone fires |
 | `touch_look_tap_ms` | int | | `200` | Longest tap still counted as a shot |
 | `touch_zoom_mode` | int | 0=hold, 1=toggle | `0` | |
-| `touch_weapon_mode` | int | 0=wheel, 1=3slot, 2=cycle | `2` | Cycle; the HUD strip is the primary switcher |
+| `touch_weapon_mode` | int | 0=wheel, 1=3slot, 2=cycle | `2` | WEP button behaviour; the weapon strip is the primary switcher |
 | `touch_weapon_slot1` | string | weapon name | `"Laser"` | 3-slot favorites |
 | `touch_weapon_slot2` | string | | `"Shotgun"` | |
 | `touch_weapon_slot3` | string | | `"Grenade Launcher"` | |
@@ -279,7 +358,7 @@ Engine movement (already in `touch/xonotic.cfg`):
 | `touch_conui_shade` | float | 0–1 | `0.62` | Console background dim |
 | `touch_conui_palette_file` | string | path | `touch/console_palette.txt` | COMMANDS tab presets |
 | `touch_minimal_more` | int | 0/1 | `0` | Minimal preset: secondary panel for crouch/zoom/dodge |
-| `touch_setup_done` | int | 0/1 | `0` | First-run wizard completed; skip on next launch |
+| `touch_setup_done` | int | 0/1 | `0` | First-launch touch defaults applied (layout saved); never asked again |
 
 ### Secondary fire (ALT)
 
@@ -338,39 +417,55 @@ and the fade; CI runs it.
 
 ### Shoot helpers: auto-shoot and aim assist (engine)
 
-These run in the engine client (`engine/darkplaces/touch_aim.c`), not in
-the CSQC, so they work the same on a public server (where the client runs
-the server's own CSQC and the engine draws the HUD) and in a local match.
-They only run while the touch controls are shown: with a physical keyboard
-attached (Dynamic) the engine clears `vid_touchscreen` and all of this
-switches off, whatever the cvars say. They also stand down while a mouse aims next to the touch controls
-(`vid_touchscreen_mouselook`): a listed mouse or touchpad aims once it has been moved or clicked, and hands
-the aim back to the fingers after 5 seconds of touch without it. One that is only listed (a tablet's built-in
-touchpad, a phone browser reporting a fine pointer) never does. These cvars are archived in `config.cfg`, not
-in the touch layout file. Settings → Mobile → **Aim** and **Auto-shoot** have every one of the cvars below. The
-target ring (`cl_touch_aim_ring`) is drawn at the crosshair so the helpers can be seen working.
+These run in the engine client (`engine/darkplaces/touch_aim.c`, with the
+weapon knowledge in `touch_weapons.h`), not in the CSQC, so they work the same
+on a public server (where the client runs the server's own CSQC and the engine
+draws the HUD) and in a local match. They only run while the touch controls
+are shown: with a physical keyboard attached (Dynamic) the engine clears
+`vid_touchscreen` and all of this switches off, whatever the cvars say. They
+also stand down while a mouse aims next to the touch controls
+(`vid_touchscreen_mouselook`): a listed mouse or touchpad aims once it has been
+moved or clicked, and hands the aim back to the fingers after 5 seconds of
+touch without it. One that is only listed (a tablet's built-in touchpad, a
+phone browser reporting a fine pointer) never does. These cvars are archived in
+`config.cfg`, not in the touch layout file. Settings → Mobile → **Aim** and
+**Auto-shoot** hold the main ones; every one can be set from the console. The
+target ring (`cl_touch_aim_ring`) is drawn at the crosshair so the helpers can
+be seen working.
 
 | Cvar | Default | What it does |
 |------|---------|--------------|
-| `cl_touch_autoshoot` | `1` | Fire while the crosshair is on a visible enemy player |
-| `cl_touch_autoshoot_delay` | `0.1` | Reaction time (s) before auto-fire starts (clamped 0.05–0.5) |
+| `cl_touch_autoshoot` | `1` | Fire at a visible enemy player under (or near) the crosshair |
+| `cl_touch_autoshoot_radius` | `1.5` | Degrees from the crosshair to the enemy's body (where the shot will meet it) within which auto-shoot fires, narrowed to what the weapon's spread or splash covers at that distance; 0 = only on the body (0–6) |
+| `cl_touch_autoshoot_delay` | `0` | Reaction time (s) before auto-fire starts; 0 = the first frame (0–0.5) |
 | `cl_touch_autoshoot_release` | `0.15` | Keep firing this long (s) after the crosshair slips off (0–0.5) |
+| `cl_touch_autoshoot_alt` | `1` | Use secondary fire when it is the better shot (table below) |
+| `cl_touch_autoshoot_lead` | `1` | Lead moving targets with projectile weapons, loft grenades and orbs |
+| `cl_touch_autoshoot_steer` | `1` | Guide Devastator rockets to the enemy and detonate them there |
+| `cl_touch_autoshoot_safe` | `1` | Hold fire when the shot would catch you in its own blast, cannot reach, or the weapon is not one to fire by itself (Port-O-Launch, Hook, Tuba) |
+| `cl_touch_autoswitch` | `1` | Switch to the best owned weapon for the distance to the enemy you fight |
 | `cl_touch_aimassist` | `1` | Master switch for slowdown and pull |
 | `cl_touch_aimassist_friction` | `0.45` | Slowdown: fraction of look speed removed over an enemy, fading to the cone edge; not while turning toward one not yet reached (0 = off, max 0.8) |
-| `cl_touch_aimassist_strength` | `0.35` | Pull toward the nearest enemy in the cone: follows strength × 2 of its motion across the view and closes the gap to the inner half of its body at strength × 10 per second, or strength × your own turn speed if faster (0 = off, max 0.6) |
-| `cl_touch_aimassist_maxrate` | `40` | Hard cap on the pull, degrees per second (max 60) |
-| `cl_touch_aimassist_cone` | `8` | Degrees from the crosshair to the edge of an enemy's body within which it counts as near (max 12) |
-| `cl_touch_autoshoot_weapons` | `0` | 0 = every weapon, 1 = instant-hit weapons only (the port's CSQC reports the weapon in `_cl_touch_weapon_class`; a server whose game does not leaves it unfiltered) |
+| `cl_touch_aimassist_strength` | `0.6` | Pull toward the nearest enemy in the cone (toward where the shot will meet it): follows strength × 2 of its motion across the view and closes the gap to the inner half of its body at strength × 10 per second, or strength × your own turn speed if faster (0 = off, max 1) |
+| `cl_touch_aimassist_maxrate` | `90` | Hard cap on the pull, degrees per second (max 180) |
+| `cl_touch_aimassist_cone` | `8` | Degrees from the crosshair to the edge of an enemy's body within which it counts as near (1–15) |
+| `cl_touch_aimassist_track` | `1` | Keep pulling toward the enemy auto-shoot is firing at even while the thumb rests |
+| `cl_touch_autoshoot_weapons` | `0` | 0 = every weapon, 1 = instant-hit fire only (judged from the weapon in hand; for a weapon the engine does not know, from `_cl_touch_weapon_class`) |
 | `cl_touch_autoshoot_aimonly` | `0` | 1 = auto-shoot only while a finger is on the aim area or FIRE |
 | `cl_touch_aim_ring` | `1` | Draw a ring at the crosshair: accent while an enemy is in the cone, red while the crosshair is on one (`_cl_touch_aim_lock`) |
 | `cl_touch_aim_range` | `3000` | Enemies farther than this (units) are ignored |
-| `cl_touch_aim_debug` | `0` | 1 = print target / fire changes and the reason the helpers are idle (menu open, keyboard in use, dead, ...) to the console, 2 = also teammates under the crosshair |
+| `cl_touch_aim_debug` | `0` | 1 = print each decision change (target, weapon, fire mode and why, lead, switches, rockets) and the reason the helpers are idle (menu open, keyboard in use, dead, ...) to the console, 2 = also teammates under the crosshair |
 
-How it decides:
+With `_radius 0`, `_delay 0.1`, `_alt 0`, `_lead 0`, `_steer 0`, `_safe 0`,
+`_autoswitch 0`, `_track 0`, strength `0.35` and rate `40` it behaves as the
+first version did.
+
+**Who is a target** (unchanged rules):
 
 - **Players** are the CSQC edicts whose engine-set `entnum` is a client slot
   (1…maxclients): Xonotic networks players through CSQCModel, so their
-  interpolated origin and networked bounding box live there, in any CSQC.
+  interpolated origin, networked bounding box and derived velocity live there,
+  in any CSQC.
 - **Enemies** come from the engine scoreboard: a spectator (frags -666/-616)
   is never a target; in a team game the same pants colour as yours is a
   teammate. Whether it is a team game is read from the CSQC's `teamplay`
@@ -378,28 +473,101 @@ How it decides:
   player wearing your colour is never shot.
 - **Not** yourself, the player you are spectating, corpses (`solid ==
   SOLID_CORPSE`), gibs and copied bodies (not player slots), hidden or
-  invisible players (`EF_NODRAW`, no drawmask, alpha below 0.4).
+  invisible players (`EF_NODRAW`, no drawmask, alpha below 0.4). Nothing is
+  tracked that the player could not see.
 - **Line of sight**: a world trace (plus CSQC brush models such as doors)
-  from the view origin to the point the crosshair ray enters the body.
-- Auto-shoot adds the attack bit to the outgoing move in `CL_SendMove`. It
-  never touches the `+attack` key state, so a finger on FIRE always fires,
-  and auto-shoot letting go can never cancel a manual hold. FIRE glows while
-  auto-shoot is firing (engine HUD and CSQC HUD).
-- Slowdown multiplies the touch look drag: the engine HUD applies it in
-  `look_apply`; the port's CSQC reads it from `_cl_touch_aim_lookscale`.
-- Pull only happens while a finger is on the aim control (look zone or
-  FIRE) and you are turning or moving, or did in the last half second (a
-  finger left resting never aims by itself), never against a turn heading
-  away from the target, capped per second so it cannot snap. The port's
-  CSQC reports the aim finger through `_cl_touch_hud_state`.
+  from the view origin to the body; a led shot also needs a clear line to the
+  lead point.
 - Nothing runs in menus, the console, the chat sheet, the layout editor,
   intermission, while dead, spectating or watching a demo.
 
-Limits: the aim is at the interpolated position you see, which is what the
-server's antilag expects for hitscan; projectile weapons get no lead, so
-auto-shoot at range with the Mortar or Devastator mostly wastes ammo, and
-charge weapons are simply held. Team detection relies on Xonotic forcing
-team colours; a mod that does not will be treated conservatively.
+**The weapon in hand** comes from the loaded CSQC's weapon registry (the same
+binding the engine weapon strip uses), matched by netname against the stock
+balance in `touch_weapons.h`. A weapon it does not know (a mod's) is fired as
+before: primary, no lead, no switching.
+
+**Lead.** Instant-hit weapons and beams aim at the body you see: that is what
+the server's antilag rewinds to. Projectiles aim where the shot and the
+target meet: the target's velocity (smoothed over a few frames) and the shot's
+speed give the meeting time in closed form; the Devastator's speed-up (1000 to
+1300 units/s) is solved numerically; grenades, orbs and mines are lobbed under
+the world's gravity with their up-speed. The time the server takes to see the
+shot (the moves it has not acknowledged yet) is added. No lead beyond 1.5 s
+of flight, or for a target faster than the shot; then it aims at the body.
+
+**When to fire.** The crosshair must be within `_radius` of the (led) body,
+narrowed to what the weapon covers there: half its spread cone for pellets and
+sprayed bullets, half its splash radius for explosives. The Vortex, Rifle and
+other exact instant hits wait for the body itself.
+
+**Fire mode per weapon** (`_alt`; after Xonotic's own bots):
+
+| Weapon | Auto-shoot uses |
+|--------|-----------------|
+| Shotgun | melee (secondary) inside 110 units, pellets beyond (up to 1200) |
+| MachineGun | sustained fire; the burst beyond 1500 units |
+| Arc | beam inside its 1500 range, bolts beyond |
+| Crylink | secondary (the tight volley) |
+| Vaporizer | primary; the blaster shot once out of cells |
+| Overkill weapons | primary; the blaster shot once out of ammo |
+| Electro, Hagar, HLAC, Mortar, Rifle, Vortex, Blaster, Devastator | primary (Hagar load, Electro orbs and Mortar bounce stay manual) |
+| Port-O-Launch, Grappling Hook, Tuba | never (`_safe`) |
+
+Splash weapons hold fire while the target, or where the shot meets it, is
+inside their own blast radius plus 40 units (the Blaster's weak blast
+excepted), switching to the other fire if that one is safe (`_safe`). The
+secondary goes out as button3 next to the attack bit; `_cl_touch_autoshoot_active`
+reads 1 for primary, 2 for secondary, 3 for both.
+
+**Devastator steering** (`_steer`). One rocket per press: auto-shoot presses
+fire once lined up on the lead point (never inside the rocket's splash), keeps
+it held while the rocket flies (that is what makes the server steer it toward
+the view), keeps the view on where rocket and enemy will meet even with the
+thumb at rest, and sends a one-frame attack2 when the enemy is inside 0.8 of
+the 110-unit blast and the rocket stops closing, or the rocket is inside the
+blast and about to pass (never with you inside it). Then it lets go of fire
+so the next press launches again. Projectiles carry no owner, so "our" rocket
+is the rocket projectile that appears near the muzzle after the press (the
+`csqcprojectile_type` field, or in 0.8.6's CSQC `cnt` plus the rocket model);
+if none is seen within a quarter second it is dead-reckoned along the view at
+the Devastator's speed. Mine Layer mines are left manual.
+
+**Switching** (`_autoswitch`). The weapon list is the bots' preference for the
+distance (bands at 500 and 1050 units), without the Tuba, Mine Layer,
+Port-O-Launch, Hook, Fireball and Seeker; only owned weapons with ammo for a
+shot, in range and not inside their own splash count. It switches with the
+exact `weapon_<netname>` alias every CSQC defines, and only when the enemy has
+been the target for a quarter second, the weapon in hand cannot shoot there
+(no ammo, out of range, inside its splash) or the other is at least two places
+better, and none of these hold: within 4 s of you choosing a weapon (strip,
+wheel, a pickup switching by itself; not the server's own switch off an empty
+weapon), within 2 s of its own last switch, a rocket in flight, FIRE or ALT
+held, an earlier switch still on its way.
+
+**Pull and slowdown.** Slowdown multiplies the touch look drag: the engine HUD
+applies it in `look_apply`; the port's CSQC reads it from
+`_cl_touch_aim_lookscale`. Pull works while a finger is on the aim control
+(look zone or FIRE) and you are turning or moving, or did in the last half
+second (a finger left resting never aims by itself); and also while auto-shoot
+is firing at that target (`_track`) or a steered rocket flies. Never against a
+turn heading away from the target, capped per second so it cannot snap. The
+port's CSQC reports the aim finger through `_cl_touch_hud_state`.
+
+**Your own press wins.** Auto-shoot adds bits to the outgoing move in
+`CL_SendMove`; it never touches the key state, so a finger on FIRE or ALT
+always fires, and auto-shoot letting go can never cancel a manual hold. While
+you hold FIRE or ALT it adds nothing of its own (except keeping a steered
+rocket's fire held). FIRE glows while auto-shoot is firing (engine HUD and
+CSQC HUD).
+
+Limits: the weapon numbers are the stock balance. A server running another
+balance (faster rockets, other splash radii, a mod's weapons) makes the lead
+and the ranges off by that difference; a weapon the table does not know is
+fired plainly. The lead assumes the target keeps its velocity: a strafe that
+reverses mid-flight is missed, and jumps are led as straight lines (gravity is
+not applied to the target). Charge weapons are simply held. Team detection
+relies on Xonotic forcing team colours; a mod that does not will be treated
+conservatively.
 
 **Fire, zoom, weapons (recommended defaults):**
 
@@ -488,7 +656,7 @@ Uses engine volume cvars; port adds an output profile for phone speaker vs headp
 
 | Cvar | Type | Default | Purpose |
 |------|------|---------|---------|
-| `touch_hud_scale` | float | `1.0` | HUD scale; tied to `vid_touchscreen_density` |
+| `touch_hud_scale` | float | `0.85` | Size of the health, armour and ammo readouts (Settings → Mobile → HUD → Readout size). Not the weapon strip, which has `cl_touch_weplist_scale` |
 | `touch_reduce_shake` | int | `0` | Lower view punch / camera shake |
 | `touch_colorblind_mode` | int | `0` | Team colors: 0=off, 1=deuter, 2=protan, 3=tritan |
 | `touch_mobile_data_mode` | int | `0` | When `1`: `cl_curl_enabled 0`, defer map downloads |
@@ -501,8 +669,9 @@ Uses engine volume cvars; port adds an output profile for phone speaker vs headp
 | File | Audience | Summary |
 |------|----------|---------|
 | `standard.cfg` | Most players | The layout. Every other control preset `exec`s it and overrides only what differs |
-| `casual.cfg` | New to touch / Xonotic | Larger widgets, light aim assist, lower sens, auto-hop |
-| `competitive.cfg` | Experienced | Smaller widgets, no assist (auto-shoot and aim assist off), higher sens, second fire button on (claw grip), snappier look filter, 3-slot weapons, double-tap dash |
+| `casual.cfg` | New to touch / Xonotic | Larger widgets, stronger aim assist than the default, lower sens, auto-hop |
+| `competitive.cfg` | Experienced | Smaller widgets, no assist (auto-shoot, aim assist and auto-switch off), higher sens, second fire button on (claw grip), snappier look filter, 3-slot weapons, double-tap dash |
+| `helpers.cfg` | — | Every shoot-helper cvar at its default; the presets and *Reset preset* exec it, then override what differs |
 | `left.cfg` | Left-handed | `touch_handedness 1` — the mirror is computed, not a second copy of the geometry |
 | `minimal.cfg` | Small phones | Fewest controls; auto-hop so nothing but move, look and fire is needed |
 | `battery.cfg` | Long sessions | Performance row only |
@@ -514,7 +683,19 @@ Uses engine volume cvars; port adds an output profile for phone speaker vs headp
 
 ## Settings UI (intent groups)
 
-Implement in `qcsrc/menu/` — shallow tree for phone sessions (Hick’s Law).
+As shipped, Settings → Mobile (`dialog_settings_touch.qc`) has five sub-tabs; each
+cvar is on exactly one of them:
+
+| Sub-tab | Rows |
+|---------|------|
+| **Controls** | Input mode (Dynamic / Touch / Keyboard & mouse, switch mid-game, announce, touch-only), layout presets, opacity, scale, glass tint, left-handed, stick dead zone and reach, FIRE hold / toggle, dodge button, customize / save / reset |
+| **HUD** | Weapon bar: size (`cl_touch_weplist_scale` 0.7–2.4), across (`touch_weplist_x`), down (`touch_weplist_y` 0.15–0.85), show; readout size (`touch_hud_scale`); *Keep MENU, CHAT and SCORE on screen with a keyboard* (`touch_desk_pills`) |
+| **Aim** | Look sensitivity, vertical, invert; aim assist on / off with Light, Medium (the defaults) and Strong; slowdown, pull (0–1), catch cone (1–15°), max pull (0–180°/s), target ring |
+| **Auto-shoot** | Auto-shoot on / off, reaction delay (0–0.5 s), shoot radius (0–6°), keep firing, which weapons; shot choice: secondary fire when better, lead moving targets, guide and detonate rockets, switch to the best weapon; aim-area-only, range — see [Shoot helpers](#shoot-helpers-auto-shoot-and-aim-assist-engine) |
+| **Dynamics** | Performance profile, frame cap, vsync, dynamic resolution, render scale, jump button mode |
+
+The original intent groups, kept for the menus not built yet. Shallow tree for
+phone sessions (Hick’s Law):
 
 | Menu group | Contents |
 |------------|----------|
@@ -528,7 +709,7 @@ Implement in `qcsrc/menu/` — shallow tree for phone sessions (Hick’s Law).
 
 ```mermaid
 flowchart LR
-  W[First-run wizard] --> S[touch.layout.cfg]
+  W[First launch defaults] --> S[touch.layout.cfg]
   P[Pause → Controls] --> S
   M[Main menu → Import/Export] --> S
 ```
@@ -539,9 +720,12 @@ Pause sub-tabs: Preset · Look · Move · Buttons · Layout · Advanced (export/
 
 ## Session flow (menus)
 
-Main menu is stock Xonotic (Singleplayer / Multiplayer / Media / Settings / …). Touch-specific UI stays under Settings → Mobile (Controls, Aim, Auto-shoot, Dynamics) (and first-run wizard).
+Main menu is stock Xonotic (Singleplayer / Multiplayer / Media / Settings / …). Touch-specific UI stays under Settings → Mobile (Controls, HUD, Aim, Auto-shoot, Dynamics).
 
-- **Touch setup** — first-run: preset → handedness → save.
+- **First launch** — no touch-controls dialog: the Standard controls are taken
+  silently, the layout is saved and `touch_setup_done` is set (see
+  [SETUP.md](SETUP.md)). Presets (Standard, Casual, Competitive, Left hand,
+  Minimal) and handedness are in Settings → Mobile → Controls.
 - **Server browser** — stock Multiplayer browser. Joining used to fail on
   every public server: they name their client progs by version
   (`csprogs-xonotic-v0.8.6-NNNN-gHASH.dat`), `cl_csqc_download 0` refused to
@@ -604,11 +788,11 @@ Scale from `vid_width`, `vid_height`, `vid_touchscreen_density` — never 1920×
 | Element | Mobile approach |
 |---------|-----------------|
 | HUD | Less clutter; `touch_hud_scale` × density |
-| Weapon select | Wheel or compact bar; edge-aligned large targets |
+| Weapon select | Right-edge strip of large rows, resizable with its grip ([Weapon strip](#weapon-strip)) |
 | Scoreboard | Full-screen overlay |
 | Kill feed | Shorter lifetime, smaller type |
 | Damage feedback | Stronger directional indicators |
-| Intermission / vote | Large tappable rows; no hover |
+| Intermission / vote | The finger is the cursor on the vote screen; YES / NO pills for a called vote ([Votes](#votes)) |
 
 ---
 
@@ -670,8 +854,8 @@ Menu actions: Export → share file; Import → validate keys, backup current, `
 | Touch CSQC | `engine/.../qcsrc/client/touch_*.qc` | Sticks, buttons, multitouch, aim assist |
 | Engine fingers | `engine/darkplaces/vid_sdl.c`, `clvm_cmds.c` | `gettouchfinger` builtin (#643), `DP_UT_TOUCHFINGER` |
 | Constants | `engine/.../qcsrc/common/` | Shared enums, weapon names, gesture thresholds *(pending)* |
-| Settings UI | `engine/.../qcsrc/menu/xonotic/` | Sliders, wizard, touch settings tab |
-| Mobile status HUD | `engine/.../qcsrc/client/touch_hud.qc` | Health / armour / ammo group, weapons strip |
+| Settings UI | `engine/.../qcsrc/menu/xonotic/` | Sliders, touch settings tab |
+| Mobile status HUD | `engine/.../qcsrc/client/touch_hud.qc`, `touch_weapons.qc` | Health / armour / ammo group, weapons strip, its grip and tap slots |
 | User persistence | `~/.xonotic/touch.layout.cfg` | Profile `exec` + registered cvars |
 | SDL fingers | `engine/darkplaces/vid_sdl.c` | SDL multitouch → `gettouchfinger` |
 
@@ -689,7 +873,7 @@ Menu actions: Export → share file; Import → validate keys, backup current, `
 | Input / multitouch / commands | `touch_input.qc` | **Done** (4-finger slots via `gettouchfinger`) |
 | Overlay draw | `touch_draw.qc` | **Done** |
 | Customize mode | `touch_customize.qc` | **Done** — drag handles, grid snap, save/cancel/reset |
-| Menu / wizard | `qcsrc/menu/` | **Done** — startup chain, asset progress, touch setup (`docs/SETUP.md`) |
+| Menu / wizard | `qcsrc/menu/` | **Done** — startup chain, asset progress, first-launch touch defaults (`docs/SETUP.md`) |
 
 Build flow: clone repo (integrated `engine/`) → `fetch-sources.sh code` (if needed) → `./scripts/install-flatpak.sh` or `./scripts/run-local.sh`.
 

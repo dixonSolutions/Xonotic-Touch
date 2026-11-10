@@ -25,6 +25,15 @@ CLASS(XonoticMobileControlsTab, XonoticTab)
 ENDCLASS(XonoticMobileControlsTab)
 entity makeXonoticMobileControlsTab();
 
+CLASS(XonoticMobileHudTab, XonoticTab)
+	METHOD(XonoticMobileHudTab, fill, void(entity));
+	ATTRIB(XonoticMobileHudTab, intendedWidth, float, 0.9);
+	ATTRIB(XonoticMobileHudTab, rows, float, 14);
+	ATTRIB(XonoticMobileHudTab, columns, float, 6);
+	ATTRIB(XonoticMobileHudTab, name, string, "mobilehud");
+ENDCLASS(XonoticMobileHudTab)
+entity makeXonoticMobileHudTab();
+
 CLASS(XonoticMobileAimTab, XonoticTab)
 	METHOD(XonoticMobileAimTab, fill, void(entity));
 	ATTRIB(XonoticMobileAimTab, intendedWidth, float, 0.9);

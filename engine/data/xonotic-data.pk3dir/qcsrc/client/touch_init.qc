@@ -154,6 +154,10 @@ void Touch_DefineCvars(void)
 	Touch_RegisterCvar("touch_chat_size", "0.060");
 	Touch_RegisterCvar("touch_chat_aspect", "2.9");
 	Touch_RegisterCvar("touch_chat_visible", "1");
+	// With a keyboard attached the play controls go, but MENU, CHAT, SCORE and
+	// CONSOLE stay on a touchscreen, dimmed, for a finger (Touch_DeskActive).
+	// The engine's HUD reads the same cvar on servers.
+	Touch_RegisterCvar("touch_desk_pills", "1");
 	// Keyboard: 0.38 of the height gives 4 rows of ~15 mm keys, well over the
 	// 9 mm floor, while leaving room for the backlog above it.
 	Touch_RegisterCvar("touch_kb_height", "0.38");
@@ -254,6 +258,9 @@ void Touch_DefineCvars(void)
 	Touch_RegisterTransientCvar("touch_autoscreenshot", "0");
 	// Read-only: STAT(TOUCH_ALTFIRE) as last seen (Touch_Fire2Alpha).
 	Touch_RegisterTransientCvar("_touch_fire2_state", "0");
+	// Read-only: engine finger slots this HUD has claimed with the controls off,
+	// a bit each (Touch_ReportDeskClaim).
+	Touch_RegisterTransientCvar("_cl_touch_desk_fingers", "0");
 	// Registered here so a saved layout can carry it, but written by
 	// Touch_WriteAllCvars rather than from the table — its value is the schema's,
 	// not a preference, and resetting it would defeat the migration check.

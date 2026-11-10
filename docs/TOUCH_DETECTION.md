@@ -121,7 +121,7 @@ on-screen controls are drawn**. Touch and the mouse work in every state:
 | System lists | Dynamic shows the controls | Touch | Mouse |
 |--------------|----------------------------|-------|-------|
 | touchscreen, no keyboard | **yes** | the controls | aims in the game (grabbed) if listed |
-| touchscreen and a keyboard | no | menus; a drag anywhere turns the view | aims if listed |
+| touchscreen and a keyboard | no | menus; weapon strip, its grip and the chrome pills; a drag anywhere else turns the view | aims if listed |
 | no touchscreen | no | — | aims |
 
 With `vid_touchscreen_touchonly 0`, Dynamic shows the controls on any
@@ -143,11 +143,32 @@ only inputs that count are presence evidence:
   next to the controls rather than its clicks pressing them. It never hides
   the controls, and resets when a mouse comes or goes, or tablet mode changes.
 
-- **Fingers without the controls.** `TouchHUD_LookWithoutControls`
-  (`touch_hud.c`) turns a drag anywhere into look, with the touch look
-  settings and filter. It runs under any CSQC, since the touch CSQC stands
-  down with the controls. Taps do nothing in the game. In menus a finger
-  presses as it does with the controls (`VID_TouchMenuFingerEvent`).
+- **Fingers without the controls.** Only the gameplay controls go (stick,
+  FIRE, ALT, HOP, DUCK, ZOOM). The weapon strip stays, a tap on a row
+  switches weapon and its grip resizes it; MENU, CHAT, SCORE and CONSOLE stay
+  at reduced alpha and tappable unless `touch_desk_pills` is 0; YES and NO
+  show beside a vote called in the match. Under a server's CSQC the engine
+  HUD runs all of that (`desk_active` in `touch_hud.c`); in a local match the
+  port's CSQC does, and publishes the finger slots it claims in
+  `_cl_touch_desk_fingers`. Any other finger turns the view, with the touch
+  look settings and filter (`TouchHUD_LookWithoutControls`); taps there fire
+  nothing. With no touchscreen at all the strip is drawn and nothing else.
+  In menus a finger presses as it does with the controls
+  (`VID_TouchMenuFingerEvent`).
+- **A CSQC pointer screen.** While the loaded CSQC shows its own pointer (the
+  end-of-match map and gametype vote, the quick menu, minigames,
+  `hud_configure`; `cl.csqc_wantsmousemove`), the controls stand down and
+  take no fingers, MENU and CHAT apart. The first finger to land is the
+  pointer: it moves `in_windowmouse`, and its `K_MOUSE1` press reaches the
+  CSQC once a frame has been drawn with the new position, since the CSQC
+  works out what is under the pointer while drawing. A drag clicks once,
+  where it started; further fingers, and fingers already down when the
+  screen opened, do nothing. With the controls shown or hidden, under any
+  CSQC (`TouchHUD_CursorFrame`). A real mouse clicks as before, and keeps
+  the pointer from the moment it moves.
+- **Quick taps.** A finger that goes down and up within one event poll, as an
+  Android tap often does, stays in the finger table until the next poll, so
+  the HUD and `gettouchfinger` see it.
 - **The mouse.** Once the system lists a mouse or touchpad, the engine grabs
   it for mouselook in the game, next to the controls or without them
   (`VID_TouchMouselook`, `VID_TouchMouseConfirmed`). It does not wait for the

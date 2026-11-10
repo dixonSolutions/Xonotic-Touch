@@ -6,7 +6,7 @@
 #include "inputbox.qh"
 #include "dialog_termsofservice.qh"
 #include "dialog_firstrun.qh"
-#include "dialog_touch_wizard.qh"
+#include "touch_startup_util.qh"
 #include "dialog_touch_asset_fetch.qh"
 #include "dialog_hudsetup_exit.qh"
 #include "dialog_hudpanel_notification.qh"
@@ -88,6 +88,7 @@ void MainWindow_tryOpenStartupDialogs(entity me)
 		MainWindow_openAssetFetchDialog(me);
 		return;
 	}
+	TouchStartup_applyTouchDefaults(); // Touch: default controls, no setup dialog
 	// Start in the system's language (the browser's, on the web), once per install, whether or not the
 	// first-run dialog is due. The menu restarts in it and comes back here.
 	if (LanguageList_applySystemLanguage())
@@ -103,8 +104,6 @@ void MainWindow_tryOpenStartupDialogs(entity me)
 		DialogOpenButton_Click_withCoords(NULL, me.firstRunDialog, '0 0 0', eX * conwidth + eY * conheight);
 		return;
 	}
-	if (me.touchSetupDialog.shouldShow())
-		DialogOpenButton_Click_withCoords(NULL, me.touchSetupDialog, '0 0 0', eX * conwidth + eY * conheight);
 }
 
 void MainWindow_draw(entity me)
@@ -151,10 +150,6 @@ void MainWindow_configureMainWindow(entity me)
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
 
 	me.assetFetchDialog = i = NEW(XonoticTouchAssetFetchDialog);
-	i.configureDialog(i);
-	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
-
-	me.touchSetupDialog = i = NEW(XonoticTouchSetupDialog);
 	i.configureDialog(i);
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
 

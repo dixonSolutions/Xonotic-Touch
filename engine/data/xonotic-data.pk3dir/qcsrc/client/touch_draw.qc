@@ -10,6 +10,8 @@
 #include "touch_init.qh"
 #include "touch_input.qh"
 #include "touch_defs.qh"
+#include "touch_scores.qh"
+#include "touch_weapons.qh"
 
 // Pressed and latched visuals cannot be reached from a screenshot harness: a
 // virtual uinput touchscreen is not routed to the game window, so the only way
@@ -179,6 +181,7 @@ void Touch_DrawOverlay(float overlayAlpha)
 		Touch_Chat_DrawPill(overlayAlpha);
 		Touch_Console_Draw(overlayAlpha);
 		Touch_Scores_DrawPill(overlayAlpha);
+		Touch_Vote_Draw(overlayAlpha);
 	}
 
 	if (autocvar_touch_move_visible || autocvar_touch_debug)
@@ -229,6 +232,9 @@ void Touch_Draw(void)
 	if (owns != cvar("_touch_owns_screen"))
 		cvar_set("_touch_owns_screen", ftos(owns));
 
+	// Whatever draws the weapons strip this frame registers its rows after this.
+	Touch_Weapons_MarkFrame();
+
 	if (!Touch_Active())
 	{
 		// Play at a desk, with a mouse and a keyboard: the controls are off, but the
@@ -238,7 +244,20 @@ void Touch_Draw(void)
 		{
 			drawresetcliparea();
 			HUD_Scale_Disable();
-			Touch_Hud_Draw(bound(0.3, autocvar_touch_opacity, 1.0));
+			float a = bound(0.3, autocvar_touch_opacity, 1.0);
+			Touch_Hud_Draw(a);
+			// On a touchscreen the pills stay too, dimmed: the keyboard has keys
+			// for all of them, so they step back, but a finger can still reach
+			// them (Touch_DeskActive).
+			if (Touch_DeskPills())
+			{
+				Touch_Pause_DrawPill(a * 0.6);
+				Touch_Chat_DrawPill(a * 0.6);
+				Touch_Console_Draw(a * 0.6);
+				Touch_Scores_DrawPill(a * 0.6);
+			}
+			if (Touch_DeskActive())
+				Touch_Vote_Draw(a);
 		}
 		return;
 	}

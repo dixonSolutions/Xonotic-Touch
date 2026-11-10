@@ -38,11 +38,12 @@ void TouchMenu_ResetPreset_Click(entity me, entity other)
 	localcmd("menu_cmd sync\n");
 }
 
-// Settings -> Mobile. Four sub-tabs; every control below is one cvar, and each
+// Settings -> Mobile. Five sub-tabs; every control below is one cvar, and each
 // cvar is on exactly one sub-tab.
 //   Controls    input mode, layout, size and look of the controls, sticks and buttons
+//   HUD         the weapon bar, the readouts, what stays with a keyboard attached
 //   Aim         look speed, aim assist and its strength
-//   Auto-shoot  auto-shoot, its timing and its conditions
+//   Auto-shoot  auto-shoot, its timing, its shot choices and its conditions
 //   Dynamics    performance profile, frame rate, dynamic resolution, hop
 entity makeXonoticTouchSettingsTab()
 {
@@ -56,10 +57,11 @@ void XonoticTouchSettingsTab_fill(entity me)
 	// One row of sub-tab buttons, then the sub-tab itself: 15.5 = 1.5 + 14.
 	entity mc = makeXonoticTabController(me.rows - 1.5);
 	me.TR(me);
-		me.TD(me, 1, 1.5, mc.makeTabButton(mc, _("Controls"),   makeXonoticMobileControlsTab()));
-		me.TD(me, 1, 1.5, mc.makeTabButton(mc, _("Aim"),        makeXonoticMobileAimTab()));
-		me.TD(me, 1, 1.5, mc.makeTabButton(mc, _("Auto-shoot"), makeXonoticMobileAutoShootTab()));
-		me.TD(me, 1, 1.5, mc.makeTabButton(mc, _("Dynamics"),   makeXonoticMobileDynamicsTab()));
+		me.TD(me, 1, 1.2, mc.makeTabButton(mc, _("Controls"),   makeXonoticMobileControlsTab()));
+		me.TD(me, 1, 1.2, mc.makeTabButton(mc, _("HUD"),        makeXonoticMobileHudTab()));
+		me.TD(me, 1, 1.2, mc.makeTabButton(mc, _("Aim"),        makeXonoticMobileAimTab()));
+		me.TD(me, 1, 1.2, mc.makeTabButton(mc, _("Auto-shoot"), makeXonoticMobileAutoShootTab()));
+		me.TD(me, 1, 1.2, mc.makeTabButton(mc, _("Dynamics"),   makeXonoticMobileDynamicsTab()));
 	me.gotoRC(me, 1.5, 0);
 		me.TD(me, me.rows - 1.5, me.columns, mc);
 }
@@ -106,10 +108,12 @@ void XonoticMobileControlsTab_fill(entity me)
 	me.TR(me);
 		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Layout preset")));
 	me.TR(me);
-		me.TD(me, 1, 1.5, e = makeXonoticCommandButton(_("Standard"), '0 0 0', "exec touch/profiles/standard.cfg; exec touch/profiles/helpers.cfg; menu_cmd sync", 0));
-		me.TD(me, 1, 1.5, e = makeXonoticCommandButton(_("Casual"), '0 0 0', "exec touch/profiles/casual.cfg; menu_cmd sync", 0));
-		me.TD(me, 1, 1.5, e = makeXonoticCommandButton(_("Competitive"), '0 0 0', "exec touch/profiles/competitive.cfg; menu_cmd sync", 0));
-		me.TD(me, 1, 1.5, e = makeXonoticCommandButton(_("Left hand"), '0 0 0', "exec touch/profiles/left.cfg; exec touch/profiles/helpers.cfg; menu_cmd sync", 0));
+		me.TD(me, 1, 1.2, e = makeXonoticCommandButton(_("Standard"), '0 0 0', "exec touch/profiles/standard.cfg; exec touch/profiles/helpers.cfg; menu_cmd sync", 0));
+		me.TD(me, 1, 1.2, e = makeXonoticCommandButton(_("Casual"), '0 0 0', "exec touch/profiles/casual.cfg; menu_cmd sync", 0));
+		me.TD(me, 1, 1.2, e = makeXonoticCommandButton(_("Competitive"), '0 0 0', "exec touch/profiles/competitive.cfg; menu_cmd sync", 0));
+		me.TD(me, 1, 1.2, e = makeXonoticCommandButton(_("Left hand"), '0 0 0', "exec touch/profiles/left.cfg; exec touch/profiles/helpers.cfg; menu_cmd sync", 0));
+		me.TD(me, 1, 1.2, e = makeXonoticCommandButton_T(_("Minimal"), '0 0 0', "exec touch/profiles/minimal.cfg; menu_cmd sync", 0,
+			_("For small phones: move stick, FIRE and HOP only")));
 
 	me.TR(me);
 		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Size and look")));
@@ -126,8 +130,6 @@ void XonoticMobileControlsTab_fill(entity me)
 		me.TD(me, 1, 1.2, e = makeXonoticSlider_T(0, 1, 0.05, "touch_glass_hollow",
 			_("How much of each control is glass. Left: tinted glass. All the way right: hollow, only the outline and label, nothing between you and the game")));
 	me.TR(me);
-		me.TD(me, 1, 0.9, e = makeXonoticTextLabel(0, _("HUD size:")));
-		me.TD(me, 1, 2.1, e = makeXonoticSlider_T(0.6, 1.4, 0.05, "touch_hud_scale", _("Size of the health, ammo and score readouts")));
 		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "touch_handedness", _("Left-handed"),
 			_("Mirror the layout: the move stick on the right, aim and buttons on the left")));
 
@@ -155,6 +157,58 @@ void XonoticMobileControlsTab_fill(entity me)
 			e.onClick = TouchMenu_ResetPreset_Click;
 	me.TR(me);
 		me.TD(me, 1, 6, e = makeXonoticCommandButton(_("Apply & refresh"), '0 0 0', "menu_cmd sync", COMMANDBUTTON_APPLY));
+}
+
+entity makeXonoticMobileHudTab()
+{
+	entity me = NEW(XonoticMobileHudTab);
+	me.configureDialog(me);
+	return me;
+}
+
+void XonoticMobileHudTab_fill(entity me)
+{
+	entity e;
+
+	// The size is the engine's cl_touch_weplist_scale, archived in config.cfg
+	// rather than the touch layout, so a size dragged on a server is kept; the
+	// position is the layout's. Both HUDs (the port's and the engine's on
+	// servers) draw the bar from the same three cvars. Across reaches 0.97 so
+	// the default, 0.962, is on the slider.
+	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Weapon bar")));
+	me.TR(me);
+		me.TD(me, 1, 1.2, e = makeXonoticTextLabel(0, _("Size:")));
+		me.TD(me, 1, 1.8, e = makeXonoticSlider_T(0.7, 2.4, 0.1, "cl_touch_weplist_scale",
+			_("Size of the weapon bar on the right edge. In a match you can also drag the grip under the bar: down to grow it, up to shrink it")));
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "touch_weplist_visible", _("Show the weapon bar"),
+			_("The list of weapons you hold; tap one to switch to it")));
+	me.TR(me);
+		me.TD(me, 1, 1.2, e = makeXonoticTextLabel(0, _("Across:")));
+			setDependent(e, "touch_weplist_visible", 1, 1);
+		me.TD(me, 1, 1.8, e = makeXonoticSlider_T(0.04, 0.97, 0.01, "touch_weplist_x",
+			_("Where the weapon bar sits across the screen, from the left edge (mirrored when left-handed)")));
+			setDependent(e, "touch_weplist_visible", 1, 1);
+		me.TD(me, 1, 1.2, e = makeXonoticTextLabel(0, _("Down:")));
+			setDependent(e, "touch_weplist_visible", 1, 1);
+		me.TD(me, 1, 1.8, e = makeXonoticSlider_T(0.15, 0.85, 0.01, "touch_weplist_y",
+			_("Where the middle of the weapon bar sits down the screen. A long bar is kept on screen")));
+			setDependent(e, "touch_weplist_visible", 1, 1);
+	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticTextLabel(0, _("Drag the grip under the bar in a match to resize it there.")));
+
+	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Readouts")));
+	me.TR(me);
+		me.TD(me, 1, 1.2, e = makeXonoticTextLabel(0, _("Readout size:")));
+		me.TD(me, 1, 1.8, e = makeXonoticSlider_T(0.6, 1.4, 0.05, "touch_hud_scale",
+			_("Size of the health, armor and ammo readouts. The weapon bar has its own size above")));
+
+	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("With a keyboard attached")));
+	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticCheckBox_T(0, "touch_desk_pills", _("Keep MENU, CHAT and SCORE on screen with a keyboard"),
+			_("With a keyboard attached the touch controls go away and the mouse aims. The weapon bar stays tappable; this keeps the MENU, CHAT, SCORE and CONSOLE buttons too, dimmed")));
 }
 
 entity makeXonoticMobileAimTab()
@@ -201,11 +255,11 @@ void XonoticMobileAimTab_fill(entity me)
 		me.TD(me, 1, 2, e = makeXonoticCheckBox_T(0, "cl_touch_aimassist", _("Aim assist"),
 			_("Aim slows down over an enemy, and is pulled toward one while a finger is on the aim area")));
 		me.TD(me, 1, 1, e = makeXonoticCommandButton(_("Light"), '0 0 0',
-			"cl_touch_aimassist 1; cl_touch_aimassist_friction 0.25; cl_touch_aimassist_strength 0.15; cl_touch_aimassist_maxrate 20; cl_touch_aimassist_cone 6; menu_cmd sync", 0));
+			"cl_touch_aimassist 1; cl_touch_aimassist_friction 0.25; cl_touch_aimassist_strength 0.3; cl_touch_aimassist_maxrate 45; cl_touch_aimassist_cone 5; menu_cmd sync", 0));
 		me.TD(me, 1, 1, e = makeXonoticCommandButton(_("Medium"), '0 0 0',
-			"cl_touch_aimassist 1; cl_touch_aimassist_friction 0.45; cl_touch_aimassist_strength 0.35; cl_touch_aimassist_maxrate 40; cl_touch_aimassist_cone 8; menu_cmd sync", 0));
+			"cl_touch_aimassist 1; cl_touch_aimassist_friction 0.45; cl_touch_aimassist_strength 0.6; cl_touch_aimassist_maxrate 90; cl_touch_aimassist_cone 8; menu_cmd sync", 0));
 		me.TD(me, 1, 1, e = makeXonoticCommandButton(_("Strong"), '0 0 0',
-			"cl_touch_aimassist 1; cl_touch_aimassist_friction 0.6; cl_touch_aimassist_strength 0.55; cl_touch_aimassist_maxrate 60; cl_touch_aimassist_cone 11; menu_cmd sync", 0));
+			"cl_touch_aimassist 1; cl_touch_aimassist_friction 0.6; cl_touch_aimassist_strength 0.85; cl_touch_aimassist_maxrate 140; cl_touch_aimassist_cone 11; menu_cmd sync", 0));
 		me.TD(me, 1, 1, e = makeXonoticCommandButton(_("Off"), '0 0 0', "cl_touch_aimassist 0; menu_cmd sync", 0));
 	me.TR(me);
 		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Slowdown:")));
@@ -214,16 +268,16 @@ void XonoticMobileAimTab_fill(entity me)
 			setDependent(e, "cl_touch_aimassist", 1, 1);
 		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Pull:")));
 			setDependent(e, "cl_touch_aimassist", 1, 1);
-		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(0, 0.6, 0.05, "cl_touch_aimassist_strength", _("How strongly the view is pulled toward a nearby enemy while a finger is on the aim area (0 = off)")));
+		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(0, 1, 0.05, "cl_touch_aimassist_strength", _("How strongly the view is pulled toward a nearby enemy while a finger is on the aim area (0 = off)")));
 			setDependent(e, "cl_touch_aimassist", 1, 1);
 	me.TR(me);
 		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Catch cone:")));
 			setDependent(e, "cl_touch_aimassist", 1, 1);
-		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(2, 12, 1, "cl_touch_aimassist_cone", _("How many degrees from the crosshair an enemy still counts as near")));
+		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(1, 15, 1, "cl_touch_aimassist_cone", _("How many degrees from the crosshair an enemy still counts as near")));
 			setDependent(e, "cl_touch_aimassist", 1, 1);
 		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Max pull:")));
 			setDependent(e, "cl_touch_aimassist", 1, 1);
-		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(5, 60, 5, "cl_touch_aimassist_maxrate", _("The fastest the pull can turn the view, in degrees per second. It never snaps")));
+		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(0, 180, 10, "cl_touch_aimassist_maxrate", _("The fastest the pull can turn the view, in degrees per second. It never snaps")));
 			setDependent(e, "cl_touch_aimassist", 1, 1);
 	me.TR(me);
 		me.TD(me, 1, 6, e = makeXonoticCheckBox_T(0, "cl_touch_aim_ring", _("Show target ring"),
@@ -253,8 +307,14 @@ void XonoticMobileAutoShootTab_fill(entity me)
 	me.TR(me);
 		me.TD(me, 1, 2, e = makeXonoticTextLabel(0, _("Reaction delay:")));
 			setDependent(e, "cl_touch_autoshoot", 1, 1);
-		me.TD(me, 1, 4, e = makeXonoticSlider_T(0.05, 0.5, 0.05, "cl_touch_autoshoot_delay",
-			_("How long the crosshair must stay on an enemy before firing starts, in seconds")));
+		me.TD(me, 1, 4, e = makeXonoticSlider_T(0, 0.5, 0.05, "cl_touch_autoshoot_delay",
+			_("How long the crosshair must stay on an enemy before firing starts, in seconds. 0: at once")));
+			setDependent(e, "cl_touch_autoshoot", 1, 1);
+	me.TR(me);
+		me.TD(me, 1, 2, e = makeXonoticTextLabel(0, _("Shoot radius:")));
+			setDependent(e, "cl_touch_autoshoot", 1, 1);
+		me.TD(me, 1, 4, e = makeXonoticSlider_T(0, 6, 0.5, "cl_touch_autoshoot_radius",
+			_("Fire when the crosshair is within this many degrees of an enemy. 0: only when it is on the body")));
 			setDependent(e, "cl_touch_autoshoot", 1, 1);
 	me.TR(me);
 		me.TD(me, 1, 2, e = makeXonoticTextLabel(0, _("Keep firing:")));
@@ -264,14 +324,30 @@ void XonoticMobileAutoShootTab_fill(entity me)
 			setDependent(e, "cl_touch_autoshoot", 1, 1);
 
 	me.TR(me);
-		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Which weapons")));
-	me.TR(me);
-		me.TD(me, 1, 2, e = makeXonoticRadioButton_T(4, "cl_touch_autoshoot_weapons", "0", _("Every weapon"),
+		me.TD(me, 1, 1.2, e = makeXonoticTextLabel(0, _("Weapons:")));
+			setDependent(e, "cl_touch_autoshoot", 1, 1);
+		me.TD(me, 1, 1.8, e = makeXonoticRadioButton_T(4, "cl_touch_autoshoot_weapons", "0", _("Every weapon"),
 			_("Auto-shoot with whatever you hold")));
 			setDependent(e, "cl_touch_autoshoot", 1, 1);
-		me.TD(me, 1, 4, e = makeXonoticRadioButton_T(4, "cl_touch_autoshoot_weapons", "1", _("Instant-hit weapons only"),
+		me.TD(me, 1, 3, e = makeXonoticRadioButton_T(4, "cl_touch_autoshoot_weapons", "1", _("Instant-hit weapons only"),
 			_("Shotgun, machine gun, vortex, rifle and the like. Projectile weapons then wait for the FIRE button, so rockets are not wasted on a long shot. Needs a game that reports the weapon in hand")));
 			setDependent(e, "cl_touch_autoshoot", 1, 1);
+
+	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Shot choice")));
+	me.TR(me);
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoshoot_alt", _("Use secondary fire when it is the better shot"),
+			_("Auto-shoot picks primary or secondary fire for the weapon and the distance, like the shotgun's melee up close")));
+			setDependent(e, "cl_touch_autoshoot", 1, 1);
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoshoot_lead", _("Lead moving targets"),
+			_("With a projectile weapon, aim and fire where a moving enemy will be when the shot gets there")));
+			setDependent(e, "cl_touch_autoshoot", 1, 1);
+	me.TR(me);
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoshoot_steer", _("Guide and detonate rockets"),
+			_("Keep a fired Devastator rocket on the enemy and set it off beside them")));
+			setDependent(e, "cl_touch_autoshoot", 1, 1);
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoswitch", _("Switch to the best weapon for the fight"),
+			_("Switch to a better weapon you hold for the enemy in sight and its distance. Never right after you chose one yourself")));
 
 	me.TR(me);
 		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Conditions")));
@@ -286,9 +362,7 @@ void XonoticMobileAutoShootTab_fill(entity me)
 			_("Enemies farther away than this many units are ignored by auto-shoot and aim assist")));
 			setDependent(e, "cl_touch_autoshoot", 1, 1);
 	me.TR(me);
-		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("Fires only at a visible enemy in line of sight: never at teammates,")));
-	me.TR(me);
-		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("invisible players, spectators, or through walls.")));
+		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("Only at visible enemies in sight: never teammates, spectators or through walls.")));
 	me.TR(me);
 		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("Touch mode only: off while a keyboard or mouse is playing.")));
 }

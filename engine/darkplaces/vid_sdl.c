@@ -578,6 +578,27 @@ void VID_GetTouchFinger(int slot, int *active, float *nx, float *ny)
 // this one stores how many areas this finger has touched
 int multitouchs[MAXFINGERS];
 
+// Touch: a finger that goes down and up before the client has run a frame (an
+// Android tap; events are polled more often than that, e.g. with a local
+// server) would never be seen by anything that reads the table once a frame
+// (the engine touch HUD in IN_Move, the CSQC's gettouchfinger while drawing).
+// Such a slot stays down until IN_Move has run since; the frame's drawing
+// follows IN_Move.
+static unsigned int vid_finger_frame;
+static unsigned int vid_finger_down_frame[MAXFINGERS];
+static qbool vid_finger_lift[MAXFINGERS];
+
+static void VID_LiftTappedFingers(void)
+{
+	int i;
+	for (i = 0; i < MAXFINGERS - 1; i++)
+		if (vid_finger_lift[i] && vid_finger_down_frame[i] != vid_finger_frame)
+		{
+			vid_finger_lift[i] = false;
+			multitouch[i][0] = 0;
+		}
+}
+
 // modified heavily by ELUAN
 static qbool VID_TouchscreenArea(int corner, float px, float py, float pwidth, float pheight, const char *icon, float textheight, const char *text, float *resultmove, qbool *resultbutton, keynum_t key, const char *typedtext, float deadzone, float oversizepixels_x, float oversizepixels_y, qbool iamexclusive)
 {
@@ -1164,7 +1185,7 @@ static void VID_SyncTouchFinger(void)
 	}
 }
 
-static void VID_TouchMenuFingerEvent(qbool down, float nx, float ny)
+static void VID_TouchMenuFingerEvent(int id, qbool down, float nx, float ny)
 {
 	keydest_t keydest = (key_consoleactive & KEY_CONSOLEACTIVE_USER) ? key_console : key_dest;
 
@@ -1172,6 +1193,8 @@ static void VID_TouchMenuFingerEvent(qbool down, float nx, float ny)
 	// stop a finger pressing the menu.
 	if (!VID_TouchscreenHasRealDevices())
 		return;
+	// In the game, the pointer of a CSQC vote or other pointer UI.
+	TouchHUD_CursorFinger(id, down, nx, ny);
 	if (keydest != key_menu && keydest != key_menu_grabbed)
 		return;
 
@@ -1480,6 +1503,11 @@ void IN_Move( void )
 	oldshowkeyboard = !!vid_touchscreen_showkeyboard.integer;
 	oldneedsosk = needsosk;
 
+	// A vote or another CSQC pointer UI: a finger is its pointer, with the
+	// touch controls shown or hidden (touch_hud.c).
+	if (VID_TouchscreenHasRealDevices())
+		TouchHUD_CursorFrame();
+
 	if (vid_touchscreen.integer)
 	{
 		switch(gamemode)
@@ -1542,8 +1570,13 @@ void IN_Move( void )
 
 	if (!vid_touchscreen.integer)
 	{
+		// A finger that placed the CSQC's pointer keeps it until the mouse moves.
+		static int mouse_last_x = -1, mouse_last_y = -1;
 		SDL_GetMouseState(&x, &y);
-		VID_SetWindowMouse(x, y);
+		if (x != mouse_last_x || y != mouse_last_y || !TouchHUD_FingerIsPointer())
+			VID_SetWindowMouse(x, y);
+		mouse_last_x = x;
+		mouse_last_y = y;
 	}
 
 	if (vid_touchscreen.integer && !VID_TouchscreenHasRealDevices())
@@ -1557,6 +1590,7 @@ void IN_Move( void )
 
 	VID_BuildJoyState(&joystate);
 	VID_ApplyJoyState(&joystate);
+	vid_finger_frame++; // Touch: quick taps seen by this frame may lift
 }
 
 /////////////////////
@@ -1629,6 +1663,7 @@ void Sys_SDL_HandleEvents(void)
 	SDL_Event event;
 
 	VID_EnableJoystick(true);
+	VID_LiftTappedFingers(); // Touch
 
 	while( SDL_PollEvent( &event ) )
 		loop_start:
@@ -1943,7 +1978,8 @@ void Sys_SDL_HandleEvents(void)
 						multitouch[i][0] = event.tfinger.fingerId + 1;
 						multitouch[i][1] = event.tfinger.x;
 						multitouch[i][2] = event.tfinger.y;
-						VID_TouchMenuFingerEvent(true, event.tfinger.x, event.tfinger.y);
+						vid_finger_down_frame[i] = vid_finger_frame; // Touch
+						VID_TouchMenuFingerEvent((int)multitouch[i][0], true, event.tfinger.x, event.tfinger.y);
 						// TODO: use event.tfinger.pressure?
 						break;
 					}
@@ -1959,10 +1995,14 @@ void Sys_SDL_HandleEvents(void)
 					VID_NoteTouchActivity();
 				for (i = 0;i < MAXFINGERS-1;i++)
 				{
-					if (multitouch[i][0] == event.tfinger.fingerId + 1)
+					if (multitouch[i][0] == event.tfinger.fingerId + 1 && !vid_finger_lift[i])
 					{
-						VID_TouchMenuFingerEvent(false, event.tfinger.x, event.tfinger.y);
-						multitouch[i][0] = 0;
+						VID_TouchMenuFingerEvent((int)multitouch[i][0], false, event.tfinger.x, event.tfinger.y);
+						// Touch: a tap the client has not read yet stays down until it has.
+						if (vid_finger_down_frame[i] == vid_finger_frame)
+							vid_finger_lift[i] = true;
+						else
+							multitouch[i][0] = 0;
 						break;
 					}
 				}
