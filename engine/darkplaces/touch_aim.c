@@ -903,10 +903,10 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 		return;
 	case RK_FLY:
 	{
-		prvm_edict_t *ed = PRVM_EDICT_NUM(ta.rk_ent);
+		prvm_edict_t *ed = ta.rk_ent < prog->num_edicts ? PRVM_EDICT_NUM(ta.rk_ent) : NULL;
 		vec3_t org, d, rel_v, me;
 		float sp;
-		if (ed->free || projectile_type(ed) != PROJECTILE_ROCKET)
+		if (!ed || ed->free || projectile_type(ed) != PROJECTILE_ROCKET)
 		{
 			rk_set(RK_RELEASE, va(vabuf, sizeof(vabuf), "rocket gone: hit something; it came within %.0f units of the target", ta.rk_closest));
 			set_firing(false, false, 0);
@@ -1182,10 +1182,14 @@ void TouchAim_Frame(void)
 	}
 	else
 	{
+		// auto-shoot: fire after the reaction delay, keep firing a moment
+		// after the crosshair slips off so a jittery track does not stutter.
+		// The player's own press decides alone (attack2 together with a fresh
+		// attack would, for one, detonate a rocket at the muzzle).
+		qbool on = ta.firing, on2 = ta.firing2;
+		int target = ta.fire_target;
 		if (ta.rk_state != RK_IDLE)
 			rk_set(RK_IDLE, "not steering");
-		// auto-shoot: fire after the reaction delay, keep firing a moment
-		// after the crosshair slips off so a jittery track does not stutter
 		if (autoshoot && on_shoot)
 		{
 			if (!ta.on_since)
@@ -1193,8 +1197,9 @@ void TouchAim_Frame(void)
 			ta.last_on = now;
 			if (now - ta.on_since >= bound(0.0f, cl_touch_autoshoot_delay.value, 0.5f))
 			{
-				set_firing(mode != TW_MODE_SECONDARY, mode == TW_MODE_SECONDARY, on_shoot);
-				ta.fire_target = on_shoot;
+				on = mode != TW_MODE_SECONDARY;
+				on2 = mode == TW_MODE_SECONDARY;
+				target = on_shoot;
 			}
 		}
 		else
@@ -1202,14 +1207,14 @@ void TouchAim_Frame(void)
 			ta.on_since = 0;
 			if (!autoshoot || now - ta.last_on >= bound(0.0f, cl_touch_autoshoot_release.value, 0.5f))
 			{
-				set_firing(false, false, 0);
-				ta.fire_target = 0;
+				on = on2 = false;
+				target = 0;
 			}
 		}
-		// the player's own press decides alone (attack2 together with a
-		// fresh attack would, for one, detonate a rocket at the muzzle)
-		if (manual && (ta.firing || ta.firing2))
-			set_firing(false, false, 0);
+		if (manual)
+			on = on2 = false;
+		set_firing(on, on2, target);
+		ta.fire_target = on || on2 ? target : 0;
 	}
 
 	// friction: full over the body, fading to nothing at the cone's edge.
