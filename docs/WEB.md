@@ -105,6 +105,9 @@ Engine changes for the web, all behind `__EMSCRIPTEN__`:
 - Dynamic vertex data through `glBufferSubData`: WebGL has no buffer mapping,
   and Emscripten rejects the unsynchronized `glMapBufferRange` the Android build
   uses (an error per draw call).
+- DDS textures whose sizes WebGL will not take as S3TC (not whole 4x4
+  blocks: 1x1 tints, 365x365 team blobs, 1024x255 walls) decoded to RGBA in
+  software at full size; desktop GL accepts them, WebGL rejects the upload.
 - S3TC detected under WebGL's extension name, fatal errors shown on the page,
   and the display, mouse and keyboard hooks above.
 
