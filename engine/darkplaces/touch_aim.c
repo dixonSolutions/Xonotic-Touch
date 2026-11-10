@@ -72,6 +72,8 @@ cvar_t cl_touch_aimassist_friction = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassis
 cvar_t cl_touch_aimassist_strength = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_strength", "0.6",
 	"Aim pull toward the nearest visible enemy inside the cone (where a projectile will meet it) while a finger is on the aim control, while auto-shoot fires at it and while a Devastator rocket flies: "
 	"follows strength x 2 of its motion across the view and closes the gap at strength x 10 per second, or strength x your own turn speed, whichever is faster (0 = off, at most 1)"};
+cvar_t cl_touch_aimassist_track = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_track", "1",
+	"Aim pull: keep pulling toward the enemy auto-shoot is firing at even while the thumb rests (otherwise only while a finger is on the aim control and aiming)"};
 cvar_t cl_touch_aimassist_maxrate = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_maxrate", "90",
 	"Aim pull: hard cap on the pull, degrees per second (at most 180); it never snaps"};
 cvar_t cl_touch_aimassist_cone = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_cone", "8",
@@ -216,6 +218,7 @@ void TouchAim_Init(void)
 	Cvar_RegisterVariable(&cl_touch_aimassist);
 	Cvar_RegisterVariable(&cl_touch_aimassist_friction);
 	Cvar_RegisterVariable(&cl_touch_aimassist_strength);
+	Cvar_RegisterVariable(&cl_touch_aimassist_track);
 	Cvar_RegisterVariable(&cl_touch_aimassist_maxrate);
 	Cvar_RegisterVariable(&cl_touch_aimassist_cone);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_weapons);
@@ -1227,8 +1230,8 @@ void TouchAim_Frame(void)
 	// magnetism: with a finger on the aim control (the look area or FIRE)
 	// while the player aims -- turning, moving, or within INPUT_HOLD of
 	// either, so a finger resting on the screen never aims by itself -- and
-	// also while auto-shoot is firing at that target or a guided rocket
-	// flies. Never against a turn that is heading away from the target, and
+	// also while a guided rocket flies, or auto-shoot is firing at that
+	// target (cl_touch_aimassist_track). Never against a turn that is heading away from the target, and
 	// capped per second so it can never snap. Two parts: follow a share of
 	// the target's own motion across the view (it runs, or the player
 	// strafes), and close the remaining gap at a rate that grows with it, so
@@ -1249,7 +1252,8 @@ void TouchAim_Frame(void)
 	}
 	if (strength > 0 && near.entnum
 		&& ((aim_touch && now - ta.last_input < INPUT_HOLD)
-			|| (ta.fire_target && ta.fire_target == near.entnum && (ta.firing || ta.firing2 || ta.rk_state != RK_IDLE))))
+			|| ta.rk_state != RK_IDLE
+			|| (cl_touch_aimassist_track.integer && ta.fire_target && ta.fire_target == near.entnum && (ta.firing || ta.firing2))))
 	{
 		float ey = wrap180(near.yaw - cl.viewangles[YAW]);
 		float ep = near.pitch - cl.viewangles[PITCH];
