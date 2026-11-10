@@ -10,6 +10,7 @@
 #include "touch_init.qh"
 #include "touch_defs.qh"
 #include "touch_weapons.qh"
+#include "touch_scores.qh"
 #include "view.qh"
 #include <common/weapons/all.qh>
 #include <common/mapvoting/_mod.qh>
@@ -344,6 +345,10 @@ bool Touch_RoleOwned(int role)
 
 int Touch_AssignRole(vector p)
 {
+	// On top of everything while it lasts: a vote waits on an answer.
+	if (Touch_Vote_PillHit(p))
+		return TOUCH_ROLE_VOTE;
+
 	bool pills = !touch_desk || autocvar_touch_desk_pills;
 	if (pills && Touch_Console_Hit(p))
 		return TOUCH_ROLE_CON;
@@ -439,6 +444,8 @@ int Touch_ClaimFinger(int src, vector pos)
 			Touch_Chat_OnDown(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_SCORES)
 			Touch_Scores_OnDown(pos);
+		else if (touch_finger_role[i] == TOUCH_ROLE_VOTE)
+			Touch_Vote_OnDown(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_WEPSIZE)
 			Touch_Hud_GripBegin(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_LOOK)
@@ -558,10 +565,11 @@ void Touch_PollFingers(void)
 		// Chrome pills must not use the lost-finger grace (B4 + pause realtime):
 		// a pill is a discrete tap that commits on release, and keeping the
 		// finger alive past the release would re-fire it on the next frame.
-		// The grip too: a lost frame is no reason to hold a resize open.
+		// The grip and the vote pills too: a lost frame is no reason to hold a
+		// resize open, and a vote is a tap like the pills.
 		int role = touch_finger_role[i];
 		if (role == TOUCH_ROLE_CON || role == TOUCH_ROLE_PAUSE || role == TOUCH_ROLE_CHAT
-			|| role == TOUCH_ROLE_SCORES || role == TOUCH_ROLE_WEPSIZE)
+			|| role == TOUCH_ROLE_SCORES || role == TOUCH_ROLE_VOTE || role == TOUCH_ROLE_WEPSIZE)
 		{
 			vector up = touch_finger_last_pos[i];
 			if (role == TOUCH_ROLE_CON)
@@ -570,6 +578,8 @@ void Touch_PollFingers(void)
 				Touch_Pause_OnUp(up);
 			else if (role == TOUCH_ROLE_SCORES)
 				Touch_Scores_OnUp(up);
+			else if (role == TOUCH_ROLE_VOTE)
+				Touch_Vote_OnUp(up);
 			else if (role == TOUCH_ROLE_WEPSIZE)
 				Touch_Hud_GripEnd();
 			else
@@ -659,6 +669,8 @@ bool Touch_ChromeFingerFrame(int role, vector pos)
 		Touch_Chat_OnMove(pos);
 	else if (role == TOUCH_ROLE_SCORES)
 		Touch_Scores_OnMove(pos);
+	else if (role == TOUCH_ROLE_VOTE)
+		Touch_Vote_OnMove(pos);
 	else if (role == TOUCH_ROLE_WEPSIZE)
 		Touch_Hud_GripMove(pos);
 	else
@@ -1207,6 +1219,7 @@ string Touch_DebugRoleName(int role)
 	if (role == TOUCH_ROLE_CHAT) return "CHAT";
 	if (role == TOUCH_ROLE_SCORES) return "SCORE";
 	if (role == TOUCH_ROLE_WEPSIZE) return "GRIP";
+	if (role == TOUCH_ROLE_VOTE) return "VOTE";
 	if (role == TOUCH_ROLE_SHEET) return "SHEET";
 	if (role == TOUCH_ROLE_IGNORED) return "IGN";
 	return "-";
