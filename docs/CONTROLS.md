@@ -338,39 +338,55 @@ and the fade; CI runs it.
 
 ### Shoot helpers: auto-shoot and aim assist (engine)
 
-These run in the engine client (`engine/darkplaces/touch_aim.c`), not in
-the CSQC, so they work the same on a public server (where the client runs
-the server's own CSQC and the engine draws the HUD) and in a local match.
-They only run while the touch controls are shown: with a physical keyboard
-attached (Dynamic) the engine clears `vid_touchscreen` and all of this
-switches off, whatever the cvars say. They also stand down while a mouse aims next to the touch controls
-(`vid_touchscreen_mouselook`): a listed mouse or touchpad aims once it has been moved or clicked, and hands
-the aim back to the fingers after 5 seconds of touch without it. One that is only listed (a tablet's built-in
-touchpad, a phone browser reporting a fine pointer) never does. These cvars are archived in `config.cfg`, not
-in the touch layout file. Settings → Mobile → **Aim** and **Auto-shoot** have every one of the cvars below. The
-target ring (`cl_touch_aim_ring`) is drawn at the crosshair so the helpers can be seen working.
+These run in the engine client (`engine/darkplaces/touch_aim.c`, with the
+weapon knowledge in `touch_weapons.h`), not in the CSQC, so they work the same
+on a public server (where the client runs the server's own CSQC and the engine
+draws the HUD) and in a local match. They only run while the touch controls
+are shown: with a physical keyboard attached (Dynamic) the engine clears
+`vid_touchscreen` and all of this switches off, whatever the cvars say. They
+also stand down while a mouse aims next to the touch controls
+(`vid_touchscreen_mouselook`): a listed mouse or touchpad aims once it has been
+moved or clicked, and hands the aim back to the fingers after 5 seconds of
+touch without it. One that is only listed (a tablet's built-in touchpad, a
+phone browser reporting a fine pointer) never does. These cvars are archived in
+`config.cfg`, not in the touch layout file. Settings → Mobile → **Aim** and
+**Auto-shoot** hold the main ones; every one can be set from the console. The
+target ring (`cl_touch_aim_ring`) is drawn at the crosshair so the helpers can
+be seen working.
 
 | Cvar | Default | What it does |
 |------|---------|--------------|
-| `cl_touch_autoshoot` | `1` | Fire while the crosshair is on a visible enemy player |
-| `cl_touch_autoshoot_delay` | `0.1` | Reaction time (s) before auto-fire starts (clamped 0.05–0.5) |
+| `cl_touch_autoshoot` | `1` | Fire at a visible enemy player under (or near) the crosshair |
+| `cl_touch_autoshoot_radius` | `1.5` | Degrees from the crosshair to the enemy's body (where the shot will meet it) within which auto-shoot fires, narrowed to what the weapon's spread or splash covers at that distance; 0 = only on the body (0–6) |
+| `cl_touch_autoshoot_delay` | `0` | Reaction time (s) before auto-fire starts; 0 = the first frame (0–0.5) |
 | `cl_touch_autoshoot_release` | `0.15` | Keep firing this long (s) after the crosshair slips off (0–0.5) |
+| `cl_touch_autoshoot_alt` | `1` | Use secondary fire when it is the better shot (table below) |
+| `cl_touch_autoshoot_lead` | `1` | Lead moving targets with projectile weapons, loft grenades and orbs |
+| `cl_touch_autoshoot_steer` | `1` | Guide Devastator rockets to the enemy and detonate them there |
+| `cl_touch_autoshoot_safe` | `1` | Hold fire when the shot would catch you in its own blast, cannot reach, or the weapon is not one to fire by itself (Port-O-Launch, Hook, Tuba) |
+| `cl_touch_autoswitch` | `1` | Switch to the best owned weapon for the distance to the enemy you fight |
 | `cl_touch_aimassist` | `1` | Master switch for slowdown and pull |
 | `cl_touch_aimassist_friction` | `0.45` | Slowdown: fraction of look speed removed over an enemy, fading to the cone edge; not while turning toward one not yet reached (0 = off, max 0.8) |
-| `cl_touch_aimassist_strength` | `0.35` | Pull toward the nearest enemy in the cone: follows strength × 2 of its motion across the view and closes the gap to the inner half of its body at strength × 10 per second, or strength × your own turn speed if faster (0 = off, max 0.6) |
-| `cl_touch_aimassist_maxrate` | `40` | Hard cap on the pull, degrees per second (max 60) |
-| `cl_touch_aimassist_cone` | `8` | Degrees from the crosshair to the edge of an enemy's body within which it counts as near (max 12) |
-| `cl_touch_autoshoot_weapons` | `0` | 0 = every weapon, 1 = instant-hit weapons only (the port's CSQC reports the weapon in `_cl_touch_weapon_class`; a server whose game does not leaves it unfiltered) |
+| `cl_touch_aimassist_strength` | `0.6` | Pull toward the nearest enemy in the cone (toward where the shot will meet it): follows strength × 2 of its motion across the view and closes the gap to the inner half of its body at strength × 10 per second, or strength × your own turn speed if faster (0 = off, max 1) |
+| `cl_touch_aimassist_maxrate` | `90` | Hard cap on the pull, degrees per second (max 180) |
+| `cl_touch_aimassist_cone` | `8` | Degrees from the crosshair to the edge of an enemy's body within which it counts as near (1–15) |
+| `cl_touch_aimassist_track` | `1` | Keep pulling toward the enemy auto-shoot is firing at even while the thumb rests |
+| `cl_touch_autoshoot_weapons` | `0` | 0 = every weapon, 1 = instant-hit fire only (judged from the weapon in hand; for a weapon the engine does not know, from `_cl_touch_weapon_class`) |
 | `cl_touch_autoshoot_aimonly` | `0` | 1 = auto-shoot only while a finger is on the aim area or FIRE |
 | `cl_touch_aim_ring` | `1` | Draw a ring at the crosshair: accent while an enemy is in the cone, red while the crosshair is on one (`_cl_touch_aim_lock`) |
 | `cl_touch_aim_range` | `3000` | Enemies farther than this (units) are ignored |
-| `cl_touch_aim_debug` | `0` | 1 = print target / fire changes and the reason the helpers are idle (menu open, keyboard in use, dead, ...) to the console, 2 = also teammates under the crosshair |
+| `cl_touch_aim_debug` | `0` | 1 = print each decision change (target, weapon, fire mode and why, lead, switches, rockets) and the reason the helpers are idle (menu open, keyboard in use, dead, ...) to the console, 2 = also teammates under the crosshair |
 
-How it decides:
+With `_radius 0`, `_delay 0.1`, `_alt 0`, `_lead 0`, `_steer 0`, `_safe 0`,
+`_autoswitch 0`, `_track 0`, strength `0.35` and rate `40` it behaves as the
+first version did.
+
+**Who is a target** (unchanged rules):
 
 - **Players** are the CSQC edicts whose engine-set `entnum` is a client slot
   (1…maxclients): Xonotic networks players through CSQCModel, so their
-  interpolated origin and networked bounding box live there, in any CSQC.
+  interpolated origin, networked bounding box and derived velocity live there,
+  in any CSQC.
 - **Enemies** come from the engine scoreboard: a spectator (frags -666/-616)
   is never a target; in a team game the same pants colour as yours is a
   teammate. Whether it is a team game is read from the CSQC's `teamplay`
@@ -378,28 +394,99 @@ How it decides:
   player wearing your colour is never shot.
 - **Not** yourself, the player you are spectating, corpses (`solid ==
   SOLID_CORPSE`), gibs and copied bodies (not player slots), hidden or
-  invisible players (`EF_NODRAW`, no drawmask, alpha below 0.4).
+  invisible players (`EF_NODRAW`, no drawmask, alpha below 0.4). Nothing is
+  tracked that the player could not see.
 - **Line of sight**: a world trace (plus CSQC brush models such as doors)
-  from the view origin to the point the crosshair ray enters the body.
-- Auto-shoot adds the attack bit to the outgoing move in `CL_SendMove`. It
-  never touches the `+attack` key state, so a finger on FIRE always fires,
-  and auto-shoot letting go can never cancel a manual hold. FIRE glows while
-  auto-shoot is firing (engine HUD and CSQC HUD).
-- Slowdown multiplies the touch look drag: the engine HUD applies it in
-  `look_apply`; the port's CSQC reads it from `_cl_touch_aim_lookscale`.
-- Pull only happens while a finger is on the aim control (look zone or
-  FIRE) and you are turning or moving, or did in the last half second (a
-  finger left resting never aims by itself), never against a turn heading
-  away from the target, capped per second so it cannot snap. The port's
-  CSQC reports the aim finger through `_cl_touch_hud_state`.
+  from the view origin to the body; a led shot also needs a clear line to the
+  lead point.
 - Nothing runs in menus, the console, the chat sheet, the layout editor,
   intermission, while dead, spectating or watching a demo.
 
-Limits: the aim is at the interpolated position you see, which is what the
-server's antilag expects for hitscan; projectile weapons get no lead, so
-auto-shoot at range with the Mortar or Devastator mostly wastes ammo, and
-charge weapons are simply held. Team detection relies on Xonotic forcing
-team colours; a mod that does not will be treated conservatively.
+**The weapon in hand** comes from the loaded CSQC's weapon registry (the same
+binding the engine weapon strip uses), matched by netname against the stock
+balance in `touch_weapons.h`. A weapon it does not know (a mod's) is fired as
+before: primary, no lead, no switching.
+
+**Lead.** Instant-hit weapons and beams aim at the body you see: that is what
+the server's antilag rewinds to. Projectiles aim where the shot and the
+target meet: the target's velocity (smoothed over a few frames) and the shot's
+speed give the meeting time in closed form; the Devastator's speed-up (1000 to
+1300 units/s) is solved numerically; grenades, orbs and mines are lobbed under
+the world's gravity with their up-speed. The time the server takes to see the
+shot (the moves it has not acknowledged yet) is added. No lead beyond 1.5 s
+of flight, or for a target faster than the shot; then it aims at the body.
+
+**When to fire.** The crosshair must be within `_radius` of the (led) body,
+narrowed to what the weapon covers there: half its spread cone for pellets and
+sprayed bullets, half its splash radius for explosives. The Vortex, Rifle and
+other exact instant hits wait for the body itself.
+
+**Fire mode per weapon** (`_alt`; after Xonotic's own bots):
+
+| Weapon | Auto-shoot uses |
+|--------|-----------------|
+| Shotgun | melee (secondary) inside 110 units, pellets beyond (up to 1200) |
+| MachineGun | sustained fire; the burst beyond 1500 units |
+| Arc | beam inside its 1500 range, bolts beyond |
+| Crylink | secondary (the tight volley) |
+| Vaporizer | primary; the blaster shot once out of cells |
+| Overkill weapons | primary; the blaster shot once out of ammo |
+| Electro, Hagar, HLAC, Mortar, Rifle, Vortex, Blaster, Devastator | primary (Hagar load, Electro orbs and Mortar bounce stay manual) |
+| Port-O-Launch, Grappling Hook, Tuba | never (`_safe`) |
+
+Splash weapons hold fire while the target, or where the shot meets it, is
+inside their own blast radius plus 40 units (the Blaster's weak blast
+excepted), switching to the other fire if that one is safe (`_safe`). The
+secondary goes out as button3 next to the attack bit; `_cl_touch_autoshoot_active`
+reads 1 for primary, 2 for secondary, 3 for both.
+
+**Devastator steering** (`_steer`). One rocket per press: auto-shoot presses
+fire once lined up on the lead point (never inside the rocket's splash), keeps
+it held while the rocket flies (that is what makes the server steer it toward
+the view), keeps the view on where rocket and enemy will meet even with the
+thumb at rest, and sends a one-frame attack2 when the enemy is inside 0.8 of
+the 110-unit blast and the rocket stops closing, or the rocket is inside the
+blast and about to pass (never with you inside it). Then it lets go of fire
+so the next press launches again. Projectiles carry no owner, so "our" rocket
+is the rocket projectile that appears near the muzzle after the press; if none
+appears, that shot is not steered. Mine Layer mines are left manual.
+
+**Switching** (`_autoswitch`). The weapon list is the bots' preference for the
+distance (bands at 500 and 1050 units), without the Tuba, Mine Layer,
+Port-O-Launch, Hook, Fireball and Seeker; only owned weapons with ammo for a
+shot, in range and not inside their own splash count. It switches with the
+exact `weapon_<netname>` alias every CSQC defines, and only when the enemy has
+been the target for a quarter second, the weapon in hand cannot shoot there
+(no ammo, out of range, inside its splash) or the other is at least two places
+better, and none of these hold: within 4 s of you choosing a weapon (strip,
+wheel, a pickup switching by itself; not the server's own switch off an empty
+weapon), within 2 s of its own last switch, a rocket in flight, FIRE or ALT
+held, an earlier switch still on its way.
+
+**Pull and slowdown.** Slowdown multiplies the touch look drag: the engine HUD
+applies it in `look_apply`; the port's CSQC reads it from
+`_cl_touch_aim_lookscale`. Pull works while a finger is on the aim control
+(look zone or FIRE) and you are turning or moving, or did in the last half
+second (a finger left resting never aims by itself); and also while auto-shoot
+is firing at that target (`_track`) or a steered rocket flies. Never against a
+turn heading away from the target, capped per second so it cannot snap. The
+port's CSQC reports the aim finger through `_cl_touch_hud_state`.
+
+**Your own press wins.** Auto-shoot adds bits to the outgoing move in
+`CL_SendMove`; it never touches the key state, so a finger on FIRE or ALT
+always fires, and auto-shoot letting go can never cancel a manual hold. While
+you hold FIRE or ALT it adds nothing of its own (except keeping a steered
+rocket's fire held). FIRE glows while auto-shoot is firing (engine HUD and
+CSQC HUD).
+
+Limits: the weapon numbers are the stock balance. A server running another
+balance (faster rockets, other splash radii, a mod's weapons) makes the lead
+and the ranges off by that difference; a weapon the table does not know is
+fired plainly. The lead assumes the target keeps its velocity: a strafe that
+reverses mid-flight is missed, and jumps are led as straight lines (gravity is
+not applied to the target). Charge weapons are simply held. Team detection
+relies on Xonotic forcing team colours; a mod that does not will be treated
+conservatively.
 
 **Fire, zoom, weapons (recommended defaults):**
 
