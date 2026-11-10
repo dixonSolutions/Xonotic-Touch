@@ -1164,7 +1164,7 @@ static void VID_SyncTouchFinger(void)
 	}
 }
 
-static void VID_TouchMenuFingerEvent(qbool down, float nx, float ny)
+static void VID_TouchMenuFingerEvent(int id, qbool down, float nx, float ny)
 {
 	keydest_t keydest = (key_consoleactive & KEY_CONSOLEACTIVE_USER) ? key_console : key_dest;
 
@@ -1172,6 +1172,8 @@ static void VID_TouchMenuFingerEvent(qbool down, float nx, float ny)
 	// stop a finger pressing the menu.
 	if (!VID_TouchscreenHasRealDevices())
 		return;
+	// In the game, the pointer of a CSQC vote or other pointer UI.
+	TouchHUD_CursorFinger(id, down, nx, ny);
 	if (keydest != key_menu && keydest != key_menu_grabbed)
 		return;
 
@@ -1480,6 +1482,11 @@ void IN_Move( void )
 	oldshowkeyboard = !!vid_touchscreen_showkeyboard.integer;
 	oldneedsosk = needsosk;
 
+	// A vote or another CSQC pointer UI: a finger is its pointer, with the
+	// touch controls shown or hidden (touch_hud.c).
+	if (VID_TouchscreenHasRealDevices())
+		TouchHUD_CursorFrame();
+
 	if (vid_touchscreen.integer)
 	{
 		switch(gamemode)
@@ -1542,8 +1549,13 @@ void IN_Move( void )
 
 	if (!vid_touchscreen.integer)
 	{
+		// A finger that placed the CSQC's pointer keeps it until the mouse moves.
+		static int mouse_last_x = -1, mouse_last_y = -1;
 		SDL_GetMouseState(&x, &y);
-		VID_SetWindowMouse(x, y);
+		if (x != mouse_last_x || y != mouse_last_y || !TouchHUD_FingerIsPointer())
+			VID_SetWindowMouse(x, y);
+		mouse_last_x = x;
+		mouse_last_y = y;
 	}
 
 	if (vid_touchscreen.integer && !VID_TouchscreenHasRealDevices())
@@ -1943,7 +1955,7 @@ void Sys_SDL_HandleEvents(void)
 						multitouch[i][0] = event.tfinger.fingerId + 1;
 						multitouch[i][1] = event.tfinger.x;
 						multitouch[i][2] = event.tfinger.y;
-						VID_TouchMenuFingerEvent(true, event.tfinger.x, event.tfinger.y);
+						VID_TouchMenuFingerEvent((int)multitouch[i][0], true, event.tfinger.x, event.tfinger.y);
 						// TODO: use event.tfinger.pressure?
 						break;
 					}
@@ -1961,7 +1973,7 @@ void Sys_SDL_HandleEvents(void)
 				{
 					if (multitouch[i][0] == event.tfinger.fingerId + 1)
 					{
-						VID_TouchMenuFingerEvent(false, event.tfinger.x, event.tfinger.y);
+						VID_TouchMenuFingerEvent((int)multitouch[i][0], false, event.tfinger.x, event.tfinger.y);
 						multitouch[i][0] = 0;
 						break;
 					}

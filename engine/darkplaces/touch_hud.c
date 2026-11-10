@@ -72,6 +72,8 @@ static const float C_WARNING[3]      = {0.784f, 0.533f, 0.000f};
 #define FONT_READOUT     24.0f
 #define LOOK_DEG_PER_PX  0.18f
 #define LOOK_REF_WIDTH   960.0f
+// The pills kept with the controls off (keyboard and mouse) draw fainter.
+#define DESK_ALPHA       0.6f
 
 // ---------------------------------------------------------------------------
 // Cvars: the CSQC registers these (touch_init.qc); when only a server's CSQC
@@ -515,17 +517,32 @@ void TouchHUD_SyncStockPanels(void)
 	stock_panel("hud_panel_weapons", !strip_shown());
 }
 
-qbool TouchHUD_Active(void)
+// In a match with the game holding the keys, under any CSQC.
+static qbool in_play(void)
 {
-	if (!vid_touchscreen.integer)
-		return false;
-	if (!CLVM_prog->loaded || cl_touch_csqc_active)
+	if (!CLVM_prog->loaded)
 		return false;
 	if (cls.state != ca_connected || cls.signon != SIGNONS)
 		return false;
 	if (key_dest != key_game || (key_consoleactive & KEY_CONSOLEACTIVE_USER))
 		return false;
 	return true;
+}
+
+// The loaded CSQC shows its own pointer (setcursormode): the map and
+// gametype vote, the quick menu, minigames, hud_configure.
+static qbool cursor_wanted(void)
+{
+	return in_play() && cl.csqc_wantsmousemove;
+}
+
+qbool TouchHUD_Active(void)
+{
+	if (!vid_touchscreen.integer || cl_touch_csqc_active)
+		return false;
+	// The CSQC's pointer UI takes the fingers (TouchHUD_CursorFrame), as the
+	// port's own HUD steps aside for it.
+	return in_play() && !cl.csqc_wantsmousemove;
 }
 
 // ---------------------------------------------------------------------------
@@ -1093,8 +1110,7 @@ void TouchHUD_LookWithoutControls(void)
 	static float last_x, last_y;
 	double now = host.realtime;
 	int i;
-	if (vid_touchscreen.integer || key_dest != key_game || (key_consoleactive & KEY_CONSOLEACTIVE_USER)
-		|| cls.state != ca_connected || cls.signon != SIGNONS || !CLVM_prog->loaded)
+	if (vid_touchscreen.integer || !in_play() || cl.csqc_wantsmousemove)
 	{
 		finger = -1;
 		return;
@@ -1170,6 +1186,177 @@ static void pill_release(finger_t *f)
 	default:
 		break;
 	}
+}
+
+// ---------------------------------------------------------------------------
+// The CSQC's own pointer. A stock CSQC in cursor mode reads the pointer from
+// the type-3 input events cl_input.c sends from in_windowmouse after IN_Move,
+// works out what is under it while drawing (MapVote_Selection), and acts on a
+// K_MOUSE1 press. Here a finger is that pointer: the first finger to land
+// moves in_windowmouse, and its press reaches the CSQC only once a frame has
+// been drawn since, or the click would land on whatever the pointer was over
+// before. A tap whose down and up arrive in the same frame (Android) is held
+// back the same way and then delivered as press and release. One finger at a
+// time; fingers already on the glass when the pointer UI opens are not it.
+// The touch controls stand down meanwhile, except MENU and CHAT, which sit
+// above the stock pointer UIs.
+// ---------------------------------------------------------------------------
+enum { CURSOR_IDLE, CURSOR_PRESS_PENDING, CURSOR_PRESSED, CURSOR_TAP_PENDING };
+static int cursor_state = CURSOR_IDLE;
+static int cursor_src;                 // multitouch id of the pointer finger, 0 = none
+static int cursor_pill_src;            // a finger on MENU or CHAT instead
+static finger_t cursor_pill;
+static unsigned int frames_drawn;      // TouchHUD_Draw calls: one per drawn frame
+static unsigned int cursor_pos_frame;  // frames_drawn when the pointer finger landed
+static qbool cursor_was;
+static qbool cursor_finger_pointer;    // a finger, not the mouse, placed the pointer last
+
+static qbool touch_device(void)
+{
+	return VID_SDL_HasTouchDevices() || vid_touchscreen_detected.integer;
+}
+
+// MENU and CHAT of the engine HUD, kept over a pointer UI: drawn and tappable
+// while this module draws the HUD (a server's CSQC), with the controls on, or
+// off with touch_desk_pills.
+static qbool cursor_pills_shown(void)
+{
+	return !cl_touch_csqc_active && touch_device() && (vid_touchscreen.integer || cv("touch_desk_pills", 1));
+}
+
+static int cursor_pill_at(float px, float py)
+{
+	if (!cursor_pills_shown())
+		return ROLE_NONE;
+	if (cv("touch_pause_visible", 1) && hit_rect(px, py, cv("touch_pause_x", 0.680f), cv("touch_pause_y", 0.088f), cv("touch_pause_size", 0.060f), cv("touch_pause_aspect", 2.9f), 1.20f))
+		return ROLE_PAUSE;
+	if (cv("touch_chat_visible", 1) && hit_rect(px, py, cv("touch_chat_x", 0.862f), cv("touch_chat_y", 0.088f), cv("touch_chat_size", 0.060f), cv("touch_chat_aspect", 2.9f), 1.20f))
+		return ROLE_CHAT;
+	return ROLE_NONE;
+}
+
+static void cursor_point(float nx, float ny)
+{
+	in_windowmouse_x = nx * vid.mode.width;
+	in_windowmouse_y = ny * vid.mode.height;
+	cursor_finger_pointer = true;
+}
+
+qbool TouchHUD_FingerIsPointer(void)
+{
+	return cursor_was && cursor_finger_pointer;
+}
+
+void TouchHUD_CursorFinger(int id, qbool down, float nx, float ny)
+{
+	if (!cursor_wanted() || id <= 0)
+		return;
+	if (down)
+	{
+		float px = nx * ui_w(), py = ny * ui_h();
+		int role;
+		if (cursor_src)
+			return;
+		role = cursor_pill_at(px, py);
+		if (role != ROLE_NONE)
+		{
+			if (cursor_pill_src)
+				return;
+			memset(&cursor_pill, 0, sizeof(cursor_pill));
+			cursor_pill.role = role;
+			cursor_pill.down_x = cursor_pill.last_x = px;
+			cursor_pill.down_y = cursor_pill.last_y = py;
+			cursor_pill_src = id;
+			return;
+		}
+		// The press waits for one frame drawn with the landing point, not for
+		// the finger to keep still: a finger on glass never quite does.
+		cursor_src = id;
+		cursor_point(nx, ny);
+		cursor_pos_frame = frames_drawn;
+		cursor_state = CURSOR_PRESS_PENDING;
+	}
+	else if (id == cursor_src)
+	{
+		cursor_src = 0;
+		if (cursor_state == CURSOR_PRESSED)
+		{
+			Key_Event(K_MOUSE1, 0, false);
+			cursor_state = CURSOR_IDLE;
+		}
+		else if (cursor_state == CURSOR_PRESS_PENDING)
+			cursor_state = CURSOR_TAP_PENDING;
+	}
+	else if (id == cursor_pill_src)
+	{
+		cursor_pill.last_x = nx * ui_w();
+		cursor_pill.last_y = ny * ui_h();
+		cursor_pill_src = 0;
+		pill_release(&cursor_pill);
+	}
+}
+
+static void cursor_end(void)
+{
+	int i, j = 0;
+	if (cursor_state == CURSOR_PRESSED)
+		Key_Event(K_MOUSE1, 0, false);
+	cursor_state = CURSOR_IDLE;
+	cursor_src = cursor_pill_src = 0;
+	cursor_was = false;
+	cursor_finger_pointer = false;
+	// Fingers still on the glass are not new touches for the controls coming
+	// back: lifting the finger that cast the last vote must not fire or jump.
+	memset(fingers, 0, sizeof(fingers));
+	for (i = 0; i < TOUCHHUD_ENGINE_FINGERS - 1 && j < MAX_FINGERS; i++)
+		if (multitouch[i][0])
+		{
+			fingers[j].used = true;
+			fingers[j].src = (int)multitouch[i][0];
+			fingers[j].role = ROLE_IGNORED;
+			fingers[j].down_time = host.realtime;
+			j++;
+		}
+}
+
+qbool TouchHUD_CursorFrame(void)
+{
+	int i;
+	if (!cursor_wanted())
+	{
+		if (cursor_was)
+			cursor_end();
+		return false;
+	}
+	if (!cursor_was)
+	{
+		cursor_was = true;
+		cursor_state = CURSOR_IDLE;
+		cursor_src = cursor_pill_src = 0;
+		cursor_finger_pointer = false;
+		TouchHUD_ReleaseAll();
+		was_active = false;
+	}
+	if (cursor_src)
+		for (i = 0; i < TOUCHHUD_ENGINE_FINGERS - 1; i++)
+			if ((int)multitouch[i][0] == cursor_src)
+			{
+				if (multitouch[i][1] * vid.mode.width != in_windowmouse_x || multitouch[i][2] * vid.mode.height != in_windowmouse_y)
+					cursor_point(multitouch[i][1], multitouch[i][2]);
+				break;
+			}
+	if ((cursor_state == CURSOR_PRESS_PENDING || cursor_state == CURSOR_TAP_PENDING) && frames_drawn != cursor_pos_frame)
+	{
+		Key_Event(K_MOUSE1, 0, true);
+		if (cursor_state == CURSOR_TAP_PENDING)
+		{
+			Key_Event(K_MOUSE1, 0, false);
+			cursor_state = CURSOR_IDLE;
+		}
+		else
+			cursor_state = CURSOR_PRESSED;
+	}
+	return true;
 }
 
 void TouchHUD_Frame(void)
@@ -1649,6 +1836,21 @@ void TouchHUD_Draw(void)
 {
 	float a;
 	float cx, cy, hx, hy;
+	frames_drawn++;
+	if (cursor_wanted())
+	{
+		if (!cursor_pills_shown())
+			return;
+		shapes_probe();
+		a = bound(0.1f, cv("touch_opacity", 0.90f), 1.0f);
+		if (!vid_touchscreen.integer)
+			a *= DESK_ALPHA;
+		if (cv("touch_pause_visible", 1))
+			draw_pill("touch_pause_x", 0.680f, "touch_pause_y", 0.088f, "touch_pause_size", 0.060f, "touch_pause_aspect", 2.9f, "MENU", cursor_pill_src && cursor_pill.role == ROLE_PAUSE, a);
+		if (cv("touch_chat_visible", 1))
+			draw_pill("touch_chat_x", 0.862f, "touch_chat_y", 0.088f, "touch_chat_size", 0.060f, "touch_chat_aspect", 2.9f, "CHAT", cursor_pill_src && cursor_pill.role == ROLE_CHAT, a);
+		return;
+	}
 	if (!TouchHUD_Active())
 	{
 		draw_strip_only();

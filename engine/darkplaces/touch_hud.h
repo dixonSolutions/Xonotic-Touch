@@ -24,6 +24,16 @@ void TouchHUD_Frame(void);
 /* Controls hidden on a touchscreen: a finger drag still turns the view. */
 void TouchHUD_LookWithoutControls(void);
 
+// While the loaded CSQC shows its own pointer (a vote, the quick menu,
+// hud_configure) a finger is that pointer and its taps are K_MOUSE1 clicks.
+// CursorFinger is called from the SDL finger down / up events, CursorFrame once
+// per IN_Move: it returns true while the pointer UI is up, and the touch
+// controls then take no fingers. FingerIsPointer: a finger placed the pointer
+// last, so the desktop mouse position must not overwrite it until it moves.
+void TouchHUD_CursorFinger(int id, qbool down, float nx, float ny);
+qbool TouchHUD_CursorFrame(void);
+qbool TouchHUD_FingerIsPointer(void);
+
 // Draw the overlay (called from the 2D overlay pass, key_game only).
 void TouchHUD_Draw(void);
 
