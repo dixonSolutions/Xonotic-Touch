@@ -16,7 +16,7 @@ Android/iOS, where touch is present; Linux tablets need a real scan.
 | Announce switches | `vid_touchscreen_notify` | On (default): a toast when the controls switch by themselves. Off: switch silently. Archived. |
 | Touch-only devices | `vid_touchscreen_touchonly` | Dynamic: on (default), hide the controls while a physical keyboard is attached; off, show them on any touchscreen |
 
-Settings → Touch → Input mode. **Rescan hardware** runs `vid_touchscreen_rescan`
+Settings → Mobile → Controls → Input mode. **Rescan hardware** runs `vid_touchscreen_rescan`
 (with Switch mid-game off, it also takes the launch decision again).
 
 ## Manual switch and lock

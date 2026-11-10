@@ -59,7 +59,7 @@ void XonoticGameMenuDialog_fill(entity me)
 	me.TR(me);
 		me.TDempty(me, 0.1);
 		// XONOTIC_UT_TOUCH_GAMEMENU
-		me.TD(me, 1, 0.8, e = makeXonoticCommandButton(_("Touch controls"), '0 0 0', "menu_cmd touchsettings", 0));
+		me.TD(me, 1, 0.8, e = makeXonoticCommandButton(_("Mobile settings"), '0 0 0', "menu_cmd touchsettings", 0));
 	me.TR(me);
 		me.TDempty(me, 0.1);
 		me.TD(me, 1, 0.8, e = makeXonoticCommandButton(_("Input"), '0 0 0', "menu_cmd inputsettings", 0));

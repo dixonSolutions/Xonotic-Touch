@@ -36,11 +36,11 @@ void XonoticTouchSetupDialog_fill(entity me)
 	me.TR(me);
 		me.TD(me, 1, 6, e = makeXonoticHeaderLabel(_("Choose a preset")));
 	me.TR(me);
-		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Standard"), '0 0 0', "exec touch/profiles/standard.cfg; menu_cmd sync", 0));
+		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Standard"), '0 0 0', "exec touch/profiles/standard.cfg; exec touch/profiles/helpers.cfg; menu_cmd sync", 0));
 		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Casual"), '0 0 0', "exec touch/profiles/casual.cfg; menu_cmd sync", 0));
 		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Competitive"), '0 0 0', "exec touch/profiles/competitive.cfg; menu_cmd sync", 0));
 	me.TR(me);
-		me.TD(me, 2, 3, e = makeXonoticTouchCommandButton(_("Left-handed"), '0 0 0', "exec touch/profiles/left.cfg; menu_cmd sync", 0));
+		me.TD(me, 2, 3, e = makeXonoticTouchCommandButton(_("Left-handed"), '0 0 0', "exec touch/profiles/left.cfg; exec touch/profiles/helpers.cfg; menu_cmd sync", 0));
 		me.TD(me, 2, 3, e = makeXonoticTouchCommandButton(_("Minimal"), '0 0 0', "exec touch/profiles/minimal.cfg; menu_cmd sync", 0));
 	me.TR(me);
 	me.TR(me);

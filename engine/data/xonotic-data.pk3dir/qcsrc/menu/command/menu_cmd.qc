@@ -159,6 +159,10 @@ void GameCommand(string theCommand)
 		case "inputsettings":    m_goto("inputsettings", false); return;
 		case "videosettings":    m_goto("videosettings", false); return;
 		case "touchsettings":    m_goto("touchsettings", false); return;
+		case "mobilecontrols":   m_goto("mobilecontrols", false); return;
+		case "mobileaim":        m_goto("mobileaim", false); return;
+		case "mobileautoshoot":  m_goto("mobileautoshoot", false); return;
+		case "mobiledynamics":   m_goto("mobiledynamics", false); return;
 		case "guide":            m_goto("guide", false); return;
 	}
 
