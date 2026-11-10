@@ -340,10 +340,23 @@ static void angles_to(const vec3_t eye, const vec3_t p, float *yaw, float *pitch
 typedef struct aimtarget_s
 {
 	int entnum;
-	float err;          // degrees between the crosshair and the aim point
-	float radius;       // angular half-width of the body, degrees
-	float yaw, pitch;   // view angles that point at the aim point
+	float err;          // degrees from the crosshair to the nearest edge of the body (0 on it)
+	float rh, rv;       // angular half-width and half-height of the body, degrees
+	float yaw, pitch;   // view angles that point at the aim point (chest, or head behind cover)
 } aimtarget_t;
+
+static float signf(float v)
+{
+	return v < 0 ? -1.0f : 1.0f;
+}
+
+// Degrees from the view to the body's edge, given the view's offset from the
+// aim point and the body's angular half-extents: 0 while the crosshair is on it.
+static float edge_err(float ey, float ep, float rh, float rv)
+{
+	float x = max(0.0f, fabs(ey) - rh), z = max(0.0f, fabs(ep) - rv);
+	return sqrt(x * x + z * z);
+}
 
 // One pass over the players the CSQC is drawing: the one under the crosshair
 // (for auto-shoot) and the nearest one inside the cone (for the helpers). Both
@@ -422,23 +435,43 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, int *on_target,
 			}
 		}
 
-		// near the crosshair: angle to the chest, or the head if the chest is
-		// hidden behind cover
-		err = acos(bound(-1.0f, DotProduct(fwd, dir), 1.0f)) * (180.0f / M_PI);
-		if (err > cone || err >= near_out->err)
-			continue;
-		VectorCopy(center, head);
-		head[2] = bmax[2] - 6;
-		if (!line_clear(eye, center))
+		// near the crosshair: how far the crosshair is from the body's edge,
+		// so a big close body counts as soon as the crosshair nears it, not
+		// only once its centre is inside the cone. The aim point is the chest,
+		// or the head if the chest is hidden behind cover.
 		{
-			if (!line_clear(eye, head))
+			float yaw, pitch, rh, rv, ey, ep;
+			qbool on = n == *on_target;
+			rh = atan(hw / dist) * (180.0f / M_PI);
+			rv = atan(0.5f * (maxs[2] - mins[2]) / dist) * (180.0f / M_PI);
+			angles_to(eye, center, &yaw, &pitch);
+			ey = wrap180(yaw - cl.viewangles[YAW]);
+			ep = pitch - cl.viewangles[PITCH];
+			err = on ? 0 : edge_err(ey, ep, rh, rv);
+			if (err > cone || err > near_out->err)
 				continue;
-			VectorCopy(head, center);
+			if (!on && !line_clear(eye, center))
+			{
+				VectorCopy(center, head);
+				head[2] = bmax[2] - 6;
+				if (!line_clear(eye, head))
+					continue;
+				// only the head shows: aim at it, and count only it as the body
+				angles_to(eye, head, &yaw, &pitch);
+				rv = atan(6.0f / dist) * (180.0f / M_PI);
+				err = edge_err(wrap180(yaw - cl.viewangles[YAW]), pitch - cl.viewangles[PITCH], rh, rv);
+				if (err > cone || err > near_out->err)
+					continue;
+			}
+			if (err == near_out->err && near_out->entnum && n != *on_target)
+				continue;
+			near_out->entnum = n;
+			near_out->err = err;
+			near_out->rh = rh;
+			near_out->rv = rv;
+			near_out->yaw = yaw;
+			near_out->pitch = pitch;
 		}
-		near_out->entnum = n;
-		near_out->err = err;
-		near_out->radius = atan(hw / dist) * (180.0f / M_PI);
-		angles_to(eye, center, &near_out->yaw, &near_out->pitch);
 	}
 }
 
@@ -541,15 +574,20 @@ void TouchAim_Frame(void)
 			set_firing(false, 0);
 	}
 
-	// friction: full over the body, fading to nothing at the cone's edge
+	// friction: full over the body, fading to nothing at the cone's edge.
+	// Not while the thumb is turning toward a body it has not reached yet:
+	// slowing that down only fights the pull and makes the target harder to
+	// reach. It is there to stop a turn on the body, or that runs past it.
 	ta.lookscale = 1;
-	if (friction > 0 && (on_target || near.entnum))
+	if (friction > 0 && near.entnum)
 	{
-		float f = 1;
-		if (!on_target && near.err > near.radius)
-			f = 1.0f - (near.err - near.radius) / max(0.5f, cone - near.radius);
-		ta.lookscale = 1.0f - friction * bound(0.0f, f, 1.0f);
+		float ey = wrap180(near.yaw - cl.viewangles[YAW]), ep = near.pitch - cl.viewangles[PITCH];
+		qbool approaching = !on_target && turn_mag / dt > AWAY_MIN_RATE && turn_yaw * ey + turn_pitch * ep > 0;
+		if (!approaching)
+			ta.lookscale = 1.0f - friction * bound(0.0f, 1.0f - near.err / cone, 1.0f);
 	}
+	else if (friction > 0 && on_target)
+		ta.lookscale = 1.0f - friction;
 
 	// magnetism: only with a finger on the aim control (the look area or
 	// FIRE) while the player aims -- turning, moving, or within INPUT_HOLD of
@@ -565,7 +603,6 @@ void TouchAim_Frame(void)
 	{
 		float ey = wrap180(near.yaw - cl.viewangles[YAW]);
 		float ep = near.pitch - cl.viewangles[PITCH];
-		float elen = sqrt(ey * ey + ep * ep);
 		float turn_rate = turn_mag / dt;
 		qbool away = turn_rate > AWAY_MIN_RATE && (turn_yaw * ey + turn_pitch * ep) < 0;
 		if (!away)
@@ -581,13 +618,19 @@ void TouchAim_Frame(void)
 					pp = follow * dp;
 				}
 			}
-			if (elen > 0.05f)
+			// the gap to the inner half of the body: a crosshair on the body's
+			// edge is still drawn in, one well inside it is left alone
 			{
-				float gap = max(0.0f, elen - 0.5f * near.radius);
-				float rate = strength * max(turn_rate, SETTLE_GAIN * gap);
-				float step = min(rate * dt, gap);
-				py += ey / elen * step;
-				pp += ep / elen * step;
+				float gy = signf(ey) * max(0.0f, fabs(ey) - 0.5f * near.rh);
+				float gp = signf(ep) * max(0.0f, fabs(ep) - 0.5f * near.rv);
+				float gap = sqrt(gy * gy + gp * gp);
+				if (gap > 0.01f)
+				{
+					float rate = strength * max(turn_rate, SETTLE_GAIN * gap);
+					float step = min(rate * dt, gap);
+					py += gy / gap * step;
+					pp += gp / gap * step;
+				}
 			}
 			len = sqrt(py * py + pp * pp);
 			cap = bound(0.0f, cl_touch_aimassist_maxrate.value, MAXRATE_MAX) * dt;
