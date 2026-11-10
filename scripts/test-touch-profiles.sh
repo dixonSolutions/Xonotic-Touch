@@ -27,6 +27,9 @@ for name in $REQUIRED; do
     fi
 done
 
+# touch_defaults.cfg is generated from the table in touch_init.qc: fail when it is stale.
+python3 "$(dirname "$0")/../touch/gen-defaults.py" --check || FAIL=1
+
 if [ "$FAIL" -ne 0 ]; then
     exit 1
 fi
