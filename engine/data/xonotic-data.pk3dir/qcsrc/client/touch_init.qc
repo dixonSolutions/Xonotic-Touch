@@ -15,9 +15,17 @@
 float touch_def_fh = -1;  // >= 0 while saving a layout file
 bool touch_def_force;     // true while resetting to defaults
 
+// The engine has these from the start: touch_defaults.cfg, generated from this
+// table by touch/gen-defaults.py and exec'd before config.cfg, so the menu can
+// show and change them outside a match and config.cfg saves them. A default
+// changed here without regenerating that file would only reach players who
+// reset to it, so a mismatch is reported.
 void Touch_RegisterCvar(string name, string value)
 {
-	registercvar(name, value);
+	if (!registercvar(name, value) && !touch_def_force && touch_def_fh < 0
+		&& cvar_defstring(name) != value)
+		print("Touch: ", name, " defaults to \"", value, "\" here but \"", cvar_defstring(name),
+			"\" in touch_defaults.cfg: run touch/gen-defaults.py\n");
 	if (touch_def_force)
 		cvar_set(name, value);
 	if (touch_def_fh >= 0)
