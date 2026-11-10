@@ -69,7 +69,8 @@ feed and the chat feed each get a band that touches neither.
 | **ALT** | Hold. Only there while the weapon in hand has a secondary fire it can fire; fades out when it runs dry | `+attack2` — see [Secondary fire](#secondary-fire-alt) |
 | **HOP** | Tap = one jump, hold = latch (keeps hopping hands-free) | `+jump` |
 | DUCK | Tap or hold | `+crouch` |
-| Weapon | WEP button / wheel; the right-edge strip is a readout, not a switcher | `impulse 1`…`9` or cycle |
+| Weapon strip (right edge) | Tap a weapon to switch to it; drag the grip under the strip to resize it — see [Weapon strip](#weapon-strip) | `impulse N` of the row |
+| WEP | Off by default (the strip switches); `touch_weapon_visible 1` brings the button back | cycle, wheel or 3-slot (`touch_weapon_mode`) |
 | Reload | Tap; hidden by default | `weapon_reload` |
 | **MENU** (top row) | Tap → Escape / GameMenu | Native Xonotic pause menu — see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md) |
 | **CONSOLE** (bottom-left) | Tap → `toggleconsole`, drag to reposition | Text sheet: layered keyboard (only with no keyboard attached), COMMANDS palette — see [TOUCH_CONSOLE_SPEC.md](TOUCH_CONSOLE_SPEC.md) |
@@ -77,6 +78,7 @@ feed and the chat feed each get a band that touches neither.
 | **SCORE** (bottom-left) | Tap → full scoreboard, tap again to clear; Escape also clears | `+showscores` / `-showscores`; also the `touch_scores` command |
 | Mobile HUD | Health, armour and ammo as one group, top-left | Bars for the two that have a maximum; reserve rounds beside the clip for weapons that reload |
 | Respawn / join | Tap **HOP** | `+jump`; the prompts name the button, not a key — see below |
+| **YES / NO** | Beside the vote panel while a called vote waits for your answer — see [Votes](#votes) | `vyes` / `vno` |
 
 Prompts that would normally name a key name the on-screen control instead in a touch
 session: "You are dead, press **HOP** to respawn", "Press **HOP** to join", "Press
@@ -91,6 +93,79 @@ there: no hop latch, and auto-hop does not hold it while the stick moves, or the
 observer would join the moment they flew anywhere. A finger still on HOP when
 the join lands is spent on the join: the first life starts with jump up, and
 the latch waits for the next press.
+
+### Weapon strip
+
+The column of owned weapons on the right edge is the weapon switcher: tap a row
+and the game switches to that weapon (`impulse N`), the same as its number key.
+The held weapon's row is washed in the accent colour. Under the last row is a
+grip, two short lines inside the strip's plate: put a finger on it and drag down
+to make the strip bigger, up to make it smaller. The size follows the finger
+and is kept when it lifts.
+
+| Cvar | Default | Range | Notes |
+|------|---------|-------|-------|
+| `cl_touch_weplist_scale` | `1.3` | 0.7–2.4 | Size. An **engine** cvar, archived in `config.cfg` (saved again when a grip drag ends) |
+| `touch_weplist_x` | `0.962` | 0–1 | Centre across; mirrored when left-handed. Layout file |
+| `touch_weplist_y` | `0.360` | 0–1 | Centre down. Layout file |
+| `touch_weplist_visible` | `1` | 0/1 | Layout file |
+
+The size is not a `touch_*` cvar on purpose: those are pinned by
+`touch.layout.cfg` every launch, so a size dragged on a public server, where
+no layout file is written, would be lost at the next start (the
+`cl_touch_aimassist*` cvars live in the engine for the same reason).
+`touch_hud_scale` no longer touches the strip; it sizes only the vitals.
+
+Geometry (`u` = the short axis ÷ 540 × `cl_touch_weplist_scale`): rows 26u high
+and 46u wide inside a 4u pad, the grip 12u high, about 75 px rows on a
+1920×1200 tablet at the default. A long inventory shrinks the strip until it
+and its grip fit 92% of the screen height, and wherever it is anchored the
+strip stays on screen. The grip's touch area reaches at least 7% of the short
+axis below its top edge, never up over the last row. A strip that is not drawn
+(dead, observing, hidden) takes no taps. The exact contract is in
+[TOUCH_LAYOUT_SPEC.md §3.1](TOUCH_LAYOUT_SPEC.md); the port's CSQC
+(`touch_hud.qc`, local matches) and the engine's HUD (`touch_hud.c`, public
+servers) draw the same strip with the same grip.
+
+Settings → Mobile → HUD has the size, both position sliders and visibility.
+
+### With a keyboard and mouse attached
+
+When a keyboard is attached to a touchscreen device, Dynamic mode hides the
+touch controls (`vid_touchscreen 0`) and the mouse aims, as on a desktop. The
+screen is still a touchscreen, so what a finger can usefully reach stays:
+
+* the weapon strip: tap to switch, drag the grip to resize;
+* **MENU**, **CHAT**, **SCORE** and **CONSOLE**, dimmed, unless
+  `touch_desk_pills` is `0` (Settings → Mobile → HUD: *Keep MENU, CHAT and SCORE
+  on screen with a keyboard*);
+* **YES** / **NO** while a vote waits on you.
+
+The move stick, FIRE, ALT, HOP, DUCK and ZOOM stay hidden. A finger anywhere
+else turns the view (`TouchHUD_LookWithoutControls`, engine). "A touchscreen"
+means the engine's scan found one (`vid_touchscreen_detected`), or a finger is
+on the glass; on a machine with no touchscreen nothing of this applies, and the
+strip is drawn as a plain readout as before. The port's CSQC publishes the
+engine finger slots it holds in this state in `_cl_touch_desk_fingers` (a bit
+per slot), so the engine's finger look can leave them alone. On public servers
+the engine HUD does the same (`touch_hud.c`, reading the same
+`touch_desk_pills`).
+
+### Votes
+
+**Map and gametype vote** (match end): the touch controls step aside, as they
+do for every stock screen that asks for the cursor (the quick menu, minigames, a
+clickable radar), and the first finger is the cursor: tap an option to vote for
+it. The engine moves the cursor to the finger and clicks only once the vote
+screen has drawn a frame with it there, so the vote goes to the option under
+the finger; dragging across options votes for none of them. A mouse keeps
+working as before.
+
+**A vote called mid-match** (`vcall`, the vote panel): **YES** and **NO** pills
+sit beside the vote panel while the vote is pending and you have not answered,
+and send `vyes` / `vno`. They go as soon as the server has your answer. They
+are there with a keyboard attached too, and on public servers the engine HUD
+shows the same pair.
 
 Geometry, sizing rationale and the input model are specified in
 [TOUCH_UX_REDESIGN.md](TOUCH_UX_REDESIGN.md); the coordinate contract is in
@@ -185,7 +260,8 @@ keeps its physical size across aspect ratios — `mm = _size × 183.2` on the
 | ALT, secondary fire | `touch_fire2_` | `touch_fire2_visible` 0 never / 1 always / 2 contextual | contextual (`2`) |
 | Hop | `touch_jump_` | `touch_jump_aspect` (capsule width ÷ height) | yes |
 | Duck | `touch_crouch_` | — | yes |
-| Weapon | `touch_weapon_` | — | no (HUD strip switches weapons) |
+| Weapon | `touch_weapon_` | — | no (the weapon strip switches weapons) |
+| Weapon strip | `touch_weplist_` | `_x`, `_y`, `_visible` only: sized by `cl_touch_weplist_scale` — see [Weapon strip](#weapon-strip) | yes |
 | Zoom | `touch_zoom_` | `touch_zoom_visible` 0 never / 1 always / 2 contextual | contextual (`2`) |
 | Dash | `touch_dodge_` | — | no |
 | Reload | `touch_reload_` | — | no |
@@ -206,6 +282,9 @@ duplicated here — three copies of a coordinate is two too many.
 | `touch_look_zone_right` | float | 0–1 | `1.0` | Right edge (usually full width) |
 | `touch_edge_deadzone_px` | int | 8–24 | `16` | Ignore touches near bezels (GNOME edge gestures) |
 | `touch_handedness` | int | 0/1 | `0` | `0` = right-hand look zone; `1` = mirrored |
+| `touch_weplist_x` / `_y` | float | 0–1 | `0.962` / `0.360` | Weapon strip centre; kept on screen whatever the value |
+| `touch_weplist_visible` | int | 0/1 | `1` | Weapon strip shown |
+| `touch_desk_pills` | int | 0/1 | `1` | Keyboard attached on a touchscreen: keep MENU, CHAT, SCORE and CONSOLE, dimmed and tappable |
 
 **Left-handed mirror:** `x' = 1.0 - touch_*_x` about the widget centre (`Touch_MirrorX`),
 applied when `touch_handedness 1` or `left.cfg` is loaded. The look and move
@@ -266,7 +345,7 @@ Engine movement (already in `touch/xonotic.cfg`):
 | `touch_look_tap_fire` | int | 0/1 | `1` | Short tap in the look zone fires |
 | `touch_look_tap_ms` | int | | `200` | Longest tap still counted as a shot |
 | `touch_zoom_mode` | int | 0=hold, 1=toggle | `0` | |
-| `touch_weapon_mode` | int | 0=wheel, 1=3slot, 2=cycle | `2` | Cycle; the HUD strip is the primary switcher |
+| `touch_weapon_mode` | int | 0=wheel, 1=3slot, 2=cycle | `2` | WEP button behaviour; the weapon strip is the primary switcher |
 | `touch_weapon_slot1` | string | weapon name | `"Laser"` | 3-slot favorites |
 | `touch_weapon_slot2` | string | | `"Shotgun"` | |
 | `touch_weapon_slot3` | string | | `"Grenade Launcher"` | |
@@ -488,7 +567,7 @@ Uses engine volume cvars; port adds an output profile for phone speaker vs headp
 
 | Cvar | Type | Default | Purpose |
 |------|------|---------|---------|
-| `touch_hud_scale` | float | `1.0` | HUD scale; tied to `vid_touchscreen_density` |
+| `touch_hud_scale` | float | `0.85` | Size of the health, armour and ammo readouts (Settings → Mobile → HUD → Readout size). Not the weapon strip, which has `cl_touch_weplist_scale` |
 | `touch_reduce_shake` | int | `0` | Lower view punch / camera shake |
 | `touch_colorblind_mode` | int | `0` | Team colors: 0=off, 1=deuter, 2=protan, 3=tritan |
 | `touch_mobile_data_mode` | int | `0` | When `1`: `cl_curl_enabled 0`, defer map downloads |
@@ -501,8 +580,9 @@ Uses engine volume cvars; port adds an output profile for phone speaker vs headp
 | File | Audience | Summary |
 |------|----------|---------|
 | `standard.cfg` | Most players | The layout. Every other control preset `exec`s it and overrides only what differs |
-| `casual.cfg` | New to touch / Xonotic | Larger widgets, light aim assist, lower sens, auto-hop |
-| `competitive.cfg` | Experienced | Smaller widgets, no assist (auto-shoot and aim assist off), higher sens, second fire button on (claw grip), snappier look filter, 3-slot weapons, double-tap dash |
+| `casual.cfg` | New to touch / Xonotic | Larger widgets, stronger aim assist than the default, lower sens, auto-hop |
+| `competitive.cfg` | Experienced | Smaller widgets, no assist (auto-shoot, aim assist and auto-switch off), higher sens, second fire button on (claw grip), snappier look filter, 3-slot weapons, double-tap dash |
+| `helpers.cfg` | — | Every shoot-helper cvar at its default; the presets, the wizard and *Reset preset* exec it, then override what differs |
 | `left.cfg` | Left-handed | `touch_handedness 1` — the mirror is computed, not a second copy of the geometry |
 | `minimal.cfg` | Small phones | Fewest controls; auto-hop so nothing but move, look and fire is needed |
 | `battery.cfg` | Long sessions | Performance row only |
@@ -514,7 +594,19 @@ Uses engine volume cvars; port adds an output profile for phone speaker vs headp
 
 ## Settings UI (intent groups)
 
-Implement in `qcsrc/menu/` — shallow tree for phone sessions (Hick’s Law).
+As shipped, Settings → Mobile (`dialog_settings_touch.qc`) has five sub-tabs; each
+cvar is on exactly one of them:
+
+| Sub-tab | Rows |
+|---------|------|
+| **Controls** | Input mode (Dynamic / Touch / Keyboard & mouse, switch mid-game, announce, touch-only), layout presets, opacity, scale, glass tint, left-handed, stick dead zone and reach, FIRE hold / toggle, dodge button, customize / save / reset |
+| **HUD** | Weapon bar: size (`cl_touch_weplist_scale` 0.7–2.4), across (`touch_weplist_x`), down (`touch_weplist_y` 0.15–0.85), show; readout size (`touch_hud_scale`); *Keep MENU, CHAT and SCORE on screen with a keyboard* (`touch_desk_pills`) |
+| **Aim** | Look sensitivity, vertical, invert; aim assist on / off with Light, Medium (the defaults) and Strong; slowdown, pull (0–1), catch cone (1–15°), max pull (0–180°/s), target ring |
+| **Auto-shoot** | Auto-shoot on / off, reaction delay (0–0.5 s), shoot radius (0–6°), keep firing, which weapons; shot choice: secondary fire when better, lead moving targets, guide and detonate rockets, switch to the best weapon; aim-area-only, range — see [Shoot helpers](#shoot-helpers-auto-shoot-and-aim-assist-engine) |
+| **Dynamics** | Performance profile, frame cap, vsync, dynamic resolution, render scale, jump button mode |
+
+The original intent groups, kept for the menus not built yet. Shallow tree for
+phone sessions (Hick’s Law):
 
 | Menu group | Contents |
 |------------|----------|
@@ -604,11 +696,11 @@ Scale from `vid_width`, `vid_height`, `vid_touchscreen_density` — never 1920×
 | Element | Mobile approach |
 |---------|-----------------|
 | HUD | Less clutter; `touch_hud_scale` × density |
-| Weapon select | Wheel or compact bar; edge-aligned large targets |
+| Weapon select | Right-edge strip of large rows, resizable with its grip ([Weapon strip](#weapon-strip)) |
 | Scoreboard | Full-screen overlay |
 | Kill feed | Shorter lifetime, smaller type |
 | Damage feedback | Stronger directional indicators |
-| Intermission / vote | Large tappable rows; no hover |
+| Intermission / vote | The finger is the cursor on the vote screen; YES / NO pills for a called vote ([Votes](#votes)) |
 
 ---
 
@@ -671,7 +763,7 @@ Menu actions: Export → share file; Import → validate keys, backup current, `
 | Engine fingers | `engine/darkplaces/vid_sdl.c`, `clvm_cmds.c` | `gettouchfinger` builtin (#643), `DP_UT_TOUCHFINGER` |
 | Constants | `engine/.../qcsrc/common/` | Shared enums, weapon names, gesture thresholds *(pending)* |
 | Settings UI | `engine/.../qcsrc/menu/xonotic/` | Sliders, wizard, touch settings tab |
-| Mobile status HUD | `engine/.../qcsrc/client/touch_hud.qc` | Health / armour / ammo group, weapons strip |
+| Mobile status HUD | `engine/.../qcsrc/client/touch_hud.qc`, `touch_weapons.qc` | Health / armour / ammo group, weapons strip, its grip and tap slots |
 | User persistence | `~/.xonotic/touch.layout.cfg` | Profile `exec` + registered cvars |
 | SDL fingers | `engine/darkplaces/vid_sdl.c` | SDL multitouch → `gettouchfinger` |
 
