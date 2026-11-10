@@ -46,7 +46,7 @@ These are the root causes the implementation must remove. Do not "tune around" t
 | D8 | `Touch_SetKey` `localcmd`s ~8 `-key` lines **every frame** regardless of state | `touch_input.qc` | 240 console cmds/s (CPU + heat), and it cancels a physically held key (real SPACE / mouse1) 30×/s |
 | D9 | Pointer press assigns role from a stale `touch_finger_last_pos[0]` (often `0 0`) | `touch_input.qc` `Touch_InputEvent` | A tap anywhere can be read as the top-left console pad ⇒ console opens instead of firing |
 | D10 | `Touch_MirrorX` uses top-left-origin formula `1 - nx - nsize` on **center**-semantics cvars | `touch_layout.qc` | Left-handed layout off by half a widget |
-| D11 | `Touch_WidgetScale()` multiplies widget size by `touch_hud_scale` (0.85 in `standard.cfg`) | `touch_layout.qc` | Controls shrink when the player scales the HUD; two unrelated knobs coupled |
+| D11 | `Touch_WidgetScale()` multiplies widget size by `touch_hud_scale` (0.85 in `standard.cfg`) | `touch_layout.qc` | Controls shrink when the player scales the HUD; two unrelated knobs coupled. *Fixed; the weapon strip was the last thing still sized by `touch_hud_scale` (49 px rows on a 1920×1200 tablet) and now has its own `cl_touch_weplist_scale` — `touch_hud_scale` sizes only the vitals readouts* |
 | D12 | `Touch_WidgetVisible()` hides anything at `x <= 0.001` / `y <= 0.001` | `touch_layout.qc` | Position doubles as a visibility flag; can't place a widget at the screen edge |
 | D13 | Glass discs drawn as per-row scanline fills (3 discs per button, `step = max(2, r/24)`) | `touch_glass.qc` | ~600 `drawfill` per frame; this is what cooked the chassis (hence `touch_simple_draw 1`) |
 | D14 | `Touch_SaveLayoutFile` writes to the gamedir (`~/.xonotic/data/touch.layout.cfg`); the launcher `exec`s `${HOME}/.xonotic/touch.layout.cfg` | `touch_config.qc` + `packaging/start.sh:23` | Saved layout is never loaded ⇒ nothing is remembered across sessions |
@@ -97,6 +97,22 @@ the old WEP glass button is off by default (Hick's Law; RELOAD / DODGE stay hidd
 | ZOOM  | `0.860` | `0.480` | `0.100` | — | `2` (contextual: scoped weapon) | circle |
 | RELOAD| `0.720` | `0.480` | `0.100` | — | `0` | circle |
 | DODGE | `0.165` | `0.480` | `0.100` | — | `0` | circle |
+| Weapon strip | `0.962` | `0.360` | `cl_touch_weplist_scale` `1.3` (0.7–2.4) | — | `1` (`touch_weplist_visible`) | column of rows + resize grip |
+
+The weapon strip is the one widget sized by an engine cvar rather than a `touch_*` one:
+`touch_*` cvars are pinned by `touch.layout.cfg` at launch, and a size dragged on a server
+(engine HUD, `touch_hud.c`) could never be saved there. Its unit is
+`u = Touch_UIScale() × cl_touch_weplist_scale` (0 reads as 1.3, clamped 0.7–2.4); rows are
+`26u × 46u`, padding `4u`, and a `46u × 12u` grip under the last row, inside the plate, whose
+touch area reaches at least `0.07 × short axis` downward and never up over the last row.
+`n` owned rows make the plate `T = 26nu + 12u + 8u` tall; when `T > 0.92 × height` the unit
+shrinks so `T` equals it, then the centre is clamped so the plate stays within
+`[0.04, 0.96] × height` and inside the screen across. A finger on the grip resizes:
+`u = u_grab + 2 × (y − y_grab) / (26n + 12)`. Both HUDs implement this geometry
+([CONTROLS.md — Weapon strip](CONTROLS.md#weapon-strip)).
+
+`touch_desk_pills` (`1`) keeps MENU, CHAT, SCORE and CONSOLE on screen, dimmed and
+tappable, while the controls are off on a touchscreen with a keyboard attached.
 
 > **Draw space:** layout maths use `vid_conwidth` × `vid_conheight` (`Touch_UISize`), not `VF_SIZE`.
 > On Wayland, VF can be 1440×960 while con stays 960×640; 2D clips to con — VF-based layout hid FIRE/JUMP.
@@ -196,7 +212,12 @@ Per frame:
 ### 4.2 Priority order (first match wins)
 
 ```
+0  YES / NO vote pills  (grab 1.10)   → ROLE_VOTE       // only while a vote waits on you
 1  CON handle rect      (grab 1.20)   → ROLE_CON        // before edge deadzone
+   MENU / CHAT / SCORE pills (grab 1.20) → ROLE_PAUSE / CHAT / SCORES
+   weapon strip grip    → ROLE_WEPSIZE                  // before the rows, which are inflated
+   weapon strip rows    (inflated 12%) → ROLE_WEAPON    // only rows drawn last frame
+   (controls off, keyboard attached: everything below → ROLE_IGNORED)
 2  edge deadzone        → ROLE_IGNORED
 3  HUD panel hit        → ROLE_IGNORED
 4  FIRE circle          (grab 1.15)   → ROLE_FIRE

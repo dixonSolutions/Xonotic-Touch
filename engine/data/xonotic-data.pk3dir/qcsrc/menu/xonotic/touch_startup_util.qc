@@ -1,4 +1,5 @@
 #include "touch_startup_util.qh"
+#include "touch_menu_layout.qh"
 
 /** The launcher checks `.assets-ready` before exec and passes the answer in.
  *
@@ -70,6 +71,24 @@ bool TouchStartup_userProfileNeeded()
 bool TouchStartup_touchSetupNeeded()
 {
 	return cvar("vid_touchscreen") && !cvar("touch_setup_done");
+}
+
+/** First touch launch: take the default controls without asking.
+ *
+ * There used to be a setup dialog here, and players did not want a popup
+ * before they could play: everything it offered is in Settings -> Mobile. Its
+ * "Save & continue" with nothing picked kept the preset the launcher had
+ * already exec'd (Standard), saved the layout file and marked setup done; this
+ * does the same, once. An install that already has touch_setup_done is left
+ * alone.
+ */
+void TouchStartup_applyTouchDefaults()
+{
+	if (!TouchStartup_touchSetupNeeded())
+		return;
+	TouchMenu_WriteLayoutFile("touch.layout.cfg");
+	// seta: the client VM that registers it has not run yet.
+	localcmd("seta touch_setup_done 1\nsaveconfig\n");
 }
 
 void TouchStartup_readProgress(entity dlg)

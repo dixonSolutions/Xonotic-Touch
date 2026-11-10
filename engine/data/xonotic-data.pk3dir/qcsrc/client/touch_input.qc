@@ -10,6 +10,7 @@
 #include "touch_init.qh"
 #include "touch_defs.qh"
 #include "touch_weapons.qh"
+#include "touch_scores.qh"
 #include "view.qh"
 #include <common/weapons/all.qh>
 #include <common/mapvoting/_mod.qh>
@@ -51,6 +52,11 @@ bool touch_ready;
 int touch_last_fire_mode;
 bool touch_autoscreenshot_done;
 int touch_autoscreenshot_frames;
+// The controls are off but a finger is still being placed (Touch_DeskFrame):
+// Touch_AssignRole only hands out the roles that stay on screen then.
+bool touch_desk;
+bool touch_desk_on;
+int touch_desk_claim_sent = -1;
 
 bool touch_key_forward;
 bool touch_key_back;
@@ -130,7 +136,10 @@ bool Touch_Active(void)
 		return false;
 	// TOUCH_LAYOUT_SPEC R7: hard-release during vote / intermission / team UI so
 	// MapVote and scoreboard receive pointer events (Touch_InputEvent runs first).
-	if (mv_active || intermission || scoreboard_ui_enabled)
+	// The same for every other stock UI that has asked for the cursor (quick
+	// menu, minigames, a clickable radar): the engine turns a finger into that
+	// pointer and its click, which this layer must neither draw over nor eat.
+	if (mv_active || intermission || scoreboard_ui_enabled || cursor_active)
 		return false;
 	// Normal: hide under full menu. Debug keeps overlay visible for remote verification.
 	if (autocvar_touch_debug)
@@ -145,6 +154,41 @@ bool Touch_Active(void)
 bool Touch_OwnsScreen(void)
 {
 	return Touch_CustomizeActive() || Touch_Chat_Active();
+}
+
+bool Touch_AnyFingerDown(void)
+{
+	if (!checkextension("DP_UT_TOUCHFINGER"))
+		return false;
+	for (int s = 0; s < TOUCH_ENGINE_SLOTS; ++s)
+		if (gettouchfinger(s).z > 0)
+			return true;
+	return false;
+}
+
+// A keyboard is attached to a touchscreen (vid_touchscreen 0 there: Dynamic
+// mode with a keyboard, or Keyboard & mouse): the move stick, FIRE and the other
+// play controls are off, and the mouse aims. The screen is still a touchscreen,
+// so what a finger can usefully reach stays: the weapons strip and its grip,
+// the chrome pills (touch_desk_pills), and a vote's YES and NO.
+//
+// vid_touchscreen_detected is the engine's "a touchscreen exists" from its
+// hardware scan (vid_touchdetect.c). A finger on the glass is proof enough too:
+// SDL often lists no touch device until the first one lands.
+bool Touch_DeskActive(void)
+{
+	if (cvar("vid_touchscreen") || Touch_CustomizeActive() || Touch_Chat_Active())
+		return false;
+	if (mv_active || intermission || scoreboard_ui_enabled || cursor_active)
+		return false;
+	if (autocvar__menu_alpha >= 1)
+		return false;
+	return cvar("vid_touchscreen_detected") || Touch_AnyFingerDown();
+}
+
+bool Touch_DeskPills(void)
+{
+	return Touch_DeskActive() && autocvar_touch_desk_pills;
 }
 
 // Stock panels build their prompts out of key binds — "You are dead, press SPACE to
@@ -260,6 +304,7 @@ void Touch_ReleaseAll(void)
 		touch_finger_lost_time[i] = 0;
 		touch_finger_draglook[i] = false;
 	}
+	Touch_Hud_GripEnd();
 	Touch_Console_Reset();
 	Touch_Pause_Reset();
 	Touch_Look_EndGesture();
@@ -300,21 +345,36 @@ bool Touch_RoleOwned(int role)
 
 int Touch_AssignRole(vector p)
 {
-	if (Touch_Console_Hit(p))
+	// On top of everything while it lasts: a vote waits on an answer.
+	if (Touch_Vote_PillHit(p))
+		return TOUCH_ROLE_VOTE;
+
+	bool pills = !touch_desk || autocvar_touch_desk_pills;
+	if (pills && Touch_Console_Hit(p))
 		return TOUCH_ROLE_CON;
 
-	if (Touch_Pause_PillHit(p))
+	if (pills && Touch_Pause_PillHit(p))
 		return TOUCH_ROLE_PAUSE;
 
-	if (Touch_Chat_PillHit(p))
+	if (pills && Touch_Chat_PillHit(p))
 		return TOUCH_ROLE_CHAT;
 
-	if (Touch_Scores_PillHit(p))
+	if (pills && Touch_Scores_PillHit(p))
 		return TOUCH_ROLE_SCORES;
+
+	// Before the rows: the grip's area starts where the last row ends, and the
+	// rows are inflated for fat fingers.
+	if (Touch_Weapons_GripHit(p))
+		return TOUCH_ROLE_WEPSIZE;
 
 	// Stock vertical weapons strip — tap icon to switch (replaces WEP button).
 	if (Touch_Weapons_Hit(p))
 		return TOUCH_ROLE_WEAPON;
+
+	// Nothing else is on screen to press. The engine turns the view with a
+	// finger that lands anywhere else (TouchHUD_LookWithoutControls).
+	if (touch_desk)
+		return TOUCH_ROLE_IGNORED;
 
 	if (Touch_InEdgeDeadzone(p))
 		return TOUCH_ROLE_IGNORED;
@@ -384,6 +444,10 @@ int Touch_ClaimFinger(int src, vector pos)
 			Touch_Chat_OnDown(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_SCORES)
 			Touch_Scores_OnDown(pos);
+		else if (touch_finger_role[i] == TOUCH_ROLE_VOTE)
+			Touch_Vote_OnDown(pos);
+		else if (touch_finger_role[i] == TOUCH_ROLE_WEPSIZE)
+			Touch_Hud_GripBegin(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_LOOK)
 			Touch_Look_BeginGesture(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_WEAPON)
@@ -501,9 +565,11 @@ void Touch_PollFingers(void)
 		// Chrome pills must not use the lost-finger grace (B4 + pause realtime):
 		// a pill is a discrete tap that commits on release, and keeping the
 		// finger alive past the release would re-fire it on the next frame.
+		// The grip and the vote pills too: a lost frame is no reason to hold a
+		// resize open, and a vote is a tap like the pills.
 		int role = touch_finger_role[i];
 		if (role == TOUCH_ROLE_CON || role == TOUCH_ROLE_PAUSE || role == TOUCH_ROLE_CHAT
-			|| role == TOUCH_ROLE_SCORES)
+			|| role == TOUCH_ROLE_SCORES || role == TOUCH_ROLE_VOTE || role == TOUCH_ROLE_WEPSIZE)
 		{
 			vector up = touch_finger_last_pos[i];
 			if (role == TOUCH_ROLE_CON)
@@ -512,6 +578,10 @@ void Touch_PollFingers(void)
 				Touch_Pause_OnUp(up);
 			else if (role == TOUCH_ROLE_SCORES)
 				Touch_Scores_OnUp(up);
+			else if (role == TOUCH_ROLE_VOTE)
+				Touch_Vote_OnUp(up);
+			else if (role == TOUCH_ROLE_WEPSIZE)
+				Touch_Hud_GripEnd();
 			else
 				Touch_Chat_OnUp(up);
 			touch_finger_used[i] = false;
@@ -584,6 +654,87 @@ void Touch_TickDebugCmds(void)
 	}
 }
 
+// One frame of a finger on something that is not a play control: the pills,
+// the strip's grip, a vote. False for any other role.
+bool Touch_ChromeFingerFrame(int role, vector pos)
+{
+	if (role == TOUCH_ROLE_CON)
+	{
+		Touch_Console_PromoteHold();
+		Touch_Console_OnMove(pos);
+	}
+	else if (role == TOUCH_ROLE_PAUSE)
+		Touch_Pause_OnMove(pos);
+	else if (role == TOUCH_ROLE_CHAT)
+		Touch_Chat_OnMove(pos);
+	else if (role == TOUCH_ROLE_SCORES)
+		Touch_Scores_OnMove(pos);
+	else if (role == TOUCH_ROLE_VOTE)
+		Touch_Vote_OnMove(pos);
+	else if (role == TOUCH_ROLE_WEPSIZE)
+		Touch_Hud_GripMove(pos);
+	else
+		return false;
+	return true;
+}
+
+// Demote cancelled CON / PAUSE fingers (ARMING→CANCEL→IDLE while finger still live)
+void Touch_DemoteCancelled(void)
+{
+	for (int i = 0; i < TOUCH_MAX_FINGERS; ++i)
+	{
+		if (!touch_finger_used[i])
+			continue;
+		if (touch_finger_role[i] == TOUCH_ROLE_CON && !Touch_Console_Busy())
+			touch_finger_role[i] = TOUCH_ROLE_IGNORED;
+		if (touch_finger_role[i] == TOUCH_ROLE_PAUSE && !Touch_Pause_Busy())
+			touch_finger_role[i] = TOUCH_ROLE_IGNORED;
+	}
+}
+
+// With the controls off the engine turns the view with the first finger down
+// (TouchHUD_LookWithoutControls), which knows nothing of this HUD. The engine
+// slots this layer has given a role, as a bit mask, so that a finger on the
+// strip, its grip or a pill does not also turn the view.
+void Touch_ReportDeskClaim(int mask)
+{
+	if (mask == touch_desk_claim_sent)
+		return;
+	touch_desk_claim_sent = mask;
+	cvar_set("_cl_touch_desk_fingers", ftos(mask));
+}
+
+// Fingers with the controls off (Touch_DeskActive). The mouse keeps the view:
+// nothing here holds a key or turns it.
+void Touch_DeskFrame(void)
+{
+	if (!touch_desk_on)
+	{
+		// Whatever the controls held when they went away is let go once.
+		Touch_ReleaseAll();
+		touch_desk_on = true;
+	}
+	Touch_Look_SetOwnership(false);
+	touch_desk = true;
+	Touch_PollFingers();
+	touch_desk = false;
+	Touch_Console_Frame();
+	for (int i = 0; i < TOUCH_MAX_FINGERS; ++i)
+	{
+		if (!touch_finger_used[i] || !touch_finger_live[i])
+			continue;
+		Touch_ChromeFingerFrame(touch_finger_role[i], touch_finger_last_pos[i]);
+		touch_finger_first[i] = false;
+	}
+	Touch_DemoteCancelled();
+	int mask = 0;
+	for (int i = 0; i < TOUCH_MAX_FINGERS; ++i)
+		if (touch_finger_used[i] && touch_finger_role[i] >= 0
+			&& touch_finger_src[i] < TOUCH_ENGINE_SLOTS)
+			mask |= BIT(touch_finger_src[i]);
+	Touch_ReportDeskClaim(mask);
+}
+
 void Touch_Frame(void)
 {
 	Touch_EnsureReady();
@@ -617,9 +768,20 @@ void Touch_Frame(void)
 	if (!Touch_Active())
 	{
 		Touch_ReportHudState(-1);
+		if (Touch_DeskActive())
+		{
+			Touch_DeskFrame();
+			return;
+		}
+		touch_desk_on = false;
+		Touch_ReportDeskClaim(0);
 		Touch_ReleaseAll();
 		return;
 	}
+	// The fingers placed with the controls off carry over: every role they
+	// can hold is one the controls have too.
+	touch_desk_on = false;
+	Touch_ReportDeskClaim(0);
 
 	Touch_Look_SetOwnership(Touch_Active());
 	Touch_PollFingers();
@@ -653,17 +815,10 @@ void Touch_Frame(void)
 		int role = touch_finger_role[i];
 		vector pos = touch_finger_last_pos[i];
 
-		if (role == TOUCH_ROLE_CON)
+		if (Touch_ChromeFingerFrame(role, pos))
 		{
-			Touch_Console_PromoteHold();
-			Touch_Console_OnMove(pos);
+			// a pill, the strip's grip or a vote: nothing to hold
 		}
-		else if (role == TOUCH_ROLE_PAUSE)
-			Touch_Pause_OnMove(pos);
-		else if (role == TOUCH_ROLE_CHAT)
-			Touch_Chat_OnMove(pos);
-		else if (role == TOUCH_ROLE_SCORES)
-			Touch_Scores_OnMove(pos);
 		else if (role == TOUCH_ROLE_MOVE)
 		{
 			move_active = true;
@@ -733,16 +888,7 @@ void Touch_Frame(void)
 		touch_finger_first[i] = false;
 	}
 
-	// Demote cancelled CON / PAUSE fingers (ARMING→CANCEL→IDLE while finger still live)
-	for (i = 0; i < TOUCH_MAX_FINGERS; ++i)
-	{
-		if (!touch_finger_used[i])
-			continue;
-		if (touch_finger_role[i] == TOUCH_ROLE_CON && !Touch_Console_Busy())
-			touch_finger_role[i] = TOUCH_ROLE_IGNORED;
-		if (touch_finger_role[i] == TOUCH_ROLE_PAUSE && !Touch_Pause_Busy())
-			touch_finger_role[i] = TOUCH_ROLE_IGNORED;
-	}
+	Touch_DemoteCancelled();
 
 	if (!move_active)
 	{
@@ -1072,6 +1218,8 @@ string Touch_DebugRoleName(int role)
 	if (role == TOUCH_ROLE_PAUSE) return "PAUSE";
 	if (role == TOUCH_ROLE_CHAT) return "CHAT";
 	if (role == TOUCH_ROLE_SCORES) return "SCORE";
+	if (role == TOUCH_ROLE_WEPSIZE) return "GRIP";
+	if (role == TOUCH_ROLE_VOTE) return "VOTE";
 	if (role == TOUCH_ROLE_SHEET) return "SHEET";
 	if (role == TOUCH_ROLE_IGNORED) return "IGN";
 	return "-";

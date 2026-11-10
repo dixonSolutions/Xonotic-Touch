@@ -28,8 +28,9 @@ Quick checks:
 | Check | Expected |
 |-------|----------|
 | Window title | `Xonotic Touch` |
-| Fresh install + Wi‑Fi | Download dialog with progress bar, then profile / touch if needed |
-| Returning user (name + `touch_setup_done`) | No profile/touch dialogs |
+| Fresh install + Wi‑Fi | Download dialog with progress bar, then ToS and profile if needed; never a touch-controls dialog |
+| Fresh install, touch mode | Standard controls without asking: `touch.layout.cfg` written, `touch_setup_done 1` in `config.cfg` |
+| Returning user (name + `touch_setup_done`) | No profile dialog; touch settings untouched |
 | Menu text field tap | System keyboard (GNOME: Accessibility → Screen Keyboard) |
 
 ## Keyboard hot-plug

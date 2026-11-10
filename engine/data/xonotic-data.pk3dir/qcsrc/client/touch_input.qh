@@ -3,6 +3,10 @@
 #include "touch_layout.qh"
 
 bool Touch_Active(void);
+// The controls are off (vid_touchscreen 0) on a touchscreen: the weapons strip,
+// its grip, the pills and a vote's YES / NO still take a finger.
+bool Touch_DeskActive(void);
+bool Touch_DeskPills(void);
 void Touch_Frame(void);
 bool Touch_InputEvent(float bInputType, float nPrimary, float nSecondary);
 void Touch_ReleaseAll(void);
