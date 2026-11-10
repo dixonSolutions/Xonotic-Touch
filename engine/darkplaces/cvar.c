@@ -28,6 +28,13 @@ static const char *cvar_null_string = "";
 cvar_state_t cvars_all;
 cvar_state_t cvars_null;
 
+#ifdef __EMSCRIPTEN__
+/// An archived cvar changed value or became archived: config.cfg is out of
+/// date. The web build saves it when it sees this (xt_web_autosave in
+/// sys_wasm.c), since a browser tab can be closed without a clean quit.
+qbool cvar_archive_changed;
+#endif
+
 /*
 ============
 Cvar_FindVar
@@ -408,6 +415,10 @@ static void Cvar_SetQuick_Internal (cvar_t *var, const char *value)
 	memcpy ((char *)var->string, value, valuelen + 1);
 	var->value = atof (var->string);
 	var->integer = (int) var->value;
+#ifdef __EMSCRIPTEN__
+	if (var->flags & CF_ARCHIVE)
+		cvar_archive_changed = true;
+#endif
 	if ((var->flags & CF_NOTIFY) && sv.active && !sv_disablenotify.integer)
 		SV_BroadcastPrintf("\003^3Server cvar \"%s\" changed to \"%s\"\n", var->name, var->string);
 #if 0
@@ -704,6 +715,10 @@ cvar_t *Cvar_Get(cvar_state_t *cvars, const char *name, const char *value, unsig
 	cvar = Cvar_FindVar(cvars, name, ~0);
 	if (cvar)
 	{
+#ifdef __EMSCRIPTEN__
+		if (flags & ~cvar->flags & CF_ARCHIVE)
+			cvar_archive_changed = true;
+#endif
 		cvar->flags |= flags;
 		Cvar_SetQuick_Internal (cvar, value);
 		if(newdescription && (cvar->flags & CF_ALLOCATED))
@@ -738,6 +753,10 @@ cvar_t *Cvar_Get(cvar_state_t *cvars, const char *name, const char *value, unsig
 	// FIXME: these never get Z_Free'd
 	cvar = (cvar_t *)Z_Malloc(sizeof(cvar_t));
 	cvar->flags = flags | CF_ALLOCATED;
+#ifdef __EMSCRIPTEN__
+	if (flags & CF_ARCHIVE)
+		cvar_archive_changed = true;
+#endif
 	cvar->name = Z_strdup(name);
 	cvar->string = Z_strdup(value);
 	cvar->defstring = Z_strdup(value);

@@ -72,7 +72,10 @@ scripts/stage-web-data.sh     game data -> build/web/data + manifest.json
   only when its hash changes. At startup the files are handed to the engine's
   in-memory filesystem without a second copy.
 - **User data.** The engine's userdir is IndexedDB-backed (IDBFS), synced a
-  moment after each write and when the tab is hidden or closed.
+  moment after each write and when the tab is hidden or closed. Settings and
+  key bindings changed in the menu or console are written to `config.cfg`
+  and synced within about 2 seconds (`xt_web_autosave`), so a reload or a
+  killed tab keeps them; the save on closing alone often does not finish.
 - **Rendering.** The WebGL 2 context is forced opaque (DarkPlaces does not keep
   alpha at 1) and asks for the high-performance GPU. The page reports when the
   browser renders without the GPU. The render resolution is the CSS size times

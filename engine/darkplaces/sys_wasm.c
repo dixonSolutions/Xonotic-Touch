@@ -85,6 +85,7 @@ void xt_web_fullscreen_changed(int on);
 void xt_web_refit(void);
 void xt_web_command(const char *text);
 void xt_web_save(void);
+int xt_web_autosave(void);
 void xt_web_text(const char *utf8);
 void xt_web_key(int sym);
 
@@ -154,12 +155,85 @@ EMSCRIPTEN_KEEPALIVE void xt_web_key(int sym)
 	SDL_PushEvent(&ev);
 }
 
+extern qbool cvar_archive_changed; // cvar.c
+
+/// A hash of one bindmap's key bindings, the part of config.cfg that cvar.c
+/// does not track.
+static unsigned int em_bindmap_hash(int map)
+{
+	unsigned int h = 2166136261u;
+	const unsigned char *p;
+	int key;
+
+	for (key = 0; key < MAX_KEYS; key++)
+		if (keybindings[map][key])
+		{
+			h = (h ^ (unsigned int)key) * 16777619u;
+			for (p = (const unsigned char *)keybindings[map][key]; *p; p++)
+				h = (h ^ *p) * 16777619u;
+		}
+	return h;
+}
+static unsigned int em_bindings_seen[MAX_BINDMAPS], em_bindings_saved[MAX_BINDMAPS];
+static int em_bindings_next;
+static qbool em_config_known;
+static double em_config_savetime;
+
+static void em_save_config(void)
+{
+	Host_SaveConfig(CONFIGFILENAME);
+	cvar_archive_changed = false;
+	memcpy(em_bindings_saved, em_bindings_seen, sizeof(em_bindings_saved));
+	em_config_known = true;
+	em_config_savetime = host.realtime;
+}
+
 /// The tab is going away or into the background, where the main loop stops:
 /// write config.cfg now and flush it to IndexedDB.
 EMSCRIPTEN_KEEPALIVE void xt_web_save(void)
 {
 	if (host.state == host_active || host.state == host_init)
-		Host_SaveConfig(CONFIGFILENAME);
+		em_save_config();
+}
+
+/// Called by the page a few times a second while the game runs. Writes
+/// config.cfg when an archived cvar or a key binding changed, at most every
+/// 2 seconds and never while a map loads, and returns 1 so the page flushes
+/// it to IndexedDB at once. The saves on unload alone lose settings: the
+/// IndexedDB write they start is async, and a reload or a killed tab ends
+/// the page before it lands.
+///
+/// Bindings are compared by hash, one bindmap per call: the table has a slot
+/// for every Unicode key, and a full pass costs most of a millisecond. The
+/// first save after startup is unconditional: what changed between reading
+/// config.cfg and now is not known.
+EMSCRIPTEN_KEEPALIVE int xt_web_autosave(void)
+{
+	int map;
+	qbool changed;
+
+	if (host.state != host_active || host.framecount < 3)
+		return 0;
+	if (!em_config_known)
+	{
+		for (map = 0; map < MAX_BINDMAPS; map++)
+			em_bindings_seen[map] = em_bindmap_hash(map);
+	}
+	else
+	{
+		em_bindings_seen[em_bindings_next] = em_bindmap_hash(em_bindings_next);
+		em_bindings_next = (em_bindings_next + 1) % MAX_BINDMAPS;
+	}
+	if (cls.state == ca_connected && cls.signon < SIGNONS)
+		return 0;
+	if (em_config_known && host.realtime - em_config_savetime < 2)
+		return 0;
+	changed = !em_config_known || cvar_archive_changed
+		|| memcmp(em_bindings_seen, em_bindings_saved, sizeof(em_bindings_saved));
+	if (!changed)
+		return 0;
+	em_save_config();
+	return 1;
 }
 
 // =======================================================================

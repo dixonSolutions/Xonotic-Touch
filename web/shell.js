@@ -354,6 +354,18 @@
     try { Module._xt_web_save(); } catch (e) { /* engine not up */ }
     syncFS(true);
   }
+  // Settings changed in the menu or console reach IndexedDB within a few
+  // seconds: the engine rewrites config.cfg when an archived cvar or a
+  // binding changed (at most every 2 s; a check takes about 0.1 ms),
+  // and the sync starts at once. The saves on hide and
+  // unload stay as a last resort; the IndexedDB write they start often does
+  // not finish before the page is gone.
+  function autosave() {
+    if (!state.started || document.hidden) return;
+    let saved = 0;
+    try { saved = Module._xt_web_autosave(); } catch (e) { return; }
+    if (saved) syncFS(true);
+  }
 
   // ------------------------------------------------------------- data
 
@@ -754,6 +766,7 @@
     }
     refit();
     resumeAudio();
+    setInterval(autosave, 250);
   }
 
   // ---------------------------------------------------------- startup
