@@ -15,9 +15,17 @@
 float touch_def_fh = -1;  // >= 0 while saving a layout file
 bool touch_def_force;     // true while resetting to defaults
 
+// The engine has these from the start: touch_defaults.cfg, generated from this
+// table by touch/gen-defaults.py and exec'd before config.cfg, so the menu can
+// show and change them outside a match and config.cfg saves them. A default
+// changed here without regenerating that file would only reach players who
+// reset to it, so a mismatch is reported.
 void Touch_RegisterCvar(string name, string value)
 {
-	registercvar(name, value);
+	if (!registercvar(name, value) && !touch_def_force && touch_def_fh < 0
+		&& cvar_defstring(name) != value)
+		print("Touch: ", name, " defaults to \"", value, "\" here but \"", cvar_defstring(name),
+			"\" in touch_defaults.cfg: run touch/gen-defaults.py\n");
 	if (touch_def_force)
 		cvar_set(name, value);
 	if (touch_def_fh >= 0)
@@ -450,13 +458,20 @@ void Touch_LoadStartupConfigs(void)
 {
 	if (!cvar("vid_touchscreen"))
 		return;
-	if (whichpack("touch/startup.cfg"))
-		localcmd("exec touch/startup.cfg\n");
-	else
-	{
-		localcmd("exec touch/profiles/standard.cfg\n");
-		localcmd("exec touch/profiles/battery.cfg\n");
-	}
+	// This runs at every match start, and the player's choices are live
+	// cvars by then (touch_defaults.cfg, config.cfg, the menu), so no profile
+	// is exec'd here: a profile run on every start undid the player's layout
+	// preset and frame cap each time. Where a launcher wrote touch/startup.cfg
+	// (packaging/start.sh, GameData.java, run-local.sh) the engine already ran
+	// it once, at launch, and it applies the performance profile on the first
+	// start only (touch_perf_version). Without one (the browser build, a bare
+	// engine) the same first-start step happens here instead: the layout is
+	// the table's own defaults, and the frame cap and graphics come from the
+	// phone default, balanced. The version matches the launchers' current one.
+	// whichpack is "" for a loose file, which is where launchers write it.
+	bool from_launcher = whichpack("touch/startup.cfg") ? true : false;
+	if (!from_launcher && cvar("touch_perf_version") < 1)
+		localcmd("exec touch/profiles/balanced.cfg\nseta touch_perf_version 5\n");
 	Touch_ApplyTouchWeaponsStrip();
 	Touch_ApplySensitivity();
 	// Anything *derived* from a touch cvar is applied from Touch_EnsureReady

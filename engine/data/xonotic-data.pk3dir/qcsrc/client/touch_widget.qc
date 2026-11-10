@@ -24,6 +24,27 @@ float Touch_Widget_LabelSize(vector half, string label)
 	return bound(TOUCH_FONT_MIN, fs, TOUCH_FONT_MAX);
 }
 
+// A disc has more room across its middle than the box Touch_Widget_LabelSize
+// assumes: the chord through the label's top and bottom edges. On a small disc
+// (DUCK on a 667x375 phone) the box fit hit the TOUCH_FONT_MIN floor and the
+// label ran past the rim, so the disc measures against its chord, again at the
+// size it will be drawn (font snapping is not proportional), and may go under
+// the floor as far as TOUCH_FONT_MIN_DISC rather than overflow.
+float Touch_Widget_DiscLabelSize(float radius, string label)
+{
+	float fs = Touch_Widget_LabelSize('1 1 0' * radius, label);
+	for (int i = 0; i < 4; ++i)
+	{
+		float half_h = fs * 0.5;
+		float room = 2 * sqrt(max(0, radius * radius - half_h * half_h)) * TOUCH_FONT_FIT_DISC;
+		float w = Touch_Shape_LabelWidth(fs, label);
+		if (w <= room || fs <= TOUCH_FONT_MIN_DISC)
+			break;
+		fs = max(TOUCH_FONT_MIN_DISC, fs * room / w);
+	}
+	return fs;
+}
+
 float Touch_Widget_FontSize(float radius)
 {
 	return Touch_Widget_LabelSize('1 1 0' * radius, "AAAA");
@@ -86,7 +107,7 @@ void Touch_Widget_Button(vector center, float radius, string label, bool pressed
 	vector rim = pressed ? accent : TOUCH_C_RIM;
 	float a_surface = pressed ? TOUCH_A_SURFACE_ACTIVE : TOUCH_A_SURFACE;
 	float a_rim = pressed ? TOUCH_A_RIM_ACTIVE : TOUCH_A_RIM;
-	float fs = Touch_Widget_LabelSize('1 1 0' * radius, label);
+	float fs = Touch_Widget_DiscLabelSize(radius, label);
 
 	if (!Touch_Shape_Ready())
 	{

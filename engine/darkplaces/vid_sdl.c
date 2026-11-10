@@ -1583,6 +1583,10 @@ static keynum_t buttonremap[] =
 	K_MOUSE16,
 };
 
+#ifdef __EMSCRIPTEN__
+void Sys_EM_FitWindow(SDL_Window *window); // sys_wasm.c
+#endif
+
 // Who the mouse belongs to right now: the game (grabbed for mouselook) or the
 // screen (a pointer). vid_touchscreen_mouselook tells the touch CSQC which,
 // so it knows whether MOUSE1 is fire or a press on its controls.
@@ -1813,6 +1817,12 @@ void Sys_SDL_HandleEvents(void)
 						}
 						break;
 					case SDL_WINDOWEVENT_RESIZED: // external events only
+#ifdef __EMSCRIPTEN__
+						// The canvas renders at the page's scale, not at
+						// SDL's one pixel per CSS pixel; see sys_wasm.c.
+						if (vid_resizable.integer)
+							Sys_EM_FitWindow(window);
+#endif
 						if(vid_resizable.integer < 2)
 						{
 							//vid.width = event.window.data1;
@@ -2302,6 +2312,16 @@ void VID_Init (void)
 	Cvar_RegisterCallback(&vid_resizable,              VID_ApplyDisplayMode_c);
 	Cvar_RegisterCallback(&vid_borderless,             VID_ApplyDisplayMode_c);
 	Cvar_RegisterCallback(&vid_vsync,                  VID_SetVsync_c);
+#ifdef __EMSCRIPTEN__
+	// A browser shows at most one frame per display refresh: frames drawn
+	// between requestAnimationFrame callbacks are never seen. Vsync (the
+	// main loop paced by requestAnimationFrame) is the default here; it is
+	// the default value, not a forced one, so config.cfg keeps a player's
+	// "0" and that still uncaps the frame rate.
+	Z_Free((char *)vid_vsync.defstring);
+	vid_vsync.defstring = Z_strdup("1");
+	Cvar_SetQuick(&vid_vsync, "1");
+#endif
 	Cvar_RegisterCallback(&vid_mouse_clickthrough,     VID_SetHints_c);
 	Cvar_RegisterCallback(&vid_minimize_on_focus_loss, VID_SetHints_c);
 

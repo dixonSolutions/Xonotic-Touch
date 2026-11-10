@@ -4,6 +4,8 @@
 #   scripts/build-web.sh                 engine + QuakeC + page, into build/web
 #   scripts/build-web.sh --engine-only   just relink the engine
 #   scripts/build-web.sh --serve         build, then serve build/web on :8080
+#   scripts/build-web.sh --profile       release build that keeps function names,
+#                                        for browser CPU profiles
 #
 # Needs the Emscripten SDK. EMSDK points at it (default ~/.cache/emsdk); the
 # script sources emsdk_env.sh itself. Game data is staged separately by
@@ -17,13 +19,15 @@ EMSDK="${EMSDK:-$HOME/.cache/emsdk}"
 ENGINE_ONLY=0
 SERVE=0
 DEBUG="${XT_WEB_DEBUG:-0}"
+PROFILE="${XT_WEB_PROFILE:-0}"
 
 for arg in "$@"; do
     case "$arg" in
         --engine-only) ENGINE_ONLY=1 ;;
         --serve) SERVE=1 ;;
         --debug) DEBUG=1 ;;
-        -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+        --profile) PROFILE=1 ;;
+        -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
         *) echo "build-web: unknown argument: $arg" >&2; exit 2 ;;
     esac
 done
@@ -82,6 +86,11 @@ if [ "$DEBUG" = "1" ]; then
 else
     LDFLAGS_WEB+=(-sASSERTIONS=0)
 fi
+# Same optimisation as a release, plus the wasm name section, so profiles
+# show function names for the code that ships.
+if [ "$PROFILE" = "1" ]; then
+    LDFLAGS_WEB+=(--profiling-funcs)
+fi
 
 cd "$ROOT/engine/darkplaces"
 # CFLAGS changes (debug vs release) need a clean object dir.
@@ -90,6 +99,12 @@ want="debug=$DEBUG"
 if [ -f "$stamp" ] && [ "$(cat "$stamp")" != "$want" ]; then
     rm -rf build-obj/release/xonotic-touch.js
 fi
+# Link flags (--profile) only need a relink, which make does not see.
+link_stamp="build-obj/release/xonotic-touch.js/.web-link"
+want_link="${LDFLAGS_WEB[*]}"
+if [ ! -f "$link_stamp" ] || [ "$(cat "$link_stamp")" != "$want_link" ]; then
+    rm -f xonotic-touch.js xonotic-touch.wasm
+fi
 emmake make emscripten-release -j"$(nproc)" \
     EXE_WASMJS=xonotic-touch.js \
     DP_VIDEO_CAPTURE=disabled \
@@ -97,6 +112,7 @@ emmake make emscripten-release -j"$(nproc)" \
     LDFLAGS_WASMJS="${LDFLAGS_WEB[*]}"
 mkdir -p "$(dirname "$stamp")"
 echo "$want" > "$stamp"
+echo "$want_link" > "$link_stamp"
 
 # ---- Page ---------------------------------------------------------------
 mkdir -p "$OUT"

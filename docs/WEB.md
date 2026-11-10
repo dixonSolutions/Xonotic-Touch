@@ -38,7 +38,8 @@ Not in the browser build yet:
 
 - **Online servers.** Browsers cannot send UDP, which Xonotic servers speak.
   Joining public servers needs a WebSocket or WebRTC relay; local games with
-  bots work.
+  bots work. The engine sends no master server or LAN queries, so the
+  server list stays empty instead of failing a WebSocket per master.
 - **XonStat / player IDs.** No `d0_blind_id` crypto in the WebAssembly build.
 - **WebGPU.** DarkPlaces has an OpenGL renderer only; WebGL 2 is the
   hardware-accelerated path (ANGLE on Direct3D, Metal or Vulkan underneath).
@@ -72,7 +73,10 @@ scripts/stage-web-data.sh     game data -> build/web/data + manifest.json
   only when its hash changes. At startup the files are handed to the engine's
   in-memory filesystem without a second copy.
 - **User data.** The engine's userdir is IndexedDB-backed (IDBFS), synced a
-  moment after each write and when the tab is hidden or closed.
+  moment after each write and when the tab is hidden or closed. Settings and
+  key bindings changed in the menu or console are written to `config.cfg`
+  and synced within about 2 seconds (`xt_web_autosave`), so a reload or a
+  killed tab keeps them; the save on closing alone often does not finish.
 - **Rendering.** The WebGL 2 context is forced opaque (DarkPlaces does not keep
   alpha at 1) and asks for the high-performance GPU. The page reports when the
   browser renders without the GPU. The render resolution is the CSS size times
@@ -99,9 +103,16 @@ Engine changes for the web, all behind `__EMSCRIPTEN__`:
   once a match produced enough tasks.
 - `Sys_Sleep` returns at once: `nanosleep` would spin the page's only thread.
   Idle time goes to the browser's frame scheduling instead.
+- `vid_vsync` defaults to 1: the main loop runs once per
+  `requestAnimationFrame`, since a browser shows no more frames than that.
+  It is a default, not a forced value: Vertical Synchronization off in
+  Settings > Video is saved and uncaps the frame rate as before.
 - Dynamic vertex data through `glBufferSubData`: WebGL has no buffer mapping,
   and Emscripten rejects the unsynchronized `glMapBufferRange` the Android build
   uses (an error per draw call).
+- DDS textures whose sizes WebGL will not take as S3TC (not whole 4x4
+  blocks: 1x1 tints, 365x365 team blobs, 1024x255 walls) decoded to RGBA in
+  software at full size; desktop GL accepts them, WebGL rejects the upload.
 - S3TC detected under WebGL's extension name, fatal errors shown on the page,
   and the display, mouse and keyboard hooks above.
 
@@ -136,6 +147,9 @@ Debugging:
   survives a page that freezes, and is the easy way to read a phone's console.
 - `?args=+map%20stormkeep` adds engine arguments; `?autoplay` skips the Play
   button (no fullscreen or audio until the first click).
+- `?store=cache` keeps the game data in the Cache API instead of OPFS, the
+  path browsers without writable OPFS take (older Safari, Firefox private
+  windows). A visit without it goes back to OPFS and deletes the Cache copy.
 - `xt.command('...')` in the devtools console runs a console command.
 - `scripts/build-web.sh --debug` keeps function names and Emscripten
   assertions.

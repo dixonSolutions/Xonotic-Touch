@@ -2128,6 +2128,31 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 	mipsize_total = ddssize - 128 - (mippixels_start - ddspixels);
 	mipsize = bytesperblock ? ((mipwidth+3)/4)*((mipheight+3)/4)*bytesperblock : mipwidth*mipheight*bytesperpixel;
 
+#ifdef __EMSCRIPTEN__
+	// WebGL, unlike desktop GL, takes S3TC data only in whole blocks
+	// (WEBGL_compressed_texture_s3tc): the base level a multiple of 4 in both
+	// directions, every smaller level 1, 2 or a multiple of 4. Stock Xonotic
+	// has DDS files that are not (365x365 team blobs, 1x1 powerup tints,
+	// 1024x255 walls); uploaded as they are they fail and draw as nothing.
+	// Decode those in software at full size, like a GPU without S3TC would.
+	if (bytesperblock && !force_swdecode)
+	{
+		int lw = mipwidth, lh = mipheight, level;
+		for (level = 0;level <= dds_miplevels;level++)
+		{
+			if (level == 0 ? ((lw & 3) || (lh & 3)) : ((lw > 2 && (lw & 3)) || (lh > 2 && (lh & 3))))
+			{
+				force_swdecode = true;
+				break;
+			}
+			if (lw <= 1 && lh <= 1)
+				break;
+			lw = lw > 1 ? lw >> 1 : 1;
+			lh = lh > 1 ? lh >> 1 : 1;
+		}
+	}
+#endif
+
 	// from here on, we do not need the ddspixels and ddssize any more (apart from the statistics entry in glt)
 
 	// decode S3TC in software if the GPU cannot sample it

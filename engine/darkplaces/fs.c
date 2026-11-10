@@ -402,7 +402,21 @@ typedef struct searchpath_s
 	char filename[MAX_OSPATH];
 	pack_t *pack;
 	struct searchpath_s *next;
+#ifdef __EMSCRIPTEN__
+	/// names at the top of a directory search path, see FS_DirMayHave
+	stringlist_t topnames;
+	double topnames_time;
+	unsigned int topnames_generation;
+#endif
 } searchpath_t;
+
+#ifdef __EMSCRIPTEN__
+/// bumped by every change the engine makes to the filesystem, see FS_DirMayHave
+static unsigned int fs_dirnames_generation = 1;
+# define FS_DIRNAMES_CHANGED() (fs_dirnames_generation++)
+#else
+# define FS_DIRNAMES_CHANGED() ((void)0)
+#endif
 
 
 /*
@@ -1016,6 +1030,7 @@ static void FS_mkdir (const char *path)
 		// and its own callers always use the directory afterwards and
 		// thus will detect failure that way.
 	}
+	FS_DIRNAMES_CHANGED();
 }
 
 /*
@@ -1469,6 +1484,9 @@ static void FS_ClearSearchPath (void)
 			}
 			Mem_Free(search->pack);
 		}
+#ifdef __EMSCRIPTEN__
+		stringlistfreecontents(&search->topnames);
+#endif
 		Mem_Free(search);
 	}
 }
@@ -1586,7 +1604,10 @@ void FS_Rescan (void)
 
 	// If "-condebug" is in the command line, remove the previous log file
 	if (Sys_CheckParm ("-condebug") != 0)
+	{
 		unlink (va(vabuf, sizeof(vabuf), "%s/qconsole.log", fs_gamedir));
+		FS_DIRNAMES_CHANGED();
+	}
 
 	// look for the pop.lmp file and set registered to true if it is found
 	if (FS_FileExists("gfx/pop.lmp"))
@@ -2436,6 +2457,8 @@ static filedesc_t FS_SysOpenFiledesc(const char *filepath, const char *mode, qbo
 
 	if(Sys_CheckParm("-readonly") && mod != O_RDONLY)
 		return FILEDESC_INVALID;
+	if (mod != O_RDONLY)
+		FS_DIRNAMES_CHANGED();
 
 #if USE_RWOPS
 	if (dolock)
@@ -2683,6 +2706,49 @@ void FS_SanitizePath(char *path)
 			*path = '/';
 }
 
+#ifdef __EMSCRIPTEN__
+/*
+====================
+FS_DirMayHave
+
+False when "name" cannot exist under the directory search path "search".
+
+A stat that misses costs tens of microseconds in the JavaScript filesystem
+(the path is walked in JavaScript and the miss is thrown and caught as an
+exception), and nearly every lookup misses the loose directories because
+the game data is in pk3s. This checks the first component of the name
+against the directory's top-level names instead. The list is read again
+after any change the engine makes to the filesystem (fs_dirnames_generation)
+and at least once a second, for files the page adds behind the engine's back.
+====================
+*/
+static qbool FS_DirMayHave (searchpath_t *search, const char *name)
+{
+	const char *slash = strchr(name, '/');
+	size_t len = slash ? (size_t)(slash - name) : strlen(name);
+	double now;
+	int i;
+
+	if (len == 0)
+		return true;
+	now = Sys_DirtyTime();
+	if (search->topnames_generation != fs_dirnames_generation || now - search->topnames_time > 1.0 || now < search->topnames_time)
+	{
+		stringlistfreecontents(&search->topnames);
+		listdirectory(&search->topnames, search->filename, "");
+		search->topnames_generation = fs_dirnames_generation;
+		search->topnames_time = now;
+	}
+	for (i = 0; i < search->topnames.numstrings; i++)
+	{
+		const char *top = search->topnames.strings[i];
+		if (!strncmp(top, name, len) && top[len] == 0)
+			return true;
+	}
+	return false;
+}
+#endif
+
 /*
 ====================
 FS_FindFile
@@ -2756,6 +2822,10 @@ static searchpath_t *FS_FindFile (const char *name, int *index, const char **can
 		else
 		{
 			char netpath[MAX_OSPATH];
+#ifdef __EMSCRIPTEN__
+			if (!search->pack && !FS_DirMayHave(search, name))
+				continue;
+#endif
 			dpsnprintf(netpath, sizeof(netpath), "%s%s", search->filename, name);
 			if (FS_SysFileExists (netpath))
 			{
@@ -2988,6 +3058,7 @@ int FS_Close (qfile_t* file)
 	{
 		if (file->flags & QFILE_FLAG_REMOVE)
 		{
+			FS_DIRNAMES_CHANGED();
 			if (remove(file->filename) == -1)
 			{
 				// No need to report this. If removing a just
@@ -3060,6 +3131,57 @@ fs_offset_t FS_Write (qfile_t* file, const void* data, size_t datasize)
 	// note that this will never be less than 0 even if the write failed
 	return written;
 }
+
+
+#ifdef __EMSCRIPTEN__
+/*
+====================
+FS_InflateWhole
+
+Inflate a whole compressed pack member into "buffer" (at least real_length
+bytes) from one read of its compressed data and one inflate call. The
+chunked path in FS_Read costs a seek and a read through the JavaScript
+filesystem for every 2 KB of input, and zlib copies the output of every call
+into its window. Returns the number of bytes inflated, or -1 if the
+compressed data could not be read (nothing consumed, the caller can fall
+back to the chunked path).
+====================
+*/
+static fs_offset_t FS_InflateWhole (qfile_t *file, unsigned char *buffer)
+{
+	ztoolkit_t *ztk = file->ztk;
+	fs_offset_t count = (fs_offset_t)ztk->comp_length;
+	fs_offset_t inflated;
+	unsigned char *input;
+	int error;
+
+	input = (unsigned char *)Mem_Alloc (tempmempool, count + 1);
+	if (FILEDESC_SEEK (file->handle, file->offset, SEEK_SET) == -1 || ReadAll (file->handle, input, count) != count)
+	{
+		Mem_Free (input);
+		return -1;
+	}
+
+	ztk->zstream.next_in = input;
+	ztk->zstream.avail_in = (unsigned int)count;
+	ztk->zstream.next_out = buffer;
+	ztk->zstream.avail_out = (unsigned int)file->real_length;
+	error = qz_inflate (&ztk->zstream, Z_FINISH);
+	inflated = file->real_length - ztk->zstream.avail_out;
+	if (error != Z_STREAM_END && !(error == Z_OK && ztk->zstream.avail_out == 0))
+		Con_Printf ("FS_Read: Can't inflate file\n");
+
+	// All input is consumed: leave the stream as the chunked path would at
+	// the end of the file.
+	ztk->zstream.next_in = ztk->input;
+	ztk->zstream.avail_in = 0;
+	ztk->in_ind = ztk->in_len = 0;
+	ztk->in_position = ztk->comp_length;
+	file->position = inflated;
+	Mem_Free (input);
+	return inflated;
+}
+#endif
 
 
 /*
@@ -3170,6 +3292,16 @@ fs_offset_t FS_Read (qfile_t* file, void* buffer, size_t buffersize)
 	}
 
 	// If the file is compressed, it's more complicated...
+#ifdef __EMSCRIPTEN__
+	// Reading the whole file (FS_LoadFile): inflate it in one go
+	if (done == 0 && file->position == 0 && file->ztk->in_position == 0
+		&& (fs_offset_t)buffersize >= file->real_length)
+	{
+		fs_offset_t inflated = FS_InflateWhole (file, (unsigned char *)buffer);
+		if (inflated >= 0)
+			return inflated;
+	}
+#endif
 	// We cycle through a few operations until we have read enough data
 	while (buffersize > 0)
 	{
