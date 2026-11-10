@@ -28,6 +28,14 @@ jobs:
       - name: Stock-balance fallback, availability modes and fade
         run: bash scripts/test-touch-altfire.sh
 
+  touch-aim:
+    name: Touch auto-shoot weapon logic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lead, fire mode, weapon choice and detonation
+        run: bash scripts/test-touch-aim.sh
+
   release-changelog:
     name: Release changelog
     runs-on: ubuntu-latest
