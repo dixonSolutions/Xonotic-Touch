@@ -30,6 +30,8 @@ const int TOUCH_ROLE_PAUSE = 107;
 const int TOUCH_ROLE_SHEET = 108;
 const int TOUCH_ROLE_CHAT = 109;
 const int TOUCH_ROLE_SCORES = 110;
+// The weapons strip's resize grip (Touch_Hud_GripBegin).
+const int TOUCH_ROLE_WEPSIZE = 111;
 
 // One name per control. Three places have to agree on it: the drawn label, the
 // handle in edit mode, and the prompts the stock panels build out of key binds

@@ -260,6 +260,7 @@ void Touch_ReleaseAll(void)
 		touch_finger_lost_time[i] = 0;
 		touch_finger_draglook[i] = false;
 	}
+	Touch_Hud_GripEnd();
 	Touch_Console_Reset();
 	Touch_Pause_Reset();
 	Touch_Look_EndGesture();
@@ -311,6 +312,11 @@ int Touch_AssignRole(vector p)
 
 	if (Touch_Scores_PillHit(p))
 		return TOUCH_ROLE_SCORES;
+
+	// Before the rows: the grip's area starts where the last row ends, and the
+	// rows are inflated for fat fingers.
+	if (Touch_Weapons_GripHit(p))
+		return TOUCH_ROLE_WEPSIZE;
 
 	// Stock vertical weapons strip — tap icon to switch (replaces WEP button).
 	if (Touch_Weapons_Hit(p))
@@ -384,6 +390,8 @@ int Touch_ClaimFinger(int src, vector pos)
 			Touch_Chat_OnDown(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_SCORES)
 			Touch_Scores_OnDown(pos);
+		else if (touch_finger_role[i] == TOUCH_ROLE_WEPSIZE)
+			Touch_Hud_GripBegin(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_LOOK)
 			Touch_Look_BeginGesture(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_WEAPON)
@@ -501,9 +509,10 @@ void Touch_PollFingers(void)
 		// Chrome pills must not use the lost-finger grace (B4 + pause realtime):
 		// a pill is a discrete tap that commits on release, and keeping the
 		// finger alive past the release would re-fire it on the next frame.
+		// The grip too: a lost frame is no reason to hold a resize open.
 		int role = touch_finger_role[i];
 		if (role == TOUCH_ROLE_CON || role == TOUCH_ROLE_PAUSE || role == TOUCH_ROLE_CHAT
-			|| role == TOUCH_ROLE_SCORES)
+			|| role == TOUCH_ROLE_SCORES || role == TOUCH_ROLE_WEPSIZE)
 		{
 			vector up = touch_finger_last_pos[i];
 			if (role == TOUCH_ROLE_CON)
@@ -512,6 +521,8 @@ void Touch_PollFingers(void)
 				Touch_Pause_OnUp(up);
 			else if (role == TOUCH_ROLE_SCORES)
 				Touch_Scores_OnUp(up);
+			else if (role == TOUCH_ROLE_WEPSIZE)
+				Touch_Hud_GripEnd();
 			else
 				Touch_Chat_OnUp(up);
 			touch_finger_used[i] = false;
@@ -664,6 +675,8 @@ void Touch_Frame(void)
 			Touch_Chat_OnMove(pos);
 		else if (role == TOUCH_ROLE_SCORES)
 			Touch_Scores_OnMove(pos);
+		else if (role == TOUCH_ROLE_WEPSIZE)
+			Touch_Hud_GripMove(pos);
 		else if (role == TOUCH_ROLE_MOVE)
 		{
 			move_active = true;
@@ -1072,6 +1085,7 @@ string Touch_DebugRoleName(int role)
 	if (role == TOUCH_ROLE_PAUSE) return "PAUSE";
 	if (role == TOUCH_ROLE_CHAT) return "CHAT";
 	if (role == TOUCH_ROLE_SCORES) return "SCORE";
+	if (role == TOUCH_ROLE_WEPSIZE) return "GRIP";
 	if (role == TOUCH_ROLE_SHEET) return "SHEET";
 	if (role == TOUCH_ROLE_IGNORED) return "IGN";
 	return "-";

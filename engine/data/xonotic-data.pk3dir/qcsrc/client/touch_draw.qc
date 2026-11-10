@@ -10,6 +10,7 @@
 #include "touch_init.qh"
 #include "touch_input.qh"
 #include "touch_defs.qh"
+#include "touch_weapons.qh"
 
 // Pressed and latched visuals cannot be reached from a screenshot harness: a
 // virtual uinput touchscreen is not routed to the game window, so the only way
@@ -228,6 +229,9 @@ void Touch_Draw(void)
 	float owns = Touch_OwnsScreen();
 	if (owns != cvar("_touch_owns_screen"))
 		cvar_set("_touch_owns_screen", ftos(owns));
+
+	// Whatever draws the weapons strip this frame registers its rows after this.
+	Touch_Weapons_MarkFrame();
 
 	if (!Touch_Active())
 	{

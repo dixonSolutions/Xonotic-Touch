@@ -5,3 +5,8 @@
 
 bool Touch_Hud_ShouldDraw(void);
 void Touch_Hud_Draw(float alpha);
+
+// The weapons strip's resize grip, driven by a finger in TOUCH_ROLE_WEPSIZE.
+void Touch_Hud_GripBegin(vector p);
+void Touch_Hud_GripMove(vector p);
+void Touch_Hud_GripEnd(void);
