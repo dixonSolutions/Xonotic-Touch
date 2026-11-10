@@ -492,14 +492,20 @@ void TouchHUD_Init(void)
 // The vitals and ammo are for the touch controls. The weapon strip is not:
 // with a keyboard and a mouse at the desk it stays in view, as long as a CSQC
 // is there to draw the HUD (the port's, or a server's).
+static int stat_weapons = -1;
 static qbool readouts_shown(void)
 {
 	return vid_touchscreen.integer && cv("touch_mobile_hud", 1);
 }
 
+// The touch strip replaces the stock weapons panel only when it has rows: a
+// CSQC whose weapon list could not be read, or a player who owns nothing,
+// keeps the stock panel.
+static int owned_weapon_count(void);
 static qbool strip_shown(void)
 {
-	return CLVM_prog->loaded && cv("touch_mobile_hud", 1) && cv("touch_weplist_visible", 1);
+	return CLVM_prog->loaded && cv("touch_mobile_hud", 1) && cv("touch_weplist_visible", 1)
+		&& stat_weapons >= 0 && owned_weapon_count() > 0;
 }
 
 static void stock_panel(const char *name, qbool on)
@@ -536,6 +542,26 @@ static qbool cursor_wanted(void)
 	return in_play() && cl.csqc_wantsmousemove;
 }
 
+static qbool touch_device(void)
+{
+	return VID_SDL_HasTouchDevices() || vid_touchscreen_detected.integer;
+}
+
+// Controls off (a keyboard and a mouse are attached, or Keyboard & mouse
+// mode) on a touchscreen, under a server's CSQC: this module keeps the weapon
+// strip, its grip and the chrome pills on screen and tappable, and every
+// other finger turns the view. The port's own CSQC does the same locally.
+static qbool desk_active(void)
+{
+	return !vid_touchscreen.integer && !cl_touch_csqc_active && touch_device()
+		&& in_play() && !cl.csqc_wantsmousemove;
+}
+
+static qbool desk_pills(void)
+{
+	return cv("touch_desk_pills", 1) != 0;
+}
+
 qbool TouchHUD_Active(void)
 {
 	if (!vid_touchscreen.integer || cl_touch_csqc_active)
@@ -560,7 +586,6 @@ qbool TouchHUD_Active(void)
 typedef struct wepdef_s { char name[32]; char pic[64]; char ammo_icon[32]; int impulse; int id; int ammo_stat; } wepdef_t;
 static wepdef_t weapons[MAX_WEAPONS];
 static int num_weapons = 0;
-static int stat_weapons = -1;
 // STAT_TOUCH_ALTFIRE when the server's CSQC registers it (this port's game
 // code), -1 on any other server: touch_altfire.h then judges from the stock
 // balance.
@@ -892,13 +917,22 @@ static int strip_rows(float *out_cx, float *out_top, float *out_row_h, float *ou
 	return n;
 }
 
+// Whether this module draws the strip this frame: under a server's CSQC, in
+// play, for a live player, with the controls on or off. A strip that is not
+// drawn takes no taps.
+static qbool strip_drawn(void)
+{
+	return strip_shown() && !cl_touch_csqc_active && in_play() && !cl.csqc_wantsmousemove
+		&& cl.stats[STAT_HEALTH] > 0;
+}
+
 // Tap on a strip row: the row's impulse, or -1. Same pad as Touch_Weapons_HitImpulse.
 static int strip_hit(float px, float py)
 {
 	float cx, top, h, w, pad;
 	int idx[MAX_WEAPONS];
 	int n, i;
-	if (!cv("touch_weplist_visible", 1))
+	if (!strip_drawn())
 		return -1;
 	n = strip_rows(&cx, &top, &h, &w, idx, MAX_WEAPONS);
 	if (n <= 0)
@@ -925,9 +959,9 @@ static void draw_weapon_strip(float a)
 	float cx, top, h, w, pad, u, num_fs, num_slot, r;
 	int idx[MAX_WEAPONS];
 	int n, i, held;
-	// With the readouts off the stock weapons panel is back, and two strips
-	// would sit on the right edge.
-	if (!readouts_shown() || !cv("touch_weplist_visible", 1))
+	// strip_shown() off means the stock weapons panel is back, and two
+	// strips would sit on the right edge.
+	if (!strip_drawn())
 		return;
 	n = strip_rows(&cx, &top, &h, &w, idx, MAX_WEAPONS);
 	if (n <= 0)
@@ -978,7 +1012,8 @@ static qbool weapon_button_shown(void)
 	return cv("touch_weapon_visible", 0) || (cv("touch_weplist_visible", 1) && owned_weapon_count() == 0);
 }
 
-static int assign_role(float px, float py)
+// The chrome pills under a point, or ROLE_NONE.
+static int pill_at(float px, float py)
 {
 	if (cv("touch_con_visible", 1) && hit_rect(px, py, cv("touch_con_x", 0.090f), cv("touch_con_y", 0.948f), cv("touch_con_size", 0.060f), cv("touch_con_aspect", 2.9f), 1.20f))
 		return ROLE_CON;
@@ -988,6 +1023,29 @@ static int assign_role(float px, float py)
 		return ROLE_CHAT;
 	if (cv("touch_scores_visible", 1) && hit_rect(px, py, cv("touch_scores_x", 0.272f), cv("touch_scores_y", 0.948f), cv("touch_scores_size", 0.060f), cv("touch_scores_aspect", 2.9f), 1.20f))
 		return ROLE_SCORES;
+	return ROLE_NONE;
+}
+
+// With the controls off: the pills (touch_desk_pills) and the strip, and
+// one look finger anywhere else. A tap fires nothing.
+static int assign_desk_role(float px, float py)
+{
+	int role = desk_pills() ? pill_at(px, py) : ROLE_NONE;
+	if (role != ROLE_NONE)
+		return role;
+	if (strip_hit(px, py) >= 0)
+		return ROLE_WEPSTRIP;
+	return role_owned(ROLE_LOOK) ? ROLE_IGNORED : ROLE_LOOK;
+}
+
+static int assign_role(float px, float py)
+{
+	int role;
+	if (desk_active())
+		return assign_desk_role(px, py);
+	role = pill_at(px, py);
+	if (role != ROLE_NONE)
+		return role;
 	// The weapon strip: tap a row to switch (Touch_Weapons_Hit).
 	if (strip_hit(px, py) >= 0)
 		return ROLE_WEPSTRIP;
@@ -1110,6 +1168,17 @@ void TouchHUD_LookWithoutControls(void)
 	static float last_x, last_y;
 	double now = host.realtime;
 	int i;
+	int claimed;
+	// Under a server's CSQC this module runs the desk HUD: strip, grip and
+	// pills take their fingers, the rest look (TouchHUD_Frame).
+	if (desk_active())
+	{
+		finger = -1;
+		TouchHUD_Frame();
+		return;
+	}
+	if (was_active)
+		TouchHUD_Frame(); // lets go of whatever the desk HUD held
 	if (vid_touchscreen.integer || !in_play() || cl.csqc_wantsmousemove)
 	{
 		finger = -1;
@@ -1117,10 +1186,15 @@ void TouchHUD_LookWithoutControls(void)
 	}
 	if (finger >= 0 && !multitouch[finger][0])
 		finger = -1;
+	// The port's CSQC claims the fingers on its own strip, grip and pills
+	// (one bit per finger slot); those do not turn the view.
+	claimed = (int)cv("_cl_touch_desk_fingers", 0);
+	if (finger >= 0 && (claimed & (1 << finger)))
+		finger = -1;
 	if (finger < 0)
 	{
 		for (i = 0; i < TOUCHHUD_ENGINE_FINGERS - 1; i++)
-			if (multitouch[i][0])
+			if (multitouch[i][0] && !(claimed & (1 << i)))
 			{
 				finger = i;
 				last_x = multitouch[i][1] * ui_w();
@@ -1210,11 +1284,6 @@ static unsigned int frames_drawn;      // TouchHUD_Draw calls: one per drawn fra
 static unsigned int cursor_pos_frame;  // frames_drawn when the pointer finger landed
 static qbool cursor_was;
 static qbool cursor_finger_pointer;    // a finger, not the mouse, placed the pointer last
-
-static qbool touch_device(void)
-{
-	return VID_SDL_HasTouchDevices() || vid_touchscreen_detected.integer;
-}
 
 // MENU and CHAT of the engine HUD, kept over a pointer UI: drawn and tappable
 // while this module draws the HUD (a server's CSQC), with the controls on, or
@@ -1368,15 +1437,21 @@ void TouchHUD_Frame(void)
 	qbool fire_count = false, fire2_down = false, zoom_down = false, jump_down = false, crouch_down = false, scores_down = false, move_active = false, look_seen = false;
 	float look_dx = 0, look_dy = 0;
 	qbool look_first = false;
+	qbool desk = desk_active();
+	static qbool was_desk;
 
-	if (!TouchHUD_Active())
+	if (!desk && !TouchHUD_Active())
 	{
 		if (was_active)
 			TouchHUD_ReleaseAll();
 		was_active = false;
 		return;
 	}
+	// Controls switched on or off under a finger: start over.
+	if (was_active && desk != was_desk)
+		TouchHUD_ReleaseAll();
 	was_active = true;
+	was_desk = desk;
 	shapes_probe();
 
 	dt = bound(1.0f / 240.0f, (float)(now - look_prev_time), 0.1f);
@@ -1475,9 +1550,10 @@ void TouchHUD_Frame(void)
 			look_active = false;
 		else if (f->role == ROLE_LOOK)
 		{
-			// tap in the look zone fires once (touch_look_tap_fire)
+			// tap in the look zone fires once (touch_look_tap_fire); not at
+			// the desk, where the mouse fires
 			float dx = f->last_x - f->down_x, dy = f->last_y - f->down_y;
-			if (cv("touch_look_tap_fire", 1) && now - f->down_time < cv("touch_look_tap_ms", 200) * 0.001
+			if (!desk && cv("touch_look_tap_fire", 1) && now - f->down_time < cv("touch_look_tap_ms", 200) * 0.001
 				&& fabs(dx) < 12 && fabs(dy) < 12)
 				tapfire_until = now + 0.08;
 			look_active = false;
@@ -1567,7 +1643,7 @@ void TouchHUD_Frame(void)
 
 	// a finger on the look zone or FIRE is on the aim control: the only time
 	// aim magnetism may pull (touch_aim.c)
-	TouchAim_SetHudAimTouch(look_seen || fire_count);
+	TouchAim_SetHudAimTouch(!desk && (look_seen || fire_count));
 
 	// movement keys from the stick (Touch_ApplyMove thresholds)
 	if (move_active && sqrt(move_off_x * move_off_x + move_off_y * move_off_y) > cv("touch_stick_deadzone", 0.18f))
@@ -1817,19 +1893,25 @@ static void draw_pill(const char *xk, float dx, const char *yk, float dy, const 
 }
 
 // The weapon strip with the touch controls off: play at a desk keeps its
-// weapons in view. The same play state as TouchHUD_Active, minus the touch
-// check. Not while a touch CSQC is running, since it draws the strip itself.
+// weapons in view (strip_drawn). Not while a touch CSQC is running, since it
+// draws the strip itself. On a touchscreen the pills stay too (desk_active).
 static void draw_strip_only(void)
 {
-	if (!strip_shown() || cl_touch_csqc_active)
-		return;
-	if (cls.state != ca_connected || cls.signon != SIGNONS)
-		return;
-	if (key_dest != key_game || (key_consoleactive & KEY_CONSOLEACTIVE_USER))
-		return;
-	if (cl.stats[STAT_HEALTH] <= 0)
-		return;
-	draw_weapon_strip(bound(0.1f, cv("touch_opacity", 0.90f), 1.0f));
+	float a = bound(0.1f, cv("touch_opacity", 0.90f), 1.0f);
+	shapes_probe();
+	if (desk_active() && desk_pills())
+	{
+		float pa = a * DESK_ALPHA;
+		if (cv("touch_pause_visible", 1))
+			draw_pill("touch_pause_x", 0.680f, "touch_pause_y", 0.088f, "touch_pause_size", 0.060f, "touch_pause_aspect", 2.9f, "MENU", role_owned(ROLE_PAUSE), pa);
+		if (cv("touch_chat_visible", 1))
+			draw_pill("touch_chat_x", 0.862f, "touch_chat_y", 0.088f, "touch_chat_size", 0.060f, "touch_chat_aspect", 2.9f, "CHAT", role_owned(ROLE_CHAT), pa);
+		if (cv("touch_con_visible", 1))
+			draw_pill("touch_con_x", 0.090f, "touch_con_y", 0.948f, "touch_con_size", 0.060f, "touch_con_aspect", 2.9f, "CONSOLE", role_owned(ROLE_CON), pa);
+		if (cv("touch_scores_visible", 1))
+			draw_pill("touch_scores_x", 0.272f, "touch_scores_y", 0.948f, "touch_scores_size", 0.060f, "touch_scores_aspect", 2.9f, "SCORE", key_scores, pa);
+	}
+	draw_weapon_strip(a);
 }
 
 void TouchHUD_Draw(void)
