@@ -578,6 +578,26 @@ void VID_GetTouchFinger(int slot, int *active, float *nx, float *ny)
 // this one stores how many areas this finger has touched
 int multitouchs[MAXFINGERS];
 
+// Touch: a finger that goes down and up within one event poll (an Android tap)
+// would never be seen by anything that reads the table once a frame (the
+// engine touch HUD, the CSQC's gettouchfinger). Such a slot stays down until
+// the next poll.
+static unsigned int vid_finger_poll;
+static unsigned int vid_finger_down_poll[MAXFINGERS];
+static qbool vid_finger_lift[MAXFINGERS];
+
+static void VID_LiftTappedFingers(void)
+{
+	int i;
+	vid_finger_poll++;
+	for (i = 0; i < MAXFINGERS - 1; i++)
+		if (vid_finger_lift[i])
+		{
+			vid_finger_lift[i] = false;
+			multitouch[i][0] = 0;
+		}
+}
+
 // modified heavily by ELUAN
 static qbool VID_TouchscreenArea(int corner, float px, float py, float pwidth, float pheight, const char *icon, float textheight, const char *text, float *resultmove, qbool *resultbutton, keynum_t key, const char *typedtext, float deadzone, float oversizepixels_x, float oversizepixels_y, qbool iamexclusive)
 {
@@ -1641,6 +1661,7 @@ void Sys_SDL_HandleEvents(void)
 	SDL_Event event;
 
 	VID_EnableJoystick(true);
+	VID_LiftTappedFingers(); // Touch
 
 	while( SDL_PollEvent( &event ) )
 		loop_start:
@@ -1955,6 +1976,7 @@ void Sys_SDL_HandleEvents(void)
 						multitouch[i][0] = event.tfinger.fingerId + 1;
 						multitouch[i][1] = event.tfinger.x;
 						multitouch[i][2] = event.tfinger.y;
+						vid_finger_down_poll[i] = vid_finger_poll; // Touch
 						VID_TouchMenuFingerEvent((int)multitouch[i][0], true, event.tfinger.x, event.tfinger.y);
 						// TODO: use event.tfinger.pressure?
 						break;
@@ -1971,10 +1993,14 @@ void Sys_SDL_HandleEvents(void)
 					VID_NoteTouchActivity();
 				for (i = 0;i < MAXFINGERS-1;i++)
 				{
-					if (multitouch[i][0] == event.tfinger.fingerId + 1)
+					if (multitouch[i][0] == event.tfinger.fingerId + 1 && !vid_finger_lift[i])
 					{
 						VID_TouchMenuFingerEvent((int)multitouch[i][0], false, event.tfinger.x, event.tfinger.y);
-						multitouch[i][0] = 0;
+						// Touch: a tap within this poll stays down until the next.
+						if (vid_finger_down_poll[i] == vid_finger_poll)
+							vid_finger_lift[i] = true;
+						else
+							multitouch[i][0] = 0;
 						break;
 					}
 				}
