@@ -39,6 +39,8 @@ void XonoticTouchSetupDialog_fill(entity me)
 		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Standard"), '0 0 0', "exec touch/profiles/standard.cfg; exec touch/profiles/helpers.cfg; menu_cmd sync", 0));
 		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Casual"), '0 0 0', "exec touch/profiles/casual.cfg; menu_cmd sync", 0));
 		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Competitive"), '0 0 0', "exec touch/profiles/competitive.cfg; menu_cmd sync", 0));
+	// The buttons are two rows tall, so each row of them takes two TRs.
+	me.TR(me);
 	me.TR(me);
 		me.TD(me, 2, 3, e = makeXonoticTouchCommandButton(_("Left-handed"), '0 0 0', "exec touch/profiles/left.cfg; exec touch/profiles/helpers.cfg; menu_cmd sync", 0));
 		me.TD(me, 2, 3, e = makeXonoticTouchCommandButton(_("Minimal"), '0 0 0', "exec touch/profiles/minimal.cfg; menu_cmd sync", 0));
@@ -50,7 +52,7 @@ void XonoticTouchSetupDialog_fill(entity me)
 		e.allowWrap = true;
 	me.TR(me);
 	me.TR(me);
-	me.gotoRC(me, me.rows - 1, 0);
+	me.gotoRC(me, me.rows - 2, 0);
 		me.TD(me, 2, 6, e = makeXonoticTouchButton(_("Save & continue"), '0 0 0'));
 			e.onClick = TouchSetup_Finish_Click;
 			e.onClickEntity = me;

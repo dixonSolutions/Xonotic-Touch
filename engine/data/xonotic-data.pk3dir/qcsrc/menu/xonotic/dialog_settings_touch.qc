@@ -113,14 +113,17 @@ void XonoticMobileControlsTab_fill(entity me)
 
 	me.TR(me);
 		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Size and look")));
-	// Three sliders to a row keep the tab short.
+	// Three sliders to a row keep the tab short. Each slider's value is drawn
+	// at its right end, so a gap after it keeps "0.90" off the next label.
 	me.TR(me);
-		me.TD(me, 1, 0.9, e = makeXonoticTextLabel(0, _("Opacity:")));
-		me.TD(me, 1, 1.1, e = makeXonoticSlider_T(0.3, 1.0, 0.05, "touch_opacity", _("Control overlay opacity")));
-		me.TD(me, 1, 0.9, e = makeXonoticTextLabel(0, _("Scale:")));
-		me.TD(me, 1, 1.1, e = makeXonoticSlider_T(0.7, 1.4, 0.05, "touch_scale", _("Size of move/fire/jump widgets")));
-		me.TD(me, 1, 0.9, e = makeXonoticTextLabel(0, _("Glass tint:")));
-		me.TD(me, 1, 1.1, e = makeXonoticSlider_T(0, 1, 0.05, "touch_glass_hollow",
+		me.TD(me, 1, 0.8, e = makeXonoticTextLabel(0, _("Opacity:")));
+		me.TD(me, 1, 1.05, e = makeXonoticSlider_T(0.3, 1.0, 0.05, "touch_opacity", _("Control overlay opacity")));
+		me.TDempty(me, 0.15);
+		me.TD(me, 1, 0.8, e = makeXonoticTextLabel(0, _("Scale:")));
+		me.TD(me, 1, 1.05, e = makeXonoticSlider_T(0.7, 1.4, 0.05, "touch_scale", _("Size of move/fire/jump widgets")));
+		me.TDempty(me, 0.15);
+		me.TD(me, 1, 0.8, e = makeXonoticTextLabel(0, _("Glass tint:")));
+		me.TD(me, 1, 1.2, e = makeXonoticSlider_T(0, 1, 0.05, "touch_glass_hollow",
 			_("How much of each control is glass. Left: tinted glass. All the way right: hollow, only the outline and label, nothing between you and the game")));
 	me.TR(me);
 		me.TD(me, 1, 0.9, e = makeXonoticTextLabel(0, _("HUD size:")));
@@ -315,7 +318,16 @@ void XonoticMobileDynamicsTab_fill(entity me)
 		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Frame rate")));
 	me.TR(me);
 		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Frame cap:")));
-		me.TD(me, 1, 2.5, e = makeXonoticSlider_T(20, 120, 10, "cl_maxfps", _("Highest frame rate the game draws. Lower is cooler and lasts longer on battery")));
+		// Mixed, with every value a profile or Settings -> Video can set: a plain
+		// 20-120 slider showed no knob at the engine default (256) or at 0.
+		me.TD(me, 1, 2.5, e = makeXonoticMixedSlider_T("cl_maxfps", _("Highest frame rate the game draws. Lower is cooler and lasts longer on battery")));
+			e.formatString = _("%s fps");
+			e.addRange(e, 20, 120, 10);
+			e.addRange(e, 128, 256, 128);
+			e.addRange(e, 512, 1024, 512);
+			e.addRange(e, 2048, 2048, 2048);
+			e.addText(e, ZCTX(_("MAXFPS^Unlimited")), 0);
+			e.configureXonoticMixedSliderValues(e);
 		me.TD(me, 1, 2, e = makeXonoticCheckBox_T(0, "vid_vsync", _("Vertical sync"), _("Wait for the screen to refresh: no tearing, and steadier frame times")));
 
 	me.TR(me);
