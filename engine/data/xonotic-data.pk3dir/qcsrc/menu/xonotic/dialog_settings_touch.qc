@@ -108,10 +108,12 @@ void XonoticMobileControlsTab_fill(entity me)
 	me.TR(me);
 		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Layout preset")));
 	me.TR(me);
-		me.TD(me, 1, 1.5, e = makeXonoticCommandButton(_("Standard"), '0 0 0', "exec touch/profiles/standard.cfg; exec touch/profiles/helpers.cfg; menu_cmd sync", 0));
-		me.TD(me, 1, 1.5, e = makeXonoticCommandButton(_("Casual"), '0 0 0', "exec touch/profiles/casual.cfg; menu_cmd sync", 0));
-		me.TD(me, 1, 1.5, e = makeXonoticCommandButton(_("Competitive"), '0 0 0', "exec touch/profiles/competitive.cfg; menu_cmd sync", 0));
-		me.TD(me, 1, 1.5, e = makeXonoticCommandButton(_("Left hand"), '0 0 0', "exec touch/profiles/left.cfg; exec touch/profiles/helpers.cfg; menu_cmd sync", 0));
+		me.TD(me, 1, 1.2, e = makeXonoticCommandButton(_("Standard"), '0 0 0', "exec touch/profiles/standard.cfg; exec touch/profiles/helpers.cfg; menu_cmd sync", 0));
+		me.TD(me, 1, 1.2, e = makeXonoticCommandButton(_("Casual"), '0 0 0', "exec touch/profiles/casual.cfg; menu_cmd sync", 0));
+		me.TD(me, 1, 1.2, e = makeXonoticCommandButton(_("Competitive"), '0 0 0', "exec touch/profiles/competitive.cfg; menu_cmd sync", 0));
+		me.TD(me, 1, 1.2, e = makeXonoticCommandButton(_("Left hand"), '0 0 0', "exec touch/profiles/left.cfg; exec touch/profiles/helpers.cfg; menu_cmd sync", 0));
+		me.TD(me, 1, 1.2, e = makeXonoticCommandButton_T(_("Minimal"), '0 0 0', "exec touch/profiles/minimal.cfg; menu_cmd sync", 0,
+			_("For small phones: move stick, FIRE and HOP only")));
 
 	me.TR(me);
 		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Size and look")));

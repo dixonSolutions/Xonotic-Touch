@@ -186,7 +186,7 @@ flowchart TB
   A[touch/xonotic.cfg] --> B[data/screen.layout.cfg]
   B --> C[touch/profiles/standard.cfg]
   C --> D["$HOME/.xonotic/touch.layout.cfg"]
-  D --> E[In-game pause / wizard saves]
+  D --> E[In-game pause / Settings saves]
 ```
 
 | Step | File | Writable | Role |
@@ -358,7 +358,7 @@ Engine movement (already in `touch/xonotic.cfg`):
 | `touch_conui_shade` | float | 0–1 | `0.62` | Console background dim |
 | `touch_conui_palette_file` | string | path | `touch/console_palette.txt` | COMMANDS tab presets |
 | `touch_minimal_more` | int | 0/1 | `0` | Minimal preset: secondary panel for crouch/zoom/dodge |
-| `touch_setup_done` | int | 0/1 | `0` | First-run wizard completed; skip on next launch |
+| `touch_setup_done` | int | 0/1 | `0` | First-launch touch defaults applied (layout saved); never asked again |
 
 ### Secondary fire (ALT)
 
@@ -582,7 +582,7 @@ Uses engine volume cvars; port adds an output profile for phone speaker vs headp
 | `standard.cfg` | Most players | The layout. Every other control preset `exec`s it and overrides only what differs |
 | `casual.cfg` | New to touch / Xonotic | Larger widgets, stronger aim assist than the default, lower sens, auto-hop |
 | `competitive.cfg` | Experienced | Smaller widgets, no assist (auto-shoot, aim assist and auto-switch off), higher sens, second fire button on (claw grip), snappier look filter, 3-slot weapons, double-tap dash |
-| `helpers.cfg` | — | Every shoot-helper cvar at its default; the presets, the wizard and *Reset preset* exec it, then override what differs |
+| `helpers.cfg` | — | Every shoot-helper cvar at its default; the presets and *Reset preset* exec it, then override what differs |
 | `left.cfg` | Left-handed | `touch_handedness 1` — the mirror is computed, not a second copy of the geometry |
 | `minimal.cfg` | Small phones | Fewest controls; auto-hop so nothing but move, look and fire is needed |
 | `battery.cfg` | Long sessions | Performance row only |
@@ -620,7 +620,7 @@ phone sessions (Hick’s Law):
 
 ```mermaid
 flowchart LR
-  W[First-run wizard] --> S[touch.layout.cfg]
+  W[First launch defaults] --> S[touch.layout.cfg]
   P[Pause → Controls] --> S
   M[Main menu → Import/Export] --> S
 ```
@@ -631,9 +631,12 @@ Pause sub-tabs: Preset · Look · Move · Buttons · Layout · Advanced (export/
 
 ## Session flow (menus)
 
-Main menu is stock Xonotic (Singleplayer / Multiplayer / Media / Settings / …). Touch-specific UI stays under Settings → Mobile (Controls, Aim, Auto-shoot, Dynamics) (and first-run wizard).
+Main menu is stock Xonotic (Singleplayer / Multiplayer / Media / Settings / …). Touch-specific UI stays under Settings → Mobile (Controls, HUD, Aim, Auto-shoot, Dynamics).
 
-- **Touch setup** — first-run: preset → handedness → save.
+- **First launch** — no touch-controls dialog: the Standard controls are taken
+  silently, the layout is saved and `touch_setup_done` is set (see
+  [SETUP.md](SETUP.md)). Presets (Standard, Casual, Competitive, Left hand,
+  Minimal) and handedness are in Settings → Mobile → Controls.
 - **Server browser** — stock Multiplayer browser. Joining used to fail on
   every public server: they name their client progs by version
   (`csprogs-xonotic-v0.8.6-NNNN-gHASH.dat`), `cl_csqc_download 0` refused to
@@ -762,7 +765,7 @@ Menu actions: Export → share file; Import → validate keys, backup current, `
 | Touch CSQC | `engine/.../qcsrc/client/touch_*.qc` | Sticks, buttons, multitouch, aim assist |
 | Engine fingers | `engine/darkplaces/vid_sdl.c`, `clvm_cmds.c` | `gettouchfinger` builtin (#643), `DP_UT_TOUCHFINGER` |
 | Constants | `engine/.../qcsrc/common/` | Shared enums, weapon names, gesture thresholds *(pending)* |
-| Settings UI | `engine/.../qcsrc/menu/xonotic/` | Sliders, wizard, touch settings tab |
+| Settings UI | `engine/.../qcsrc/menu/xonotic/` | Sliders, touch settings tab |
 | Mobile status HUD | `engine/.../qcsrc/client/touch_hud.qc`, `touch_weapons.qc` | Health / armour / ammo group, weapons strip, its grip and tap slots |
 | User persistence | `~/.xonotic/touch.layout.cfg` | Profile `exec` + registered cvars |
 | SDL fingers | `engine/darkplaces/vid_sdl.c` | SDL multitouch → `gettouchfinger` |
@@ -781,7 +784,7 @@ Menu actions: Export → share file; Import → validate keys, backup current, `
 | Input / multitouch / commands | `touch_input.qc` | **Done** (4-finger slots via `gettouchfinger`) |
 | Overlay draw | `touch_draw.qc` | **Done** |
 | Customize mode | `touch_customize.qc` | **Done** — drag handles, grid snap, save/cancel/reset |
-| Menu / wizard | `qcsrc/menu/` | **Done** — startup chain, asset progress, touch setup (`docs/SETUP.md`) |
+| Menu / wizard | `qcsrc/menu/` | **Done** — startup chain, asset progress, first-launch touch defaults (`docs/SETUP.md`) |
 
 Build flow: clone repo (integrated `engine/`) → `fetch-sources.sh code` (if needed) → `./scripts/install-flatpak.sh` or `./scripts/run-local.sh`.
 

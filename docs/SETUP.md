@@ -18,10 +18,21 @@ On the first main-menu frame, dialogs open **in order**; each step is skipped wh
 
 | Step | Dialog | `shouldShow()` when |
 |------|--------|-------------------|
-| 1 | Terms of Service | `_termsofservice_accepted` &lt; server ToS version |
-| 2 | Asset download | Touch + assets not ready (see below) |
-| 3 | Profile setup (`FirstRun`) | `touch_profile_done` is `0` and name/stats incomplete |
-| 4 | Touch setup (`TouchSetup`) | `vid_touchscreen` and `touch_setup_done` is `0` |
+| 1 | Asset download | Touch + assets not ready (see below) |
+| 2 | Touch controls (no dialog) | `vid_touchscreen` and `touch_setup_done` is `0`: applied silently, see below |
+| 3 | Language | Once per install: the menu restarts in the system's language |
+| 4 | Terms of Service | `_termsofservice_accepted` &lt; server ToS version |
+| 5 | Profile setup (`FirstRun`) | `touch_profile_done` is `0` and name/stats incomplete |
+
+There is no touch-controls dialog. Players did not want a popup before they could
+play, and everything it offered (the presets, Minimal included, and handedness) is
+in Settings → Mobile → Controls. On the first menu frame of a touch session with
+`touch_setup_done 0`, `TouchStartup_applyTouchDefaults()`
+(`touch_startup_util.qc`) does what the old dialog's *Save & continue* did with
+nothing picked: it keeps the preset the launcher already exec'd (Standard, plus
+`helpers.cfg`'s defaults), writes `touch.layout.cfg`, sets `touch_setup_done 1`
+and saves `config.cfg`. It runs once, after the asset download and before the
+other steps, and never on an install that already has `touch_setup_done 1`.
 
 Implementation: `MainWindow_tryOpenStartupDialogs()` in `qcsrc/menu/xonotic/mainwindow.qc`.
 
@@ -33,7 +44,7 @@ After ToS accept or asset download completes, `main.firstDraw = true` re-runs th
 |------------|----------------|
 | Assets already on disk | Asset download dialog |
 | `touch_profile_done 1` (or legacy: custom name + stats Yes/No) | Profile setup |
-| `touch_setup_done 1` in config / `touch.layout.cfg` | Touch setup |
+| `touch_setup_done 1` in config / `touch.layout.cfg` | Touch controls defaults (left as they are) |
 | ToS already accepted | ToS dialog |
 
 ## Asset download (first launch)
@@ -155,7 +166,7 @@ Cvars (menu sets position when focusing inputs):
 | Asset download UI | `qcsrc/menu/xonotic/dialog_touch_asset_fetch.qc` |
 | Skip / progress helpers | `qcsrc/menu/xonotic/touch_startup_util.qc` |
 | Profile wizard | `qcsrc/menu/xonotic/dialog_firstrun.qc` |
-| Touch wizard | `qcsrc/menu/xonotic/dialog_touch_wizard.qc` |
+| Touch controls defaults | `qcsrc/menu/xonotic/touch_startup_util.qc` (`TouchStartup_applyTouchDefaults`) |
 | Asset fetch + progress | `scripts/lib/asset-fetch.sh` |
 | Local install discovery | `scripts/lib/asset-discover.sh` |
 | Touch-friendly menu buttons | `qcsrc/menu/xonotic/touchbutton.qc` |
