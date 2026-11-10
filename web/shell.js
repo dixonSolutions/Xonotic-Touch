@@ -3,8 +3,9 @@
 // The engine is DarkPlaces built with Emscripten (scripts/build-web.sh). This
 // file is the "platform layer" that a phone or desktop OS would otherwise be:
 //
-//   data        downloads the pk3s once into the Cache API (streamed to disk,
-//               not held in memory), then hands them to the engine's MEMFS
+//   data        downloads the pk3s once into OPFS, or the Cache API where OPFS
+//               is not writable (streamed to disk, not held in memory), then
+//               hands them to the engine's MEMFS
 //   saves       mirrors the userdir (config.cfg, layouts) to IndexedDB
 //   display     canvas fills the page; render resolution = CSS size × scale
 //   GPU         WebGL 2 context forced opaque and high-performance; reports
@@ -432,26 +433,34 @@
 
   async function openCacheStore() {
     const PART = 32 * 1024 * 1024;
-    const store = await openStore();
-    state.store = store.kind;
+    const cache = await caches.open(DATA_CACHE);
     const key = (f, i) => new URL(`${f.path}?rev=${f.rev}&part=${i}`, f.base || dataBase).href;
     const parts = (f) => Math.max(1, Math.ceil(f.size / PART));
     return {
       kind: 'cache',
       async has(f) {
-        // Parts are written in order, so the last one says the file is whole.
-        const r = await cache.match(key(f, parts(f) - 1));
-        return !!r && r.headers.get('x-xt-size') === String(f.size);
+        // Every part, not just the last: a part the browser evicted on its
+        // own would otherwise fail every start without a new download.
+        for (let i = 0; i < parts(f); i++) {
+          const r = await cache.match(key(f, i));
+          if (!r || r.headers.get('x-xt-size') !== String(f.size)) return false;
+        }
+        return true;
       },
       async put(f, stream) {
+        // At most one part is held in memory: a full part is handed to the
+        // cache as it is and a new buffer started.
         const reader = stream.getReader();
-        let buf = new Uint8Array(Math.min(PART, f.size || PART));
+        const fresh = () => new Uint8Array(Math.min(PART, f.size || PART));
+        let buf = fresh();
         let fill = 0;
         let part = 0;
         const flush = async () => {
-          await cache.put(key(f, part++), new Response(buf.slice(0, fill), {
+          const body = fill === buf.length ? buf : buf.slice(0, fill);
+          await cache.put(key(f, part++), new Response(body, {
             headers: { 'content-type': 'application/octet-stream', 'x-xt-size': String(f.size) },
           }));
+          if (body === buf) buf = fresh();
           fill = 0;
         };
         for (;;) {
@@ -475,12 +484,15 @@
           const r = await cache.match(key(f, i));
           if (!r) throw new Error(`${f.name} is incomplete in the browser cache. Reload to download it again.`);
           const b = new Uint8Array(await r.arrayBuffer());
+          if (off + b.length > out.length) throw new Error(`${f.name} is damaged in the browser cache. Reload to download it again.`);
           out.set(b, off);
           off += b.length;
         }
+        if (off !== f.size) throw new Error(`${f.name} is incomplete in the browser cache. Reload to download it again.`);
         return out;
       },
       async drop(f) { for (let i = 0; i < parts(f); i++) await cache.delete(key(f, i)); },
+      // Keys are per part, so this takes the manifest rather than file ids.
       async prune(keepIds, manifest) {
         const keep = new Set();
         for (const f of manifest.files) for (let i = 0; i < parts(f); i++) keep.add(key(f, i));
@@ -489,8 +501,11 @@
     };
   }
 
+  // ?store=cache uses the Cache API even where OPFS works, to test the
+  // fallback; it leaves any OPFS copy alone, and a later visit without it
+  // goes back to OPFS (and drops the Cache copy).
   async function openStore() {
-    const opfs = await openOPFS();
+    const opfs = params.get('store') === 'cache' ? null : await openOPFS();
     if (!opfs) return openCacheStore();
     caches.delete(DATA_CACHE).catch(() => {}); // anything an older page left there
     return opfs;

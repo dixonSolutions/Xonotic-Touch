@@ -136,6 +136,9 @@ Debugging:
   survives a page that freezes, and is the easy way to read a phone's console.
 - `?args=+map%20stormkeep` adds engine arguments; `?autoplay` skips the Play
   button (no fullscreen or audio until the first click).
+- `?store=cache` keeps the game data in the Cache API instead of OPFS, the
+  path browsers without writable OPFS take (older Safari, Firefox private
+  windows). A visit without it goes back to OPFS and deletes the Cache copy.
 - `xt.command('...')` in the devtools console runs a console command.
 - `scripts/build-web.sh --debug` keeps function names and Emscripten
   assertions.
