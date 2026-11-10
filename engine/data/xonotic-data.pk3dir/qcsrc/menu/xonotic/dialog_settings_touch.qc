@@ -179,6 +179,10 @@ void XonoticMobileAimTab_fill(entity me)
 		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Sensitivity:")));
 		me.TD(me, 1, 3, e = makeXonoticSlider_T(0.1, 50, 0.1, "touch_sens_base", _("Look speed (DPI-normalized)")));
 			e.setValueSpace(e, 0);
+			// A tap beside the knob moves it a page. The default page for this
+			// range is 10, a fifth of the slider per tap; half a unit can be
+			// tuned by tapping, and dragging the knob goes in steps of 0.1.
+			e.valuePageStep = 0.5;
 			touchSensSlider = e;
 		me.TD(me, 1, 1.5, e = makeXonoticInputBox_T(0, "touch_sens_base", _("Look speed (DPI-normalized)")));
 			e.saveImmediately = true;

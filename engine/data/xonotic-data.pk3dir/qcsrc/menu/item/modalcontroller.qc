@@ -181,6 +181,30 @@
 		SUPER(ModalController).draw(me);
 	}
 
+	// draw gives the topmost child focus once this controller has it. A tap
+	// that gives it focus -- the first tap inside a tab after tapping a tab
+	// button, with no hover between to focus it a frame early -- arrives
+	// before that draw, so its press reached no child and did nothing. Take
+	// the focus draw would give now, unless a child is still animating.
+	METHOD(ModalController, mousePress, bool(ModalController this, vector pos))
+	{
+		if (this.focused && !this.focusedChild)
+		{
+			entity front = NULL;
+			bool animating = false;
+			for (entity e = this.firstChild; e; e = e.nextSibling)
+				if (e.ModalController_state)
+				{
+					front = e;
+					if (e.ModalController_factor < 1)
+						animating = true;
+				}
+			if (front && !animating)
+				this.setFocus(this, front);
+		}
+		return SUPER(ModalController).mousePress(this, pos);
+	}
+
 	void ModalController_addTab(entity me, entity other, entity tabButton)
 	{
 		me.addItem(me, other, '0 0 0', '1 1 1', 1);
