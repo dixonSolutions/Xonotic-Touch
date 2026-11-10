@@ -242,7 +242,18 @@ void Touch_Draw(void)
 		{
 			drawresetcliparea();
 			HUD_Scale_Disable();
-			Touch_Hud_Draw(bound(0.3, autocvar_touch_opacity, 1.0));
+			float a = bound(0.3, autocvar_touch_opacity, 1.0);
+			Touch_Hud_Draw(a);
+			// On a touchscreen the pills stay too, dimmed: the keyboard has keys
+			// for all of them, so they step back, but a finger can still reach
+			// them (Touch_DeskActive).
+			if (Touch_DeskPills())
+			{
+				Touch_Pause_DrawPill(a * 0.6);
+				Touch_Chat_DrawPill(a * 0.6);
+				Touch_Console_Draw(a * 0.6);
+				Touch_Scores_DrawPill(a * 0.6);
+			}
 		}
 		return;
 	}
