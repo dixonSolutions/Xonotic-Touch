@@ -454,6 +454,70 @@ void Touch_ApplyChatFeedSettings(void)
 	cvar_set("con_chattime", "12");
 }
 
+// Drop every line that sets a cl_touch_* cvar from the saved layout file.
+// Returns whether there were any.
+bool Touch_StripEngineKeys(string path)
+{
+	float fh = fopen(path, FILE_READ);
+	if (fh < 0)
+		return false;
+	float buf = buf_create();
+	bool dropped = false;
+	string line;
+	while ((line = fgets(fh)))
+	{
+		float n = tokenize_console(line);
+		float k = (argv(0) == "seta" || argv(0) == "set") ? 1 : 0;
+		if (n >= k + 2 && substring(argv(k), 0, 9) == "cl_touch_")
+			dropped = true;
+		else
+			bufstr_add(buf, line, true);
+	}
+	fclose(fh);
+	if (dropped)
+	{
+		fh = fopen(path, FILE_WRITE);
+		if (fh >= 0)
+		{
+			float m = buf_getsize(buf);
+			for (float i = 0; i < m; ++i)
+				fputs(fh, strcat(bufstr_get(buf, i), "\n"));
+			fclose(fh);
+		}
+	}
+	buf_del(buf);
+	return dropped;
+}
+
+// The engine's shoot helpers (cl_touch_autoshoot*, cl_touch_aimassist*) are
+// engine cvars archived in config.cfg. Older menus also wrote them into the
+// layout file, which the launchers exec at every start, so the values of the
+// build that saved it -- slowdown 0.35 and pull 0.15, the first defaults --
+// overrode every later default and were written back by the next save. Once
+// per install: take them out of the layout file, and move a slowdown and pull
+// still at those first defaults (with the rate and cone they came with) to the
+// current ones. A player who set them, or picked the Low strength, keeps them.
+void Touch_MigrateAimHelpers(void)
+{
+	if (cvar("touch_aim_version") >= 1)
+		return;
+	if (Touch_StripEngineKeys(autocvar_touch_layout_file))
+		print("Touch: moved the shoot-helper settings out of ", autocvar_touch_layout_file, "\n");
+	if (cvar("cl_touch_aimassist_friction") == 0.35 && cvar("cl_touch_aimassist_strength") == 0.15)
+	{
+		string reset = "cl_touch_aimassist_friction cl_touch_aimassist_strength";
+		if (cvar("cl_touch_aimassist_maxrate") == 15)
+			reset = strcat(reset, " cl_touch_aimassist_maxrate");
+		if (cvar("cl_touch_aimassist_cone") == 6)
+			reset = strcat(reset, " cl_touch_aimassist_cone");
+		float n = tokenize_console(reset);
+		for (float i = 0; i < n; ++i)
+			cvar_set(argv(i), cvar_defstring(argv(i)));
+		print("Touch: aim assist moved from the first defaults to the current ones\n");
+	}
+	localcmd("seta touch_aim_version 1\n");
+}
+
 void Touch_LoadStartupConfigs(void)
 {
 	if (!cvar("vid_touchscreen"))
@@ -472,6 +536,7 @@ void Touch_LoadStartupConfigs(void)
 	bool from_launcher = whichpack("touch/startup.cfg") ? true : false;
 	if (!from_launcher && cvar("touch_perf_version") < 1)
 		localcmd("exec touch/profiles/balanced.cfg\nseta touch_perf_version 5\n");
+	Touch_MigrateAimHelpers();
 	Touch_ApplyTouchWeaponsStrip();
 	Touch_ApplySensitivity();
 	// Anything *derived* from a touch cvar is applied from Touch_EnsureReady

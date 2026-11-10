@@ -17,9 +17,6 @@ const string TOUCHMENU_KEYS =
 	"touch_stick_deadzone touch_stick_range touch_aim_assist "
 	"touch_fire_mode touch_zoom_mode touch_weapon_mode "
 	"touch_weapon_slot1 touch_weapon_slot2 touch_weapon_slot3 touch_auto_fire "
-	"cl_touch_autoshoot cl_touch_autoshoot_delay cl_touch_autoshoot_release cl_touch_autoshoot_weapons cl_touch_autoshoot_aimonly "
-	"cl_touch_aimassist cl_touch_aimassist_friction cl_touch_aimassist_strength cl_touch_aimassist_maxrate cl_touch_aimassist_cone "
-	"cl_touch_aim_range cl_touch_aim_ring "
 	"touch_dodge_mode touch_scoreboard_gesture touch_chat_mode touch_minimal_more "
 	"touch_hud_scale touch_performance_profile touch_setup_done";
 
@@ -44,7 +41,10 @@ string TouchMenu_LayoutKeys(void)
 			if (n < k + 2)
 				continue;
 			string key = argv(k);
-			if (substring(key, 0, 6) != "touch_" && substring(key, 0, 9) != "cl_touch_")
+			// Touch settings only. The engine's shoot helpers (cl_touch_*) are
+			// archived in config.cfg; carried here they outlived every later
+			// default (Touch_MigrateAimHelpers).
+			if (substring(key, 0, 6) != "touch_")
 				continue;
 			// Written separately, last.
 			if (key == "touch_layout_version")
