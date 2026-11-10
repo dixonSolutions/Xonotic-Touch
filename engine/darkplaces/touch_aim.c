@@ -41,12 +41,12 @@ cvar_t cl_touch_autoshoot_delay = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_d
 cvar_t cl_touch_autoshoot_release = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_release", "0.15",
 	"Seconds auto-shoot keeps firing after the crosshair leaves the enemy (0 - 0.5)"};
 cvar_t cl_touch_aimassist = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist", "1",
-	"Touch controls: aim helpers -- the look drag slows down over an enemy (cl_touch_aimassist_friction) and the view is pulled gently toward one while you turn or move (cl_touch_aimassist_strength). "
+	"Touch controls: aim helpers -- the look drag slows down over an enemy (cl_touch_aimassist_friction) and the view is pulled gently toward one while a finger is on the aim control (cl_touch_aimassist_strength). "
 	"Only in touch mode; never active with a keyboard attached"};
 cvar_t cl_touch_aimassist_friction = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_friction", "0.45",
 	"Aim slowdown: fraction of look speed removed while the crosshair is on an enemy, fading out to the edge of cl_touch_aimassist_cone (0 = off, at most 0.8)"};
 cvar_t cl_touch_aimassist_strength = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_strength", "0.35",
-	"Aim pull: fraction of your own turn speed added toward the nearest visible enemy inside the cone while a finger is on the aim control and you turn or move (0 = off, at most 0.6)"};
+	"Aim pull toward the nearest visible enemy inside the cone while a finger is on the aim control: follows strength x 2 of its motion across the view and closes the gap at strength x 10 per second, or strength x your own turn speed, whichever is faster (0 = off, at most 0.6)"};
 cvar_t cl_touch_aimassist_maxrate = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_maxrate", "40",
 	"Aim pull: hard cap on the pull, degrees per second (at most 60); it never snaps"};
 cvar_t cl_touch_aimassist_cone = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_cone", "8",
@@ -84,9 +84,23 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 #define STRENGTH_MAX   0.6f
 #define MAXRATE_MAX    60.0f
 #define CONE_MAX       12.0f
-// Turn rate (deg/s) the pull scales with while the player strafes without
-// turning: at the default strength that is 14 deg/s, a slow drift.
-#define MOVE_REF_RATE  40.0f
+// Pull toward the target with a finger down: the gap (degrees) closes at
+// strength * SETTLE_GAIN per second, 3.5/s at the default 0.35, so a 5 degree
+// miss is mostly gone in a third of a second; and strength * FOLLOW_SCALE of
+// the target's own motion across the view is followed (0.7 at the default).
+#define SETTLE_GAIN    10.0f
+#define FOLLOW_SCALE   2.0f
+// A target that jumps further than this in one frame (teleport, aim point
+// switching between chest and head) is not followed that frame.
+#define FOLLOW_SPIKE_DEG 5.0f
+// The player is aiming while turning faster than INPUT_MIN_RATE (deg/s) or
+// moving, and for INPUT_HOLD seconds after: long enough to settle a thumb that
+// has just stopped, too short to track anything for a finger left resting.
+#define INPUT_MIN_RATE 2.0f
+#define INPUT_HOLD     0.5f
+// The player's own turn counts as heading away from the target only above
+// this rate (deg/s), so the look filter's decaying tail does not cancel the pull.
+#define AWAY_MIN_RATE  5.0f
 // A per-frame view change larger than this is a teleport or respawn, not a turn.
 #define TURN_SPIKE_DEG 60.0f
 
@@ -98,11 +112,14 @@ static struct
 	vec3_t prev_angles;
 	double on_since;     // crosshair entered an enemy (0 = not on one)
 	double last_on;      // last frame the crosshair was on an enemy
+	double last_input;   // last frame the player turned or moved
 	qbool firing;
 	float lookscale;
 	int lock;
 	qbool hud_aim_touch;
 	int debug_target, debug_friend;
+	int track_ent;               // target followed last frame, and its view angles
+	float track_yaw, track_pitch;
 	// from the loaded CSQC
 	int teamplay_ofs, teamplay_type;
 } ta;
@@ -197,6 +214,7 @@ static void reset(void)
 	ta.lock = 0;
 	ta.debug_target = 0;
 	ta.debug_friend = 0;
+	ta.track_ent = 0;
 }
 
 static qbool is_spectator_slot(int n)
@@ -428,7 +446,7 @@ void TouchAim_Frame(void)
 {
 	double now = host.realtime;
 	float dt = bound(0.001f, (float)cl.realframetime, 0.1f);
-	qbool autoshoot, assist, aim_touch, moving, turning;
+	qbool autoshoot, assist, aim_touch;
 	float friction, strength, cone, turn_yaw, turn_pitch, turn_mag;
 	vec3_t eye, fwd;
 	int on_target, friend_on, on_shoot;
@@ -475,8 +493,6 @@ void TouchAim_Frame(void)
 			turn_yaw = turn_pitch = 0;
 	}
 	turn_mag = sqrt(turn_yaw * turn_yaw + turn_pitch * turn_pitch);
-	turning = turn_mag > 0.01f;
-	moving = cl.cmd.forwardmove != 0 || cl.cmd.sidemove != 0;
 	if (TouchHUD_Active())
 		aim_touch = ta.hud_aim_touch;
 	else if (cl_touch_csqc_active)
@@ -535,24 +551,58 @@ void TouchAim_Frame(void)
 		ta.lookscale = 1.0f - friction * bound(0.0f, f, 1.0f);
 	}
 
-	// magnetism: only with a finger on the aim control, only while turning or
-	// moving, never against a turn that is heading away from the target, and
-	// capped per second so it can never snap
-	if (strength > 0 && near.entnum && aim_touch && (turning || moving))
+	// magnetism: only with a finger on the aim control (the look area or
+	// FIRE) while the player aims -- turning, moving, or within INPUT_HOLD of
+	// either, so a finger resting on the screen never aims by itself -- never
+	// against a turn that is heading away from the target, and capped per
+	// second so it can never snap. Two parts: follow a share of the target's
+	// own motion across the view (it runs, or the player strafes), and close
+	// the remaining gap at a rate that grows with it, so a thumb that stops a
+	// few degrees short or long still lands on the body.
+	if (turn_mag / dt > INPUT_MIN_RATE || cl.cmd.forwardmove != 0 || cl.cmd.sidemove != 0)
+		ta.last_input = now;
+	if (strength > 0 && near.entnum && aim_touch && now - ta.last_input < INPUT_HOLD)
 	{
 		float ey = wrap180(near.yaw - cl.viewangles[YAW]);
 		float ep = near.pitch - cl.viewangles[PITCH];
 		float elen = sqrt(ey * ey + ep * ep);
-		qbool away = turning && (turn_yaw * ey + turn_pitch * ep) < 0;
-		if (elen > 0.05f && !away)
+		float turn_rate = turn_mag / dt;
+		qbool away = turn_rate > AWAY_MIN_RATE && (turn_yaw * ey + turn_pitch * ep) < 0;
+		if (!away)
 		{
-			float rate = strength * (turning ? turn_mag / dt : MOVE_REF_RATE);
-			float step = min(rate, bound(0.0f, cl_touch_aimassist_maxrate.value, MAXRATE_MAX)) * dt;
-			step = min(step, elen);
-			cl.viewangles[YAW] += ey / elen * step;
-			cl.viewangles[PITCH] = bound(-89.0f, cl.viewangles[PITCH] + ep / elen * step, 89.0f);
+			float py = 0, pp = 0, len, cap;
+			if (ta.track_ent == near.entnum)
+			{
+				float dy = wrap180(near.yaw - ta.track_yaw), dp = near.pitch - ta.track_pitch;
+				if (fabs(dy) < FOLLOW_SPIKE_DEG && fabs(dp) < FOLLOW_SPIKE_DEG)
+				{
+					float follow = min(1.0f, strength * FOLLOW_SCALE);
+					py = follow * dy;
+					pp = follow * dp;
+				}
+			}
+			if (elen > 0.05f)
+			{
+				float gap = max(0.0f, elen - 0.5f * near.radius);
+				float rate = strength * max(turn_rate, SETTLE_GAIN * gap);
+				float step = min(rate * dt, gap);
+				py += ey / elen * step;
+				pp += ep / elen * step;
+			}
+			len = sqrt(py * py + pp * pp);
+			cap = bound(0.0f, cl_touch_aimassist_maxrate.value, MAXRATE_MAX) * dt;
+			if (len > cap)
+			{
+				py *= cap / len;
+				pp *= cap / len;
+			}
+			cl.viewangles[YAW] += py;
+			cl.viewangles[PITCH] = bound(-89.0f, cl.viewangles[PITCH] + pp, 89.0f);
 		}
 	}
+	ta.track_ent = near.entnum;
+	ta.track_yaw = near.yaw;
+	ta.track_pitch = near.pitch;
 
 	VectorCopy(cl.viewangles, ta.prev_angles);
 	ta.prev_valid = true;
