@@ -61,6 +61,9 @@ cvar_t cl_touch_autoshoot_steer = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_s
 cvar_t cl_touch_autoshoot_safe = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_safe", "1",
 	"Auto-shoot holds fire when the shot would catch you in its own blast, the enemy is beyond the weapon's reach, "
 	"or the weapon is not one to fire by itself (Port-O-Launch, Grappling Hook, Tuba)"};
+cvar_t cl_touch_autoswitch = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoswitch", "1",
+	"Touch controls: switch to the best weapon you own for the distance to the enemy you are fighting. "
+	"Never within 4 seconds of choosing a weapon yourself, nor while you hold FIRE or ALT"};
 cvar_t cl_touch_aimassist = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist", "1",
 	"Touch controls: aim helpers -- the look drag slows down over an enemy (cl_touch_aimassist_friction) and the view is pulled gently toward one while a finger is on the aim control (cl_touch_aimassist_strength). "
 	"Only in touch mode; never active with a keyboard attached"};
@@ -82,7 +85,7 @@ cvar_t cl_touch_aim_ring = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aim_ring", "1",
 cvar_t cl_touch_aim_range = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aim_range", "3000",
 	"Auto-shoot and aim helpers ignore enemies farther away than this many units"};
 cvar_t cl_touch_aim_debug = {CF_CLIENT, "cl_touch_aim_debug", "0",
-	"Print auto-shoot and aim-assist decisions to the console: target, weapon, fire mode and why, lead, rockets (2 = also teammates under the crosshair)"};
+	"Print auto-shoot and aim-assist decisions to the console: target, weapon, fire mode and why, lead, switches, rockets (2 = also teammates under the crosshair)"};
 
 // Engine -> CSQC: whether auto-shoot is firing (the port's FIRE button glows),
 // and the look multiplier the port's touch_look.qc applies (aim friction).
@@ -132,6 +135,14 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 #define TRACK_STALE    0.5f
 #define TRACK_JUMP     300.0f
 #define TRACK_MAX      256
+// Auto-switch guards (seconds): the enemy must be the target for FIGHT_MIN
+// before a switch; none for MANUAL_GUARD after the player picked a weapon,
+// nor within OWN_GUARD of the last automatic one; a request that has not
+// landed after SWITCH_WAIT is given up.
+#define FIGHT_MIN      0.25f
+#define MANUAL_GUARD   4.0f
+#define OWN_GUARD      2.0f
+#define SWITCH_WAIT    1.5f
 // Devastator: how far from the eye a fresh rocket may be to be ours, how
 // long to wait for it to appear (refire 1.1 s plus the trip to the server),
 // the longest flight followed, and how long fire stays released after a
@@ -175,6 +186,11 @@ static struct
 	int track_ent;               // target followed last frame, and its view angles
 	float track_yaw, track_pitch;
 	track_t tracks[TRACK_MAX];   // per player slot: smoothed velocity
+	// auto-switch
+	int held_last, switch_to;
+	double switch_asked, manual_switch, own_switch;
+	int fight_ent;
+	double fight_since;
 	// Devastator steering
 	int rk_state, rk_ent, rk_target;
 	double rk_time, rk_seen;
@@ -196,6 +212,7 @@ void TouchAim_Init(void)
 	Cvar_RegisterVariable(&cl_touch_autoshoot_lead);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_steer);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_safe);
+	Cvar_RegisterVariable(&cl_touch_autoswitch);
 	Cvar_RegisterVariable(&cl_touch_aimassist);
 	Cvar_RegisterVariable(&cl_touch_aimassist_friction);
 	Cvar_RegisterVariable(&cl_touch_aimassist_strength);
@@ -214,6 +231,9 @@ void TouchAim_Init(void)
 	ta.lookscale = 1;
 	ta.teamplay_ofs = -1;
 	ta.projtype_ofs = -1;
+	ta.held_last = -1;
+	ta.switch_to = -1;
+	ta.manual_switch = ta.own_switch = -100;
 }
 
 // A float or int global/field the CSQC may declare either way.
@@ -231,6 +251,8 @@ void TouchAim_ProgsChanged(void)
 	ta.projtype_ofs = -1;
 	ta.rk_state = RK_IDLE;
 	ta.rk_ent = 0;
+	ta.held_last = -1;
+	ta.switch_to = -1;
 	if (!prog->loaded)
 		return;
 	d = PRVM_ED_FindGlobal(prog, "teamplay");
@@ -325,6 +347,7 @@ static void reset(void)
 	ta.said_target = ta.said_weapon = ta.said_mode = ta.said_why = -1;
 	ta.track_ent = 0;
 	ta.fire_target = 0;
+	ta.fight_ent = 0;
 	ta.rk_state = RK_IDLE;
 	ta.rk_ent = 0;
 }
@@ -697,6 +720,86 @@ static qbool weapon_ready(int index, const touch_wep_t *w, int held)
 	return ammo >= cost;
 }
 
+// The held weapon changed: by our own request, or the player's choice (a
+// strip tap, a wheel, a pickup switching by itself).
+static void note_held(int held, double now)
+{
+	if (held == ta.held_last)
+		return;
+	if (held >= 0 && held == ta.switch_to)
+	{
+		if (cl_touch_aim_debug.integer)
+			Con_Printf("touch aim: switch landed: %s\n", TouchHUD_WeaponName(held));
+	}
+	else if (ta.held_last >= 0 && held >= 0 && !weapon_ready(ta.held_last, TouchWep_Find(TouchHUD_WeaponName(ta.held_last)), -1))
+	{
+		// the last one ran dry: the server switched by itself, not the player
+		if (cl_touch_aim_debug.integer)
+			Con_Printf("touch aim: weapon now %s (%s ran out of ammo)\n", TouchHUD_WeaponName(held), TouchHUD_WeaponName(ta.held_last));
+	}
+	else
+	{
+		ta.manual_switch = now;
+		if (cl_touch_aim_debug.integer && held >= 0)
+			Con_Printf("touch aim: weapon now %s (not asked by auto-switch: no switch for %.0f s)\n", TouchHUD_WeaponName(held), MANUAL_GUARD);
+	}
+	ta.switch_to = -1;
+	ta.held_last = held;
+}
+
+// Switch to the best owned weapon for the fight, under the guards.
+static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *wep, double now)
+{
+	const char *names[72];
+	qbool ready[72];
+	int index[72], n = 0, i, best, rank, cur_rank;
+	qbool cur_ok;
+	if (!cl_touch_autoswitch.integer || held < 0 || !wep)
+		return;
+	if (near->entnum != ta.fight_ent)
+	{
+		ta.fight_ent = near->entnum;
+		ta.fight_since = now;
+	}
+	if (!near->entnum || now - ta.fight_since < FIGHT_MIN)
+		return;
+	if (now - ta.manual_switch < MANUAL_GUARD || now - ta.own_switch < OWN_GUARD)
+		return;
+	if (ta.switch_to >= 0)
+	{
+		if (now - ta.switch_asked < SWITCH_WAIT)
+			return; // wait for the held weapon to change
+		if (cl_touch_aim_debug.integer)
+			Con_Printf("touch aim: switch to %s did not land, giving up\n", TouchHUD_WeaponName(ta.switch_to));
+		ta.switch_to = -1;
+	}
+	if ((ta.rk_state != RK_IDLE && ta.rk_state != RK_RELEASE) || (in_attack.state & 3) || (in_button3.state & 3))
+		return;
+	for (i = 0; i < TouchHUD_NumWeapons() && n < 72; i++)
+	{
+		if (!TouchHUD_WeaponOwned(i))
+			continue;
+		index[n] = i;
+		names[n] = TouchHUD_WeaponName(i);
+		ready[n] = weapon_ready(i, TouchWep_Find(names[n]), held);
+		n++;
+	}
+	best = TouchWep_Choose(names, ready, n, near->dist, &rank);
+	if (best < 0 || index[best] == held)
+		return;
+	cur_rank = TouchWep_Rank(wep->netname, near->dist);
+	cur_ok = weapon_ready(held, wep, held) && TouchWep_Usable(wep, near->dist);
+	if (!TouchWep_ShouldSwitch(cur_rank, cur_ok, rank))
+		return;
+	Cbuf_AddText(cmd_local, va(vabuf, sizeof(vabuf), "weapon_%s\n", names[best]));
+	if (cl_touch_aim_debug.integer)
+		Con_Printf("touch aim: switch %s -> %s at %.0f units (%s; rank %d -> %d; %.1f s after the player's last pick)\n", wep->netname, names[best], near->dist,
+			!cur_ok ? "current cannot shoot here" : cur_rank < 0 ? "current not on the list" : "clearly better", cur_rank, rank, now - ta.manual_switch);
+	ta.switch_to = index[best];
+	ta.switch_asked = now;
+	ta.own_switch = now;
+}
+
 static int projectile_type(prvm_edict_t *ed)
 {
 	prvm_eval_t *v;
@@ -908,11 +1011,12 @@ void TouchAim_Frame(void)
 	cone = bound(1.0f, cl_touch_aimassist_cone.value, CONE_MAX);
 	radius = bound(0.0f, cl_touch_autoshoot_radius.value, RADIUS_MAX);
 
-	// the weapon in hand
+	// the weapon in hand, and whether the player picked it
 	held = TouchHUD_HeldWeapon();
 	wep = held >= 0 ? TouchWep_Find(TouchHUD_WeaponName(held)) : NULL;
+	note_held(held, now);
 
-	if (!autoshoot && friction <= 0 && strength <= 0)
+	if (!autoshoot && friction <= 0 && strength <= 0 && !cl_touch_autoswitch.integer)
 	{
 		reset();
 		publish();
@@ -1021,7 +1125,7 @@ void TouchAim_Frame(void)
 		mode = TouchWep_FireMode(wep, &s, &why);
 		if (mode == TW_MODE_NONE && !cl_touch_autoshoot_safe.integer && why != TW_WHY_NO_AMMO)
 			mode = TW_MODE_PRIMARY; // the player turned the safety rules off
-		if (mode == TW_MODE_NONE && why == TW_WHY_NO_AMMO)
+		if (mode == TW_MODE_NONE && why == TW_WHY_NO_AMMO && !cl_touch_autoswitch.integer)
 			mode = TW_MODE_PRIMARY; // fire on empty: the server switches to another weapon
 		if (cl_touch_autoshoot_weapons.integer == 1)
 		{
@@ -1054,6 +1158,9 @@ void TouchAim_Frame(void)
 
 	ta.lock = !assist && !autoshoot ? 0 : ((on_target || (near.entnum && near.on_lead)) ? 2 : (near.entnum ? 1 : 0));
 
+	// switch first: no rocket is launched while a switch is on its way
+	auto_switch(&near, held, wep, now);
+
 	if (autoshoot && wep && (wep->flags & TW_GUIDED) && cl_touch_autoshoot_steer.integer)
 	{
 		// Devastator: reaction delay as for any weapon, then the rocket cycle
@@ -1063,7 +1170,7 @@ void TouchAim_Frame(void)
 			if (!ta.on_since)
 				ta.on_since = now;
 			ta.last_on = now;
-			want = now - ta.on_since >= bound(0.0f, cl_touch_autoshoot_delay.value, 0.5f);
+			want = now - ta.on_since >= bound(0.0f, cl_touch_autoshoot_delay.value, 0.5f) && ta.switch_to < 0;
 		}
 		else
 			ta.on_since = 0;

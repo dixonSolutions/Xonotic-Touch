@@ -12,6 +12,7 @@ keyboard, or touch mode forced to Always).
   chosen per weapon (touch_weapons.h). It never touches the key state, so a
   manual press always fires and an auto release can never cancel a finger
   that is holding FIRE or ALT. Devastator rockets are steered and detonated.
+- Auto-switch: the best owned weapon for the distance, under guards.
 - Aim friction: the touch look drag turns slower while the crosshair is on or
   near an enemy (engine HUD: look_apply; port CSQC: _cl_touch_aim_lookscale).
 - Magnetism: while a finger is on the aim control (or auto-shoot is firing at
