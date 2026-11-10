@@ -1583,6 +1583,10 @@ static keynum_t buttonremap[] =
 	K_MOUSE16,
 };
 
+#ifdef __EMSCRIPTEN__
+void Sys_EM_FitWindow(SDL_Window *window); // sys_wasm.c
+#endif
+
 // Who the mouse belongs to right now: the game (grabbed for mouselook) or the
 // screen (a pointer). vid_touchscreen_mouselook tells the touch CSQC which,
 // so it knows whether MOUSE1 is fire or a press on its controls.
@@ -1813,6 +1817,12 @@ void Sys_SDL_HandleEvents(void)
 						}
 						break;
 					case SDL_WINDOWEVENT_RESIZED: // external events only
+#ifdef __EMSCRIPTEN__
+						// The canvas renders at the page's scale, not at
+						// SDL's one pixel per CSS pixel; see sys_wasm.c.
+						if (vid_resizable.integer)
+							Sys_EM_FitWindow(window);
+#endif
 						if(vid_resizable.integer < 2)
 						{
 							//vid.width = event.window.data1;

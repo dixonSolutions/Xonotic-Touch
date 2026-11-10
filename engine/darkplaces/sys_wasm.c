@@ -36,11 +36,21 @@ static void em_fit_viewport(void)
 	if (h != vid_height.integer)
 		Cvar_SetValueQuick(&vid_height, h);
 }
-static EM_BOOL em_on_resize(int etype, const EmscriptenUiEvent *event, void *UData)
+
+void Sys_EM_FitWindow(SDL_Window *window);
+/// The browser window was resized (vid_sdl.c, on SDL_WINDOWEVENT_RESIZED).
+/// SDL's own resize handler has just set the canvas to its CSS size, one
+/// pixel per CSS pixel: put the cvars and the canvas back at the page's
+/// render size. Resizing the canvas raises no browser resize event, so this
+/// does not feed back into itself.
+void Sys_EM_FitWindow(SDL_Window *window)
 {
-	if(vid_resizable.integer)
-		em_fit_viewport();
-	return EM_FALSE;
+	int w, h;
+
+	em_fit_viewport();
+	SDL_GetWindowSize(window, &w, &h);
+	if (w != vid_width.integer || h != vid_height.integer)
+		SDL_SetWindowSize(window, vid_width.integer, vid_height.integer);
 }
 
 EM_JS(void, js_SetFullscreen, (int on), {
@@ -477,8 +487,7 @@ void Sys_SDL_Init(void)
 	// COMMANDLINEOPTION: sdl: -nocrashdialog disables "Engine Error" crash dialog boxes
 	if(!Sys_CheckParm("-nocrashdialog"))
 		nocrashdialog = false;
-	
-	emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_FALSE, em_on_resize);
+
 }
 
 void Sys_EM_Register_Commands(void)
