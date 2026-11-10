@@ -250,6 +250,10 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+        with:
+          # GitHub can take over 10 minutes (the default) to sync the ~150 MB site
+          # of Flatpak and Click remotes; it timed out on two releases in a row.
+          timeout: 1800000
 
   release:
     name: GitHub Release
