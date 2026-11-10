@@ -373,7 +373,7 @@ enum
 	ROLE_NONE = -1, ROLE_IGNORED = -2,
 	ROLE_MOVE = 0, ROLE_LOOK, ROLE_FIRE, ROLE_FIRE2,
 	ROLE_JUMP = 100, ROLE_CROUCH, ROLE_WEAPON, ROLE_ZOOM, ROLE_DODGE, ROLE_RELOAD, ROLE_CON, ROLE_PAUSE, ROLE_SHEET, ROLE_CHAT, ROLE_SCORES,
-	ROLE_WEPSTRIP = 200
+	ROLE_WEPSTRIP = 200, ROLE_WEPGRIP
 };
 
 #define MAX_FINGERS 4
@@ -390,6 +390,9 @@ typedef struct finger_s
 	qbool draglook;     // FIRE finger that has escaped into a look drag
 	float prev_look_x, prev_look_y;
 	int impulse;        // ROLE_WEPSTRIP: the row's impulse
+	float grab_u;       // ROLE_WEPGRIP: the strip's unit when the grip was taken
+	int grab_n;         // ROLE_WEPGRIP: its rows then
+	qbool resized;      // ROLE_WEPGRIP: the scale changed
 } finger_t;
 
 static finger_t fingers[MAX_FINGERS];
@@ -462,6 +465,10 @@ void TouchHUD_ReleaseAll(void)
 #define TOUCH_VIEWMODEL_REV 2
 static cvar_t touch_viewmodel_restored = {CF_CLIENT | CF_ARCHIVE, "_touch_viewmodel_restored", "0", "revision of the one-time r_drawviewmodel restore already applied (see touch_hud.c)"};
 
+// The weapon strip's size (see strip_layout).
+static cvar_t cl_touch_weplist_scale = {CF_CLIENT | CF_ARCHIVE, "cl_touch_weplist_scale", "1.3",
+	"Touch controls: size of the weapon strip, 0.7 - 2.4 (also set by dragging the grip under the strip)"};
+
 static void TouchHUD_RestoreViewmodel_f(cmd_state_t *cmd)
 {
 	if (touch_viewmodel_restored.integer >= TOUCH_VIEWMODEL_REV)
@@ -476,6 +483,7 @@ static void TouchHUD_RestoreViewmodel_f(cmd_state_t *cmd)
 void TouchHUD_Init(void)
 {
 	Cvar_RegisterVariable(&touch_viewmodel_restored);
+	Cvar_RegisterVariable(&cl_touch_weplist_scale);
 	Cmd_AddCommand(CF_CLIENT, "_touch_restore_viewmodel", TouchHUD_RestoreViewmodel_f, "turn r_drawviewmodel back on once for installs that archived the old forced 0 (queued by Host_Init)");
 }
 
@@ -885,10 +893,30 @@ static float skin_pic_fit(cachepic_t *pic, float cx, float cy, float box_w, floa
 	return w;
 }
 
-static float hud_unit(void) { return ui_scale() * max(0.4f, cv("touch_hud_scale", 0.85f)); }
+// The weapon strip's own size, the same geometry as the port's CSQC
+// (touch_hud.qc): rows 26 units high and 46 wide, a 4-unit pad, and a 12-unit
+// grip under the last row that a finger drags to resize it. The unit is the
+// UI scale times cl_touch_weplist_scale. That is an engine cvar rather than a
+// touch_* one: touch.layout.cfg pins those at launch, and a resize made on a
+// server must be saved.
 #define WEP_ROW_H 26.0f
 #define WEP_ROW_W 46.0f
 #define WEP_PAD   4.0f
+#define WEP_GRIP_H 12.0f
+#define WEP_SCALE_MIN 0.7f
+#define WEP_SCALE_MAX 2.4f
+// Tallest the plate may be, and the band it stays inside, as parts of the
+// screen height.
+#define WEP_FIT_H 0.92f
+#define WEP_MARGIN_Y 0.04f
+// The grip's touch area reaches at least this far down, as a part of the
+// screen's short side.
+#define WEP_GRIP_GRAB 0.07f
+
+static float weplist_scale(void)
+{
+	return bound(WEP_SCALE_MIN, cl_touch_weplist_scale.value, WEP_SCALE_MAX);
+}
 
 static int owned_weapon_count(void)
 {
@@ -899,22 +927,46 @@ static int owned_weapon_count(void)
 	return n;
 }
 
-// Row rects of the strip, in the order the CSQC draws them. Returns the count.
-static int strip_rows(float *out_cx, float *out_top, float *out_row_h, float *out_row_w, int *out_index, int maxrows)
+static qbool role_owned(int role);
+
+typedef struct strip_s
 {
-	float u = hud_unit();
-	float h = WEP_ROW_H * u, w = WEP_ROW_W * u;
-	float cx, cy;
-	int i, n = 0, total = owned_weapon_count();
-	widget_center(cv("touch_weplist_x", 0.962f), cv("touch_weplist_y", 0.360f), &cx, &cy);
-	*out_cx = cx;
-	*out_top = cy - (total * h) * 0.5f;
-	*out_row_h = h;
-	*out_row_w = w;
-	for (i = 0; i < num_weapons && n < maxrows; i++)
+	int n;                 // owned rows
+	int index[MAX_WEAPONS];// weapons[] of each row, in the order the CSQC draws them
+	float u;               // unit after the fit rule
+	float cx, cy;          // plate centre
+	float half_w, half_h;  // plate half size (rows, grip and pad)
+	float row_w, row_h, pad;
+	float top;             // first row's top
+	float grip_top;        // the grip's top (the last row's bottom)
+} strip_t;
+
+// Where everything of the strip is this frame. Returns the row count.
+static int strip_layout(strip_t *st)
+{
+	float total, w = ui_w(), h = ui_h();
+	int i;
+	st->n = 0;
+	for (i = 0; i < num_weapons && st->n < MAX_WEAPONS; i++)
 		if (weapons[i].impulse >= 0 && weapon_owned(i))
-			out_index[n++] = i;
-	return n;
+			st->index[st->n++] = i;
+	// Fit: a strip taller than WEP_FIT_H of the screen shrinks, draw and
+	// hit-test alike, so no row ever runs off it.
+	total = st->n * WEP_ROW_H + WEP_GRIP_H + 2 * WEP_PAD;
+	st->u = ui_scale() * weplist_scale();
+	if (total * st->u > WEP_FIT_H * h)
+		st->u = WEP_FIT_H * h / total;
+	st->row_w = WEP_ROW_W * st->u;
+	st->row_h = WEP_ROW_H * st->u;
+	st->pad = WEP_PAD * st->u;
+	st->half_w = st->row_w * 0.5f + st->pad;
+	st->half_h = total * st->u * 0.5f;
+	widget_center(cv("touch_weplist_x", 0.962f), cv("touch_weplist_y", 0.360f), &st->cx, &st->cy);
+	st->cy = bound(WEP_MARGIN_Y * h + st->half_h, st->cy, (1 - WEP_MARGIN_Y) * h - st->half_h);
+	st->cx = bound(st->half_w, st->cx, w - st->half_w);
+	st->top = st->cy - st->half_h + st->pad;
+	st->grip_top = st->top + st->n * st->row_h;
+	return st->n;
 }
 
 // Whether this module draws the strip this frame: under a server's CSQC, in
@@ -926,23 +978,38 @@ static qbool strip_drawn(void)
 		&& cl.stats[STAT_HEALTH] > 0;
 }
 
+// The grip is for fingers: on a touchscreen, or with the controls on (the
+// mouse stands in for a finger when testing on a desktop).
+static qbool grip_shown(void)
+{
+	return strip_drawn() && (vid_touchscreen.integer || touch_device());
+}
+
+// On the grip: its width, from its top down by at least WEP_GRIP_GRAB of the
+// short side, never up over the last row.
+static qbool grip_hit(float px, float py)
+{
+	strip_t st;
+	if (!grip_shown() || strip_layout(&st) <= 0)
+		return false;
+	return px >= st.cx - st.half_w && px <= st.cx + st.half_w
+		&& py >= st.grip_top && py <= st.grip_top + max(WEP_GRIP_H * st.u, WEP_GRIP_GRAB * screen_min());
+}
+
 // Tap on a strip row: the row's impulse, or -1. Same pad as Touch_Weapons_HitImpulse.
 static int strip_hit(float px, float py)
 {
-	float cx, top, h, w, pad;
-	int idx[MAX_WEAPONS];
-	int n, i;
-	if (!strip_drawn())
+	strip_t st;
+	float pad;
+	int i;
+	if (!strip_drawn() || strip_layout(&st) <= 0)
 		return -1;
-	n = strip_rows(&cx, &top, &h, &w, idx, MAX_WEAPONS);
-	if (n <= 0)
-		return -1;
-	pad = min(w, h) * 0.12f;
-	for (i = 0; i < n; i++)
+	pad = min(st.row_w, st.row_h) * 0.12f;
+	for (i = 0; i < st.n; i++)
 	{
-		float y = top + i * h;
-		if (px >= cx - w * 0.5f - pad && px <= cx + w * 0.5f + pad && py >= y - pad && py <= y + h + pad)
-			return weapons[idx[i]].impulse;
+		float y = st.top + i * st.row_h;
+		if (px >= st.cx - st.row_w * 0.5f - pad && px <= st.cx + st.row_w * 0.5f + pad && py >= y - pad && py <= y + st.row_h + pad)
+			return weapons[st.index[i]].impulse;
 	}
 	return -1;
 }
@@ -956,43 +1023,49 @@ static void draw_rrect(float cx, float cy, float hx, float hy, const float *rgb,
 
 static void draw_weapon_strip(float a)
 {
-	float cx, top, h, w, pad, u, num_fs, num_slot, r;
-	int idx[MAX_WEAPONS];
-	int n, i, held;
+	strip_t st;
+	float h, w, pad, num_fs, num_slot;
+	int i, held;
 	// strip_shown() off means the stock weapons panel is back, and two
 	// strips would sit on the right edge.
-	if (!strip_drawn())
-		return;
-	n = strip_rows(&cx, &top, &h, &w, idx, MAX_WEAPONS);
-	if (n <= 0)
+	if (!strip_drawn() || strip_layout(&st) <= 0)
 		return;
 	held = held_weapon_index();
-	u = hud_unit();
-	pad = WEP_PAD * u;
-	r = 6 * u;
-	num_fs = 12 * u * 0.8f;
+	h = st.row_h;
+	w = st.row_w;
+	pad = st.pad;
+	num_fs = 12 * st.u * 0.8f;
 	num_slot = label_width(num_fs, "9");
-	(void)r;
-	draw_rrect(cx, top + n * h * 0.5f, w * 0.5f + pad, n * h * 0.5f + pad, C_SURFACE, a * A_SURFACE * glass_body(false));
-	for (i = 0; i < n; i++)
+	draw_rrect(st.cx, st.cy, st.half_w, st.half_h, C_SURFACE, a * A_SURFACE * glass_body(false));
+	for (i = 0; i < st.n; i++)
 	{
-		const wepdef_t *wd = &weapons[idx[i]];
-		float y = top + i * h + h * 0.5f;
+		const wepdef_t *wd = &weapons[st.index[i]];
+		float y = st.top + i * h + h * 0.5f;
 		// The held weapon when the CSQC's wepent tells it (the local rule);
 		// the last tapped row only when it does not.
-		qbool current = held >= 0 ? (idx[i] == held) : (strip_selected_impulse >= 0 && wd->impulse == strip_selected_impulse);
-		float left = cx - w * 0.5f + pad;
+		qbool current = held >= 0 ? (st.index[i] == held) : (strip_selected_impulse >= 0 && wd->impulse == strip_selected_impulse);
+		float left = st.cx - w * 0.5f + pad;
 		float icon_left, icon_right;
 		char num[8];
 		if (current)
-			draw_rrect(cx, y, w * 0.5f, h * 0.5f, C_ACCENT, a * A_SURFACE_LATCH);
+			draw_rrect(st.cx, y, w * 0.5f, h * 0.5f, C_ACCENT, a * A_SURFACE_LATCH);
 		dpsnprintf(num, sizeof(num), "%d", wd->impulse);
 		shape_label_right(left + num_slot, y, num_fs, num, C_INK, a * A_INK * 0.7f);
 		icon_left = left + num_slot + pad;
-		icon_right = cx + w * 0.5f - pad;
+		icon_right = st.cx + w * 0.5f - pad;
 		if (!skin_pic_fit(skin_pic(wd->pic), (icon_left + icon_right) * 0.5f, y, icon_right - icon_left, h - pad * 2,
 			a * (current ? A_INK : A_INK * 0.55f)))
 			shape_label((icon_left + icon_right) * 0.5f, y, num_fs, wd->name, C_INK, a * (current ? A_INK : A_INK * 0.55f));
+	}
+	// The grip: two short lines across the middle of its band.
+	if (grip_shown())
+	{
+		float gy = st.grip_top + WEP_GRIP_H * st.u * 0.5f;
+		float lw = w * 0.36f, lh = max(1.0f, st.u * 1.2f), gap = st.u * 2.0f;
+		qbool held_grip = role_owned(ROLE_WEPGRIP);
+		float ga = a * (held_grip ? A_INK : A_INK * 0.45f);
+		DrawQ_Fill(st.cx - lw * 0.5f, gy - gap - lh * 0.5f, lw, lh, C_INK[0], C_INK[1], C_INK[2], ga, 0);
+		DrawQ_Fill(st.cx - lw * 0.5f, gy + gap - lh * 0.5f, lw, lh, C_INK[0], C_INK[1], C_INK[2], ga, 0);
 	}
 }
 
@@ -1033,6 +1106,8 @@ static int assign_desk_role(float px, float py)
 	int role = desk_pills() ? pill_at(px, py) : ROLE_NONE;
 	if (role != ROLE_NONE)
 		return role;
+	if (grip_hit(px, py))
+		return role_owned(ROLE_WEPGRIP) ? ROLE_IGNORED : ROLE_WEPGRIP;
 	if (strip_hit(px, py) >= 0)
 		return ROLE_WEPSTRIP;
 	return role_owned(ROLE_LOOK) ? ROLE_IGNORED : ROLE_LOOK;
@@ -1046,7 +1121,9 @@ static int assign_role(float px, float py)
 	role = pill_at(px, py);
 	if (role != ROLE_NONE)
 		return role;
-	// The weapon strip: tap a row to switch (Touch_Weapons_Hit).
+	// The strip's grip, then its rows: tap a row to switch (Touch_Weapons_Hit).
+	if (grip_hit(px, py))
+		return role_owned(ROLE_WEPGRIP) ? ROLE_IGNORED : ROLE_WEPGRIP;
 	if (strip_hit(px, py) >= 0)
 		return ROLE_WEPSTRIP;
 	if (in_edge_deadzone(px, py))
@@ -1506,6 +1583,12 @@ void TouchHUD_Frame(void)
 					strip_selected_impulse = f->impulse;
 				}
 			}
+			if (f->role == ROLE_WEPGRIP)
+			{
+				strip_t st;
+				f->grab_n = strip_layout(&st);
+				f->grab_u = st.u;
+			}
 			if (f->role == ROLE_RELOAD)
 				Cbuf_AddText(cmd_local, "weapon_reload\n");
 			if (f->role == ROLE_DODGE)
@@ -1546,6 +1629,13 @@ void TouchHUD_Frame(void)
 			pill_release(f);
 		else if (f->role == ROLE_WEAPON)
 			weapon_gesture(f, true);
+		else if (f->role == ROLE_WEPGRIP && f->resized)
+		{
+			// Kept now, not only when the game next saves: Android may kill
+			// the app without a clean exit.
+			Host_SaveConfig(CONFIGFILENAME);
+			Con_DPrintf("Touch HUD: weapon strip size %.2f saved\n", cl_touch_weplist_scale.value);
+		}
 		else if (f->role == ROLE_FIRE && f->draglook)
 			look_active = false;
 		else if (f->role == ROLE_LOOK)
@@ -1636,6 +1726,19 @@ void TouchHUD_Frame(void)
 		case ROLE_WEAPON:
 			weapon_gesture(f, false);
 			break;
+		case ROLE_WEPGRIP:
+		{
+			// The grip follows the finger: the plate grows by twice the drag,
+			// since it is anchored at its centre.
+			float u_new = f->grab_u + 2 * (f->last_y - f->down_y) / (f->grab_n * WEP_ROW_H + WEP_GRIP_H);
+			float scale = bound(WEP_SCALE_MIN, u_new / ui_scale(), WEP_SCALE_MAX);
+			if (fabs(scale - cl_touch_weplist_scale.value) > 0.001f)
+			{
+				Cvar_SetValueQuick(&cl_touch_weplist_scale, scale);
+				f->resized = true;
+			}
+			break;
+		}
 		default:
 			break;
 		}
