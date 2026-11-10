@@ -11,11 +11,11 @@ keyboard, or touch mode forced to Always).
   attack or attack2 button bit is added to the outgoing move (CL_SendMove),
   chosen per weapon (touch_weapons.h). It never touches the key state, so a
   manual press always fires and an auto release can never cancel a finger
-  that is holding FIRE or ALT.
+  that is holding FIRE or ALT. Devastator rockets are steered and detonated.
 - Aim friction: the touch look drag turns slower while the crosshair is on or
   near an enemy (engine HUD: look_apply; port CSQC: _cl_touch_aim_lookscale).
 - Magnetism: while a finger is on the aim control (or auto-shoot is firing at
-  the target), the view follows part of the nearest
+  the target, or a guided rocket flies), the view follows part of the nearest
   visible enemy's motion inside a small cone and closes the gap to it -- to
   where the shot will meet it -- at a capped rate in degrees per second (it
   never snaps).
@@ -36,7 +36,7 @@ void TouchAim_Frame(void);
 qbool TouchAim_AutoFiring(void);
 
 // True while auto-shoot is holding secondary fire (the move's button3 bit,
-// +fire2): Shotgun melee, Crylink secondary.
+// +fire2): Shotgun melee, Crylink secondary, a Devastator detonation.
 qbool TouchAim_AutoFire2(void);
 
 // Multiplier (0..1] for touch look deltas: aim friction near an enemy.

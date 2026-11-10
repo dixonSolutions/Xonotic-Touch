@@ -27,7 +27,7 @@ and reads nonzero for living players too.
 The weapon in hand, what is owned and the ammo come from touch_hud.c's
 binding of the same CSQC; what each weapon does from touch_weapons.h, by
 netname. An unknown weapon (a mod's, or no binding) is fired as before:
-primary, no lead.
+primary, no lead, no switching.
 */
 
 #include "quakedef.h"
@@ -56,6 +56,8 @@ cvar_t cl_touch_autoshoot_alt = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_alt
 	"Arc bolts beyond the beam, the blaster shot of an empty Vaporizer or Overkill weapon"};
 cvar_t cl_touch_autoshoot_lead = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_lead", "1",
 	"Auto-shoot and the aim pull lead moving targets with projectile weapons (aim where the shot will meet them) and loft grenades and orbs for the distance"};
+cvar_t cl_touch_autoshoot_steer = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_steer", "1",
+	"Devastator: auto-shoot keeps fire held so the rocket follows the crosshair, keeps the crosshair on the enemy and detonates the rocket next to them"};
 cvar_t cl_touch_autoshoot_safe = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_safe", "1",
 	"Auto-shoot holds fire when the shot would catch you in its own blast, the enemy is beyond the weapon's reach, "
 	"or the weapon is not one to fire by itself (Port-O-Launch, Grappling Hook, Tuba)"};
@@ -65,7 +67,7 @@ cvar_t cl_touch_aimassist = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist", "1",
 cvar_t cl_touch_aimassist_friction = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_friction", "0.45",
 	"Aim slowdown: fraction of look speed removed while the crosshair is on an enemy, fading out to the edge of cl_touch_aimassist_cone (0 = off, at most 0.8)"};
 cvar_t cl_touch_aimassist_strength = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_strength", "0.6",
-	"Aim pull toward the nearest visible enemy inside the cone (where a projectile will meet it) while a finger is on the aim control, and while auto-shoot fires at it: "
+	"Aim pull toward the nearest visible enemy inside the cone (where a projectile will meet it) while a finger is on the aim control, while auto-shoot fires at it and while a Devastator rocket flies: "
 	"follows strength x 2 of its motion across the view and closes the gap at strength x 10 per second, or strength x your own turn speed, whichever is faster (0 = off, at most 1)"};
 cvar_t cl_touch_aimassist_maxrate = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_maxrate", "90",
 	"Aim pull: hard cap on the pull, degrees per second (at most 180); it never snaps"};
@@ -80,7 +82,7 @@ cvar_t cl_touch_aim_ring = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aim_ring", "1",
 cvar_t cl_touch_aim_range = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aim_range", "3000",
 	"Auto-shoot and aim helpers ignore enemies farther away than this many units"};
 cvar_t cl_touch_aim_debug = {CF_CLIENT, "cl_touch_aim_debug", "0",
-	"Print auto-shoot and aim-assist decisions to the console: target, weapon, fire mode and why, lead (2 = also teammates under the crosshair)"};
+	"Print auto-shoot and aim-assist decisions to the console: target, weapon, fire mode and why, lead, rockets (2 = also teammates under the crosshair)"};
 
 // Engine -> CSQC: whether auto-shoot is firing (the port's FIRE button glows),
 // and the look multiplier the port's touch_look.qc applies (aim friction).
@@ -130,7 +132,20 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 #define TRACK_STALE    0.5f
 #define TRACK_JUMP     300.0f
 #define TRACK_MAX      256
+// Devastator: how far from the eye a fresh rocket may be to be ours, how
+// long to wait for it to appear (refire 1.1 s plus the trip to the server),
+// the longest flight followed, and how long fire stays released after a
+// rocket so the next press launches one (and attack2 is up again).
+#define ROCKET_FIND_DIST  300.0f
+#define ROCKET_FIND_TIME  1.6f
+#define ROCKET_MAX_FLIGHT 4.0f
+#define ROCKET_RELEASE    0.06f
+#define PROJECTILE_ROCKET 2 // csqcprojectile_type of a Devastator rocket
 #define ALTFIRE_READY     2 // TOUCH_ALTFIRE_READY (touch_altfire.h)
+
+// Devastator states.
+enum { RK_IDLE, RK_LAUNCH, RK_FLY, RK_DETONATE, RK_RELEASE };
+static const char *const rk_state_name[] = { "idle", "launch", "fly", "detonate", "release" };
 
 static char vabuf[256];
 
@@ -160,8 +175,15 @@ static struct
 	int track_ent;               // target followed last frame, and its view angles
 	float track_yaw, track_pitch;
 	track_t tracks[TRACK_MAX];   // per player slot: smoothed velocity
+	// Devastator steering
+	int rk_state, rk_ent, rk_target;
+	double rk_time, rk_seen;
+	float rk_closest;    // closest the rocket came to the target (debug)
+	vec3_t rk_org, rk_vel, rk_target_org, rk_target_vel;
+	int rk_before[16], rk_before_count;
 	// from the loaded CSQC
 	int teamplay_ofs, teamplay_type;
+	int projtype_ofs, projtype_type;
 } ta;
 
 void TouchAim_Init(void)
@@ -172,6 +194,7 @@ void TouchAim_Init(void)
 	Cvar_RegisterVariable(&cl_touch_autoshoot_radius);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_alt);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_lead);
+	Cvar_RegisterVariable(&cl_touch_autoshoot_steer);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_safe);
 	Cvar_RegisterVariable(&cl_touch_aimassist);
 	Cvar_RegisterVariable(&cl_touch_aimassist_friction);
@@ -190,6 +213,7 @@ void TouchAim_Init(void)
 	Cvar_RegisterVariable(&cl_touch_hud_state);
 	ta.lookscale = 1;
 	ta.teamplay_ofs = -1;
+	ta.projtype_ofs = -1;
 }
 
 // A float or int global/field the CSQC may declare either way.
@@ -204,6 +228,9 @@ void TouchAim_ProgsChanged(void)
 	prvm_prog_t *prog = CLVM_prog;
 	mdef_t *d;
 	ta.teamplay_ofs = -1;
+	ta.projtype_ofs = -1;
+	ta.rk_state = RK_IDLE;
+	ta.rk_ent = 0;
 	if (!prog->loaded)
 		return;
 	d = PRVM_ED_FindGlobal(prog, "teamplay");
@@ -213,6 +240,14 @@ void TouchAim_ProgsChanged(void)
 		ta.teamplay_type = d->type & ~DEF_SAVEGLOBAL;
 		if (numeric_type(ta.teamplay_type))
 			ta.teamplay_ofs = d->ofs;
+	}
+	// what kind of projectile a CSQC projectile entity is (Ent_Projectile)
+	d = PRVM_ED_FindField(prog, "csqcprojectile_type");
+	if (d)
+	{
+		ta.projtype_type = d->type & ~DEF_SAVEGLOBAL;
+		if (numeric_type(ta.projtype_type))
+			ta.projtype_ofs = d->ofs;
 	}
 }
 
@@ -268,6 +303,16 @@ static void set_firing(qbool on, qbool on2, int target)
 	}
 }
 
+static void rk_set(int state, const char *why)
+{
+	if (ta.rk_state == state)
+		return;
+	if (cl_touch_aim_debug.integer)
+		Con_Printf("touch aim: rocket %s -> %s (%s)\n", rk_state_name[ta.rk_state], rk_state_name[state], why);
+	ta.rk_state = state;
+	ta.rk_time = host.realtime;
+}
+
 static void reset(void)
 {
 	set_firing(false, false, 0);
@@ -280,6 +325,8 @@ static void reset(void)
 	ta.said_target = ta.said_weapon = ta.said_mode = ta.said_why = -1;
 	ta.track_ent = 0;
 	ta.fire_target = 0;
+	ta.rk_state = RK_IDLE;
+	ta.rk_ent = 0;
 }
 
 static qbool is_spectator_slot(int n)
@@ -650,12 +697,187 @@ static qbool weapon_ready(int index, const touch_wep_t *w, int held)
 	return ammo >= cost;
 }
 
+static int projectile_type(prvm_edict_t *ed)
+{
+	prvm_eval_t *v;
+	if (ta.projtype_ofs < 0)
+		return -1;
+	v = PRVM_EDICTFIELDVALUE(ed, ta.projtype_ofs);
+	return ta.projtype_type == ev_float ? (int)v->_float : v->_int;
+}
+
+// Rocket projectiles the CSQC has now, so one that appears after a shot
+// can be told apart from the ones already flying.
+static void rockets_before(void)
+{
+	prvm_prog_t *prog = CLVM_prog;
+	int i;
+	ta.rk_before_count = 0;
+	if (ta.projtype_ofs < 0)
+		return;
+	for (i = 1; i < prog->num_edicts && ta.rk_before_count < 16; i++)
+	{
+		prvm_edict_t *ed = PRVM_EDICT_NUM(i);
+		if (!ed->free && projectile_type(ed) == PROJECTILE_ROCKET)
+			ta.rk_before[ta.rk_before_count++] = i;
+	}
+}
+
+// Our rocket: projectiles carry no owner id, so take a rocket that was not
+// there at the press and is near the muzzle now.
+static int find_own_rocket(const vec3_t eye)
+{
+	prvm_prog_t *prog = CLVM_prog;
+	int i, k, best = 0;
+	float best_d = ROCKET_FIND_DIST;
+	if (ta.projtype_ofs < 0)
+		return 0;
+	for (i = 1; i < prog->num_edicts; i++)
+	{
+		prvm_edict_t *ed = PRVM_EDICT_NUM(i);
+		float d;
+		if (ed->free || projectile_type(ed) != PROJECTILE_ROCKET)
+			continue;
+		for (k = 0; k < ta.rk_before_count; k++)
+			if (ta.rk_before[k] == i)
+				break;
+		if (k < ta.rk_before_count)
+			continue;
+		d = VectorDistance(PRVM_clientedictvector(ed, origin), eye);
+		if (d < best_d)
+		{
+			best_d = d;
+			best = i;
+		}
+	}
+	return best;
+}
+
+// Devastator with steering: press fire once lined up, keep it held while the
+// rocket flies (the server guides it toward the view ray), detonate it next
+// to the enemy with a one-frame attack2, then release fire long enough for
+// the next press to launch again. Sets the fire bits and, while a rocket
+// flies, where the view should be pulled.
+static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool want_fire, qbool manual, float *pull_yaw, float *pull_pitch, qbool *pull)
+{
+	prvm_prog_t *prog = CLVM_prog;
+	double now = host.realtime;
+	float dt = bound(0.001f, (float)cl.realframetime, 0.1f);
+	const touch_wep_t *dev = TouchWep_Find("devastator");
+	*pull = false;
+	switch (ta.rk_state)
+	{
+	case RK_IDLE:
+		if (want_fire && !manual && near->entnum)
+		{
+			rockets_before();
+			ta.rk_ent = 0;
+			ta.rk_target = near->entnum;
+			VectorCopy(near->center, ta.rk_target_org);
+			VectorCopy(near->vel, ta.rk_target_vel);
+			rk_set(RK_LAUNCH, va(vabuf, sizeof(vabuf), "lined up on player %d at %.0f units", near->entnum, near->dist));
+			set_firing(true, false, near->entnum);
+		}
+		else
+			set_firing(false, false, 0);
+		return;
+	case RK_LAUNCH:
+		set_firing(true, false, ta.rk_target);
+		ta.rk_ent = find_own_rocket(eye);
+		if (ta.rk_ent)
+		{
+			VectorCopy(PRVM_clientedictvector(PRVM_EDICT_NUM(ta.rk_ent), origin), ta.rk_org);
+			VectorClear(ta.rk_vel);
+			ta.rk_seen = now;
+			ta.rk_closest = 1e9f;
+			rk_set(RK_FLY, va(vabuf, sizeof(vabuf), "tracking own rocket, edict %d", ta.rk_ent));
+		}
+		else if (now - ta.rk_time > ROCKET_FIND_TIME)
+			rk_set(RK_RELEASE, "no rocket of ours appeared");
+		return;
+	case RK_FLY:
+	{
+		prvm_edict_t *ed = PRVM_EDICT_NUM(ta.rk_ent);
+		vec3_t org, d, rel_v, me;
+		float sp;
+		if (ed->free || projectile_type(ed) != PROJECTILE_ROCKET)
+		{
+			rk_set(RK_RELEASE, va(vabuf, sizeof(vabuf), "rocket gone: hit something; it came within %.0f units of the target", ta.rk_closest));
+			set_firing(false, false, 0);
+			return;
+		}
+		VectorCopy(PRVM_clientedictvector(ed, origin), org);
+		VectorSubtract(org, ta.rk_org, d);
+		if (VectorLength2(d) > 0.01f && now > ta.rk_seen)
+		{
+			float f = bound(0.0f, (float)(now - ta.rk_seen) / 0.05f, 1.0f);
+			vec3_t v;
+			VectorScale(d, 1.0f / (float)(now - ta.rk_seen), v);
+			VectorLerp(ta.rk_vel, f, v, ta.rk_vel);
+			VectorCopy(org, ta.rk_org);
+			ta.rk_seen = now;
+		}
+		if (now - ta.rk_time > ROCKET_MAX_FLIGHT)
+		{
+			rk_set(RK_RELEASE, "flight too long");
+			set_firing(false, false, 0);
+			return;
+		}
+		// follow the target while it is still the one in view
+		if (near->entnum == ta.rk_target)
+		{
+			VectorCopy(near->center, ta.rk_target_org);
+			VectorCopy(near->vel, ta.rk_target_vel);
+		}
+		else
+			VectorMA(ta.rk_target_org, dt, ta.rk_target_vel, ta.rk_target_org);
+		VectorSubtract(ta.rk_vel, ta.rk_target_vel, rel_v);
+		ta.rk_closest = min(ta.rk_closest, VectorDistance(ta.rk_org, ta.rk_target_org));
+		Matrix4x4_OriginFromMatrix(&r_refdef.view.matrix, me);
+		if (dev && TouchWep_Detonate(ta.rk_org, rel_v, ta.rk_target_org, me, dev->pri.splash))
+		{
+			rk_set(RK_DETONATE, va(vabuf, sizeof(vabuf), "rocket %.0f units from player %d", VectorDistance(ta.rk_org, ta.rk_target_org), ta.rk_target));
+			// attack stays held this frame: with the rocket already out it
+			// launches nothing, and attack2 sets off every rocket of ours
+			set_firing(true, true, ta.rk_target);
+			return;
+		}
+		set_firing(true, false, ta.rk_target);
+		// keep the view on where the rocket will meet the target: the server
+		// steers it toward a point on the view ray ahead of it
+		sp = VectorLength(ta.rk_vel);
+		if (sp > 100)
+		{
+			vec3_t rel, aim;
+			float t = 0;
+			VectorSubtract(ta.rk_target_org, ta.rk_org, rel);
+			if (!TouchWep_InterceptTime(rel, ta.rk_target_vel, max(sp, dev ? dev->pri.speed : 1000), TW_LEAD_MAX_TIME, &t))
+				t = 0;
+			VectorMA(ta.rk_target_org, t, ta.rk_target_vel, aim);
+			angles_to(eye, aim, pull_yaw, pull_pitch);
+			*pull = true;
+		}
+		return;
+	}
+	case RK_DETONATE:
+		set_firing(false, false, 0);
+		rk_set(RK_RELEASE, "attack2 sent");
+		return;
+	case RK_RELEASE:
+	default:
+		set_firing(false, false, 0);
+		if (now - ta.rk_time >= ROCKET_RELEASE)
+			rk_set(RK_IDLE, "fire released");
+		return;
+	}
+}
+
 void TouchAim_Frame(void)
 {
 	double now = host.realtime;
 	float dt = bound(0.001f, (float)cl.realframetime, 0.1f);
-	qbool autoshoot, assist, aim_touch, manual;
-	float friction, strength, cone, turn_yaw, turn_pitch, turn_mag, radius;
+	qbool autoshoot, assist, aim_touch, manual, pull_target_set = false;
+	float friction, strength, cone, turn_yaw, turn_pitch, turn_mag, radius, pull_yaw = 0, pull_pitch = 0;
 	vec3_t eye, fwd;
 	int on_target, friend_on, on_shoot, held, mode = TW_MODE_PRIMARY, why = TW_WHY_DEFAULT;
 	const touch_wep_t *wep;
@@ -832,32 +1054,53 @@ void TouchAim_Frame(void)
 
 	ta.lock = !assist && !autoshoot ? 0 : ((on_target || (near.entnum && near.on_lead)) ? 2 : (near.entnum ? 1 : 0));
 
-	// auto-shoot: fire after the reaction delay, keep firing a moment
-	// after the crosshair slips off so a jittery track does not stutter
-	if (autoshoot && on_shoot)
+	if (autoshoot && wep && (wep->flags & TW_GUIDED) && cl_touch_autoshoot_steer.integer)
 	{
-		if (!ta.on_since)
-			ta.on_since = now;
-		ta.last_on = now;
-		if (now - ta.on_since >= bound(0.0f, cl_touch_autoshoot_delay.value, 0.5f))
+		// Devastator: reaction delay as for any weapon, then the rocket cycle
+		qbool want = false;
+		if (on_shoot)
 		{
-			set_firing(mode != TW_MODE_SECONDARY, mode == TW_MODE_SECONDARY, on_shoot);
-			ta.fire_target = on_shoot;
+			if (!ta.on_since)
+				ta.on_since = now;
+			ta.last_on = now;
+			want = now - ta.on_since >= bound(0.0f, cl_touch_autoshoot_delay.value, 0.5f);
 		}
+		else
+			ta.on_since = 0;
+		steer_devastator(eye, &near, want, manual, &pull_yaw, &pull_pitch, &pull_target_set);
+		ta.fire_target = ta.rk_state != RK_IDLE ? ta.rk_target : 0;
 	}
 	else
 	{
-		ta.on_since = 0;
-		if (!autoshoot || now - ta.last_on >= bound(0.0f, cl_touch_autoshoot_release.value, 0.5f))
+		if (ta.rk_state != RK_IDLE)
+			rk_set(RK_IDLE, "not steering");
+		// auto-shoot: fire after the reaction delay, keep firing a moment
+		// after the crosshair slips off so a jittery track does not stutter
+		if (autoshoot && on_shoot)
 		{
-			set_firing(false, false, 0);
-			ta.fire_target = 0;
+			if (!ta.on_since)
+				ta.on_since = now;
+			ta.last_on = now;
+			if (now - ta.on_since >= bound(0.0f, cl_touch_autoshoot_delay.value, 0.5f))
+			{
+				set_firing(mode != TW_MODE_SECONDARY, mode == TW_MODE_SECONDARY, on_shoot);
+				ta.fire_target = on_shoot;
+			}
 		}
+		else
+		{
+			ta.on_since = 0;
+			if (!autoshoot || now - ta.last_on >= bound(0.0f, cl_touch_autoshoot_release.value, 0.5f))
+			{
+				set_firing(false, false, 0);
+				ta.fire_target = 0;
+			}
+		}
+		// the player's own press decides alone (attack2 together with a
+		// fresh attack would, for one, detonate a rocket at the muzzle)
+		if (manual && (ta.firing || ta.firing2))
+			set_firing(false, false, 0);
 	}
-	// the player's own press decides alone (attack2 together with a
-	// fresh attack would, for one, detonate a rocket at the muzzle)
-	if (manual && (ta.firing || ta.firing2))
-		set_firing(false, false, 0);
 
 	// friction: full over the body, fading to nothing at the cone's edge.
 	// Not while the thumb is turning toward a body it has not reached yet:
@@ -885,9 +1128,21 @@ void TouchAim_Frame(void)
 	// a thumb that stops a few degrees short or long still lands on the body.
 	if (turn_mag / dt > INPUT_MIN_RATE || cl.cmd.forwardmove != 0 || cl.cmd.sidemove != 0)
 		ta.last_input = now;
+	if (pull_target_set && near.entnum != ta.rk_target)
+	{
+		// a guided rocket's target out of the cone: pull toward its meeting point anyway
+		near.entnum = ta.rk_target;
+		near.err = 1;
+		near.rh = near.rv = 0.5f;
+	}
+	if (pull_target_set)
+	{
+		near.yaw = pull_yaw;
+		near.pitch = pull_pitch;
+	}
 	if (strength > 0 && near.entnum
 		&& ((aim_touch && now - ta.last_input < INPUT_HOLD)
-			|| (ta.fire_target && ta.fire_target == near.entnum && (ta.firing || ta.firing2))))
+			|| (ta.fire_target && ta.fire_target == near.entnum && (ta.firing || ta.firing2 || ta.rk_state != RK_IDLE))))
 	{
 		float ey = wrap180(near.yaw - cl.viewangles[YAW]);
 		float ep = near.pitch - cl.viewangles[PITCH];
