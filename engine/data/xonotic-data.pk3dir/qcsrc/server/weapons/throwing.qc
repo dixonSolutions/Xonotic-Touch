@@ -31,7 +31,7 @@ float W_ThrowNewWeapon(entity own, float wpn, float doreduce, vector org, vector
 	wep.owner = wep.enemy = own;
 	wep.flags |= FL_TOSSED;
 	wep.colormap = own.colormap;
-	// wep.glowmod will be set in weapon_defaultspawnfunc
+	wep.glowmod = colormapPaletteColor(wep.owner.clientcolors & 0x0F, true);
 	navigation_dynamicgoal_init(wep, false);
 
 	W_DropEvent(wr_drop,own,wpn,wep,weaponentity);
@@ -70,8 +70,9 @@ float W_ThrowNewWeapon(entity own, float wpn, float doreduce, vector org, vector
 		}
 	}
 
-	weapon_defaultspawnfunc(wep, info);
-	if (startitem_failed)
+	wep.itemdef = info.m_pickup;
+	StartItem(wep);
+	if (wasfreed(wep))
 		return -1;
 
 	wep.pickup_anyway = true; // these are ALWAYS pickable
@@ -81,6 +82,8 @@ float W_ThrowNewWeapon(entity own, float wpn, float doreduce, vector org, vector
 		return 0;
 	else
 	{
+		SetResource(wep, ammotype, WEP_CVAR(info, pickup_ammo));
+
 		if (doreduce && g_weapon_stay == 2)
 		{
 			// if our weapon is loaded, give its load back to the player
@@ -117,7 +120,7 @@ bool W_IsWeaponThrowable(entity this, int w)
 {
 	if (MUTATOR_CALLHOOK(ForbidDropCurrentWeapon, this, w))
 		return false;
-	if (!autocvar_g_pickup_items || g_weaponarena)
+	if (!autocvar_g_pickup_items || g_weaponarena_type != WEPARENA_OFF)
 		return false;
 	if (w == WEP_Null.m_id)
 		return false;

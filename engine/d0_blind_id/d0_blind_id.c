@@ -927,6 +927,10 @@ D0_WARN_UNUSED_RESULT D0_BOOL d0_blind_id_authenticate_with_private_id_challenge
 			CHECK_ASSIGN(ctx->schnorr_G, d0_iobuf_read_bignum(in, ctx->schnorr_G));
 			CHECK(d0_bignum_cmp(ctx->schnorr_G, zero) > 0);
 			CHECK(d0_bignum_cmp(ctx->schnorr_G, ctx->rsa_n) < 0);
+			LOCKTEMPS();
+			CHECK(d0_dl_get_order(temp0, ctx->schnorr_G));
+			CHECK(d0_bignum_cmp(temp0, zero) > 0);
+			UNLOCKTEMPS();
 		}
 		CHECK_ASSIGN(ctx->schnorr_g_to_s, d0_iobuf_read_bignum(in, ctx->schnorr_g_to_s));
 		CHECK(d0_bignum_cmp(ctx->schnorr_g_to_s, zero) >= 0);
