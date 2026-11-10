@@ -578,20 +578,21 @@ void VID_GetTouchFinger(int slot, int *active, float *nx, float *ny)
 // this one stores how many areas this finger has touched
 int multitouchs[MAXFINGERS];
 
-// Touch: a finger that goes down and up within one event poll (an Android tap)
-// would never be seen by anything that reads the table once a frame (the
-// engine touch HUD, the CSQC's gettouchfinger). Such a slot stays down until
-// the next poll.
-static unsigned int vid_finger_poll;
-static unsigned int vid_finger_down_poll[MAXFINGERS];
+// Touch: a finger that goes down and up before the client has run a frame (an
+// Android tap; events are polled more often than that, e.g. with a local
+// server) would never be seen by anything that reads the table once a frame
+// (the engine touch HUD in IN_Move, the CSQC's gettouchfinger while drawing).
+// Such a slot stays down until IN_Move has run since; the frame's drawing
+// follows IN_Move.
+static unsigned int vid_finger_frame;
+static unsigned int vid_finger_down_frame[MAXFINGERS];
 static qbool vid_finger_lift[MAXFINGERS];
 
 static void VID_LiftTappedFingers(void)
 {
 	int i;
-	vid_finger_poll++;
 	for (i = 0; i < MAXFINGERS - 1; i++)
-		if (vid_finger_lift[i])
+		if (vid_finger_lift[i] && vid_finger_down_frame[i] != vid_finger_frame)
 		{
 			vid_finger_lift[i] = false;
 			multitouch[i][0] = 0;
@@ -1589,6 +1590,7 @@ void IN_Move( void )
 
 	VID_BuildJoyState(&joystate);
 	VID_ApplyJoyState(&joystate);
+	vid_finger_frame++; // Touch: quick taps seen by this frame may lift
 }
 
 /////////////////////
@@ -1976,7 +1978,7 @@ void Sys_SDL_HandleEvents(void)
 						multitouch[i][0] = event.tfinger.fingerId + 1;
 						multitouch[i][1] = event.tfinger.x;
 						multitouch[i][2] = event.tfinger.y;
-						vid_finger_down_poll[i] = vid_finger_poll; // Touch
+						vid_finger_down_frame[i] = vid_finger_frame; // Touch
 						VID_TouchMenuFingerEvent((int)multitouch[i][0], true, event.tfinger.x, event.tfinger.y);
 						// TODO: use event.tfinger.pressure?
 						break;
@@ -1996,8 +1998,8 @@ void Sys_SDL_HandleEvents(void)
 					if (multitouch[i][0] == event.tfinger.fingerId + 1 && !vid_finger_lift[i])
 					{
 						VID_TouchMenuFingerEvent((int)multitouch[i][0], false, event.tfinger.x, event.tfinger.y);
-						// Touch: a tap within this poll stays down until the next.
-						if (vid_finger_down_poll[i] == vid_finger_poll)
+						// Touch: a tap the client has not read yet stays down until it has.
+						if (vid_finger_down_frame[i] == vid_finger_frame)
 							vid_finger_lift[i] = true;
 						else
 							multitouch[i][0] = 0;
