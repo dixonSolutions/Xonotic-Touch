@@ -38,7 +38,8 @@ Not in the browser build yet:
 
 - **Online servers.** Browsers cannot send UDP, which Xonotic servers speak.
   Joining public servers needs a WebSocket or WebRTC relay; local games with
-  bots work.
+  bots work. The engine sends no master server or LAN queries, so the
+  server list stays empty instead of failing a WebSocket per master.
 - **XonStat / player IDs.** No `d0_blind_id` crypto in the WebAssembly build.
 - **WebGPU.** DarkPlaces has an OpenGL renderer only; WebGL 2 is the
   hardware-accelerated path (ANGLE on Direct3D, Metal or Vulkan underneath).
