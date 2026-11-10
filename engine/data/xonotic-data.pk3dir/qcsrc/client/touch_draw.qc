@@ -156,7 +156,10 @@ void Touch_DrawAimLock(float theAlpha)
 	float lock_state = cvar("_cl_touch_aim_lock");
 	if (lock_state < 1 || !cvar("cl_touch_aim_ring"))
 		return;
-	vector c = getpropertyvec(VF_SIZE) * 0.5;
+	// Where the crosshair is (HUD_Crosshair): the aim point projected into 2D
+	// space, which is vid_conwidth x vid_conheight, not the VF_SIZE pixels.
+	vector c = project_3d_to_2d(view_origin + max_shot_distance * view_forward);
+	c.z = 0;
 	float r = Touch_WidgetRadius(0.05);
 	if (lock_state < 2)
 		r *= 1.5;
