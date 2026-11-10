@@ -103,6 +103,10 @@ Engine changes for the web, all behind `__EMSCRIPTEN__`:
   once a match produced enough tasks.
 - `Sys_Sleep` returns at once: `nanosleep` would spin the page's only thread.
   Idle time goes to the browser's frame scheduling instead.
+- `vid_vsync` defaults to 1: the main loop runs once per
+  `requestAnimationFrame`, since a browser shows no more frames than that.
+  It is a default, not a forced value: Vertical Synchronization off in
+  Settings > Video is saved and uncaps the frame rate as before.
 - Dynamic vertex data through `glBufferSubData`: WebGL has no buffer mapping,
   and Emscripten rejects the unsynchronized `glMapBufferRange` the Android build
   uses (an error per draw call).
