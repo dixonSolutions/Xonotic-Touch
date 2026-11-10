@@ -3062,6 +3062,56 @@ fs_offset_t FS_Write (qfile_t* file, const void* data, size_t datasize)
 }
 
 
+#ifdef __EMSCRIPTEN__
+/*
+====================
+FS_InflateWhole
+
+Inflate a whole compressed pack member into "buffer" (at least real_length
+bytes) from one read of its compressed data and one inflate call. The
+chunked path in FS_Read costs a seek and a read through the JavaScript
+filesystem for every 2 KB of input, and zlib copies the output of every call
+into its window. Returns the number of bytes inflated, or -1 if the
+compressed data could not be read (nothing consumed, the caller can fall
+back to the chunked path).
+====================
+*/
+static fs_offset_t FS_InflateWhole (qfile_t *file, unsigned char *buffer)
+{
+	ztoolkit_t *ztk = file->ztk;
+	fs_offset_t count = (fs_offset_t)ztk->comp_length;
+	fs_offset_t inflated;
+	unsigned char *input;
+	int error;
+
+	input = (unsigned char *)Mem_Alloc (tempmempool, count + 1);
+	if (FILEDESC_SEEK (file->handle, file->offset, SEEK_SET) == -1 || ReadAll (file->handle, input, count) != count)
+	{
+		Mem_Free (input);
+		return -1;
+	}
+
+	ztk->zstream.next_in = input;
+	ztk->zstream.avail_in = (unsigned int)count;
+	ztk->zstream.next_out = buffer;
+	ztk->zstream.avail_out = (unsigned int)file->real_length;
+	error = qz_inflate (&ztk->zstream, Z_FINISH);
+	inflated = file->real_length - ztk->zstream.avail_out;
+	if (error != Z_STREAM_END && !(error == Z_OK && ztk->zstream.avail_out == 0))
+		Con_Printf ("FS_Read: Can't inflate file\n");
+
+	// All input is consumed: leave the stream as the chunked path would at
+	// the end of the file.
+	ztk->zstream.next_in = ztk->input;
+	ztk->zstream.avail_in = 0;
+	ztk->in_ind = ztk->in_len = 0;
+	ztk->in_position = ztk->comp_length;
+	file->position = inflated;
+	Mem_Free (input);
+	return inflated;
+}
+#endif
+
 /*
 ====================
 FS_Read
@@ -3170,6 +3220,16 @@ fs_offset_t FS_Read (qfile_t* file, void* buffer, size_t buffersize)
 	}
 
 	// If the file is compressed, it's more complicated...
+#ifdef __EMSCRIPTEN__
+	// Reading the whole file (FS_LoadFile): inflate it in one go
+	if (done == 0 && file->position == 0 && file->ztk->in_position == 0
+		&& (fs_offset_t)buffersize >= file->real_length)
+	{
+		fs_offset_t inflated = FS_InflateWhole (file, (unsigned char *)buffer);
+		if (inflated >= 0)
+			return inflated;
+	}
+#endif
 	// We cycle through a few operations until we have read enough data
 	while (buffersize > 0)
 	{
