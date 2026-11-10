@@ -38,9 +38,10 @@ void TouchMenu_ResetPreset_Click(entity me, entity other)
 	localcmd("menu_cmd sync\n");
 }
 
-// Settings -> Mobile. Four sub-tabs; every control below is one cvar, and each
+// Settings -> Mobile. Five sub-tabs; every control below is one cvar, and each
 // cvar is on exactly one sub-tab.
 //   Controls    input mode, layout, size and look of the controls, sticks and buttons
+//   HUD         the weapon bar, the readouts, what stays with a keyboard attached
 //   Aim         look speed, aim assist and its strength
 //   Auto-shoot  auto-shoot, its timing and its conditions
 //   Dynamics    performance profile, frame rate, dynamic resolution, hop
@@ -56,10 +57,11 @@ void XonoticTouchSettingsTab_fill(entity me)
 	// One row of sub-tab buttons, then the sub-tab itself: 15.5 = 1.5 + 14.
 	entity mc = makeXonoticTabController(me.rows - 1.5);
 	me.TR(me);
-		me.TD(me, 1, 1.5, mc.makeTabButton(mc, _("Controls"),   makeXonoticMobileControlsTab()));
-		me.TD(me, 1, 1.5, mc.makeTabButton(mc, _("Aim"),        makeXonoticMobileAimTab()));
-		me.TD(me, 1, 1.5, mc.makeTabButton(mc, _("Auto-shoot"), makeXonoticMobileAutoShootTab()));
-		me.TD(me, 1, 1.5, mc.makeTabButton(mc, _("Dynamics"),   makeXonoticMobileDynamicsTab()));
+		me.TD(me, 1, 1.2, mc.makeTabButton(mc, _("Controls"),   makeXonoticMobileControlsTab()));
+		me.TD(me, 1, 1.2, mc.makeTabButton(mc, _("HUD"),        makeXonoticMobileHudTab()));
+		me.TD(me, 1, 1.2, mc.makeTabButton(mc, _("Aim"),        makeXonoticMobileAimTab()));
+		me.TD(me, 1, 1.2, mc.makeTabButton(mc, _("Auto-shoot"), makeXonoticMobileAutoShootTab()));
+		me.TD(me, 1, 1.2, mc.makeTabButton(mc, _("Dynamics"),   makeXonoticMobileDynamicsTab()));
 	me.gotoRC(me, 1.5, 0);
 		me.TD(me, me.rows - 1.5, me.columns, mc);
 }
@@ -126,8 +128,6 @@ void XonoticMobileControlsTab_fill(entity me)
 		me.TD(me, 1, 1.2, e = makeXonoticSlider_T(0, 1, 0.05, "touch_glass_hollow",
 			_("How much of each control is glass. Left: tinted glass. All the way right: hollow, only the outline and label, nothing between you and the game")));
 	me.TR(me);
-		me.TD(me, 1, 0.9, e = makeXonoticTextLabel(0, _("HUD size:")));
-		me.TD(me, 1, 2.1, e = makeXonoticSlider_T(0.6, 1.4, 0.05, "touch_hud_scale", _("Size of the health, ammo and score readouts")));
 		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "touch_handedness", _("Left-handed"),
 			_("Mirror the layout: the move stick on the right, aim and buttons on the left")));
 
@@ -155,6 +155,58 @@ void XonoticMobileControlsTab_fill(entity me)
 			e.onClick = TouchMenu_ResetPreset_Click;
 	me.TR(me);
 		me.TD(me, 1, 6, e = makeXonoticCommandButton(_("Apply & refresh"), '0 0 0', "menu_cmd sync", COMMANDBUTTON_APPLY));
+}
+
+entity makeXonoticMobileHudTab()
+{
+	entity me = NEW(XonoticMobileHudTab);
+	me.configureDialog(me);
+	return me;
+}
+
+void XonoticMobileHudTab_fill(entity me)
+{
+	entity e;
+
+	// The size is the engine's cl_touch_weplist_scale, archived in config.cfg
+	// rather than the touch layout, so a size dragged on a server is kept; the
+	// position is the layout's. Both HUDs (the port's and the engine's on
+	// servers) draw the bar from the same three cvars. Across reaches 0.97 so
+	// the default, 0.962, is on the slider.
+	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Weapon bar")));
+	me.TR(me);
+		me.TD(me, 1, 1.2, e = makeXonoticTextLabel(0, _("Size:")));
+		me.TD(me, 1, 1.8, e = makeXonoticSlider_T(0.7, 2.4, 0.1, "cl_touch_weplist_scale",
+			_("Size of the weapon bar on the right edge. In a match you can also drag the grip under the bar: down to grow it, up to shrink it")));
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "touch_weplist_visible", _("Show the weapon bar"),
+			_("The list of weapons you hold; tap one to switch to it")));
+	me.TR(me);
+		me.TD(me, 1, 1.2, e = makeXonoticTextLabel(0, _("Across:")));
+			setDependent(e, "touch_weplist_visible", 1, 1);
+		me.TD(me, 1, 1.8, e = makeXonoticSlider_T(0.04, 0.97, 0.01, "touch_weplist_x",
+			_("Where the weapon bar sits across the screen, from the left edge (mirrored when left-handed)")));
+			setDependent(e, "touch_weplist_visible", 1, 1);
+		me.TD(me, 1, 1.2, e = makeXonoticTextLabel(0, _("Down:")));
+			setDependent(e, "touch_weplist_visible", 1, 1);
+		me.TD(me, 1, 1.8, e = makeXonoticSlider_T(0.15, 0.85, 0.01, "touch_weplist_y",
+			_("Where the middle of the weapon bar sits down the screen. A long bar is kept on screen")));
+			setDependent(e, "touch_weplist_visible", 1, 1);
+	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticTextLabel(0, _("Drag the grip under the bar in a match to resize it there.")));
+
+	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Readouts")));
+	me.TR(me);
+		me.TD(me, 1, 1.2, e = makeXonoticTextLabel(0, _("Readout size:")));
+		me.TD(me, 1, 1.8, e = makeXonoticSlider_T(0.6, 1.4, 0.05, "touch_hud_scale",
+			_("Size of the health, armor and ammo readouts. The weapon bar has its own size above")));
+
+	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("With a keyboard attached")));
+	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticCheckBox_T(0, "touch_desk_pills", _("Keep MENU, CHAT and SCORE on screen with a keyboard"),
+			_("With a keyboard attached the touch controls go away and the mouse aims. The weapon bar stays tappable; this keeps the MENU, CHAT, SCORE and CONSOLE buttons too, dimmed")));
 }
 
 entity makeXonoticMobileAimTab()

@@ -18,7 +18,8 @@ const string TOUCHMENU_KEYS =
 	"touch_fire_mode touch_zoom_mode touch_weapon_mode "
 	"touch_weapon_slot1 touch_weapon_slot2 touch_weapon_slot3 touch_auto_fire "
 	"touch_dodge_mode touch_scoreboard_gesture touch_chat_mode touch_minimal_more "
-	"touch_hud_scale touch_performance_profile touch_setup_done";
+	"touch_hud_scale touch_weplist_x touch_weplist_y touch_weplist_visible touch_desk_pills "
+	"touch_performance_profile touch_setup_done";
 
 // TOUCHMENU_KEYS, then every other touch setting the saved layout carries,
 // each once.
