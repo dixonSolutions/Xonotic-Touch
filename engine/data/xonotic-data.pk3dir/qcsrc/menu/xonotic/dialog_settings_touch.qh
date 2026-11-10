@@ -1,6 +1,9 @@
 #pragma once
 
 #include "tab.qh"
+
+// Settings -> Mobile: one page of sub-tabs. The page itself keeps the old
+// "touchsettings" name so `menu_cmd touchsettings` still lands here.
 CLASS(XonoticTouchSettingsTab, XonoticTab)
 	METHOD(XonoticTouchSettingsTab, fill, void(entity));
 	ATTRIB(XonoticTouchSettingsTab, intendedWidth, float, 0.9);
@@ -10,3 +13,41 @@ CLASS(XonoticTouchSettingsTab, XonoticTab)
 	ATTRIB(XonoticTouchSettingsTab, name, string, "touchsettings");
 ENDCLASS(XonoticTouchSettingsTab)
 entity makeXonoticTouchSettingsTab();
+
+// The sub-tabs. Their height must equal the Mobile page's sub TabController
+// (page rows - 1.5 = 14).
+CLASS(XonoticMobileControlsTab, XonoticTab)
+	METHOD(XonoticMobileControlsTab, fill, void(entity));
+	ATTRIB(XonoticMobileControlsTab, intendedWidth, float, 0.9);
+	ATTRIB(XonoticMobileControlsTab, rows, float, 14);
+	ATTRIB(XonoticMobileControlsTab, columns, float, 6);
+	ATTRIB(XonoticMobileControlsTab, name, string, "mobilecontrols");
+ENDCLASS(XonoticMobileControlsTab)
+entity makeXonoticMobileControlsTab();
+
+CLASS(XonoticMobileAimTab, XonoticTab)
+	METHOD(XonoticMobileAimTab, fill, void(entity));
+	ATTRIB(XonoticMobileAimTab, intendedWidth, float, 0.9);
+	ATTRIB(XonoticMobileAimTab, rows, float, 14);
+	ATTRIB(XonoticMobileAimTab, columns, float, 6);
+	ATTRIB(XonoticMobileAimTab, name, string, "mobileaim");
+ENDCLASS(XonoticMobileAimTab)
+entity makeXonoticMobileAimTab();
+
+CLASS(XonoticMobileAutoShootTab, XonoticTab)
+	METHOD(XonoticMobileAutoShootTab, fill, void(entity));
+	ATTRIB(XonoticMobileAutoShootTab, intendedWidth, float, 0.9);
+	ATTRIB(XonoticMobileAutoShootTab, rows, float, 14);
+	ATTRIB(XonoticMobileAutoShootTab, columns, float, 6);
+	ATTRIB(XonoticMobileAutoShootTab, name, string, "mobileautoshoot");
+ENDCLASS(XonoticMobileAutoShootTab)
+entity makeXonoticMobileAutoShootTab();
+
+CLASS(XonoticMobileDynamicsTab, XonoticTab)
+	METHOD(XonoticMobileDynamicsTab, fill, void(entity));
+	ATTRIB(XonoticMobileDynamicsTab, intendedWidth, float, 0.9);
+	ATTRIB(XonoticMobileDynamicsTab, rows, float, 14);
+	ATTRIB(XonoticMobileDynamicsTab, columns, float, 6);
+	ATTRIB(XonoticMobileDynamicsTab, name, string, "mobiledynamics");
+ENDCLASS(XonoticMobileDynamicsTab)
+entity makeXonoticMobileDynamicsTab();

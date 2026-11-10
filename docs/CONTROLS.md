@@ -127,7 +127,7 @@ Override preset at launch (testers):
 XONOTIC_TOUCH_PROFILE=casual bin/start.sh
 ```
 
-Stack a performance profile after a layout preset (Settings → Touch has
+Stack a performance profile after a layout preset (Settings → Mobile → Dynamics has
 **30 fps saver**, **60 fps** and **Best quality** buttons, or use a manual
 `exec`):
 
@@ -165,7 +165,7 @@ Hardware detection lives in DarkPlaces (`vid_touchdetect.c`). The CSQC overlay s
 
 **Ctrl+Alt+1** switches between the touch controls and keyboard & mouse and
 locks it there; **Ctrl+Alt+2** locks what is showing, or unlocks. A lock beats
-every mode and ends on unlock, on picking a mode in Settings → Touch, or on
+every mode and ends on unlock, on picking a mode in Settings → Mobile → Controls, or on
 restart. Console: `vid_touchscreen_toggle`, `vid_touchscreen_lock [0|1]`.
 
 Launcher override: `XONOTIC_TOUCH_MODE=auto|always|off`. Desktop test windows default to `always` because they have no touch hardware.
@@ -200,7 +200,7 @@ duplicated here — three copies of a coordinate is two too many.
 | `touch_preset` | string | — | `"standard"` | Active preset id; shown in UI |
 | `touch_scale` | float | 0.8–1.3 | `1.0` | Multiplier on `vid_touchscreen_density` for all widgets |
 | `touch_opacity` | float | 0.3–1.0 | `0.65` | Overlay alpha |
-| `touch_glass_hollow` | float | 0–1 | `0` | Glass tint (Settings → Touch): 0 tinted glass, 1 hollow, only outline and label. Scales the fill and drop shadow; a press keeps some fill, and the stick knob keeps its body |
+| `touch_glass_hollow` | float | 0–1 | `0` | Glass tint (Settings → Mobile → Controls): 0 tinted glass, 1 hollow, only outline and label. Scales the fill and drop shadow; a press keeps some fill, and the stick knob keeps its body |
 | `touch_move_zone_w` | float | 0–1 | `0.32` | Left band where a touch grabs the move stick |
 | `touch_look_zone_left` | float | 0–1 | `0.32` | Left edge of look drag region |
 | `touch_look_zone_right` | float | 0–1 | `1.0` | Right edge (usually full width) |
@@ -232,7 +232,6 @@ harmlessly.
 | `touch_look_escape_carry` | float | 0–1 | `0.5` | Momentum kept when a drag leaves the look zone |
 | `touch_stick_deadzone` | float | 0–0.35 | `0.18` | Analog move drift prevention |
 | `touch_stick_range` | float | 0.5–1.0 | `1.0` | Max deflection → max speed |
-| `touch_aim_assist` | int | 0–2 | `0` | 0=off, 1=light, 2=strong (CSQC magnetism) |
 | `touch_gyro_enabled` | int | 0/1 | `0` | SDL sensor → yaw/pitch (optional) |
 | `touch_gyro_sens` | float | | `0.5` | |
 | `touch_gyro_ads_only` | int | 0/1 | `1` | Gyro only while `+zoom` held |
@@ -345,8 +344,8 @@ the server's own CSQC and the engine draws the HUD) and in a local match.
 They only run while the touch controls are shown: with a physical keyboard
 attached (Dynamic) the engine clears `vid_touchscreen` and all of this
 switches off, whatever the cvars say. They also stand down while a mouse aims next to the touch controls
-(`vid_touchscreen_mouselook`). Settings → Touch → **Shoot helpers** has the two switches and the
-slowdown / pull sliders.
+(`vid_touchscreen_mouselook`). Settings → Mobile → **Aim** and **Auto-shoot** have every one of the cvars below. The
+target ring (`cl_touch_aim_ring`) is drawn at the crosshair so the helpers can be seen working.
 
 | Cvar | Default | What it does |
 |------|---------|--------------|
@@ -354,12 +353,15 @@ slowdown / pull sliders.
 | `cl_touch_autoshoot_delay` | `0.1` | Reaction time (s) before auto-fire starts (clamped 0.05–0.5) |
 | `cl_touch_autoshoot_release` | `0.15` | Keep firing this long (s) after the crosshair slips off (0–0.5) |
 | `cl_touch_aimassist` | `1` | Master switch for slowdown and pull |
-| `cl_touch_aimassist_friction` | `0.35` | Slowdown: fraction of look speed removed over an enemy, fading to the cone edge (0 = off, max 0.8) |
-| `cl_touch_aimassist_strength` | `0.15` | Pull: fraction of your own turn speed added toward the nearest enemy in the cone (0 = off, max 0.5) |
-| `cl_touch_aimassist_maxrate` | `15` | Hard cap on the pull, degrees per second (max 30) |
-| `cl_touch_aimassist_cone` | `6` | Half-angle (degrees) around the crosshair where an enemy counts as near (max 10) |
+| `cl_touch_aimassist_friction` | `0.45` | Slowdown: fraction of look speed removed over an enemy, fading to the cone edge (0 = off, max 0.8) |
+| `cl_touch_aimassist_strength` | `0.35` | Pull: fraction of your own turn speed added toward the nearest enemy in the cone (0 = off, max 0.6) |
+| `cl_touch_aimassist_maxrate` | `40` | Hard cap on the pull, degrees per second (max 60) |
+| `cl_touch_aimassist_cone` | `8` | Half-angle (degrees) around the crosshair where an enemy counts as near (max 12) |
+| `cl_touch_autoshoot_weapons` | `0` | 0 = every weapon, 1 = instant-hit weapons only (the port's CSQC reports the weapon in `_cl_touch_weapon_class`; a server whose game does not leaves it unfiltered) |
+| `cl_touch_autoshoot_aimonly` | `0` | 1 = auto-shoot only while a finger is on the aim area or FIRE |
+| `cl_touch_aim_ring` | `1` | Draw a ring at the crosshair: accent while an enemy is in the cone, red while the crosshair is on one (`_cl_touch_aim_lock`) |
 | `cl_touch_aim_range` | `3000` | Enemies farther than this (units) are ignored |
-| `cl_touch_aim_debug` | `0` | 1 = print target / fire changes to the console, 2 = also teammates under the crosshair |
+| `cl_touch_aim_debug` | `0` | 1 = print target / fire changes and the reason the helpers are idle (menu open, keyboard in use, dead, ...) to the console, 2 = also teammates under the crosshair |
 
 How it decides:
 
@@ -533,7 +535,7 @@ Pause sub-tabs: Preset · Look · Move · Buttons · Layout · Advanced (export/
 
 ## Session flow (menus)
 
-Main menu is stock Xonotic (Singleplayer / Multiplayer / Media / Settings / …). Touch-specific UI stays under Settings → Touch controls (and first-run wizard).
+Main menu is stock Xonotic (Singleplayer / Multiplayer / Media / Settings / …). Touch-specific UI stays under Settings → Mobile (Controls, Aim, Auto-shoot, Dynamics) (and first-run wizard).
 
 - **Touch setup** — first-run: preset → handedness → save.
 - **Server browser** — stock Multiplayer browser. Joining used to fail on

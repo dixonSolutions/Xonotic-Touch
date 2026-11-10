@@ -147,6 +147,25 @@ void Touch_DrawDebugLine(void)
 	drawstring_builtin('8 8 0', line, '1 1 0' * 10, TOUCH_C_INK, 0.85, 0);
 }
 
+// Aim-assist feedback at the crosshair: a ring while an enemy is within the
+// assist cone (accent), a bigger red one while the crosshair is on an enemy,
+// the moment auto-shoot fires. Without it the helpers are subtle enough to look
+// like they do nothing. _cl_touch_aim_lock comes from the engine (touch_aim.c).
+void Touch_DrawAimLock(float theAlpha)
+{
+	float lock_state = cvar("_cl_touch_aim_lock");
+	if (lock_state < 1 || !cvar("cl_touch_aim_ring"))
+		return;
+	vector c = getpropertyvec(VF_SIZE) * 0.5;
+	float r = Touch_WidgetRadius(0.05);
+	if (lock_state < 2)
+		r *= 1.5;
+	vector rgb = TOUCH_C_ACCENT;
+	if (lock_state >= 2)
+		rgb = TOUCH_C_DANGER;
+	Touch_Widget_Rim(c, r, rgb, theAlpha);
+}
+
 void Touch_DrawOverlay(float overlayAlpha)
 {
 	// Edit mode owns the top bar for its SAVE/CANCEL/RESET row, and none of the
@@ -191,6 +210,7 @@ void Touch_DrawOverlay(float overlayAlpha)
 			autocvar_touch_dodge_size, TOUCH_LABEL_DODGE, false, overlayAlpha, TOUCH_C_ACCENT);
 
 	Touch_DrawWeaponWheel(overlayAlpha);
+	Touch_DrawAimLock(overlayAlpha);
 	// Probes are level 2 exactly: they are opaque blocks over the controls, so at
 	// level 3 they would hide the very states that level is for.
 	if (autocvar_touch_debug == 2)

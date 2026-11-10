@@ -43,14 +43,20 @@ cvar_t cl_touch_autoshoot_release = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot
 cvar_t cl_touch_aimassist = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist", "1",
 	"Touch controls: aim helpers -- the look drag slows down over an enemy (cl_touch_aimassist_friction) and the view is pulled gently toward one while you turn or move (cl_touch_aimassist_strength). "
 	"Only in touch mode; never active with a keyboard attached"};
-cvar_t cl_touch_aimassist_friction = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_friction", "0.35",
+cvar_t cl_touch_aimassist_friction = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_friction", "0.45",
 	"Aim slowdown: fraction of look speed removed while the crosshair is on an enemy, fading out to the edge of cl_touch_aimassist_cone (0 = off, at most 0.8)"};
-cvar_t cl_touch_aimassist_strength = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_strength", "0.15",
-	"Aim pull: fraction of your own turn speed added toward the nearest visible enemy inside the cone while a finger is on the aim control and you turn or move (0 = off, at most 0.5)"};
-cvar_t cl_touch_aimassist_maxrate = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_maxrate", "15",
-	"Aim pull: hard cap on the pull, degrees per second (at most 30); it never snaps"};
-cvar_t cl_touch_aimassist_cone = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_cone", "6",
-	"Aim helpers: half-angle in degrees around the crosshair within which an enemy counts as near (at most 10)"};
+cvar_t cl_touch_aimassist_strength = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_strength", "0.35",
+	"Aim pull: fraction of your own turn speed added toward the nearest visible enemy inside the cone while a finger is on the aim control and you turn or move (0 = off, at most 0.6)"};
+cvar_t cl_touch_aimassist_maxrate = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_maxrate", "40",
+	"Aim pull: hard cap on the pull, degrees per second (at most 60); it never snaps"};
+cvar_t cl_touch_aimassist_cone = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_cone", "8",
+	"Aim helpers: half-angle in degrees around the crosshair within which an enemy counts as near (at most 12)"};
+cvar_t cl_touch_autoshoot_weapons = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_weapons", "0",
+	"Auto-shoot weapons: 0 = every weapon, 1 = only instant-hit weapons (the game reports the weapon in _cl_touch_weapon_class; a server whose game does not leaves this unfiltered)"};
+cvar_t cl_touch_autoshoot_aimonly = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_aimonly", "0",
+	"Auto-shoot only while a finger is on the aim control (the look area or FIRE); 0 = also with no finger down"};
+cvar_t cl_touch_aim_ring = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aim_ring", "1",
+	"Touch HUD: draw a ring at the crosshair while an enemy is within the aim-assist cone, a red one while the crosshair is on an enemy"};
 cvar_t cl_touch_aim_range = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aim_range", "3000",
 	"Auto-shoot and aim helpers ignore enemies farther away than this many units"};
 cvar_t cl_touch_aim_debug = {CF_CLIENT, "cl_touch_aim_debug", "0",
@@ -60,6 +66,11 @@ cvar_t cl_touch_aim_debug = {CF_CLIENT, "cl_touch_aim_debug", "0",
 // and the look multiplier the port's touch_look.qc applies (aim friction).
 cvar_t cl_touch_autoshoot_active = {CF_CLIENT, "_cl_touch_autoshoot_active", "0",
 	"Set by the engine: 1 while touch auto-shoot is holding fire"};
+cvar_t cl_touch_aim_lock = {CF_CLIENT, "_cl_touch_aim_lock", "0",
+	"Set by the engine: 2 while the crosshair is on an enemy, 1 while one is within the aim-assist cone, else 0 (the touch HUD draws the crosshair ring from it)"};
+// CSQC -> engine: class of the weapon in hand: 0 unknown, 1 instant-hit, 2 other.
+cvar_t cl_touch_weapon_class = {CF_CLIENT, "_cl_touch_weapon_class", "0",
+	"Set by the port's CSQC: 0 unknown, 1 instant-hit weapon in hand, 2 projectile or other"};
 cvar_t cl_touch_aim_lookscale = {CF_CLIENT, "_cl_touch_aim_lookscale", "1",
 	"Set by the engine: multiplier for touch look speed (aim friction near an enemy)"};
 // CSQC -> engine: the port's touch HUD state. -1 = not live (menu, layout
@@ -70,11 +81,11 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 
 // Hard ceilings, whatever the cvars say: this runs on public servers.
 #define FRICTION_MAX   0.8f
-#define STRENGTH_MAX   0.5f
-#define MAXRATE_MAX    30.0f
-#define CONE_MAX       10.0f
+#define STRENGTH_MAX   0.6f
+#define MAXRATE_MAX    60.0f
+#define CONE_MAX       12.0f
 // Turn rate (deg/s) the pull scales with while the player strafes without
-// turning: at the default strength that is 6 deg/s, a slow drift.
+// turning: at the default strength that is 14 deg/s, a slow drift.
 #define MOVE_REF_RATE  40.0f
 // A per-frame view change larger than this is a teleport or respawn, not a turn.
 #define TURN_SPIKE_DEG 60.0f
@@ -82,12 +93,14 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 static struct
 {
 	qbool was_allowed;
+	const char *blocked_said;
 	qbool prev_valid;
 	vec3_t prev_angles;
 	double on_since;     // crosshair entered an enemy (0 = not on one)
 	double last_on;      // last frame the crosshair was on an enemy
 	qbool firing;
 	float lookscale;
+	int lock;
 	qbool hud_aim_touch;
 	int debug_target, debug_friend;
 	// from the loaded CSQC
@@ -104,6 +117,11 @@ void TouchAim_Init(void)
 	Cvar_RegisterVariable(&cl_touch_aimassist_strength);
 	Cvar_RegisterVariable(&cl_touch_aimassist_maxrate);
 	Cvar_RegisterVariable(&cl_touch_aimassist_cone);
+	Cvar_RegisterVariable(&cl_touch_autoshoot_weapons);
+	Cvar_RegisterVariable(&cl_touch_autoshoot_aimonly);
+	Cvar_RegisterVariable(&cl_touch_aim_lock);
+	Cvar_RegisterVariable(&cl_touch_weapon_class);
+	Cvar_RegisterVariable(&cl_touch_aim_ring);
 	Cvar_RegisterVariable(&cl_touch_aim_range);
 	Cvar_RegisterVariable(&cl_touch_aim_debug);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_active);
@@ -150,6 +168,8 @@ static void publish(void)
 {
 	if ((cl_touch_autoshoot_active.integer != 0) != ta.firing)
 		Cvar_SetValueQuick(&cl_touch_autoshoot_active, ta.firing ? 1 : 0);
+	if (cl_touch_aim_lock.integer != ta.lock)
+		Cvar_SetValueQuick(&cl_touch_aim_lock, ta.lock);
 	if (fabs(cl_touch_aim_lookscale.value - ta.lookscale) > 0.004f)
 		Cvar_SetValueQuick(&cl_touch_aim_lookscale, ta.lookscale);
 }
@@ -174,6 +194,7 @@ static void reset(void)
 	ta.on_since = 0;
 	ta.prev_valid = false;
 	ta.lookscale = 1;
+	ta.lock = 0;
 	ta.debug_target = 0;
 	ta.debug_friend = 0;
 }
@@ -186,30 +207,34 @@ static qbool is_spectator_slot(int n)
 	return frags == -666 || frags == -616;
 }
 
-// Whether this frame may assist at all.
-static qbool aim_allowed(void)
+// Why this frame may not assist, or NULL when it may. The reason is printed
+// under cl_touch_aim_debug so "it does nothing" can be told apart from "it is
+// switched off for this reason".
+static const char *aim_block_reason(void)
 {
 	int me = cl.realplayerentity;
 	// Touch mode only: the engine clears vid_touchscreen when a physical
 	// keyboard is being played on (vid_touchdetect.c), so a keyboard and
 	// mouse player never gets any of this. Nor does a mouse aiming next to
 	// the touch controls: help is for a thumb, not a mouse.
-	if (!vid_touchscreen.integer || vid_touchscreen_mouselook.integer)
-		return false;
+	if (!vid_touchscreen.integer)
+		return "vid_touchscreen is 0 (keyboard or mouse in use)";
+	if (vid_touchscreen_mouselook.integer)
+		return "a mouse is aiming next to the touch controls";
 	if (cls.state != ca_connected || cls.signon != SIGNONS || cls.demoplayback)
-		return false;
+		return "not in a live game";
 	if (key_dest != key_game || key_consoleactive)
-		return false;
+		return "menu or console is open";
 	if (cl.intermission || !CLVM_prog->loaded || !cl.scores)
-		return false;
+		return "intermission or no CSQC";
 	if (me < 1 || me > cl.maxclients || cl.viewentity != me)
-		return false; // spectating someone, or in a vehicle / camera view
+		return "spectating or in another view";
 	if (is_spectator_slot(me) || cl.stats[STAT_HEALTH] <= 0)
-		return false;
+		return "dead or spectator";
 	// The port's CSQC HUD is not live (menu, layout editor, chat sheet).
 	if (cl_touch_csqc_active && cl_touch_hud_state.integer < 0)
-		return false;
-	return true;
+		return "touch HUD not live (menu, layout editor or chat open)";
+	return NULL;
 }
 
 // 1 team game, 0 free-for-all, -1 unknown.
@@ -406,13 +431,15 @@ void TouchAim_Frame(void)
 	qbool autoshoot, assist, aim_touch, moving, turning;
 	float friction, strength, cone, turn_yaw, turn_pitch, turn_mag;
 	vec3_t eye, fwd;
-	int on_target, friend_on;
+	int on_target, friend_on, on_shoot;
 	aimtarget_t near;
 
-	if (!aim_allowed())
+	const char *blocked = aim_block_reason();
+	if (blocked)
 	{
-		if (ta.was_allowed && cl_touch_aim_debug.integer)
-			Con_Printf("touch aim: inactive\n");
+		if (cl_touch_aim_debug.integer && (ta.was_allowed || !ta.blocked_said || strcmp(ta.blocked_said, blocked)))
+			Con_Printf("touch aim: inactive: %s\n", blocked);
+		ta.blocked_said = blocked;
 		ta.was_allowed = false;
 		reset();
 		publish();
@@ -422,6 +449,7 @@ void TouchAim_Frame(void)
 		Con_Printf("touch aim: active (teamplay %d, my colours %d, %s HUD)\n", teamplay_mode(),
 			cl.scores[cl.realplayerentity - 1].colors, TouchHUD_Active() ? "engine" : "CSQC");
 	ta.was_allowed = true;
+	ta.blocked_said = NULL;
 
 	autoshoot = cl_touch_autoshoot.integer != 0;
 	assist = cl_touch_aimassist.integer != 0;
@@ -475,13 +503,20 @@ void TouchAim_Frame(void)
 
 	// auto-shoot: fire after the reaction delay, keep firing a moment after
 	// the crosshair slips off so a jittery track does not stutter
-	if (autoshoot && on_target)
+	if (autoshoot && on_target && cl_touch_autoshoot_weapons.integer == 1 && cl_touch_weapon_class.integer == 2)
+		on_shoot = 0; // a projectile weapon in hand and the player asked for instant-hit only
+	else if (autoshoot && on_target && cl_touch_autoshoot_aimonly.integer && !aim_touch)
+		on_shoot = 0;
+	else
+		on_shoot = on_target;
+	ta.lock = !assist ? 0 : (on_target ? 2 : (near.entnum ? 1 : 0));
+	if (autoshoot && on_shoot)
 	{
 		if (!ta.on_since)
 			ta.on_since = now;
 		ta.last_on = now;
 		if (now - ta.on_since >= bound(0.05f, cl_touch_autoshoot_delay.value, 0.5f))
-			set_firing(true, on_target);
+			set_firing(true, on_shoot);
 	}
 	else
 	{

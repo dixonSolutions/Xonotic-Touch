@@ -10,6 +10,8 @@
 #include "touch_init.qh"
 #include "touch_defs.qh"
 #include "touch_weapons.qh"
+#include "view.qh"
+#include <common/weapons/all.qh>
 #include <common/mapvoting/_mod.qh>
 #include <client/hud/panel/scoreboard.qh>
 
@@ -87,6 +89,22 @@ void Touch_ReportHudState(int st)
 	touch_hud_state_sent = st;
 	if (cvar_type("_cl_touch_hud_state"))
 		cvar_set("_cl_touch_hud_state", ftos(st));
+}
+
+// Tell the engine's auto-shoot what is in hand (touch_aim.c, "instant-hit
+// weapons only"): 1 instant-hit, 2 anything else, 0 nothing known.
+void Touch_ReportWeaponClass(void)
+{
+	int cls = 0;
+	entity wepent = viewmodels[0];
+	if (wepent)
+	{
+		Weapon w = wepent.activeweapon;
+		if (w && w != WEP_Null)
+			cls = (w.spawnflags & WEP_TYPE_HITSCAN) ? 1 : 2;
+	}
+	if (cvar_type("_cl_touch_weapon_class") && cvar("_cl_touch_weapon_class") != cls)
+		cvar_set("_cl_touch_weapon_class", ftos(cls));
 }
 
 bool Touch_AutoShootEngaged(void)
@@ -733,6 +751,7 @@ void Touch_Frame(void)
 	}
 
 	Touch_Look_Frame(look_accum, look_last, look_first, look_active);
+	Touch_ReportWeaponClass();
 	Touch_ReportHudState((look_active || fire_count > 0) ? 1 : 0);
 
 	bool pressed_fire = fire_count > 0;

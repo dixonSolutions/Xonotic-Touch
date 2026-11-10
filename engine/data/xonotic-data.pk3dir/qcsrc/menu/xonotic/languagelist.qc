@@ -298,6 +298,6 @@ bool LanguageList_applySystemLanguage()
 	if (lang == "" || lang == prvm_language) return false;
 
 	cvar_set("_menu_prvm_language", lang);
-	localcmd("\nprvm_language \"$_menu_prvm_language\"; menu_restart\n");
+	localcmd("\nprvm_language \"$_menu_prvm_language\"; saveconfig; menu_restart\n");
 	return true;
 }

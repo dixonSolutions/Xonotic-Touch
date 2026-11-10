@@ -88,6 +88,10 @@ void MainWindow_tryOpenStartupDialogs(entity me)
 		MainWindow_openAssetFetchDialog(me);
 		return;
 	}
+	// Start in the system's language (the browser's, on the web), once per install, whether or not the
+	// first-run dialog is due. The menu restarts in it and comes back here.
+	if (LanguageList_applySystemLanguage())
+		return;
 	if (me.ToSDialog.shouldShow())
 	{
 		me.ToSDialog.loadXonoticToS(me.ToSDialog);
@@ -96,9 +100,6 @@ void MainWindow_tryOpenStartupDialogs(entity me)
 	}
 	if (me.firstRunDialog.shouldShow())
 	{
-		// Start in the system's language (the browser's, on the web); the menu restarts in it and comes back here.
-		if (LanguageList_applySystemLanguage())
-			return;
 		DialogOpenButton_Click_withCoords(NULL, me.firstRunDialog, '0 0 0', eX * conwidth + eY * conheight);
 		return;
 	}
