@@ -199,7 +199,7 @@ void XonoticMobileAimTab_fill(entity me)
 		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Aim assist")));
 	me.TR(me);
 		me.TD(me, 1, 2, e = makeXonoticCheckBox_T(0, "cl_touch_aimassist", _("Aim assist"),
-			_("Aim slows down over an enemy, and is pulled toward one while you turn or move with a finger on the aim area")));
+			_("Aim slows down over an enemy, and is pulled toward one while a finger is on the aim area")));
 		me.TD(me, 1, 1, e = makeXonoticCommandButton(_("Light"), '0 0 0',
 			"cl_touch_aimassist 1; cl_touch_aimassist_friction 0.25; cl_touch_aimassist_strength 0.15; cl_touch_aimassist_maxrate 20; cl_touch_aimassist_cone 6; menu_cmd sync", 0));
 		me.TD(me, 1, 1, e = makeXonoticCommandButton(_("Medium"), '0 0 0',
@@ -214,7 +214,7 @@ void XonoticMobileAimTab_fill(entity me)
 			setDependent(e, "cl_touch_aimassist", 1, 1);
 		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Pull:")));
 			setDependent(e, "cl_touch_aimassist", 1, 1);
-		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(0, 0.6, 0.05, "cl_touch_aimassist_strength", _("How strongly the view is pulled toward a nearby enemy while you turn or move (0 = off)")));
+		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(0, 0.6, 0.05, "cl_touch_aimassist_strength", _("How strongly the view is pulled toward a nearby enemy while a finger is on the aim area (0 = off)")));
 			setDependent(e, "cl_touch_aimassist", 1, 1);
 	me.TR(me);
 		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Catch cone:")));

@@ -12,9 +12,9 @@ keyboard, or touch mode forced to Always).
   never cancel a finger that is holding FIRE.
 - Aim friction: the touch look drag turns slower while the crosshair is on or
   near an enemy (engine HUD: look_apply; port CSQC: _cl_touch_aim_lookscale).
-- Magnetism: while a finger is on the aim control and the player is turning
-  or moving, the view is pulled a capped fraction toward the nearest visible
-  enemy inside a small cone.
+- Magnetism: while a finger is on the aim control, the view follows part of
+  the nearest visible enemy's motion inside a small cone and closes the gap to
+  it, at a capped rate in degrees per second (it never snaps).
 */
 #ifndef TOUCH_AIM_H
 #define TOUCH_AIM_H

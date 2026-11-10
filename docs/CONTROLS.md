@@ -344,7 +344,10 @@ the server's own CSQC and the engine draws the HUD) and in a local match.
 They only run while the touch controls are shown: with a physical keyboard
 attached (Dynamic) the engine clears `vid_touchscreen` and all of this
 switches off, whatever the cvars say. They also stand down while a mouse aims next to the touch controls
-(`vid_touchscreen_mouselook`). Settings → Mobile → **Aim** and **Auto-shoot** have every one of the cvars below. The
+(`vid_touchscreen_mouselook`): a listed mouse or touchpad aims once it has been moved or clicked, and hands
+the aim back to the fingers after 5 seconds of touch without it. One that is only listed (a tablet's built-in
+touchpad, a phone browser reporting a fine pointer) never does. These cvars are archived in `config.cfg`, not
+in the touch layout file. Settings → Mobile → **Aim** and **Auto-shoot** have every one of the cvars below. The
 target ring (`cl_touch_aim_ring`) is drawn at the crosshair so the helpers can be seen working.
 
 | Cvar | Default | What it does |
@@ -353,10 +356,10 @@ target ring (`cl_touch_aim_ring`) is drawn at the crosshair so the helpers can b
 | `cl_touch_autoshoot_delay` | `0.1` | Reaction time (s) before auto-fire starts (clamped 0.05–0.5) |
 | `cl_touch_autoshoot_release` | `0.15` | Keep firing this long (s) after the crosshair slips off (0–0.5) |
 | `cl_touch_aimassist` | `1` | Master switch for slowdown and pull |
-| `cl_touch_aimassist_friction` | `0.45` | Slowdown: fraction of look speed removed over an enemy, fading to the cone edge (0 = off, max 0.8) |
-| `cl_touch_aimassist_strength` | `0.35` | Pull: fraction of your own turn speed added toward the nearest enemy in the cone (0 = off, max 0.6) |
+| `cl_touch_aimassist_friction` | `0.45` | Slowdown: fraction of look speed removed over an enemy, fading to the cone edge; not while turning toward one not yet reached (0 = off, max 0.8) |
+| `cl_touch_aimassist_strength` | `0.35` | Pull toward the nearest enemy in the cone: follows strength × 2 of its motion across the view and closes the gap to the inner half of its body at strength × 10 per second, or strength × your own turn speed if faster (0 = off, max 0.6) |
 | `cl_touch_aimassist_maxrate` | `40` | Hard cap on the pull, degrees per second (max 60) |
-| `cl_touch_aimassist_cone` | `8` | Half-angle (degrees) around the crosshair where an enemy counts as near (max 12) |
+| `cl_touch_aimassist_cone` | `8` | Degrees from the crosshair to the edge of an enemy's body within which it counts as near (max 12) |
 | `cl_touch_autoshoot_weapons` | `0` | 0 = every weapon, 1 = instant-hit weapons only (the port's CSQC reports the weapon in `_cl_touch_weapon_class`; a server whose game does not leaves it unfiltered) |
 | `cl_touch_autoshoot_aimonly` | `0` | 1 = auto-shoot only while a finger is on the aim area or FIRE |
 | `cl_touch_aim_ring` | `1` | Draw a ring at the crosshair: accent while an enemy is in the cone, red while the crosshair is on one (`_cl_touch_aim_lock`) |
@@ -385,9 +388,10 @@ How it decides:
 - Slowdown multiplies the touch look drag: the engine HUD applies it in
   `look_apply`; the port's CSQC reads it from `_cl_touch_aim_lookscale`.
 - Pull only happens while a finger is on the aim control (look zone or
-  FIRE) and you are turning or moving, never against a turn heading away
-  from the target, capped per second so it cannot snap. The port's CSQC
-  reports the aim finger through `_cl_touch_hud_state`.
+  FIRE) and you are turning or moving, or did in the last half second (a
+  finger left resting never aims by itself), never against a turn heading
+  away from the target, capped per second so it cannot snap. The port's
+  CSQC reports the aim finger through `_cl_touch_hud_state`.
 - Nothing runs in menus, the console, the chat sheet, the layout editor,
   intermission, while dead, spectating or watching a demo.
 
