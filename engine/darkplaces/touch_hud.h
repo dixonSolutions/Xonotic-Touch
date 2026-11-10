@@ -37,4 +37,14 @@ void TouchHUD_ReleaseAll(void);
 // WEAPONS stat index are read from its globals.
 void TouchHUD_ProgsChanged(void);
 
+// Read-only weapon state for touch auto-shoot (touch_aim.c). Indices run
+// 0..TouchHUD_NumWeapons()-1 over the loaded CSQC's weapon registry.
+int TouchHUD_NumWeapons(void);
+const char *TouchHUD_WeaponName(int index); // netname, "" when out of range
+qbool TouchHUD_WeaponOwned(int index);
+int TouchHUD_WeaponAmmo(int index);         // reserve; -1 = unlimited or uses none
+int TouchHUD_HeldWeapon(void);              // index being held (switched to), -1 unknown
+int TouchHUD_HeldClip(void);                // rounds loaded, -1 = no clip
+int TouchHUD_AltFireState(void);            // TOUCH_ALTFIRE_* (touch_altfire.h)
+
 #endif

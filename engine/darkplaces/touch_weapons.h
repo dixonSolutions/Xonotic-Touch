@@ -80,6 +80,7 @@ typedef struct touch_wep_s
 	touch_wep_fire_t pri;
 	int sec_what;
 	touch_wep_fire_t sec;
+	int cost;        // ammo one primary shot takes
 } touch_wep_t;
 
 #define TW_FAR 30000.0f
@@ -87,32 +88,32 @@ typedef struct touch_wep_s
 // clang-format off
 static const touch_wep_t touch_weapons[] =
 {
-	// netname        flags                              primary: kind              speed  up    accel max   splash spread range   damage   secondary
-	{ "blaster",      TW_WEAK_SPLASH,                    { TW_KIND_PROJ,      6000,    0,    0,    0,   60,  0,     TW_FAR,  20 }, TW_SEC_SWITCH,   { 0 } },
-	{ "shotgun",      0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0.12f, 1200,    48 }, TW_SEC_MELEE,    { TW_KIND_MELEE, 0, 0, 0, 0, 0, 0, 120, 70 } },
-	{ "machinegun",   0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0.03f, TW_FAR,   6 }, TW_SEC_SHOT,     { TW_KIND_HITSCAN, 0, 0, 0, 0, 0, 0, TW_FAR, 30 } },
-	{ "arc",          0,                                 { TW_KIND_BEAM,         0,    0,    0,    0,    0,  0,     1500,    25 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 2300, 0, 0, 0, 65, 0, TW_FAR, 25 } },
-	{ "mortar",       0,                                 { TW_KIND_BALLISTIC, 1900,  225,    0,    0,  120,  0,     2500,    55 }, TW_SEC_SHOT,     { TW_KIND_BALLISTIC, 1400, 150, 0, 0, 120, 0, 1500, 55 } },
-	{ "minelayer",    TW_MINES | TW_NO_SWITCH_TO,        { TW_KIND_BALLISTIC,  800,    0,    0,    0,  175,  0,     1000,    40 }, TW_SEC_DETONATE, { 0 } },
-	{ "electro",      0,                                 { TW_KIND_PROJ,      2500,    0,    0,    0,  100,  0,     TW_FAR,  40 }, TW_SEC_SHOT,     { TW_KIND_BALLISTIC, 1000, 200, 0, 0, 150, 0, 1200, 30 } },
-	{ "crylink",      0,                                 { TW_KIND_PROJ,      2000,    0,    0,    0,   80,  0.08f, 2000,    60 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 3000, 0, 0, 0, 100, 0.01f, 2500, 40 } },
-	{ "hlac",         0,                                 { TW_KIND_PROJ,      6000,    0,    0,    0,   60,  0.03f, TW_FAR,  10 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0.15f, 1200, 90 } },
-	{ "vortex",       0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0,     TW_FAR,  80 }, TW_SEC_ZOOM,     { 0 } },
-	{ "rifle",        0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0,     TW_FAR,  80 }, TW_SEC_SHOT,     { TW_KIND_HITSCAN, 0, 0, 0, 0, 0, 0.04f, 2000, 80 } },
-	{ "vaporizer",    0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0,     TW_FAR, 150 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0, TW_FAR, 20 } },
-	{ "hagar",        0,                                 { TW_KIND_PROJ,      2200,    0,    0,    0,   65,  0,     TW_FAR,  25 }, TW_SEC_LOAD,     { 0 } },
-	{ "seeker",       TW_NO_SWITCH_TO,                   { TW_KIND_PROJ,      5000,    0,    0,    0,    0,  0,     TW_FAR,   0 }, TW_SEC_SHOT,     { TW_KIND_BALLISTIC, 3000, 1000, 0, 0, 100, 0.4f, 300, 15 } },
-	{ "devastator",   TW_GUIDED | TW_ONE_PER_PRESS,      { TW_KIND_PROJ,      1000,    0, 1300, 1300,  110,  0,     TW_FAR,  80 }, TW_SEC_DETONATE, { 0 } },
-	{ "fireball",     TW_NO_SWITCH_TO,                   { TW_KIND_PROJ,      1200,    0,    0,    0,  200,  0,     TW_FAR, 200 }, TW_SEC_SHOT,     { TW_KIND_BALLISTIC, 900, 100, 0, 0, 0, 0, 600, 40 } },
-	{ "tuba",         TW_NO_AUTOFIRE | TW_NO_SWITCH_TO,  { TW_KIND_NONE,         0,    0,    0,    0,    0,  0,     0,        0 }, TW_SEC_NONE,     { 0 } },
-	{ "hook",         TW_NO_AUTOFIRE | TW_NO_SWITCH_TO,  { TW_KIND_NONE,         0,    0,    0,    0,    0,  0,     0,        0 }, TW_SEC_NONE,     { 0 } },
-	{ "porto",        TW_NO_AUTOFIRE | TW_NO_SWITCH_TO,  { TW_KIND_NONE,         0,    0,    0,    0,    0,  0,     0,        0 }, TW_SEC_NONE,     { 0 } },
+	// netname        flags                              primary: kind              speed  up    accel max   splash spread range   damage   secondary                                   cost
+	{ "blaster",      TW_WEAK_SPLASH,                    { TW_KIND_PROJ,      6000,    0,    0,    0,   60,  0,     TW_FAR,  20 }, TW_SEC_SWITCH,   { 0 }, 0 },
+	{ "shotgun",      0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0.12f, 1200,    48 }, TW_SEC_MELEE,    { TW_KIND_MELEE, 0, 0, 0, 0, 0, 0, 120, 70 }, 1 },
+	{ "machinegun",   0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0.03f, TW_FAR,   6 }, TW_SEC_SHOT,     { TW_KIND_HITSCAN, 0, 0, 0, 0, 0, 0, TW_FAR, 30 }, 1 },
+	{ "arc",          0,                                 { TW_KIND_BEAM,         0,    0,    0,    0,    0,  0,     1500,    25 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 2300, 0, 0, 0, 65, 0, TW_FAR, 25 }, 1 },
+	{ "mortar",       0,                                 { TW_KIND_BALLISTIC, 1900,  225,    0,    0,  120,  0,     2500,    55 }, TW_SEC_SHOT,     { TW_KIND_BALLISTIC, 1400, 150, 0, 0, 120, 0, 1500, 55 }, 2 },
+	{ "minelayer",    TW_MINES | TW_NO_SWITCH_TO,        { TW_KIND_BALLISTIC,  800,    0,    0,    0,  175,  0,     1000,    40 }, TW_SEC_DETONATE, { 0 }, 4 },
+	{ "electro",      0,                                 { TW_KIND_PROJ,      2500,    0,    0,    0,  100,  0,     TW_FAR,  40 }, TW_SEC_SHOT,     { TW_KIND_BALLISTIC, 1000, 200, 0, 0, 150, 0, 1200, 30 }, 4 },
+	{ "crylink",      0,                                 { TW_KIND_PROJ,      2000,    0,    0,    0,   80,  0.08f, 2000,    60 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 3000, 0, 0, 0, 100, 0.01f, 2500, 40 }, 3 },
+	{ "hlac",         0,                                 { TW_KIND_PROJ,      6000,    0,    0,    0,   60,  0.03f, TW_FAR,  10 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0.15f, 1200, 90 }, 1 },
+	{ "vortex",       0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0,     TW_FAR,  80 }, TW_SEC_ZOOM,     { 0 }, 6 },
+	{ "rifle",        0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0,     TW_FAR,  80 }, TW_SEC_SHOT,     { TW_KIND_HITSCAN, 0, 0, 0, 0, 0, 0.04f, 2000, 80 }, 10 },
+	{ "vaporizer",    0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0,     TW_FAR, 150 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0, TW_FAR, 20 }, 10 },
+	{ "hagar",        0,                                 { TW_KIND_PROJ,      2200,    0,    0,    0,   65,  0,     TW_FAR,  25 }, TW_SEC_LOAD,     { 0 }, 1 },
+	{ "seeker",       TW_NO_SWITCH_TO,                   { TW_KIND_PROJ,      5000,    0,    0,    0,    0,  0,     TW_FAR,   0 }, TW_SEC_SHOT,     { TW_KIND_BALLISTIC, 3000, 1000, 0, 0, 100, 0.4f, 300, 15 }, 1 },
+	{ "devastator",   TW_GUIDED | TW_ONE_PER_PRESS,      { TW_KIND_PROJ,      1000,    0, 1300, 1300,  110,  0,     TW_FAR,  80 }, TW_SEC_DETONATE, { 0 }, 4 },
+	{ "fireball",     TW_NO_SWITCH_TO,                   { TW_KIND_PROJ,      1200,    0,    0,    0,  200,  0,     TW_FAR, 200 }, TW_SEC_SHOT,     { TW_KIND_BALLISTIC, 900, 100, 0, 0, 0, 0, 600, 40 }, 0 },
+	{ "tuba",         TW_NO_AUTOFIRE | TW_NO_SWITCH_TO,  { TW_KIND_NONE,         0,    0,    0,    0,    0,  0,     0,        0 }, TW_SEC_NONE,     { 0 }, 0 },
+	{ "hook",         TW_NO_AUTOFIRE | TW_NO_SWITCH_TO,  { TW_KIND_NONE,         0,    0,    0,    0,    0,  0,     0,        0 }, TW_SEC_NONE,     { 0 }, 0 },
+	{ "porto",        TW_NO_AUTOFIRE | TW_NO_SWITCH_TO,  { TW_KIND_NONE,         0,    0,    0,    0,    0,  0,     0,        0 }, TW_SEC_NONE,     { 0 }, 0 },
 	// Overkill: every secondary is a blaster shot.
-	{ "okhmg",        0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0.03f, TW_FAR,  30 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0, TW_FAR, 20 } },
-	{ "okmachinegun", 0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0.03f, TW_FAR,  25 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0, TW_FAR, 20 } },
-	{ "oknex",        0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0,     TW_FAR, 100 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0, TW_FAR, 20 } },
-	{ "okrpc",        0,                                 { TW_KIND_PROJ,      2500,    0, 5000,10000,  300,  0,     TW_FAR, 150 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0, TW_FAR, 20 } },
-	{ "okshotgun",    0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0.07f, 1200,   170 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0, TW_FAR, 20 } },
+	{ "okhmg",        0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0.03f, TW_FAR,  30 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0, TW_FAR, 20 }, 1 },
+	{ "okmachinegun", 0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0.03f, TW_FAR,  25 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0, TW_FAR, 20 }, 1 },
+	{ "oknex",        0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0,     TW_FAR, 100 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0, TW_FAR, 20 }, 10 },
+	{ "okrpc",        0,                                 { TW_KIND_PROJ,      2500,    0, 5000,10000,  300,  0,     TW_FAR, 150 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0, TW_FAR, 20 }, 10 },
+	{ "okshotgun",    0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0.07f, 1200,   170 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0, TW_FAR, 20 }, 3 },
 };
 // clang-format on
 #define TW_NUM_WEAPONS ((int)(sizeof(touch_weapons) / sizeof(touch_weapons[0])))

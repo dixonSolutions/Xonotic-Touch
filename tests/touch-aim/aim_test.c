@@ -414,6 +414,8 @@ static void test_table(void)
 			if (f->kind != TW_KIND_NONE)
 				CHECK(f->range >= 100, what);
 		}
+		snprintf(what, sizeof(what), "table %s: primary ammo cost 0..10", w->netname);
+		CHECK(w->cost >= 0 && w->cost <= 10, what);
 		snprintf(what, sizeof(what), "table %s: secondary described iff it is a shot", w->netname);
 		CHECK((w->sec_what == TW_SEC_SHOT || w->sec_what == TW_SEC_MELEE) == (w->sec.kind != TW_KIND_NONE), what);
 		// agrees with the ALT button's stock-balance list
