@@ -151,9 +151,11 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 // rocket so the next press launches one (and attack2 is up again).
 #define ROCKET_FIND_DIST  300.0f
 #define ROCKET_FIND_TIME  1.6f
+#define ROCKET_DEAD_RECKON 0.25f // no rocket seen this long after the press: assume it flies
 #define ROCKET_MAX_FLIGHT 4.0f
 #define ROCKET_RELEASE    0.06f
 #define PROJECTILE_ROCKET 2 // csqcprojectile_type of a Devastator rocket
+#define ROCKET_MODEL      "models/rocket.md3"
 #define ALTFIRE_READY     2 // TOUCH_ALTFIRE_READY (touch_altfire.h)
 
 // Devastator states.
@@ -195,13 +197,14 @@ static struct
 	double fight_since;
 	// Devastator steering
 	int rk_state, rk_ent, rk_target;
-	double rk_time, rk_seen;
+	double rk_time, rk_seen, rk_launch;
 	float rk_closest;    // closest the rocket came to the target (debug)
 	vec3_t rk_org, rk_vel, rk_target_org, rk_target_vel;
 	int rk_before[16], rk_before_count;
 	// from the loaded CSQC
 	int teamplay_ofs, teamplay_type;
 	int projtype_ofs, projtype_type;
+	qbool projtype_is_cnt;
 } ta;
 
 void TouchAim_Init(void)
@@ -266,8 +269,17 @@ void TouchAim_ProgsChanged(void)
 		if (numeric_type(ta.teamplay_type))
 			ta.teamplay_ofs = d->ofs;
 	}
-	// what kind of projectile a CSQC projectile entity is (Ent_Projectile)
+	// what kind of projectile a CSQC projectile entity is (Ent_Projectile):
+	// .csqcprojectile_type in current builds; 0.8.6 and older keep it in
+	// .cnt, which other entities use too, so there the model must also be
+	// the rocket's
+	ta.projtype_is_cnt = false;
 	d = PRVM_ED_FindField(prog, "csqcprojectile_type");
+	if (!d)
+	{
+		d = PRVM_ED_FindField(prog, "cnt");
+		ta.projtype_is_cnt = true;
+	}
 	if (d)
 	{
 		ta.projtype_type = d->type & ~DEF_SAVEGLOBAL;
@@ -803,13 +815,19 @@ static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *we
 	ta.own_switch = now;
 }
 
+// The csqcprojectile_type of a CSQC projectile entity, -1 for anything else.
 static int projectile_type(prvm_edict_t *ed)
 {
+	prvm_prog_t *prog = CLVM_prog;
 	prvm_eval_t *v;
+	int type;
 	if (ta.projtype_ofs < 0)
 		return -1;
 	v = PRVM_EDICTFIELDVALUE(ed, ta.projtype_ofs);
-	return ta.projtype_type == ev_float ? (int)v->_float : v->_int;
+	type = ta.projtype_type == ev_float ? (int)v->_float : v->_int;
+	if (ta.projtype_is_cnt && type == PROJECTILE_ROCKET && strcmp(PRVM_GetString(prog, PRVM_clientedictstring(ed, model)), ROCKET_MODEL))
+		return -1;
+	return type;
 }
 
 // Rocket projectiles the CSQC has now, so one that appears after a shot
@@ -890,38 +908,76 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 	case RK_LAUNCH:
 		set_firing(true, false, ta.rk_target);
 		ta.rk_ent = find_own_rocket(eye);
+		ta.rk_closest = 1e9f;
 		if (ta.rk_ent)
 		{
 			VectorCopy(PRVM_clientedictvector(PRVM_EDICT_NUM(ta.rk_ent), origin), ta.rk_org);
 			VectorClear(ta.rk_vel);
 			ta.rk_seen = now;
-			ta.rk_closest = 1e9f;
 			rk_set(RK_FLY, va(vabuf, sizeof(vabuf), "tracking own rocket, edict %d", ta.rk_ent));
 		}
-		else if (now - ta.rk_time > ROCKET_FIND_TIME)
-			rk_set(RK_RELEASE, "no rocket of ours appeared");
+		else if (now - ta.rk_time > ROCKET_DEAD_RECKON)
+		{
+			// none seen (yet): it is on its way along the view, steered there
+			ta.rk_launch = ta.rk_time;
+			rk_set(RK_FLY, "no rocket of ours seen: dead reckoning along the view");
+		}
 		return;
 	case RK_FLY:
 	{
-		prvm_edict_t *ed = ta.rk_ent < prog->num_edicts ? PRVM_EDICT_NUM(ta.rk_ent) : NULL;
+		prvm_edict_t *ed = ta.rk_ent > 0 && ta.rk_ent < prog->num_edicts ? PRVM_EDICT_NUM(ta.rk_ent) : NULL;
 		vec3_t org, d, rel_v, me;
 		float sp;
-		if (!ed || ed->free || projectile_type(ed) != PROJECTILE_ROCKET)
+		if (!ta.rk_ent && now - ta.rk_launch < ROCKET_FIND_TIME)
+		{
+			// a late rocket (the weapon was still reloading): track it after all
+			ta.rk_ent = find_own_rocket(eye);
+			if (ta.rk_ent)
+			{
+				ed = PRVM_EDICT_NUM(ta.rk_ent);
+				VectorCopy(PRVM_clientedictvector(ed, origin), ta.rk_org);
+				VectorClear(ta.rk_vel);
+				ta.rk_seen = now;
+				if (cl_touch_aim_debug.integer)
+					Con_Printf("touch aim: rocket seen after all, edict %d\n", ta.rk_ent);
+			}
+		}
+		if (!ta.rk_ent)
+		{
+			// dead reckoning: the server steers it onto the view ray, at the
+			// Devastator's speed since the press
+			float t = (float)(now - ta.rk_launch), flown;
+			vec3_t fwd;
+			AngleVectors(cl.viewangles, fwd, NULL, NULL);
+			flown = dev ? TouchWep_FlightDist(&dev->pri, t) : 1000 * t;
+			VectorMA(eye, flown, fwd, ta.rk_org);
+			VectorScale(fwd, dev ? min(dev->pri.speed_max, dev->pri.speed + dev->pri.accel * t) : 1000, ta.rk_vel);
+			if (flown > VectorDistance(eye, ta.rk_target_org) + 2 * (dev ? dev->pri.splash : 110))
+			{
+				rk_set(RK_RELEASE, "dead-reckoned rocket should have arrived");
+				set_firing(false, false, 0);
+				return;
+			}
+		}
+		else if (!ed || ed->free || projectile_type(ed) != PROJECTILE_ROCKET)
 		{
 			rk_set(RK_RELEASE, va(vabuf, sizeof(vabuf), "rocket gone: hit something; it came within %.0f units of the target", ta.rk_closest));
 			set_firing(false, false, 0);
 			return;
 		}
-		VectorCopy(PRVM_clientedictvector(ed, origin), org);
-		VectorSubtract(org, ta.rk_org, d);
-		if (VectorLength2(d) > 0.01f && now > ta.rk_seen)
+		else
 		{
-			float f = bound(0.0f, (float)(now - ta.rk_seen) / 0.05f, 1.0f);
-			vec3_t v;
-			VectorScale(d, 1.0f / (float)(now - ta.rk_seen), v);
-			VectorLerp(ta.rk_vel, f, v, ta.rk_vel);
-			VectorCopy(org, ta.rk_org);
-			ta.rk_seen = now;
+			VectorCopy(PRVM_clientedictvector(ed, origin), org);
+			VectorSubtract(org, ta.rk_org, d);
+			if (VectorLength2(d) > 0.01f && now > ta.rk_seen)
+			{
+				float f = bound(0.0f, (float)(now - ta.rk_seen) / 0.05f, 1.0f);
+				vec3_t v;
+				VectorScale(d, 1.0f / (float)(now - ta.rk_seen), v);
+				VectorLerp(ta.rk_vel, f, v, ta.rk_vel);
+				VectorCopy(org, ta.rk_org);
+				ta.rk_seen = now;
+			}
 		}
 		if (now - ta.rk_time > ROCKET_MAX_FLIGHT)
 		{

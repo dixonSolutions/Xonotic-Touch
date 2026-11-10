@@ -448,8 +448,10 @@ thumb at rest, and sends a one-frame attack2 when the enemy is inside 0.8 of
 the 110-unit blast and the rocket stops closing, or the rocket is inside the
 blast and about to pass (never with you inside it). Then it lets go of fire
 so the next press launches again. Projectiles carry no owner, so "our" rocket
-is the rocket projectile that appears near the muzzle after the press; if none
-appears, that shot is not steered. Mine Layer mines are left manual.
+is the rocket projectile that appears near the muzzle after the press (the
+`csqcprojectile_type` field, or in 0.8.6's CSQC `cnt` plus the rocket model);
+if none is seen within a quarter second it is dead-reckoned along the view at
+the Devastator's speed. Mine Layer mines are left manual.
 
 **Switching** (`_autoswitch`). The weapon list is the bots' preference for the
 distance (bands at 500 and 1050 units), without the Tuba, Mine Layer,
