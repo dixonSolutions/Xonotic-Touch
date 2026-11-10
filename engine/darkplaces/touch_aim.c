@@ -56,7 +56,7 @@ cvar_t cl_touch_autoshoot_weapons = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot
 cvar_t cl_touch_autoshoot_aimonly = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_aimonly", "0",
 	"Auto-shoot only while a finger is on the aim control (the look area or FIRE); 0 = also with no finger down"};
 cvar_t cl_touch_aim_ring = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aim_ring", "1",
-	"Touch HUD: draw a ring at the crosshair while an enemy is within the aim-assist cone, a red one while the crosshair is on an enemy"};
+	"Touch HUD: draw a ring at the crosshair while an enemy is within the aim-assist cone, a red one while the crosshair is on an enemy (with aim assist or auto-shoot on)"};
 cvar_t cl_touch_aim_range = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aim_range", "3000",
 	"Auto-shoot and aim helpers ignore enemies farther away than this many units"};
 cvar_t cl_touch_aim_debug = {CF_CLIENT, "cl_touch_aim_debug", "0",
@@ -525,7 +525,7 @@ void TouchAim_Frame(void)
 		on_shoot = 0;
 	else
 		on_shoot = on_target;
-	ta.lock = !assist ? 0 : (on_target ? 2 : (near.entnum ? 1 : 0));
+	ta.lock = !assist && !autoshoot ? 0 : (on_target ? 2 : (near.entnum ? 1 : 0));
 	if (autoshoot && on_shoot)
 	{
 		if (!ta.on_since)
