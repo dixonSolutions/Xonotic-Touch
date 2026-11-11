@@ -16,6 +16,7 @@ are touch_rescue.h's.
 #include "touch_aim.h"
 #include "touch_hook.h"
 #include "touch_rescue.h"
+#include "touch_turn.h"
 
 extern cvar_t vid_touchscreen;
 extern qbool cl_touch_csqc_active;
@@ -375,7 +376,8 @@ qbool TouchHook_InUse(void)
 
 qbool TouchHook_Rescuing(void)
 {
-	return th.rs.phase == TR_AIM || th.rs.phase == TR_HOLD || th.rs.phase == TR_RESTORE;
+	return th.rs.phase == TR_AIM || th.rs.phase == TR_HOLD || th.rs.phase == TR_RESTORE
+		|| TouchTurn_Spinning(); // the quick turn owns the view too
 }
 
 void TouchHook_SetHudButton(qbool down)
@@ -512,6 +514,7 @@ void TouchHook_Frame(void)
 	float turn_rate = 0;
 	char publish[8];
 
+	TouchTurn_Frame();
 	if (cl.worldmodel != th.hurt_model)
 		th_bind_map();
 	th.traces = 0;
@@ -733,6 +736,7 @@ static void TouchHook_Status_f(cmd_state_t *cmd)
 
 void TouchHook_Init(void)
 {
+	TouchTurn_Init();
 	Cvar_RegisterVariable(&cl_touch_hook_rescue);
 	Cvar_RegisterVariable(&cl_touch_hook_rescue_turn);
 	Cvar_RegisterVariable(&cl_touch_hook_rescue_range);

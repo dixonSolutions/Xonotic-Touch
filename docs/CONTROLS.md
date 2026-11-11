@@ -70,6 +70,7 @@ feed and the chat feed each get a band that touches neither.
 | **HOOK** | Hold to hook, let go to release; drag to steer like FIRE. Only there while a hook is to hand | offhand hook (`+hook`) or the Hook weapon — see [Grappling hook](#grappling-hook-hook-button-and-fall-rescue-engine) |
 | **HOP** | Tap = one jump, hold = latch (keeps hopping hands-free) | `+jump` |
 | DUCK | Tap or hold | `+crouch` |
+| **TURN** (by the move stick) | Tap: the view turns round by `touch_turn_angle` (180°) in `touch_turn_time` (0.12 s), always to the right, pitch kept; adds to a look drag in progress | `touch_turn` (engine, `touch_turn.c`) |
 | Weapon strip (right edge) | Tap a weapon to switch to it; drag the grip under the strip to resize it — see [Weapon strip](#weapon-strip) | `impulse N` of the row |
 | WEP | Off by default (the strip switches); `touch_weapon_visible 1` brings the button back | cycle, wheel or 3-slot (`touch_weapon_mode`) |
 | Reload | Tap; hidden by default | `weapon_reload` |
@@ -265,6 +266,7 @@ keeps its physical size across aspect ratios — `mm = _size × 183.2` on the
 | Weapon strip | `touch_weplist_` | `_x`, `_y`, `_visible` only: sized by `cl_touch_weplist_scale` — see [Weapon strip](#weapon-strip) | yes |
 | Zoom | `touch_zoom_` | `touch_zoom_visible` 0 never / 1 always / 2 contextual | contextual (`2`) |
 | Hook | `touch_hook_` | `touch_hook_visible` 0 never / 1 always / 2 while a hook is to hand | contextual (`2`) |
+| Turn | `touch_turn_` | `touch_turn_angle` (90–360, 180), `touch_turn_time` (0–0.5 s, 0.12; 0 = at once) | yes |
 | Dash | `touch_dodge_` | — | no |
 | Reload | `touch_reload_` | — | no |
 
@@ -791,13 +793,14 @@ Uses engine volume cvars; port adds an output profile for phone speaker vs headp
 
 ## Settings UI (intent groups)
 
-As shipped, Settings → Mobile (`dialog_settings_touch.qc`) has five sub-tabs; each
+Settings → Mobile (`dialog_settings_touch.qc`) is the one place for touch settings: no other
+menu offers them, and the game menus' *Mobile settings* buttons open it. It has five sub-tabs; each
 cvar is on exactly one of them:
 
 | Sub-tab | Rows |
 |---------|------|
 | **Controls** | Input mode (Dynamic / Touch / Keyboard & mouse, switch mid-game, announce, touch-only), layout presets, opacity, scale, glass tint, left-handed, stick dead zone and reach, FIRE hold / toggle, dodge button, customize / save / reset |
-| **HUD** | Weapon bar: size (`cl_touch_weplist_scale` 0.7–2.4), across (`touch_weplist_x`), down (`touch_weplist_y` 0.15–0.85), show; readout size (`touch_hud_scale`); grappling hook: HOOK button off / when available / always (`touch_hook_visible`), *Catch me with the hook when I fall off the map* (`cl_touch_hook_rescue`); *Keep MENU, CHAT and SCORE on screen with a keyboard* (`touch_desk_pills`) |
+| **HUD** | Weapon bar: size (`cl_touch_weplist_scale` 0.7–2.4), across (`touch_weplist_x`), down (`touch_weplist_y` 0.15–0.85), show; readout size (`touch_hud_scale`); grappling hook: HOOK button off / when available / always (`touch_hook_visible`), *Catch me with the hook when I fall off the map* (`cl_touch_hook_rescue`); quick turn: TURN button (`touch_turn_visible`), turn by (`touch_turn_angle` 90–360); *Keep MENU, CHAT and SCORE on screen with a keyboard* (`touch_desk_pills`) |
 | **Aim** | Look sensitivity, vertical, invert; aim assist on / off with Light, Medium (the defaults) and Strong; slowdown, pull (0–1), catch cone (1–15°), max pull (0–180°/s), target ring, *Keep tracking the enemy I am shooting* (`cl_touch_aimassist_track`) |
 | **Auto-shoot** | Auto-shoot on / off, reaction delay (0–0.5 s), shoot radius (0–6°), keep firing, which weapons; shot choice: secondary fire when better, lead moving targets, guide and detonate rockets, switch to the best weapon, *Hold fire when the blast would hit me* (`cl_touch_autoshoot_safe`); aim-area-only, range — see [Shoot helpers](#shoot-helpers-auto-shoot-and-aim-assist-engine) |
 | **Dynamics** | Performance profile, frame cap, vsync, dynamic resolution, render scale, jump button mode |
@@ -1026,6 +1029,7 @@ Build flow: clone repo (integrated `engine/`) → `fetch-sources.sh code` (if ne
 | Weapon switch | HUD strip; wheel / 3-slot / cycle button optional | `touch_weapon_mode`, `touch_weapon_visible` |
 | Zoom | Hold near fire | `touch_zoom_mode` |
 | Grappling hook | Hold HOOK; caught automatically when falling off the map | `touch_hook_visible`, `cl_touch_hook_rescue` |
+| Turn around | Tap TURN by the move stick | `touch_turn_visible`, `touch_turn_angle`, `touch_turn_time` |
 | Use / E | Small button or long-press context | Hide in DM if unused |
 | Scoreboard | SCORE pill toggles it; also the `touch_scores` command | `touch_scores_visible` |
 | Chat | Pause or quick phrases | `touch_chat_mode` |
