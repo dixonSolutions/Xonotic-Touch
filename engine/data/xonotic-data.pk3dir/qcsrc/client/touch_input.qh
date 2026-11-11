@@ -33,6 +33,10 @@ float Touch_Fire2Alpha(void);
 // ZOOM takes touches (touch_zoom_visible, and in mode 2 a scoped weapon in hand).
 bool Touch_ZoomAvailable(void);
 bool Touch_ZoomHeld(void);
+// HOOK takes touches (touch_hook_visible, and in mode 2 a hook to hand).
+bool Touch_HookAvailable(void);
+bool Touch_HookHeld(void);
+float Touch_HookAlpha(void);
 // 0..1 draw multiplier for ZOOM's fade; call once a frame.
 float Touch_ZoomAlpha(void);
 // The engine's touch auto-shoot is holding fire (touch_aim.c): FIRE glows.

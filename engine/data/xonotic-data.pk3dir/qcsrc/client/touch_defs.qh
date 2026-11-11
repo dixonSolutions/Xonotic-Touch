@@ -34,6 +34,8 @@ const int TOUCH_ROLE_SCORES = 110;
 const int TOUCH_ROLE_WEPSIZE = 111;
 // YES / NO on a called vote (Touch_Vote_OnDown).
 const int TOUCH_ROLE_VOTE = 112;
+// The grappling hook, held (Touch_SetHook).
+const int TOUCH_ROLE_HOOK = 113;
 
 // One name per control. Three places have to agree on it: the drawn label, the
 // handle in edit mode, and the prompts the stock panels build out of key binds
@@ -47,6 +49,7 @@ const string TOUCH_LABEL_CROUCH = "DUCK";
 const string TOUCH_LABEL_WEAPON = "WEP";
 const string TOUCH_LABEL_RELOAD = "RLD";
 const string TOUCH_LABEL_DODGE = "DASH";
+const string TOUCH_LABEL_HOOK = "HOOK";
 
 const int TOUCH_PAUSE_IDLE = 0;
 const int TOUCH_PAUSE_ARMING = 1;
@@ -104,7 +107,8 @@ const int TOUCH_WIDGET_ZOOM = 5;
 const int TOUCH_WIDGET_RELOAD = 6;
 const int TOUCH_WIDGET_DODGE = 7;
 const int TOUCH_WIDGET_FIRE2 = 8;
-const int TOUCH_WIDGET_COUNT = 9;
+const int TOUCH_WIDGET_HOOK = 9;
+const int TOUCH_WIDGET_COUNT = 10;
 
 // Customize-mode toolbar actions, in on-screen order left to right.
 const int TOUCH_CUSTOMIZE_SAVE = 0;
