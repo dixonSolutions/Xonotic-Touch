@@ -201,6 +201,7 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 #define ROCKET_RELEASE    0.06f
 #define DETONATE_HOLD     0.05f // attack2 held at least this long for a detonation
 #define ROCKET_REFIRE     1.1f  // g_balance_devastator_refire
+#define REFIRE_EARLY      0.1f  // the next press goes this much before the refire is up, as seen here
 #define ROCKET_SPEED      1300.0f // g_balance_devastator_speed, and _speedaccel
 #define ROCKET_GUIDE_RATE 90.0f // g_balance_devastator_guiderate (deg/s)
 #define ROCKET_GUIDE_GOAL 512.0f // g_balance_devastator_guidegoal
@@ -214,6 +215,7 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 #define LAST_SEEN_EXTRAP  0.5f
 #define HEAD_WAIT         0.3f  // longest a head-aimed shot waits for the crosshair to reach the head  // a target out of sight is followed on its last velocity this long
 #define FREE_MAX          3     // own rockets flying straight (cl_touch_autoshoot_volley)
+#define VOLLEY_SURE       0.35f // a moving target: only a rocket this close to a direct hit is let go
 #define PROJECTILE_ROCKET 2 // csqcprojectile_type of a Devastator rocket
 #define ROCKET_MODEL      "models/rocket.md3"
 
@@ -2100,7 +2102,10 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 	switch (ta.rk_state)
 	{
 	case RK_IDLE:
-		if (want_fire && !manual && near->entnum)
+		// (not before the refire of the last rocket is nearly up: a press the
+		// server holds back leaves nothing to track, and a detonation timed
+		// for a rocket that is not there would set off the next one at the muzzle)
+		if (want_fire && !manual && near->entnum && now - ta.rk_launch_seen >= ROCKET_REFIRE - REFIRE_EARLY)
 		{
 			rockets_before();
 			ta.rk_ent = 0;
@@ -2127,7 +2132,7 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 			ta.rk_seen = ta.rk_launch_seen = now;
 			rk_set(RK_FLY, va(vabuf, sizeof(vabuf), "tracking own rocket, edict %d", ta.rk_ent));
 		}
-		else if (now - ta.rk_time > ROCKET_DEAD_RECKON)
+		else if (now - max(ta.rk_time, ta.rk_launch_seen + ROCKET_REFIRE - REFIRE_EARLY) > ROCKET_DEAD_RECKON)
 		{
 			// none seen (yet): it is on its way along the view, steered there
 			ta.rk_launch = ta.rk_time;
@@ -2223,7 +2228,9 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 		// judged where the server will have rocket and target when the press
 		// arrives: the screen shows both that much late
 		VectorMA(ta.rk_org, cl_touch_autoshoot_predict.integer ? shot_latency() : 0, rel_v, rk_late);
-		if (dev && (cl_touch_autoshoot_group.integer && group_enemies() >= 2
+		// (only a rocket of ours that is seen is set off: a dead-reckoned
+		// one may not be where it is guessed, or not out yet)
+		if (dev && ta.rk_ent && (cl_touch_autoshoot_group.integer && group_enemies() >= 2
 			? detonate_group(dev->pri.splash, me, dt)
 			: TouchWep_Detonate(rk_late, rel_v, ta.rk_target_org, me, dev->pri.splash))
 			&& !free_hold(ta.rk_target) && !mate_at_blast(rk_late, dev->pri.splash))
@@ -2247,8 +2254,12 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 		{
 			qbool good, certain;
 			float t_hit;
+			const track_t *vt = &ta.tracks[ta.rk_target & (TRACK_MAX - 1)];
 			rk_judge_straight(ta.rk_org, ta.rk_vel, ta.rk_target_org, ta.rk_target_vel, dev->pri.splash, &good, &certain, &t_hit);
-			if (good && t_hit > 0.2f)
+			// let it fly straight only when that is safe: a standing
+			// target, or a hit within VOLLEY_SURE -- a strafing enemy that
+			// turns while an unguided rocket is still far out is lost
+			if (good && t_hit > 0.2f && ((certain && t_hit < VOLLEY_SURE) || (vt->cls == TW_CLASS_STAND && VectorLength(ta.rk_target_vel) < STAND_SPEED)))
 			{
 				freerk_t *f = &ta.freerk[ta.num_free++];
 				f->ent = ta.rk_ent;
