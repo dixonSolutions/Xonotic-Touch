@@ -18,7 +18,6 @@ applies to both.
 #include "touch_hud.h"
 #include "touch_aim.h"
 #include "touch_ui.h"
-#include "touch_altfire.h"
 
 extern cvar_t vid_touchscreen;
 extern cvar_t vid_conwidth;
@@ -512,11 +511,6 @@ typedef struct wepdef_s { char name[32]; char pic[64]; char ammo_icon[32]; int i
 static wepdef_t weapons[MAX_WEAPONS];
 static int num_weapons = 0;
 static int stat_weapons = -1;
-// STAT_TOUCH_ALTFIRE when the server's CSQC registers it (this port's game
-// code), -1 on any other server: touch_altfire.h then judges from the stock
-// balance.
-static int stat_altfire = -1;
-static float fire2_fade;
 // The CSQC's viewmodels[0] (the wepent) tells the held weapon and its clip,
 // which no stat does: global offset plus the fields read from it each frame.
 typedef struct qcfield_s { int ofs; int type; } qcfield_t;
@@ -586,7 +580,6 @@ static void bind_weapons(void)
 	int res_none = 0, stat_fuel = -1, stat_plasma = -1;
 	num_weapons = 0;
 	stat_weapons = -1;
-	stat_altfire = -1;
 	viewmodels_ofs = -1;
 	strip_selected_impulse = -1;
 	if (!prog->loaded)
@@ -606,13 +599,6 @@ static void bind_weapons(void)
 		stat_weapons = field_int(prog, ed, f_id);
 		if (stat_weapons < 0 || stat_weapons + 2 >= MAX_CL_STATS)
 			stat_weapons = -1;
-	}
-	ed = global_edict(prog, "STAT_TOUCH_ALTFIRE");
-	if (ed)
-	{
-		stat_altfire = field_int(prog, ed, f_id);
-		if (stat_altfire < 0 || stat_altfire >= MAX_CL_STATS)
-			stat_altfire = -1;
 	}
 	// GetAmmoStat: shells/bullets/rockets/cells are engine stats, fuel and
 	// plasma registered ones; RES_NONE is a weapon that uses no ammo.
@@ -721,39 +707,6 @@ static qbool weapon_owned(int index)
 	if (bit < 48)
 		return (cl.stats[stat_weapons + 1] & (1 << (bit - 24))) != 0;
 	return (cl.stats[stat_weapons + 2] & (1 << (bit - 48))) != 0;
-}
-
-// What +fire2 would do now (TOUCH_ALTFIRE_*): the server's stat when it sends
-// one, else judged from the held weapon and its ammo (touch_altfire.h).
-static int altfire_state(void)
-{
-	prvm_prog_t *prog = CLVM_prog;
-	prvm_edict_t *ve;
-	const wepdef_t *wd;
-	int held, reserve = 0, clip = -1;
-	if (stat_altfire >= 0)
-		return cl.stats[stat_altfire];
-	// A spectator's +fire2 goes back to observing, as the stat would say.
-	if (TouchUI_IsSpectating())
-		return TouchUI_IsWatching() ? TOUCH_ALTFIRE_READY : TOUCH_ALTFIRE_NONE;
-	if (cl.stats[STAT_HEALTH] <= 0)
-		return TOUCH_ALTFIRE_NONE;
-	held = held_weapon_index();
-	if (held < 0)
-		return TOUCH_ALTFIRE_NONE;
-	wd = &weapons[held];
-	if (wd->ammo_stat >= 0)
-		reserve = max(0, cl.stats[wd->ammo_stat]);
-	ve = wepent();
-	if (ve && qcfield_int(prog, ve, f_clip_size) > 0)
-		clip = qcfield_int(prog, ve, f_clip_load);
-	return TouchAltFire_Fallback(wd->name, reserve, clip,
-		(cl.stats[STAT_ITEMS] & 1) || wd->ammo_stat < 0); // IT_UNLIMITED_AMMO
-}
-
-static qbool fire2_available(void)
-{
-	return TouchAltFire_Available((int)cv("touch_fire2_visible", 2), altfire_state());
 }
 
 // The HUD skin's pic, like Touch_Hud_SkinPicPath: hud_skin first, default second.
@@ -930,7 +883,7 @@ static int assign_role(float px, float py)
 		return ROLE_IGNORED;
 	if (cv("touch_fire_visible", 1) && hit_circle(px, py, cv("touch_fire_x", 0.855f), cv("touch_fire_y", 0.680f), cv("touch_fire_size", 0.140f), 1.15f))
 		return ROLE_FIRE;
-	if (fire2_available() && hit_circle(px, py, cv("touch_fire2_x", 0.770f), cv("touch_fire2_y", 0.755f), cv("touch_fire2_size", 0.100f), 1.15f))
+	if (cv("touch_fire2_visible", 0) && hit_circle(px, py, cv("touch_fire2_x", 0.135f), cv("touch_fire2_y", 0.240f), cv("touch_fire2_size", 0.120f), 1.15f))
 		return ROLE_FIRE2;
 	if (cv("touch_jump_visible", 1) && hit_rect(px, py, cv("touch_jump_x", 0.855f), cv("touch_jump_y", 0.885f), cv("touch_jump_size", 0.072f), cv("touch_jump_aspect", 2.6f), 1.10f))
 		return ROLE_JUMP;
@@ -1553,16 +1506,8 @@ void TouchHUD_Draw(void)
 		draw_circle_widget("touch_crouch_x", 0.700f, "touch_crouch_y", 0.885f, "touch_crouch_size", 0.066f, "DUCK", key_crouch, a, C_ACCENT);
 	if (weapon_button_shown())
 		draw_circle_widget("touch_weapon_x", 0.540f, "touch_weapon_y", 0.860f, "touch_weapon_size", 0.100f, "WEP", role_owned(ROLE_WEAPON), a, C_ACCENT);
-	// ALT fades out rather than vanishing, so the eye sees why it went; it
-	// takes no new touch from the moment it is unavailable (assign_role).
-	{
-		static double fire2_fade_time;
-		float fade_dt = (float)bound(0.0, host.realtime - fire2_fade_time, 0.1);
-		fire2_fade_time = host.realtime;
-		fire2_fade = cv("touch_fire2_visible", 2) > 0 ? TouchAltFire_Fade(fire2_fade, fire2_available(), fade_dt) : 0;
-		if (fire2_fade > 0)
-			draw_circle_widget("touch_fire2_x", 0.770f, "touch_fire2_y", 0.755f, "touch_fire2_size", 0.100f, "ALT", key_attack2, a * fire2_fade, C_DANGER);
-	}
+	if (cv("touch_fire2_visible", 0))
+		draw_circle_widget("touch_fire2_x", 0.135f, "touch_fire2_y", 0.240f, "touch_fire2_size", 0.120f, "ALT", key_attack2, a, C_DANGER);
 	if (cv("touch_zoom_visible", 0))
 		draw_circle_widget("touch_zoom_x", 0.860f, "touch_zoom_y", 0.480f, "touch_zoom_size", 0.100f, "ZOOM", key_zoom, a, C_ACCENT);
 	if (cv("touch_reload_visible", 0))

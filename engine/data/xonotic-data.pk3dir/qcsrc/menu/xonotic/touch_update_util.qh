@@ -31,11 +31,6 @@ const string TOUCH_UPDATE_STATUS_FILE = "touch/update-status.txt";
  */
 const string TOUCH_UPDATE_REQUEST_FILE = "touch/update-request.txt";
 
-/** AndySU owns payload updates separately from the APK updater above. */
-const string TOUCH_ANDYSU_STATUS_FILE = "touch/andysu-update-status.txt";
-const string TOUCH_ANDYSU_REQUEST_FILE = "touch/andysu-update-request.txt";
-const float TOUCH_ANDYSU_FORMAT = 1;
-
 const float TOUCH_UPDATE_FORMAT = 1;
 
 /** No check has run yet this session. */
@@ -83,12 +78,3 @@ bool TouchUpdate_isBehind();
 string TouchUpdate_versionLine();
 /** "4 versions behind", "Up to date", "Checking…" — one short line for chrome. */
 string TouchUpdate_shortStatus();
-
-void TouchAndySU_read();
-string TouchAndySU_state();
-string TouchAndySU_installed();
-string TouchAndySU_latest();
-string TouchAndySU_message();
-float TouchAndySU_percent();
-bool TouchAndySU_busy();
-bool TouchAndySU_request(string token);

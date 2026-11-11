@@ -192,7 +192,7 @@ final class UpdateBridge {
                 .append(Math.max(0, behind)).append('\n')
                 .append(Math.max(0, Math.min(100, percent))).append('\n')
                 .append(oneLine(message)).append('\n')
-                .append(AndySUCompat.autoEnabled(context) ? "on" : "off").append('\n');
+                .append(AppUpdater.isAutoInstall(context) ? "on" : "off").append('\n');
 
         try {
             File dir = statusFile.getParentFile();

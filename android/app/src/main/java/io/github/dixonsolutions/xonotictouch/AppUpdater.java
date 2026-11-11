@@ -104,9 +104,6 @@ final class AppUpdater {
     // ----------------------------------------------------------------- check
 
     static boolean isEnabled(Context context) {
-        // Under AndySU the app updates through its payload; a full APK install would replace the
-        // frozen host, so the APK updater stands down.
-        if (AndySUCompat.present()) return false;
         return prefs(context).getBoolean(PREF_ENABLED, true);
     }
 

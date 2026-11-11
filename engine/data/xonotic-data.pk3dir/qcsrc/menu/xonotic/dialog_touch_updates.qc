@@ -40,20 +40,6 @@ void TouchUpdates_Skip_Click(entity btn, entity dlg)
 		dlg.statusLabel.setText(dlg.statusLabel, _("This version will be skipped."));
 }
 
-void TouchUpdates_PayloadCheck_Click(entity btn, entity dlg)
-{
-	dlg.payloadRequestFailed = !TouchAndySU_request("check");
-	if (!dlg.payloadRequestFailed)
-		dlg.payloadStatusLabel.setText(dlg.payloadStatusLabel, _("Checking payload updates..."));
-}
-
-void TouchUpdates_PayloadApply_Click(entity btn, entity dlg)
-{
-	dlg.payloadRequestFailed = !TouchAndySU_request("apply");
-	if (!dlg.payloadRequestFailed)
-		dlg.payloadStatusLabel.setText(dlg.payloadStatusLabel, _("Applying staged payload..."));
-}
-
 void XonoticTouchUpdatesDialog_showNotify(entity me)
 {
 	// Re-read on open so the dialog never shows the previous visit's state, and
@@ -62,13 +48,7 @@ void XonoticTouchUpdatesDialog_showNotify(entity me)
 	TouchUpdate_read();
 	me.nextPoll = 0;
 	me.requestFailed = false;
-	me.payloadRequestFailed = false;
-	if (TouchAndySU_state() != "unavailable" && TouchAndySU_state() != "incompatible")
-	{
-		if (TouchUpdate_autoEnabled() && !TouchAndySU_busy())
-			TouchAndySU_request("check");
-	}
-	else if (TouchUpdate_canSelfInstall() && !TouchUpdate_busy())
+	if (TouchUpdate_canSelfInstall() && !TouchUpdate_busy())
 		TouchUpdate_request("check");
 }
 
@@ -98,7 +78,7 @@ void XonoticTouchUpdatesDialog_fill(entity me)
 	me.TR(me);
 		me.TD(me, 1, me.columns, me.autoBox = makeXonoticCheckBox_T(0, TOUCH_UPDATE_AUTO_CVAR,
 			_("Update automatically"),
-			_("Automatically check, download and apply compatible game updates.")));
+			_("Download new builds as they appear. Android still asks you to confirm every install.")));
 
 	me.TR(me);
 		me.TD(me, 1, 2, me.checkButton = makeXonoticButton(_("Check now"), '0 0 0'));
@@ -110,25 +90,6 @@ void XonoticTouchUpdatesDialog_fill(entity me)
 		me.TD(me, 1, 2, me.skipButton = makeXonoticButton(_("Skip this version"), '0 0 0'));
 			me.skipButton.onClick = TouchUpdates_Skip_Click;
 			me.skipButton.onClickEntity = me;
-
-	me.TR(me);
-		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("AndySU payload")));
-	me.TR(me);
-		me.TD(me, 1, me.columns, me.payloadStatusLabel = makeXonoticTextLabel(0, ""));
-	me.TR(me);
-		me.TD(me, 1, me.columns, me.payloadLatestLabel = makeXonoticTextLabel(0, ""));
-	me.TR(me);
-		me.TD(me, 1, me.columns, me.payloadProgressBar = makeXonoticProgressBar());
-	me.TR(me);
-		me.TD(me, 1, me.columns, me.payloadMessageLabel = makeXonoticTextLabel(0, ""));
-		me.payloadMessageLabel.allowWrap = true;
-	me.TR(me);
-		me.TD(me, 1, 3, me.payloadCheckButton = makeXonoticButton(_("Check payload"), '0 0 0'));
-			me.payloadCheckButton.onClick = TouchUpdates_PayloadCheck_Click;
-			me.payloadCheckButton.onClickEntity = me;
-		me.TD(me, 1, 3, me.payloadApplyButton = makeXonoticButton(_("Apply staged"), '0 0 0'));
-			me.payloadApplyButton.onClick = TouchUpdates_PayloadApply_Click;
-			me.payloadApplyButton.onClickEntity = me;
 
 	me.gotoRC(me, me.rows - 1, 0);
 		me.TD(me, 1, me.columns, e = makeXonoticButton(_("OK"), '0 0 0'));
@@ -158,35 +119,14 @@ void XonoticTouchUpdatesDialog_draw(entity me)
 	}
 
 	string state = TouchUpdate_stateName();
-	string payloadState = TouchAndySU_state();
-	bool payloadAvailable = payloadState != "unavailable" && payloadState != "incompatible";
-	bool payloadBusy = payloadState == "checking" || payloadState == "downloading"
-		|| payloadState == "applying";
-	bool managed = !TouchUpdate_canSelfInstall() || payloadAvailable;
+	bool managed = !TouchUpdate_canSelfInstall();
 	bool busy = TouchUpdate_busy();
 
 	me.versionLabel.setText(me.versionLabel, TouchUpdate_versionLine());
 	me.statusLabel.setText(me.statusLabel, TouchUpdate_shortStatus());
-	string activeVersion = TouchAndySU_installed();
-	if (payloadAvailable && activeVersion != "")
-		me.payloadStatusLabel.setText(me.payloadStatusLabel,
-			strcat(_("Installed payload:"), " ", activeVersion, " - ", payloadState));
-	else if (payloadState == "unavailable")
-		me.payloadStatusLabel.setText(me.payloadStatusLabel, _("AndySU payload updates are not enabled in this install."));
-	else
-		me.payloadStatusLabel.setText(me.payloadStatusLabel, strcat(_("Payload update status:"), " ", payloadState));
-	string payloadLatest = TouchAndySU_latest();
-	if (payloadLatest != "" && payloadLatest != activeVersion)
-		me.payloadLatestLabel.setText(me.payloadLatestLabel, strcat(_("Latest payload:"), " ", payloadLatest));
-	else
-		me.payloadLatestLabel.setText(me.payloadLatestLabel, "");
-	me.payloadMessageLabel.setText(me.payloadMessageLabel, TouchAndySU_message());
-	if (me.payloadRequestFailed)
-		me.payloadMessageLabel.setText(me.payloadMessageLabel,
-			_("Could not write the AndySU request. Restart Xonotic Touch and try again."));
 
 	string latest = TouchUpdate_latest();
-	if (!managed && latest != "" && latest != TouchUpdate_installed())
+	if (latest != "" && latest != TouchUpdate_installed())
 		me.latestLabel.setText(me.latestLabel, strcat(_("Latest release:"), " ", latest));
 	else
 		me.latestLabel.setText(me.latestLabel, "");
@@ -196,15 +136,10 @@ void XonoticTouchUpdatesDialog_draw(entity me)
 		me.messageLabel.setText(me.messageLabel,
 			_("Could not reach the updater. Restart Xonotic Touch and try again."));
 	}
-	else if (managed && !payloadAvailable)
-	{
-		me.messageLabel.setText(me.messageLabel,
-			_("This copy is installed by Flatpak or the OpenStore. Update it the same way you installed it."));
-	}
 	else if (managed)
 	{
 		me.messageLabel.setText(me.messageLabel,
-			_("AndySU manages this install. Use the payload controls below; host APK updates are separate."));
+			_("This copy is installed by Flatpak or the OpenStore. Update it the same way you installed it."));
 	}
 	else if (state == TOUCH_UPDATE_NEEDS_PERMISSION)
 	{
@@ -242,24 +177,6 @@ void XonoticTouchUpdatesDialog_draw(entity me)
 		me.progressBar.setProgress(me.progressBar, 0);
 	}
 
-	if (payloadBusy)
-	{
-		me.payloadProgressBar.indeterminate = true;
-		me.payloadProgressBar.color = TOUCH_UPDATE_COLOR_PROGRESS;
-	}
-	else if (payloadState == "error")
-	{
-		me.payloadProgressBar.indeterminate = false;
-		me.payloadProgressBar.color = TOUCH_UPDATE_COLOR_ERROR;
-		me.payloadProgressBar.setProgress(me.payloadProgressBar, 1);
-	}
-	else
-	{
-		me.payloadProgressBar.indeterminate = false;
-		me.payloadProgressBar.color = TOUCH_UPDATE_COLOR_PROGRESS;
-		me.payloadProgressBar.setProgress(me.payloadProgressBar, TouchAndySU_percent() / 100);
-	}
-
 	// Disable rather than hide. A control that vanishes mid-gesture hands the
 	// press to whatever moves into its place, which on a touchscreen means the
 	// player installs an update they were trying not to.
@@ -267,9 +184,7 @@ void XonoticTouchUpdatesDialog_draw(entity me)
 	me.checkButton.disabled = (managed || busy);
 	me.installButton.disabled = (managed || busy || !actionable);
 	me.skipButton.disabled = (managed || busy || !actionable);
-	me.autoBox.disabled = (managed && !payloadAvailable);
-	me.payloadCheckButton.disabled = (!payloadAvailable || payloadBusy || TouchUpdate_autoEnabled() == false);
-	me.payloadApplyButton.disabled = (!payloadAvailable || payloadBusy || payloadState != "staged");
+	me.autoBox.disabled = managed;
 
 	SUPER(XonoticTouchUpdatesDialog).draw(me);
 }

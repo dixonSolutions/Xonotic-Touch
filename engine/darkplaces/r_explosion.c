@@ -190,7 +190,7 @@ void R_NewExplosion(const vec3_t org)
 				if (e->clipping)
 				{
 					trace = CL_TraceLine(e->origin, e->vert[j], MOVE_NOMONSTERS, NULL, SUPERCONTENTS_SOLID, 0, 0, collision_extendmovelength.value, true, false, NULL, false, false);
-					VectorCopy(trace.endpos, e->vert[j]);
+					VectorCopy(trace.endpos, e->vert[i]);
 				}
 			}
 			break;
