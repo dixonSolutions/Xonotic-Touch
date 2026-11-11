@@ -939,7 +939,7 @@ static cachepic_t *skin_pic(const char *name)
 {
 	char path[128];
 	cachepic_t *pic;
-	const char *skin = Cvar_VariableString(&cvars_all, "hud_skin", 0);
+	const char *skin = Cvar_VariableString(&cvars_all, "hud_skin", ~0);
 	if (skin && skin[0])
 	{
 		dpsnprintf(path, sizeof(path), "gfx/hud/%s/%s", skin, name);
@@ -1418,8 +1418,8 @@ static void pill_release(finger_t *f)
 		break;
 	case ROLE_PAUSE:
 		TouchHUD_ReleaseAll();
-		if (Cvar_VariableValue(&cvars_all, "menu_gamemenu", 0) && !cls.demoplayback
-			&& Cvar_VariableValue(&cvars_all, "_menu_gamemenu_dialog_available", 0))
+		if (Cvar_VariableValue(&cvars_all, "menu_gamemenu", ~0) && !cls.demoplayback
+			&& Cvar_VariableValue(&cvars_all, "_menu_gamemenu_dialog_available", ~0))
 			Cbuf_AddText(cmd_local, "\nmenu_showgamemenudialog\n");
 		else
 			Cbuf_AddText(cmd_local, "\ntogglemenu 1\n");
