@@ -11,6 +11,15 @@ A local game stops in three places, each with its own holder:
   is down or the window is not active (cl_input.c); or the `pause` command.
 - cl.paused: the client's copy of sv.paused (svc_setpause).
 
+The server reads a client's chat button only from a move it executes, and it
+executes a move only if the move's time is later than the last one. While the
+game is paused neither clock advances, so a move can be dropped and the server
+keep the chat button it last read: the menu closes, the window regains focus,
+and the game stays frozen under a live HUD. It is certain during the start
+countdown, when the player is held still and the server applies buttons only
+in physics, which a pause stops. TouchPause_Frame lifts such a pause
+(lift_stale_pause).
+
 The `pause` command (or a key bound to it) pauses a local game with nothing on
 screen, and the game code never lifts it: SV_PausedTic only runs for a pause
 the game code set. On a touchscreen that is a frozen game with no way out, so
@@ -40,6 +49,7 @@ static struct
 	int nlog;
 	int frames, paused_frames;
 	double lifted; // when a pause command's pause was last turned into the menu
+	double chat_off_since; // paused, and the local chat button off since then
 } tp;
 
 static const char *keydest_name(int kd)
@@ -60,6 +70,11 @@ static const char *keydest_name(int kd)
 static qbool chat_button(void)
 {
 	return key_dest != key_game || key_consoleactive || !vid_activewindow;
+}
+
+static qbool is_local(client_t *c)
+{
+	return c->active && c->netconnection && LHNETADDRESS_GetAddressType(&c->netconnection->peeraddress) == LHNETADDRESSTYPE_LOOP;
 }
 
 static int real_clients(int *chatting)
@@ -91,6 +106,37 @@ static void note(const char *fmt, ...)
 	va_end(args);
 }
 
+// The game code pauses a listen server only while every real player sends
+// the chat button (sv_autopause). If the local player has stopped sending it
+// and the pause still holds after STALE_PAUSE seconds, lift it as setpause(0)
+// does; should another player still be chatting, the game code pauses again
+// on its next frame.
+#define STALE_PAUSE 0.4
+static qbool lift_stale_pause(qbool chat)
+{
+	int i;
+	if (!sv.active || sv.paused != 1 || sv.pausedstart <= 0 || cls.state != ca_connected || cls.demoplayback || chat)
+	{
+		tp.chat_off_since = 0;
+		return false;
+	}
+	for (i = 0; i < svs.maxclients; i++)
+		if (is_local(svs.clients + i) && svs.clients[i].begun)
+			break;
+	if (i == svs.maxclients)
+		return false;
+	if (!tp.chat_off_since)
+		tp.chat_off_since = host.realtime;
+	if (host.realtime - tp.chat_off_since < STALE_PAUSE)
+		return false;
+	tp.chat_off_since = 0;
+	sv.paused = 0;
+	sv.pausedstart = 0;
+	MSG_WriteByte(&sv.reliable_datagram, svc_setpause);
+	MSG_WriteByte(&sv.reliable_datagram, sv.paused);
+	return true;
+}
+
 // A pause from the `pause` command: the game code's own set sv.pausedstart.
 static qbool manual_pause(void)
 {
@@ -114,6 +160,8 @@ void TouchPause_Frame(void)
 		else
 			Cbuf_AddText(cmd_local, "togglemenu 1\n");
 	}
+	if (lift_stale_pause(chat))
+		note("lifted a pause the server kept after the chat button went off");
 	now = (host.paused ? 1 : 0) | (sv.active && sv.paused ? 2 : 0) | (cl.paused ? 4 : 0) | (chat ? 8 : 0);
 	tp.frames++;
 	if (now & 7)
