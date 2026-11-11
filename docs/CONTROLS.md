@@ -685,6 +685,15 @@ would do to teammates, and will not grow by waiting a frame; never with you
 inside the blast, and not when a direct hit is a frame away. While it flies,
 the view steers it to the group's blast point.
 
+Measured (local listen server, bots strafing at 360 u/s, 4 runs of 10 s,
+damage per second, v1.2.140 -> this build): standing 64-76 -> 60-72 (the
+same), steady strafe at 500 / 900 / 1500 units 25 / 6 / 46 -> 62 / 61 / 42,
+dodging 11 / 6 / 7 -> 37 / 61 / 42, jumping 3 / 6 / 6 -> 35 / 47 / 45,
+running at the player and away 61 / 79 / 62 -> 63 / 77 / 65; at 2450 units
+a dodger 32 -> 19 is still worse (a rocket in flight for 2 s cannot follow
+a strafe that reverses twice). With 350 ms of added ping at 30 fps
+(stock server, one run each): steady 37 -> 28, dodging 4 -> 16.
+
 **What the server allows with rockets** (stock `devastator.qc`, checked in
 the harness): only the last rocket fired is guided, only while fire has been
 held since it left, from 0.2 s after launch, turning at most 90 degrees per
