@@ -408,6 +408,8 @@ int Touch_AssignRole(vector p)
 		return TOUCH_ROLE_ZOOM;
 	if (Touch_HookAvailable() && Touch_HitCircle(p, autocvar_touch_hook_x, autocvar_touch_hook_y, autocvar_touch_hook_size, 1.10))
 		return TOUCH_ROLE_HOOK;
+	if (Touch_TurnAvailable() && Touch_HitCircle(p, autocvar_touch_turn_x, autocvar_touch_turn_y, autocvar_touch_turn_size, 1.10))
+		return TOUCH_ROLE_TURN;
 	if (autocvar_touch_reload_visible && Touch_HitCircle(p, autocvar_touch_reload_x, autocvar_touch_reload_y, autocvar_touch_reload_size, 1.10))
 		return TOUCH_ROLE_RELOAD;
 	if (autocvar_touch_dodge_visible && Touch_HitCircle(p, autocvar_touch_dodge_x, autocvar_touch_dodge_y, autocvar_touch_dodge_size, 1.10))
@@ -467,6 +469,8 @@ int Touch_ClaimFinger(int src, vector pos)
 			Touch_Hud_GripBegin(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_LOOK)
 			Touch_Look_BeginGesture(pos);
+		else if (touch_finger_role[i] == TOUCH_ROLE_TURN)
+			localcmd("touch_turn\n"); // on the press: the engine spins the view
 		else if (touch_finger_role[i] == TOUCH_ROLE_WEAPON)
 		{
 			float imp = Touch_Weapons_HitImpulse(pos);
@@ -1239,6 +1243,18 @@ float Touch_HookAlpha(void)
 	return touch_hook_fade = Touch_FadeStep(touch_hook_fade, Touch_HookAvailable() || Touch_HookHeld(), dt);
 }
 
+// TURN: shown unless switched off, and never while a mouse aims (the mouse
+// turns faster than any button).
+bool Touch_TurnAvailable(void)
+{
+	return autocvar_touch_turn_visible && !cvar("vid_touchscreen_mouselook");
+}
+
+bool Touch_TurnHeld(void)
+{
+	return Touch_RoleOwned(TOUCH_ROLE_TURN);
+}
+
 bool Touch_CrouchHeld(void)
 {
 	return touch_key_crouch;
@@ -1270,6 +1286,7 @@ string Touch_DebugRoleName(int role)
 	if (role == TOUCH_ROLE_WEAPON) return "WEP";
 	if (role == TOUCH_ROLE_ZOOM) return "ZOOM";
 	if (role == TOUCH_ROLE_HOOK) return "HOOK";
+	if (role == TOUCH_ROLE_TURN) return "TURN";
 	if (role == TOUCH_ROLE_DODGE) return "DODGE";
 	if (role == TOUCH_ROLE_RELOAD) return "R";
 	if (role == TOUCH_ROLE_CON) return "CON";

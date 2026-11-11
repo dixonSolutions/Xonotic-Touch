@@ -102,6 +102,17 @@ void Touch_DefineCvars(void)
 	Touch_RegisterCvar("touch_hook_y", "0.615");
 	Touch_RegisterCvar("touch_hook_size", "0.100"); // 18 mm, like ZOOM and ALT
 	Touch_RegisterCvar("touch_hook_visible", "2");
+	// TURN: one tap spins the view round by touch_turn_angle degrees (180: face
+	// what was behind) in touch_turn_time seconds (0 = at once). The engine does
+	// the spin (touch_turn.c). For the left thumb: just right of and below the
+	// move stick, clear of it, SCORE and CONSOLE (scripts/audit-touch-ergonomics.py);
+	// a drag that starts on the stick never becomes a turn, only a fresh touch.
+	Touch_RegisterCvar("touch_turn_x", "0.300");
+	Touch_RegisterCvar("touch_turn_y", "0.840");
+	Touch_RegisterCvar("touch_turn_size", "0.085"); // 16 mm
+	Touch_RegisterCvar("touch_turn_visible", "1");
+	Touch_RegisterCvar("touch_turn_angle", "180");
+	Touch_RegisterCvar("touch_turn_time", "0.12");
 	Touch_RegisterCvar("touch_dodge_x", "0.165");
 	Touch_RegisterCvar("touch_dodge_y", "0.480");
 	Touch_RegisterCvar("touch_dodge_size", "0.100");

@@ -45,6 +45,8 @@ vector Touch_Customize_GetWidgetPos(int wid)
 			return autocvar_touch_fire2_x * eX + autocvar_touch_fire2_y * eY + autocvar_touch_fire2_size * eZ;
 		case TOUCH_WIDGET_HOOK:
 			return autocvar_touch_hook_x * eX + autocvar_touch_hook_y * eY + autocvar_touch_hook_size * eZ;
+		case TOUCH_WIDGET_TURN:
+			return autocvar_touch_turn_x * eX + autocvar_touch_turn_y * eY + autocvar_touch_turn_size * eZ;
 		default:
 			return autocvar_touch_dodge_x * eX + autocvar_touch_dodge_y * eY + autocvar_touch_dodge_size * eZ;
 	}
@@ -74,6 +76,8 @@ void Touch_Customize_SetWidgetPos(int wid, float nx, float ny)
 			cvar_set("touch_fire2_x", ftos(nx)); cvar_set("touch_fire2_y", ftos(ny)); break;
 		case TOUCH_WIDGET_HOOK:
 			cvar_set("touch_hook_x", ftos(nx)); cvar_set("touch_hook_y", ftos(ny)); break;
+		case TOUCH_WIDGET_TURN:
+			cvar_set("touch_turn_x", ftos(nx)); cvar_set("touch_turn_y", ftos(ny)); break;
 		default:
 			cvar_set("touch_dodge_x", ftos(nx)); cvar_set("touch_dodge_y", ftos(ny)); break;
 	}
@@ -94,6 +98,7 @@ string Touch_Customize_WidgetLabel(int wid)
 		case TOUCH_WIDGET_RELOAD: return TOUCH_LABEL_RELOAD;
 		case TOUCH_WIDGET_FIRE2: return TOUCH_LABEL_FIRE2;
 		case TOUCH_WIDGET_HOOK: return TOUCH_LABEL_HOOK;
+		case TOUCH_WIDGET_TURN: return TOUCH_LABEL_TURN;
 		default: return TOUCH_LABEL_DODGE;
 	}
 }
@@ -123,6 +128,7 @@ bool Touch_Customize_WidgetEnabled(int wid)
 		case TOUCH_WIDGET_FIRE2: return boolean(autocvar_touch_fire2_visible);
 		// HOOK the same: placed whether or not this server has a hook.
 		case TOUCH_WIDGET_HOOK: return boolean(autocvar_touch_hook_visible);
+		case TOUCH_WIDGET_TURN: return boolean(autocvar_touch_turn_visible);
 		default: return boolean(autocvar_touch_dodge_visible);
 	}
 }

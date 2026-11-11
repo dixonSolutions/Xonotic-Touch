@@ -37,6 +37,9 @@ bool Touch_ZoomHeld(void);
 bool Touch_HookAvailable(void);
 bool Touch_HookHeld(void);
 float Touch_HookAlpha(void);
+// TURN takes touches (touch_turn_visible, no mouse aiming).
+bool Touch_TurnAvailable(void);
+bool Touch_TurnHeld(void);
 // 0..1 draw multiplier for ZOOM's fade; call once a frame.
 float Touch_ZoomAlpha(void);
 // The engine's touch auto-shoot is holding fire (touch_aim.c): FIRE glows.
