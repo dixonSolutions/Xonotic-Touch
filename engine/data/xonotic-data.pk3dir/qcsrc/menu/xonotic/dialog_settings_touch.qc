@@ -477,8 +477,8 @@ void XonoticMobileTacticsTab_fill(entity me)
 		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoshoot_air", _("Lead enemies in the air"),
 			_("Aim where a jumping or falling enemy will be on its way down, or where it lands if the shot arrives later")));
 			setDependent(e, "cl_touch_autoshoot", 1, 1);
-		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoshoot_predict", _("Predict dodging enemies"),
-			_("Against an enemy that keeps changing direction, aim between where it goes instead of far ahead, and allow for the delay of the screen")));
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoshoot_predict", _("Allow for ping and walls"),
+			_("Lead by the time your ping and the screen add, stop a lead at a wall the enemy will run into, and lead instant-hit weapons when the ping is beyond what the server makes up for")));
 			setDependent(e, "cl_touch_autoshoot", 1, 1);
 	me.TR(me);
 		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoshoot_feet", _("Aim explosives at the feet"),
@@ -516,6 +516,13 @@ void XonoticMobileTacticsTab_fill(entity me)
 			e.addValue(e, "x2", "2");
 			e.configureXonoticTextSliderValues(e);
 			setDependent(e, "cl_touch_autoshoot_head", 1, 1);
+	me.TR(me);
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoshoot_combo", _("Electro combos"),
+			_("Lob Electro orbs at an enemy standing or coming at you, then set them off with the bolt")));
+			setDependent(e, "cl_touch_autoshoot_alt", 1, 1);
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_aimassist_lastseen", _("Hold where they were last seen"),
+			_("When the enemy you are fighting goes out of sight, keep the crosshair where it was last seen, for up to 3 seconds")));
+			setDependent(e, "cl_touch_aimassist", 1, 1);
 	me.TR(me);
 		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("A weapon you pick yourself is kept for 4 seconds.")));
 }

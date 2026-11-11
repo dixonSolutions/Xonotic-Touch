@@ -873,6 +873,33 @@ int main(void)
 	test_priority();
 	test_mates();
 	test_ammo();
+	{
+		// the ghost is built only from frames in sight
+		touch_wep_ghost_t g;
+		float o[3] = { 0, 0, 0 }, v[3] = { 300, 0, 0 }, hid[3] = { 500, 900, 0 }, hv[3] = { -300, 0, 0 }, out[3], conf;
+		memset(&g, 0, sizeof(g));
+		CHECK(!TouchWep_GhostPoint(&g, 1.0, out, &conf), "ghost: nothing before the enemy was seen");
+		TouchWep_GhostUpdate(&g, true, o, v, 1.0);
+		TouchWep_GhostUpdate(&g, false, hid, hv, 1.2); // sampled while hidden: must be ignored
+		TouchWep_GhostUpdate(&g, false, hid, hv, 1.4);
+		CHECK(TouchWep_GhostPoint(&g, 1.5, out, &conf) && fabs(out[0] - 150) < 1e-3 && fabs(out[1]) < 1e-3, "ghost: last seen point plus its velocity, never a hidden sample");
+		CHECK(TouchWep_GhostPoint(&g, 2.8, out, &conf) && fabs(out[0] - 300) < 1e-3, "ghost: after 1 s it stays where it was expected");
+		CHECK(fabs(conf - (1 - 1.8 / 3.0)) < 1e-3, "ghost: confidence falls over 3 s");
+		CHECK(!TouchWep_GhostPoint(&g, 4.1, out, &conf), "ghost: forgotten after 3 s");
+	}
+	CHECK(TouchWep_ElectroOrbs(TW_CLASS_STAND, 0, 600, 50, 0), "electro orbs: a standing enemy at 600");
+	CHECK(!TouchWep_ElectroOrbs(TW_CLASS_ERRATIC, 0, 600, 50, 0), "electro orbs: not a dodger (measured: lost)");
+	CHECK(!TouchWep_ElectroOrbs(TW_CLASS_STAND, 0, 600, 50, 2), "electro orbs: not at a group (measured: lost)");
+	CHECK(TouchWep_ElectroOrbs(TW_CLASS_STEADY, -300, 600, 50, 0), "electro orbs: one running at the player");
+	CHECK(!TouchWep_ElectroOrbs(TW_CLASS_STEADY, 0, 600, 50, 0), "electro orbs: not a steady strafer");
+	CHECK(!TouchWep_ElectroOrbs(TW_CLASS_STAND, 0, 200, 50, 0), "electro orbs: not inside 300 (the combo reaches the player)");
+	CHECK(!TouchWep_ElectroOrbs(TW_CLASS_STAND, 0, 1200, 50, 0), "electro orbs: not beyond the lob");
+	CHECK(!TouchWep_ElectroOrbs(TW_CLASS_STAND, 0, 600, 8, 0), "electro orbs: not without the cells for orbs and bolt");
+	{
+		int c;
+		for (c = 0; c < 4; c++)
+			CHECK_NEAR(1, TouchWep_LeadShare(c, 0.8f, 0.6f), 1e-6, "lead share: the full lead for every motion class (measured on bot movement)");
+	}
 	if (failures)
 	{
 		printf("%d of %d check(s) failed\n", failures, checks);

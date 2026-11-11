@@ -65,6 +65,12 @@ without the rest of the engine.
 #define TW_FALLBACK      64 // a last resort: auto-switch picks it only when nothing else owned can shoot
 #define TW_PIERCE       128 // the primary goes on through players it hits (Vortex, Vaporizer)
 
+// How a target moves.
+#define TW_CLASS_STAND   0
+#define TW_CLASS_STEADY  1
+#define TW_CLASS_ERRATIC 2
+#define TW_CLASS_AIR     3
+
 typedef struct touch_wep_fire_s
 {
 	int kind;
@@ -469,6 +475,21 @@ static float TouchWep_LeadScale(float t, float t_rev, float t_since)
 	return k < 0 ? 0 : k > 1 ? 1 : k;
 }
 
+// Share of a target's sideways motion to lead over a horizon of h seconds
+// (flight plus latency), by motion class. Replaying 230,000 frames of skill
+// 8-10 bot movement through the tracker (tests/touch-aim/eval_lead.c) at
+// 50 / 250 / 350 ms of ping, the full lead hit most often for every class,
+// dodgers included: a shrunk lead (TouchWep_LeadScale, tuned on scripted
+// dodgers that reverse like clockwork) cut the dodger shots landing within
+// 60 units at 500 units from 35 % to 15 % at 250 ms. So: the full lead.
+static float TouchWep_LeadShare(int mclass, float h, float t_rev)
+{
+	(void)mclass;
+	(void)h;
+	(void)t_rev;
+	return 1;
+}
+
 // How fast the part of the lead that comes from the target's motion may
 // move: TW_LEAD_SLEW times the target's own speed, and at least
 // TW_LEAD_SLEW_MIN units per second. A strafe that reverses flips that part
@@ -561,7 +582,7 @@ static const char *const touch_wep_why[] =
 {
 	"no target", "default primary", "not an auto-fire weapon", "melee in reach", "crylink spread",
 	"burst at long range", "beam out of range: bolt", "out of ammo: secondary", "too close for own splash",
-	"out of range", "secondary off: primary", "no ammo",
+	"out of range", "secondary off: primary", "no ammo", "orbs for a combo",
 };
 #define TW_WHY_NONE         0
 #define TW_WHY_DEFAULT      1
@@ -575,6 +596,7 @@ static const char *const touch_wep_why[] =
 #define TW_WHY_RANGE        9
 #define TW_WHY_ALT_OFF     10
 #define TW_WHY_NO_AMMO     11
+#define TW_WHY_ORBS        12
 
 static qbool tw_splash_unsafe(const touch_wep_t *w, const touch_wep_fire_t *f, float impact_dist)
 {
@@ -657,6 +679,71 @@ static int TouchWep_FireMode(const touch_wep_t *w, const touch_wep_situation_t *
 		}
 	}
 	return mode;
+}
+
+// Electro combo (cl_touch_autoshoot_combo): three orbs (30 each on touch,
+// 2 cells each) lobbed where the enemy is, then the primary bolt's blast
+// sets off every orb within 300 units, 50 damage each over 150 units. Worth
+// it against an enemy that stays within an orb's reach for the 1.2 s until
+// the bolt can follow: one standing or coming at the player. Measured (8 s,
+// local): standing 512 -> 622, running at the player and away 440 -> 592,
+// steady strafe 347 -> 422; a dodger 100 -> 70 and a group of three (whom
+// the bolt at the feet already catches) 1102 -> 1016 lost, so not those.
+// Not too close (the combo would reach the player) nor beyond the lob.
+#define TW_ORB_MIN      300.0f
+#define TW_ORB_MAX      900.0f
+#define TW_ORB_CELLS    10      // three orbs and a bolt
+#define TW_ORB_CYCLE    4.0f    // orbs live 4 s: no new ones while these may still go off
+static qbool TouchWep_ElectroOrbs(int mclass, float range_rate, float dist, int cells, int group)
+{
+	if (dist < TW_ORB_MIN || dist > TW_ORB_MAX || (cells >= 0 && cells < TW_ORB_CELLS) || group > 0)
+		return false;
+	return mclass == TW_CLASS_STAND || range_rate < -150;
+}
+
+// ---------------------------------------------------------------------------
+// Last seen: what the player knows of an enemy that went out of sight
+// ---------------------------------------------------------------------------
+
+// Built only from frames in which the enemy was in sight; a frame without
+// sight leaves it as it was. For TW_GHOST_PREDICT seconds the enemy is
+// expected along its last seen velocity, then at that point until
+// TW_GHOST_KEEP ("was there"), then it is forgotten.
+#define TW_GHOST_PREDICT 1.0f
+#define TW_GHOST_KEEP    3.0f
+typedef struct touch_wep_ghost_s
+{
+	float org[3], vel[3];
+	double seen;      // last time in sight, 0 never
+} touch_wep_ghost_t;
+
+static void TouchWep_GhostUpdate(touch_wep_ghost_t *g, qbool visible, const float org[3], const float vel[3], double now)
+{
+	int k;
+	if (!visible)
+		return;
+	for (k = 0; k < 3; k++)
+	{
+		g->org[k] = org[k];
+		g->vel[k] = vel[k];
+	}
+	g->seen = now;
+}
+
+// Where the enemy is expected now; false once it is forgotten. *conf: 1
+// just after it went out of sight, falling to 0 at TW_GHOST_KEEP.
+static qbool TouchWep_GhostPoint(const touch_wep_ghost_t *g, double now, float out[3], float *conf)
+{
+	float dt = (float)(now - g->seen), te;
+	int k;
+	if (g->seen <= 0 || dt < 0 || dt > TW_GHOST_KEEP)
+		return false;
+	te = dt < TW_GHOST_PREDICT ? dt : TW_GHOST_PREDICT;
+	for (k = 0; k < 3; k++)
+		out[k] = g->org[k] + g->vel[k] * te;
+	out[2] = g->org[2]; // along the floor it was on
+	*conf = 1 - dt / TW_GHOST_KEEP;
+	return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -1133,10 +1220,6 @@ static qbool TouchWep_DetonateGroup(const float rocket[3], const float rvel[3], 
 // ---------------------------------------------------------------------------
 
 // How the target moves.
-#define TW_CLASS_STAND   0
-#define TW_CLASS_STEADY  1
-#define TW_CLASS_ERRATIC 2
-#define TW_CLASS_AIR     3
 static const char *const touch_wep_class_name[] = { "standing", "steady strafe", "erratic", "airborne" };
 
 // Expected damage per second against one target at 150 / 400 / 800 / 1500 /
