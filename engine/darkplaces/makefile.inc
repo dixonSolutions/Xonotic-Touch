@@ -39,6 +39,7 @@ OBJ_COMMON= \
 	touch_aim.o \
 	touch_hook.o \
 	touch_turn.o \
+	touch_dodge.o \
 	vid_touchdetect.o \
 	cl_video.o \
 	cl_video_libavw.o \
