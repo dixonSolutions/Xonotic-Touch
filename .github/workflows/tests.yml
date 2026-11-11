@@ -36,6 +36,14 @@ jobs:
       - name: Lead, fire mode, weapon choice and detonation
         run: bash scripts/test-touch-aim.sh
 
+  touch-hook:
+    name: Touch fall rescue logic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Where a fall ends, the hook's anchor, when to fire and let go
+        run: bash scripts/test-touch-hook.sh
+
   release-changelog:
     name: Release changelog
     runs-on: ubuntu-latest
