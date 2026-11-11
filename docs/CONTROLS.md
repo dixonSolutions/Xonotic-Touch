@@ -734,7 +734,18 @@ every projectile seen.
 Limits: the stock balance is assumed (another server's damage or radii shift
 the judgement); a homing Seeker missile and the Mine Layer's mines are not
 dodged; more than eight shots at once are judged by the soonest eight; air control is
-not modelled, so a dodge in the air is judged as the ground one.
+not modelled, so a dodge in the air is judged as the ground one; flight is
+judged straight or under gravity, so 0.8.6 Crylink pellets, which steer to a
+join point mid-flight, are judged less well there than today's.
+
+Measured (a scripted bot on nexballarena, 18 shots per weapon from 400, 800
+and 1500 units at a player standing still or walking back along the shot,
+damage taken with dodge off -> on, stock 0.8.6 server / local match):
+Devastator 1440 -> 179..386 / 1440 -> 50..323, Mortar 382 -> 162 / 490 -> 211,
+Electro 720 -> 69..108 / 710 -> 184, Hagar 450 -> 38 / 450 -> 42, Crylink
+481 -> 330 / 597 -> 191. Most of what is left is the walking-back case, where
+the shot hits the wall behind. Hitscan: no change and no dodge. Edges of
+space-elevator: every escape inward, none off the edge.
 
 **Fire, zoom, weapons (recommended defaults):**
 

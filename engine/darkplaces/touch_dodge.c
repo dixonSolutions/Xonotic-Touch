@@ -206,6 +206,7 @@ void TouchDodge_Frame(void)
 	int i, best_ent = 0, mycolors, traces = 0;
 	const char *best_name = "";
 	int best_count = 0;
+	qbool gone = false;
 	float best_dist = 0;
 
 	td.buttons = 0;
@@ -257,7 +258,7 @@ void TouchDodge_Frame(void)
 	{
 		prvm_edict_t *ed = td.proj > 0 && td.proj < prog->num_edicts ? PRVM_EDICT_NUM(td.proj) : NULL;
 		if (!ed || ed->free || !is_projectile(prog, ed))
-			stop("the shot is gone");
+			gone = true; // looked at again below: the rest of a spread may still be coming
 		else if (now >= td.until)
 			stop("the shot has passed");
 	}
@@ -265,7 +266,7 @@ void TouchDodge_Frame(void)
 	// the shots coming: judged together (a Crylink's pellets, a Hagar burst,
 	// two players' rockets), the soonest TD_MAX_PROJ of them
 	memset(&best, 0, sizeof(best));
-	if (!td.active || now - td.judged >= REJUDGE)
+	if (!td.active || gone || now - td.judged >= REJUDGE)
 	{
 		td_proj_t prs[TD_MAX_PROJ];
 		float eta[TD_MAX_PROJ], dists[TD_MAX_PROJ];
@@ -281,9 +282,9 @@ void TouchDodge_Frame(void)
 			if (ed->free || !is_projectile(prog, ed))
 				continue;
 			kind = TouchDodge_Kind(proj_type(prog, ed));
-			if (!kind || (td.type_is_cnt && kind->kind != TD_KIND_ROCKET && kind->kind != TD_KIND_GRENADE
+			if (!kind || (td.type_is_cnt && td.draw_ofs < 0 && kind->kind != TD_KIND_ROCKET && kind->kind != TD_KIND_GRENADE
 				&& kind->kind != TD_KIND_ELECTRO_BEAM && kind->kind != TD_KIND_HAGAR))
-				continue; // .cnt is used by other entities too: only the common ones there
+				continue; // .cnt is used by other entities too: with only FL_PROJECTILE to go on, the common ones
 			VectorCopy(PRVM_clientedictvector(ed, origin), org);
 			proj_velocity(prog, ed, i, org, vel);
 			if (cl_touch_aim_debug.integer >= 3)
@@ -363,6 +364,18 @@ void TouchDodge_Frame(void)
 		}
 		traces = w.traces;
 		td.judged = now;
+		if (gone)
+		{
+			// the shot it was dodging hit or blew: carry on for the rest of
+			// the spread or burst if they are still worth it
+			if (nprs && best.base_damage >= mindmg * 0.5f)
+			{
+				td.proj = best_ent;
+				td.until = max(td.until, now + best.when + 0.1);
+			}
+			else
+				stop("the shot is gone");
+		}
 		if (!td.active && best.base_damage >= mindmg && best.plan > 0 && best.base_damage - best.damage >= mindmg * 0.5f)
 		{
 			// square to the shot's path (from the escape: its part across the shot)
