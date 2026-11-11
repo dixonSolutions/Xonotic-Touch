@@ -431,12 +431,123 @@ static void test_dodge_and_motion(void)
 	CHECK(TouchDodge_Kind(TD_KIND_ROCKET) != NULL, "rockets are");
 }
 
+static td_proj_t shot_full(int kind, float x, float y, float z, float vx, float vy, float vz, float gravity)
+{
+	td_proj_t p = shot(kind, x, y, z, vx, vy, vz, gravity);
+	const td_kind_t *k = TouchDodge_Kind(kind);
+	p.bounce = k->bounce;
+	p.fuse = k->fuse;
+	p.homing = k->homing;
+	p.accel = k->accel;
+	p.max_speed = k->max_speed;
+	p.prox = k->prox;
+	return p;
+}
+
+// Bounces, fuses, mines, homing, lying mines, the player's own run, the air,
+// a wall behind the player.
+static void test_refined(void)
+{
+	tr_world_t w;
+	td_player_t p;
+	td_move_t m = xonotic_move(0);
+	td_proj_t r;
+	td_choice_t c;
+	td_hazards_t hz;
+	static float path[TD_MAX_STEPS][3];
+	td_plan_t plan;
+	int go;
+	const float run_at[2] = { 0, -1 }; // toward the shooter (-y)
+
+	arena();
+	w = world();
+	p = standing(0, 0);
+
+	// a bouncing mortar grenade lobbed to land 120 short: it bounces on toward
+	// the player and blows 0.5 s after the bounce, next to them. As if it only
+	// counted on a touch (v1.2.140) that was nothing.
+	{
+		float t = 0.6f, dx = 700, vz = (0.5f * 800 * t * t - 40) / t;
+		r = shot_full(TD_KIND_GRENADE_BOUNCING, 0, -dx - 120, 40, 0, dx / t, vz, 800);
+		go = TouchDodge_Choose(&w, &r, &p, &m, still, 1.5f, 10, &c);
+		printf("  bouncing grenade landing short: carry on %.0f, %s -> %.0f\n", c.base_damage, c.chosen.name, c.damage);
+		CHECK(c.base_damage >= 30, "bouncing grenade: its bounce and fuse reach the player");
+		CHECK(go && c.damage < c.base_damage - 10, "bouncing grenade: an escape cuts it");
+	}
+
+	// a mine flying to land 40 units beside the player: it blows once they
+	// are within its reach, which they already are
+	r = shot_full(TD_KIND_MINE, 40, -400, 40, 0, 800, -60, 0);
+	go = TouchDodge_Choose(&w, &r, &p, &m, still, 1.0f, 10, &c);
+	printf("  mine landing beside the player: carry on %.0f, %s -> %.0f\n", c.base_damage, c.chosen.name, c.damage);
+	CHECK(c.base_damage > 0, "mine: lands and blows beside the player");
+
+	// a lying mine on the left: the escape from a rocket goes right
+	r = shot(TD_KIND_ROCKET, 0, -800, 40, 0, 1300, 0, 0);
+	hz.n = 1;
+	hz.radius = 157;
+	v3(hz.org[0], -150, 0, 4);
+	go = TouchDodge_ChooseAllHz(&w, &r, 1, &p, &m, still, 1.0f, 10, &hz, &c);
+	CHECK(go && c.chosen.dir[0] > 0.3f, "a mine on the left: the escape goes right");
+	// mines on both sides: no sideways escape near either
+	hz.n = 2;
+	v3(hz.org[1], 150, 0, 4);
+	go = TouchDodge_ChooseAllHz(&w, &r, 1, &p, &m, still, 1.0f, 10, &hz, &c);
+	CHECK(!go || fabsf(c.chosen.dir[0]) < 0.75f || c.rejected > 0, "mines on both sides: never into either");
+
+	// a seeker missile steers at the player: it hits however they step
+	r = shot_full(TD_KIND_SEEKER_MISSILE, 0, -500, 40, 0, 900, 0, 0);
+	go = TouchDodge_Choose(&w, &r, &p, &m, still, 1.2f, 10, &c);
+	printf("  seeker from 500: carry on %.0f, %s -> %.0f\n", c.base_damage, c.chosen.name, c.damage);
+	CHECK(c.base_damage >= 29, "seeker: a hit standing still");
+	CHECK(!go || c.damage < c.base_damage, "seeker: no escape taken that does no better");
+
+	// the player running at the shooter: of escapes that clear the rocket
+	// alike, one that keeps the run
+	r = shot(TD_KIND_ROCKET, 0, -900, 40, 0, 1300, 0, 0);
+	go = TouchDodge_Choose(&w, &r, &p, &m, run_at, 1.0f, 10, &c);
+	printf("  rocket while running at the shooter: carry on %.0f, %s -> %.0f\n", c.base_damage, c.chosen.name, c.damage);
+	CHECK(go && c.chosen.dir[1] < -0.3f, "running at the shooter: the escape keeps the run");
+
+	// a wall 80 units behind the player: a rocket at the chest, dodged
+	// sideways, blows on the wall beside them; out of that blast too
+	add_box(-400, 80, 0, 400, 100, 300, K_SOLID);
+	w = world();
+	r = shot(TD_KIND_ROCKET, 0, -800, 40, 0, 1300, 0, 0);
+	go = TouchDodge_Choose(&w, &r, &p, &m, still, 1.0f, 10, &c);
+	printf("  rocket at the chest, wall behind: carry on %.0f, %s -> %.0f\n", c.base_damage, c.chosen.name, c.damage);
+	CHECK(go && c.damage <= 40, "wall behind: clear of the hit and of most of the blast on the wall");
+
+	// in the air, strafe keys alone accelerate at most to the air strafe
+	// speed (Xonotic: 100), not the ground's 360
+	arena();
+	w = world();
+	p = standing(0, 0);
+	p.onground = 0;
+	p.org[2] = 200;
+	m.fwd[0] = 0; m.fwd[1] = -1;
+	m.airstrafeaccel = 18;
+	m.maxairstrafespeed = 100;
+	m.maxairspeed = 360;
+	memset(&plan, 0, sizeof(plan));
+	plan.dir[0] = 1;
+	td_player_path(&p, &m, &plan, 16, path);
+	printf("  air strafe model: %.0f sideways in 0.4 s\n", path[15][0]);
+	CHECK(path[15][0] < 45, "in the air: a strafe moves little (air strafe speed 100)");
+
+	// the blast margin: just outside the radius still counts as the edge
+	r = shot(TD_KIND_ROCKET, 0, 0, 0, 0, 0, 0, 0);
+	CHECK(td_splash(&r, r.radius + 10) == r.edge && td_splash(&r, r.radius + TD_SPLASH_MARGIN + 1) == 0,
+		"blast margin: the edge damage a little past the radius, then nothing");
+}
+
 int main(void)
 {
 	test_choices();
 	test_pellets();
 	test_never();
 	test_dodge_and_motion();
+	test_refined();
 	printf("%d checks, %d failed\n", checks, failures);
 	return failures ? 1 : 0;
 }

@@ -2225,6 +2225,7 @@ void TouchHUD_Draw(void)
 	float a;
 	float cx, cy, hx, hy;
 	frames_drawn++;
+	TouchDodge_DrawCue(); // over the port's CSQC HUD too
 	if (cursor_wanted())
 	{
 		if (!cursor_pills_shown())
