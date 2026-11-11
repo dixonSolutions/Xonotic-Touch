@@ -57,4 +57,16 @@ qbool TouchHook_Rescuing(void);
 // The engine HUD's HOOK finger.
 void TouchHook_SetHudButton(qbool down);
 
+// For touch_dodge.c: the world as touch_rescue.h traces it, and a bit of the
+// loaded CSQC's active_mutators.
+struct tr_world_s;
+void TouchHook_World(struct tr_world_s *w);
+qbool TouchHook_Mutator(int bit);
+
+// Auto dodge (touch_dodge.c), run from the hook's frame.
+void TouchDodge_Init(void);
+void TouchDodge_ProgsChanged(void);
+void TouchDodge_Frame(void);
+int TouchDodge_Buttons(void);
+
 #endif

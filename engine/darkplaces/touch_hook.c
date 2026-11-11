@@ -260,6 +260,12 @@ static tr_world_t th_world(void)
 	return w;
 }
 
+// The world as touch_rescue.h sees it, for touch_dodge.c.
+void TouchHook_World(struct tr_world_s *w)
+{
+	*w = th_world();
+}
+
 // ---------------------------------------------------------------------------
 // What hook there is
 // ---------------------------------------------------------------------------
@@ -291,6 +297,12 @@ static int mut_word(int ofs)
 	return th.mut_int ? PRVM_GLOBALFIELDVALUE(ofs)->_int : (int)PRVM_GLOBALFIELDVALUE(ofs)->_float;
 }
 
+// A bit of the loaded CSQC's active_mutators (bit 0: dodging, in every version).
+qbool TouchHook_Mutator(int bit)
+{
+	return bit < 24 ? (mut_word(th.mut_ofs0) & (1 << bit)) != 0 : (mut_word(th.mut_ofs1) & (1 << (bit - 24))) != 0;
+}
+
 // The server gives +hook to the offhand hook (and nothing else has it).
 static qbool offhand_hook(void)
 {
@@ -318,6 +330,7 @@ void TouchHook_ProgsChanged(void)
 {
 	bind_mutators();
 	bind_weapon();
+	TouchDodge_ProgsChanged();
 	th.switched = false;
 	th.prev_weapon = -1;
 	TouchRescue_Reset(&th.rs);
@@ -397,7 +410,7 @@ static void TouchHook_Up_f(cmd_state_t *cmd)
 
 int TouchHook_Buttons(void)
 {
-	return th.buttons;
+	return th.buttons | TouchDodge_Buttons();
 }
 
 // ---------------------------------------------------------------------------
@@ -703,6 +716,9 @@ void TouchHook_Frame(void)
 		}
 	}
 
+	// auto dodge: after the hook, which it stands down for
+	TouchDodge_Frame();
+
 	// the cost of judging falls, with cl_touch_aim_debug 2: once a second
 	if (th.traces)
 	{
@@ -737,6 +753,7 @@ static void TouchHook_Status_f(cmd_state_t *cmd)
 void TouchHook_Init(void)
 {
 	TouchTurn_Init();
+	TouchDodge_Init();
 	Cvar_RegisterVariable(&cl_touch_hook_rescue);
 	Cvar_RegisterVariable(&cl_touch_hook_rescue_turn);
 	Cvar_RegisterVariable(&cl_touch_hook_rescue_range);
