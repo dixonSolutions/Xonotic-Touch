@@ -322,8 +322,11 @@ const float TOUCH_HUD_WEP_GRIP = 12;
 const float TOUCH_WEPLIST_SCALE_DEF = 1.3;
 const float TOUCH_WEPLIST_SCALE_MIN = 0.7;
 const float TOUCH_WEPLIST_SCALE_MAX = 2.4;
-// Of the screen height: the most a strip may take, and the band it stays in.
-const float TOUCH_WEPLIST_FIT       = 0.92;
+// Of the screen height: the most a strip may take, and the band it stays in,
+// from below the top row of pills (MENU, CHAT and the engine's vote chip at
+// the end of it) to near the bottom edge.
+const float TOUCH_WEPLIST_FIT       = 0.83;
+const float TOUCH_WEPLIST_MARGIN_TOP = 0.13;
 const float TOUCH_WEPLIST_MARGIN    = 0.04;
 // The grip's touch area, as a share of the short axis: a 12-unit grip is a
 // sliver, so it reaches below the plate to a finger's width.
@@ -352,7 +355,7 @@ float Touch_Hud_WeaponsU(int rows)
 }
 
 // Centre of the plate, kept on screen: within the screen across, and within
-// 4%..96% of its height down.
+// 13%..96% of its height down.
 vector Touch_Hud_WeaponsCenter(int rows, float u)
 {
 	vector ui = Touch_UISize();
@@ -360,7 +363,7 @@ vector Touch_Hud_WeaponsCenter(int rows, float u)
 	float half_w = (TOUCH_HUD_WEP_W * 0.5 + TOUCH_HUD_WEP_PAD) * u;
 	float half_h = (rows * TOUCH_HUD_WEP_H + TOUCH_HUD_WEP_GRIP + 2 * TOUCH_HUD_WEP_PAD) * u * 0.5;
 	c.x = bound(half_w, c.x, ui.x - half_w);
-	c.y = bound(TOUCH_WEPLIST_MARGIN * ui.y + half_h, c.y, (1 - TOUCH_WEPLIST_MARGIN) * ui.y - half_h);
+	c.y = bound(TOUCH_WEPLIST_MARGIN_TOP * ui.y + half_h, c.y, (1 - TOUCH_WEPLIST_MARGIN) * ui.y - half_h);
 	c.z = 0;
 	return c;
 }
