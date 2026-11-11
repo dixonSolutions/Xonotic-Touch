@@ -308,7 +308,7 @@ harmlessly.
 | `touch_invert_y` | int | 0/1 | `0` | Flip pitch |
 | `touch_look_smoothing` | int | 0–2 | `1` | Fallback averaging when the 1€ filter is off |
 | `touch_look_filter` | int | 0/1 | `1` | 1€ adaptive filter: smooths slow aim, stays lag-free on flicks |
-| `touch_look_fcmin` | float | 0.5–5 | `1.5` | 1€ minimum cutoff (Hz) — lower = smoother at rest |
+| `touch_look_fcmin` | float | 0.5–5 | `3.0` | 1€ minimum cutoff (Hz) — lower = smoother at rest, higher = less lag on a slow drag (3.0: at most 16 ms behind on a gentle speed-up, jitter as at 1.5) |
 | `touch_look_beta` | float | 0–0.2 | `0.03` | 1€ speed coefficient — higher = less lag when fast |
 | `touch_look_deadzone_px` | int | 0–20 | `4` | Ignore micro-jitter on glass |
 | `touch_look_max_deg_per_s` | float | | `900` | Clamp against contact-jump spikes, at `touch_sens_base` 2.8; rises in proportion above that, so it never limits sensitivity |

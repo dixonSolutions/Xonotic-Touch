@@ -408,6 +408,7 @@ static qbool was_active;
 
 // look
 static float look_vel_x, look_vel_y, look_prev_raw_x, look_prev_raw_y, look_dvel_x, look_dvel_y;
+static float look_carry_x, look_carry_y, look_carry_dt; // movement too small to apply yet (look_apply)
 static qbool look_active;
 static double look_prev_time;
 
@@ -417,14 +418,24 @@ static double look_prev_time;
 // (MAX_KEY_BINDS); the port's CSQC uses 50001 (TOUCH_HOLD_KEY).
 #define TOUCH_HUD_HOLD_KEY 50000
 
+// Run a game command now, not at the next frame's turn of the command buffer:
+// this runs inside IN_Move, before the frame's move is built, so a press goes
+// out in this frame's move rather than the next (one frame of input lag, 33 ms
+// at the thermal profile's 30 fps). Only for commands that just set input
+// state (buttons, impulses); anything that opens a screen keeps the buffer.
+static void exec_now(const char *text)
+{
+	Cmd_ExecuteString(cmd_local, text, strlen(text), src_local, false); // maybe inside a buffered command already: no lock
+}
+
 static void set_key(const char *name, qbool *state, qbool down)
 {
 	char buf[64];
 	if (*state == down)
 		return;
 	*state = down;
-	dpsnprintf(buf, sizeof(buf), "%s%s %d\n", down ? "+" : "-", name, TOUCH_HUD_HOLD_KEY);
-	Cbuf_AddText(cmd_local, buf);
+	dpsnprintf(buf, sizeof(buf), "%s%s %d", down ? "+" : "-", name, TOUCH_HUD_HOLD_KEY);
+	exec_now(buf);
 }
 
 void TouchHUD_ReleaseAll(void)
@@ -1262,8 +1273,21 @@ static void look_apply(float raw_x, float raw_y, float dt)
 {
 	float vrx, vry, a, cutoff, dvx, dvy, da, k, yaw, pitch, cap;
 	dt = bound(1.0f / 240.0f, dt, 0.1f);
-	if (sqrt(raw_x * raw_x + raw_y * raw_y) < cv("touch_look_deadzone_px", 4) * 0.25f)
+	// A frame's movement under a quarter of the deadzone (1 px) is carried,
+	// not dropped, and applied once it adds up: a resting finger's sensor
+	// noise stays out (a 1 px hysteresis on its position) while a slow aiming
+	// drag still turns the view. Dropping it lost every drag slower than
+	// 1 px a frame -- 60 px/s at 60 fps -- and made slow aim depend on the
+	// frame rate.
+	look_carry_x += raw_x;
+	look_carry_y += raw_y;
+	look_carry_dt += dt;
+	if (sqrt(look_carry_x * look_carry_x + look_carry_y * look_carry_y) < cv("touch_look_deadzone_px", 4) * 0.25f)
 		return;
+	raw_x = look_carry_x;
+	raw_y = look_carry_y;
+	dt = bound(1.0f / 240.0f, look_carry_dt, 0.1f);
+	look_carry_x = look_carry_y = look_carry_dt = 0;
 	vrx = raw_x / dt;
 	vry = raw_y / dt;
 	if (cv("touch_look_filter", 1) == 0)
@@ -1291,7 +1315,7 @@ static void look_apply(float raw_x, float raw_y, float dt)
 		look_dvel_y += (dvy - look_dvel_y) * da;
 		look_prev_raw_x = vrx;
 		look_prev_raw_y = vry;
-		cutoff = max(cv("touch_look_fcmin", 1.5f), 0.01f)
+		cutoff = max(cv("touch_look_fcmin", 3.0f), 0.01f)
 			+ max(cv("touch_look_beta", 0.03f), 0.0f) * sqrt(look_dvel_x * look_dvel_x + look_dvel_y * look_dvel_y);
 		a = look_alpha(cutoff, dt);
 		look_vel_x += (vrx - look_vel_x) * a;
@@ -1322,6 +1346,7 @@ static void look_begin(void)
 	look_vel_x = look_vel_y = 0;
 	look_prev_raw_x = look_prev_raw_y = 0;
 	look_dvel_x = look_dvel_y = 0;
+	look_carry_x = look_carry_y = look_carry_dt = 0;
 	look_prev_time = host.realtime;
 }
 
@@ -1418,13 +1443,13 @@ static void weapon_gesture(finger_t *f, qbool up)
 		return;
 	if (fabs(dy) > swipe && fabs(dy) > fabs(dx))
 	{
-		Cbuf_AddText(cmd_local, dy < 0 ? "weapprev\n" : "weapnext\n");
+		exec_now(dy < 0 ? "weapprev" : "weapnext");
 		f->fired = true;
 		return;
 	}
 	if (up && host.realtime - f->down_time < 0.35 && fabs(dx) < swipe && fabs(dy) < swipe)
 	{
-		Cbuf_AddText(cmd_local, "weapnext\n");
+		exec_now("weapnext");
 		f->fired = true;
 	}
 }
@@ -1781,8 +1806,8 @@ void TouchHUD_Frame(void)
 				f->impulse = strip_hit(px, py);
 				if (f->impulse >= 0)
 				{
-					dpsnprintf(cmd, sizeof(cmd), "impulse %d\n", f->impulse);
-					Cbuf_AddText(cmd_local, cmd);
+					dpsnprintf(cmd, sizeof(cmd), "impulse %d", f->impulse);
+					exec_now(cmd);
 					strip_selected_impulse = f->impulse;
 				}
 			}
@@ -1793,11 +1818,11 @@ void TouchHUD_Frame(void)
 				f->grab_u = st.u;
 			}
 			if (f->role == ROLE_RELOAD)
-				Cbuf_AddText(cmd_local, "weapon_reload\n");
+				exec_now("weapon_reload");
 			if (f->role == ROLE_TURN)
 				TouchTurn_Start(); // on the press: nothing to undo
 			if (f->role == ROLE_DODGE)
-				Cbuf_AddText(cmd_local, "+dodge\n-dodge\n");
+				Cbuf_AddText(cmd_local, "+dodge\n-dodge\n"); // a press and release in one frame would never be seen
 		}
 		else
 		{
