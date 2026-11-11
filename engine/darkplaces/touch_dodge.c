@@ -58,7 +58,7 @@ extern cvar_t cl_sidespeed;
 cvar_t cl_touch_autododge = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autododge", "1",
 	"Touch controls: step aside from an enemy rocket, grenade, bolt or orb you can see coming, while you keep aiming. "
 	"Only in touch mode; a path of your own that already clears the shot is left alone"};
-cvar_t cl_touch_autododge_window = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autododge_window", "0.8",
+cvar_t cl_touch_autododge_window = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autododge_window", "1.2",
 	"Auto dodge: how far ahead a shot is judged, seconds (0.3 - 1.5), on top of the connection's delay"};
 cvar_t cl_touch_autododge_mindamage = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autododge_mindamage", "15",
 	"Auto dodge: only for a shot that would do at least this much damage, and an escape that saves at least half of it (5 - 100)"};
@@ -77,6 +77,7 @@ cvar_t cl_touch_autododge_rear = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autododge_re
 #define WINDOW_MAX        1.5f
 #define LEAD_MAX          0.6f    // the most a threat is flown ahead for the connection's delay
 #define LEAD_MARGIN       150.0f  // units of extra berth per second of that delay
+#define LEAD_STRICT       0.15f   // past this delay an escape must halve the damage, not just cut it
 #define JUDGE_BUDGET      0.003   // seconds: a judgement dearer than this skips the next frame
 #define SWITCH_GAIN       5.0f    // a dodge under way changes course only for this much less damage
 #define SWITCH_HOLD       0.15    // and not within this long of its last change, unless it would be hit
@@ -648,7 +649,7 @@ void TouchDodge_Frame(void)
 		else if (best.base_damage >= mindmg)
 		{
 			const char *name = names[0];
-			if (best.plan > 0 && best.base_damage - best.damage >= mindmg * 0.5f && best.damage <= best.base_damage * 0.5f)
+			if (best.plan > 0 && best.base_damage - best.damage >= mindmg * 0.5f && (lead <= LEAD_STRICT || best.damage <= best.base_damage * 0.5f))
 			{
 				int tk = ents[0] & (TRACK_MAX - 1);
 				int reaction = td.track[tk].ent == ents[0] && td.track[tk].danger_frame >= 0 ? td.frame - td.track[tk].danger_frame : -1;
