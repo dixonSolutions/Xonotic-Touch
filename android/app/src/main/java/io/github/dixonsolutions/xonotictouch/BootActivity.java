@@ -67,6 +67,15 @@ public final class BootActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (XonoticActivity.running) {
+            // The launcher icon while the game runs in the background (the game
+            // has a task of its own): back to it as it was. No update install and
+            // no data preparation under a running engine, which would end the
+            // player's match or join.
+            startActivity(new Intent(this, XonoticActivity.class));
+            finish();
+            return;
+        }
         setContentView(R.layout.boot);
 
         root = findViewById(R.id.boot_root);

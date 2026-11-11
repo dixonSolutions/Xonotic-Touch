@@ -30,6 +30,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class XonoticActivity extends SDLActivity {
 
     static final String EXTRA_BASEDIR = "io.github.dixonsolutions.xonotictouch.BASEDIR";
+    /** The game is up, in front or behind: BootActivity goes straight back to it. */
+    static volatile boolean running;
 
     private String baseDir;
     private Thread updateService;
@@ -85,6 +87,7 @@ public final class XonoticActivity extends SDLActivity {
         // Register before SDL starts its native thread in super.onCreate().
         EngineSwap.register(this);
         super.onCreate(savedInstanceState);
+        running = true;
         watchSoftKeyboard();
         watchInputDevices();
         startUpdateService();
@@ -93,6 +96,7 @@ public final class XonoticActivity extends SDLActivity {
 
     @Override
     protected void onDestroy() {
+        running = false;
         if (inputManager != null) {
             inputManager.unregisterInputDeviceListener(inputDeviceListener);
         }
