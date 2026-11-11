@@ -62,6 +62,8 @@ void TouchHook_SetHudButton(qbool down);
 struct tr_world_s;
 void TouchHook_World(struct tr_world_s *w);
 qbool TouchHook_Mutator(int bit);
+// The server runs the nades mutator (touch_nade.c).
+qbool TouchHook_NadesActive(void);
 
 // Auto dodge (touch_dodge.c), run from the hook's frame.
 void TouchDodge_Init(void);
