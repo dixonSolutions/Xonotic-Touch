@@ -12,6 +12,7 @@
 #include "touch_defs.qh"
 #include "touch_scores.qh"
 #include "touch_weapons.qh"
+#include "touch_spectate.qh"
 
 // Pressed and latched visuals cannot be reached from a screenshot harness: a
 // virtual uinput touchscreen is not routed to the game window, so the only way
@@ -181,8 +182,11 @@ void Touch_DrawOverlay(float overlayAlpha)
 		Touch_Chat_DrawPill(overlayAlpha);
 		Touch_Console_Draw(overlayAlpha);
 		Touch_Scores_DrawPill(overlayAlpha);
-		Touch_Vote_Draw(overlayAlpha);
 	}
+
+	// Spectating: the spectator controls instead of the play ones.
+	if (!Touch_CustomizeActive() && Touch_Spec_DrawOverlay(overlayAlpha))
+		return;
 
 	if (autocvar_touch_move_visible || autocvar_touch_debug)
 		Touch_DrawMoveStick(overlayAlpha);
@@ -197,6 +201,10 @@ void Touch_DrawOverlay(float overlayAlpha)
 
 	if (autocvar_touch_jump_visible || autocvar_touch_debug)
 		Touch_DrawHopBar(overlayAlpha);
+	if (Touch_HopLockShown())
+		Touch_Widget_Check(Touch_WidgetCenter(autocvar_touch_hoplock_x, autocvar_touch_hoplock_y, autocvar_touch_hoplock_size),
+			Touch_WidgetHalfExtents(autocvar_touch_hoplock_size, 1), TOUCH_LABEL_HOPLOCK,
+			Touch_HopLatched() || Touch_PreviewStates(), Touch_HopLockHeld(), overlayAlpha, TOUCH_C_ACCENT);
 
 	if (autocvar_touch_crouch_visible || autocvar_touch_debug)
 		Touch_DrawCircleWidget(autocvar_touch_crouch_x, autocvar_touch_crouch_y,
@@ -263,8 +271,6 @@ void Touch_Draw(void)
 				Touch_Console_Draw(a * 0.6);
 				Touch_Scores_DrawPill(a * 0.6);
 			}
-			if (Touch_DeskActive())
-				Touch_Vote_Draw(a);
 		}
 		return;
 	}

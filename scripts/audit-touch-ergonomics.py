@@ -55,6 +55,9 @@ WIDGETS = [
     # for the left index finger, which this thumb model does not cover.
     ("ALT",     "touch_fire2",  "right", "button"),
     ("JUMP",    "touch_jump",   "right", "button"),
+    # The keep-jumping chip (touch_hop_mode 3): must stay clear of HOP, FIRE,
+    # DUCK, ALT and the strip so only a deliberate tap reaches it.
+    ("HOPLOCK", "touch_hoplock", "right", "button"),
     ("CROUCH",  "touch_crouch", "right", "button"),
     ("WEAPON",  "touch_weapon", "right", "button"),
     ("ZOOM",    "touch_zoom",   "right", "button"),

@@ -27,6 +27,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "touch_ui.h"
 #include "csprogs.h"
 #include "touch_hud.h"
+#include "touch_vote.h"
 #include "screen.h"
 
 #ifndef __IPHONEOS__
@@ -1037,6 +1038,29 @@ qbool VID_SDL_HasTouchDevices(void)
 	return false;
 }
 
+// Touch: inside a long loading frame the events wait in SDL's queue until it
+// is over. A finger down in the normalised rectangle, or Back / Escape,
+// queued meanwhile: true, and the fingers and keys are dropped from the queue
+// (touch_hud.c, CANCEL on the loading screen).
+qbool VID_TouchQueuedTap(float x0, float y0, float x1, float y1)
+{
+	SDL_Event ev[64];
+	int i, n;
+	SDL_PumpEvents();
+	n = SDL_PeepEvents(ev, 64, SDL_PEEKEVENT, SDL_KEYDOWN, SDL_FINGERMOTION);
+	for (i = 0; i < n; i++)
+	{
+		if ((ev[i].type == SDL_KEYDOWN && (ev[i].key.keysym.sym == SDLK_AC_BACK || ev[i].key.keysym.sym == SDLK_ESCAPE))
+			|| (ev[i].type == SDL_FINGERDOWN && ev[i].tfinger.x >= x0 && ev[i].tfinger.x <= x1 && ev[i].tfinger.y >= y0 && ev[i].tfinger.y <= y1))
+		{
+			SDL_FlushEvents(SDL_FINGERDOWN, SDL_FINGERMOTION);
+			SDL_FlushEvents(SDL_KEYDOWN, SDL_KEYUP);
+			return true;
+		}
+	}
+	return false;
+}
+
 // Keys that say someone is playing on a keyboard: letters, digits,
 // punctuation, arrows, keypad, space / enter / tab / backspace and the
 // modifiers. Not Escape or Back (a phone's back gesture arrives as a key),
@@ -1972,7 +1996,16 @@ void Sys_SDL_HandleEvents(void)
 				Con_DPrintf("SDL_FINGERDOWN for finger %i\n", (int)event.tfinger.fingerId);
 #endif
 				if (VID_TouchIsDirect(event.tfinger.touchId))
+				{
 					VID_NoteTouchUse();
+					// Touch: a finger on the screen means the window has focus. A
+					// FOCUS_LOST with no FOCUS_GAINED after it (a live engine swap,
+					// a system popup) otherwise holds a local game paused for good.
+					vid_hasfocus = true;
+				}
+				// Touch: a finger on the vote chip or card stays out of the table
+				if (TouchVote_Finger(0, (int)event.tfinger.fingerId + 1, event.tfinger.x, event.tfinger.y))
+					break;
 				for (i = 0;i < MAXFINGERS-1;i++)
 				{
 					if (!multitouch[i][0])
@@ -1995,6 +2028,8 @@ void Sys_SDL_HandleEvents(void)
 #endif
 				if (VID_TouchIsDirect(event.tfinger.touchId))
 					VID_NoteTouchActivity();
+				if (TouchVote_Finger(2, (int)event.tfinger.fingerId + 1, event.tfinger.x, event.tfinger.y)) // Touch
+					break;
 				for (i = 0;i < MAXFINGERS-1;i++)
 				{
 					if (multitouch[i][0] == event.tfinger.fingerId + 1 && !vid_finger_lift[i])
@@ -2017,6 +2052,8 @@ void Sys_SDL_HandleEvents(void)
 #endif
 				if (VID_TouchIsDirect(event.tfinger.touchId))
 					VID_NoteTouchActivity();
+				if (TouchVote_Finger(1, (int)event.tfinger.fingerId + 1, event.tfinger.x, event.tfinger.y)) // Touch
+					break;
 				for (i = 0;i < MAXFINGERS-1;i++)
 				{
 					if (multitouch[i][0] == event.tfinger.fingerId + 1)

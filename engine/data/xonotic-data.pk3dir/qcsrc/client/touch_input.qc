@@ -11,6 +11,7 @@
 #include "touch_defs.qh"
 #include "touch_weapons.qh"
 #include "touch_scores.qh"
+#include "touch_spectate.qh"
 #include "view.qh"
 #include <common/weapons/all.qh>
 #include <common/mapvoting/_mod.qh>
@@ -23,6 +24,9 @@ vector touch_finger_down_pos[TOUCH_MAX_FINGERS];
 vector touch_finger_last_pos[TOUCH_MAX_FINGERS];
 vector touch_finger_prev_pos[TOUCH_MAX_FINGERS];
 vector touch_finger_accum[TOUCH_MAX_FINGERS];
+// Down and lost times are on the frame clock, not `time`: game time stops
+// while the game is paused, and on it a lifted finger was never let go, so
+// the move stick stayed pushed (and lit) until the pause ended.
 float touch_finger_down_time[TOUCH_MAX_FINGERS];
 float touch_finger_lost_time[TOUCH_MAX_FINGERS];
 bool touch_finger_first[TOUCH_MAX_FINGERS];
@@ -173,7 +177,8 @@ bool Touch_AnyFingerDown(void)
 // mode with a keyboard, or Keyboard & mouse): the move stick, FIRE and the other
 // play controls are off, and the mouse aims. The screen is still a touchscreen,
 // so what a finger can usefully reach stays: the weapons strip and its grip,
-// the chrome pills (touch_desk_pills), and a vote's YES and NO.
+// and the chrome pills (touch_desk_pills). The engine's vote chip takes its
+// own fingers before they reach here (touch_vote.c).
 //
 // vid_touchscreen_detected is the engine's "a touchscreen exists" from its
 // hardware scan (vid_touchdetect.c). A finger on the glass is proof enough too:
@@ -210,6 +215,10 @@ string Touch_CommandLabel(string command)
 {
 	if (!cvar("vid_touchscreen"))
 		return "";
+	// Spectating, the prompts name the spectator buttons (touch_spectate.qc).
+	string spec_label = Touch_Spec_CommandLabel(command);
+	if (spec_label != "")
+		return spec_label;
 	if (command == "+jump" && autocvar_touch_jump_visible)
 		return TOUCH_LABEL_JUMP;
 	// Xonotic's own binds use +fire; +attack is the engine name underneath it.
@@ -284,6 +293,7 @@ void Touch_SetHook(bool down)
 
 void Touch_ReleaseAll(void)
 {
+	Touch_Spec_Release();
 	int i;
 	Touch_SetKey("forward", false);
 	Touch_SetKey("back", false);
@@ -360,10 +370,6 @@ bool Touch_RoleOwned(int role)
 
 int Touch_AssignRole(vector p)
 {
-	// On top of everything while it lasts: a vote waits on an answer.
-	if (Touch_Vote_PillHit(p))
-		return TOUCH_ROLE_VOTE;
-
 	bool pills = !touch_desk || autocvar_touch_desk_pills;
 	if (pills && Touch_Console_Hit(p))
 		return TOUCH_ROLE_CON;
@@ -376,6 +382,11 @@ int Touch_AssignRole(vector p)
 
 	if (pills && Touch_Scores_PillHit(p))
 		return TOUCH_ROLE_SCORES;
+
+	// Spectating, the controls mean what the spectator code reads (touch_spectate.qc).
+	int spec_role = Touch_Spec_AssignRole(p);
+	if (spec_role != TOUCH_ROLE_NONE)
+		return spec_role;
 
 	// Before the rows: the grip's area starts where the last row ends, and the
 	// rows are inflated for fat fingers.
@@ -400,6 +411,8 @@ int Touch_AssignRole(vector p)
 		return TOUCH_ROLE_FIRE2;
 	if (autocvar_touch_jump_visible && Touch_HitRect(p, autocvar_touch_jump_x, autocvar_touch_jump_y, autocvar_touch_jump_size, autocvar_touch_jump_aspect, 1.10))
 		return TOUCH_ROLE_JUMP;
+	if (Touch_HopLockShown() && Touch_HopLockHit(p))
+		return TOUCH_ROLE_HOPLOCK;
 	if (autocvar_touch_crouch_visible && Touch_HitCircle(p, autocvar_touch_crouch_x, autocvar_touch_crouch_y, autocvar_touch_crouch_size, 1.10))
 		return TOUCH_ROLE_CROUCH;
 	if (autocvar_touch_weapon_visible && Touch_HitCircle(p, autocvar_touch_weapon_x, autocvar_touch_weapon_y, autocvar_touch_weapon_size, 1.10))
@@ -449,7 +462,7 @@ int Touch_ClaimFinger(int src, vector pos)
 		touch_finger_last_pos[i] = pos;
 		touch_finger_prev_pos[i] = pos;
 		touch_finger_accum[i] = '0 0 0';
-		touch_finger_down_time[i] = time;
+		touch_finger_down_time[i] = gettime(GETTIME_FRAMESTART);
 		touch_finger_lost_time[i] = 0;
 		touch_finger_first[i] = true;
 		touch_finger_live[i] = true;
@@ -463,8 +476,6 @@ int Touch_ClaimFinger(int src, vector pos)
 			Touch_Chat_OnDown(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_SCORES)
 			Touch_Scores_OnDown(pos);
-		else if (touch_finger_role[i] == TOUCH_ROLE_VOTE)
-			Touch_Vote_OnDown(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_WEPSIZE)
 			Touch_Hud_GripBegin(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_LOOK)
@@ -586,21 +597,21 @@ void Touch_PollFingers(void)
 		// Chrome pills must not use the lost-finger grace (B4 + pause realtime):
 		// a pill is a discrete tap that commits on release, and keeping the
 		// finger alive past the release would re-fire it on the next frame.
-		// The grip and the vote pills too: a lost frame is no reason to hold a
-		// resize open, and a vote is a tap like the pills.
+		// The grip too: a lost frame is no reason to hold a resize open.
 		int role = touch_finger_role[i];
 		if (role == TOUCH_ROLE_CON || role == TOUCH_ROLE_PAUSE || role == TOUCH_ROLE_CHAT
-			|| role == TOUCH_ROLE_SCORES || role == TOUCH_ROLE_VOTE || role == TOUCH_ROLE_WEPSIZE)
+			|| role == TOUCH_ROLE_SCORES || role == TOUCH_ROLE_WEPSIZE
+			|| role == TOUCH_ROLE_HOPLOCK)
 		{
 			vector up = touch_finger_last_pos[i];
-			if (role == TOUCH_ROLE_CON)
+			if (role == TOUCH_ROLE_HOPLOCK)
+				Touch_HopLock_OnUp(up);
+			else if (role == TOUCH_ROLE_CON)
 				Touch_Console_OnUp(up);
 			else if (role == TOUCH_ROLE_PAUSE)
 				Touch_Pause_OnUp(up);
 			else if (role == TOUCH_ROLE_SCORES)
 				Touch_Scores_OnUp(up);
-			else if (role == TOUCH_ROLE_VOTE)
-				Touch_Vote_OnUp(up);
 			else if (role == TOUCH_ROLE_WEPSIZE)
 				Touch_Hud_GripEnd();
 			else
@@ -612,8 +623,8 @@ void Touch_PollFingers(void)
 			continue;
 		}
 		if (touch_finger_lost_time[i] <= 0)
-			touch_finger_lost_time[i] = time;
-		if (time - touch_finger_lost_time[i] < grace)
+			touch_finger_lost_time[i] = gettime(GETTIME_FRAMESTART);
+		if (gettime(GETTIME_FRAMESTART) - touch_finger_lost_time[i] < grace)
 		{
 			touch_finger_live[i] = true;
 			touch_finger_accum[i] = '0 0 0';
@@ -676,7 +687,7 @@ void Touch_TickDebugCmds(void)
 }
 
 // One frame of a finger on something that is not a play control: the pills,
-// the strip's grip, a vote. False for any other role.
+// the strip's grip. False for any other role.
 bool Touch_ChromeFingerFrame(int role, vector pos)
 {
 	if (role == TOUCH_ROLE_CON)
@@ -690,8 +701,6 @@ bool Touch_ChromeFingerFrame(int role, vector pos)
 		Touch_Chat_OnMove(pos);
 	else if (role == TOUCH_ROLE_SCORES)
 		Touch_Scores_OnMove(pos);
-	else if (role == TOUCH_ROLE_VOTE)
-		Touch_Vote_OnMove(pos);
 	else if (role == TOUCH_ROLE_WEPSIZE)
 		Touch_Hud_GripMove(pos);
 	else
@@ -839,7 +848,11 @@ void Touch_Frame(void)
 
 		if (Touch_ChromeFingerFrame(role, pos))
 		{
-			// a pill, the strip's grip or a vote: nothing to hold
+			// a pill or the strip's grip: nothing to hold
+		}
+		else if (Touch_Spec_FingerFrame(role, touch_finger_first[i]))
+		{
+			// a spectator button: collected in Touch_Spec_Frame
 		}
 		else if (role == TOUCH_ROLE_MOVE)
 		{
@@ -925,8 +938,19 @@ void Touch_Frame(void)
 	Touch_ReportWeaponClass();
 	Touch_ReportHudState((look_active || fire_count > 0) ? 1 : 0);
 
+	Touch_Spec_Frame();
+	if (touch_spec_attack)
+		fire_count += 1;
+	if (touch_spec_attack2)
+		fire2_down = true;
+	if (touch_spec_jump)
+		jump_down = true;
+	touch_spec_attack = false;
+	touch_spec_attack2 = false;
+
 	bool pressed_fire = fire_count > 0;
-	bool tap_fire = time < touch_tapfire_until;
+	// Spectating, +attack is "follow" / "next player": a look tap must not send it.
+	bool tap_fire = time < touch_tapfire_until && !Touch_Spec_State();
 	if (autocvar_touch_fire_mode == TOUCH_FIRE_TOGGLE)
 	{
 		if (pressed_fire && !touch_fire_edge)
@@ -995,6 +1019,14 @@ void Touch_Frame(void)
 			&& time - touch_hop_press_time >= autocvar_touch_hop_latch_ms * 0.001)
 			touch_hop_latched = true;
 		Touch_SetKey("jump", touch_hop_latched || (jump_down && !touch_hop_cancelling));
+	}
+	else if (autocvar_touch_hop_mode == TOUCH_HOP_CHIP)
+	{
+		// HOP is a plain button; only the chip sets and clears the latch
+		// (Touch_HopLock_OnUp). A dead player drops it: held jump respawns.
+		if (STAT(HEALTH) <= 0)
+			touch_hop_latched = false;
+		Touch_SetKey("jump", jump_down || touch_hop_latched);
 	}
 	else if (autocvar_touch_hop_mode == TOUCH_HOP_AUTO)
 	{
@@ -1105,6 +1137,35 @@ bool Touch_JumpHeld(void)
 bool Touch_HopLatched(void)
 {
 	return touch_hop_latched && autocvar_touch_hop_mode != TOUCH_HOP_HOLD;
+}
+
+// The keep-jumping chip: only in its hop mode, never for a spectator (jump is
+// "join" there).
+bool Touch_HopLockShown(void)
+{
+	return autocvar_touch_hop_mode == TOUCH_HOP_CHIP && autocvar_touch_hoplock_visible;
+}
+
+bool Touch_HopLockHit(vector p)
+{
+	return Touch_HitRect(p, autocvar_touch_hoplock_x, autocvar_touch_hoplock_y, autocvar_touch_hoplock_size, 1, 1.10);
+}
+
+bool Touch_HopLockHeld(void)
+{
+	return Touch_RoleOwned(TOUCH_ROLE_HOPLOCK);
+}
+
+// A tap: the finger landed on the chip (Touch_AssignRole) and lifts on it. A
+// finger that slides off first changes nothing, and one that started on HOP
+// never becomes the chip's.
+void Touch_HopLock_OnUp(vector p)
+{
+	if (!Touch_HopLockShown() || !Touch_HopLockHit(p) || spectatee_status != 0 || STAT(HEALTH) <= 0)
+		return;
+	touch_hop_latched = !touch_hop_latched;
+	if (autocvar_touch_debug)
+		print("touch: keep jumping ", (touch_hop_latched ? "on" : "off"), "\n");
 }
 
 bool Touch_Fire2Held(void)
@@ -1287,6 +1348,7 @@ string Touch_DebugRoleName(int role)
 	if (role == TOUCH_ROLE_ZOOM) return "ZOOM";
 	if (role == TOUCH_ROLE_HOOK) return "HOOK";
 	if (role == TOUCH_ROLE_TURN) return "TURN";
+	if (role == TOUCH_ROLE_HOPLOCK) return "KEEP";
 	if (role == TOUCH_ROLE_DODGE) return "DODGE";
 	if (role == TOUCH_ROLE_RELOAD) return "R";
 	if (role == TOUCH_ROLE_CON) return "CON";
@@ -1294,7 +1356,6 @@ string Touch_DebugRoleName(int role)
 	if (role == TOUCH_ROLE_CHAT) return "CHAT";
 	if (role == TOUCH_ROLE_SCORES) return "SCORE";
 	if (role == TOUCH_ROLE_WEPSIZE) return "GRIP";
-	if (role == TOUCH_ROLE_VOTE) return "VOTE";
 	if (role == TOUCH_ROLE_SHEET) return "SHEET";
 	if (role == TOUCH_ROLE_IGNORED) return "IGN";
 	return "-";

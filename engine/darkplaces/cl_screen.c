@@ -10,6 +10,7 @@
 #include "r_stats.h"
 #include "touch_ui.h"
 #include "touch_hud.h"
+#include "touch_vote.h"
 #ifdef CONFIG_VIDEO_CAPTURE
 #include "cap_avi.h"
 #include "cap_ogg.h"
@@ -930,6 +931,7 @@ void CL_Screen_Init(void)
 	Cvar_RegisterVariable(&vid_touchscreen_overlayalpha);
 	TouchUI_RegisterCvars();
 	TouchUI_Init();
+	TouchVote_Init(); // Touch: vote chip and card (touch_vote.c)
 	Cvar_RegisterVariable(&r_speeds_graph);
 	for (i = 0;i < (int)(sizeof(r_speeds_graph_filter)/sizeof(r_speeds_graph_filter[0]));i++)
 		Cvar_RegisterVariable(&r_speeds_graph_filter[i]);
@@ -1566,6 +1568,7 @@ static void SCR_DrawTouchscreenOverlay(void)
 	TouchHUD_SyncStockPanels();
 	// Engine copy of the Touch HUD, only while a server's CSQC is running.
 	TouchHUD_Draw();
+	TouchVote_Draw(); // Touch: vote chip and card, over either touch HUD
 
 	// Console / chat sheet shade (cvar-driven).
 	if (kd == key_console)
@@ -1855,8 +1858,8 @@ static void SCR_DrawScreen (void)
 		}
 		else
 			SCR_DrawLoadingScreen();
-		TouchHUD_DrawLoading(); // Touch: CANCEL on a touchscreen
 	}
+	TouchHUD_DrawLoading(); // Touch: CANCEL while joining, on a touchscreen
 
 	SCR_DrawConsole();
 	SCR_DrawInfobar();

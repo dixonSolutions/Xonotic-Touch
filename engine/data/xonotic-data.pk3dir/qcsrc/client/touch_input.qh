@@ -37,6 +37,11 @@ bool Touch_ZoomHeld(void);
 bool Touch_HookAvailable(void);
 bool Touch_HookHeld(void);
 float Touch_HookAlpha(void);
+// The keep-jumping chip (touch_hop_mode 3) and its tap.
+bool Touch_HopLockShown(void);
+bool Touch_HopLockHit(vector p);
+bool Touch_HopLockHeld(void);
+void Touch_HopLock_OnUp(vector p);
 // TURN takes touches (touch_turn_visible, no mouse aiming).
 bool Touch_TurnAvailable(void);
 bool Touch_TurnHeld(void);

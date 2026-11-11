@@ -288,6 +288,7 @@ void VID_GetTouchFinger(int slot, int *active, float *nx, float *ny);
 // Dynamic touch hardware detection (vid_touchdetect.c).
 // mode: 0 = off, 1 = auto (use detected hardware), 2 = always on.
 qbool VID_SDL_HasTouchDevices(void);
+qbool VID_TouchQueuedTap(float x0, float y0, float x1, float y1);
 void VID_DetectTouchHardware(qbool *has_touchscreen, qbool *is_touch_only);
 void VID_ApplyTouchscreenMode(void);
 void VID_TouchDetect_Init(void);
