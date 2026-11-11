@@ -6,6 +6,12 @@ const int TOUCH_MAX_FINGERS = 4;
 const int TOUCH_ENGINE_SLOTS = 10;
 const int TOUCH_SRC_POINTER = 10;
 
+// The key number touch holds its buttons with (+forward 50001, -forward 50001).
+// A bare -forward clears every holder, so letting go of the stick used to drop
+// a W still held on the keyboard as well. Real keys stop below 0xAC00
+// (MAX_KEY_BINDS); the engine's own HUD uses 50000 (touch_hud.c).
+#define TOUCH_HOLD_KEY "50001"
+
 const int TOUCH_ROLE_NONE = -1;
 const int TOUCH_ROLE_IGNORED = -2;
 const int TOUCH_ROLE_MOVE = 0;
@@ -24,6 +30,16 @@ const int TOUCH_ROLE_PAUSE = 107;
 const int TOUCH_ROLE_SHEET = 108;
 const int TOUCH_ROLE_CHAT = 109;
 const int TOUCH_ROLE_SCORES = 110;
+// The weapons strip's resize grip (Touch_Hud_GripBegin).
+const int TOUCH_ROLE_WEPSIZE = 111;
+// The grappling hook, held (Touch_SetHook).
+const int TOUCH_ROLE_HOOK = 113;
+// The quick turn (touch_turn, on the press).
+const int TOUCH_ROLE_TURN = 114;
+// The keep-jumping chip beside HOP (touch_hop_mode 3): a tap, on release.
+const int TOUCH_ROLE_HOPLOCK = 115;
+// The NADE row under the weapons: held, the offhand grenade cooks (+touch_nade).
+const int TOUCH_ROLE_NADE = 116;
 
 // One name per control. Three places have to agree on it: the drawn label, the
 // handle in edit mode, and the prompts the stock panels build out of key binds
@@ -37,6 +53,10 @@ const string TOUCH_LABEL_CROUCH = "DUCK";
 const string TOUCH_LABEL_WEAPON = "WEP";
 const string TOUCH_LABEL_RELOAD = "RLD";
 const string TOUCH_LABEL_DODGE = "DASH";
+const string TOUCH_LABEL_HOOK = "HOOK";
+const string TOUCH_LABEL_TURN = "TURN";
+// Under the keep-jumping chip's box: the box says on / off, the word says what.
+const string TOUCH_LABEL_HOPLOCK = "KEEP";
 
 const int TOUCH_PAUSE_IDLE = 0;
 const int TOUCH_PAUSE_ARMING = 1;
@@ -60,12 +80,14 @@ const int TOUCH_WEAPON_CYCLE = 2;
 const int TOUCH_FIRE_HOLD = 0;
 const int TOUCH_FIRE_TOGGLE = 1;
 
-// Bunny-hopping in Xonotic means holding jump, not tapping it, so the default is
-// a latch: a held state needs a toggle, not a dedicated finger.
-// See docs/TOUCH_UX_REDESIGN.md §6.1.
+// Bunny-hopping in Xonotic means holding jump, not tapping it, so a held state
+// needs a toggle, not a dedicated finger. The default puts that toggle on its
+// own chip beside HOP: latching HOP by holding it caught players who only
+// meant to jump. See docs/TOUCH_UX_REDESIGN.md §6.1.
 const int TOUCH_HOP_HOLD  = 0;
 const int TOUCH_HOP_LATCH = 1;
 const int TOUCH_HOP_AUTO  = 2;
+const int TOUCH_HOP_CHIP  = 3;
 
 // Look filtering. The fixed exponential smoother costs latency at every speed;
 // the 1 euro filter adapts its cutoff to thumb speed instead.
@@ -93,7 +115,11 @@ const int TOUCH_WIDGET_WEAPON = 4;
 const int TOUCH_WIDGET_ZOOM = 5;
 const int TOUCH_WIDGET_RELOAD = 6;
 const int TOUCH_WIDGET_DODGE = 7;
-const int TOUCH_WIDGET_COUNT = 8;
+const int TOUCH_WIDGET_FIRE2 = 8;
+const int TOUCH_WIDGET_HOOK = 9;
+const int TOUCH_WIDGET_TURN = 10;
+const int TOUCH_WIDGET_HOPLOCK = 11;
+const int TOUCH_WIDGET_COUNT = 12;
 
 // Customize-mode toolbar actions, in on-screen order left to right.
 const int TOUCH_CUSTOMIZE_SAVE = 0;

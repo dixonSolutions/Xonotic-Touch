@@ -152,6 +152,55 @@ server queries, and the server browser would list nothing. `start.sh` passes
 it for the window title and undoes that with `-customgamenetworkfiltername
 Xonotic`.
 
+## In the background
+
+Home, the app switcher, another app on top or the screen turned off do not
+end a match, a join or a download:
+
+* **Connected to a server**: the engine keeps running without drawing
+  (`touch_android.c`). SDL's default would block its main thread from
+  `onPause`/`onStop` until the return; no packet went out and the server
+  dropped the player after `net_messagetimeout` (30 s in Xonotic). Now it
+  reads and sends packets at `cl_maxidlefps` and the player stays in the
+  match, standing still: a public server is never paused, so they can be
+  killed meanwhile. A map change while away loads in the background.
+* **Joining** (waiting for the server, curl downloading the server's maps,
+  loading the map): carries on. The map loads into the GL context bound
+  without a surface (`EGL_KHR_surfaceless_context`); on a device without that
+  extension the load waits for the return. The player comes back to the
+  loading screen while the join runs, or to the game once it is done.
+* **First-launch data download**: carries on; when it finishes while away, a
+  notification says the game is ready and the next return starts it.
+* **Local game**: paused while away (the engine waits for the return, using
+  no CPU) and running again on return. In the main menu with nothing going
+  on, the engine waits the same way.
+
+While the engine is connected, joining or downloading (it writes the state to
+`userdata/data/touch_netstate`, which `XonoticActivity` reads every 2 s), and
+while the first-launch download runs, `KeepAliveService` is a foreground
+service with a notification ("Xonotic Touch is staying connected: Connected
+to <server> - <map>") and holds a partial wake lock. Without it Android
+freezes a background app's process within seconds (Android 14+), can kill it
+for memory, and lets the CPU sleep with the screen off. The service stops as
+soon as the engine is idle. Android 12+ only lets it start while the app is in
+front, which is when a join starts; later changes only update the
+notification. If notifications are denied (Android 13+) the service still
+runs, without a visible notification.
+
+The launcher icon brings a running game back as it was: the boot screen does
+not prepare data or install a downloaded update under it. Under an AndySU host
+a live engine swap is declined while connected, joining or downloading and
+applies on the next start.
+
+Limits: if Android kills the process anyway (some vendors' battery savers do,
+foreground service or not), or the player swipes the game out of the recent
+apps, the connection is gone and the next start is a cold one, with no offer
+to rejoin. Doze and app standby buckets are not exercised by the test VM; a
+foreground service is exempt from Doze's network cut-off, but this has only
+been tried on BlissOS (Android 13 x86_64), not on a phone or tablet left
+asleep for a long time. Keeping a connection costs battery: the engine runs
+at `cl_maxidlefps` while away.
+
 ## Permissions
 
 The merged manifest (`aapt2 dump permissions`) declares exactly:
@@ -160,11 +209,15 @@ The merged manifest (`aapt2 dump permissions`) declares exactly:
 |---|---|
 | `INTERNET` | first-launch data download, servers, map downloads, update check |
 | `ACCESS_NETWORK_STATE` | the mobile-data setting |
+| `POST_NOTIFICATIONS` | download and staying-connected notifications (Android 13+) |
+| `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`, `FOREGROUND_SERVICE_SPECIAL_USE` | `KeepAliveService`: the data download, and a server connection kept while in the background |
+| `WAKE_LOCK` | the CPU keeps running with the screen off while connected, joining or downloading |
 | `REQUEST_INSTALL_PACKAGES` | the self-updater hands its APK to `PackageInstaller` |
 | `UPDATE_PACKAGES_WITHOUT_USER_ACTION` | later updates without the confirm dialog (Android 12+) |
 
-None of them is a runtime ("dangerous") permission, so the app never shows a
-permission prompt. Nothing asks for storage, Bluetooth, location, nearby
+Only `POST_NOTIFICATIONS` is a runtime permission: the boot screen asks for it
+on Android 13+ when the first-launch download starts, and everything works if
+it is refused. Nothing asks for storage, Bluetooth, location, nearby
 devices or the microphone: SDL's Bluetooth controller support checks
 `BLUETOOTH_CONNECT` and quietly skips itself without it, and the engine never
 calls `SDL_AndroidRequestPermission`. Everything the app writes is in its own
@@ -222,16 +275,57 @@ during `FS_Init` and would not see anything Java staged afterwards.
    retry.
 3. Start `XonoticActivity`.
 
+While the boot screen shows work (the first-launch download, its extraction,
+an unpack after an update), it offers **Cancel**. The download stops with the
+parts it fetched kept on disk; the extraction and the unpack stop between
+files (a pk3 is written under a temporary name, so it can stop mid-file). The
+screen then says where it stopped and offers **Resume**, which carries on from
+there, and **Quit**. A cancelled download's threads are closed down before the
+screen says so, so a Resume never has two writers on one part.
+
 ## Updating
 
 A sideloaded app has no store behind it, so it watches its own release feed.
-`BootActivity` asks GitHub for the latest release before unpacking anything —
-an update would replace the payload it was about to extract — and offers it:
 
-* **Update** streams the ABI-matching APK straight into a `PackageInstaller`
-  session and hands it to the system.
+**The update cache.** The ABI-matching APK is downloaded into
+`noBackupFilesDir/updates/` before anything is installed, as
+`<asset>.apk.part` until it is complete. A download that stops (no signal, the
+app closed, the phone off) carries on from those bytes next time with an HTTP
+`Range` request instead of starting the 40 MB over. A finished one is checked
+against the size and the SHA-256 GitHub lists for the asset (`digest`, on
+assets uploaded since mid-2025), then renamed to `<asset>.apk`. A file that
+fails the checksum is deleted and never reaches the installer. Every start
+deletes whatever is not the release the last check found.
+
+**Automatic updates** (the default) never hold the player at the boot screen:
+
+1. While the game runs, `XonoticActivity` downloads the release the last check
+   found into the cache, only on Wi-Fi or another unmetered connection.
+   Otherwise the Updates screen says it is waiting for Wi-Fi, and Download goes
+   ahead on mobile data.
+2. Once it is complete the state is `ready`: "installs the next time you
+   start".
+3. On the next start `BootActivity` installs it from the cache before the
+   engine starts, with no network needed. **Install now** on the Updates screen
+   does it straight away instead.
+
+**With automatic updates off**, the game still checks in the background, and
+a line on the main menu says when a release is out. Download in Settings →
+Updates fetches it. The next start offers to install it:
+
+* **Update** installs it.
 * **Not now** goes straight into the game and asks again next launch.
 * **Skip this version** suppresses that one release.
+
+**The boot screen only shows when there is something to wait for.** Unpacking
+after an app update and the first-run asset download show it only once they
+have run for 1.5 s. Installing a downloaded update, an install prompt or an
+error show it at once. Otherwise the game starts straight away. An update
+unpacks only the files that changed: `.bundle-manifest` keeps each file's CRC
+and size from the last unpack, so a new build writes its few MB of game code
+rather than the whole 94 MB bundle. The check for a new release no longer runs at boot (it could
+hold the launch up to 25 s on a bad connection). `XonoticActivity` runs it on
+a background thread from its first `onResume()`.
 
 Android confirms the first in-app install itself. On Android 12 and newer the
 app then becomes the package's *installer of record*, and every later update
@@ -242,10 +336,10 @@ of record is the file manager or browser that placed it. There is no path
 where a failed or slow check keeps anyone out of the game — any error just
 falls through to launching.
 
-`BootActivity` checks at launch; `XonoticActivity` checks again from
-`onResume()` once the game has been in the background for more than an hour,
-so a phone that is never cold-started still picks up releases, and installs
-automatically when the Updates screen's automatic setting is on.
+`XonoticActivity` checks when the game starts, and again from `onResume()` once
+the game has been in the background for more than an hour,
+so a phone that is never cold-started still picks up releases. With automatic
+updates on, each resume also retries a download that was waiting for Wi-Fi.
 
 Releases carry `arm64-v8a`, `armeabi-v7a` and `x86_64` APKs; the last one is
 for Chromebooks, Waydroid and the emulator (`scripts/android-build.sh --abi
@@ -285,10 +379,21 @@ the player storage every time.
 `BootActivity` can only ask its question once, before the engine exists, in a
 dialog that is gone by the time anyone is playing. Everything a player wants
 afterwards — which build am I on, how far behind, check again, stop asking —
-lives in the menu instead, under **Updates**, reachable from the version line at
-the bottom of the touch home screen. That line replaces stock Xonotic's `git`
-build tag, which names the engine rather than the build that was installed and
-cannot answer "am I up to date".
+lives in the menu instead, under **Settings → Updates**. It shows:
+
+* the installed build, the newest release, and the state: checking,
+  downloading with a percentage, paused (with how much is cached), downloaded
+  and installing next start, needs permission, failed;
+* the automatic setting;
+* Check now, Download, Install now and Skip version;
+* links to the releases on GitHub (the `openurl` engine command, which only
+  opens the project's own GitHub and Pages addresses);
+* **What's new**: `changelog.txt` from the project's Pages site, which CI
+  builds from the commits between release tags
+  (`scripts/release-changelog.sh`).
+
+The same text is the "Changes" section of each GitHub release. While a newer
+build is known, a line along the bottom of the main menu points there.
 
 The menu is QuakeC: no JNI, no way to call `AppUpdater`. So the two halves talk
 through two files in the gamedir, the same handshake the asset downloader
@@ -306,8 +411,9 @@ searches, so it is where the Java side has to meet the menu. `GameData`'s
 
 The format is documented once, in `qcsrc/menu/xonotic/touch_update_util.qh`;
 `UpdateBridge` points at it rather than repeating it. Requests are `check`,
-`install`, `skip`, `auto-on` and `auto-off`, served by a poll thread in
-`XonoticActivity` — without one, every button on that screen would write a file
+`download` (into the cache, then `ready`), `install` (download if needed, then
+install now), `skip`, `auto-on` and `auto-off`, served by a poll thread in
+`XonoticActivity`. Without one, every button on that screen would write a file
 nothing ever reads.
 
 Auto-update is opt-out, so a player who never opens the screen still gets fixes.
@@ -327,8 +433,10 @@ kept in the same preferences as the skipped tag, so Skip and Install still know
 what they mean in a process that never ran the check itself.
 
 On Linux there is nothing to install: Flatpak and the OpenStore own updates, so
-`packaging/start.sh` publishes the `managed` state and the screen shows the
-version with its buttons disabled rather than offering one that cannot work.
+`packaging/start.sh` publishes the `managed` state. The screen still shows the
+version, What's new and the GitHub links, and it says when the changelog names
+a newer build than the one installed. Download, Install and Skip are disabled
+rather than offered when they cannot work.
 
 ### What survives an update
 
@@ -342,9 +450,87 @@ Android keeps the app's storage as-is, and:
 * the bundled slim payload is re-extracted on a version change — it overwrites
   its own files and deletes nothing else.
 
+Keeping the files is only half of it: the next launch also has to read them.
+An update always means a cold start, because Android kills the old process to
+install the new APK, and two things used to lose settings there:
+
+* `config.cfg` (mouse sensitivity, binds, video, name, and the
+  `touch_perf_version` that keeps the first-start performance profile from
+  going on again) was only written by a clean quit, and an Android app never
+  gets one. The engine now saves it when
+  SDL reports the app going to the background (`vid_sdl.c`), so a kill from an
+  update, from recents or from the low-memory killer costs nothing.
+* the touch layout (look speed and every other touch setting) is saved with
+  QuakeC `fopen`, which puts it at `userdata/data/data/touch.layout.cfg`.
+  `startup.cfg` execs it as `data/touch.layout.cfg`; the bare
+  `touch.layout.cfg` it used before never found it, and the CSQC's schema
+  check then saved the defaults over it. The menu's Touch tab saves the layout
+  whenever the menu closes, so its sliders need no Save press. A schema bump
+  (`TOUCH_LAYOUT_VERSION`) still resets positions, but keeps look speed,
+  sensitivity, handedness and the chosen preset (`TOUCH_MIGRATE_KEEP`).
+
+A layout lost to the old behaviour cannot be recovered: the defaults were
+written over both `touch.layout.cfg` and `touch.layout.bak`.
+
 This depends on both builds being signed with the same key. Android refuses an
 update whose signature changed, and the only way out of that is uninstalling,
 which takes the data with it. See **Signing** below.
+
+## Performance on ARM phones
+
+- **Per-frame vertex data goes through an unsynchronized map.** Every
+  animated model, particle and HUD shape is streamed each frame into one
+  buffer (`R_BufferData_Store`), with draws from it between the writes. With
+  `glBufferSubData`, a tile-based GPU (Mali above all, which runs every draw
+  at the end of the frame) copies the whole buffer before each write: the
+  Galaxy Tab Active5 (Exynos 1380, Mali-G68) ran the benchmark demo at 7 fps,
+  with the game thread mostly idle and the driver's worker thread busy
+  copying. The writes now use `glMapBufferRange` with
+  `GL_MAP_UNSYNCHRONIZED_BIT` (ES 3 and desktop GL 3, looked up at run time;
+  `gl_mapbufferunsync 0` or `-nomapbufferrange` goes back), and the same demo
+  runs at 125 fps. The console says "Dynamic buffers: unsynchronized
+  glMapBufferRange".
+- **DDS textures are decoded properly on GPUs without S3TC**, which is most
+  phone GPUs. Xonotic ships most textures, the particle atlas among them, only
+  as DXT. The engine's old fallback coloured each 4x4 block with the average
+  of its two endpoints, so the soft-edged sprites behind every explosion,
+  flame and flash came out as half-opaque boxes, and solid textures washed
+  out. `gl_textures.c` now decodes DXT1/3/5 texel by texel, at the same size
+  as before (two mip levels below full, or the picmip level if smaller).
+- **The particle atlas is sized from the texture that was made**, not from
+  `image_width`, which the DDS loader never sets.
+- **`touch_perf_version 5`** puts `cl_particles` back on and `r_buffermegs_*`
+  back to their defaults, once per install. Players turned particles off
+  while the renderer was slow, and the engine doubles and archives
+  `r_buffermegs_*` whenever a frame overflows them, which made each copy
+  above bigger still.
+
+- **The first start picks a profile for the phone** (`DeviceProfile.java`).
+  It reads the SoC (`Build.SOC_MANUFACTURER`/`SOC_MODEL` on Android 12+,
+  `Build.HARDWARE`), total memory and the fastest core's clock from the
+  system, with no input involved, and sorts the phone into a tier:
+  - low: under 3.5 GB, a fastest core under 1.9 GHz, or fewer than 4 cores.
+    Gets the 30 fps saver, because a phone that cannot hold 60 stutters
+    instead of pacing evenly.
+  - high: 7.5 GB and 2.8 GHz or more. Gets balanced with full-size textures.
+  - mid: everything else. Gets balanced.
+
+  The facts go to the engine as `_android_soc`, `_android_hardware`,
+  `_android_ram_mb`, `_android_cpu_mhz`, `_android_cores`, `_android_exynos`
+  and `_android_tier`, and to logcat ("Device: ..."). After the first start
+  the player's choices stand.
+- **Performance hint (ADPF), off by default.** With `sys_perfhint 1`, on
+  Android 13+ the engine opens a performance hint session for its main thread
+  and reports each frame's work, without the vsync wait inside the buffer
+  swap, against the frame budget (`cl_maxfps`, else the panel's refresh). Off
+  until it is measured on the target devices; the console says "Performance
+  hint: session open" when it is on.
+- **Sustained performance mode is not requested.** `XonoticActivity` no longer
+  asks for it, pending the same measurement.
+- **The game thread runs at high priority** (`SDL_SetThreadPriority`).
+- **libmain.so is built** with hidden visibility, no semantic interposition,
+  ThinLTO, gc-sections and ICF (`android/app/src/main/cpp/CMakeLists.txt`).
+  Only `SDL_main` and the JNI entry points are exported.
 
 ## Debugging on a device
 

@@ -46,6 +46,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 # define DP_OS_NAME		"Browser"
 # define DP_OS_STR		"browser"
 # define DP_ARCH_STR	"WASM-32"
+// A browser can't dlopen libfreetype: link Emscripten's FreeType port (-sUSE_FREETYPE=1). Without it every TTF
+// font falls back to the bitmap charset, which has no accented letters (ñ, ó, ą, ł draw as boxes).
+# define DP_FREETYPE_STATIC 1
 #elif defined(__linux__)
 # define DP_OS_NAME		"Linux"
 # define DP_OS_STR		"linux"
@@ -231,6 +234,11 @@ void Sys_SDL_Shutdown(void);
 extern "C"
 #endif
 void Sys_AllowProfiling (qbool enable);
+#ifdef __ANDROID__
+extern struct cvar_s sys_perfhint;
+/* Android performance hint (sys_sdl.c): this frame's work and its budget, in seconds. */
+void Sys_PerfHint_Frame(double work, double target);
+#endif
 
 typedef struct sys_cleantime_s
 {
@@ -259,6 +267,10 @@ char *Sys_SDL_GetClipboardData (void);
 #ifdef __EMSCRIPTEN__ //WASM-specific functions
 bool js_syncFS (bool x);
 void Sys_EM_Register_Commands(void);
+void Sys_EM_SetFullscreen(qbool on); ///< ask the page shim to enter or leave fullscreen
+void Sys_EM_MouseGrab(qbool on); ///< the engine wants (or releases) pointer lock
+void Sys_EM_ScreenKeyboard(qbool on); ///< raise or drop the browser's on-screen keyboard
+qbool Sys_EM_PageFocused(void); ///< the page is visible and has focus (the browser's answer, not SDL's)
 #endif
 
 extern qbool sys_supportsdlgetticks;

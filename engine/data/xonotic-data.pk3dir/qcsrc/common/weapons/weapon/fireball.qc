@@ -297,23 +297,23 @@ METHOD(Fireball, wr_aim, void(entity thiswep, entity actor, .entity weaponentity
 {
 	PHYS_INPUT_BUTTON_ATCK(actor)  = false;
 	PHYS_INPUT_BUTTON_ATCK2(actor) = false;
-	if (!actor.bot_primary_fireballmooth)
+
+	bool is_primary = !actor.bot_primary_fireballmooth;
+	float speed_up = (is_primary ? 0 : WEP_CVAR_SEC(WEP_FIREBALL, speed_up));
+	if (!bot_aim(actor, weaponentity, WEP_CVAR_BOTH(WEP_FIREBALL, is_primary, speed), speed_up, WEP_CVAR_BOTH(WEP_FIREBALL, is_primary, lifetime), !is_primary, false))
+		return;
+
+	if (is_primary)
 	{
-		if (bot_aim(actor, weaponentity, WEP_CVAR_PRI(WEP_FIREBALL, speed), 0, WEP_CVAR_PRI(WEP_FIREBALL, lifetime), false, false))
-		{
-			PHYS_INPUT_BUTTON_ATCK(actor) = true;
-			if (random() < 0.02)
-				actor.bot_primary_fireballmooth = true;
-		}
+		PHYS_INPUT_BUTTON_ATCK(actor) = true;
+		if (random() < 0.02)
+			actor.bot_primary_fireballmooth = true;
 	}
 	else
 	{
-		if (bot_aim(actor, weaponentity, WEP_CVAR_SEC(WEP_FIREBALL, speed), WEP_CVAR_SEC(WEP_FIREBALL, speed_up), WEP_CVAR_SEC(WEP_FIREBALL, lifetime), true, false))
-		{
-			PHYS_INPUT_BUTTON_ATCK2(actor) = true;
-			if (random() < 0.01)
-				actor.bot_primary_fireballmooth = false;
-		}
+		PHYS_INPUT_BUTTON_ATCK2(actor) = true;
+		if (random() < 0.01)
+			actor.bot_primary_fireballmooth = false;
 	}
 }
 
@@ -384,7 +384,7 @@ METHOD(Fireball, wr_impacteffect, void(entity thiswep, entity actor))
 	}
 	else
 	{
-		vector org2 = w_org + w_backoff * 2;
+		vector org2 = w_impactorg;
 		pointparticles(EFFECT_FIREBALL_EXPLODE, org2, '0 0 0', 1);
 		if (!w_issilent)
 			sound(actor, CH_SHOTS, SND_FIREBALL_IMPACT2, VOL_BASE, ATTEN_NORM * 0.25); // long range boom

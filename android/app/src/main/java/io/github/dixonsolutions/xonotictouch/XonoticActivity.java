@@ -30,19 +30,28 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class XonoticActivity extends SDLActivity {
 
     static final String EXTRA_BASEDIR = "io.github.dixonsolutions.xonotictouch.BASEDIR";
+    /** The game is up, in front or behind: BootActivity goes straight back to it. */
+    static volatile boolean running;
 
     private String baseDir;
     private Thread updateService;
+    private AndySUBridge andysuBridge;
     /** Last release the check found, so Install and Skip know what they mean. */
     private volatile AppUpdater.Update lastSeenUpdate;
-    /** When this process last asked the release feed (elapsedRealtime). The
-     *  boot check counts: it ran moments before this activity started. */
-    private volatile long lastCheckMs = android.os.SystemClock.elapsedRealtime();
+    /** When this process last asked the release feed (elapsedRealtime). Never,
+     *  at first: the boot screen no longer checks, so the first onResume does,
+     *  in the background, while the game starts. */
+    private volatile long lastCheckMs = -RECHECK_AFTER_MS;
     /** A game left in the background for hours comes back through onResume(),
      *  not through BootActivity. Looking again after this long keeps a phone
      *  that is never cold-started from missing every release. */
     private static final long RECHECK_AFTER_MS = 60L * 60L * 1000L;
     private Thread resumeCheck;
+    /** Reads the engine's touch_netstate and keeps {@link KeepAliveService} in step. */
+    private Thread netStateWatch;
+    private static final long NETSTATE_POLL_MS = 2000;
+    /** One update download at a time, whoever asked for it. */
+    private final AtomicBoolean downloading = new AtomicBoolean();
     private InputManager inputManager;
     /** Last state handed to the engine, so logcat only hears about changes. */
     private int reportedInputState = -1;
@@ -72,18 +81,31 @@ public final class XonoticActivity extends SDLActivity {
         if (baseDir == null) {
             baseDir = new GameData(this).baseDir().getAbsolutePath();
         }
+        andysuBridge = new AndySUBridge(this, new File(baseDir));
+        andysuBridge.publish();
+        // The host may stage a live update as soon as its activity resumes.
+        // Register before SDL starts its native thread in super.onCreate().
+        EngineSwap.register(this);
         super.onCreate(savedInstanceState);
+        running = true;
         watchSoftKeyboard();
         watchInputDevices();
         startUpdateService();
+        watchNetState();
     }
 
     @Override
     protected void onDestroy() {
+        running = false;
         if (inputManager != null) {
             inputManager.unregisterInputDeviceListener(inputDeviceListener);
         }
         stopUpdateService();
+        if (netStateWatch != null) {
+            netStateWatch.interrupt();
+        }
+        KeepAliveService.stop(this);
+        EngineSwap.unregister();
         super.onDestroy();
     }
 
@@ -92,6 +114,7 @@ public final class XonoticActivity extends SDLActivity {
         super.onResume();
         reportInputDevices();
         recheckUpdateIfStale();
+        autoDownloadIfDue();
     }
 
     @Override
@@ -106,11 +129,9 @@ public final class XonoticActivity extends SDLActivity {
      * Tell the engine which input hardware is attached, and keep telling it.
      *
      * This is the engine's source of truth for what the player has; what
-     * they press only ever confirms it (vid_touchdetect.c). The on-screen
-     * controls show for a touch device with no keyboard, and stay with a
-     * mouse, which aims next to them once used. They hide only after
-     * sustained typing on a keyboard listed here, and a touch brings them
-     * straight back. InputManager's listener covers USB and Bluetooth
+     * they press never changes it (vid_touchdetect.c). The on-screen
+     * controls show for a touch device with no keyboard listed here and hide
+     * while one is; touch and a listed mouse work in both states. InputManager's listener covers USB and Bluetooth
      * hot-plug; configuration changes cover a keyboard folded away. None of
      * this needs a permission.
      */
@@ -162,6 +183,9 @@ public final class XonoticActivity extends SDLActivity {
         }
         for (InputDevice pointer : pointers) {
             if (folded && isChassisPad(pointer)) {
+                continue;
+            }
+            if (!keyboard && isBuiltInTouchpad(pointer)) {
                 continue;
             }
             mouse = true;
@@ -231,6 +255,17 @@ public final class XonoticActivity extends SDLActivity {
         return hasName(pointer, CHASSIS_POINTER_NAMES);
     }
 
+    /**
+     * A touchpad built into the device, on a device with no keyboard listed:
+     * a Galaxy Tab's sec_touchpad, which sits on the touchscreen's own
+     * controller and is never a pad anyone aims with. A laptop's built-in pad
+     * comes with its built-in keyboard, so it still counts there.
+     */
+    private static boolean isBuiltInTouchpad(InputDevice pointer) {
+        return Build.VERSION.SDK_INT >= 29 && !pointer.isExternal()
+                && hasSource(pointer.getSources(), InputDevice.SOURCE_TOUCHPAD);
+    }
+
     private static boolean hasIgnoredName(InputDevice device) {
         return hasName(device, IGNORED_KEYBOARD_NAMES);
     }
@@ -281,10 +316,14 @@ public final class XonoticActivity extends SDLActivity {
         final AppUpdater updater = new AppUpdater(this);
         resumeCheck = new Thread(() -> {
             String installed = updater.installedVersion();
+            if (downloading.get()) {
+                return;
+            }
+            bridge.publishChecking(installed);
             AppUpdater.Update update = updater.findUpdate();
             publishFindings(bridge, updater, installed, update);
             if (update != null && AppUpdater.isAutoInstall(this)) {
-                installFromMenu(bridge, updater, installed);
+                startDownload(bridge, updater, update, false, false);
             }
         }, "xonotic-update-recheck");
         resumeCheck.setDaemon(true);
@@ -323,10 +362,87 @@ public final class XonoticActivity extends SDLActivity {
                 if (request != null) {
                     serveUpdateRequest(bridge, updater, request);
                 }
+                AndySUBridge payloadBridge = andysuBridge;
+                if (payloadBridge != null) {
+                    String payloadRequest = payloadBridge.takeRequest();
+                    if (payloadRequest != null) payloadBridge.serve(payloadRequest);
+                    payloadBridge.publish();
+                }
             }
         }, "xonotic-update-service");
         updateService.setDaemon(true);
         updateService.start();
+        autoDownloadIfDue();
+    }
+
+    /**
+     * Automatic updates: fetch the release the last check found into the
+     * update cache while the game runs, so it installs the next time the app
+     * starts. Only on Wi-Fi or another unmetered connection; a stopped download
+     * resumes from the cache the next time this runs (start, resume, recheck).
+     */
+    private void autoDownloadIfDue() {
+        if (baseDir == null || !AppUpdater.isEnabled(this) || !AppUpdater.isAutoInstall(this)) {
+            return;
+        }
+        AppUpdater updater = new AppUpdater(this);
+        AppUpdater.Update found = updater.lastFound();
+        if (found == null || updater.isReady(found)) {
+            return;
+        }
+        startDownload(new UpdateBridge(this, new File(baseDir)), updater, found, false, false);
+    }
+
+    /**
+     * Download an update into the cache on a thread of its own, then either
+     * leave it there to install on the next start (ready) or install it now.
+     *
+     * @param asked the player pressed a button for this, so it goes ahead on
+     *              mobile data too; a background download waits for Wi-Fi
+     * @param installAfter install as soon as it is downloaded
+     */
+    private void startDownload(UpdateBridge bridge, AppUpdater updater, AppUpdater.Update update,
+                               boolean asked, boolean installAfter) {
+        String installed = updater.installedVersion();
+        if (updater.isReady(update)) {
+            if (installAfter) {
+                installCachedFromMenu(bridge, updater, installed, update);
+            } else {
+                bridge.publishReady(installed, update.version);
+            }
+            return;
+        }
+        if (!asked && !AppUpdater.onUnmeteredNetwork(this)) {
+            bridge.publishPaused(installed, update.version, updater.cachedPercent(update),
+                    HostRes.string(this, "update_status_waiting_wifi"));
+            return;
+        }
+        if (!downloading.compareAndSet(false, true)) {
+            return;
+        }
+        Thread worker = new Thread(() -> {
+            try {
+                updater.download(update,
+                        (text, note, percent) -> bridge.publishDownloading(installed, update.version, Math.max(0, percent)));
+                if (installAfter) {
+                    installCachedFromMenu(bridge, updater, installed, update);
+                } else {
+                    bridge.publishReady(installed, update.version);
+                }
+            } catch (IOException | RuntimeException e) {
+                Log.w("XonoticTouch", "Update download stopped", e);
+                if (updater.cachedBytes(update) > 0) {
+                    bridge.publishPaused(installed, update.version, updater.cachedPercent(update),
+                            HostRes.string(this, "update_status_paused"));
+                } else {
+                    bridge.publishInstallFailed(installed, update.version, String.valueOf(e.getMessage()));
+                }
+            } finally {
+                downloading.set(false);
+            }
+        }, "xonotic-update-download");
+        worker.setDaemon(true);
+        worker.start();
     }
 
     private void stopUpdateService() {
@@ -341,13 +457,6 @@ public final class XonoticActivity extends SDLActivity {
         switch (request) {
             case "auto-on":
             case "auto-off":
-                // Nothing to publish. The preference is the only thing that
-                // changed, and any record written around it would have to
-                // invent the seven lines above line 8 -- throwing away a
-                // release the boot check already found, and greying out the
-                // Install and Skip buttons that were about to take it. The next
-                // real publish carries the new preference; until then the menu
-                // holds the value it just asked for.
                 AppUpdater.setAutoInstall(this, "auto-on".equals(request));
                 return;
             case "skip": {
@@ -361,10 +470,27 @@ public final class XonoticActivity extends SDLActivity {
                 bridge.publishUpToDate(installed);
                 return;
             }
-            case "check":
+            case "check": {
+                if (downloading.get()) {
+                    return;
+                }
                 bridge.publishChecking(installed);
-                publishFindings(bridge, updater, installed, updater.findUpdate());
+                AppUpdater.Update found = updater.findUpdate();
+                publishFindings(bridge, updater, installed, found);
+                if (found != null && AppUpdater.isAutoInstall(this)) {
+                    startDownload(bridge, updater, found, false, false);
+                }
                 return;
+            }
+            case "download": {
+                AppUpdater.Update target = targetUpdate(bridge, updater, installed);
+                if (target == null) {
+                    publishFindings(bridge, updater, installed, null);
+                    return;
+                }
+                startDownload(bridge, updater, target, true, false);
+                return;
+            }
             case "install":
                 installFromMenu(bridge, updater, installed);
                 return;
@@ -407,7 +533,14 @@ public final class XonoticActivity extends SDLActivity {
                                  String installed, AppUpdater.Update found) {
         if (found != null) {
             lastSeenUpdate = found;
-            bridge.publishAvailable(installed, found);
+            if (updater.isReady(found)) {
+                bridge.publishReady(installed, found.version);
+            } else if (updater.cachedBytes(found) > 0) {
+                bridge.publishPaused(installed, found.version, updater.cachedPercent(found),
+                        HostRes.string(this, "update_status_paused"));
+            } else {
+                bridge.publishAvailable(installed, found);
+            }
             return;
         }
         if (updater.lastCheckFailed()) {
@@ -419,25 +552,33 @@ public final class XonoticActivity extends SDLActivity {
         bridge.publishUpToDate(installed);
     }
 
+    /**
+     * Install now: from the cache when the update is already downloaded,
+     * otherwise after downloading it (resuming whatever is cached). The
+     * player asked, so mobile data is fine.
+     */
     private void installFromMenu(UpdateBridge bridge, AppUpdater updater, String installed) {
         AppUpdater.Update update = targetUpdate(bridge, updater, installed);
         if (update == null) {
             publishFindings(bridge, updater, installed, null);
             return;
         }
+        startDownload(bridge, updater, update, true, true);
+    }
+
+    private void installCachedFromMenu(UpdateBridge bridge, AppUpdater updater, String installed,
+                                       AppUpdater.Update update) {
         final String latest = update.version;
         // The failure callback is a broadcast receiver, so it can land before
-        // install() has returned -- at once, if launching the confirm dialog
-        // throws. Publishing `installing` over it would leave the screen busy
-        // behind a bar that never finishes.
+        // installCached() has returned -- at once, if launching the confirm
+        // dialog throws. Publishing `installing` over it would leave the screen
+        // busy behind a bar that never finishes.
         final AtomicBoolean failed = new AtomicBoolean();
         try {
-            if (!updater.install(update,
-                    (text, note, percent) -> bridge.publishDownloading(installed, latest, percent),
-                    () -> {
+            if (!updater.installCached(update, () -> {
                         failed.set(true);
                         bridge.publishInstallFailed(installed, latest,
-                                getString(R.string.update_status_failed));
+                                HostRes.string(this, "update_status_failed"));
                     })) {
                 bridge.publishNeedsPermission(installed, latest);
                 return;
@@ -446,8 +587,8 @@ public final class XonoticActivity extends SDLActivity {
                 bridge.publishInstalling(installed, latest);
             }
         } catch (IOException | RuntimeException e) {
-            // Same reasoning as the callback above: a download that broke off
-            // is a reason to offer the retry, not to take it away.
+            // A refused or broken install keeps the download: the retry
+            // installs from the cache without fetching it again.
             Log.w("XonoticTouch", "Update install failed", e);
             bridge.publishInstallFailed(installed, latest,
                     String.valueOf(e.getMessage()));
@@ -507,8 +648,68 @@ public final class XonoticActivity extends SDLActivity {
 
     @Override
     protected String[] getLibraries() {
-        // libpng is absent on purpose: image_png.c dlopen()s it by name.
-        return new String[] { "SDL2", "main" };
+        // libpng is absent on purpose: image_png.c dlopen()s it by name. libmain is not loaded here
+        // any more: the resident loader dlopen()s it (AndySU live engine swap, see
+        // testbeds/patches/xonotic-touch/LIVE_SWAP.md) and answers nativeInputDevices for it.
+        return new String[] { "SDL2", "andysu_xonotic_loader" };
+    }
+
+    @Override
+    protected String getMainSharedObject() {
+        return getApplicationInfo().nativeLibraryDir + "/libandysu_xonotic_loader.so";
+    }
+
+    /**
+     * While the engine is connected to a server, joining one or downloading
+     * (touch_netstate, written by vid_sdl.c when that changes), a foreground
+     * service keeps the process alive should the player leave the app; it
+     * stops as soon as the engine is idle. Started while the game is in front,
+     * the only time Android 12+ allows it, and kept through the background.
+     */
+    private void watchNetState() {
+        File state = new File(GameData.userDir(new File(baseDir)), "data/touch_netstate");
+        // Left by a process that was killed while connected: not this session's.
+        state.delete();
+        netStateWatch = new Thread(() -> {
+            String shown = "";
+            while (!Thread.currentThread().isInterrupted()) {
+                String kind = "idle";
+                String text = "";
+                try (BufferedReader reader = new BufferedReader(new FileReader(state))) {
+                    String line = reader.readLine();
+                    if (line != null) {
+                        kind = line.trim();
+                        String second = reader.readLine();
+                        text = second != null ? second.trim() : "";
+                    }
+                } catch (IOException e) {
+                    // Not written yet: nothing to keep alive.
+                }
+                String now = kind + "\n" + text;
+                boolean idle = kind.equals("idle") || kind.isEmpty();
+                KeepAliveService.engineBusy = !idle;
+                if (!now.equals(shown)) {
+                    if (idle) {
+                        KeepAliveService.stop(this);
+                    } else {
+                        KeepAliveService.show(this, KeepAliveService.KIND_CONNECTION, text);
+                    }
+                    shown = now;
+                }
+                try {
+                    Thread.sleep(NETSTATE_POLL_MS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }, "xonotic-netstate");
+        netStateWatch.setDaemon(true);
+        netStateWatch.start();
+    }
+
+    @Override
+    protected String getMainFunction() {
+        return "AndySU_SDL_main";
     }
 
     @Override
@@ -523,7 +724,7 @@ public final class XonoticActivity extends SDLActivity {
             "-basedir", baseDir,
             "-userdir", GameData.userDir(new File(baseDir)).getAbsolutePath()));
         // The Touch config chain packaging/start.sh runs on Linux.
-        args.addAll(GameData.startupArguments(new File(baseDir)));
+        args.addAll(GameData.startupArguments(this, new File(baseDir)));
         args.addAll(extraArguments());
         return args.toArray(new String[0]);
     }

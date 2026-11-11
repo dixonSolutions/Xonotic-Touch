@@ -10,6 +10,8 @@
 #include "r_stats.h"
 #include "touch_ui.h"
 #include "touch_hud.h"
+#include "touch_vote.h"
+#include "touch_aim.h" // Touch: offline practice markers
 #ifdef CONFIG_VIDEO_CAPTURE
 #include "cap_avi.h"
 #include "cap_ogg.h"
@@ -930,6 +932,7 @@ void CL_Screen_Init(void)
 	Cvar_RegisterVariable(&vid_touchscreen_overlayalpha);
 	TouchUI_RegisterCvars();
 	TouchUI_Init();
+	TouchVote_Init(); // Touch: vote chip and card (touch_vote.c)
 	Cvar_RegisterVariable(&r_speeds_graph);
 	for (i = 0;i < (int)(sizeof(r_speeds_graph_filter)/sizeof(r_speeds_graph_filter[0]));i++)
 		Cvar_RegisterVariable(&r_speeds_graph_filter[i]);
@@ -1566,6 +1569,8 @@ static void SCR_DrawTouchscreenOverlay(void)
 	TouchHUD_SyncStockPanels();
 	// Engine copy of the Touch HUD, only while a server's CSQC is running.
 	TouchHUD_Draw();
+	TouchVote_Draw(); // Touch: vote chip and card, over either touch HUD
+	TouchAim_Draw(); // Touch: offline practice markers
 
 	// Console / chat sheet shade (cvar-driven).
 	if (kd == key_console)
@@ -1577,6 +1582,17 @@ static void SCR_DrawTouchscreenOverlay(void)
 	{
 		shade = TouchUI_GetShadeAlpha() * 0.55f;
 		DrawQ_Fill(0, 0, vid_conwidth.integer, vid_conheight.integer, 0.02f, 0.04f, 0.08f, shade, 0);
+	}
+
+	// The keys cover the HUD chat panel and the line being typed on it: show
+	// that line again just above them. Drawn before the keys so a hold popup
+	// on the top row lands over it.
+	if (kd == key_message && scr_numtouchscreenareas > 0 && TouchUI_ChatKeysTop() > 0)
+	{
+		float size = bound(14.0f, vid_conheight.value * 0.035f, 24.0f);
+		float top = TouchUI_ChatKeysTop() - size - 12.0f;
+		DrawQ_Fill(0, top, vid_conwidth.integer, size + 12.0f, 0.02f, 0.04f, 0.08f, 0.85f, 0);
+		Con_DrawChatInputAt(8.0f, top + 6.0f, size);
 	}
 
 	for (i = 0, a = scr_touchscreenareas;i < scr_numtouchscreenareas;i++, a++)
@@ -1845,6 +1861,7 @@ static void SCR_DrawScreen (void)
 		else
 			SCR_DrawLoadingScreen();
 	}
+	TouchHUD_DrawLoading(); // Touch: CANCEL while joining, on a touchscreen
 
 	SCR_DrawConsole();
 	SCR_DrawInfobar();

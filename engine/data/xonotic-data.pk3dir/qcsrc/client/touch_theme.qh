@@ -136,6 +136,8 @@ const float TOUCH_FONT_MIN   = 9;
 const float TOUCH_FONT_MAX   = 20;
 const float TOUCH_FONT_FIT_H = 0.75; // of the control's half-height
 const float TOUCH_FONT_FIT_W = 0.70; // of the control's full width
+const float TOUCH_FONT_FIT_DISC = 0.85; // of a disc's chord at the label's edges
+const float TOUCH_FONT_MIN_DISC = 7;     // a small disc's label shrinks to this before it overflows
 // Fallback only: drawstring advances roughly this fraction of the font size per
 // character. Real widths come from the engine (Touch_Shape_LabelWidth).
 const float TOUCH_FONT_ADVANCE = 0.55;

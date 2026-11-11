@@ -73,5 +73,5 @@ du -sh "$ROOT/engine"
 echo
 echo "Full Xonotic tree ready under engine/ (touch port changes integrated in-tree)."
 echo "  Edit engine/ directly — touch CSQC, menus, and darkplaces patches are committed here."
-echo "  Pull upstream: ./scripts/sync-upstream-fork.sh --init-git  (once), then ./scripts/sync-upstream-fork.sh"
+echo "  Pull upstream: scripts/upstream-sync.py (see docs/UPSTREAM_SYNC.md); never copy upstream in by hand"
 echo "  Monorepo commit: ./scripts/prepare-engine-for-git.sh --yes && git add engine/"

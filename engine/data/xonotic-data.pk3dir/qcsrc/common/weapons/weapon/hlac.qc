@@ -160,8 +160,10 @@ METHOD(HLAC, wr_aim, void(entity thiswep, entity actor, .entity weaponentity))
 
 METHOD(HLAC, wr_think, void(entity thiswep, entity actor, .entity weaponentity, int fire))
 {
-	if (autocvar_g_balance_hlac_reload_ammo && actor.(weaponentity).clip_load < min(WEP_CVAR_PRI(WEP_HLAC, ammo), WEP_CVAR_SEC(WEP_HLAC, ammo)))
-	{ // forced reload
+	if (autocvar_g_balance_hlac_reload_ammo // forced reload
+	&& actor.(weaponentity).clip_load < WEP_CVAR_PRI(WEP_HLAC, ammo)
+	&& actor.(weaponentity).clip_load < WEP_CVAR_SEC(WEP_HLAC, ammo))
+	{
 		thiswep.wr_reload(thiswep, actor, weaponentity);
 		return;
 	}
@@ -228,7 +230,7 @@ METHOD(HLAC, wr_impacteffect, void(entity thiswep, entity actor))
 			? EFFECT_BLASTER_IMPACT // compatible with Xonotic v0.8.6 or lower
 			: EFFECT_GREEN_HLAC_IMPACT;
 
-	vector org2 = w_org + w_backoff * 2;
+	vector org2 = w_impactorg;
 	pointparticles(eff, org2, w_backoff * 1000, 1);
 	if (!w_issilent)
 		sound(actor, CH_SHOTS, SND_LASERIMPACT, VOL_BASE, ATTN_NORM);

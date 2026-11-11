@@ -25,6 +25,7 @@ bool TouchStartup_assetFetchActive();
 bool TouchStartup_assetFetchDialog_shouldShow();
 bool TouchStartup_userProfileNeeded();
 bool TouchStartup_touchSetupNeeded();
+void TouchStartup_applyTouchDefaults();
 void TouchStartup_readProgress(entity dlg);
 bool TouchStartup_requestRelaunch();
 bool TouchStartup_requestBackgroundFetch();

@@ -612,19 +612,12 @@ METHOD(Electro, wr_aim, void(entity thiswep, entity actor, .entity weaponentity)
 
 METHOD(Electro, wr_think, void(entity thiswep, entity actor, .entity weaponentity, int fire))
 {
-	if (autocvar_g_balance_electro_reload_ammo) // forced reload // WEAPONTODO
+	if (autocvar_g_balance_electro_reload_ammo // forced reload
+	&& actor.(weaponentity).clip_load < WEP_CVAR_PRI(WEP_ELECTRO, ammo)
+	&& actor.(weaponentity).clip_load < WEP_CVAR_SEC(WEP_ELECTRO, ammo))
 	{
-		float ammo_amount = 0;
-		if (actor.(weaponentity).clip_load >= WEP_CVAR_PRI(WEP_ELECTRO, ammo))
-			ammo_amount = 1;
-		if (actor.(weaponentity).clip_load >= WEP_CVAR_SEC(WEP_ELECTRO, ammo))
-			++ammo_amount;
-
-		if (!ammo_amount)
-		{
-			thiswep.wr_reload(thiswep, actor, weaponentity);
-			return;
-		}
+		thiswep.wr_reload(thiswep, actor, weaponentity);
+		return;
 	}
 
 	if (fire & 1)
@@ -705,7 +698,7 @@ METHOD(Electro, wr_killmessage, Notification(entity thiswep))
 
 METHOD(Electro, wr_impacteffect, void(entity thiswep, entity actor))
 {
-	vector org2 = w_org + w_backoff * 2;
+	vector org2 = w_impactorg;
 	if (w_deathtype & HITTYPE_SECONDARY)
 	{
 		pointparticles(EFFECT_ELECTRO_BALLEXPLODE, org2, '0 0 0', 1);

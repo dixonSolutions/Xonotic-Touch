@@ -3,6 +3,7 @@
 #include "touch_widget.qh"
 #include "touch_layout.qh"
 #include "touch_weapons.qh"
+#include "touch_input.qh"
 #include <client/main.qh>
 #include <client/hud/hud.qh>
 #include <client/view.qh>
@@ -23,7 +24,7 @@
 
 bool Touch_Hud_ShouldDraw(void)
 {
-	return cvar("vid_touchscreen") && autocvar__menu_alpha < 1 && autocvar_touch_mobile_hud;
+	return autocvar__menu_alpha < 1 && autocvar_touch_mobile_hud;
 }
 
 // A skin's pics are not square — weapon icons are roughly 2:1 — so drawing them
@@ -139,7 +140,7 @@ void Touch_Hud_DrawBar(vector left_mid, float width, float height, float frac,
 		return;
 	}
 
-	Touch_Shape_Capsule(center, half, TOUCH_C_SHADOW, alpha * TOUCH_A_SURFACE);
+	Touch_Shape_Capsule(center, half, TOUCH_C_SHADOW, alpha * TOUCH_A_SURFACE * Touch_GlassBody(false));
 	Touch_Shape_CapsuleRing(center, half, TOUCH_W_RING_THIN, TOUCH_C_RIM,
 		alpha * TOUCH_A_GHOST);
 
@@ -297,7 +298,7 @@ void Touch_Hud_DrawAmmoRow(vector origin, float alpha)
 // ---------------------------------------------------------------------------
 // Weapons strip
 // ---------------------------------------------------------------------------
-// Which guns you hold and which one is up, as a readout on the right edge. The
+// Which guns you hold and which one is up, on the right edge. The
 // stock hud_panel_weapons was doing this job, but its selected slot is the skin's
 // `weapon_current_bg` — an opaque chamfered plate — which made the brightest,
 // hardest-edged thing on screen the one element nobody needs to look at twice.
@@ -308,13 +309,64 @@ void Touch_Hud_DrawAmmoRow(vector origin, float alpha)
 // weapon switcher, here and -- through the engine's copy of this HUD -- on
 // servers that run their own CSQC, so the two never diverge.
 
-const float TOUCH_HUD_WEP_H   = 26;
-const float TOUCH_HUD_WEP_W   = 46;
-const float TOUCH_HUD_WEP_PAD = 4;
+const float TOUCH_HUD_WEP_H    = 26;
+const float TOUCH_HUD_WEP_W    = 46;
+const float TOUCH_HUD_WEP_PAD  = 4;
+// The resize grip under the last row: its own band inside the plate, so it is
+// never mistaken for (or taken by) a row.
+const float TOUCH_HUD_WEP_GRIP = 12;
 
-vector Touch_Hud_WeaponsCenter(void)
+// cl_touch_weplist_scale is an engine cvar (touch_hud.c draws the same strip on
+// servers), archived in config.cfg. It is deliberately not a touch_* cvar: those
+// are pinned by touch.layout.cfg at launch, so a size dragged on a server could
+// never be kept. 0 means an engine that does not have it yet.
+const float TOUCH_WEPLIST_SCALE_DEF = 1.3;
+const float TOUCH_WEPLIST_SCALE_MIN = 0.7;
+const float TOUCH_WEPLIST_SCALE_MAX = 2.4;
+// Of the screen height: the most a strip may take, and the band it stays in,
+// from below the top row of pills (MENU, CHAT and the engine's vote chip at
+// the end of it) to near the bottom edge.
+const float TOUCH_WEPLIST_FIT       = 0.83;
+const float TOUCH_WEPLIST_MARGIN_TOP = 0.13;
+const float TOUCH_WEPLIST_MARGIN    = 0.04;
+// The grip's touch area, as a share of the short axis: a 12-unit grip is a
+// sliver, so it reaches below the plate to a finger's width.
+const float TOUCH_WEPLIST_GRIP_REACH = 0.07;
+
+float Touch_Hud_WeplistScale(void)
 {
-	return Touch_WidgetCenter(autocvar_touch_weplist_x, autocvar_touch_weplist_y, 0);
+	float s = cvar("cl_touch_weplist_scale");
+	if (s == 0)
+		s = TOUCH_WEPLIST_SCALE_DEF;
+	return bound(TOUCH_WEPLIST_SCALE_MIN, s, TOUCH_WEPLIST_SCALE_MAX);
+}
+
+// The strip's own unit, sized by cl_touch_weplist_scale rather than
+// touch_hud_scale: the rows are tap targets, not a readout, and at the readout
+// size they were 4 mm tall on a tablet. Shrunk for a long inventory so the whole
+// strip, grip included, fits the screen height.
+float Touch_Hud_WeaponsU(int rows)
+{
+	float u = Touch_UIScale() * Touch_Hud_WeplistScale();
+	float units = rows * TOUCH_HUD_WEP_H + TOUCH_HUD_WEP_GRIP + 2 * TOUCH_HUD_WEP_PAD;
+	float cap = TOUCH_WEPLIST_FIT * Touch_UISize().y;
+	if (units * u > cap)
+		u = cap / units;
+	return u;
+}
+
+// Centre of the plate, kept on screen: within the screen across, and within
+// 13%..96% of its height down.
+vector Touch_Hud_WeaponsCenter(int rows, float u)
+{
+	vector ui = Touch_UISize();
+	vector c = Touch_WidgetCenter(autocvar_touch_weplist_x, autocvar_touch_weplist_y, 0);
+	float half_w = (TOUCH_HUD_WEP_W * 0.5 + TOUCH_HUD_WEP_PAD) * u;
+	float half_h = (rows * TOUCH_HUD_WEP_H + TOUCH_HUD_WEP_GRIP + 2 * TOUCH_HUD_WEP_PAD) * u * 0.5;
+	c.x = bound(half_w, c.x, ui.x - half_w);
+	c.y = bound(TOUCH_WEPLIST_MARGIN_TOP * ui.y + half_h, c.y, (1 - TOUCH_WEPLIST_MARGIN) * ui.y - half_h);
+	c.z = 0;
+	return c;
 }
 
 int Touch_Hud_OwnedWeaponCount(void)
@@ -333,11 +385,11 @@ int Touch_Hud_OwnedWeaponCount(void)
 // there is no corner to sit in — it landed just above centre, overlapping the
 // icon's box and looking misplaced rather than deliberate. As a column it aligns
 // down the whole strip and the icon gets the space that is left.
-void Touch_Hud_DrawWeaponRow(vector center, vector half, Weapon wep, bool current,
+void Touch_Hud_DrawWeaponRow(vector center, vector half, float u, Weapon wep, bool current,
 	float alpha)
 {
-	float pad = Touch_Hud_U(TOUCH_HUD_WEP_PAD);
-	float num = Touch_Hud_U(TOUCH_FONT_READOUT_SM) * 0.8;
+	float pad = TOUCH_HUD_WEP_PAD * u;
+	float num = TOUCH_FONT_READOUT_SM * 0.8 * u;
 	float num_slot = Touch_Shape_LabelWidth(num, "9");
 	float left = center.x - half.x + pad;
 
@@ -351,6 +403,98 @@ void Touch_Hud_DrawWeaponRow(vector center, vector half, Weapon wep, bool curren
 		alpha * (current ? TOUCH_A_INK : TOUCH_A_INK * 0.55));
 }
 
+// Two short lines, the drag-handle idiom of a bottom sheet: quiet enough to read
+// as part of the plate, there to say the strip can be pulled.
+void Touch_Hud_DrawWeaponGrip(vector center, float u, bool held, float alpha)
+{
+	vector half = eX * (TOUCH_HUD_WEP_W * 0.2 * u) + eY * max(0.6, 0.7 * u);
+	vector rgb = held ? TOUCH_C_ACCENT_LIGHT : TOUCH_C_INK;
+	float a = alpha * (held ? TOUCH_A_RIM_ACTIVE : TOUCH_A_INK * 0.35);
+	vector gap = eY * (2.2 * u);
+	if (!Touch_Shape_Ready())
+	{
+		drawfill_builtin(center - gap - half, half * 2, rgb, a, DRAWFLAG_NORMAL);
+		drawfill_builtin(center + gap - half, half * 2, rgb, a, DRAWFLAG_NORMAL);
+		Touch_DebugAddFills(2);
+		return;
+	}
+	Touch_Shape_Capsule(center - gap, half, rgb, a);
+	Touch_Shape_Capsule(center + gap, half, rgb, a);
+}
+
+// The grip is being dragged by a finger (Touch_Hud_GripBegin .. _GripEnd).
+bool touch_wep_grip_held;
+float touch_wep_grip_u0;
+float touch_wep_grip_y0;
+int touch_wep_grip_rows;
+
+void Touch_Hud_GripBegin(vector p)
+{
+	touch_wep_grip_held = true;
+	touch_wep_grip_u0 = Touch_Weapons_GripU();
+	touch_wep_grip_y0 = p.y;
+	touch_wep_grip_rows = max(1, Touch_Weapons_GripRows());
+}
+
+// The grip follows the finger: the strip is centred on its anchor, so its
+// bottom edge moves half as far as its height grows, hence the 2.
+void Touch_Hud_GripMove(vector p)
+{
+	if (!touch_wep_grip_held || p.y == touch_wep_grip_y0)
+		return;
+	float u = touch_wep_grip_u0 + 2 * (p.y - touch_wep_grip_y0)
+		/ (touch_wep_grip_rows * TOUCH_HUD_WEP_H + TOUCH_HUD_WEP_GRIP);
+	float s = bound(TOUCH_WEPLIST_SCALE_MIN, u / max(0.001, Touch_UIScale()),
+		TOUCH_WEPLIST_SCALE_MAX);
+	s = rint(s * 100) / 100;
+	if (s == cvar("cl_touch_weplist_scale"))
+		return;
+	if (cvar_type("cl_touch_weplist_scale") & CVAR_TYPEFLAG_EXISTS)
+		cvar_set("cl_touch_weplist_scale", ftos(s));
+	else
+		localcmd("seta cl_touch_weplist_scale ", ftos(s), "\n");
+}
+
+void Touch_Hud_GripEnd(void)
+{
+	if (!touch_wep_grip_held)
+		return;
+	touch_wep_grip_held = false;
+	// Android never quits cleanly, so a size that only reached config.cfg at
+	// exit could be lost; one write per drag is cheap.
+	localcmd("saveconfig\n");
+}
+
+// The NADE row: the grenade icon and the bonus grenades in stock; while one
+// cooks, the fuse spent fills the row from the left, red near the end; while
+// the next is on its way, a faint icon that takes no touch.
+void Touch_Hud_DrawNadeRow(vector at, vector row_half, float u, float r, int state, float alpha)
+{
+	float pad = TOUCH_HUD_WEP_PAD * u;
+	float num = TOUCH_FONT_READOUT_SM * 0.8 * u;
+	float num_slot = Touch_Shape_LabelWidth(num, "9");
+	float left = at.x - row_half.x + pad;
+	float ink = (state == 3) ? TOUCH_A_INK * 0.25 : TOUCH_A_INK;
+	if (state == 2)
+	{
+		float t = bound(0, cvar("_cl_touch_nade_timer"), 1);
+		vector c = (t > 0.6) ? TOUCH_C_DANGER : TOUCH_C_ACCENT;
+		drawfill_builtin(at - row_half, eX * (row_half.x * 2 * t) + eY * (row_half.y * 2), c,
+			alpha * TOUCH_A_SURFACE_ACTIVE, DRAWFLAG_NORMAL);
+		Touch_DebugAddFills(1);
+	}
+	else if (Touch_NadeHeld())
+		Touch_Shape_RRect(at, row_half, r, TOUCH_C_ACCENT, alpha * TOUCH_A_SURFACE_LATCH);
+	float bonus = STAT(NADE_BONUS);
+	if (bonus >= 1)
+		Touch_Shape_LabelAligned(eX * (left + num_slot) + eY * at.y, num, ftos(floor(bonus)), 1, TOUCH_C_INK, alpha * ink);
+	float icon_left = left + num_slot + pad;
+	float icon_right = at.x + row_half.x - pad;
+	Touch_Hud_DrawSkinPicFit(eX * ((icon_left + icon_right) * 0.5) + eY * at.y,
+		eX * (icon_right - icon_left) + eY * (row_half.y * 2 - pad * 2), "nade_normal", alpha * ink);
+	Touch_Weapons_SetNade(at - row_half, row_half * 2, state == 1 || state == 2);
+}
+
 void Touch_Hud_DrawWeapons(float alpha)
 {
 	if (!autocvar_touch_weplist_visible)
@@ -359,23 +503,30 @@ void Touch_Hud_DrawWeapons(float alpha)
 	if (n <= 0)
 		return;
 
-	float h = Touch_Hud_U(TOUCH_HUD_WEP_H);
-	float pad = Touch_Hud_U(TOUCH_HUD_WEP_PAD);
-	float w = Touch_Hud_U(TOUCH_HUD_WEP_W);
-	float r = TOUCH_R_SM * Touch_Hud_Scale();
+	// The engine's nade state (touch_nade.c): 0 none, 1 ready, 2 cooking, 3
+	// the next on its way. Its row's place is kept while the server has nades,
+	// so the weapon rows never move as a grenade comes and goes.
+	int nade_state = cvar("_cl_touch_nade");
+	int rows = n + (nade_state != 0);
+	float u = Touch_Hud_WeaponsU(rows);
+	float h = TOUCH_HUD_WEP_H * u;
+	float pad = TOUCH_HUD_WEP_PAD * u;
+	float w = TOUCH_HUD_WEP_W * u;
+	float grip = TOUCH_HUD_WEP_GRIP * u;
+	float r = TOUCH_R_SM * u;
 	vector row_half = eX * (w * 0.5) + eY * (h * 0.5);
-	vector center = Touch_Hud_WeaponsCenter();
+	vector center = Touch_Hud_WeaponsCenter(rows, u);
+	float plate_h = rows * h + grip + pad * 2;
 	// Centred on its anchor, so the strip grows in both directions as weapons are
 	// picked up instead of walking down the screen.
-	float top = center.y - (n * h) * 0.5;
+	float top = center.y - plate_h * 0.5 + pad;
 
 	// One region behind the whole list rather than a plate per weapon (Law of
 	// Common Region): this is a single inventory, not nine loose badges, and it is
 	// also the difference between two rounded rects and eleven. Each rounded rect
 	// is nine draws, so per-slot plates put the overlay at 175 draw calls.
-	Touch_Shape_RRect(eX * center.x + eY * center.y,
-		eX * (w * 0.5 + pad) + eY * (n * h * 0.5 + pad), r + pad,
-		TOUCH_C_SURFACE, alpha * TOUCH_A_SURFACE);
+	Touch_Shape_RRect(center, eX * (w * 0.5 + pad) + eY * (plate_h * 0.5), r + pad,
+		TOUCH_C_SURFACE, alpha * TOUCH_A_SURFACE * Touch_GlassBody(false));
 
 	entity wepent = viewmodels[0];
 	WepSet owned = STAT(WEAPONS);
@@ -395,10 +546,21 @@ void Touch_Hud_DrawWeapons(float alpha)
 		if (current)
 			Touch_Shape_RRect(at, row_half, r, TOUCH_C_ACCENT,
 				alpha * TOUCH_A_SURFACE_LATCH);
-		Touch_Hud_DrawWeaponRow(at, row_half, it, current, alpha);
+		Touch_Hud_DrawWeaponRow(at, row_half, u, it, current, alpha);
 		Touch_Weapons_AddSlot(at - row_half, row_half * 2, it.impulse, true);
 		slot += 1;
 	});
+
+	if (nade_state != 0)
+		Touch_Hud_DrawNadeRow(eX * center.x + eY * (top + n * h + h * 0.5), row_half, u, r, nade_state, alpha);
+	float grip_top = top + rows * h;
+	Touch_Hud_DrawWeaponGrip(eX * center.x + eY * (grip_top + grip * 0.5), u,
+		touch_wep_grip_held, alpha);
+	// The grip's touch area starts at its top edge, never above it over the last
+	// row, and reaches down to a finger's width.
+	float reach = max(grip + pad, TOUCH_WEPLIST_GRIP_REACH * Touch_ScreenMin());
+	Touch_Weapons_SetGrip(eX * (center.x - w * 0.5 - pad) + eY * grip_top,
+		eX * (w + pad * 2) + eY * reach, u, rows);
 }
 
 void Touch_Hud_Draw(float alpha)
@@ -410,6 +572,12 @@ void Touch_Hud_Draw(float alpha)
 	if (spectatee_status == -1 || STAT(HEALTH) <= 0)
 		return;
 
-	Touch_Hud_DrawStatus(alpha);
-	Touch_Hud_DrawWeapons(alpha);
+	// The vitals are a touch-control readout, like the stock panels they replace; the
+	// weapon strip stays up at the desk too (see TouchHUD_SyncStockPanels).
+	if (cvar("vid_touchscreen"))
+		Touch_Hud_DrawStatus(alpha);
+	// Following someone, the weapons are theirs: the stock panel shows them, and
+	// a row tap would send an impulse to the spectator code.
+	if (!spectatee_status)
+		Touch_Hud_DrawWeapons(alpha);
 }

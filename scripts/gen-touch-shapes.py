@@ -10,7 +10,7 @@ looking.
 Textures are white with meaningful alpha; the overlay tints them at draw time,
 so one mask serves every colour.
 
-Output: touch/gfx/touch/*.tga (32-bit uncompressed BGRA, bottom-up)
+Output: touch/gfx/touch/*.png (8-bit RGBA)
 
 Usage: scripts/gen-touch-shapes.py [--outdir DIR]
 """
@@ -19,33 +19,42 @@ from __future__ import annotations
 import argparse
 import pathlib
 import struct
+import zlib
 
 import numpy as np
 
 # Supersampling factor for edge antialiasing. 4x is indistinguishable from 8x
-# at the sizes these masks are drawn but builds noticeably faster.
+# at the sizes these masks are drawn but builds noticeably faster. The round
+# masks are 512 px so the largest controls on a high-density tablet (FIRE is
+# over 300 px across at 2880x1920) are never magnified; the engine mipmaps
+# them (gl_draw.c) so small ones stay smooth too.
 SS = 4
 
 
-def write_tga(path: pathlib.Path, alpha: np.ndarray) -> None:
-    """Write a white RGB image with `alpha` (float 0..1) as 32-bit TGA."""
+def write_png(path: pathlib.Path, alpha: np.ndarray) -> None:
+    """Write a white RGBA image with `alpha` (float 0..1) as PNG.
+
+    PNG rather than the uncompressed TGA these used to be: white RGB with a
+    smooth alpha compresses to a few kilobytes, where a 512 px TGA is a megabyte
+    in the repository and in every package. The engine finds either by the same
+    extensionless name.
+    """
     h, w = alpha.shape
     a8 = np.clip(alpha * 255.0 + 0.5, 0, 255).astype(np.uint8)
     rgb = np.full((h, w), 255, dtype=np.uint8)
-    # TGA is BGRA and bottom-up by default.
-    bgra = np.dstack([rgb, rgb, rgb, a8])[::-1]
-    header = struct.pack(
-        "<BBBHHBHHHHBB",
-        0,      # id length
-        0,      # no colour map
-        2,      # uncompressed true-colour
-        0, 0, 0,  # colour map spec
-        0, 0,   # x/y origin
-        w, h,
-        32,     # bits per pixel
-        8,      # 8 alpha bits, origin bottom-left
-    )
-    path.write_bytes(header + bgra.tobytes())
+    rgba = np.dstack([rgb, rgb, rgb, a8])
+    # Filter type 0 (none) on every row, then deflate.
+    raw = b"".join(b"\x00" + rgba[y].tobytes() for y in range(h))
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+    png = b"\x89PNG\r\n\x1a\n"
+    png += chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
+    png += chunk(b"IDAT", zlib.compress(raw, 9))
+    png += chunk(b"IEND", b"")
+    path.write_bytes(png)
 
 
 def _radius_field(size: int) -> np.ndarray:
@@ -103,15 +112,15 @@ def make_rounded_rect(size: int, radius_frac: float) -> np.ndarray:
 
 SHAPES = {
     # name: (size, builder)
-    "disc": (256, lambda: make_disc(256)),
-    "disc_soft": (256, lambda: make_disc_gradient(256)),
-    "shadow": (256, lambda: make_soft_shadow(256)),
+    "disc": (512, lambda: make_disc(512)),
+    "disc_soft": (512, lambda: make_disc_gradient(512)),
+    "shadow": (512, lambda: make_soft_shadow(512)),
     # Stroke weights are fractions of the radius, so rings keep their visual
     # weight proportional to the control they outline.
-    "ring_thin": (256, lambda: make_ring(256, 0.035)),
-    "ring": (256, lambda: make_ring(256, 0.065)),
-    "ring_thick": (256, lambda: make_ring(256, 0.13)),
-    "rrect": (128, lambda: make_rounded_rect(128, 0.25)),
+    "ring_thin": (512, lambda: make_ring(512, 0.035)),
+    "ring": (512, lambda: make_ring(512, 0.065)),
+    "ring_thick": (512, lambda: make_ring(512, 0.13)),
+    "rrect": (256, lambda: make_rounded_rect(256, 0.25)),
 }
 
 
@@ -124,8 +133,12 @@ def main() -> int:
 
     args.outdir.mkdir(parents=True, exist_ok=True)
     for name, (_size, build) in SHAPES.items():
-        path = args.outdir / f"{name}.tga"
-        write_tga(path, build())
+        path = args.outdir / f"{name}.png"
+        write_png(path, build())
+        # A stale TGA of the same name would win: the engine tries .tga first.
+        stale = args.outdir / f"{name}.tga"
+        if stale.exists():
+            stale.unlink()
         print(f"wrote {path} ({path.stat().st_size} bytes)")
     return 0
 

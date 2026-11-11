@@ -10,6 +10,9 @@
 #include "touch_init.qh"
 #include "touch_input.qh"
 #include "touch_defs.qh"
+#include "touch_scores.qh"
+#include "touch_weapons.qh"
+#include "touch_spectate.qh"
 
 // Pressed and latched visuals cannot be reached from a screenshot harness: a
 // virtual uinput touchscreen is not routed to the game window, so the only way
@@ -61,8 +64,8 @@ void Touch_DrawMoveStick(float theAlpha)
 
 	// The base stays quieter than the buttons: it is the largest object on
 	// screen, and at button opacity it would dominate the view.
-	Touch_Shape_Shadow(base + eY * Touch_Widget_Elevation(r), r * 1.06, theAlpha * TOUCH_A_SHADOW * 0.6);
-	Touch_Shape_Disc(base, r, TOUCH_C_SURFACE, theAlpha * TOUCH_A_SURFACE * 0.75);
+	Touch_Shape_Shadow(base + eY * Touch_Widget_Elevation(r), r * 1.06, theAlpha * TOUCH_A_SHADOW * 0.6 * Touch_GlassBody(false));
+	Touch_Shape_Disc(base, r, TOUCH_C_SURFACE, theAlpha * TOUCH_A_SURFACE * 0.75 * Touch_GlassBody(false));
 	Touch_Widget_Rim(base, r, TOUCH_C_RIM, theAlpha * TOUCH_A_RIM * 0.85);
 
 	vector knob_rgb = TOUCH_C_RIM;
@@ -73,8 +76,9 @@ void Touch_DrawMoveStick(float theAlpha)
 		knob_a = TOUCH_A_RIM_ACTIVE;
 		Touch_Shape_Glow(knob_c, knob_r * 1.6, TOUCH_C_ACCENT, theAlpha * TOUCH_A_GLOW);
 	}
-	Touch_Shape_Shadow(knob_c + eY * Touch_Widget_Elevation(knob_r), knob_r * 1.20, theAlpha * TOUCH_A_SHADOW);
-	Touch_Shape_Disc(knob_c, knob_r, knob_rgb, theAlpha * knob_a);
+	Touch_Shape_Shadow(knob_c + eY * Touch_Widget_Elevation(knob_r), knob_r * 1.20, theAlpha * TOUCH_A_SHADOW * Touch_GlassBody(false));
+	// The knob is what moves, so it keeps a body even when hollow.
+	Touch_Shape_Disc(knob_c, knob_r, knob_rgb, theAlpha * knob_a * Touch_GlassBody(true));
 	Touch_Widget_Rim(knob_c, knob_r, TOUCH_C_RIM, theAlpha * TOUCH_A_RIM_ACTIVE);
 }
 
@@ -107,8 +111,8 @@ void Touch_DrawWeaponWheel(float theAlpha)
 		Touch_Glass_DrawCircleOutline(center, radius, TOUCH_C_RIM, theAlpha * 0.4, 2);
 		return;
 	}
-	Touch_Shape_Shadow(center + eY * Touch_Widget_Elevation(radius), radius * 1.06, theAlpha * TOUCH_A_SHADOW);
-	Touch_Shape_Disc(center, radius, TOUCH_C_SURFACE, theAlpha * TOUCH_A_SURFACE_ACTIVE);
+	Touch_Shape_Shadow(center + eY * Touch_Widget_Elevation(radius), radius * 1.06, theAlpha * TOUCH_A_SHADOW * Touch_GlassBody(false));
+	Touch_Shape_Disc(center, radius, TOUCH_C_SURFACE, theAlpha * TOUCH_A_SURFACE_ACTIVE * Touch_GlassBody(false));
 	Touch_Widget_Rim(center, radius, TOUCH_C_RIM, theAlpha * TOUCH_A_RIM);
 }
 
@@ -146,6 +150,28 @@ void Touch_DrawDebugLine(void)
 	drawstring_builtin('8 8 0', line, '1 1 0' * 10, TOUCH_C_INK, 0.85, 0);
 }
 
+// Aim-assist feedback at the crosshair: a ring while an enemy is within the
+// assist cone (accent), a bigger red one while the crosshair is on an enemy,
+// the moment auto-shoot fires. Without it the helpers are subtle enough to look
+// like they do nothing. _cl_touch_aim_lock comes from the engine (touch_aim.c).
+void Touch_DrawAimLock(float theAlpha)
+{
+	float lock_state = cvar("_cl_touch_aim_lock");
+	if (lock_state < 1 || !cvar("cl_touch_aim_ring"))
+		return;
+	// Where the crosshair is (HUD_Crosshair): the aim point projected into 2D
+	// space, which is vid_conwidth x vid_conheight, not the VF_SIZE pixels.
+	vector c = project_3d_to_2d(view_origin + max_shot_distance * view_forward);
+	c.z = 0;
+	float r = Touch_WidgetRadius(0.05);
+	if (lock_state < 2)
+		r *= 1.5;
+	vector rgb = TOUCH_C_ACCENT;
+	if (lock_state >= 2)
+		rgb = TOUCH_C_DANGER;
+	Touch_Widget_Rim(c, r, rgb, theAlpha);
+}
+
 void Touch_DrawOverlay(float overlayAlpha)
 {
 	// Edit mode owns the top bar for its SAVE/CANCEL/RESET row, and none of the
@@ -158,18 +184,27 @@ void Touch_DrawOverlay(float overlayAlpha)
 		Touch_Scores_DrawPill(overlayAlpha);
 	}
 
+	// Spectating: the spectator controls instead of the play ones.
+	if (!Touch_CustomizeActive() && Touch_Spec_DrawOverlay(overlayAlpha))
+		return;
+
 	if (autocvar_touch_move_visible || autocvar_touch_debug)
 		Touch_DrawMoveStick(overlayAlpha);
 
 	if (autocvar_touch_fire_visible || autocvar_touch_debug)
 		Touch_DrawFireButton(overlayAlpha);
 
-	if (autocvar_touch_fire2_visible)
+	float fire2_alpha = Touch_Fire2Alpha();
+	if (fire2_alpha > 0)
 		Touch_DrawCircleWidget(autocvar_touch_fire2_x, autocvar_touch_fire2_y,
-			autocvar_touch_fire2_size, TOUCH_LABEL_FIRE2, Touch_Fire2Held(), overlayAlpha, TOUCH_C_DANGER);
+			autocvar_touch_fire2_size, TOUCH_LABEL_FIRE2, Touch_Fire2Held(), overlayAlpha * fire2_alpha, TOUCH_C_DANGER);
 
 	if (autocvar_touch_jump_visible || autocvar_touch_debug)
 		Touch_DrawHopBar(overlayAlpha);
+	if (Touch_HopLockShown())
+		Touch_Widget_Check(Touch_WidgetCenter(autocvar_touch_hoplock_x, autocvar_touch_hoplock_y, autocvar_touch_hoplock_size),
+			Touch_WidgetHalfExtents(autocvar_touch_hoplock_size, 1), TOUCH_LABEL_HOPLOCK,
+			Touch_HopLatched() || Touch_PreviewStates(), Touch_HopLockHeld(), overlayAlpha, TOUCH_C_ACCENT);
 
 	if (autocvar_touch_crouch_visible || autocvar_touch_debug)
 		Touch_DrawCircleWidget(autocvar_touch_crouch_x, autocvar_touch_crouch_y,
@@ -177,9 +212,17 @@ void Touch_DrawOverlay(float overlayAlpha)
 	if (autocvar_touch_weapon_visible || autocvar_touch_debug)
 		Touch_DrawCircleWidget(autocvar_touch_weapon_x, autocvar_touch_weapon_y,
 			autocvar_touch_weapon_size, TOUCH_LABEL_WEAPON, Touch_WeaponWheelOpen(), overlayAlpha, TOUCH_C_ACCENT);
-	if (autocvar_touch_zoom_visible)
+	float zoom_alpha = Touch_ZoomAlpha();
+	if (zoom_alpha > 0)
 		Touch_DrawCircleWidget(autocvar_touch_zoom_x, autocvar_touch_zoom_y,
-			autocvar_touch_zoom_size, "ZOOM", false, overlayAlpha, TOUCH_C_ACCENT);
+			autocvar_touch_zoom_size, "ZOOM", Touch_ZoomHeld(), overlayAlpha * zoom_alpha, TOUCH_C_ACCENT);
+	float hook_alpha = Touch_HookAlpha();
+	if (hook_alpha > 0)
+		Touch_DrawCircleWidget(autocvar_touch_hook_x, autocvar_touch_hook_y,
+			autocvar_touch_hook_size, TOUCH_LABEL_HOOK, Touch_HookHeld(), overlayAlpha * hook_alpha, TOUCH_C_ACCENT);
+	if (Touch_TurnAvailable() || (autocvar_touch_turn_visible && Touch_CustomizeActive()))
+		Touch_DrawCircleWidget(autocvar_touch_turn_x, autocvar_touch_turn_y,
+			autocvar_touch_turn_size, TOUCH_LABEL_TURN, Touch_TurnHeld(), overlayAlpha, TOUCH_C_ACCENT);
 	if (autocvar_touch_reload_visible)
 		Touch_DrawCircleWidget(autocvar_touch_reload_x, autocvar_touch_reload_y,
 			autocvar_touch_reload_size, TOUCH_LABEL_RELOAD, false, overlayAlpha, TOUCH_C_ACCENT);
@@ -188,6 +231,7 @@ void Touch_DrawOverlay(float overlayAlpha)
 			autocvar_touch_dodge_size, TOUCH_LABEL_DODGE, false, overlayAlpha, TOUCH_C_ACCENT);
 
 	Touch_DrawWeaponWheel(overlayAlpha);
+	Touch_DrawAimLock(overlayAlpha);
 	// Probes are level 2 exactly: they are opaque blocks over the controls, so at
 	// level 3 they would hide the very states that level is for.
 	if (autocvar_touch_debug == 2)
@@ -203,8 +247,33 @@ void Touch_Draw(void)
 	if (owns != cvar("_touch_owns_screen"))
 		cvar_set("_touch_owns_screen", ftos(owns));
 
+	// Whatever draws the weapons strip this frame registers its rows after this.
+	Touch_Weapons_MarkFrame();
+
 	if (!Touch_Active())
+	{
+		// Play at a desk, with a mouse and a keyboard: the controls are off, but the
+		// weapon strip stays in view. Not over a vote, intermission or scoreboard,
+		// which own the screen then.
+		if (!mv_active && !intermission && !scoreboard_ui_enabled)
+		{
+			drawresetcliparea();
+			HUD_Scale_Disable();
+			float a = bound(0.3, autocvar_touch_opacity, 1.0);
+			Touch_Hud_Draw(a);
+			// On a touchscreen the pills stay too, dimmed: the keyboard has keys
+			// for all of them, so they step back, but a finger can still reach
+			// them (Touch_DeskActive).
+			if (Touch_DeskPills())
+			{
+				Touch_Pause_DrawPill(a * 0.6);
+				Touch_Chat_DrawPill(a * 0.6);
+				Touch_Console_Draw(a * 0.6);
+				Touch_Scores_DrawPill(a * 0.6);
+			}
+		}
 		return;
+	}
 
 	// HUD panels may leave a clip rect / dynamic scale armed — clear before glass.
 	drawresetcliparea();

@@ -7,6 +7,21 @@
     <string name="boot_failed">Could not prepare game data</string>
     <string name="boot_retry">Retry</string>
     <string name="boot_quit">Quit</string>
+    <string name="boot_cancel">Cancel</string>
+    <string name="boot_cancelling">Cancelling…</string>
+    <string name="boot_paused">Paused</string>
+    <string name="boot_paused_detail">Stopped at %1$s. Resume carries on from there.</string>
+    <string name="boot_paused_detail_none">Resume carries on from where it stopped.</string>
+    <string name="boot_resume">Resume</string>
+    <string name="boot_notice_channel">Game downloads</string>
+    <string name="keepalive_channel">Staying connected in the background</string>
+    <string name="keepalive_connection_title">Xonotic Touch is staying connected</string>
+    <string name="keepalive_download_title">Xonotic Touch is downloading</string>
+    <string name="keepalive_download_text">Game data: maps, textures and music</string>
+    <string name="boot_notice_ready_title">Xonotic is ready</string>
+    <string name="boot_notice_ready_text">Game data is downloaded. Tap to play.</string>
+    <string name="boot_notice_failed_title">Xonotic download stopped</string>
+    <string name="boot_notice_failed_text">Tap to carry on from where it stopped.</string>
     <string name="update_title">Xonotic Touch %1$s</string>
     <string name="update_message">You have %1$s. Updating keeps your settings, keybinds and downloaded maps.</string>
     <string name="update_install">Update</string>
@@ -20,4 +35,8 @@
     <string name="update_status_failed">Update failed. Try again later.</string>
     <string name="update_status_check_failed">Could not reach the update server.</string>
     <string name="update_status_permission">Allow installing apps from Xonotic Touch to finish.</string>
+    <string name="update_status_ready">Xonotic Touch %1$s is downloaded. It installs the next time you start the game.</string>
+    <string name="update_status_paused">The download stopped part-way. It carries on from there.</string>
+    <string name="update_status_waiting_wifi">Waiting for Wi-Fi to download the update. Press Download to use mobile data.</string>
+    <string name="update_installing">Installing update…</string>
 </resources>

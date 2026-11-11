@@ -5,6 +5,8 @@
 #include "touch_defs.qh"
 #include "touch_input.qh"
 #include <lib/cvar.qh>
+#include <client/hud/hud.qh>
+#include <client/hud/panel/vote.qh>
 
 bool touch_scores_shown;
 bool touch_scores_pill_arming;

@@ -161,12 +161,15 @@ cvar_t vid_touchscreen = {CF_CLIENT, "vid_touchscreen", "0", "Use touchscreen-st
 cvar_t vid_touchscreen_mode = {CF_CLIENT | CF_ARCHIVE, "vid_touchscreen_mode", "1", "Input mode: 0 = keyboard & mouse (touch controls off), 1 = dynamic (follow the hardware and the input in use), 2 = touch (controls always on)"};
 cvar_t vid_touchscreen_live = {CF_CLIENT | CF_ARCHIVE, "vid_touchscreen_live", "1", "In dynamic mode: 1 = switch between touch and keyboard & mouse while playing, 0 = decide once at launch and keep it for the session"};
 cvar_t vid_touchscreen_notify = {CF_CLIENT | CF_ARCHIVE, "vid_touchscreen_notify", "1", "Show a message when the touch controls switch on or off by themselves (Ctrl+Alt+1 / Ctrl+Alt+2 always say what they did)"};
-cvar_t vid_touchscreen_touchonly = {CF_CLIENT | CF_ARCHIVE, "vid_touchscreen_touchonly", "1", "When vid_touchscreen_mode is auto, enable only on touch-only devices (touchscreen and no physical keyboard)"};
+cvar_t vid_touchscreen_touchonly = {CF_CLIENT | CF_ARCHIVE, "vid_touchscreen_touchonly", "1", "When vid_touchscreen_mode is auto, enable only on touch devices that have no keyboard and mouse together (a keyboard alone keeps the controls)"};
 cvar_t vid_touchscreen_detected = {CF_CLIENT | CF_READONLY, "vid_touchscreen_detected", "0", "1 if a touchscreen was detected at the last scan"};
 cvar_t vid_keyboard_detected = {CF_CLIENT | CF_READONLY, "vid_keyboard_detected", "0", "1 while the system lists a keyboard the player can type on (no on-screen keyboard is shown then)"};
 cvar_t vid_touchscreen_touchonly_detected = {CF_CLIENT | CF_READONLY, "vid_touchscreen_touchonly_detected", "0", "1 if the last scan classified this machine as a touch-only device"};
 cvar_t vid_touchscreen_showkeyboard = {CF_CLIENT, "vid_touchscreen_showkeyboard", "0", "shows the platform's screen keyboard for text entry, can be set by csqc or menu qc if it wants to receive text input, does nothing if the platform has no screen keyboard"};
 cvar_t vid_touchscreen_supportshowkeyboard = {CF_CLIENT | CF_READONLY, "vid_touchscreen_supportshowkeyboard", "0", "indicates if the platform supports a virtual keyboard"};
+double vid_swapseconds;
+cvar_t vid_pointer_mouse = {CF_CLIENT | CF_READONLY, "vid_pointer_mouse", "1", "1 while the last pointer input was a mouse, touchpad or pen, 0 after a finger: the menu and HUD draw their cursor only for a mouse, so it goes away with touch and comes back with the mouse"};
+cvar_t vid_mouse_confirmed_cvar = {CF_CLIENT | CF_READONLY, "vid_mouse_confirmed", "0", "1 while the system lists a mouse or touchpad: it aims in the game and menus draw their pointer for it, touch controls or not"};
 cvar_t vid_touchscreen_mouselook = {CF_CLIENT | CF_READONLY, "vid_touchscreen_mouselook", "0", "1 while a mouse the system lists, and the player has used, aims in the game next to the touch controls (its buttons fire instead of pressing the controls)"};
 cvar_t touch_owns_screen = {CF_CLIENT, "_touch_owns_screen", "0", "internal: set by the touch CSQC while a modal touch sheet needs the mouse as a pointer"};
 cvar_t vid_touchscreen_textinput_x = {CF_CLIENT, "vid_touchscreen_textinput_x", "0", "console X of the focused text field for OSK placement (set by menu QC)"};
@@ -205,6 +208,9 @@ const char *gl_vendor;
 const char *gl_renderer;
 // begins with 1.0.0, 1.1.0, 1.2.0, 1.2.1, 1.3.0, 1.3.1, or 1.4.0
 const char *gl_version;
+// Looked up at run time in GL_Setup; NULL where the context lacks them.
+void *(GLAPIENTRY *qglMapBufferRangeDyn)(GLenum target, GLintptr offset, GLsizeiptr length, GLbitfield access);
+GLboolean (GLAPIENTRY *qglUnmapBufferDyn)(GLenum target);
 
 #ifndef USE_GLES2
 GLboolean (GLAPIENTRY *qglIsBuffer) (GLuint buffer);
@@ -779,6 +785,20 @@ void GL_Setup(void)
 	vid.support.amd_texture_texture4 = GL_CheckExtension("GL_AMD_texture_texture4", "-notexture4", false);
 	vid.support.arb_texture_gather = GL_CheckExtension("GL_ARB_texture_gather", "-notexturegather", false);
 	vid.support.ext_texture_compression_s3tc = GL_CheckExtension("GL_EXT_texture_compression_s3tc", "-nos3tc", false);
+#ifdef __EMSCRIPTEN__
+	// WebGL names it WEBGL_compressed_texture_s3tc (desktop browsers have it,
+	// phones mostly do not). Without this, Xonotic's DDS-only textures would be
+	// decoded in software at a quarter of their resolution even on desktops.
+	if (!vid.support.ext_texture_compression_s3tc
+	&& GL_CheckExtension("GL_WEBGL_compressed_texture_s3tc", "-nos3tc", false))
+	{
+		char extstr[MAX_INPUTLINE];
+		vid.support.ext_texture_compression_s3tc = true;
+		// The menu QC looks for the desktop name in gl_info_extensions.
+		dpsnprintf(extstr, sizeof(extstr), "%s GL_EXT_texture_compression_s3tc ", gl_info_extensions.string);
+		Cvar_SetQuick(&gl_info_extensions, extstr);
+	}
+#endif
 	vid.support.ext_texture_filter_anisotropic = GL_CheckExtension("GL_EXT_texture_filter_anisotropic", "-noanisotropy", false);
 #ifndef USE_GLES2
 	vid.support.ext_texture_srgb = true; // GL3 core, but not GLES2
@@ -792,9 +812,59 @@ void GL_Setup(void)
 	 */
 #ifdef USE_GLES2
 	vid.support.element_index_uint = GL_CheckExtension("GL_OES_element_index_uint", "-noindexuint", false);
+	/*
+	 * ES 2.0 only promises 16bit depth in a renderbuffer, and the render
+	 * targets behind water, mirrors, warpzones and camera portals used it even
+	 * where the window had 24. Those views clip with an oblique projection,
+	 * which spends depth precision badly, and 16 bits of it z-fought through
+	 * every portal. Nearly every phone has the extensions, and an ES 3 context
+	 * (what Android hands out for a 2.0 request on current drivers) has both
+	 * in core.
+	 */
+	{
+		const char *version = (const char *)qglGetString(GL_VERSION);
+		qbool es3 = version && !strncmp(version, "OpenGL ES ", 10) && atoi(version + 10) >= 3;
+		vid.support.depth24 = GL_CheckExtension("GL_OES_depth24", "-nodepth24", false) || (es3 && !Sys_CheckParm("-nodepth24"));
+		vid.support.packed_depth_stencil = GL_CheckExtension("GL_OES_packed_depth_stencil", "-nopackeddepthstencil", false) || (es3 && !Sys_CheckParm("-nopackeddepthstencil"));
+		vid.support.npot_mipmap = es3 || GL_CheckExtension("GL_OES_texture_npot", "-nonpotmipmap", false);
+	}
 #else
 	vid.support.element_index_uint = true;
+	vid.support.depth24 = true;
+	vid.support.packed_depth_stencil = true;
+	vid.support.npot_mipmap = true;
 #endif
+	/*
+	 * Mapping for the per-frame vertex and index streams. These are core in
+	 * desktop GL 3 and in ES 3 (which every current phone driver hands out),
+	 * but not in the ES 2.0 headers this path builds against, so they are
+	 * looked up at run time rather than linked.
+	 */
+	qglMapBufferRangeDyn = NULL;
+	qglUnmapBufferDyn = NULL;
+	{
+		const char *version = (const char *)qglGetString(GL_VERSION);
+		qbool havemap = true;
+#ifdef USE_GLES2
+		havemap = version && !strncmp(version, "OpenGL ES ", 10) && atoi(version + 10) >= 3;
+#else
+		(void)version;
+#endif
+#ifdef __EMSCRIPTEN__
+		// WebGL has no buffer mapping. Emscripten emulates glMapBufferRange
+		// with a heap copy and a glBufferSubData on unmap, and refuses
+		// GL_MAP_UNSYNCHRONIZED_BIT outright (an error per draw, 13 fps).
+		havemap = false;
+#endif
+		if (havemap && !Sys_CheckParm("-nomapbufferrange"))
+		{
+			qglMapBufferRangeDyn = (void *(GLAPIENTRY *)(GLenum, GLintptr, GLsizeiptr, GLbitfield))GL_GetProcAddress("glMapBufferRange");
+			qglUnmapBufferDyn = (GLboolean (GLAPIENTRY *)(GLenum))GL_GetProcAddress("glUnmapBuffer");
+		}
+		vid.support.mapbufferrange = qglMapBufferRangeDyn && qglUnmapBufferDyn;
+		Con_Printf("Dynamic buffers: %s\n", vid.support.mapbufferrange ? "unsynchronized glMapBufferRange" : "glBufferSubData");
+	}
+// COMMANDLINEOPTION: GL: -nomapbufferrange writes dynamic vertex data with glBufferSubData instead of an unsynchronized glMapBufferRange
 	vid.allowalphatocoverage = false;
 
 // COMMANDLINEOPTION: GL: -noanisotropy disables GL_EXT_texture_filter_anisotropic (allows higher quality texturing)
@@ -802,6 +872,8 @@ void GL_Setup(void)
 // COMMANDLINEOPTION: GL: -notexture4 disables GL_AMD_texture_texture4 (which provides fetch4 sampling)
 // COMMANDLINEOPTION: GL: -notexturegather disables GL_ARB_texture_gather (which provides fetch4 sampling)
 // COMMANDLINEOPTION: GL: -nogldebugoutput disables GL_ARB_debug_output (which provides the gl_debug feature, if enabled)
+// COMMANDLINEOPTION: GL: -nodepth24 disables 24bit depth render targets on GLES2 (GL_OES_depth24)
+// COMMANDLINEOPTION: GL: -nopackeddepthstencil disables packed depth+stencil render targets on GLES2 (GL_OES_packed_depth_stencil)
 
 #ifdef WIN32
 	// gl_texturecompression_color is somehow broken on AMD's Windows driver,
@@ -1350,6 +1422,8 @@ void VID_Shared_Init(void)
 	Cvar_RegisterVariable(&vid_keyboard_detected);
 	Cvar_RegisterVariable(&vid_touchscreen_showkeyboard);
 	Cvar_RegisterVariable(&vid_touchscreen_mouselook);
+	Cvar_RegisterVariable(&vid_mouse_confirmed_cvar);
+	Cvar_RegisterVariable(&vid_pointer_mouse);
 	Cvar_RegisterVariable(&touch_owns_screen);
 	Cvar_RegisterVariable(&vid_touchscreen_supportshowkeyboard);
 	Cvar_RegisterVariable(&vid_touchscreen_textinput_x);

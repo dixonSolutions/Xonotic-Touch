@@ -37,7 +37,9 @@ void Touch_ImportLayout(string path)
 	if (path == "")
 		path = autocvar_touch_layout_file;
 	Touch_SaveLayoutFile("touch.layout.bak");
-	localcmd(strcat("exec ", path, "\n"));
+	// Layouts are written with fopen, which puts them under data/ inside the
+	// gamedir; exec needs that prefix spelled out to find them.
+	localcmd(strcat("exec data/", path, "\n"));
 	Touch_ApplySensitivity();
 	print("Touch: imported ", path, "\n");
 }

@@ -52,6 +52,16 @@ typedef struct viddef_support_s
 	qbool arb_debug_output;
 	/// 32bit (GL_UNSIGNED_INT) draw indices. Core in GL, an extension in GLES2.
 	qbool element_index_uint;
+	// GLES2: 24bit depth renderbuffers (OES_depth24 or ES 3), and packed
+	// depth+stencil ones (OES_packed_depth_stencil or ES 3). Desktop GL: true.
+	qbool depth24;
+	qbool packed_depth_stencil;
+	// Mipmaps on non-power-of-two textures: desktop GL, ES 3, OES_texture_npot.
+	qbool npot_mipmap;
+	// glMapBufferRange and glUnmapBuffer: desktop GL 3, ES 3. Dynamic vertex
+	// data is written through an unsynchronized map when this is set; see
+	// R_Mesh_UpdateMeshBuffer.
+	qbool mapbufferrange;
 }
 viddef_support_t;
 
@@ -159,6 +169,10 @@ extern cvar_t vid_keyboard_detected;
 extern cvar_t vid_touchscreen_showkeyboard;
 extern cvar_t vid_touchscreen_supportshowkeyboard;
 extern cvar_t vid_touchscreen_mouselook;
+extern cvar_t vid_mouse_confirmed_cvar;
+extern cvar_t vid_pointer_mouse;
+/* Seconds spent in buffer swaps (vsync waits) since last cleared; Sys_PerfHint_Frame. */
+extern double vid_swapseconds;
 extern cvar_t touch_owns_screen;
 extern cvar_t vid_touchscreen_textinput_x;
 extern cvar_t vid_touchscreen_textinput_y;
@@ -274,6 +288,7 @@ void VID_GetTouchFinger(int slot, int *active, float *nx, float *ny);
 // Dynamic touch hardware detection (vid_touchdetect.c).
 // mode: 0 = off, 1 = auto (use detected hardware), 2 = always on.
 qbool VID_SDL_HasTouchDevices(void);
+qbool VID_TouchQueuedTap(float x0, float y0, float x1, float y1);
 void VID_DetectTouchHardware(qbool *has_touchscreen, qbool *is_touch_only);
 void VID_ApplyTouchscreenMode(void);
 void VID_TouchDetect_Init(void);

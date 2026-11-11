@@ -195,8 +195,10 @@ METHOD(Vortex, wr_think, void(entity thiswep, entity actor, .entity weaponentity
 		actor.pauseregen_finished = max(actor.pauseregen_finished, time + WEP_CVAR_SEC(WEP_VORTEX, chargepool_pause_regen));
 	}
 
-	if (autocvar_g_balance_vortex_reload_ammo && actor.(weaponentity).clip_load < min(WEP_CVAR_PRI(WEP_VORTEX, ammo), WEP_CVAR_SEC(WEP_VORTEX, ammo)))
-	{ // forced reload
+	if (autocvar_g_balance_vortex_reload_ammo // forced reload
+	&& actor.(weaponentity).clip_load < WEP_CVAR_PRI(WEP_VORTEX, ammo)
+	&& actor.(weaponentity).clip_load < WEP_CVAR_SEC(WEP_VORTEX, ammo))
+	{
 		thiswep.wr_reload(thiswep, actor, weaponentity);
 		return;
 	}
@@ -332,7 +334,7 @@ METHOD(Vortex, wr_zoom, bool(entity thiswep, entity actor))
 METHOD(Vortex, wr_impacteffect, void(entity thiswep, entity actor))
 {
 	entity this = actor;
-	vector org2 = w_org + w_backoff * 2;
+	vector org2 = w_impactorg;
 	bool usecolor = ((teamplay && autocvar_cl_tracers_teamcolor == 1) || autocvar_cl_tracers_teamcolor == 2);
 	boxparticles(particleeffectnum(EFFECT_VORTEX_IMPACT), NULL, org2, org2, '0 0 0', '0 0 0', 1, (usecolor ? PARTICLES_USECOLOR : 0));
 	if (!w_issilent)

@@ -5,6 +5,7 @@
 #define MAX_RENDERTARGETS 4
 
 cvar_t gl_debug = {CF_CLIENT, "gl_debug", "0", "enables OpenGL 4.3 debug output, 0 = off, 1 = HIGH severity only, 2 = also MEDIUM severity, 3 = also LOW severity messages.  (note: enabling may not take effect until vid_restart on some drivers, and only X11 and Windows are known to support the debug context)"};
+cvar_t gl_mapbufferunsync = {CF_CLIENT, "gl_mapbufferunsync", "1", "write per-frame vertex and index data through an unsynchronized glMapBufferRange instead of glBufferSubData (GL 3 / ES 3); glBufferSubData makes tile-based phone GPUs copy the whole buffer on every write"};
 cvar_t gl_paranoid = {CF_CLIENT, "gl_paranoid", "0", "enables OpenGL error checking and other tests"};
 cvar_t gl_printcheckerror = {CF_CLIENT, "gl_printcheckerror", "0", "prints all OpenGL error checks, useful to identify location of driver crashes"};
 
@@ -369,6 +370,7 @@ void gl_backend_init(void)
 	Cvar_RegisterVariable(&v_flipped);
 	Cvar_RegisterVariable(&gl_debug);
 	Cvar_RegisterVariable(&gl_paranoid);
+	Cvar_RegisterVariable(&gl_mapbufferunsync);
 #ifdef DEBUGGL // gl_printcheckerror does nothing in normal builds
 	Cvar_RegisterVariable(&gl_printcheckerror);
 #endif
@@ -960,6 +962,7 @@ static const GLuint drawbuffers[4] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1
 int R_Mesh_CreateFramebufferObject(rtexture_t *depthtexture, rtexture_t *colortexture, rtexture_t *colortexture2, rtexture_t *colortexture3, rtexture_t *colortexture4)
 {
 	int temp;
+	int previousfbo;
 	GLuint status;
 	switch(vid.renderpath)
 	{
@@ -968,15 +971,27 @@ int R_Mesh_CreateFramebufferObject(rtexture_t *depthtexture, rtexture_t *colorte
 		CHECKGLERROR
 		qglGenFramebuffers(1, (GLuint*)&temp);CHECKGLERROR
 
-#ifndef USE_GLES2
-		R_Mesh_SetRenderTargets(temp);  // This breaks GLES2.
-		// GL_ARB_framebuffer_object (GL3-class hardware) - depth stencil attachment
-#endif
+		// Attachments and the status check below act on the bound framebuffer,
+		// so bind the new one first, on GLES2 as well. Without the bind, GLES2
+		// attached to whatever was bound (the window: GL_INVALID_OPERATION),
+		// checked that one (complete) and returned an FBO with nothing in it.
+		// Every view that went through an FBO -- gamma/contrast, saturation,
+		// bloom, the blurs -- then drew nothing and showed an undefined buffer.
+		// Callers bind the FBO they draw into, so put the previous one back:
+		// one made mid-frame must not take over the drawing that follows.
+		previousfbo = gl_state.framebufferobject;
+		R_Mesh_SetRenderTargets(temp);
 
 #ifdef USE_GLES2
-		// FIXME: separate stencil attachment on GLES
+		// ES 2.0 has no GL_DEPTH_STENCIL_ATTACHMENT: a packed depth+stencil
+		// renderbuffer (GL_DEPTH24_STENCIL8_OES, only made when the device
+		// supports it) goes on both attachment points.
 		if (depthtexture  && depthtexture->texnum ) { qglFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT  , depthtexture->gltexturetypeenum , depthtexture->texnum , 0);CHECKGLERROR }
-		if (depthtexture  && depthtexture->renderbuffernum ) { qglFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT  , GL_RENDERBUFFER, depthtexture->renderbuffernum );CHECKGLERROR }
+		if (depthtexture  && depthtexture->renderbuffernum )
+		{
+			qglFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT  , GL_RENDERBUFFER, depthtexture->renderbuffernum );CHECKGLERROR
+			if (depthtexture->glisdepthstencil) { qglFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT  , GL_RENDERBUFFER, depthtexture->renderbuffernum );CHECKGLERROR }
+		}
 #else
 		if (depthtexture  && depthtexture->texnum )
 		{
@@ -1030,10 +1045,14 @@ int R_Mesh_CreateFramebufferObject(rtexture_t *depthtexture, rtexture_t *colorte
 		if (status != GL_FRAMEBUFFER_COMPLETE)
 		{
 			Con_Printf(CON_ERROR "R_Mesh_CreateFramebufferObject: glCheckFramebufferStatus returned %i\n", status);
-			gl_state.framebufferobject = 0; // GL unbinds it for us
+			// Deleting the bound framebuffer leaves GL on 0, which is not the
+			// window where the default framebuffer is non-zero. Keep the cache
+			// on temp so the restore below binds rather than seeing 0 == 0 and
+			// skipping it.
 			qglDeleteFramebuffers(1, (GLuint*)&temp);CHECKGLERROR
 			temp = 0;
 		}
+		R_Mesh_SetRenderTargets(previousfbo);
 		return temp;
 	}
 	return 0;
@@ -1932,7 +1951,30 @@ void R_Mesh_UpdateMeshBuffer(r_meshbuffer_t *buffer, const void *data, size_t si
 				buffertype = GL_UNIFORM_BUFFER;
 #endif
 			CHECKGLERROR
-			if (subdata)
+			if (subdata && buffer->isdynamic && vid.support.mapbufferrange && gl_mapbufferunsync.integer)
+			{
+				/*
+				 * The per-frame streams (R_BufferData_Store) append to one
+				 * buffer and draw from it between appends. glBufferSubData
+				 * into a buffer that queued draws still read makes a
+				 * tile-based driver (Mali above all, which defers every draw
+				 * to the end of the frame) copy the whole buffer first, on
+				 * every append: hundreds of multi-megabyte copies a frame,
+				 * 7 fps on a Galaxy Tab Active5. Appends never touch a range
+				 * a draw has used (the buffer is orphaned when the frame
+				 * starts over at offset 0, and grows into a new one), so an
+				 * unsynchronized map is safe and copies nothing.
+				 */
+				void *p = qglMapBufferRangeDyn(buffertype, (GLintptr)offset, (GLsizeiptr)size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_RANGE_BIT | GL_MAP_UNSYNCHRONIZED_BIT);
+				if (p)
+				{
+					memcpy(p, data, size);
+					qglUnmapBufferDyn(buffertype);
+				}
+				else
+					qglBufferSubData(buffertype, offset, size, data);
+			}
+			else if (subdata)
 				qglBufferSubData(buffertype, offset, size, data);
 			else
 				qglBufferData(buffertype, size, data, buffer->isdynamic ? GL_STREAM_DRAW : GL_STATIC_DRAW);

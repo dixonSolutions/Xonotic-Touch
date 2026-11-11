@@ -2,8 +2,10 @@
 
 	void Button_resizeNotify(entity me, vector relOrigin, vector relSize, vector absOrigin, vector absSize)
 	{
-		if (me.srcMulti) me.keepspaceLeft = 0;
-		else me.keepspaceLeft = min(0.8, absSize.x == 0 ? 0 : (absSize.y / absSize.x));
+		if (me.srcMulti)
+			me.keepspaceLeft = 0;
+		else
+			me.keepspaceLeft = min(0.8, absSize.x == 0 ? 0 : (absSize.y / absSize.x));
 		SUPER(Button).resizeNotify(me, relOrigin, relSize, absOrigin, absSize);
 
 		if(me.disableOnClick)
@@ -18,7 +20,7 @@
 	{
 		if (key == K_ENTER || key == K_SPACE || key == K_KP_ENTER)
 		{
-			if(!me.disabled)
+			if (!me.disabled)
 			{
 				me.playClickSound(me);
 				me.clickTime = 0.1;  // delayed for effect
@@ -29,12 +31,11 @@
 	}
 	float Button_mouseDrag(entity me, vector pos)
 	{
-		float slop = cvar("vid_touchscreen") ? 0.25 : 0;
-		me.pressed = 1;
-		if (pos.x < -slop) me.pressed = 0;
-		if (pos.y < -slop) me.pressed = 0;
-		if (pos.x >= 1 + slop) me.pressed = 0;
-		if (pos.y >= 1 + slop) me.pressed = 0;
+		// Finger semantics follow what pressed, not whether the touch controls
+		// are drawn: a finger presses the menu with a keyboard attached too.
+		// vid_pointer_mouse goes to 0 on the finger before its press arrives.
+		float slop = !cvar("vid_pointer_mouse") ? 0.25 : 0;
+		me.pressed = (pos.x < -slop || pos.y < -slop || pos.x >= 1 + slop || pos.y >= 1 + slop) ? 0 : 1;
 		return 1;
 	}
 	METHOD(Button, mousePress, bool(Button this, vector pos))
@@ -42,7 +43,7 @@
 		this.mouseDrag(this, pos);  // verify coordinates (with touch slop)
 		// Touchscreens: fire on press. Finger release often drifts outside the
 		// 0..1 hit box, so mouseRelease never sees pressed=1 (dead taps).
-		if (cvar("vid_touchscreen") && this.pressed && !this.disabled && this.onClick)
+		if (!cvar("vid_pointer_mouse") && this.pressed && !this.disabled && this.onClick)
 		{
 			this.playClickSound(this);
 			if (this.applyButton)
@@ -58,7 +59,7 @@
 	{
 		// Touch already fired on press. mouseDrag() would re-arm pressed=1 and
 		// a second onClick would run (e.g. Download in background → instant quit).
-		if (cvar("vid_touchscreen"))
+		if (!cvar("vid_pointer_mouse"))
 		{
 			me.pressed = 0;
 			return 1;
@@ -71,10 +72,10 @@
 				me.playClickSound(me);
 				if (me.onClick)
 				{
-					if(me.applyButton)
+					if (me.applyButton)
 						me.applyButton.disabled = false;
 					me.onClick(me, me.onClickEntity);
-					if(me.disableOnClick)
+					if (me.disableOnClick)
 						me.disabled = true;
 				}
 			}
@@ -119,7 +120,7 @@
 			}
 			else
 			{
-				if (me.realFontSize_y == 0)
+				if (me.realFontSize.y == 0)
 				{
 					bOrigin = '0 0 0';
 					bSize = '1 1 0';
@@ -163,10 +164,10 @@
 			// keyboard click timer expired? Fire the event then.
 			if (!me.disabled && me.onClick)
 			{
-				if(me.applyButton)
+				if (me.applyButton)
 					me.applyButton.disabled = false;
 				me.onClick(me, me.onClickEntity);
-				if(me.disableOnClick)
+				if (me.disableOnClick)
 					me.disabled = true;
 			}
 		}
@@ -177,7 +178,10 @@
 	void Dialog_Close(entity button, entity me);
 	void Button_playClickSound(entity me)
 	{
-		if (me.onClick == DialogOpenButton_Click) m_play_click_sound(MENU_SOUND_OPEN);
-		else if (me.onClick == Dialog_Close) m_play_click_sound(MENU_SOUND_CLOSE);
-		else m_play_click_sound(MENU_SOUND_EXECUTE);
+		if (me.onClick == DialogOpenButton_Click)
+			m_play_click_sound(MENU_SOUND_OPEN);
+		else if (me.onClick == Dialog_Close)
+			m_play_click_sound(MENU_SOUND_CLOSE);
+		else
+			m_play_click_sound(MENU_SOUND_EXECUTE);
 	}

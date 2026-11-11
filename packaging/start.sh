@@ -98,7 +98,13 @@ TOUCH_PROFILE="${XONOTIC_TOUCH_PROFILE:-standard}"
 # Thermal is the default on tablets (Surface / fanless Iris); override with balanced/quality.
 TOUCH_PERF_PROFILE="${XONOTIC_TOUCH_PERF_PROFILE:-thermal}"
 TOUCH_PROFILES_DIR="${USER_DATA}/touch/profiles"
-# CSQC writes layout under the gamedir (data/); keep legacy home path as fallback only.
+# Where touch_save and the menu's Touch tab actually put the layout: QuakeC
+# fopen prefixes a data/ of its own inside the userdir's gamedir, so the file
+# is ~/.xonotic/data/data/touch.layout.cfg and `exec data/touch.layout.cfg`
+# is the name that finds it. A bare `exec touch.layout.cfg` never did, and the
+# schema check then saved the defaults over the unread file at every launch.
+ENGINE_TOUCH_LAYOUT="${HOME}/.xonotic/data/data/touch.layout.cfg"
+# Hand-placed copies at the old paths still load when there is no saved one.
 USER_TOUCH_LAYOUT="${XONOTIC_TOUCH_LAYOUT:-${HOME}/.xonotic/data/touch.layout.cfg}"
 USER_TOUCH_LAYOUT_LEGACY="${HOME}/.xonotic/touch.layout.cfg"
 
@@ -868,31 +874,54 @@ mkdir -p "${DATA_DIR}/touch/profiles" 2>/dev/null || true
     else
         echo "xonotic-touch: touch profile missing: ${TOUCH_PROFILES_DIR}/${TOUCH_PROFILE}.cfg" >&2
     fi
+    # The performance profile is applied once, on the first start
+    # (touch_perf_version, archived; touch/xonotic.cfg defaults it to 0 before
+    # config.cfg runs). Applying it on every start overwrote whatever the
+    # player then chose in the menus. XONOTIC_TOUCH_PERF_PROFILE set by hand
+    # still applies on every start.
     if [ -f "${TOUCH_PROFILES_DIR}/${TOUCH_PERF_PROFILE}.cfg" ]; then
-        echo "exec touch/profiles/${TOUCH_PERF_PROFILE}.cfg"
+        if [ -n "${XONOTIC_TOUCH_PERF_PROFILE:-}" ]; then
+            echo "exec touch/profiles/${TOUCH_PERF_PROFILE}.cfg"
+        else
+            # Version 3 removed the 3D view cap from the defaults: installs on
+            # 1 or 2 get it reset to full resolution, once. Version 5 (4 is
+            # Android's performance-hint step) puts particles back on and the
+            # per-frame vertex buffers back to their default size, once; see
+            # V5_RESET in GameData.java.
+            v5="cl_particles 1; r_buffermegs_vertex 4; r_buffermegs_index16 1; r_buffermegs_index32 1"
+            echo "alias _touch_perf_apply0 \"exec touch/profiles/${TOUCH_PERF_PROFILE}.cfg; seta touch_perf_version 5\""
+            echo "alias _touch_perf_apply1 \"r_viewscale_maxheight 0; ${v5}; seta touch_perf_version 5\""
+            echo "alias _touch_perf_apply2 \"r_viewscale_maxheight 0; ${v5}; seta touch_perf_version 5\""
+            echo "alias _touch_perf_apply3 \"${v5}; seta touch_perf_version 5\""
+            echo "alias _touch_perf_apply4 \"${v5}; seta touch_perf_version 5\""
+            echo "alias _touch_perf_apply5 \"\""
+            echo "_touch_perf_apply\$touch_perf_version"
+        fi
     fi
     # Prefer engine-resolved name so fopen/exec share one file (TOUCH_LAYOUT_SPEC D14).
-    if [ -f "$USER_TOUCH_LAYOUT" ] || [ -f "${DATA_DIR}/touch.layout.cfg" ]; then
+    if [ -f "$ENGINE_TOUCH_LAYOUT" ]; then
+        echo "exec data/touch.layout.cfg"
+    elif [ -f "$USER_TOUCH_LAYOUT" ] || [ -f "${DATA_DIR}/touch.layout.cfg" ]; then
         echo "exec touch.layout.cfg"
     elif [ -f "$USER_TOUCH_LAYOUT_LEGACY" ]; then
         echo "exec ${USER_TOUCH_LAYOUT_LEGACY}"
     fi
 } > "$STARTUP_CFG" || xonotic_log "cannot write $STARTUP_CFG"
 
-# Touch controls: auto-detect by default. Desktop test windows have no
-# touchscreen, so they force Always unless XONOTIC_TOUCH_MODE is set.
+# Touch controls: the input mode chosen in Settings -> Touch is archived
+# (vid_touchscreen_mode, default Dynamic) and wins. Passing it on every launch
+# undid that choice at each start. Only an explicit XONOTIC_TOUCH_MODE, or the
+# desktop test window (no touchscreen, so Always), overrides it.
 # Values: auto | always | off
-if [ -z "${XONOTIC_TOUCH_MODE:-}" ]; then
-    if [ "${IS_DESKTOP:-0}" = "1" ]; then
-        XONOTIC_TOUCH_MODE=always
-    else
-        XONOTIC_TOUCH_MODE=auto
-    fi
+TOUCH_MODE_ARGS=""
+if [ -z "${XONOTIC_TOUCH_MODE:-}" ] && [ "${IS_DESKTOP:-0}" = "1" ]; then
+    XONOTIC_TOUCH_MODE=always
 fi
-case "$XONOTIC_TOUCH_MODE" in
-    always|2) VID_TOUCHSCREEN_MODE=2 ;;
-    off|0)    VID_TOUCHSCREEN_MODE=0 ;;
-    *)        VID_TOUCHSCREEN_MODE=1 ;;
+case "${XONOTIC_TOUCH_MODE:-}" in
+    "")       ;;
+    always|2) TOUCH_MODE_ARGS="+vid_touchscreen_mode 2" ;;
+    off|0)    TOUCH_MODE_ARGS="+vid_touchscreen_mode 0" ;;
+    *)        TOUCH_MODE_ARGS="+vid_touchscreen_mode 1" ;;
 esac
 
 # The engine resolves -xonotic gamedirs relative to the cwd.
@@ -916,8 +945,7 @@ run_engine() {
         +set _touch_asset_fetch_active "$ASSET_FETCH_ACTIVE" \
         +set _touch_assets_ready "$TOUCH_ASSETS_READY" \
         +vid_fullscreen "$FULLSCREEN" \
-        +vid_touchscreen_mode "$VID_TOUCHSCREEN_MODE" \
-        +vid_touchscreen_touchonly 1 \
+        $TOUCH_MODE_ARGS \
         +vid_conwidthauto 1 \
         +vid_conheight "$XONOTIC_VID_HEIGHT" \
         +vid_width "$XONOTIC_VID_WIDTH" \

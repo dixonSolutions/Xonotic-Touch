@@ -169,8 +169,12 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # Full history and tags: changelog.txt is built from the commits between
+      # release tags (scripts/release-changelog.sh).
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -225,9 +229,13 @@ jobs:
             <li>Ubuntu Touch: <a href="https://open-store.io/app/xonotictouch.dixonsolutions">OpenStore</a>, or <a href="click/">.click downloads</a> (arm64 + armhf)</li>
             <li><a href="https://github.com/dixonSolutions/Xonotic-Touch">Source code and docs on GitHub</a></li>
           </ul>
-          <p>Build ${PACKAGE_VERSION}</p>
+          <p>Build ${PACKAGE_VERSION} &middot; <a href="changelog.txt">What changed</a></p>
           </body></html>
           EOF
+          # What the in-app Updates screen shows under "What's new": the
+          # menu fetches this plain-text file on every platform.
+          bash scripts/release-changelog.sh text "$PACKAGE_VERSION" "$GITHUB_SHA" > site/changelog.txt
+          wc -c site/changelog.txt
 
       - name: Setup Pages
         uses: actions/configure-pages@v6
@@ -242,6 +250,10 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+        with:
+          # GitHub can take over 10 minutes (the default) to sync the ~150 MB site
+          # of Flatpak and Click remotes; it timed out on two releases in a row.
+          timeout: 1800000
 
   release:
     name: GitHub Release
@@ -255,6 +267,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -280,6 +294,8 @@ jobs:
             echo "## Xonotic Touch ${VERSION}"
             echo
             echo "Immutable release — previous tags are kept."
+            echo
+            bash scripts/release-changelog.sh markdown "$VERSION" "$GITHUB_SHA"
             echo
             echo "### Flatpak (Linux)"
             echo '```bash'
@@ -357,80 +373,104 @@ jobs:
         run: bash scripts/android-verify-update-feed.sh
 
   # Upload arm64 + armhf revisions to OpenStore (requires OPENSTORE_API_KEY).
-  openstore:
-    name: OpenStore
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-    needs: [version, click]
+  # OpenStore is published from openstore.yml (weekly, or by hand), not on
+  # every push: one revision pair per push filled the app's storage there.
+
+  # Separate channels keep each ABI's payload and frozen host together.
+  andysu-live:
+    name: AndySU live (${{ matrix.abi }})
+    if: github.ref == 'refs/heads/main'
+    needs: [version, android, release]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            suffix: arm64
+          - abi: armeabi-v7a
+            suffix: arm32
+          - abi: x86_64
+            suffix: x64
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download Click artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
-          path: artifacts
-          pattern: click-*
-          merge-multiple: false
-
-      - name: click-review packages (must be clean)
-        run: |
-          set -euo pipefail
-          mapfile -t CLICKS < <(find artifacts/click-arm64 artifacts/click-armhf -name '*.click' -type f | sort)
-          test "${#CLICKS[@]}" -ge 2
-          # OpenStore rejects both click-review errors and warnings.
-          docker run --rm \
-            -v "$PWD/artifacts:/artifacts:ro" \
-            -v "$PWD/scripts/click-review-clean.py:/review-clean.py:ro" \
-            clickable/ci-ut24.04-1.x-amd64 \
-            bash -lc 'set -euo pipefail
-              for f in /artifacts/click-arm64/*.click /artifacts/click-armhf/*.click; do
-                echo "click-review $f"
-                click-review --json "$f" | python3 /review-clean.py
-              done'
-      - name: Publish revisions to OpenStore
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-${{ matrix.abi }}
+          path: apk
+      - name: Prepare pinned AndySU and host
         env:
-          OPENSTORE_API_KEY: ${{ secrets.OPENSTORE_API_KEY }}
-          VERSION: ${{ needs.version.outputs.version }}
-          CLICK_NAME: ${{ env.CLICK_NAME }}
+          ABI: ${{ matrix.abi }}
+          SUFFIX: ${{ matrix.suffix }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ -z "${OPENSTORE_API_KEY:-}" ]; then
-            echo "OPENSTORE_API_KEY secret is missing — cannot publish to OpenStore." >&2
-            exit 1
-          fi
-
-          # General app changelog stays blank on the store page; revision changelog is set per upload.
-          REVISION_CHANGELOG="Xonotic Touch ${VERSION}: touch HUD, map-vote input, and packaging updates."
-
-          mapfile -t CLICKS < <(find artifacts/click-arm64 artifacts/click-armhf -name '*.click' -type f | sort)
-          if [ "${#CLICKS[@]}" -lt 2 ]; then
-            echo "Expected arm64 + armhf .click artifacts, found ${#CLICKS[@]}" >&2
-            find artifacts -type f | head -50 >&2 || true
-            exit 1
-          fi
-
-          for f in "${CLICKS[@]}"; do
-            echo "Publishing $(basename "$f") → OpenStore app ${CLICK_NAME} (channel=focal)..."
-            # Same endpoint as clickable publish; direct upload so CI does not need a local build tree.
-            http_code="$(
-              curl -sS -o /tmp/openstore-resp.json -w '%{http_code}' \
-                --connect-timeout 30 --max-time 900 \
-                -X POST \
-                -F "file=@${f}" \
-                -F "channel=focal" \
-                -F "changelog=${REVISION_CHANGELOG}" \
-                "https://open-store.io/api/v3/manage/${CLICK_NAME}/revision?apikey=${OPENSTORE_API_KEY}"
-            )"
-            echo "HTTP ${http_code}"
-            python3 -c 'import json,sys; d=json.load(open("/tmp/openstore-resp.json")); print(json.dumps({"success": d.get("success"), "message": d.get("message")}, indent=2)); sys.exit(0 if d.get("success") else 1)' \
-              || { echo "OpenStore response:"; cat /tmp/openstore-resp.json; exit 1; }
-            if [ "$http_code" != "200" ]; then
-              echo "OpenStore upload failed for $f" >&2
-              cat /tmp/openstore-resp.json >&2 || true
-              exit 1
-            fi
+          test -n "$ANDROID_KEYSTORE_BASE64" && test -n "$ANDROID_KEYSTORE_PASSWORD" && test -n "$ANDROID_KEY_ALIAS"
+          # Through the API with the job's token, and retried: anonymous
+          # releases/download URLs time out (504) whenever GitHub sheds
+          # anonymous load, which failed every live channel of 1.2.124.
+          for i in 1 2 3 4 5 6; do
+            gh release download v0.1.135 --repo dixonSolutions/AndySU --dir "$RUNNER_TEMP" --clobber \
+              --pattern andysu-x86_64-unknown-linux-musl --pattern andysu-host-template-0.1.135.zip && break
+            test "$i" -lt 6
+            sleep $((i * 15))
           done
-
-          echo "OpenStore revisions uploaded for ${CLICK_NAME} ${VERSION}."
-          echo "Mark the app Published=Yes on https://open-store.io/manage/${CLICK_NAME} after review passes."
+          mv "$RUNNER_TEMP/andysu-x86_64-unknown-linux-musl" "$RUNNER_TEMP/andysu"
+          mv "$RUNNER_TEMP/andysu-host-template-0.1.135.zip" "$RUNNER_TEMP/host-template.zip"
+          chmod +x "$RUNNER_TEMP/andysu"
+          sed "s/channel = \"live-arm64\"/channel = \"live-$SUFFIX\"/" andysu.toml > andysu-abi.toml
+          "$RUNNER_TEMP/andysu" host-config --toml andysu-abi.toml --config-out "$RUNNER_TEMP/config.json" --host-out "$RUNNER_TEMP/host.json"
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          trap 'rm -f "$RUNNER_TEMP/release.keystore"' EXIT
+          shopt -s nullglob
+          apks=(apk/*.apk)
+          test "${#apks[@]}" -eq 1
+          "$RUNNER_TEMP/andysu" split "${apks[0]}" --out split --transparent --abi "$ABI" \
+            --host-template "$RUNNER_TEMP/host-template.zip" --config "$RUNNER_TEMP/config.json" \
+            --keystore "$RUNNER_TEMP/release.keystore" --ks-pass env:ANDROID_KEYSTORE_PASSWORD --key-alias "$ANDROID_KEY_ALIAS"
+      - name: Refuse to republish an older app release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: test "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" = "$TAG"
+      # The id must equal the version built into the host, or a fresh install takes itself for an
+      # update. A re-run is a no-op, and a half-finished publish resumes (AndySU 0.1.135).
+      - name: Publish signed ABI channel
+        uses: dixonSolutions/AndySU/actions/publish@v0.1.135
+        with:
+          payload: split/payload
+          config: andysu-abi.toml
+          signing-key: ${{ secrets.ANDYSU_SIGNING_KEY }}
+          signing-cert: ${{ secrets.ANDYSU_SIGNING_CERT }}
+          version: ${{ needs.version.outputs.version }}
+          pack-args: --no-rename
+          andysu-version: 0.1.135
+      # The AndySU action creates its channel release as a pre-release, and the
+      # app's updater ignores pre-releases. Users get full releases, so clear the flag.
+      - name: Make the AndySU channel release a full release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          SUFFIX: ${{ matrix.suffix }}
+        run: gh release edit "andysu-live-$SUFFIX-$VERSION" --prerelease=false --latest=false
+      - name: Attach live APK to app release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+          SUFFIX: ${{ matrix.suffix }}
+        run: |
+          set -euo pipefail
+          name="XonoticTouch-live-$VERSION-$SUFFIX.apk"
+          cp split/host.apk "$name"
+          gh release upload "$TAG" "$name" --clobber

@@ -1090,4 +1090,17 @@ void GL_PrintError(GLenum errornumber, const char *filename, unsigned int linenu
 #endif //DEBUGGL
 
 
+// Mapping for dynamic buffers, looked up at run time (vid.support.mapbufferrange).
+extern void *(GLAPIENTRY *qglMapBufferRangeDyn)(GLenum target, GLintptr offset, GLsizeiptr length, GLbitfield access);
+extern GLboolean (GLAPIENTRY *qglUnmapBufferDyn)(GLenum target);
+#ifndef GL_MAP_WRITE_BIT
+#define GL_MAP_WRITE_BIT 0x0002
+#endif
+#ifndef GL_MAP_INVALIDATE_RANGE_BIT
+#define GL_MAP_INVALIDATE_RANGE_BIT 0x0004
+#endif
+#ifndef GL_MAP_UNSYNCHRONIZED_BIT
+#define GL_MAP_UNSYNCHRONIZED_BIT 0x0020
+#endif
+
 #endif //GLQUAKE_H

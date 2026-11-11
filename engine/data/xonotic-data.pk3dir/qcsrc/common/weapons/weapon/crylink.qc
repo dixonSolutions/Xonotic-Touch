@@ -498,9 +498,9 @@ METHOD(Crylink, wr_aim, void(entity thiswep, entity actor, .entity weaponentity)
 
 METHOD(Crylink, wr_think, void(entity thiswep, entity actor, .entity weaponentity, int fire))
 {
-	if (autocvar_g_balance_crylink_reload_ammo
-	&& actor.(weaponentity).clip_load < min(WEP_CVAR_PRI(WEP_CRYLINK, ammo), WEP_CVAR_SEC(WEP_CRYLINK, ammo)))
-		// forced reload
+	if (autocvar_g_balance_crylink_reload_ammo // forced reload
+	&& actor.(weaponentity).clip_load < WEP_CVAR_PRI(WEP_CRYLINK, ammo)
+	&& actor.(weaponentity).clip_load < WEP_CVAR_SEC(WEP_CRYLINK, ammo))
 		thiswep.wr_reload(thiswep, actor, weaponentity);
 	else if (fire & 1)
 	{
@@ -593,7 +593,7 @@ METHOD(Crylink, wr_killmessage, Notification(entity thiswep))
 
 METHOD(Crylink, wr_impacteffect, void(entity thiswep, entity actor))
 {
-	vector org2 = w_org + w_backoff * 2;
+	vector org2 = w_impactorg;
 	if (w_deathtype & HITTYPE_SECONDARY)
 	{
 		pointparticles(EFFECT_CRYLINK_IMPACT2, org2, '0 0 0', 1);

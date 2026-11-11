@@ -26,7 +26,9 @@ typedef enum touchui_style_e
 	TOUCHUI_STYLE_ACCENT,
 	TOUCHUI_STYLE_DANGER,
 	TOUCHUI_STYLE_DIM,
-	TOUCHUI_STYLE_TEXT
+	TOUCHUI_STYLE_TEXT,
+	TOUCHUI_STYLE_POPUP,       /* hold popup cell: opaque, over the keys */
+	TOUCHUI_STYLE_POPUP_SEL    /* hold popup cell the finger picks */
 }
 touchui_style_t;
 
@@ -43,7 +45,9 @@ typedef enum touchui_action_e
 	TOUCHUI_ACT_LAYER_ABC,
 	TOUCHUI_ACT_PALETTE,       /* action_arg = palette index */
 	TOUCHUI_ACT_BKSP_HOLD,     /* backspace with hold-repeat */
-	TOUCHUI_ACT_SPECTATE       /* action_arg = spectator entry index; runs it and closes the sheet */
+	TOUCHUI_ACT_SPECTATE,      /* action_arg = spectator entry index; runs it and closes the sheet */
+	TOUCHUI_ACT_KB_TOGGLE,     /* show / hide the on-screen keys */
+	TOUCHUI_ACT_POPUP          /* hold popup cell; picked by sliding, not by a tap */
 }
 touchui_action_t;
 
@@ -87,6 +91,7 @@ extern struct cvar_s touch_kb_opacity;
 extern struct cvar_s touch_kb_layout;
 extern struct cvar_s touch_kb_split;
 extern struct cvar_s touch_kb_minkey_px;
+extern struct cvar_s touch_kb_hold_time;
 extern struct cvar_s touch_conui_shade;
 extern struct cvar_s touch_conui_palette_file;
 
@@ -97,6 +102,10 @@ void TouchUI_Shutdown(void);
 /* Reload palette from touch_conui_palette_file (or built-in defaults). */
 void TouchUI_ReloadPalette(void);
 qbool TouchUI_IsSpectating(void);
+/* Spectating another player: ALT (+fire2) goes back to observing. */
+qbool TouchUI_IsWatching(void);
+/* TOUCHSPEC_* of touch_spectate.h: playing, observing, following, out of the round. */
+int TouchUI_SpectatorState(void);
 
 /*
  * Fill out[] with items for a sheet drawn inside (x,y,w,h).
@@ -104,6 +113,13 @@ qbool TouchUI_IsSpectating(void);
  */
 int TouchUI_LayoutSheet(touchui_sheet_t kind, float x, float y, float w, float h,
 	touchui_item_t *out, int maxout);
+
+/* Whether the sheet shows its on-screen keys: by default with the touch
+ * controls on and no keyboard listed, otherwise after the player opens them
+ * with the KEYBOARD toggle. */
+qbool TouchUI_KeysShown(touchui_sheet_t kind);
+/* Top of the chat sheet's keys from the last layout, or -1 when none show. */
+float TouchUI_ChatKeysTop(void);
 
 /* Current interactive state */
 touchui_tab_t TouchUI_GetTab(void);

@@ -21,6 +21,8 @@ endif()
 ##### Source list, straight from makefile.inc ##################################
 
 file(READ "${DP_DIR}/makefile.inc" _mk)
+# A file added to the list re-runs this configure step in an existing build tree.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${DP_DIR}/makefile.inc")
 # Fold the makefile's line continuations so each OBJ_ list is one line.
 string(REPLACE "\\\n" " " _mk "${_mk}")
 
@@ -52,6 +54,25 @@ set(DP_SDL
     "${DP_DIR}/snd_sdl.c")
 
 add_library(main SHARED ${DP_COMMON} ${DP_MENU} ${DP_SND} ${DP_SDL})
+
+##### AndySU resident loader and live engine swap ################################
+set(ANDYSU_DIR "${CMAKE_CURRENT_SOURCE_DIR}/andysu")
+target_sources(main PRIVATE "${ANDYSU_DIR}/andysu_engine.c")
+target_include_directories(main PRIVATE "${ANDYSU_DIR}")
+target_compile_definitions(main PRIVATE
+    ANDYSU_SWAP
+    ANDYSU_BUILD_ID="${XONOTIC_VERSION}")
+foreach(def IN LISTS ANDYSU_TEST_DEFS)
+    target_compile_definitions(main PRIVATE ${def})
+endforeach()
+target_link_options(main PRIVATE
+    "-Wl,--version-script=${ANDYSU_DIR}/andysu_engine.map"
+    -Wl,--exclude-libs,ALL)
+
+add_library(andysu_xonotic_loader SHARED "${ANDYSU_DIR}/andysu_loader.c")
+target_include_directories(andysu_xonotic_loader PRIVATE "${ANDYSU_DIR}")
+target_compile_options(andysu_xonotic_loader PRIVATE -O2 -Wall)
+target_link_libraries(andysu_xonotic_loader android log dl)
 
 ##### Prebuilt dependencies ####################################################
 
@@ -85,9 +106,19 @@ target_compile_definitions(main PRIVATE
 set_source_files_properties("${DP_DIR}/sys_sdl.c" PROPERTIES
     COMPILE_DEFINITIONS "main=SDL_main")
 
+# libmain.so is one library that nothing links against: the only symbols
+# anything outside it calls are SDL_main and the JNI entry points, which their
+# headers already mark visible. Hiding the rest and ruling out interposition
+# lets clang call and inline across the engine directly instead of through the
+# PLT, and ThinLTO does that across files. gc-sections and ICF drop what is
+# left unused or duplicated, which also shrinks the APK.
 target_compile_options(main PRIVATE
     -O3 -fno-math-errno -fno-trapping-math -fno-strict-aliasing
+    -fvisibility=hidden -fno-semantic-interposition
+    -ffunction-sections -fdata-sections -flto=thin
     -Wall -Wno-unused-but-set-variable)
+target_link_options(main PRIVATE
+    -O3 -flto=thin -Wl,--gc-sections -Wl,--icf=safe)
 
 # libpng is dlopen()ed at runtime rather than linked; scripts/android-build.sh
 # stages it into jniLibs so it lands in the APK's lib/<abi>/ directory.

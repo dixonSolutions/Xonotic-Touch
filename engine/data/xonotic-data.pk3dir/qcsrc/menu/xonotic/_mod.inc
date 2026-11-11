@@ -82,6 +82,7 @@
 #include <menu/xonotic/dialog_settings_misc_cvars.qc>
 #include <menu/xonotic/dialog_settings_misc_reset.qc>
 #include <menu/xonotic/dialog_settings_touch.qc>
+#include <menu/xonotic/dialog_settings_updates.qc>
 #include <menu/xonotic/dialog_settings_user.qc>
 #include <menu/xonotic/dialog_settings_user_languagewarning.qc>
 #include <menu/xonotic/dialog_settings_video.qc>
@@ -90,9 +91,7 @@
 #include <menu/xonotic/dialog_teamselect.qc>
 #include <menu/xonotic/dialog_termsofservice.qc>
 #include <menu/xonotic/dialog_touch_asset_fetch.qc>
-#include <menu/xonotic/dialog_touch_home.qc>
-#include <menu/xonotic/dialog_touch_updates.qc>
-#include <menu/xonotic/dialog_touch_wizard.qc>
+#include <menu/xonotic/dialog_touch_gamemenu.qc>
 #include <menu/xonotic/dialog_uid2name.qc>
 #include <menu/xonotic/dialog_welcome.qc>
 #include <menu/xonotic/gametypelist.qc>
@@ -106,6 +105,7 @@
 #include <menu/xonotic/mainwindow.qc>
 #include <menu/xonotic/maplist.qc>
 #include <menu/xonotic/mixedslider.qc>
+#include <menu/xonotic/mutatortab.qc>
 #include <menu/xonotic/nexposee.qc>
 #include <menu/xonotic/picker.qc>
 #include <menu/xonotic/playerlist.qc>
@@ -136,7 +136,6 @@
 #include <menu/xonotic/touch_update_util.qc>
 #include <menu/xonotic/touchbutton.qc>
 #include <menu/xonotic/util.qc>
-#include <menu/xonotic/weaponarenacheckbox.qc>
 #include <menu/xonotic/weaponslist.qc>
 
 #include <menu/xonotic/guide/_mod.inc>

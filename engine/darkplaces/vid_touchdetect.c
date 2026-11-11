@@ -67,7 +67,7 @@ On top of that, the player decides how much of this runs:
 // Everything that looks at the host (procfs, sysfs, /dev/input, os-release,
 // DMI, Click/Lomiri) is desktop-Linux only. Android answers through
 // InputManager instead; probing the filesystem there would be pointless.
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(__linux__) && !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
 #define VID_LINUX_PROBES 1
 #include <errno.h>
 #include <fcntl.h>
@@ -82,6 +82,24 @@ On top of that, the player decides how much of this runs:
 
 #ifdef __ANDROID__
 #include <jni.h>
+#endif
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+// A browser lists no devices, but CSS media queries say what pointers exist:
+// "any-pointer: coarse" is a finger, "any-pointer: fine" a mouse, trackpad or
+// pen, and "hover: none" on the primary pointer means a phone or tablet. The
+// page can only learn about a keyboard from a key press, so a device with a
+// fine pointer is assumed to have one (a laptop, a desktop, an iPad with a
+// Magic Keyboard); a coarse-only device starts touch-only and the keyboard
+// hysteresis below takes over once someone types on a paired keyboard.
+EM_JS(int, vid_web_pointers, (void), {
+	var mq = function(q) { try { return window.matchMedia(q).matches; } catch (e) { return false; } };
+	var touch = (navigator.maxTouchPoints || 0) > 0 || mq('(any-pointer: coarse)');
+	var fine = mq('(any-pointer: fine)');
+	var hoverless = mq('(hover: none)');
+	return (touch ? 1 : 0) | (fine ? 2 : 0) | (hoverless ? 4 : 0);
+});
 #endif
 
 extern cvar_t vid_touchscreen;
@@ -375,6 +393,15 @@ static qbool vid_chassis_is_handheld_or_tablet(int chassis)
 static int vid_android_state;
 static int vid_android_seen;
 
+#ifdef ANDYSU_SWAP
+// The resident loader owns the JNI symbol and forwards device presence to the
+// currently running engine generation.
+void Andysu_InputDevices(int touch, int keyboard, int mouse)
+{
+	int v = VID_ANDROID_VALID | (touch ? VID_ANDROID_TOUCH : 0) | (keyboard ? VID_ANDROID_KEYBOARD : 0) | (mouse ? VID_ANDROID_MOUSE : 0);
+	__atomic_store_n(&vid_android_state, v, __ATOMIC_RELEASE);
+}
+#else
 JNIEXPORT void JNICALL Java_io_github_dixonsolutions_xonotictouch_XonoticActivity_nativeInputDevices(JNIEnv *env, jclass cls, jboolean touch, jboolean keyboard, jboolean mouse);
 JNIEXPORT void JNICALL Java_io_github_dixonsolutions_xonotictouch_XonoticActivity_nativeInputDevices(JNIEnv *env, jclass cls, jboolean touch, jboolean keyboard, jboolean mouse)
 {
@@ -383,6 +410,26 @@ JNIEXPORT void JNICALL Java_io_github_dixonsolutions_xonotictouch_XonoticActivit
 	(void)cls;
 	__atomic_store_n(&vid_android_state, v, __ATOMIC_RELEASE);
 }
+#endif // ANDYSU_SWAP
+#endif // __ANDROID__
+
+#ifdef VID_LINUX_PROBES
+// A keyboard /proc lists but presence discounted (the chassis' own keyboard
+// while the machine reads as a tablet) has typed play keys: it is plainly not
+// folded away. Tablet chassis types and tablet-mode switches get this wrong
+// on plenty of 2-in-1s -- a Type Cover in the laptop position, a switch stuck
+// on -- and the controls then stayed up over a keyboard in use. On-screen
+// keyboards cannot set this: they only come up for text, and typing text is
+// not counted (VID_NoteKeyEvent). Cleared when a keyboard comes or goes or
+// tablet mode changes.
+static qbool vid_keyboard_typed;
+// The same for the chassis' touchpad: presence sets it aside with the
+// keyboard while the machine reads as a tablet, yet a folded-away cover's pad
+// sends nothing. Moving the pointer or clicking says it is out and in use, so
+// it aims next to the touch controls instead of its clicks pressing them.
+// vid_pad_travel collects motion first: one stray event is not a player.
+static qbool vid_pad_used;
+static float vid_pad_travel;
 #endif
 
 static void vid_presence_compute(vid_presence_t *p)
@@ -401,6 +448,14 @@ static void vid_presence_compute(vid_presence_t *p)
 #elif defined(DP_MOBILETOUCH)
 	p->touch = true;
 	p->keyboard = false;
+#elif defined(__EMSCRIPTEN__)
+	{
+		int w = vid_web_pointers();
+		p->touch = (w & 1) || VID_SDL_HasTouchDevices() || vid_touch_finger_seen;
+		p->mouse = (w & 2) != 0;
+		p->keyboard = p->mouse && !(w & 4);
+		p->tablet_mode = p->touch && (w & 4);
+	}
 #else
 	p->touch = VID_SDL_HasTouchDevices() || vid_touch_finger_seen;
 #ifdef VID_LINUX_PROBES
@@ -435,8 +490,8 @@ static void vid_presence_compute(vid_presence_t *p)
 		// something to type on or aim with.
 		if (as_tablet)
 		{
-			p->keyboard = vid_scan.external_keyboard;
-			p->mouse = vid_scan.external_mouse;
+			p->keyboard = vid_scan.external_keyboard || (vid_keyboard_typed && vid_scan.keyboard);
+			p->mouse = vid_scan.external_mouse || (vid_pad_used && vid_scan.mouse);
 		}
 	}
 #else
@@ -462,7 +517,9 @@ void VID_DetectTouchHardware(qbool *has_touchscreen, qbool *is_touch_only)
 {
 	const vid_presence_t *p = vid_presence_get();
 	*has_touchscreen = p->touch;
-	*is_touch_only = p->touch && !p->keyboard;
+	// A keyboard alone leaves the touch controls on: there is still nothing
+	// else to aim with. Only a keyboard and a mouse together are the desktop.
+	*is_touch_only = p->touch && !(p->keyboard && p->mouse);
 }
 
 // ---------------------------------------------------------------------------
@@ -482,6 +539,11 @@ static vid_active_t vid_active = VID_ACTIVE_NONE;
 // Confirmation only: it never shows or hides the controls, and without a
 // mouse in the listing nothing sets it.
 static qbool vid_mouse_confirmed;
+// When that mouse was last moved or clicked.
+static double vid_mouse_last = -1000;
+// A used mouse keeps aiming until the fingers have been the pointer for this
+// long without it (VID_TouchMouseConfirmed).
+#define VID_MOUSE_HOLD        5.0
 
 static void vid_presence_refresh(void);
 static qbool vid_presence_settled(void);
@@ -490,16 +552,12 @@ static qbool vid_linux_poll(void);
 static qbool vid_pens_open(void);
 #endif
 
-// Hysteresis. Touch wins at once; the keyboard has to be used for a moment,
-// with no finger on the glass, before it takes the controls away.
-#define VID_KBM_WINDOW        2.0   // seconds the presses below must fit in
-#define VID_KBM_PRESSES       3     // distinct play-key presses
+// X11 does not mark the pointer events it emulates from a finger, and Wayland
+// hands SDL a pen as a mouse: neither is a mouse, for logging.
 #define VID_TOUCH_QUIET       1.5   // seconds after the last finger event
 #define VID_PEN_QUIET         1.0   // pen hover drives the pointer too
 
 static double vid_touch_last = -1000;
-static double vid_kbm_start = -1000;
-static int vid_kbm_presses;
 
 static const char *vid_mode_name(int mode)
 {
@@ -529,26 +587,32 @@ static void vid_reapply(const char *why, const char *msg_on, const char *msg_off
 	vid_notify(msg);
 }
 
-static void vid_kbm_reset(void)
+// The cursor follows the pointer last used (vid_pointer_mouse): a finger hides
+// it, the mouse brings it back. Only the cursor -- not the controls, which
+// follow presence alone.
+static void vid_pointer_is_finger(void)
 {
-	vid_kbm_start = -1000;
-	vid_kbm_presses = 0;
+	if (vid_pointer_mouse.integer)
+		Cvar_SetValueQuick(&vid_pointer_mouse, 0);
 }
 
 static void vid_touch_used(void)
 {
 	vid_touch_last = host.realtime;
-	vid_kbm_reset();
+	vid_pointer_is_finger();
 	if (!vid_touch_finger_seen)
 	{
 		// SDL often reports no touch device until the first finger lands.
 		vid_touch_finger_seen = true;
 		vid_presence_valid = false;
 	}
-	if (vid_active == VID_ACTIVE_TOUCH && vid_presence_valid)
+	// Presence, not a switch: a first finger can be what tells SDL there is
+	// a touchscreen at all, and that alone may bring the controls up (no
+	// keyboard listed). Over a listed keyboard it changes nothing.
+	if (vid_presence_valid && vid_active == VID_ACTIVE_TOUCH)
 		return;
 	vid_active = VID_ACTIVE_TOUCH;
-	vid_reapply("touch used", "Touch detected: touch controls shown", NULL);
+	vid_reapply("touchscreen found", "Touchscreen found: touch controls shown", NULL);
 }
 
 void VID_NoteTouchUse(void)
@@ -559,42 +623,25 @@ void VID_NoteTouchUse(void)
 void VID_NoteTouchActivity(void)
 {
 	vid_touch_last = host.realtime;
-	vid_kbm_reset();
+	vid_pointer_is_finger();
 }
 
-// A play key. It counts towards hiding the controls only while they are on
-// in Auto, the system lists a keyboard (so this is that keyboard, not an
-// on-screen one) and a mouse or touchpad to aim with, and no finger is on
-// the glass.
+// A play key. It changes nothing: only a keyboard the system lists hides the
+// controls, through presence (vid_dynamic_want). Typing on an on-screen
+// keyboard, a remote or a mouse's macro button used to count towards hiding
+// them, and so did the attached keyboard while the player still wanted them.
 void VID_NoteKeyboardUse(void)
 {
-	const vid_presence_t *p;
-
-	if (vid_active == VID_ACTIVE_KEYBOARD || !vid_touchscreen.integer || vid_touchscreen_mode.integer != 1)
+#ifdef VID_LINUX_PROBES
+	// The one exception: a keyboard the system lists that presence set aside
+	// as folded away has just typed in the game (vid_keyboard_typed).
+	if (vid_keyboard_typed || !vid_scan.keyboard || vid_presence_get()->keyboard)
 		return;
-	// A finger is down or has just lifted: keys now are an elbow on a
-	// folded cover.
-	if (host.realtime - vid_touch_last < VID_TOUCH_QUIET)
-	{
-		vid_kbm_reset();
-		return;
-	}
-	// No keyboard the system knows of (none attached, or one folded behind
-	// the screen): whatever sent this, the player cannot type on it. And a
-	// keyboard alone leaves nothing to aim with, so the controls stay.
-	p = vid_presence_get();
-	if (!p->keyboard || !p->mouse)
-		return;
-	if (host.realtime - vid_kbm_start > VID_KBM_WINDOW)
-	{
-		vid_kbm_reset();
-		vid_kbm_start = host.realtime;
-	}
-	if (++vid_kbm_presses < VID_KBM_PRESSES)
-		return;
-	vid_active = VID_ACTIVE_KEYBOARD;
-	vid_reapply("keyboard used", NULL, "Keyboard in use: touch controls hidden");
-	vid_kbm_reset();
+	vid_keyboard_typed = true;
+	vid_presence_valid = false;
+	Con_Printf("Input: the listed keyboard is typing, so it is attached\n");
+	vid_reapply("keyboard typing", NULL, "Keyboard in use: touch controls hidden");
+#endif
 }
 
 // Real (not touch-emulated) pointer motion or a click. It confirms the mouse
@@ -603,10 +650,17 @@ void VID_NoteKeyboardUse(void)
 // keyboard, and fingers keep working alongside it.
 void VID_NoteMouseUse(float travel, qbool press)
 {
-	if (vid_mouse_confirmed || !vid_presence_get()->mouse)
-		return;
+	// Back to the mouse: the cursor shows again. Not within a moment of a
+	// finger, which on X11 can arrive followed by pointer events it emulated.
+	if (!vid_pointer_mouse.integer && (press || travel > 0) && host.realtime - vid_touch_last > 0.25)
+		Cvar_SetValueQuick(&vid_pointer_mouse, 1);
 	if (!press && travel <= 0)
 		return;
+	if (vid_mouse_confirmed)
+	{
+		vid_mouse_last = host.realtime;
+		return;
+	}
 	// X11 does not mark the pointer events it emulates from a finger.
 	if (host.realtime - vid_touch_last < VID_TOUCH_QUIET)
 		return;
@@ -617,14 +671,40 @@ void VID_NoteMouseUse(float travel, qbool press)
 		vid_presence_refresh();
 	if (host.realtime - vid_pen_last < VID_PEN_QUIET)
 		return;
+	if (!vid_presence_get()->mouse)
+	{
+		// Only the pad the system lists, set aside as folded away.
+		if (vid_pad_used || !vid_scan.mouse)
+			return;
+		vid_pad_travel += travel;
+		if (!press && vid_pad_travel < 0.05f)
+			return;
+		vid_pad_used = true;
+		vid_presence_valid = false;
+		Con_Printf("Input: the listed touchpad is in use, so it is not folded away\n");
+		if (!vid_presence_get()->mouse)
+			return;
+	}
+#else
+	if (!vid_presence_get()->mouse)
+		return;
 #endif
 	vid_mouse_confirmed = true;
+	vid_mouse_last = host.realtime;
 	Con_Printf("Input: mouse in use (the system lists one)\n");
 }
 
+// A mouse or touchpad the system lists aims in the game once it has been
+// moved or clicked, and until the fingers have been the only pointer for
+// VID_MOUSE_HOLD seconds. Presence alone is not enough: tablets list built-in
+// pointer devices nobody uses (a Galaxy Tab's sec_touchpad, a pen, a phone
+// browser reporting a fine pointer), and a mouse that "aims" without being
+// used takes the look from the fingers and turns off the touch aim helpers.
 qbool VID_TouchMouseConfirmed(void)
 {
-	return vid_mouse_confirmed && vid_presence_get()->mouse;
+	if (!vid_presence_get()->mouse || !vid_mouse_confirmed)
+		return false;
+	return vid_mouse_last >= vid_touch_last || host.realtime - vid_mouse_last < VID_MOUSE_HOLD;
 }
 
 qbool VID_HasKeyboard(void)
@@ -650,21 +730,26 @@ static void vid_presence_changed(const vid_presence_t *old, const vid_presence_t
 	const char *msg = NULL;
 	qbool was_on, is_on;
 
-	// Plugging a keyboard in or pulling it out is a fresh start: the
-	// hardware answer stands until something is used again.
-	if (old->keyboard != now->keyboard)
-	{
-		vid_active = VID_ACTIVE_NONE;
-		vid_kbm_reset();
-	}
-	// A mouse that went away has to be used again once it is back. Without
-	// one, keyboard play leaves nothing to aim with, so presence decides.
 	if (old->mouse != now->mouse)
-	{
 		vid_mouse_confirmed = false;
-		if (!now->mouse && vid_active == VID_ACTIVE_KEYBOARD)
-			vid_active = VID_ACTIVE_NONE;
+#ifdef VID_LINUX_PROBES
+	// Folding the cover back, or the keyboard leaving the list, starts over
+	// from what the system says.
+	if (vid_keyboard_typed && (old->tablet_mode != now->tablet_mode || !vid_scan.keyboard))
+	{
+		vid_keyboard_typed = false;
+		vid_presence_valid = false;
 	}
+	if ((vid_pad_used || vid_pad_travel > 0) && (old->tablet_mode != now->tablet_mode || !vid_scan.mouse))
+	{
+		vid_pad_used = false;
+		vid_pad_travel = 0;
+		vid_presence_valid = false;
+	}
+#endif
+	// The mouse went away: nothing left to show a cursor for.
+	if (old->mouse && !now->mouse && now->touch)
+		vid_pointer_is_finger();
 
 	was_on = vid_touchscreen.integer != 0;
 	VID_ApplyTouchscreenMode();
@@ -1022,13 +1107,16 @@ void VID_TouchDetect_Init(void)
 #endif
 }
 
-// What Dynamic says right now: the last input used, else presence.
+// What Dynamic says right now, from what the system lists and nothing else:
+// the on-screen controls are there for a touchscreen with no physical
+// keyboard, and step aside while one is attached. Input never decides it. A
+// tap does not bring them back over an attached keyboard, and typing does not
+// take them away. Touch and the mouse keep working in both states: fingers
+// press the menus and turn the view without the controls
+// (VID_TouchLookWithoutControls in vid_sdl.c), and a listed mouse aims in the
+// game either way.
 static int vid_dynamic_want(qbool has_touch, qbool touch_only)
 {
-	if (vid_active == VID_ACTIVE_TOUCH)
-		return 1;
-	if (vid_active == VID_ACTIVE_KEYBOARD)
-		return 0;
 	if (vid_touchscreen_touchonly.integer)
 		return touch_only ? 1 : 0;
 	return has_touch ? 1 : 0;
@@ -1056,6 +1144,18 @@ void VID_ApplyTouchscreenMode(void)
 	int want;
 
 	VID_DetectTouchHardware(&has_touch, &touch_only);
+
+	// The cursor starts hidden on a touchscreen with no mouse listed; the
+	// first mouse movement brings it (vid_pointer_mouse).
+	{
+		static qbool pointer_set;
+		if (!pointer_set && vid_presence_settled())
+		{
+			pointer_set = true;
+			if (has_touch && !vid_presence_get()->mouse)
+				Cvar_SetValueQuick(&vid_pointer_mouse, 0);
+		}
+	}
 
 	vid_touch_applying = true;
 	Cvar_SetValueQuick(&vid_touchscreen_detected, has_touch ? 1 : 0);
@@ -1162,13 +1262,7 @@ static void vid_unlock(void)
 	int mode = vid_touchscreen_mode.integer;
 	const char *msg;
 
-	// Dynamic carries on from what is showing: the next finger, typing or
-	// device change moves it, not the act of unlocking.
-	if (vid_locked >= 0 && mode == 1 && vid_touchscreen_live.integer)
-	{
-		vid_active = vid_locked ? VID_ACTIVE_TOUCH : VID_ACTIVE_KEYBOARD;
-		vid_kbm_reset();
-	}
+	// Unlocked, Dynamic goes back to what the system lists.
 	vid_locked = -1;
 	VID_ApplyTouchscreenMode();
 	if (mode <= 0)

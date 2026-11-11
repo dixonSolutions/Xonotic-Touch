@@ -24,12 +24,7 @@ Tracked size is ~60–80 MB (source + fonts). Textures/models/sound (~3 GB) stay
 
 ## Updates from upstream
 
-See [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md) for the overlay workflow and last synced SHAs.
-
-```bash
-./scripts/sync-upstream-fork.sh --init-git --allow-unrelated   # optional nested-git path
-FORK_DARKPLACES=… FORK_DATA=… ./scripts/sync-upstream-fork.sh
-./scripts/prepare-engine-for-git.sh --yes    # before monorepo commit
-```
-
-See [MAINTAINING.md](MAINTAINING.md) and [SOURCES.md](SOURCES.md).
+Upstream Xonotic arrives through `scripts/upstream-sync.py` and the daily
+`upstream-watch` workflow, which open a PR from `upstream-sync`. Never copy upstream
+files in by hand. See [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md).
+The synced upstream commits are in `upstream.lock`.

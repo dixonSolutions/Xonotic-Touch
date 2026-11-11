@@ -233,6 +233,9 @@ void TaskQueue_Frame(qbool shutdown)
 
 	numthreads = taskqueue_state.tasks_averageperframe / tasksperthread;
 	numthreads = bound(taskqueue_minthreads.integer, numthreads, taskqueue_maxthreads.integer);
+#ifdef THREADDISABLE
+	numthreads = 0; // the line above would bring back the count set to 0 at the top
+#endif
 
 	if (shutdown)
 		numthreads = 0;
@@ -269,6 +272,13 @@ void TaskQueue_Frame(qbool shutdown)
 		{
 			taskqueue_state.threads[i].thread_index = i;
 			taskqueue_state.threads[i].handle = Thread_CreateThread(TaskQueue_ThreadFunc, &taskqueue_state.threads[i]);
+			// A thread that did not start must not be handed tasks: waiting
+			// on them would spin forever.
+			if (!taskqueue_state.threads[i].handle)
+			{
+				numthreads = i;
+				break;
+			}
 		}
 
 		// okay we're at the new state now

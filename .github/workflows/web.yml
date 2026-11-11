@@ -1,0 +1,145 @@
+name: Web
+
+# Builds the browser version (WebAssembly + WebGL 2) after every release that
+# "Build and publish" makes:
+#   - xonotic-touch-web-<version>.zip (page + engine, no game data) on the
+#     GitHub release
+#   - the page on GitHub Pages under /web/, next to the Flatpak and Click
+#     remotes, as a shell: this fork's own files (about 15 MB) are on Pages,
+#     and the stock Xonotic pk3s come from the Vercel deployment at run time
+#     (repository variable XT_WEB_DATA_URL, default
+#     https://xonotic-web.vercel.app/data/), because Pages caps a site at 1 GB
+# Vercel builds the full site itself from main (vercel.json,
+# scripts/vercel-build.sh); this workflow does not deploy there.
+# See docs/WEB.md.
+
+on:
+  workflow_run:
+    workflows: ["Build and publish"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+  actions: read
+
+concurrency:
+  group: web
+  cancel-in-progress: false
+
+env:
+  EMSDK_VERSION: '7.0.0'  # the version the web build was tested with
+  XT_WEB_DATA_URL: ${{ vars.XT_WEB_DATA_URL || 'https://xonotic-web.vercel.app/data/' }}
+
+jobs:
+  build:
+    name: Build and deploy
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      pages: ${{ steps.pages.outputs.ready }}
+    steps:
+      - name: Find the release this builds
+        id: rel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            RUN_ID="${{ github.event.workflow_run.id }}"
+            RUN_NUMBER="${{ github.event.workflow_run.run_number }}"
+            SHA="${{ github.event.workflow_run.head_sha }}"
+          else
+            read -r RUN_ID RUN_NUMBER SHA < <(gh run list -R "$GITHUB_REPOSITORY" --workflow build-and-publish.yml \
+              --branch main --status success --limit 1 --json databaseId,number,headSha \
+              -q '.[0] | "\(.databaseId) \(.number) \(.headSha)"')
+          fi
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "version=1.2.$RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "Building web for release 1.2.$RUN_NUMBER ($SHA)"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.rel.outputs.sha }}
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ env.EMSDK_VERSION }}
+          actions-cache-folder: emsdk-cache
+
+      - name: Build engine, QuakeC and page
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential python3 unzip
+          bash scripts/build-web.sh
+
+      - name: Stage the shell's data
+        run: bash scripts/stage-web-data.sh --shell "$XT_WEB_DATA_URL"
+
+      - name: Attach the page to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ steps.rel.outputs.version }}
+        run: |
+          ZIP="xonotic-touch-web-${{ steps.rel.outputs.version }}.zip"
+          (cd build/web && zip -q -r "../../$ZIP" . -x 'data/*')
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" -R "$GITHUB_REPOSITORY" --clobber
+          else
+            echo "No release $TAG; skipping the upload."
+          fi
+
+      # Pages serves one artifact for the whole site. Start from the one
+      # "Build and publish" deployed (Flatpak + Click remotes) and add web/,
+      # so this deploy never drops them.
+      - name: Fetch the current Pages site
+        id: pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p pages-in site
+          if gh run download "${{ steps.rel.outputs.run_id }}" -R "$GITHUB_REPOSITORY" -n github-pages -D pages-in; then
+            tar -xf pages-in/artifact.tar -C site
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No github-pages artifact on run ${{ steps.rel.outputs.run_id }}; not touching Pages."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Add the web page to the site
+        if: steps.pages.outputs.ready == 'true'
+        run: |
+          rm -rf site/web
+          mkdir -p site/web
+          # The shell: page, engine and this fork's data; config.js stays
+          # empty, so the page reads data/ next to it, whose manifest names
+          # the stock host.
+          (cd build/web && tar cf - --exclude=./serve.py .) | (cd site/web && tar xf -)
+          # Link it from the landing page.
+          if [ -f site/index.html ] && ! grep -q 'href="web/"' site/index.html; then
+            sed -i 's|<ul>|<ul>\n  <li><strong>Browser</strong>: <a href="web/">play in your browser</a> (WebAssembly; downloads about 1 GB of game data once)</li>|' site/index.html
+          fi
+      - name: Upload Pages artifact
+        if: steps.pages.outputs.ready == 'true'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  pages:
+    name: Deploy GitHub Pages
+    needs: build
+    if: needs.build.outputs.pages == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5
+        with:
+          # GitHub can take over 10 minutes (the default) to sync the ~150 MB site
+          # of Flatpak and Click remotes; it timed out on two releases in a row.
+          timeout: 1800000

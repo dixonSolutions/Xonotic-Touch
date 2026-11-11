@@ -19,6 +19,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #undef WIN32_LEAN_AND_MEAN  //hush a warning, SDL.h redefines this
 #include <SDL.h>
 #include <stdio.h>
+#include <ctype.h>
 
 #include "quakedef.h"
 #include "image.h"
@@ -26,7 +27,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "touch_ui.h"
 #include "csprogs.h"
 #include "touch_hud.h"
+#include "touch_vote.h"
 #include "screen.h"
+#include "touch_android.h"
 
 #ifndef __IPHONEOS__
 #ifdef MACOSX
@@ -426,6 +429,12 @@ void VID_ShowKeyboard(qbool show)
 	if (!VID_NeedsScreenKeyboard())
 		show = true;
 
+#ifdef __EMSCRIPTEN__
+	// A browser raises its on-screen keyboard only for a focused text field:
+	// the page shim keeps a hidden one and forwards what is typed into it.
+	Sys_EM_ScreenKeyboard(show && VID_NeedsScreenKeyboard());
+#endif
+
 	if (!show)
 	{
 		if (SDL_IsTextInputActive())
@@ -473,6 +482,11 @@ static void VID_SetMouse(qbool relative, qbool hidecursor)
 		vid_usingmouse = relative;
 		cl_ignoremousemoves = 2;
 		vid_usingmouse_relativeworks = SDL_SetRelativeMouseMode(relative ? SDL_TRUE : SDL_FALSE) == 0;
+#ifdef __EMSCRIPTEN__
+		// Pointer lock needs a click; the page shim re-locks on the next one
+		// and treats a lock the browser dropped (Esc) as the menu key.
+		Sys_EM_MouseGrab(relative);
+#endif
 //		Con_Printf("VID_SetMouse(%i, %i) relativeworks = %i\n", (int)relative, (int)hidecursor, (int)vid_usingmouse_relativeworks);
 #ifdef MACOSX
 		if(relative)
@@ -565,6 +579,27 @@ void VID_GetTouchFinger(int slot, int *active, float *nx, float *ny)
 
 // this one stores how many areas this finger has touched
 int multitouchs[MAXFINGERS];
+
+// Touch: a finger that goes down and up before the client has run a frame (an
+// Android tap; events are polled more often than that, e.g. with a local
+// server) would never be seen by anything that reads the table once a frame
+// (the engine touch HUD in IN_Move, the CSQC's gettouchfinger while drawing).
+// Such a slot stays down until IN_Move has run since; the frame's drawing
+// follows IN_Move.
+static unsigned int vid_finger_frame;
+static unsigned int vid_finger_down_frame[MAXFINGERS];
+static qbool vid_finger_lift[MAXFINGERS];
+
+static void VID_LiftTappedFingers(void)
+{
+	int i;
+	for (i = 0; i < MAXFINGERS - 1; i++)
+		if (vid_finger_lift[i] && vid_finger_down_frame[i] != vid_finger_frame)
+		{
+			vid_finger_lift[i] = false;
+			multitouch[i][0] = 0;
+		}
+}
 
 // modified heavily by ELUAN
 static qbool VID_TouchscreenArea(int corner, float px, float py, float pwidth, float pheight, const char *icon, float textheight, const char *text, float *resultmove, qbool *resultbutton, keynum_t key, const char *typedtext, float deadzone, float oversizepixels_x, float oversizepixels_y, qbool iamexclusive)
@@ -1004,6 +1039,29 @@ qbool VID_SDL_HasTouchDevices(void)
 	return false;
 }
 
+// Touch: inside a long loading frame the events wait in SDL's queue until it
+// is over. A finger down in the normalised rectangle, or Back / Escape,
+// queued meanwhile: true, and the fingers and keys are dropped from the queue
+// (touch_hud.c, CANCEL on the loading screen).
+qbool VID_TouchQueuedTap(float x0, float y0, float x1, float y1)
+{
+	SDL_Event ev[64];
+	int i, n;
+	SDL_PumpEvents();
+	n = SDL_PeepEvents(ev, 64, SDL_PEEKEVENT, SDL_KEYDOWN, SDL_FINGERMOTION);
+	for (i = 0; i < n; i++)
+	{
+		if ((ev[i].type == SDL_KEYDOWN && (ev[i].key.keysym.sym == SDLK_AC_BACK || ev[i].key.keysym.sym == SDLK_ESCAPE))
+			|| (ev[i].type == SDL_FINGERDOWN && ev[i].tfinger.x >= x0 && ev[i].tfinger.x <= x1 && ev[i].tfinger.y >= y0 && ev[i].tfinger.y <= y1))
+		{
+			SDL_FlushEvents(SDL_FINGERDOWN, SDL_FINGERMOTION);
+			SDL_FlushEvents(SDL_KEYDOWN, SDL_KEYUP);
+			return true;
+		}
+	}
+	return false;
+}
+
 // Keys that say someone is playing on a keyboard: letters, digits,
 // punctuation, arrows, keypad, space / enter / tab / backspace and the
 // modifiers. Not Escape or Back (a phone's back gesture arrives as a key),
@@ -1109,12 +1167,33 @@ static qbool VID_TouchMouselook(void)
 		&& !touch_owns_screen.integer;
 }
 
+// SDL reports the pointer in window coordinates; everything that reads
+// in_windowmouse (the menu, the CSQC, the cursor) maps it through vid.mode,
+// which is the drawable in pixels. Where the two differ (a DPI-scaled window,
+// or a surface the compositor sized differently from what was asked) the
+// game's cursor ran ahead of the real one and stopped short of the edge.
+static void VID_SetWindowMouse(int x, int y)
+{
+	int ww = 0, wh = 0;
+	if (window)
+		SDL_GetWindowSize(window, &ww, &wh);
+	if (ww > 0 && wh > 0 && vid.mode.width > 0 && vid.mode.height > 0)
+	{
+		in_windowmouse_x = x * (float)vid.mode.width / ww;
+		in_windowmouse_y = y * (float)vid.mode.height / wh;
+	}
+	else
+	{
+		in_windowmouse_x = x;
+		in_windowmouse_y = y;
+	}
+}
+
 static void VID_SyncDesktopMouse(void)
 {
 	int x, y;
 	SDL_GetMouseState(&x, &y);
-	in_windowmouse_x = x;
-	in_windowmouse_y = y;
+	VID_SetWindowMouse(x, y);
 }
 
 static void VID_SyncTouchFinger(void)
@@ -1131,11 +1210,17 @@ static void VID_SyncTouchFinger(void)
 	}
 }
 
-static void VID_TouchMenuFingerEvent(qbool down, float nx, float ny)
+static void VID_TouchMenuFingerEvent(int id, qbool down, float nx, float ny)
 {
 	keydest_t keydest = (key_consoleactive & KEY_CONSOLEACTIVE_USER) ? key_console : key_dest;
 
-	if (!vid_touchscreen.integer || !VID_TouchscreenHasRealDevices())
+	// With the controls shown or hidden: a keyboard being attached does not
+	// stop a finger pressing the menu.
+	if (!VID_TouchscreenHasRealDevices())
+		return;
+	// In the game, the pointer of a CSQC vote or other pointer UI; on the
+	// loading screen, its CANCEL (nothing reaches the hidden menu there).
+	if (TouchHUD_CursorFinger(id, down, nx, ny))
 		return;
 	if (keydest != key_menu && keydest != key_menu_grabbed)
 		return;
@@ -1193,6 +1278,41 @@ static void VID_TouchTextSheet(touchui_sheet_t kind, qbool *buttons)
 	}
 }
 
+/* The real mouse presses the sheet's keys too, as the spare finger slot: SDL
+ * makes no mouse from a finger here (SDL_HINT_TOUCH_MOUSE_EVENTS 0). */
+static qbool vid_sheet_mouse;
+static void VID_SheetMouseFinger(qbool use)
+{
+	int x, y;
+	Uint32 b;
+	if (!use)
+	{
+		if (vid_sheet_mouse)
+			multitouch[MAXFINGERS-1][0] = 0;
+		vid_sheet_mouse = false;
+		return;
+	}
+	b = SDL_GetMouseState(&x, &y);
+	vid_sheet_mouse = true;
+	multitouch[MAXFINGERS-1][0] = (b & SDL_BUTTON_LMASK) ? 11 : 0;
+	if (vid.mode.width > 0 && vid.mode.height > 0)
+	{
+		multitouch[MAXFINGERS-1][1] = (float)x / vid.mode.width;
+		multitouch[MAXFINGERS-1][2] = (float)y / vid.mode.height;
+	}
+}
+
+/* Touch controls off: the classic console, plus the sheet's KEYBOARD toggle
+ * and, once opened, its keys (TouchUI_LayoutSheet). */
+static void VID_TouchSheetWithoutControls(keydest_t keydest)
+{
+	static qbool buttons[128];
+	qbool sheet = keydest == key_console || keydest == key_message;
+	VID_SheetMouseFinger(sheet);
+	if (sheet)
+		VID_TouchTextSheet(keydest == key_console ? TOUCHUI_SHEET_CONSOLE : TOUCHUI_SHEET_CHAT, buttons);
+}
+
 static void IN_Move_TouchScreen_Xonotic(void)
 {
 	int i, numfingers;
@@ -1215,8 +1335,8 @@ static void IN_Move_TouchScreen_Xonotic(void)
 		multitouch[MAXFINGERS-1][1] = (float)x / vid.mode.width;
 		multitouch[MAXFINGERS-1][2] = (float)y / vid.mode.height;
 	}
-	else if (numfingers > 0)
-		multitouch[MAXFINGERS-1][0] = 0;
+	else if (keydest == key_console || keydest == key_message)
+		VID_SheetMouseFinger(true);
 	else
 		multitouch[MAXFINGERS-1][0] = 0;
 
@@ -1284,9 +1404,11 @@ static void IN_Move_TouchScreen_Xonotic(void)
 		}
 		break;
 	}
-
-	if (VID_ShowingKeyboard() && (float)in_windowmouse_y > vid_height.value / 2 - 10)
-		in_windowmouse_y = 128;
+	// No "keyboard showing" clamp here, unlike the Quake path below: it moved
+	// any pointer below mid-screen to y = 128, and desktop SDL reports text
+	// input active all the time, so a mouse in the menu jumped back to the top
+	// every time it crossed the middle. The touch sheets place themselves
+	// above the on-screen keyboard.
 }
 
 static void IN_Move_TouchScreen_Quake(void)
@@ -1408,6 +1530,11 @@ void IN_Move( void )
 	oldshowkeyboard = !!vid_touchscreen_showkeyboard.integer;
 	oldneedsosk = needsosk;
 
+	// A vote or another CSQC pointer UI: a finger is its pointer, with the
+	// touch controls shown or hidden (touch_hud.c).
+	if (VID_TouchscreenHasRealDevices())
+		TouchHUD_CursorFrame();
+
 	if (vid_touchscreen.integer)
 	{
 		switch(gamemode)
@@ -1424,6 +1551,14 @@ void IN_Move( void )
 			IN_Move_TouchScreen_Quake();
 			break;
 		}
+	}
+	else
+	{
+		VID_TouchSheetWithoutControls(keydest);
+		// The controls are hidden (a keyboard is attached), the touchscreen
+		// is not: a finger drag still turns the view.
+		if (VID_TouchscreenHasRealDevices())
+			TouchHUD_LookWithoutControls();
 	}
 
 	// Mouselook: always without touch controls, and next to them while a
@@ -1462,9 +1597,13 @@ void IN_Move( void )
 
 	if (!vid_touchscreen.integer)
 	{
+		// A finger that placed the CSQC's pointer keeps it until the mouse moves.
+		static int mouse_last_x = -1, mouse_last_y = -1;
 		SDL_GetMouseState(&x, &y);
-		in_windowmouse_x = x;
-		in_windowmouse_y = y;
+		if (x != mouse_last_x || y != mouse_last_y || !TouchHUD_FingerIsPointer())
+			VID_SetWindowMouse(x, y);
+		mouse_last_x = x;
+		mouse_last_y = y;
 	}
 
 	if (vid_touchscreen.integer && !VID_TouchscreenHasRealDevices())
@@ -1478,6 +1617,7 @@ void IN_Move( void )
 
 	VID_BuildJoyState(&joystate);
 	VID_ApplyJoyState(&joystate);
+	vid_finger_frame++; // Touch: quick taps seen by this frame may lift
 }
 
 /////////////////////
@@ -1504,6 +1644,10 @@ static keynum_t buttonremap[] =
 	K_MOUSE16,
 };
 
+#ifdef __EMSCRIPTEN__
+void Sys_EM_FitWindow(SDL_Window *window); // sys_wasm.c
+#endif
+
 // Who the mouse belongs to right now: the game (grabbed for mouselook) or the
 // screen (a pointer). vid_touchscreen_mouselook tells the touch CSQC which,
 // so it knows whether MOUSE1 is fire or a press on its controls.
@@ -1512,7 +1656,17 @@ static void VID_UpdateMouseGrab(void)
 	if (!vid_activewindow || key_consoleactive || scr_loading)
 		VID_SetMouse(false, false);
 	else if (key_dest == key_menu || key_dest == key_menu_grabbed)
-		VID_SetMouse(vid_mouse.integer && !in_client_mouse && !vid_touchscreen.integer, !vid_touchscreen.integer);
+#ifdef __EMSCRIPTEN__
+		// Menus follow the absolute pointer in a browser: relative mode means
+		// pointer lock, which needs a click to get and the browser drops on
+		// Esc, leaving the menu cursor frozen until the next click.
+		VID_SetMouse(false, true);
+#else
+		// The system cursor is always hidden in menus: the menu draws its own
+		// while a mouse is the pointer in use (vid_pointer_mouse), and none
+		// after a finger. Showing both put two cursors on top of each other.
+		VID_SetMouse(vid_mouse.integer && !in_client_mouse && !vid_touchscreen.integer, true);
+#endif
 	else
 	{
 		qbool mouse_aims = !vid_touchscreen.integer || VID_TouchMouselook();
@@ -1521,6 +1675,8 @@ static void VID_UpdateMouseGrab(void)
 
 	if (vid_touchscreen_mouselook.integer != (vid_touchscreen.integer && vid_usingmouse))
 		Cvar_SetValueQuick(&vid_touchscreen_mouselook, vid_touchscreen.integer && vid_usingmouse);
+	if (vid_mouse_confirmed_cvar.integer != (int)VID_TouchMouseConfirmed())
+		Cvar_SetValueQuick(&vid_mouse_confirmed_cvar, VID_TouchMouseConfirmed());
 }
 
 //#define DEBUGSDLEVENTS
@@ -1534,6 +1690,7 @@ void Sys_SDL_HandleEvents(void)
 	SDL_Event event;
 
 	VID_EnableJoystick(true);
+	VID_LiftTappedFingers(); // Touch
 
 	while( SDL_PollEvent( &event ) )
 		loop_start:
@@ -1544,6 +1701,26 @@ void Sys_SDL_HandleEvents(void)
 #endif
 				host.state = host_shutdown;
 				break;
+			// config.cfg is otherwise only written by a clean quit, and an
+			// Android app never gets one: an update, a swipe out of recents or
+			// the low-memory killer ends the process while it sits in the
+			// background. Everything set since launch went with it. Saving on
+			// the way out means a backgrounded game can be killed at no cost.
+			// SDL raises both from the Java side and this loop sees them before
+			// it next blocks on the pause; desktops never send them.
+			case SDL_APP_WILLENTERBACKGROUND:
+			case SDL_APP_TERMINATING:
+				Host_SaveConfig(CONFIGFILENAME);
+				break;
+#ifdef __ANDROID__
+			case SDL_APP_DIDENTERBACKGROUND: // Touch: keep running, without drawing
+				memset(multitouch, 0, sizeof(multitouch));
+				TouchAndroid_Background(true);
+				break;
+			case SDL_APP_DIDENTERFOREGROUND:
+				TouchAndroid_Background(false);
+				break;
+#endif
 			case SDL_KEYDOWN:
 			case SDL_KEYUP:
 #ifdef DEBUGSDLEVENTS
@@ -1601,11 +1778,29 @@ void Sys_SDL_HandleEvents(void)
 					VID_UpdateMouseGrab();
 			}
 			// A real mouse always clicks, touch controls or not: mouse and
-			// fingers work side by side. Only the clicks SDL makes up from a
-			// finger are dropped while the finger path handles that finger.
-			if ((event.button.which != SDL_TOUCH_MOUSEID || !vid_touchscreen.integer || !VID_SDL_HasTouchDevices())
-				&& event.button.button > 0 && event.button.button <= ARRAY_SIZE(buttonremap))
-				Key_Event( buttonremap[event.button.button - 1], 0, event.button.state == SDL_PRESSED );
+			// fingers work side by side. The clicks SDL makes up from a
+			// finger are dropped wherever the finger path handles that
+			// finger: always in the game, and in menus while touch controls
+			// are on. In the game a made-up click used to fire while the
+			// controls were off, and the finger that turned them on then had
+			// its release dropped, which held fire down for good.
+			if (event.button.button > 0 && event.button.button <= ARRAY_SIZE(buttonremap))
+			{
+				static qbool synth_down[ARRAY_SIZE(buttonremap)];
+				int b = event.button.button - 1;
+				qbool pressed = event.button.state == SDL_PRESSED;
+				qbool pass = event.button.which != SDL_TOUCH_MOUSEID || !VID_SDL_HasTouchDevices()
+					|| (!vid_touchscreen.integer && key_dest != key_game);
+				if (event.button.which == SDL_TOUCH_MOUSEID)
+				{
+					// A made-up press that got through gets its release too.
+					if (!pressed && synth_down[b])
+						pass = true;
+					synth_down[b] = pressed && pass;
+				}
+				if (pass)
+					Key_Event( buttonremap[b], 0, pressed );
+			}
 			break;
 			case SDL_MOUSEWHEEL:
 				if (event.wheel.which != SDL_TOUCH_MOUSEID)
@@ -1644,6 +1839,14 @@ void Sys_SDL_HandleEvents(void)
 						vid_hidden = false;
 						break;
 					case  SDL_WINDOWEVENT_HIDDEN:
+#if defined(__ANDROID__) && defined(ANDYSU_SWAP)
+						// A live engine swap leaves the previous engine's window events in SDL's queue (its window was
+						// destroyed and hidden; SDL is not shut down; the new window gets the same id, so the id cannot tell
+						// them apart). Taken for ours, a stale HIDDEN leaves vid_hidden set and the new engine never draws
+						// again. SDL has already updated the flags of the current window when it posted a real one.
+						if (window && (SDL_GetWindowFlags(window) & SDL_WINDOW_SHOWN))
+							break;
+#endif
 						vid_hidden = true;
 						break;
 					case SDL_WINDOWEVENT_EXPOSED:
@@ -1685,6 +1888,12 @@ void Sys_SDL_HandleEvents(void)
 						}
 						break;
 					case SDL_WINDOWEVENT_RESIZED: // external events only
+#ifdef __EMSCRIPTEN__
+						// The canvas renders at the page's scale, not at
+						// SDL's one pixel per CSS pixel; see sys_wasm.c.
+						if (vid_resizable.integer)
+							Sys_EM_FitWindow(window);
+#endif
 						if(vid_resizable.integer < 2)
 						{
 							//vid.width = event.window.data1;
@@ -1694,6 +1903,12 @@ void Sys_SDL_HandleEvents(void)
 						}
 						break;
 					case SDL_WINDOWEVENT_SIZE_CHANGED: // internal and external events
+						// Fullscreen and compositor sizing land here, not in
+						// RESIZED. Without this vid.mode kept the size asked for
+						// rather than the surface that was given, and every
+						// pointer and 2D mapping was off by the difference.
+						if (vid_resizable.integer < 2)
+							SDL_GL_GetDrawableSize(window, &vid.mode.width, &vid.mode.height);
 						break;
 					case SDL_WINDOWEVENT_MINIMIZED:
 						break;
@@ -1784,17 +1999,23 @@ void Sys_SDL_HandleEvents(void)
 			// In touchscreen mode update the window-relative cursor position so
 			// VID_TouchscreenCursor can track the pointer and fire K_MOUSE1 correctly.
 			if (vid_touchscreen.integer)
-			{
-				in_windowmouse_x = event.motion.x;
-				in_windowmouse_y = event.motion.y;
-			}
+				VID_SetWindowMouse(event.motion.x, event.motion.y);
 			break;
 			case SDL_FINGERDOWN:
 #ifdef DEBUGSDLEVENTS
 				Con_DPrintf("SDL_FINGERDOWN for finger %i\n", (int)event.tfinger.fingerId);
 #endif
 				if (VID_TouchIsDirect(event.tfinger.touchId))
+				{
 					VID_NoteTouchUse();
+					// Touch: a finger on the screen means the window has focus. A
+					// FOCUS_LOST with no FOCUS_GAINED after it (a live engine swap,
+					// a system popup) otherwise holds a local game paused for good.
+					vid_hasfocus = true;
+				}
+				// Touch: a finger on the vote chip or card stays out of the table
+				if (TouchVote_Finger(0, (int)event.tfinger.fingerId + 1, event.tfinger.x, event.tfinger.y))
+					break;
 				for (i = 0;i < MAXFINGERS-1;i++)
 				{
 					if (!multitouch[i][0])
@@ -1802,7 +2023,8 @@ void Sys_SDL_HandleEvents(void)
 						multitouch[i][0] = event.tfinger.fingerId + 1;
 						multitouch[i][1] = event.tfinger.x;
 						multitouch[i][2] = event.tfinger.y;
-						VID_TouchMenuFingerEvent(true, event.tfinger.x, event.tfinger.y);
+						vid_finger_down_frame[i] = vid_finger_frame; // Touch
+						VID_TouchMenuFingerEvent((int)multitouch[i][0], true, event.tfinger.x, event.tfinger.y);
 						// TODO: use event.tfinger.pressure?
 						break;
 					}
@@ -1816,12 +2038,18 @@ void Sys_SDL_HandleEvents(void)
 #endif
 				if (VID_TouchIsDirect(event.tfinger.touchId))
 					VID_NoteTouchActivity();
+				if (TouchVote_Finger(2, (int)event.tfinger.fingerId + 1, event.tfinger.x, event.tfinger.y)) // Touch
+					break;
 				for (i = 0;i < MAXFINGERS-1;i++)
 				{
-					if (multitouch[i][0] == event.tfinger.fingerId + 1)
+					if (multitouch[i][0] == event.tfinger.fingerId + 1 && !vid_finger_lift[i])
 					{
-						VID_TouchMenuFingerEvent(false, event.tfinger.x, event.tfinger.y);
-						multitouch[i][0] = 0;
+						VID_TouchMenuFingerEvent((int)multitouch[i][0], false, event.tfinger.x, event.tfinger.y);
+						// Touch: a tap the client has not read yet stays down until it has.
+						if (vid_finger_down_frame[i] == vid_finger_frame)
+							vid_finger_lift[i] = true;
+						else
+							multitouch[i][0] = 0;
 						break;
 					}
 				}
@@ -1834,13 +2062,15 @@ void Sys_SDL_HandleEvents(void)
 #endif
 				if (VID_TouchIsDirect(event.tfinger.touchId))
 					VID_NoteTouchActivity();
+				if (TouchVote_Finger(1, (int)event.tfinger.fingerId + 1, event.tfinger.x, event.tfinger.y)) // Touch
+					break;
 				for (i = 0;i < MAXFINGERS-1;i++)
 				{
 					if (multitouch[i][0] == event.tfinger.fingerId + 1)
 					{
 						multitouch[i][1] = event.tfinger.x;
 						multitouch[i][2] = event.tfinger.y;
-						if (vid_touchscreen.integer)
+						if (VID_TouchscreenHasRealDevices())
 						{
 							keydest_t keydest = (key_consoleactive & KEY_CONSOLEACTIVE_USER) ? key_console : key_dest;
 							if (keydest == key_menu || keydest == key_menu_grabbed)
@@ -1862,6 +2092,14 @@ void Sys_SDL_HandleEvents(void)
 				break;
 		}
 
+#ifdef __EMSCRIPTEN__
+	// Ask the page: SDL's focus state follows browser focus/blur events, and
+	// one stray blur left the game ignoring every key and click.
+	vid_hasfocus = Sys_EM_PageFocused();
+#endif
+#ifdef __ANDROID__
+	TouchAndroid_AfterEvents(); // Touch: background, held map load, touch_netstate
+#endif
 	vid_activewindow = !vid_hidden && vid_hasfocus;
 
 	VID_UpdateMouseGrab();
@@ -1889,6 +2127,21 @@ static void VID_ApplyDisplayMode(const viddef_mode_t *mode)
 	uint32_t fullscreenwanted;
 	int displaywanted = bound(0, mode->display, vid_info_displaycount.integer - 1);
 	SDL_DisplayMode modefinal;
+
+#ifdef __EMSCRIPTEN__
+	// In a browser the page owns fullscreen (it needs a user gesture, and the
+	// whole page goes fullscreen, not the canvas) and the canvas always fills
+	// the page: vid_width/vid_height follow the viewport, see sys_wasm.c.
+	// vid_fullscreen is only a request to the page shim.
+	Sys_EM_SetFullscreen(mode->fullscreen);
+	SDL_SetWindowSize(window, vid.mode.width = mode->width, vid.mode.height = mode->height);
+	vid.mode.fullscreen = vid.mode.desktopfullscreen = false;
+	vid.mode.bitsperpixel = 32;
+	vid.mode.refreshrate = 0;
+	vid.stencil = true;
+	(void)displaywanted; (void)modefinal; (void)fullscreenwanted;
+	return;
+#endif
 
 	if (mode->fullscreen)
 		fullscreenwanted = mode->desktopfullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : SDL_WINDOW_FULLSCREEN;
@@ -2061,9 +2314,73 @@ static void VID_SetHints_c(cvar_t *var)
 	SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, vid_minimize_on_focus_loss.integer ? "1" : "0");
 }
 
+// The project's own pages, and nothing else: the menu's Updates screen links
+// to the releases and the changelog. A command any server could stuff into the
+// console must not become a way to open arbitrary links on the player's device.
+static qbool VID_OpenURL_Allowed(const char *url)
+{
+	static const char *const prefixes[] =
+	{
+		"https://github.com/dixonSolutions/Xonotic-Touch",
+		"https://dixonsolutions.github.io/Xonotic-Touch",
+		"https://dixonSolutions.github.io/Xonotic-Touch",
+	};
+	size_t i;
+	const char *c;
+	// Characters a URL to those pages needs, so the shell fallback below can
+	// pass it quoted without anything in it meaning something to the shell.
+	for (c = url; *c; c++)
+		if (!isalnum((unsigned char)*c) && !strchr("/:.-_~?=&#%+", *c))
+			return false;
+	if (strstr(url, ".."))
+		return false;
+	for (i = 0; i < sizeof(prefixes) / sizeof(prefixes[0]); i++)
+	{
+		size_t n = strlen(prefixes[i]);
+		if (!strncmp(url, prefixes[i], n) && (url[n] == 0 || url[n] == '/' || url[n] == '#' || url[n] == '?'))
+			return true;
+	}
+	return false;
+}
+
+static void VID_OpenURL_f(cmd_state_t *cmd)
+{
+	const char *url = Cmd_Argv(cmd, 1);
+	if (Cmd_Argc(cmd) != 2 || !VID_OpenURL_Allowed(url))
+	{
+		Con_Printf("openurl: only the Xonotic Touch GitHub and Pages addresses can be opened\n");
+		return;
+	}
+#if SDL_VERSION_ATLEAST(2, 0, 14)
+	// Android: an ACTION_VIEW intent. Linux: xdg-open, which Flatpak routes
+	// through the OpenURI portal.
+	if (SDL_OpenURL(url) == 0)
+	{
+		Con_Printf("Opened %s\n", url);
+		return;
+	}
+	Con_DPrintf("openurl: SDL_OpenURL: %s\n", SDL_GetError());
+#endif
+#if defined(__linux__) && !defined(__ANDROID__)
+	{
+		// Ubuntu Touch ships an SDL older than SDL_OpenURL.
+		char line[MAX_INPUTLINE];
+		dpsnprintf(line, sizeof(line), "xdg-open '%s' >/dev/null 2>&1 &", url);
+		if (system(line) == 0)
+		{
+			Con_Printf("Opened %s\n", url);
+			return;
+		}
+	}
+#endif
+	Con_Printf("openurl: could not open a browser here. The address is %s\n", url);
+}
+
 void VID_Init (void)
 {
 	SDL_version version;
+
+	Cmd_AddCommand(CF_CLIENT, "openurl", VID_OpenURL_f, "open one of the Xonotic Touch project pages (GitHub releases, changelog) in the system browser");
 
 #ifndef __IPHONEOS__
 #ifdef MACOSX
@@ -2087,6 +2404,16 @@ void VID_Init (void)
 	Cvar_RegisterCallback(&vid_resizable,              VID_ApplyDisplayMode_c);
 	Cvar_RegisterCallback(&vid_borderless,             VID_ApplyDisplayMode_c);
 	Cvar_RegisterCallback(&vid_vsync,                  VID_SetVsync_c);
+#ifdef __EMSCRIPTEN__
+	// A browser shows at most one frame per display refresh: frames drawn
+	// between requestAnimationFrame callbacks are never seen. Vsync (the
+	// main loop paced by requestAnimationFrame) is the default here; it is
+	// the default value, not a forced one, so config.cfg keeps a player's
+	// "0" and that still uncaps the frame rate.
+	Z_Free((char *)vid_vsync.defstring);
+	vid_vsync.defstring = Z_strdup("1");
+	Cvar_SetQuick(&vid_vsync, "1");
+#endif
 	Cvar_RegisterCallback(&vid_mouse_clickthrough,     VID_SetHints_c);
 	Cvar_RegisterCallback(&vid_minimize_on_focus_loss, VID_SetHints_c);
 
@@ -2104,7 +2431,18 @@ void VID_Init (void)
 	// fingers, which pressed the touch controls instead of clicking.
 	SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
 #endif
+#ifdef SDL_HINT_TOUCH_MOUSE_EVENTS
+	// And a finger is a finger. The engine takes every finger itself -- the
+	// touch controls, menu presses (VID_TouchMenuFingerEvent) and look
+	// without the controls -- so the mouse SDL made up from one only doubled
+	// it: a second click in menus, and in the game, with a grabbed mouse, a
+	// second turn of the view through the relative mouse state.
+	SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+#endif
 
+#ifdef __ANDROID__
+	TouchAndroid_Init(); // Touch: keep running in the background
+#endif
 	if (SDL_Init(SDL_INIT_VIDEO) < 0)
 		Sys_Error ("Failed to init SDL video subsystem: %s", SDL_GetError());
 	if (SDL_InitSubSystem(SDL_INIT_JOYSTICK) < 0)
@@ -2262,6 +2600,12 @@ static qbool VID_InitModeGL(const viddef_mode_t *mode)
 	((viddef_mode_t *)mode)->fullscreen = true;
 	// hide the menu with SDL_WINDOW_BORDERLESS
 	windowflags |= SDL_WINDOW_FULLSCREEN | SDL_WINDOW_BORDERLESS;
+#endif
+
+#ifdef __EMSCRIPTEN__
+	// See VID_ApplyDisplayMode(): the page enters fullscreen, SDL stays windowed.
+	Sys_EM_SetFullscreen(mode->fullscreen);
+	((viddef_mode_t *)mode)->fullscreen = false;
 #endif
 
 	// SDL_CreateWindow() supports only width and height modesetting,
@@ -2432,7 +2776,13 @@ void VID_Finish (void)
 			CHECKGLERROR
 			if (r_speeds.integer == 2 || gl_finish.integer)
 				GL_Finish();
-			SDL_GL_SwapWindow(window);
+			{
+				// The swap blocks on vsync. That is waiting, not work, and the
+				// Android performance hint must not count it (Sys_PerfHint_Frame).
+				double swapstart = Sys_DirtyTime();
+				SDL_GL_SwapWindow(window);
+				vid_swapseconds += Sys_DirtyTime() - swapstart;
+			}
 			break;
 		}
 	}

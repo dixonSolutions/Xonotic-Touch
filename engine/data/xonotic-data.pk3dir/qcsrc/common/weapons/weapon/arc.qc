@@ -377,7 +377,7 @@ void W_Arc_Beam_Think(entity this)
 			last_origin,
 			new_origin,
 			MOVE_NORMAL,
-			NULL,
+			own,
 			ANTILAG_LATENCY(own)
 		);
 
@@ -388,15 +388,15 @@ void W_Arc_Beam_Think(entity this)
 		// system (if we hit a player, that's always BEHIND the last passed wz).
 		w_shotorg = WarpZone_TransformOrigin(WarpZone_trace_transform, w_shotorg);
 
-		if (trace_fraction == 1)
-		{
-			beam_controlpoint = WarpZone_TransformOrigin(WarpZone_trace_transform, beam_controlpoint);
-			beam_endpos = WarpZone_TransformOrigin(WarpZone_trace_transform, beam_endpos);
-			continue;
-		}
-
 		if (!trace_ent)
 		{
+			if (trace_fraction == 1)
+			{
+				beam_controlpoint = WarpZone_TransformOrigin(WarpZone_trace_transform, beam_controlpoint);
+				beam_endpos = WarpZone_TransformOrigin(WarpZone_trace_transform, beam_endpos);
+				continue;
+			}
+
 			// we collided with geometry
 			new_beam_type = ARC_BT_WALL;
 			break;
@@ -404,7 +404,7 @@ void W_Arc_Beam_Think(entity this)
 
 		// we collided with an entity
 		bool is_player = (IS_PLAYER(trace_ent) || trace_ent.classname == "body" || IS_MONSTER(trace_ent));
-		if (trace_ent != own && SAME_TEAM(own, trace_ent))
+		if (SAME_TEAM(own, trace_ent))
 		{
 			float roothealth = (burst ? WEP_CVAR(WEP_ARC, burst_healing_hps) : WEP_CVAR(WEP_ARC, beam_healing_hps));
 			float rootarmor  = (burst ? WEP_CVAR(WEP_ARC, burst_healing_aps) : WEP_CVAR(WEP_ARC, beam_healing_aps));
@@ -726,7 +726,7 @@ METHOD(Arc, wr_impacteffect, void(entity thiswep, entity actor))
 {
 	if (w_deathtype & HITTYPE_SECONDARY)
 	{
-		vector org2 = w_org + w_backoff * 2;
+		vector org2 = w_impactorg;
 		pointparticles(EFFECT_ELECTRO_IMPACT, org2, w_backoff * 1000, 1);
 		if (!w_issilent)
 			sound(actor, CH_SHOTS, SND_ARC_BOLT_IMPACT, VOL_BASE, ATTN_NORM);

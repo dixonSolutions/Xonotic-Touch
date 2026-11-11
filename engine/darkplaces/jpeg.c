@@ -32,7 +32,11 @@ extern cvar_t sv_writepicture_quality;
 cvar_t r_texture_jpeg_fastpicmip = {CF_CLIENT | CF_ARCHIVE, "r_texture_jpeg_fastpicmip", "1", "perform gl_picmip during decompression for JPEG files (faster)"};
 
 // jboolean is unsigned char instead of int on Win32
-#ifdef WIN32
+#if defined(LINK_TO_LIBJPEG) && defined(__EMSCRIPTEN__)
+// Emscripten's libjpeg port is libjpeg 9, where boolean is an enum: use
+// the library's own type so the callbacks below match its prototypes.
+#define jboolean boolean
+#elif defined(WIN32)
 typedef unsigned char jboolean;
 #else
 typedef int jboolean;

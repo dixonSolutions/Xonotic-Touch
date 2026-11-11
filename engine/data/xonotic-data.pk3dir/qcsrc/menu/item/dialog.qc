@@ -1,4 +1,5 @@
 #include "dialog.qh"
+#include <menu/xonotic/dialog_touch_gamemenu.qh> // Touch
 
 #include "borderimage.qh"
 #include "button.qh"
@@ -114,6 +115,8 @@
 			closed = true;
 		}
 
+		if (closed && TouchGameMenu_Return(me)) // Touch: back to the game menu it was opened from
+			closed = false;
 		if (closed && me.hideMenuOnClose)
 			m_goto(string_null, false);
 		me.hideMenuOnClose = false; // reset it regardless

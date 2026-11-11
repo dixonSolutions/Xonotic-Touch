@@ -3,6 +3,10 @@
 #include "touch_layout.qh"
 
 bool Touch_Active(void);
+// The controls are off (vid_touchscreen 0) on a touchscreen: the weapons strip,
+// its grip, the pills and a vote's YES / NO still take a finger.
+bool Touch_DeskActive(void);
+bool Touch_DeskPills(void);
 void Touch_Frame(void);
 bool Touch_InputEvent(float bInputType, float nPrimary, float nSecondary);
 void Touch_ReleaseAll(void);
@@ -22,6 +26,30 @@ bool Touch_JumpHeld(void);
 bool Touch_CrouchHeld(void);
 bool Touch_HopLatched(void);
 bool Touch_Fire2Held(void);
+// ALT takes touches (touch_fire2_visible, and in mode 2 STAT(TOUCH_ALTFIRE)).
+bool Touch_Fire2Available(void);
+// 0..1 draw multiplier for ALT's fade; call once a frame.
+float Touch_Fire2Alpha(void);
+// ZOOM takes touches (touch_zoom_visible, and in mode 2 a scoped weapon in hand).
+bool Touch_ZoomAvailable(void);
+bool Touch_ZoomHeld(void);
+// HOOK takes touches (touch_hook_visible, and in mode 2 a hook to hand).
+bool Touch_HookAvailable(void);
+bool Touch_HookHeld(void);
+float Touch_HookAlpha(void);
+// The NADE row's grenade (+touch_nade / -touch_nade to the engine).
+void Touch_SetNade(bool down);
+bool Touch_NadeHeld(void);
+// The keep-jumping chip (touch_hop_mode 3) and its tap.
+bool Touch_HopLockShown(void);
+bool Touch_HopLockHit(vector p);
+bool Touch_HopLockHeld(void);
+void Touch_HopLock_OnUp(vector p);
+// TURN takes touches (touch_turn_visible, no mouse aiming).
+bool Touch_TurnAvailable(void);
+bool Touch_TurnHeld(void);
+// 0..1 draw multiplier for ZOOM's fade; call once a frame.
+float Touch_ZoomAlpha(void);
 // The engine's touch auto-shoot is holding fire (touch_aim.c): FIRE glows.
 bool Touch_AutoShootEngaged(void);
 

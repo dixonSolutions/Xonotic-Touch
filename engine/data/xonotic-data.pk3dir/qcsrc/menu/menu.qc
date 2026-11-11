@@ -1,4 +1,6 @@
 #include "menu.qh"
+#include "xonotic/touch_update_util.qh"
+#include "xonotic/dialog_touch_gamemenu.qh" // Touch
 
 #include "item.qh"
 
@@ -12,6 +14,7 @@
 #include "xonotic/mainwindow.qh"
 #include "xonotic/serverlist.qh"
 #include "xonotic/slider_resolution.qh"
+#include "xonotic/touch_menu_layout.qh"
 
 .string controlledCvar;
 
@@ -263,12 +266,13 @@ void menu_touch_keyboard_hide()
 	cvar_set("vid_touchscreen_showkeyboard", "0");
 }
 
-void menu_sync_absolute_mousepos()
+vector menu_absolute_mousepos()
 {
 	vector rawMousePos = getmousepos();
 	vector newMouse = '0 0 0';
 	if (realconheight > realconwidth)
 	{
+		// Portrait: map console pixels directly (no letterbox transform).
 		newMouse.x = rawMousePos.x / max(1, realconwidth);
 		newMouse.y = rawMousePos.y / max(1, realconheight);
 	}
@@ -276,7 +280,12 @@ void menu_sync_absolute_mousepos()
 		newMouse = globalToBox(rawMousePos, draw_shift, draw_scale);
 	newMouse.x = bound(0, newMouse.x, 1);
 	newMouse.y = bound(0, newMouse.y, 1);
-	menuMousePos = newMouse;
+	return newMouse;
+}
+
+void menu_sync_absolute_mousepos()
+{
+	menuMousePos = menu_absolute_mousepos();
 }
 
 void m_keyup(float key, float ascii)
@@ -287,7 +296,8 @@ void m_keyup(float key, float ascii)
 	main.keyUp(main, key, ascii, menuShiftState);
 	if (key >= K_MOUSE1 && key <= K_MOUSE3)
 	{
-		if (menuMouseMode && cvar("vid_touchscreen"))
+		// As on the press: where the finger lifted, controls shown or not.
+		if (menuMouseMode)
 			menu_sync_absolute_mousepos();
 		--mouseButtonsPressed;
 		if (!mouseButtonsPressed) main.mouseRelease(main, menuMousePos);
@@ -329,7 +339,11 @@ void m_keydown(float key, float ascii)
 		draw_reset_cropped();
 		if (!mouseButtonsPressed && key >= K_MOUSE1 && key <= K_MOUSE3)
 		{
-			if (menuMouseMode && cvar("vid_touchscreen"))
+			// Where the press is now, not where the pointer was last frame:
+			// a finger lands somewhere new between frames. Not only with the
+			// touch controls on -- a finger presses the menu with a keyboard
+			// attached too -- and for a mouse it is the same spot anyway.
+			if (menuMouseMode)
 				menu_sync_absolute_mousepos();
 			main.mousePress(main, menuMousePos);
 		}
@@ -362,6 +376,8 @@ enum {
 	SCALEMODE_HEIGHT,
 	SCALEMODE_STRETCH,
 };
+vector menuLayerOrigin;
+vector menuLayerSize;
 void draw_Picture_Aligned(vector algn, float scalemode, string img, float a)
 {
 	vector sz = draw_PictureSize(img);
@@ -390,6 +406,33 @@ void draw_Picture_Aligned(vector algn, float scalemode, string img, float a)
 	}
 	vector org = eX * (algn.x * (1 - isz.x)) + eY * (algn.y * (1 - isz.y));
 	draw_Picture(org, img, isz, '1 1 1', a);
+	menuLayerOrigin = org;
+	menuLayerSize = isz;
+}
+
+// The build version, small and directly under the logo in the top background layer. It is drawn, not
+// baked into the image, because a live update changes it without touching the artwork.
+void drawBuildVersion(float a)
+{
+	string line = TouchUpdate_buildLine();
+	if (line == "")
+		return;
+	float h = 0.016 * menuLayerSize.y;
+	vector size = eY * h + eX * (h * draw_scale.y / draw_scale.x);
+	vector pos = menuLayerOrigin + eX * (0.2942 * menuLayerSize.x) + eY * (0.2135 * menuLayerSize.y);
+	draw_CenterText(pos, line, size, '0.75 0.85 1', a, false);
+}
+
+// Downloaded game data carries its own background_l2, which outranks one we ship, so the branded logo
+// has a name only we use. Stock data still draws if the file is missing.
+int menuBrandedLogo; // 0 not looked yet, 1 present, -1 absent
+string menuLayerImage(string img, float layer)
+{
+	if (!menuBrandedLogo)
+		menuBrandedLogo = draw_PictureExists("touch_background_l2") ? 1 : -1;
+	if (menuBrandedLogo > 0 && layer == 2 && img == SKINGFX_BACKGROUND)
+		return "touch_background_l2";
+	return strcat(img, "_l", ftos(layer));
 }
 
 void drawBackground(string img, float a, string algn, float force1)
@@ -458,11 +501,11 @@ void drawBackground(string img, float a, string algn, float force1)
 			// force all secondary layers to use alpha 1. Prevents ugly issues
 			// with overlap. It's a flag because it cannot be used for the
 			// ingame background
-			draw_Picture_Aligned(v, scalemode, strcat(img, "_l", ftos(l + 1)), 1);
+			draw_Picture_Aligned(v, scalemode, menuLayerImage(img, l + 1), 1);
 		}
 		else
 		{
-			draw_Picture_Aligned(v, scalemode, strcat(img, "_l", ftos(l + 1)), a);
+			draw_Picture_Aligned(v, scalemode, menuLayerImage(img, l + 1), a);
 		}
 		++l;
 LABEL(nopic)
@@ -636,6 +679,13 @@ string gettooltip()
 		s = menuTooltipItem.tooltip;
 	return s;
 }
+// The pointer is drawn while a mouse is the pointer in use: a finger hides it,
+// moving or clicking the mouse brings it back (vid_pointer_mouse, engine).
+bool m_pointer_shown()
+{
+	return cvar("vid_pointer_mouse") != 0;
+}
+
 void m_tooltip(vector pos)
 {
 	const float MAX_TOOLTIP_LINES = 16;
@@ -824,6 +874,7 @@ void m_draw(float width, float height)
 			// reload the menu so that disconnecting players don't
 			// have to press ESC to open it again
 			m_toggle(true);
+			TouchGameMenu_Disconnected(); // Touch: not a blank menu when the game menu was up
 
 			localcmd("\nmenu_cmd directmenu Welcome RESET\n");
 			connected_time = 0;
@@ -927,12 +978,12 @@ void m_draw(float width, float height)
 			draw_reset_full();
 			draw_Fill('0 0 0', '1 1 0', SKINCOLOR_BACKGROUND, 1);
 			drawBackground(SKINGFX_BACKGROUND, bound(0, menuLogoAlpha, 1), SKINALIGN_BACKGROUND, true);
+			drawBuildVersion(bound(0, menuLogoAlpha, 1));
 			draw_reset_cropped();
-			if (menuAlpha <= 0 && SKINALPHA_CURSOR_INTRO > 0 && !cvar("vid_touchscreen"))
+			if (menuAlpha <= 0 && SKINALPHA_CURSOR_INTRO > 0 && m_pointer_shown())
 			{
 				draw_alpha = SKINALPHA_CURSOR_INTRO * bound(0, menuLogoAlpha, 1);
-				if (!cvar("vid_touchscreen"))
-		draw_drawMousePointer(menuMousePos);
+				draw_drawMousePointer(menuMousePos);
 				draw_alpha = 1;
 			}
 		}
@@ -966,20 +1017,10 @@ void m_draw(float width, float height)
 
 	if (menuMouseMode)
 	{
-		if (cvar("vid_touchscreen"))
-			menu_sync_absolute_mousepos();
-		vector rawMousePos = getmousepos();
-		vector newMouse = menuMousePos;
-		if (realconheight > realconwidth)
-		{
-			// Portrait: map console pixels directly (no letterbox transform).
-			newMouse.x = rawMousePos.x / max(1, realconwidth);
-			newMouse.y = rawMousePos.y / max(1, realconheight);
-		}
-		else
-			newMouse = globalToBox(rawMousePos, draw_shift, draw_scale);
-		newMouse.x = bound(0, newMouse.x, 1);
-		newMouse.y = bound(0, newMouse.y, 1);
+		// Compared with where the pointer was, never synced first: with the
+		// touch controls on, syncing here made every frame look still, and a
+		// mouse (or finger) then neither hovered nor dragged a slider.
+		vector newMouse = menu_absolute_mousepos();
 		if (newMouse != menuMousePos)
 		{
 			menuMousePos = newMouse;
@@ -1008,7 +1049,7 @@ void m_draw(float width, float height)
 
 	draw_alpha = max(draw_alpha, SKINALPHA_CURSOR_INTRO * bound(0, menuLogoAlpha, 1));
 
-	if (!cvar("vid_touchscreen"))
+	if (m_pointer_shown())
 		draw_drawMousePointer(menuMousePos);
 
 	draw_reset_cropped();
@@ -1044,6 +1085,14 @@ void m_hide()
 	menu_touch_keyboard_hide();
 	main.focusLeave(main);
 	main.hideNotify(main);
+
+	// The Touch tab's sliders set live cvars, and only the layout file carries
+	// them into the next launch: without this a look speed set there and never
+	// followed by "Save layout" was gone at the next cold start, which on
+	// Android is every update. Not while the in-game editor is open, whose
+	// unsaved drags belong to its own SAVE and CANCEL.
+	if (cvar("vid_touchscreen") && !cvar("touch_customize"))
+		TouchMenu_WriteLayoutFile("touch.layout.cfg");
 }
 
 void m_toggle(int mode)
@@ -1123,6 +1172,7 @@ void m_setpointerfocus(entity wnd)
 
 void m_goto(string itemname, bool hide_menu_on_close)
 {
+	itemname = TouchGameMenu_Route(itemname); // Touch: finger-sized game menu on a touchscreen
 	if (!menuInitialized)
 	{
 		strcpy(m_goto_buffer, itemname);

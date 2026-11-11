@@ -1,0 +1,271 @@
+name: Upstream watch
+
+# Polls upstream Xonotic once a day. When upstream moved, it:
+#   1. vendors the new upstream files onto the upstream/vendor branch,
+#   2. merges them into main with the vendor commit in upstream.lock as the
+#      merge base (scripts/upstream-sync.py merge),
+#   3. clean merge: checks that every Touch addition survived, compiles
+#      QuakeC and the engine, and opens or refreshes a PR from upstream-sync;
+#      conflicts: opens or refreshes an issue listing the files to hand-merge.
+#
+# It never pushes to main. Merging the PR is what publishes a release.
+# See docs/UPSTREAM_SYNC.md.
+#
+# Optional secret UPSTREAM_SYNC_TOKEN (fine-grained PAT: contents, pull
+# requests, issues, actions): pushes made with it start the branch workflows
+# (tests, android) by themselves. Without it the default token is used and
+# this workflow dispatches them on the sync branch instead.
+on:
+  schedule:
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+
+concurrency:
+  group: upstream-watch
+  cancel-in-progress: false
+
+env:
+  SYNC_BRANCH: upstream-sync
+  VENDOR_BRANCH: upstream/vendor
+  LABEL: upstream-sync
+
+jobs:
+  sync:
+    name: Check and merge upstream
+    runs-on: ubuntu-latest
+    outputs:
+      state: ${{ steps.merge.outputs.state }}
+    env:
+      GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+
+      - name: Fetch vendor branch and merge base
+        run: |
+          git fetch --no-tags --depth=1 origin "+refs/heads/$VENDOR_BRANCH:refs/heads/$VENDOR_BRANCH"
+          base=$(awk '$1 == "vendor" { print $2 }' upstream.lock)
+          git cat-file -e "$base^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$base"
+
+      - name: Compare upstream.lock with upstream
+        id: check
+        run: python3 scripts/upstream-sync.py check
+
+      - name: Vendor new upstream files
+        if: steps.check.outputs.updates == 'true'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          python3 scripts/upstream-sync.py vendor --at upstream
+          git push origin "refs/heads/$VENDOR_BRANCH"
+
+      - name: Merge into main
+        id: merge
+        if: steps.check.outputs.updates == 'true'
+        run: |
+          # An earlier run, or a hand-merge, may already propose this vendor
+          # commit on the sync branch; main's lock only catches up once that
+          # PR is merged. Leave it alone rather than merge (or report) again.
+          new=$(git rev-parse "refs/heads/$VENDOR_BRANCH")
+          if git fetch --no-tags --depth=1 origin "refs/heads/$SYNC_BRANCH" 2>/dev/null \
+            && [ "$(git show FETCH_HEAD:upstream.lock | awk '$1 == "vendor" { print $2 }')" = "$new" ]; then
+            echo "origin/$SYNC_BRANCH already merges $new; waiting for its PR."
+            echo "state=proposed" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # upstream-sync.py exits 0 merged, 1 conflicts, 2 error, 3 nothing to merge.
+          set +e
+          python3 scripts/upstream-sync.py merge --onto HEAD --branch "$SYNC_BRANCH" --report report.md
+          rc=$?
+          set -e
+          if [ "$rc" -eq 1 ]; then
+            echo "state=conflict" >> "$GITHUB_OUTPUT"
+          elif [ "$rc" -eq 3 ]; then
+            echo "state=none" >> "$GITHUB_OUTPUT"
+            exit 0
+          elif [ "$rc" -ne 0 ]; then
+            exit "$rc"
+          elif git diff --quiet HEAD "$SYNC_BRANCH" -- . ':(exclude)upstream.lock'; then
+            # Upstream only touched files this repo does not vendor (assets).
+            # The vendor branch moved; the next real change carries the lock.
+            echo "Upstream changed nothing vendored; no PR."
+            echo "state=none" >> "$GITHUB_OUTPUT"
+          else
+            echo "state=clean" >> "$GITHUB_OUTPUT"
+          fi
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check that every Touch addition survived
+        if: steps.merge.outputs.state == 'clean'
+        run: python3 scripts/upstream-sync.py hooks --merged "$SYNC_BRANCH"
+
+      - name: Push sync branch
+        if: steps.merge.outputs.state == 'clean'
+        # The merge step already stopped if the branch proposes this vendor
+        # commit, so whatever is there is older and can be replaced.
+        run: git push --force origin "refs/heads/$SYNC_BRANCH"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.merge.outputs.state == 'clean' || steps.merge.outputs.state == 'conflict'
+        with:
+          name: upstream-report
+          path: report.md
+
+      - name: Close a stale hand-merge issue
+        # Up to date, merged cleanly, or already proposed: an open
+        # "needs a hand merge" issue no longer describes anything.
+        if: steps.check.outputs.updates == 'false' || (steps.merge.outputs.state != '' && steps.merge.outputs.state != 'conflict')
+        run: |
+          for issue in $(gh issue list --label "$LABEL" --state open --json number --jq '.[].number' 2>/dev/null); do
+            gh issue close "$issue" --comment "Closed by the upstream watch: ${{ steps.merge.outputs.state || 'up to date' }} (${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          done
+
+  build:
+    name: Build merged tree
+    needs: sync
+    if: needs.sync.outputs.state == 'clean'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: upstream-sync
+
+      - name: Install build dependencies
+        run: |
+          . scripts/lib/xonotic-shlib.sh
+          xonotic_install_native_deps
+
+      - name: Compile QuakeC (csprogs, menu, progs)
+        run: |
+          . scripts/lib/xonotic-shlib.sh
+          QCCFLAGS_WATERMARK="upstream-sync-$(git rev-parse --short HEAD)" xonotic_compile_qc_only
+
+      - name: Compile engine
+        run: |
+          . scripts/lib/xonotic-shlib.sh
+          xonotic_compile_engine_only
+
+      - name: Tests from tests.yml
+        # Every script tests.yml runs, as the sync branch has it, so this list
+        # never goes stale.
+        run: |
+          scripts=$(grep -oE 'bash scripts/test-[A-Za-z0-9_.-]+\.sh' .github/workflows/tests.yml | awk '{ print $2 }' | sort -u)
+          [ -n "$scripts" ] || { echo "no test scripts found in tests.yml"; exit 1; }
+          for t in $scripts; do
+            echo "::group::$t"
+            bash "$t"
+            echo "::endgroup::"
+          done
+
+  propose:
+    name: Open or refresh PR
+    needs: [sync, build]
+    if: always() && needs.sync.outputs.state == 'clean'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.UPSTREAM_SYNC_TOKEN || github.token }}
+      HAS_PAT: ${{ secrets.UPSTREAM_SYNC_TOKEN != '' }}
+      BUILD: ${{ needs.build.result }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: upstream-sync
+          sparse-checkout: upstream.lock
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: upstream-report
+
+      - name: Write PR body
+        run: |
+          {
+            echo "Upstream Xonotic moved. This merges it into main with the vendor commit"
+            echo "in \`upstream.lock\` as the merge base, so Touch changes stay in place."
+            echo
+            cat report.md
+            echo
+            if [ "$BUILD" = success ]; then
+              echo "Touch additions all survived; QuakeC and the engine compile; Touch tests pass."
+            else
+              echo "**The build job did not pass ($BUILD).** See the workflow run:"
+            fi
+            echo "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            echo "Merging this PR into main publishes a release. Before merging, play a"
+            echo "match on a touch device and on a public server."
+          } > body.md
+
+      - name: Create or update PR
+        run: |
+          gh label create "$LABEL" --color 0e8a16 --description "Automated upstream Xonotic sync" --force
+          title="Sync upstream Xonotic ($(date -u +%Y-%m-%d))"
+          pr=$(gh pr list --head "$SYNC_BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --title "$title" --body-file body.md
+          else
+            draft=""
+            [ "$BUILD" = success ] || draft="--draft"
+            gh pr create --base main --head "$SYNC_BRANCH" --title "$title" \
+              --body-file body.md --label "$LABEL" $draft
+          fi
+
+      - name: Start branch workflows
+        # Pushes made with the default token start no workflows.
+        if: env.HAS_PAT != 'true'
+        run: |
+          gh workflow run tests.yml --ref "$SYNC_BRANCH"
+          gh workflow run android.yml --ref "$SYNC_BRANCH"
+
+  conflicts:
+    name: Report conflicts
+    needs: sync
+    if: needs.sync.outputs.state == 'conflict'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: upstream-report
+
+      - name: Open or update issue
+        run: |
+          {
+            echo "Upstream Xonotic moved and the merge into main has conflicts."
+            echo "The new upstream files are on \`$VENDOR_BRANCH\`."
+            echo
+            cat report.md
+            echo
+            echo "To merge by hand, in a clean clone of this repo (not a git worktree):"
+            echo
+            echo '```bash'
+            echo "git fetch origin $VENDOR_BRANCH:$VENDOR_BRANCH"
+            echo "python3 scripts/upstream-sync.py resolve"
+            echo "# fix the files above, keeping every Touch change, then:"
+            echo "git add -A engine && git commit"
+            echo "python3 scripts/upstream-sync.py hooks"
+            echo '```'
+            echo
+            echo "Push the result to a branch and open a PR. This issue is refreshed daily"
+            echo "while upstream keeps moving."
+            echo
+            echo "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } > body.md
+          gh label create "$LABEL" --color 0e8a16 --description "Automated upstream Xonotic sync" --force \
+            --repo "${{ github.repository }}"
+          issue=$(gh issue list --repo "${{ github.repository }}" --label "$LABEL" --state open \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$issue" ]; then
+            gh issue edit "$issue" --repo "${{ github.repository }}" --body-file body.md
+          else
+            gh issue create --repo "${{ github.repository }}" --title "Upstream Xonotic sync needs a hand merge" \
+              --body-file body.md --label "$LABEL"
+          fi

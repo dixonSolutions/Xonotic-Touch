@@ -287,9 +287,10 @@ METHOD(Vaporizer, wr_think, void(entity thiswep, entity actor, .entity weaponent
 {
 	float vaporizer_ammo = (autocvar_g_instagib ? 1 : WEP_CVAR_PRI(WEP_VAPORIZER, ammo));
 	// if the laser uses load, we also consider its ammo for reloading
-	if (WEP_CVAR(WEP_VAPORIZER, reload_ammo) && WEP_CVAR_PRI(WEP_BLASTER, ammo)
-	&& actor.(weaponentity).clip_load < min(vaporizer_ammo, WEP_CVAR_PRI(WEP_BLASTER, ammo)))
-	{ // forced reload
+	if (WEP_CVAR(WEP_VAPORIZER, reload_ammo) && WEP_CVAR_PRI(WEP_BLASTER, ammo) // forced reload
+	&& actor.(weaponentity).clip_load < vaporizer_ammo
+	&& actor.(weaponentity).clip_load < WEP_CVAR_PRI(WEP_BLASTER, ammo))
+	{
 		thiswep.wr_reload(thiswep, actor, weaponentity);
 		actor.(weaponentity).hagar_load = false; // rocket minsta exclusive var
 		return;
@@ -406,7 +407,7 @@ METHOD(Vaporizer, wr_killmessage, Notification(entity thiswep))
 
 METHOD(Vaporizer, wr_impacteffect, void(entity thiswep, entity actor))
 {
-	vector org2 = w_org + w_backoff * 2;
+	vector org2 = w_impactorg;
 	pointparticles(EFFECT_VORTEX_IMPACT, org2, '0 0 0', 1);
 	if (!w_issilent)
 		sound(actor, CH_SHOTS, SND_VAPORIZER_IMPACT, VOL_BASE, ATTN_NORM);

@@ -12,6 +12,9 @@ float race_timebestspeed;
 float race_laptime;
 float race_checkpointtime;
 string race_checkpoint_splits[256];
+// Whether any race_checkpoint_splits entry is set (StoreCheckpointSplits sets
+// it, ClearCheckpointSplits frees them all and clears it).
+bool racetimer_have_stored_splits;
 float race_checkpoint_splits_speed[256];
 float race_previousbesttime;
 float race_mypreviousbesttime;

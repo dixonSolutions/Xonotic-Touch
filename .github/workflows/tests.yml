@@ -19,3 +19,83 @@ jobs:
       - uses: actions/checkout@v4
       - name: Parse recorded /proc/bus/input/devices listings
         run: bash scripts/test-input-presence.sh
+
+  touch-altfire:
+    name: Touch ALT button
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stock-balance fallback, availability modes and fade
+        run: bash scripts/test-touch-altfire.sh
+
+  touch-vote:
+    name: Touch vote prints
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Server vote lines read back into vote events
+        run: bash scripts/test-touch-vote.sh
+
+  touch-spectate:
+    name: Touch spectator controls
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Spectator meanings of the buttons and the held JOIN
+        run: bash scripts/test-touch-spectate.sh
+
+  touch-aim:
+    name: Touch auto-shoot weapon logic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lead, fire mode, weapon choice and detonation
+        run: bash scripts/test-touch-aim.sh
+
+  touch-hook:
+    name: Touch fall rescue logic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Where a fall ends, the hook's anchor, when to fire and let go
+        run: bash scripts/test-touch-hook.sh
+
+  touch-dodge:
+    name: Touch auto dodge logic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Damage if the player carries on, the escape chosen, walls and ledges
+        run: bash scripts/test-touch-dodge.sh
+
+  release-changelog:
+    name: Release changelog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ranges between tags, order and the 16 KiB cap
+        run: bash scripts/test-release-changelog.sh
+
+  andysu-release:
+    name: AndySU release naming
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check updater selection and configuration
+        run: bash scripts/test-andysu-release.sh
+
+  host-resources:
+    name: No R ids in app code (AndySU hosts keep their own resource table)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check app code resolves resources by name
+        run: bash scripts/test-host-resources.sh
+
+  upstream-sync:
+    name: Upstream sync tool
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Vendor, merge, resolve and hooks on throwaway repositories
+        run: bash scripts/test-upstream-sync.sh

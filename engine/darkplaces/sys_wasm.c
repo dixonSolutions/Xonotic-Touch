@@ -5,6 +5,7 @@
 #include <SDL.h>
 
 #include "darkplaces.h"
+#include "quakedef.h"
 #include "fs.h"
 #include "vid.h"
 
@@ -13,23 +14,237 @@
 #include <string.h>
 
 
-EM_JS(float, js_GetViewportWidth, (void), {
-	return document.documentElement.clientWidth
+// The canvas fills the page; the page shim (web/shell.js) decides how many
+// pixels to render per CSS pixel (devicePixelRatio, capped for phones) and
+// returns the framebuffer size here. SDL scales mouse coordinates from CSS
+// pixels to window pixels itself, and touch arrives normalised.
+EM_JS(int, js_GetViewportWidth, (void), {
+	if (Module.xt && Module.xt.renderSize) return Module.xt.renderSize()[0];
+	return document.documentElement.clientWidth;
 });
-EM_JS(float, js_GetViewportHeight, (void), {
-	return document.documentElement.clientHeight
+EM_JS(int, js_GetViewportHeight, (void), {
+	if (Module.xt && Module.xt.renderSize) return Module.xt.renderSize()[1];
+	return document.documentElement.clientHeight;
 });
-static EM_BOOL em_on_resize(int etype, const EmscriptenUiEvent *event, void *UData)
+static void em_fit_viewport(void)
 {
-	if(vid_resizable.integer)
-	{
-		Cvar_SetValueQuick(&vid_width, js_GetViewportWidth());
-		Cvar_SetValueQuick(&vid_height, js_GetViewportHeight());
-		Cvar_SetQuick(&vid_fullscreen, "0");
-	}
-	return EM_FALSE;
+	int w = js_GetViewportWidth(), h = js_GetViewportHeight();
+	if (w < 64 || h < 64)
+		return; // hidden or collapsed: keep the last good size
+	if (w != vid_width.integer)
+		Cvar_SetValueQuick(&vid_width, w);
+	if (h != vid_height.integer)
+		Cvar_SetValueQuick(&vid_height, h);
 }
 
+void Sys_EM_FitWindow(SDL_Window *window);
+/// The browser window was resized (vid_sdl.c, on SDL_WINDOWEVENT_RESIZED).
+/// SDL's own resize handler has just set the canvas to its CSS size, one
+/// pixel per CSS pixel: put the cvars and the canvas back at the page's
+/// render size. Resizing the canvas raises no browser resize event, so this
+/// does not feed back into itself.
+void Sys_EM_FitWindow(SDL_Window *window)
+{
+	int w, h;
+
+	em_fit_viewport();
+	SDL_GetWindowSize(window, &w, &h);
+	if (w != vid_width.integer || h != vid_height.integer)
+		SDL_SetWindowSize(window, vid_width.integer, vid_height.integer);
+}
+
+EM_JS(void, js_SetFullscreen, (int on), {
+	if (Module.xt && Module.xt.setFullscreen) Module.xt.setFullscreen(!!on);
+});
+void Sys_EM_SetFullscreen(qbool on)
+{
+	js_SetFullscreen(on);
+}
+
+EM_JS(void, js_MouseGrab, (int on), {
+	if (Module.xt && Module.xt.mouseGrab) Module.xt.mouseGrab(!!on);
+});
+void Sys_EM_MouseGrab(qbool on)
+{
+	js_MouseGrab(on);
+}
+
+// Whether the page has the keyboard: visible and focused. SDL tracks focus
+// from window focus/blur events, and a blur with no focus after it (seen on
+// a first visit, around fullscreen and browser UI) leaves the engine sure it
+// is in the background while the page plainly has focus.
+EM_JS(int, js_PageFocused, (void), {
+	return (!document.hidden && document.hasFocus()) ? 1 : 0;
+});
+qbool Sys_EM_PageFocused(void)
+{
+	return js_PageFocused() != 0;
+}
+
+EM_JS(void, js_ScreenKeyboard, (int on), {
+	if (Module.xt && Module.xt.screenKeyboard) Module.xt.screenKeyboard(!!on);
+});
+void Sys_EM_ScreenKeyboard(qbool on)
+{
+	js_ScreenKeyboard(on);
+}
+
+// ---- Called by the page shim ----
+
+void xt_web_fullscreen_changed(int on);
+void xt_web_refit(void);
+void xt_web_command(const char *text);
+void xt_web_save(void);
+int xt_web_autosave(void);
+void xt_web_text(const char *utf8);
+void xt_web_key(int sym);
+
+/// The page entered or left fullscreen (button, F11, Esc, swipe): keep the
+/// menu's checkbox in step without asking the page again.
+EMSCRIPTEN_KEEPALIVE void xt_web_fullscreen_changed(int on)
+{
+	if ((vid_fullscreen.integer != 0) != (on != 0))
+		Cvar_SetValueQuick(&vid_fullscreen, on ? 1 : 0);
+	em_fit_viewport();
+}
+
+/// The render scale changed (setting, or the window moved to another screen).
+EMSCRIPTEN_KEEPALIVE void xt_web_refit(void)
+{
+	em_fit_viewport();
+}
+
+/// Run console text, e.g. from the page's own buttons or the dev console.
+EMSCRIPTEN_KEEPALIVE void xt_web_command(const char *text)
+{
+	Cbuf_AddText(cmd_local, text);
+	Cbuf_AddText(cmd_local, "\n");
+}
+
+/// Text from the page's hidden input (soft keyboards send composition, not
+/// key events SDL can read): queue it as SDL_TEXTINPUT, as a typed key would.
+EMSCRIPTEN_KEEPALIVE void xt_web_text(const char *utf8)
+{
+	SDL_Event ev;
+	size_t len = strlen(utf8), off = 0;
+	while (off < len)
+	{
+		size_t n = len - off;
+		if (n > sizeof(ev.text.text) - 1)
+		{
+			n = sizeof(ev.text.text) - 1;
+			while (n > 0 && ((unsigned char)utf8[off + n] & 0xC0) == 0x80)
+				n--; // do not split a UTF-8 sequence
+			if (n == 0)
+				break;
+		}
+		memset(&ev, 0, sizeof(ev));
+		ev.type = SDL_TEXTINPUT;
+		memcpy(ev.text.text, utf8 + off, n);
+		SDL_PushEvent(&ev);
+		off += n;
+	}
+}
+
+/// A key from the hidden input that has no text: 8 backspace, 13 enter,
+/// 27 escape, 9 tab.
+EMSCRIPTEN_KEEPALIVE void xt_web_key(int sym)
+{
+	SDL_Event ev;
+	SDL_Keycode k = sym == 8 ? SDLK_BACKSPACE : sym == 13 ? SDLK_RETURN : sym == 27 ? SDLK_ESCAPE : sym == 9 ? SDLK_TAB : 0;
+	if (!k)
+		return;
+	memset(&ev, 0, sizeof(ev));
+	ev.type = SDL_KEYDOWN;
+	ev.key.state = SDL_PRESSED;
+	ev.key.keysym.sym = k;
+	ev.key.keysym.scancode = SDL_GetScancodeFromKey(k);
+	SDL_PushEvent(&ev);
+	ev.type = SDL_KEYUP;
+	ev.key.state = SDL_RELEASED;
+	SDL_PushEvent(&ev);
+}
+
+extern qbool cvar_archive_changed; // cvar.c
+
+/// A hash of one bindmap's key bindings, the part of config.cfg that cvar.c
+/// does not track.
+static unsigned int em_bindmap_hash(int map)
+{
+	unsigned int h = 2166136261u;
+	const unsigned char *p;
+	int key;
+
+	for (key = 0; key < MAX_KEYS; key++)
+		if (keybindings[map][key])
+		{
+			h = (h ^ (unsigned int)key) * 16777619u;
+			for (p = (const unsigned char *)keybindings[map][key]; *p; p++)
+				h = (h ^ *p) * 16777619u;
+		}
+	return h;
+}
+static unsigned int em_bindings_seen[MAX_BINDMAPS], em_bindings_saved[MAX_BINDMAPS];
+static int em_bindings_next;
+static qbool em_config_known;
+static double em_config_savetime;
+
+static void em_save_config(void)
+{
+	Host_SaveConfig(CONFIGFILENAME);
+	cvar_archive_changed = false;
+	memcpy(em_bindings_saved, em_bindings_seen, sizeof(em_bindings_saved));
+	em_config_known = true;
+	em_config_savetime = host.realtime;
+}
+
+/// The tab is going away or into the background, where the main loop stops:
+/// write config.cfg now and flush it to IndexedDB.
+EMSCRIPTEN_KEEPALIVE void xt_web_save(void)
+{
+	if (host.state == host_active || host.state == host_init)
+		em_save_config();
+}
+
+/// Called by the page a few times a second while the game runs. Writes
+/// config.cfg when an archived cvar or a key binding changed, at most every
+/// 2 seconds and never while a map loads, and returns 1 so the page flushes
+/// it to IndexedDB at once. The saves on unload alone lose settings: the
+/// IndexedDB write they start is async, and a reload or a killed tab ends
+/// the page before it lands.
+///
+/// Bindings are compared by hash, one bindmap per call: the table has a slot
+/// for every Unicode key, and a full pass costs most of a millisecond. The
+/// first save after startup is unconditional: what changed between reading
+/// config.cfg and now is not known.
+EMSCRIPTEN_KEEPALIVE int xt_web_autosave(void)
+{
+	int map;
+	qbool changed;
+
+	if (host.state != host_active || host.framecount < 3)
+		return 0;
+	if (!em_config_known)
+	{
+		for (map = 0; map < MAX_BINDMAPS; map++)
+			em_bindings_seen[map] = em_bindmap_hash(map);
+	}
+	else
+	{
+		em_bindings_seen[em_bindings_next] = em_bindmap_hash(em_bindings_next);
+		em_bindings_next = (em_bindings_next + 1) % MAX_BINDMAPS;
+	}
+	if (cls.state == ca_connected && cls.signon < SIGNONS)
+		return 0;
+	if (em_config_known && host.realtime - em_config_savetime < 2)
+		return 0;
+	changed = !em_config_known || cvar_archive_changed
+		|| memcmp(em_bindings_seen, em_bindings_saved, sizeof(em_bindings_saved));
+	if (!changed)
+		return 0;
+	em_save_config();
+	return 1;
+}
 
 // =======================================================================
 // General routines
@@ -193,17 +408,12 @@ static void em_wss_f(cmd_state_t *cmd)
 }
 #endif // WASM_USER_ADJUSTABLE
 
+// Writes land in MEMFS; the page shim mirrors the userdir to IndexedDB,
+// coalescing bursts (saveconfig writes several files in a row).
 EM_JS(bool, js_syncFS, (bool populate), {
-	FS.syncfs(populate, function(err) {
-		if(err)
-		{
-			alert("FileSystem Save Error: " + err);
-			return false;
-		}
-
-		alert("Filesystem Saved!");
-		return true;
-	});
+	if (Module.xt && Module.xt.syncFS) { Module.xt.syncFS(); return true; }
+	FS.syncfs(false, function(err) { if (err) console.error('syncfs: ' + err); });
+	return true;
 });
 static void em_savefs_f(cmd_state_t *cmd)
 {
@@ -211,19 +421,31 @@ static void em_savefs_f(cmd_state_t *cmd)
 	js_syncFS(false);
 }
 
+// The engine has shut down (menu Quit, the quit command). exit() does not
+// end a page whose runtime is kept alive, so Module.onExit never runs: tell
+// the page, which offers to start again.
+EM_JS(void, js_quit, (void), {
+	if (Module.xt && Module.xt.quit) Module.xt.quit();
+});
 void Sys_SDL_Shutdown(void)
 {
 	js_syncFS(false);
 	SDL_Quit();
+	js_quit();
 }
 
-// Sys_Abort early in startup might screw with automated
-// workflows or something if we show the dialog by default.
+// A fatal error: the page shows it over the game (and the last console
+// lines) instead of leaving a frozen or black canvas.
+EM_JS(void, js_fatal, (const char *title, const char *text), {
+	var t = UTF8ToString(title), m = UTF8ToString(text);
+	if (Module.xt && Module.xt.fatal) Module.xt.fatal(t, m);
+	else console.error(t + ': ' + m);
+});
 static qbool nocrashdialog = true;
 void Sys_SDL_Dialog(const char *title, const char *string)
 {
-	if(!nocrashdialog)
-		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title, string, NULL);
+	(void)nocrashdialog;
+	js_fatal(title, string);
 }
 
 // In a browser the clipboard can only be read asynchronously
@@ -272,8 +494,7 @@ void Sys_SDL_Init(void)
 	// COMMANDLINEOPTION: sdl: -nocrashdialog disables "Engine Error" crash dialog boxes
 	if(!Sys_CheckParm("-nocrashdialog"))
 		nocrashdialog = false;
-	
-	emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, EM_FALSE, em_on_resize);
+
 }
 
 void Sys_EM_Register_Commands(void)

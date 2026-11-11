@@ -8,7 +8,6 @@ CLASS(MainWindow, ModalController)
 	ATTRIB(MainWindow, ToSDialog, entity);
 	ATTRIB(MainWindow, firstRunDialog, entity);
 	ATTRIB(MainWindow, assetFetchDialog, entity);
-	ATTRIB(MainWindow, touchSetupDialog, entity);
 	ATTRIB(MainWindow, advancedDialog, entity);
 	ATTRIB(MainWindow, mutatorsDialog, entity);
 	ATTRIB(MainWindow, mapInfoDialog, entity);

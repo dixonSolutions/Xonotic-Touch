@@ -4551,7 +4551,7 @@ msurface_t *Mod_Mesh_AddSurface(model_t *mod, texture_t *tex, qbool batchwithpre
 	return surf;
 }
 
-int Mod_Mesh_IndexForVertex(model_t *mod, msurface_t *surf, float x, float y, float z, float nx, float ny, float nz, float s, float t, float u, float v, float r, float g, float b, float a)
+static void Mod_Mesh_GrowVertices(model_t *mod, msurface_t *surf)
 {
 	int hashindex, h, vnum, mask;
 	surfmesh_t *mesh = &mod->surfmesh;
@@ -4581,22 +4581,13 @@ int Mod_Mesh_IndexForVertex(model_t *mod, msurface_t *surf, float x, float y, fl
 			mesh->data_vertexhash[h] = vnum;
 		}
 	}
-	mask = mod->surfmesh.num_vertexhashsize - 1;
-	// this uses prime numbers intentionally for computing the hash
-	hashindex = (unsigned int)(x * 2003 + y * 4001 + z * 7919 + nx * 4097 + ny * 257 + nz * 17) & mask;
-	// when possible find an identical vertex within the same surface and return it
-	for(h = hashindex;(vnum = mesh->data_vertexhash[h]) >= 0;h = (h + 1) & mask)
-	{
-		if (vnum >= surf->num_firstvertex
-		 && mesh->data_vertex3f[vnum * 3 + 0] == x && mesh->data_vertex3f[vnum * 3 + 1] == y && mesh->data_vertex3f[vnum * 3 + 2] == z
-		 && mesh->data_normal3f[vnum * 3 + 0] == nx && mesh->data_normal3f[vnum * 3 + 1] == ny && mesh->data_normal3f[vnum * 3 + 2] == nz
-		 && mesh->data_texcoordtexture2f[vnum * 2 + 0] == s && mesh->data_texcoordtexture2f[vnum * 2 + 1] == t
-		 && mesh->data_texcoordlightmap2f[vnum * 2 + 0] == u && mesh->data_texcoordlightmap2f[vnum * 2 + 1] == v
-		 && mesh->data_lightmapcolor4f[vnum * 4 + 0] == r && mesh->data_lightmapcolor4f[vnum * 4 + 1] == g && mesh->data_lightmapcolor4f[vnum * 4 + 2] == b && mesh->data_lightmapcolor4f[vnum * 4 + 3] == a)
-			return vnum;
-	}
-	// add the new vertex
-	vnum = mesh->num_vertices++;
+}
+
+// Append a vertex to surf, with no lookup for an identical one.
+static int Mod_Mesh_StoreVertex(model_t *mod, msurface_t *surf, float x, float y, float z, float nx, float ny, float nz, float s, float t, float u, float v, float r, float g, float b, float a)
+{
+	surfmesh_t *mesh = &mod->surfmesh;
+	int vnum = mesh->num_vertices++;
 	if (surf->num_vertices > 0)
 	{
 		if (surf->mins[0] > x) surf->mins[0] = x;
@@ -4612,7 +4603,6 @@ int Mod_Mesh_IndexForVertex(model_t *mod, msurface_t *surf, float x, float y, fl
 		VectorSet(surf->maxs, x, y, z);
 	}
 	surf->num_vertices = mesh->num_vertices - surf->num_firstvertex;
-	mesh->data_vertexhash[h] = vnum;
 	mesh->data_vertex3f[vnum * 3 + 0] = x;
 	mesh->data_vertex3f[vnum * 3 + 1] = y;
 	mesh->data_vertex3f[vnum * 3 + 2] = z;
@@ -4627,6 +4617,43 @@ int Mod_Mesh_IndexForVertex(model_t *mod, msurface_t *surf, float x, float y, fl
 	mesh->data_lightmapcolor4f[vnum * 4 + 1] = g;
 	mesh->data_lightmapcolor4f[vnum * 4 + 2] = b;
 	mesh->data_lightmapcolor4f[vnum * 4 + 3] = a;
+	return vnum;
+}
+
+/*
+ * Mod_Mesh_IndexForVertex without the search for an identical vertex, for
+ * geometry that never repeats one (a rounded box's rings). The search is a
+ * hash probe per vertex into a table the size of the whole frame's 2D mesh,
+ * which was most of what the touch HUD's shapes cost.
+ */
+int Mod_Mesh_AddVertex(model_t *mod, msurface_t *surf, float x, float y, float z, float nx, float ny, float nz, float s, float t, float u, float v, float r, float g, float b, float a)
+{
+	Mod_Mesh_GrowVertices(mod, surf);
+	return Mod_Mesh_StoreVertex(mod, surf, x, y, z, nx, ny, nz, s, t, u, v, r, g, b, a);
+}
+
+int Mod_Mesh_IndexForVertex(model_t *mod, msurface_t *surf, float x, float y, float z, float nx, float ny, float nz, float s, float t, float u, float v, float r, float g, float b, float a)
+{
+	int hashindex, h, vnum, mask;
+	surfmesh_t *mesh = &mod->surfmesh;
+	Mod_Mesh_GrowVertices(mod, surf);
+	mask = mod->surfmesh.num_vertexhashsize - 1;
+	// this uses prime numbers intentionally for computing the hash
+	hashindex = (unsigned int)(x * 2003 + y * 4001 + z * 7919 + nx * 4097 + ny * 257 + nz * 17) & mask;
+	// when possible find an identical vertex within the same surface and return it
+	for(h = hashindex;(vnum = mesh->data_vertexhash[h]) >= 0;h = (h + 1) & mask)
+	{
+		if (vnum >= surf->num_firstvertex
+		 && mesh->data_vertex3f[vnum * 3 + 0] == x && mesh->data_vertex3f[vnum * 3 + 1] == y && mesh->data_vertex3f[vnum * 3 + 2] == z
+		 && mesh->data_normal3f[vnum * 3 + 0] == nx && mesh->data_normal3f[vnum * 3 + 1] == ny && mesh->data_normal3f[vnum * 3 + 2] == nz
+		 && mesh->data_texcoordtexture2f[vnum * 2 + 0] == s && mesh->data_texcoordtexture2f[vnum * 2 + 1] == t
+		 && mesh->data_texcoordlightmap2f[vnum * 2 + 0] == u && mesh->data_texcoordlightmap2f[vnum * 2 + 1] == v
+		 && mesh->data_lightmapcolor4f[vnum * 4 + 0] == r && mesh->data_lightmapcolor4f[vnum * 4 + 1] == g && mesh->data_lightmapcolor4f[vnum * 4 + 2] == b && mesh->data_lightmapcolor4f[vnum * 4 + 3] == a)
+			return vnum;
+	}
+	// add the new vertex
+	vnum = Mod_Mesh_StoreVertex(mod, surf, x, y, z, nx, ny, nz, s, t, u, v, r, g, b, a);
+	mesh->data_vertexhash[h] = vnum;
 	return vnum;
 }
 

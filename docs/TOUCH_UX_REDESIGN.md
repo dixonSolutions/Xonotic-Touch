@@ -271,11 +271,17 @@ right-thumb fallback when the thumb is away from the FIRE disc.
 We deliberately do **not** implement "shoot at the point you touched": fingers
 are ~40 px wide and completely occlude what they aim at.
 
-### 6.4 Second fire button, off by default
+### 6.4 Secondary fire button, contextual
 
-`touch_fire2_visible` adds a left-side fire button, mirroring PUBG Mobile's
-always-on left fire button. It costs pixels, not fingers, and is the enabling
-affordance for claw-grip players. Off by default to respect Hick's Law.
+ALT (`+attack2`, `touch_fire2_visible`) is secondary fire. It is contextual by
+default (`2`): down and inward of FIRE, inside the right thumb's comfortable
+reach, and only while the weapon
+in hand has a secondary fire that can fire. It fades out otherwise, so the
+resting layout is as sparse as before for the weapons that have none. That keeps
+Hick's Law without hiding a fire mode most weapons have. The competitive preset
+moves it to the top-left, mirroring PUBG Mobile's left fire button. That costs
+pixels, not fingers, and is the enabling affordance for claw-grip players. See
+[CONTROLS.md § Secondary fire](CONTROLS.md#secondary-fire-alt).
 
 ### 6.5 Shoulder buttons, inset from the edge
 
@@ -314,7 +320,7 @@ buttons stay hidden by default.
 | FIRE | 0.855 | 0.680 | 0.140 | 26 ⌀ | hot, doubles as look surface |
 | HOP | 0.855 | 0.885 | 0.072 | 13 × 34 | capsule, latch pip in the right cap |
 | DUCK | 0.700 | 0.885 | 0.066 | 12 ⌀ | shares the HOP baseline |
-| ALT fire | 0.135 | 0.240 | 0.120 | 22 ⌀ | hidden unless `touch_fire2_visible` |
+| ALT fire | 0.770 | 0.755 | 0.100 | 18 ⌀ | contextual; 0.03 rim gap down-left of FIRE, 56 mm thumb reach (competitive: 0.135, 0.240, 0.120) |
 | CONSOLE | 0.500 | 0.045 | 0.040 | 7 × 31 | pill, dimmed at rest |
 | MENU | 0.320 | 0.045 | 0.040 | 7 × 16 | pill, dimmed at rest |
 
@@ -489,7 +495,7 @@ Three rules it follows, each of which was a way to get this wrong:
 
 * **Only visible controls answer.** Naming a button the player has switched off is
   worse than naming a key, because they will go looking for it. `+fire2` answers
-  with ALT only when the second fire button is on.
+  with ALT only while ALT is there to press.
 * **Gated on `vid_touchscreen`, not `Touch_Active()`.** The overlay stands down at
   intermission and mapvote, and those are precisely where the join prompts appear.
 * **The label has one home.** The same word is drawn on the button, shown on the

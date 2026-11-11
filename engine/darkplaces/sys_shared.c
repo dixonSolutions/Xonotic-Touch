@@ -37,6 +37,9 @@
 #include "taskqueue.h"
 #include "thread.h"
 #include "libcurl.h"
+#if defined(__ANDROID__) && defined(ANDYSU_SWAP)
+#include "andysu_engine.h"
+#endif
 
 
 sys_t sys;
@@ -304,6 +307,10 @@ cvar_t sys_libdir = {CF_READONLY | CF_SHARED, "sys_libdir", "", "Default engine 
 // these are not
 static cvar_t sys_debugsleep = {CF_SHARED, "sys_debugsleep", "0", "write requested and attained sleep times to standard output, to be used with gnuplot"};
 static cvar_t sys_usesdlgetticks = {CF_SHARED, "sys_usesdlgetticks", "0", "use SDL_GetTicks() timer (low precision, for debugging)"};
+#ifdef __ANDROID__
+extern cvar_t cl_maxfps;
+cvar_t sys_perfhint = {CF_CLIENT | CF_ARCHIVE, "sys_perfhint", "0", "Android 13+: report each frame's work to the system's performance hint (ADPF), so it keeps the game thread on cores and clocks that hold cl_maxfps; 0 leaves scheduling to the system's guess"};
+#endif
 static cvar_t sys_usesdldelay = {CF_SHARED, "sys_usesdldelay", "0", "use SDL_Delay() (low precision, for debugging)"};
 #if HAVE_QUERYPERFORMANCECOUNTER
 static cvar_t sys_usequeryperformancecounter = {CF_SHARED | CF_ARCHIVE, "sys_usequeryperformancecounter", "1", "use windows QueryPerformanceCounter timer (which has issues on systems lacking constant-rate TSCs synchronised across all cores, such as ancient PCs or VMs) for timing rather than timeGetTime function (which is low precision and had issues on some old motherboards)"};
@@ -355,6 +362,9 @@ void Sys_Init_Commands (void)
 	Cvar_RegisterVariable(&sys_debugsleep);
 	Cvar_RegisterVariable(&sys_usenoclockbutbenchmark);
 	Cvar_RegisterVariable(&sys_libdir);
+#ifdef __ANDROID__
+	Cvar_RegisterVariable(&sys_perfhint);
+#endif
 #if HAVE_TIMEGETTIME || HAVE_QUERYPERFORMANCECOUNTER || HAVE_CLOCKGETTIME
 	if(sys_supportsdlgetticks)
 	{
@@ -414,6 +424,9 @@ static void Sys_SetTimerResolution(void)
 }
 #endif // WIN32
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 double Sys_DirtyTime(void)
 {
 	// first all the OPTIONAL timers
@@ -460,6 +473,12 @@ double Sys_DirtyTime(void)
 	}
 #endif
 
+#ifdef __EMSCRIPTEN__
+	// performance.now(): monotonic, sub-millisecond. Emscripten rejects
+	// CLOCK_MONOTONIC_RAW and leaves the timespec below uninitialised.
+	return emscripten_get_now() * 0.001;
+#endif
+
 #if HAVE_CLOCKGETTIME
 	{
 		struct timespec ts;
@@ -502,6 +521,13 @@ double Sys_Sleep(double time)
 	double dt;
 	uint32_t msec, usec, nsec;
 
+#ifdef __EMSCRIPTEN__
+	// The browser's main thread must not block: nanosleep() there spins the
+	// CPU and starves rendering, input and audio. Sys_Frame() hands the idle
+	// time to emscripten_set_main_loop_timing() instead.
+	(void)time;
+	return 0;
+#endif
 	if (time < 1.0/1000000.0 || host.restless)
 		return 0; // not sleeping this frame
 	if (time >= 1)
@@ -761,6 +787,9 @@ void Sys_Error (const char *error, ...)
 	// don't want a dead window left blocking the OS UI or the abort dialog
 	VID_Shutdown();
 	S_StopAllSounds();
+#if defined(__ANDROID__) && defined(ANDYSU_SWAP)
+	Andysu_AbortStart(string); // trial of a swapped-in engine: longjmp to the loader, does not return
+#endif
 
 	host.state = host_failed; // make Sys_HandleSignal() call _Exit()
 	Sys_SDL_Dialog("Engine Error", string);
@@ -1091,16 +1120,23 @@ static void Sys_InitSignals(void)
 {
 	// Windows only supports the C99 signals
 	signal(SIGINT,  Sys_HandleSignal);
+#if !defined(__ANDROID__) || !defined(ANDYSU_SWAP)
+	// Under the AndySU loader the host owns the crash signals: its handler writes the crash marker
+	// (so the trial rolls back) and relaunches. Replacing it with Sys_HandleCrash left a trial
+	// crash hanging in the "Engine Crash" dialog until the watchdog fired.
 	signal(SIGILL,  Sys_HandleCrash);
 	signal(SIGABRT, Sys_HandleCrash);
 	signal(SIGFPE,  Sys_HandleCrash);
 	signal(SIGSEGV, Sys_HandleCrash);
+#endif
 	signal(SIGTERM, Sys_HandleSignal);
 #ifndef WIN32
 	// POSIX has several others worth catching
 	signal(SIGHUP,  Sys_HandleSignal);
 	signal(SIGQUIT, Sys_HandleSignal);
+#if !defined(__ANDROID__) || !defined(ANDYSU_SWAP)
 	signal(SIGBUS,  Sys_HandleCrash);
+#endif
 	signal(SIGPIPE, Sys_HandleSignal);
 #endif
 }
@@ -1141,6 +1177,10 @@ static void Sys_Frame(void)
 	if (setjmp(host.abortframe)) // Something bad happened, or the server disconnected
 		host.state = host_active; // In case we were loading
 
+#if defined(__ANDROID__) && defined(ANDYSU_SWAP)
+	Andysu_FrameHook(); // loader asked for a swap? then host.state becomes host_shutdown
+#endif
+
 	if (host.state >= host_shutdown) // see Sys_HandleCrash() comments
 	{
 #ifdef __EMSCRIPTEN__
@@ -1150,6 +1190,13 @@ static void Sys_Frame(void)
 		Sys_AllowProfiling(false);
 #endif
 		Host_Shutdown();
+#if defined(__ANDROID__) && defined(ANDYSU_SWAP)
+		if (andysu_swapping)
+		{
+			andysu_leave = true; // swap: return to the loader, no exit()
+			return;
+		}
+#endif
 		exit(0);
 	}
 
@@ -1157,8 +1204,21 @@ static void Sys_Frame(void)
 	host.realtime += time = Sys_UpdateTime(newtime, host.dirtytime);
 	host.dirtytime = newtime;
 
+#ifdef __ANDROID__
+	vid_swapseconds = 0;
+#endif
 	sleeptime = Host_Frame(time);
 	sleeptime -= Sys_DirtyTime() - host.dirtytime; // execution time
+#ifdef __ANDROID__
+	// The frame's work, without the vsync wait inside the swap, against the
+	// frame it has to fit: cl_maxfps, else the panel's refresh.
+	if (cls.state != ca_dedicated)
+	{
+		double target = cl_maxfps.value > 0 ? 1.0 / cl_maxfps.value
+			: 1.0 / (vid.mode.refreshrate > 0 ? vid.mode.refreshrate : 60);
+		Sys_PerfHint_Frame(Sys_DirtyTime() - host.dirtytime - vid_swapseconds, target);
+	}
+#endif
 
 #ifdef __EMSCRIPTEN__
 	// This platform doesn't support a main loop... it will sleep when Sys_Frame() returns.
@@ -1214,8 +1274,14 @@ int Sys_Main(int argc, char *argv[])
 #ifdef __EMSCRIPTEN__
 	emscripten_set_main_loop(Sys_Frame, 0, true); // doesn't return
 #else
+#if defined(__ANDROID__) && defined(ANDYSU_SWAP)
+	while(!andysu_leave)
+		Sys_Frame();
+	return ANDYSU_RUN_SWAP;
+#else
 	while(true)
 		Sys_Frame();
+#endif
 #endif
 
 	return 0;

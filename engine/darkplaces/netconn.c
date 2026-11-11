@@ -639,6 +639,16 @@ void ServerList_QueryList(qbool resetcache, qbool querydp, qbool queryqw, qbool 
 	lhnetaddress_t broadcastaddress;
 	char dpquery[53]; // theoretical max: 14+22+16+1
 
+#ifdef __EMSCRIPTEN__
+	// A browser has no UDP. Emscripten's sockets send each datagram over a
+	// WebSocket to that host and port, which no master server, LAN broadcast
+	// address or game server answers: every query only fails, noisily. The
+	// list stays empty; local games go over loopback, not through here.
+	if (consoleoutput)
+		Con_Printf("The browser build cannot reach UDP servers: no server list.\n");
+	return;
+#endif
+
 	if (resetcache)
 	{
 		serverquerycount = 0;

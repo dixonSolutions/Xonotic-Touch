@@ -6,8 +6,9 @@
 #include "inputbox.qh"
 #include "dialog_termsofservice.qh"
 #include "dialog_firstrun.qh"
-#include "dialog_touch_wizard.qh"
+#include "touch_startup_util.qh"
 #include "dialog_touch_asset_fetch.qh"
+#include "dialog_touch_gamemenu.qh"
 #include "dialog_hudsetup_exit.qh"
 #include "dialog_hudpanel_notification.qh"
 #include "dialog_hudpanel_ammo.qh"
@@ -37,6 +38,7 @@
 #include "dialog_settings_misc_cvars.qh"
 #include "dialog_settings_misc_reset.qh"
 #include "dialog_settings_user_languagewarning.qh"
+#include "languagelist.qh"
 #include "dialog_settings_game_hudconfirm.qh"
 #include "dialog_singleplayer_winner.qh"
 #include "dialog_multiplayer_join_serverinfo.qh"
@@ -87,6 +89,11 @@ void MainWindow_tryOpenStartupDialogs(entity me)
 		MainWindow_openAssetFetchDialog(me);
 		return;
 	}
+	TouchStartup_applyTouchDefaults(); // Touch: default controls, no setup dialog
+	// Start in the system's language (the browser's, on the web), once per install, whether or not the
+	// first-run dialog is due. The menu restarts in it and comes back here.
+	if (LanguageList_applySystemLanguage())
+		return;
 	if (me.ToSDialog.shouldShow())
 	{
 		me.ToSDialog.loadXonoticToS(me.ToSDialog);
@@ -98,8 +105,6 @@ void MainWindow_tryOpenStartupDialogs(entity me)
 		DialogOpenButton_Click_withCoords(NULL, me.firstRunDialog, '0 0 0', eX * conwidth + eY * conheight);
 		return;
 	}
-	if (me.touchSetupDialog.shouldShow())
-		DialogOpenButton_Click_withCoords(NULL, me.touchSetupDialog, '0 0 0', eX * conwidth + eY * conheight);
 }
 
 void MainWindow_draw(entity me)
@@ -146,14 +151,6 @@ void MainWindow_configureMainWindow(entity me)
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
 
 	me.assetFetchDialog = i = NEW(XonoticTouchAssetFetchDialog);
-	i.configureDialog(i);
-	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
-
-	me.touchSetupDialog = i = NEW(XonoticTouchSetupDialog);
-	i.configureDialog(i);
-	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
-
-	i = NEW(XonoticTouchUpdatesDialog);
 	i.configureDialog(i);
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
 
@@ -332,6 +329,10 @@ void MainWindow_configureMainWindow(entity me)
 	i.configureDialog(i);
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
 
+	i = NEW(XonoticTouchGameMenuDialog); // Touch: finger-sized game menu
+	i.configureDialog(i); // Touch
+	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z); // Touch
+
 	i = NEW(XonoticTeamSelectDialog);
 	i.configureDialog(i);
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
@@ -361,7 +362,7 @@ void MainWindow_configureMainWindow(entity me)
 	*/
 
 		// Stock Xonotic nexposee (Singleplayer / Multiplayer / …). Touch-specific
-		// entry points live under Settings → Touch controls, not a custom Play card.
+		// settings live under Settings → Mobile, not a custom Play card.
 		i = NEW(XonoticSingleplayerDialog);
 		i.configureDialog(i);
 		n.addItemCentered(n, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);

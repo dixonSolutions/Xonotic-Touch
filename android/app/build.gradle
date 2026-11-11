@@ -24,6 +24,10 @@ android {
             cmake {
                 arguments "-DXONOTIC_DEPS_PREFIX=${depsPrefix}",
                           "-DXONOTIC_VERSION=${appVersion}"
+                // Test builds only: extra engine defines, e.g. ANDYSU_NO_HEALTHY.
+                if (project.findProperty('andysu_test_defs')) {
+                    arguments "-DANDYSU_TEST_DEFS=${project.findProperty('andysu_test_defs')}"
+                }
                 // ccache when the host has it: the NDK compiler call is
                 // wrapped and the second build of a commit costs seconds.
                 def ccacheBin = ['/usr/bin/ccache', '/usr/local/bin/ccache',
@@ -47,6 +51,9 @@ android {
             // libSDL2.so and libpng16.so are built by scripts/android-deps.sh and
             // staged per ABI; SDL's Java glue is copied out of the same tarball.
             jniLibs.srcDirs = ['src/main/jniLibs']
+            // strings.xml as an asset: see HostRes. Under AndySU the assets
+            // update with the code and resources.arsc does not.
+            assets.srcDirs += ["$buildDir/generated/xt-strings"]
         }
     }
 
@@ -85,3 +92,11 @@ android {
         abortOnError false
     }
 }
+
+// HostRes reads this build's strings from the assets, never through R.string
+// ids, which point into whatever table the installed (AndySU) host has.
+def copyStringsAsset = tasks.register('copyStringsAsset', Copy) {
+    from 'src/main/res/values/strings.xml'
+    into "$buildDir/generated/xt-strings/xt"
+}
+preBuild.dependsOn copyStringsAsset

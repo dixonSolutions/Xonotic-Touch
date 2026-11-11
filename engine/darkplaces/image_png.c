@@ -172,6 +172,33 @@ qbool PNG_OpenLibrary (void)
 	if (png_dll)
 		return true;
 
+#ifdef LINK_TO_LIBPNG
+	// Linked in statically (WebAssembly has no dlopen without dynamic
+	// linking). Declare each libpng entry point with the type of the pointer
+	// that holds it, so the linker sees matching signatures.
+	{
+		dllfunction_t *f;
+#define PNG_LINK(name) { extern __typeof__(*q##name) name; q##name = name; }
+		PNG_LINK(png_set_sig_bytes) PNG_LINK(png_sig_cmp) PNG_LINK(png_create_read_struct)
+		PNG_LINK(png_create_write_struct) PNG_LINK(png_create_info_struct) PNG_LINK(png_read_info)
+		PNG_LINK(png_set_compression_level) PNG_LINK(png_set_filter) PNG_LINK(png_set_expand)
+		PNG_LINK(png_set_palette_to_rgb) PNG_LINK(png_set_tRNS_to_alpha) PNG_LINK(png_set_gray_to_rgb)
+		PNG_LINK(png_set_filler) PNG_LINK(png_set_IHDR) PNG_LINK(png_set_packing) PNG_LINK(png_set_bgr)
+		PNG_LINK(png_set_interlace_handling) PNG_LINK(png_read_update_info) PNG_LINK(png_read_image)
+		PNG_LINK(png_read_end) PNG_LINK(png_destroy_read_struct) PNG_LINK(png_destroy_write_struct)
+		PNG_LINK(png_set_read_fn) PNG_LINK(png_set_write_fn) PNG_LINK(png_get_valid)
+		PNG_LINK(png_get_rowbytes) PNG_LINK(png_get_channels) PNG_LINK(png_get_bit_depth)
+		PNG_LINK(png_get_IHDR) PNG_LINK(png_access_version_number) PNG_LINK(png_write_info)
+		PNG_LINK(png_write_row) PNG_LINK(png_write_end) PNG_LINK(png_set_longjmp_fn)
+#undef PNG_LINK
+		for (f = pngfuncs; f->name; f++)
+			if (!*f->funcvariable)
+				return false;
+		png_dll = png14_dll = (dllhandle_t)pngfuncs; // non-NULL: "loaded"
+		return true;
+	}
+#endif
+
 	// Load the DLL
 	if(!Sys_LoadDependency (dllnames, &png_dll, pngfuncs))
 		return false;
@@ -194,6 +221,9 @@ Unload the PNG DLL
 */
 void PNG_CloseLibrary (void)
 {
+#ifdef LINK_TO_LIBPNG
+	return; // nothing was opened
+#endif
 	Sys_FreeLibrary (&png14_dll);
 	Sys_FreeLibrary (&png_dll);
 }

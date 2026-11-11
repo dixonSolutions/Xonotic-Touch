@@ -20,6 +20,7 @@
 #include <client/touch_pointer.qh>
 #include <client/touch_scores.qh>
 #include <client/touch_shape.qh>
+#include <client/touch_spectate.qh>
 #include <client/touch_theme.qh>
 #include <client/touch_weapons.qh>
 #include <client/touch_widget.qh>
