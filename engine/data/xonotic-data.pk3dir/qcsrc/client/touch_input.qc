@@ -23,6 +23,9 @@ vector touch_finger_down_pos[TOUCH_MAX_FINGERS];
 vector touch_finger_last_pos[TOUCH_MAX_FINGERS];
 vector touch_finger_prev_pos[TOUCH_MAX_FINGERS];
 vector touch_finger_accum[TOUCH_MAX_FINGERS];
+// Down and lost times are on the frame clock, not `time`: game time stops
+// while the game is paused, and on it a lifted finger was never let go, so
+// the move stick stayed pushed (and lit) until the pause ended.
 float touch_finger_down_time[TOUCH_MAX_FINGERS];
 float touch_finger_lost_time[TOUCH_MAX_FINGERS];
 bool touch_finger_first[TOUCH_MAX_FINGERS];
@@ -397,6 +400,8 @@ int Touch_AssignRole(vector p)
 		return TOUCH_ROLE_FIRE2;
 	if (autocvar_touch_jump_visible && Touch_HitRect(p, autocvar_touch_jump_x, autocvar_touch_jump_y, autocvar_touch_jump_size, autocvar_touch_jump_aspect, 1.10))
 		return TOUCH_ROLE_JUMP;
+	if (Touch_HopLockShown() && Touch_HopLockHit(p))
+		return TOUCH_ROLE_HOPLOCK;
 	if (autocvar_touch_crouch_visible && Touch_HitCircle(p, autocvar_touch_crouch_x, autocvar_touch_crouch_y, autocvar_touch_crouch_size, 1.10))
 		return TOUCH_ROLE_CROUCH;
 	if (autocvar_touch_weapon_visible && Touch_HitCircle(p, autocvar_touch_weapon_x, autocvar_touch_weapon_y, autocvar_touch_weapon_size, 1.10))
@@ -446,7 +451,7 @@ int Touch_ClaimFinger(int src, vector pos)
 		touch_finger_last_pos[i] = pos;
 		touch_finger_prev_pos[i] = pos;
 		touch_finger_accum[i] = '0 0 0';
-		touch_finger_down_time[i] = time;
+		touch_finger_down_time[i] = gettime(GETTIME_FRAMESTART);
 		touch_finger_lost_time[i] = 0;
 		touch_finger_first[i] = true;
 		touch_finger_live[i] = true;
@@ -584,10 +589,13 @@ void Touch_PollFingers(void)
 		// The grip too: a lost frame is no reason to hold a resize open.
 		int role = touch_finger_role[i];
 		if (role == TOUCH_ROLE_CON || role == TOUCH_ROLE_PAUSE || role == TOUCH_ROLE_CHAT
-			|| role == TOUCH_ROLE_SCORES || role == TOUCH_ROLE_WEPSIZE)
+			|| role == TOUCH_ROLE_SCORES || role == TOUCH_ROLE_WEPSIZE
+			|| role == TOUCH_ROLE_HOPLOCK)
 		{
 			vector up = touch_finger_last_pos[i];
-			if (role == TOUCH_ROLE_CON)
+			if (role == TOUCH_ROLE_HOPLOCK)
+				Touch_HopLock_OnUp(up);
+			else if (role == TOUCH_ROLE_CON)
 				Touch_Console_OnUp(up);
 			else if (role == TOUCH_ROLE_PAUSE)
 				Touch_Pause_OnUp(up);
@@ -604,8 +612,8 @@ void Touch_PollFingers(void)
 			continue;
 		}
 		if (touch_finger_lost_time[i] <= 0)
-			touch_finger_lost_time[i] = time;
-		if (time - touch_finger_lost_time[i] < grace)
+			touch_finger_lost_time[i] = gettime(GETTIME_FRAMESTART);
+		if (gettime(GETTIME_FRAMESTART) - touch_finger_lost_time[i] < grace)
 		{
 			touch_finger_live[i] = true;
 			touch_finger_accum[i] = '0 0 0';
@@ -986,6 +994,14 @@ void Touch_Frame(void)
 			touch_hop_latched = true;
 		Touch_SetKey("jump", touch_hop_latched || (jump_down && !touch_hop_cancelling));
 	}
+	else if (autocvar_touch_hop_mode == TOUCH_HOP_CHIP)
+	{
+		// HOP is a plain button; only the chip sets and clears the latch
+		// (Touch_HopLock_OnUp). A dead player drops it: held jump respawns.
+		if (STAT(HEALTH) <= 0)
+			touch_hop_latched = false;
+		Touch_SetKey("jump", jump_down || touch_hop_latched);
+	}
 	else if (autocvar_touch_hop_mode == TOUCH_HOP_AUTO)
 	{
 		touch_hop_latched = vlen(touch_move_offset) >= autocvar_touch_stick_deadzone;
@@ -1095,6 +1111,35 @@ bool Touch_JumpHeld(void)
 bool Touch_HopLatched(void)
 {
 	return touch_hop_latched && autocvar_touch_hop_mode != TOUCH_HOP_HOLD;
+}
+
+// The keep-jumping chip: only in its hop mode, never for a spectator (jump is
+// "join" there).
+bool Touch_HopLockShown(void)
+{
+	return autocvar_touch_hop_mode == TOUCH_HOP_CHIP && autocvar_touch_hoplock_visible;
+}
+
+bool Touch_HopLockHit(vector p)
+{
+	return Touch_HitRect(p, autocvar_touch_hoplock_x, autocvar_touch_hoplock_y, autocvar_touch_hoplock_size, 1, 1.10);
+}
+
+bool Touch_HopLockHeld(void)
+{
+	return Touch_RoleOwned(TOUCH_ROLE_HOPLOCK);
+}
+
+// A tap: the finger landed on the chip (Touch_AssignRole) and lifts on it. A
+// finger that slides off first changes nothing, and one that started on HOP
+// never becomes the chip's.
+void Touch_HopLock_OnUp(vector p)
+{
+	if (!Touch_HopLockShown() || !Touch_HopLockHit(p) || spectatee_status != 0 || STAT(HEALTH) <= 0)
+		return;
+	touch_hop_latched = !touch_hop_latched;
+	if (autocvar_touch_debug)
+		print("touch: keep jumping ", (touch_hop_latched ? "on" : "off"), "\n");
 }
 
 bool Touch_Fire2Held(void)
@@ -1277,6 +1322,7 @@ string Touch_DebugRoleName(int role)
 	if (role == TOUCH_ROLE_ZOOM) return "ZOOM";
 	if (role == TOUCH_ROLE_HOOK) return "HOOK";
 	if (role == TOUCH_ROLE_TURN) return "TURN";
+	if (role == TOUCH_ROLE_HOPLOCK) return "KEEP";
 	if (role == TOUCH_ROLE_DODGE) return "DODGE";
 	if (role == TOUCH_ROLE_RELOAD) return "R";
 	if (role == TOUCH_ROLE_CON) return "CON";

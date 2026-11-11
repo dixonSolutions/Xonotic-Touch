@@ -113,6 +113,17 @@ void Touch_DefineCvars(void)
 	Touch_RegisterCvar("touch_turn_visible", "1");
 	Touch_RegisterCvar("touch_turn_angle", "180");
 	Touch_RegisterCvar("touch_turn_time", "0.12");
+	// The keep-jumping chip (touch_hop_mode 3): a checkbox that holds jump down
+	// for bunny-hopping while it is on. Up and left of DUCK, left of ALT: off
+	// every path the right thumb takes to HOP, FIRE, DUCK, ALT and the weapon
+	// strip, and at least its own width clear of each one's grab margin at 3:2,
+	// 16:10 and 20:9, so only a deliberate tap reaches it. That puts it a short
+	// stretch (80 mm) past the thumb's easy sweep, which suits a switch flipped
+	// a few times a match (scripts/audit-touch-ergonomics.py).
+	Touch_RegisterCvar("touch_hoplock_x", "0.675");
+	Touch_RegisterCvar("touch_hoplock_y", "0.760");
+	Touch_RegisterCvar("touch_hoplock_size", "0.052"); // 9.5 mm
+	Touch_RegisterCvar("touch_hoplock_visible", "1");
 	Touch_RegisterCvar("touch_dodge_x", "0.165");
 	Touch_RegisterCvar("touch_dodge_y", "0.480");
 	Touch_RegisterCvar("touch_dodge_size", "0.100");
@@ -247,8 +258,9 @@ void Touch_DefineCvars(void)
 	// Sliding off FIRE keeps shooting and starts aiming, so shoot-while-aiming is
 	// one finger instead of two (docs/TOUCH_UX_REDESIGN.md §6.2).
 	Touch_RegisterCvar("touch_fire_drag_look", "1");
-	// 0 plain button, 1 button that latches when held, 2 auto-hop while moving.
-	Touch_RegisterCvar("touch_hop_mode", "1");
+	// 0 plain button, 1 button that latches when held, 2 auto-hop while moving,
+	// 3 plain button plus the keep-jumping chip (touch_hoplock_*).
+	Touch_RegisterCvar("touch_hop_mode", "3");
 	// How long the bar must be held before it latches. Long enough that a jump
 	// never latches by accident, short enough to feel like a decision rather
 	// than a wait. Below a hop cycle (~400 ms) so holding for two hops latches.
@@ -546,6 +558,62 @@ void Touch_MigrateAimHelpers(void)
 	localcmd("seta touch_aim_version 1\n");
 }
 
+// Set `key` to `to` wherever the layout file at `path` sets it to `from`.
+// The file is exec'd at every launch on Android (GameData.java), so a value
+// changed only in the cvar would come back from it.
+bool Touch_RewriteLayoutKey(string path, string key, string from, string to)
+{
+	float fh = fopen(path, FILE_READ);
+	if (fh < 0)
+		return false;
+	float buf = buf_create();
+	bool changed = false;
+	string line;
+	while ((line = fgets(fh)))
+	{
+		float n = tokenize_console(line);
+		float k = (argv(0) == "seta" || argv(0) == "set") ? 1 : 0;
+		if (n == k + 2 && argv(k) == key && argv(k + 1) == from)
+		{
+			line = strcat((k ? strcat(argv(0), " ") : ""), key, " \"", to, "\"");
+			changed = true;
+		}
+		bufstr_add(buf, line, true);
+	}
+	fclose(fh);
+	if (changed)
+	{
+		fh = fopen(path, FILE_WRITE);
+		if (fh >= 0)
+		{
+			float m = buf_getsize(buf);
+			for (float i = 0; i < m; ++i)
+				fputs(fh, strcat(bufstr_get(buf, i), "\n"));
+			fclose(fh);
+		}
+	}
+	buf_del(buf);
+	return changed;
+}
+
+// Hold-to-latch HOP (touch_hop_mode 1) latched for players who only meant to
+// jump. Once per install, a layout on it moves to the plain HOP with its own
+// keep-jumping chip (3). Auto-hop (2) and plain (0) were chosen on purpose and
+// stay; a player who picks 1 again afterwards keeps it.
+void Touch_MigrateHopMode(void)
+{
+	if (cvar("touch_hop_version") >= 1)
+		return;
+	if (Touch_RewriteLayoutKey(autocvar_touch_layout_file, "touch_hop_mode", "1", "3"))
+		print("Touch: ", autocvar_touch_layout_file, " now has HOP with a keep-jumping switch\n");
+	if (autocvar_touch_hop_mode == TOUCH_HOP_LATCH)
+	{
+		cvar_set("touch_hop_mode", ftos(TOUCH_HOP_CHIP));
+		print("Touch: HOP no longer latches when held; the KEEP switch beside it keeps you jumping\n");
+	}
+	localcmd("seta touch_hop_version 1\n");
+}
+
 void Touch_LoadStartupConfigs(void)
 {
 	if (!cvar("vid_touchscreen"))
@@ -565,6 +633,7 @@ void Touch_LoadStartupConfigs(void)
 	if (!from_launcher && cvar("touch_perf_version") < 1)
 		localcmd("exec touch/profiles/balanced.cfg\nseta touch_perf_version 5\n");
 	Touch_MigrateAimHelpers();
+	Touch_MigrateHopMode();
 	Touch_ApplyTouchWeaponsStrip();
 	Touch_ApplySensitivity();
 	// Anything *derived* from a touch cvar is applied from Touch_EnsureReady

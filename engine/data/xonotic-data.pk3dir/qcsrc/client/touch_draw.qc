@@ -196,6 +196,10 @@ void Touch_DrawOverlay(float overlayAlpha)
 
 	if (autocvar_touch_jump_visible || autocvar_touch_debug)
 		Touch_DrawHopBar(overlayAlpha);
+	if (Touch_HopLockShown())
+		Touch_Widget_Check(Touch_WidgetCenter(autocvar_touch_hoplock_x, autocvar_touch_hoplock_y, autocvar_touch_hoplock_size),
+			Touch_WidgetHalfExtents(autocvar_touch_hoplock_size, 1), TOUCH_LABEL_HOPLOCK,
+			Touch_HopLatched() || Touch_PreviewStates(), Touch_HopLockHeld(), overlayAlpha, TOUCH_C_ACCENT);
 
 	if (autocvar_touch_crouch_visible || autocvar_touch_debug)
 		Touch_DrawCircleWidget(autocvar_touch_crouch_x, autocvar_touch_crouch_y,
