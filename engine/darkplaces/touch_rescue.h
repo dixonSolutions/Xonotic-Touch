@@ -526,10 +526,10 @@ static const char *const tr_phase_name[] = { "idle", "aim", "hold", "restore", "
 // Let go when ground is TR_RELEASE_DROP or closer under the player and the
 // fall ends on it.
 #define TR_MAX_HOLD        4.0f
-// Caught but stuck (slower than TR_STUCK_SPEED, not over ground) this long:
-// wedged under a lip; let go rather than hang.
+// Caught but stuck (rising or falling slower than TR_STUCK_SPEED, not over
+// ground) this long: wedged under a lip or a platform; let go rather than hang.
 #define TR_STUCK_SPEED     80.0f
-#define TR_STUCK_TIME      0.6f
+#define TR_STUCK_TIME      1.0f
 // The hook must leave within this long of the decision (a weapon switch).
 #define TR_SWITCH_TIMEOUT  1.2f
 // The view goes back within this long, or is left where it is.
@@ -551,7 +551,7 @@ typedef struct tr_frame_s
 	float aim_err;      // AIM: degrees from the view to the anchor; RESTORE: to the saved view
 	float turn_rate;    // the player's own view turn this frame, deg/s
 	float pull_speed;   // HOLD: speed toward the anchor gained beyond free fall since the shot, u/s
-	float speed;        // HOLD: how fast the player's position changes, u/s
+	float speed;        // HOLD: how fast the player rises or falls, u/s
 	float attach_time;  // HOLD: seconds the hook may take to catch
 	float ground_below; // HOLD: distance down to ground, < 0 none within TR_RELEASE_DROP
 	float cooldown;     // seconds

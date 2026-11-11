@@ -627,7 +627,7 @@ HUD → *Catch me with the hook when I fall off the map*):
 4. The hook is held while it pulls. It lets go once there is ground within
    192 units under the player, the fall would end there, and not on the very
    lip; or on landing, or when the hook has not caught in its flight time plus
-   0.35 s, or the player is wedged without moving for 0.6 s, or after 4 s, or
+   0.35 s, or the player is wedged, neither rising nor falling, for 1 s, or after 4 s, or
    when the fuel runs out.
 5. The view turns back to where the player was facing, unless they turned it
    themselves meanwhile. Then `cl_touch_hook_rescue_cooldown` seconds before
@@ -658,7 +658,7 @@ Limits: air control is not modelled, so a player steering hard toward a ledge
 is judged by where they are heading. The pull is judged as a straight line,
 but the rope swings; an anchor that only works if the hook catches quickly is
 still tried when nothing better is in reach, and may leave the player wedged
-under the lip (let go after 0.6 s). On open maps with nothing above the edge
+under the lip (let go after 1 s). On open maps with nothing above the edge
 (much of space-elevator) there is no anchor and the rescue stays out of the
 way. The offhand hook's fuel (`g_grappling_hook_useammo`) is not visible to the
 client: with none, the hook does not catch and is let go. A sky floor with no

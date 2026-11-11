@@ -691,7 +691,7 @@ static void test_rescue(void)
 	f.speed = 10;
 	n = run(&s, &f, 120, &o);
 	CHECK_EQ(TR_RESTORE, s.phase, "wedged: let go");
-	CHECK(n >= 36 && n <= 39, "wedged: after TR_STUCK_TIME");
+	CHECK(n >= 60 && n <= 63, "wedged: after TR_STUCK_TIME");
 	// slow at the top of a swing, over ground on the way: not stuck
 	TouchRescue_Reset(&s);
 	f = falling(86);
@@ -701,7 +701,7 @@ static void test_rescue(void)
 	f.pull_speed = 500;
 	run(&s, &f, 20, &o);
 	f.speed = 10;
-	run(&s, &f, 20, &o);
+	run(&s, &f, 40, &o);
 	f.speed = 300;
 	run(&s, &f, 30, &o);
 	CHECK_EQ(TR_HOLD, s.phase, "a slow moment is not stuck");
