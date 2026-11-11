@@ -17,6 +17,10 @@ vector touch_weap_grip_pos;
 vector touch_weap_grip_size;
 float touch_weap_grip_u;
 int touch_weap_grip_rows;
+// The NADE row, as last drawn (Touch_Weapons_SetNade).
+bool touch_weap_nade;
+vector touch_weap_nade_pos;
+vector touch_weap_nade_size;
 
 // When the slots were built, and when the overlay last drew. Input runs before
 // the HUD each frame, so it reads the slots the previous frame drew; if that
@@ -44,6 +48,7 @@ void Touch_Weapons_BeginFrame(void)
 {
 	touch_weap_count = 0;
 	touch_weap_grip = false;
+	touch_weap_nade = false;
 	touch_weap_built = Touch_Weapons_Now();
 }
 
@@ -71,6 +76,25 @@ void Touch_Weapons_SetGrip(vector pos, vector size, float u, int rows)
 	touch_weap_grip_size = size;
 	touch_weap_grip_u = u;
 	touch_weap_grip_rows = rows;
+}
+
+// The NADE row takes a finger while there is a grenade to throw or one cooking.
+void Touch_Weapons_SetNade(vector pos, vector size, bool pressable)
+{
+	touch_weap_nade = pressable;
+	touch_weap_nade_pos = pos;
+	touch_weap_nade_size = size;
+}
+
+bool Touch_Weapons_NadeHit(vector p)
+{
+	if (!touch_weap_nade || !Touch_Weapons_Fresh())
+		return false;
+	// as forgiving as the rows (Touch_Weapons_HitImpulse)
+	float pad = min(touch_weap_nade_size.x, touch_weap_nade_size.y) * 0.12;
+	vector o = touch_weap_nade_pos;
+	vector s = touch_weap_nade_size;
+	return p.x >= o.x - pad && p.x <= o.x + s.x + pad && p.y >= o.y - pad && p.y <= o.y + s.y + pad;
 }
 
 bool Touch_Weapons_GripHit(vector p)

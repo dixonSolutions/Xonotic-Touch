@@ -74,6 +74,7 @@ bool touch_key_zoom;
 // HOOK is held through the engine's +touch_hook (touch_hook.c), which knows
 // which hook the server offers and does the weapon switch for the Hook weapon.
 bool touch_key_hook;
+bool touch_key_nade;
 bool touch_owns_forward;
 bool touch_owns_back;
 bool touch_owns_left;
@@ -291,6 +292,22 @@ void Touch_SetHook(bool down)
 	touch_debug_cmds += 1;
 }
 
+// The offhand grenade from the NADE row: the engine's touch_nade.c holds
+// +hook for it, with the safety that throws before the blast.
+void Touch_SetNade(bool down)
+{
+	if (down == touch_key_nade)
+		return;
+	touch_key_nade = down;
+	localcmd(down ? "+touch_nade\n" : "-touch_nade\n");
+	touch_debug_cmds += 1;
+}
+
+bool Touch_NadeHeld(void)
+{
+	return touch_key_nade;
+}
+
 void Touch_ReleaseAll(void)
 {
 	Touch_Spec_Release();
@@ -305,6 +322,7 @@ void Touch_ReleaseAll(void)
 	Touch_SetKey("crouch", false);
 	Touch_SetKey("zoom", false);
 	Touch_SetHook(false);
+	Touch_SetNade(false);
 	touch_fire_down = false;
 	touch_fire_toggle_state = false;
 	touch_zoom_toggle_state = false;
@@ -392,6 +410,10 @@ int Touch_AssignRole(vector p)
 	// rows are inflated for fat fingers.
 	if (Touch_Weapons_GripHit(p))
 		return TOUCH_ROLE_WEPSIZE;
+
+	// The NADE row, under the last weapon.
+	if (Touch_Weapons_NadeHit(p))
+		return Touch_RoleOwned(TOUCH_ROLE_NADE) ? TOUCH_ROLE_IGNORED : TOUCH_ROLE_NADE;
 
 	// Stock vertical weapons strip — tap icon to switch (replaces WEP button).
 	if (Touch_Weapons_Hit(p))
@@ -831,7 +853,7 @@ void Touch_Frame(void)
 	bool jump_down = false;
 	bool crouch_down = false;
 	bool zoom_down = false;
-	bool hook_down = false;
+	bool hook_down = false, nade_down = false;
 	bool move_active = false;
 	bool look_active = false;
 	vector look_accum = '0 0 0';
@@ -874,12 +896,15 @@ void Touch_Frame(void)
 			look_last = pos;
 			look_first = touch_finger_first[i];
 		}
-		else if (role == TOUCH_ROLE_FIRE || role == TOUCH_ROLE_HOOK)
+		else if (role == TOUCH_ROLE_FIRE || role == TOUCH_ROLE_HOOK || role == TOUCH_ROLE_NADE)
 		{
+			// NADE too: a drag off the row aims the throw
 			if (role == TOUCH_ROLE_FIRE)
 				fire_count += 1;
-			else
+			else if (role == TOUCH_ROLE_HOOK)
 				hook_down = true;
+			else
+				nade_down = true;
 			// CoD Mobile's "R-Fire BTN for camera rotation": the fire button is
 			// also an aim surface, so shoot-while-aiming is one finger instead of
 			// two. Fire is not released when the drag starts. A dedicated look
@@ -1060,6 +1085,7 @@ void Touch_Frame(void)
 	}
 
 	Touch_SetHook(hook_down);
+	Touch_SetNade(nade_down);
 }
 
 bool Touch_InputEvent(float bInputType, float nPrimary, float nSecondary)
@@ -1347,6 +1373,7 @@ string Touch_DebugRoleName(int role)
 	if (role == TOUCH_ROLE_WEAPON) return "WEP";
 	if (role == TOUCH_ROLE_ZOOM) return "ZOOM";
 	if (role == TOUCH_ROLE_HOOK) return "HOOK";
+	if (role == TOUCH_ROLE_NADE) return "NADE";
 	if (role == TOUCH_ROLE_TURN) return "TURN";
 	if (role == TOUCH_ROLE_HOPLOCK) return "KEEP";
 	if (role == TOUCH_ROLE_DODGE) return "DODGE";

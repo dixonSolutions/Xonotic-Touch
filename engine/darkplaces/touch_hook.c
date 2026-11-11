@@ -18,6 +18,7 @@ are touch_rescue.h's.
 #include "touch_rescue.h"
 #include "touch_turn.h"
 #include "touch_pause.h"
+#include "touch_nade.h"
 
 extern cvar_t vid_touchscreen;
 extern qbool cl_touch_csqc_active;
@@ -332,6 +333,7 @@ void TouchHook_ProgsChanged(void)
 	bind_mutators();
 	bind_weapon();
 	TouchDodge_ProgsChanged();
+	TouchNade_ProgsChanged();
 	th.switched = false;
 	th.prev_weapon = -1;
 	TouchRescue_Reset(&th.rs);
@@ -411,7 +413,13 @@ static void TouchHook_Up_f(cmd_state_t *cmd)
 
 int TouchHook_Buttons(void)
 {
-	return th.buttons | TouchDodge_Buttons();
+	return th.buttons | TouchDodge_Buttons() | TouchNade_Buttons();
+}
+
+// The server runs the nades mutator (offhand grenades on +hook).
+qbool TouchHook_NadesActive(void)
+{
+	return th.mut_old_layout ? (mut_word(th.mut_ofs0) & (1 << 23)) != 0 : (mut_word(th.mut_ofs1) & 1) != 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -529,6 +537,7 @@ void TouchHook_Frame(void)
 	char publish[8];
 
 	TouchPause_Frame();
+	TouchNade_Frame();
 	TouchTurn_Frame();
 	if (cl.worldmodel != th.hurt_model)
 		th_bind_map();
@@ -758,6 +767,7 @@ void TouchHook_Init(void)
 	TouchTurn_Init();
 	TouchDodge_Init();
 	TouchPause_Init();
+	TouchNade_Init();
 	Cvar_RegisterVariable(&cl_touch_hook_rescue);
 	Cvar_RegisterVariable(&cl_touch_hook_rescue_turn);
 	Cvar_RegisterVariable(&cl_touch_hook_rescue_range);

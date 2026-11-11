@@ -38,6 +38,8 @@ const int TOUCH_ROLE_HOOK = 113;
 const int TOUCH_ROLE_TURN = 114;
 // The keep-jumping chip beside HOP (touch_hop_mode 3): a tap, on release.
 const int TOUCH_ROLE_HOPLOCK = 115;
+// The NADE row under the weapons: held, the offhand grenade cooks (+touch_nade).
+const int TOUCH_ROLE_NADE = 116;
 
 // One name per control. Three places have to agree on it: the drawn label, the
 // handle in edit mode, and the prompts the stock panels build out of key binds

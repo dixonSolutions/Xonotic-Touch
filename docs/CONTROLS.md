@@ -1134,6 +1134,58 @@ first frame a shot was dangerous, at 30 fps and up to 250 ms. Cost: 0.13 ms a
 judged frame (median), 0.46 ms at most, on a desktop CPU; a frame over 3 ms
 skips the next judgement.
 
+### Grenades (engine, both HUDs)
+
+On a server with offhand grenades (`g_nades`) a NADE row sits under the last
+weapon on the weapon strip, above its grip (`engine/darkplaces/touch_nade.c`;
+the port's CSQC draws it in `touch_hud.qc`, the engine HUD in `touch_hud.c`).
+Its place is kept while the server has grenades, so the weapon rows never move.
+
+- **Hold to cook, let go to throw.** The row holds `+hook` (button6), which the
+  nades mutator gives the grenade: it comes out and cooks while held, and is
+  thrown on release, harder the longer it cooked (stock 400 to 2000 u/s over
+  its 3.5 s fuse); the server never throws one before it has been out a
+  second. A drag off the row turns the view like FIRE, so the throw can be
+  aimed with the same finger. While it cooks the fuse spent fills the row from
+  the left, red past 60 %.
+- **The safety** (`cl_touch_nade_autothrow`, on): at
+  `cl_touch_nade_autothrow_at` of the fuse (0.85, about 3 s) it lets go by
+  itself, so a grenade held too long is thrown, not blown in the hand.
+- **When there is one.** The fuse and bonus count are read from the CSQC's
+  `g_stat_NADE_TIMER` and `g_stat_NADE_BONUS` (0.8.6 and today's code); the
+  server's refire is not sent, so after a throw the row waits
+  `cl_touch_nade_refire` seconds (stock 6) with a faint icon, then offers the
+  next. Bonus grenades show as a count on the row. The type is the server's
+  (`g_nades_nade_type`): whether it lets a client choose is not sent, so the
+  row offers no choice.
+- The HOOK button stays away while grenades have `+hook`.
+- `touch_nade_status` prints the mutator, row, fuse, bonus, held, safety and
+  throws; `_cl_touch_nade` / `_cl_touch_nade_timer` tell the port's CSQC what
+  to draw.
+
+| Cvar | Default | What it does |
+|------|---------|--------------|
+| `cl_touch_nade_row` | `1` | The NADE row (Settings → Mobile → HUD → Grenades) |
+| `cl_touch_nade_autothrow` | `1` | Throw before it blows in the hand |
+| `cl_touch_nade_autothrow_at` | `0.85` | Share of the fuse the safety lets burn (0.5–0.95) |
+| `cl_touch_nade_refire` | `6` | Seconds the row waits after a throw |
+
+**Dodging grenades.** Auto dodge judges enemy grenades that hurt or hold a
+player (normal, napalm, ice, heal, entrap, darkness), never translocate,
+spawn, veil, monster or ammo ones, and in a team game never a teammate's. A
+grenade bounces and blows on its fuse, wherever it is, flying, rolling or
+lying, and never on contact; the fuse is not sent, so it is judged to blow 2 s
+after it is first seen (a thrown one has cooked at least a second of its 3.5).
+The escape takes the player out of its radius before then.
+
+Measured (a scripted bot cooking 1.2 s and throwing at the player from 600 and
+900 units at three angles, 36 throws, damage taken dodge off -> on): stock
+0.8.6 server 6051 -> 1979, local match 4721 -> 1961, a server on today's git
+game code 482 -> 0 (3 throws). Standing, every throw was escaped; walking away
+from the thrower, the grenade is judged clear until too late to escape (no
+dodge, no change). The row, cooking, the release throw, the safety (thrown at
+3.0 s) and a 130 hit on the bot, on all three; no row without `g_nades`.
+
 **Fire, zoom, weapons (recommended defaults):**
 
 | Option | Values | Default | Notes |
@@ -1255,7 +1307,7 @@ cvar is on exactly one of them:
 | Sub-tab | Rows |
 |---------|------|
 | **Controls** | Input mode (Dynamic / Touch / Keyboard & mouse, switch mid-game, announce, touch-only), layout presets, opacity, scale, glass tint, left-handed, stick dead zone and reach, FIRE hold / toggle, dodge button, customize / save / reset |
-| **HUD** | Weapon bar: size (`cl_touch_weplist_scale` 0.7–2.4), across (`touch_weplist_x`), down (`touch_weplist_y` 0.15–0.85), show; readout size (`touch_hud_scale`); grappling hook: HOOK button off / when available / always (`touch_hook_visible`), *Catch me with the hook when I fall off the map* (`cl_touch_hook_rescue`); quick turn: TURN button (`touch_turn_visible`), turn by (`touch_turn_angle` 90–360); *Keep MENU, CHAT and SCORE on screen with a keyboard* (`touch_desk_pills`) |
+| **HUD** | Weapon bar: size (`cl_touch_weplist_scale` 0.7–2.4), across (`touch_weplist_x`), down (`touch_weplist_y` 0.15–0.85), show; readout size (`touch_hud_scale`); grappling hook: HOOK button off / when available / always (`touch_hook_visible`), *Catch me with the hook when I fall off the map* (`cl_touch_hook_rescue`); quick turn: TURN button (`touch_turn_visible`), turn by (`touch_turn_angle` 90–360); *Keep MENU, CHAT and SCORE on screen with a keyboard* (`touch_desk_pills`); grenades: NADE row (`cl_touch_nade_row`), throw before it blows (`cl_touch_nade_autothrow`) |
 | **Aim** | Look sensitivity, vertical, invert; aim assist on / off with Light, Medium (the defaults) and Strong; slowdown, pull (0–1), catch cone (1–15°), max pull (0–180°/s), target ring, *Keep tracking the enemy I am shooting* (`cl_touch_aimassist_track`), and an *Auto dodge* section: on / off (`cl_touch_autododge`), servers and local or local only (`cl_touch_autododge_scope`), shots from behind too (`cl_touch_autododge_rear`), the arrow (`cl_touch_autododge_cue`) |
 | **Auto-shoot** | Auto-shoot on / off, reaction delay (0–0.5 s), shoot radius (0–6°), keep firing, which weapons; shot choice: secondary fire when better, lead moving targets, guide and detonate rockets, switch to the best weapon, *Hold fire when the blast would hit me* (`cl_touch_autoshoot_safe`); aim-area-only, range — see [Shoot helpers](#shoot-helpers-auto-shoot-and-aim-assist-engine) |
 | **Dynamics** | Performance profile, frame cap, vsync, dynamic resolution, render scale, jump button mode |

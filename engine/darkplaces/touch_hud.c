@@ -19,6 +19,7 @@ applies to both.
 #include "touch_hud.h"
 #include "touch_aim.h"
 #include "touch_hook.h"
+#include "touch_nade.h"
 #include "touch_turn.h"
 #include "touch_ui.h"
 #include "touch_altfire.h"
@@ -398,7 +399,7 @@ enum
 {
 	ROLE_NONE = -1, ROLE_IGNORED = -2,
 	ROLE_MOVE = 0, ROLE_LOOK, ROLE_FIRE, ROLE_FIRE2, ROLE_HOOK,
-	ROLE_JUMP = 100, ROLE_CROUCH, ROLE_WEAPON, ROLE_ZOOM, ROLE_DODGE, ROLE_RELOAD, ROLE_CON, ROLE_PAUSE, ROLE_SHEET, ROLE_CHAT, ROLE_SCORES, ROLE_VYES, ROLE_VNO, ROLE_TURN, ROLE_HOPLOCK,
+	ROLE_JUMP = 100, ROLE_CROUCH, ROLE_WEAPON, ROLE_ZOOM, ROLE_DODGE, ROLE_RELOAD, ROLE_CON, ROLE_PAUSE, ROLE_SHEET, ROLE_CHAT, ROLE_SCORES, ROLE_VYES, ROLE_VNO, ROLE_TURN, ROLE_HOPLOCK, ROLE_NADE,
 	ROLE_WEPSTRIP = 200, ROLE_WEPGRIP
 };
 
@@ -479,6 +480,7 @@ void TouchHUD_ReleaseAll(void)
 	set_key("showscores", &key_scores, false);
 	set_key("zoom", &key_zoom, false);
 	TouchHook_SetHudButton(false);
+	TouchNade_SetHudButton(false);
 	hop_latched = false;
 	hop_cancelling = false;
 	tapfire_until = 0;
@@ -987,6 +989,8 @@ typedef struct strip_s
 	float half_w, half_h;  // plate half size (rows, grip and pad)
 	float row_w, row_h, pad;
 	float top;             // first row's top
+	int nade;              // a NADE row under the weapons (the nades mutator)
+	float nade_top;        // its top
 	float grip_top;        // the grip's top (the last row's bottom)
 } strip_t;
 
@@ -999,9 +1003,12 @@ static int strip_layout(strip_t *st)
 	for (i = 0; i < num_weapons && st->n < MAX_WEAPONS; i++)
 		if (weapons[i].impulse >= 0 && weapon_owned(i))
 			st->index[st->n++] = i;
+	// The NADE row's place is kept for as long as the server has nades, so
+	// the weapon rows never move when a grenade comes or goes.
+	st->nade = TouchNade_State() != TOUCH_NADE_HIDDEN;
 	// Fit: a strip taller than WEP_FIT_H of the screen shrinks, draw and
 	// hit-test alike, so no row ever runs off it.
-	total = st->n * WEP_ROW_H + WEP_GRIP_H + 2 * WEP_PAD;
+	total = (st->n + st->nade) * WEP_ROW_H + WEP_GRIP_H + 2 * WEP_PAD;
 	st->u = ui_scale() * weplist_scale();
 	if (total * st->u > WEP_FIT_H * h)
 		st->u = WEP_FIT_H * h / total;
@@ -1014,7 +1021,8 @@ static int strip_layout(strip_t *st)
 	st->cy = bound(WEP_MARGIN_TOP * h + st->half_h, st->cy, (1 - WEP_MARGIN_Y) * h - st->half_h);
 	st->cx = bound(st->half_w, st->cx, w - st->half_w);
 	st->top = st->cy - st->half_h + st->pad;
-	st->grip_top = st->top + st->n * st->row_h;
+	st->nade_top = st->top + st->n * st->row_h;
+	st->grip_top = st->top + (st->n + st->nade) * st->row_h;
 	return st->n;
 }
 
@@ -1063,6 +1071,21 @@ static int strip_hit(float px, float py)
 	return -1;
 }
 
+// On the NADE row, while there is a grenade to throw or one cooking.
+static qbool nade_hit(float px, float py)
+{
+	strip_t st;
+	float pad;
+	int state = TouchNade_State();
+	if (state != TOUCH_NADE_READY && state != TOUCH_NADE_COOKING)
+		return false;
+	if (!strip_drawn() || strip_layout(&st) <= 0 || !st.nade)
+		return false;
+	pad = min(st.row_w, st.row_h) * 0.12f;
+	return px >= st.cx - st.row_w * 0.5f - pad && px <= st.cx + st.row_w * 0.5f + pad
+		&& py >= st.nade_top - pad && py <= st.nade_top + st.row_h + pad;
+}
+
 static void draw_rrect(float cx, float cy, float hx, float hy, const float *rgb, float a)
 {
 	// Rounded plate: a capsule end at each side reads the same at these sizes,
@@ -1105,6 +1128,32 @@ static void draw_weapon_strip(float a)
 		if (!skin_pic_fit(skin_pic(wd->pic), (icon_left + icon_right) * 0.5f, y, icon_right - icon_left, h - pad * 2,
 			a * (current ? A_INK : A_INK * 0.55f)))
 			shape_label((icon_left + icon_right) * 0.5f, y, num_fs, wd->name, C_INK, a * (current ? A_INK : A_INK * 0.55f));
+	}
+	// The NADE row: the grenade icon and its bonus count; while it cooks, the
+	// fuse spent fills it from the left, turning red near the end; while the
+	// next is on its way, a faint label.
+	if (st.nade)
+	{
+		int state = TouchNade_State(), bonus = TouchNade_Bonus();
+		float y = st.top + st.n * h + h * 0.5f, left = st.cx - w * 0.5f + pad;
+		float icon_left = left + num_slot + pad, icon_right = st.cx + w * 0.5f - pad;
+		float ia = state == TOUCH_NADE_WAITING ? A_INK * 0.25f : A_INK;
+		if (state == TOUCH_NADE_COOKING)
+		{
+			float t = TouchNade_Timer();
+			const float *c = t > 0.6f ? C_DANGER : C_ACCENT;
+			DrawQ_Fill(st.cx - w * 0.5f, y - h * 0.5f, w * t, h, c[0], c[1], c[2], a * A_SURFACE_ACTIVE, 0);
+		}
+		else if (role_owned(ROLE_NADE))
+			draw_rrect(st.cx, y, w * 0.5f, h * 0.5f, C_ACCENT, a * A_SURFACE_LATCH);
+		if (bonus > 0)
+		{
+			char num[8];
+			dpsnprintf(num, sizeof(num), "%d", bonus);
+			shape_label_right(left + num_slot, y, num_fs, num, C_INK, a * ia);
+		}
+		if (!skin_pic_fit(skin_pic("nade_normal"), (icon_left + icon_right) * 0.5f, y, icon_right - icon_left, h - pad * 2, a * ia))
+			shape_label((icon_left + icon_right) * 0.5f, y, num_fs, "NADE", C_INK, a * ia);
 	}
 	// The grip: two short lines across the middle of its band.
 	if (grip_shown())
@@ -1190,9 +1239,12 @@ static int assign_role(float px, float py)
 	role = pill_at(px, py);
 	if (role != ROLE_NONE)
 		return role;
-	// The strip's grip, then its rows: tap a row to switch (Touch_Weapons_Hit).
+	// The strip's grip, its NADE row, then its rows: tap a row to switch
+	// (Touch_Weapons_Hit).
 	if (grip_hit(px, py))
 		return role_owned(ROLE_WEPGRIP) ? ROLE_IGNORED : ROLE_WEPGRIP;
+	if (nade_hit(px, py))
+		return role_owned(ROLE_NADE) ? ROLE_IGNORED : ROLE_NADE;
 	if (strip_hit(px, py) >= 0)
 		return ROLE_WEPSTRIP;
 	if (in_edge_deadzone(px, py))
@@ -1758,7 +1810,7 @@ void TouchHUD_Frame(void)
 	double now = host.realtime;
 	float dt;
 	float grace = cv("touch_finger_grace_ms", 120) * 0.001f;
-	qbool hook_down = false;
+	qbool hook_down = false, nade_down = false;
 	qbool fire_count = false, fire2_down = false, zoom_down = false, jump_down = false, crouch_down = false, scores_down = false, move_active = false, look_seen = false;
 	float look_dx = 0, look_dy = 0;
 	qbool look_first = false;
@@ -1897,7 +1949,7 @@ void TouchHUD_Frame(void)
 			Host_SaveConfig(CONFIGFILENAME);
 			Con_DPrintf("Touch HUD: weapon strip size %.2f saved\n", cl_touch_weplist_scale.value);
 		}
-		else if ((f->role == ROLE_FIRE || f->role == ROLE_HOOK) && f->draglook)
+		else if ((f->role == ROLE_FIRE || f->role == ROLE_HOOK || f->role == ROLE_NADE) && f->draglook)
 			look_active = false;
 		else if (f->role == ROLE_LOOK)
 		{
@@ -1951,6 +2003,11 @@ void TouchHUD_Frame(void)
 			break;
 		case ROLE_HOOK:
 			hook_down = true;
+			button_drag_look(f, &look_seen, &look_dx, &look_dy);
+			break;
+		case ROLE_NADE:
+			// held: cooking; a drag off the row aims the throw, as FIRE does
+			nade_down = true;
 			button_drag_look(f, &look_seen, &look_dx, &look_dy);
 			break;
 		case ROLE_FIRE2:
@@ -2097,6 +2154,7 @@ void TouchHUD_Frame(void)
 	set_key("showscores", &key_scores, scores_down);
 	// HOOK: held while the finger is down (touch_hook.c does the rest)
 	TouchHook_SetHudButton(hook_down);
+	TouchNade_SetHudButton(nade_down);
 }
 
 // ---------------------------------------------------------------------------
