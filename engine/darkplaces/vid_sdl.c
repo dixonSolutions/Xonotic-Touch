@@ -1193,8 +1193,10 @@ static void VID_TouchMenuFingerEvent(int id, qbool down, float nx, float ny)
 	// stop a finger pressing the menu.
 	if (!VID_TouchscreenHasRealDevices())
 		return;
-	// In the game, the pointer of a CSQC vote or other pointer UI.
-	TouchHUD_CursorFinger(id, down, nx, ny);
+	// In the game, the pointer of a CSQC vote or other pointer UI; on the
+	// loading screen, its CANCEL (nothing reaches the hidden menu there).
+	if (TouchHUD_CursorFinger(id, down, nx, ny))
+		return;
 	if (keydest != key_menu && keydest != key_menu_grabbed)
 		return;
 
