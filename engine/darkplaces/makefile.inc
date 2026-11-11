@@ -39,6 +39,7 @@ OBJ_COMMON= \
 	touch_aim.o \
 	touch_hook.o \
 	touch_turn.o \
+	touch_vote.o \
 	touch_dodge.o \
 	touch_pause.o \
 	vid_touchdetect.o \

@@ -146,8 +146,8 @@ only inputs that count are presence evidence:
 - **Fingers without the controls.** Only the gameplay controls go (stick,
   FIRE, ALT, HOP, DUCK, ZOOM). The weapon strip stays, a tap on a row
   switches weapon and its grip resizes it; MENU, CHAT, SCORE and CONSOLE stay
-  at reduced alpha and tappable unless `touch_desk_pills` is 0; YES and NO
-  show beside a vote called in the match. Under a server's CSQC the engine
+  at reduced alpha and tappable unless `touch_desk_pills` is 0; the vote
+  chip shows while a vote waits for an answer. Under a server's CSQC the engine
   HUD runs all of that (`desk_active` in `touch_hud.c`); in a local match the
   port's CSQC does, and publishes the finger slots it claims in
   `_cl_touch_desk_fingers`. Any other finger turns the view, with the touch

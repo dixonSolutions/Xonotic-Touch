@@ -81,7 +81,7 @@ feed and the chat feed each get a band that touches neither.
 | **SCORE** (bottom-left) | Tap → full scoreboard, tap again to clear; Escape also clears | `+showscores` / `-showscores`; also the `touch_scores` command |
 | Mobile HUD | Health, armour and ammo as one group, top-left | Bars for the two that have a maximum; reserve rounds beside the clip for weapons that reload |
 | Respawn / join | Tap **HOP** | `+jump`; the prompts name the button, not a key — see below |
-| **YES / NO** | Beside the vote panel while a called vote waits for your answer — see [Votes](#votes) | `vyes` / `vno` |
+| **i** (vote chip, top bar) | Between MENU and CHAT while a vote waits for your answer, a red dot while it is new; tap → vote card — see [Votes](#votes) | `vote yes` / `vote no` / `vote abstain`, `impulse N` for the map vote |
 
 Prompts that would normally name a key name the on-screen control instead in a touch
 session: "You are dead, press **HOP** to respawn", "Press **HOP** to join", "Press
@@ -164,11 +164,42 @@ screen has drawn a frame with it there, so the vote goes to the option under
 the finger; dragging across options votes for none of them. A mouse keeps
 working as before.
 
-**A vote called mid-match** (`vcall`, the vote panel): **YES** and **NO** pills
-sit beside the vote panel while the vote is pending and you have not answered,
-and send `vyes` / `vno`. They go as soon as the server has your answer. They
-are there with a keyboard attached too, and on public servers the engine HUD
-shows the same pair.
+**A vote called mid-match** (`vcall`) and the map vote: a small round **i**
+chip appears in the top bar, between MENU and CHAT (mirrored with
+handedness), while a vote you can answer is open, and is not there otherwise.
+A red dot on it marks a vote you have not opened yet, and it pulses once when
+one arrives. It is there alive or dead, with the scoreboard up, spectating and
+at intermission, with the controls on or hidden by a keyboard, in a local
+match and on any server. Behind a menu or dialog (the welcome dialog, the
+console, the chat sheet) it waits, and shows when that closes.
+
+Tapping it opens a card over the match: who called the vote and what it is
+for, then a large row per choice: **Yes**, **No** and **Abstain**, with the
+live yes / no counts and your own answer marked. Tap a row to vote; the card
+stays open with your choice marked, and on a server that lets you change your
+mind (the stock default) another row changes it. When the vote ends the card
+shows the result for a moment, then goes with the chip; after you vote and
+close the card, the chip goes too. The card closes with its **x**, a tap
+outside it, or Back. The server does not send the time left of a called vote,
+so the card does not show one.
+
+At match end the same chip opens the map (or gametype) vote as a list ranked
+by votes, with the counts, your pick marked and the seconds left; tap one to
+vote. The full-screen vote screen stays and is tappable as before.
+
+Where the vote state comes from: the loaded CSQC's own vote globals
+(`vote_active`, `vote_yescount`, `vote_nocount`, `vote_needed`,
+`vote_highlighted`, `vote_called_vote`; for the map vote `mv_*`, named
+`mv_maps` / `mv_num_maps` in 0.8.6 and `mv_entries` / `mv_count` later). When
+a server's CSQC has no such globals, or the stats-name question
+(`cl_allow_uid2name -1`) has taken them over, the engine follows the vote
+lines every server prints instead (`touch_vote_parse.h`, checked by
+`scripts/test-touch-vote.sh`): those give the caller, the vote, your answer
+and the result, but no live counts, and they miss a vote called before you
+joined. `_cl_touch_vote_noglobals 1` forces that path for testing.
+
+The chip and card are drawn by the engine (`touch_vote.c`) over whichever HUD
+is running; fingers on them never reach the controls or the CSQC.
 
 Geometry, sizing rationale and the input model are specified in
 [TOUCH_UX_REDESIGN.md](TOUCH_UX_REDESIGN.md); the coordinate contract is in
@@ -997,7 +1028,7 @@ Scale from `vid_width`, `vid_height`, `vid_touchscreen_density` — never 1920×
 | Scoreboard | Full-screen overlay |
 | Kill feed | Shorter lifetime, smaller type |
 | Damage feedback | Stronger directional indicators |
-| Intermission / vote | The finger is the cursor on the vote screen; YES / NO pills for a called vote ([Votes](#votes)) |
+| Intermission / vote | The finger is the cursor on the vote screen; the **i** chip opens a vote card for a called vote and the map vote ([Votes](#votes)) |
 
 ---
 

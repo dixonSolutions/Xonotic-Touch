@@ -83,9 +83,12 @@ cmake_build() {
 
 ##### SDL2 ####################################################################
 
+# The source tree is needed even when the library is already built:
+# android-build.sh copies SDL's Java glue out of it. CI caches the prefix and
+# the sources separately, so a restored prefix can come without the sources.
+fetch "https://github.com/libsdl-org/SDL/releases/download/release-$SDL_VERSION/SDL2-$SDL_VERSION.tar.gz" "SDL2-$SDL_VERSION"
 if [ ! -f "$PREFIX/lib/libSDL2.so" ]; then
     log "SDL $SDL_VERSION"
-    fetch "https://github.com/libsdl-org/SDL/releases/download/release-$SDL_VERSION/SDL2-$SDL_VERSION.tar.gz" "SDL2-$SDL_VERSION"
     cmake_build "$SRC_DIR/SDL2-$SDL_VERSION" sdl2 \
         -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TEST=OFF
 fi

@@ -181,7 +181,6 @@ void Touch_DrawOverlay(float overlayAlpha)
 		Touch_Chat_DrawPill(overlayAlpha);
 		Touch_Console_Draw(overlayAlpha);
 		Touch_Scores_DrawPill(overlayAlpha);
-		Touch_Vote_Draw(overlayAlpha);
 	}
 
 	if (autocvar_touch_move_visible || autocvar_touch_debug)
@@ -267,8 +266,6 @@ void Touch_Draw(void)
 				Touch_Console_Draw(a * 0.6);
 				Touch_Scores_DrawPill(a * 0.6);
 			}
-			if (Touch_DeskActive())
-				Touch_Vote_Draw(a);
 		}
 		return;
 	}

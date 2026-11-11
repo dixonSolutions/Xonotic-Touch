@@ -212,7 +212,7 @@ Per frame:
 ### 4.2 Priority order (first match wins)
 
 ```
-0  YES / NO vote pills  (grab 1.10)   → ROLE_VOTE       // only while a vote waits on you
+   (the engine's vote chip and open vote card take their fingers before this table: touch_vote.c)
 1  CON handle rect      (grab 1.20)   → ROLE_CON        // before edge deadzone
    MENU / CHAT / SCORE pills (grab 1.20) → ROLE_PAUSE / CHAT / SCORES
    weapon strip grip    → ROLE_WEPSIZE                  // before the rows, which are inflated

@@ -792,89 +792,9 @@ static void bind_weapons(void)
 		Con_DPrintf("Touch HUD: %d weapons from the local CSQC, WEAPONS stat %d\n", num_weapons, stat_weapons);
 }
 
-// ---------------------------------------------------------------------------
-// A vote called in the match (vcall): the stock vote panel only names the key
-// binds, so YES and NO pills sit beside it while the vote is open and the
-// player has not voted. The state is the loaded CSQC's own (hud/panel/vote.qc):
-// vote_active, vote_highlighted (0 until this player votes) and uid2name_dialog
-// (the stats-name question, which reuses the panel and has its own dialog).
-// No pills when the CSQC does not have them.
-// ---------------------------------------------------------------------------
-typedef struct qcglobal_s { int ofs; } qcglobal_t;
-static qcglobal_t g_vote_active, g_vote_highlighted, g_uid2name_dialog;
-
-static qcglobal_t qcglobal(prvm_prog_t *prog, const char *name)
-{
-	qcglobal_t g = {-1};
-	mdef_t *d = PRVM_ED_FindGlobal(prog, name);
-	if (d && def_type(d) == ev_float)
-		g.ofs = d->ofs;
-	return g;
-}
-
-static int qcglobal_int(qcglobal_t g)
-{
-	prvm_prog_t *prog = CLVM_prog;
-	if (g.ofs < 0 || !prog->loaded)
-		return 0;
-	return (int)PRVM_GLOBALFIELDFLOAT(g.ofs);
-}
-
-static void bind_vote(void)
-{
-	prvm_prog_t *prog = CLVM_prog;
-	g_vote_active.ofs = g_vote_highlighted.ofs = g_uid2name_dialog.ofs = -1;
-	if (!prog->loaded)
-		return;
-	g_vote_active = qcglobal(prog, "vote_active");
-	g_vote_highlighted = qcglobal(prog, "vote_highlighted");
-	g_uid2name_dialog = qcglobal(prog, "uid2name_dialog");
-}
-
-static qbool vote_pills_shown(void)
-{
-	if (g_vote_active.ofs < 0 || g_vote_highlighted.ofs < 0 || cl_touch_csqc_active)
-		return false;
-	if (!qcglobal_int(g_vote_active) || qcglobal_int(g_vote_highlighted) != 0)
-		return false;
-	return !qcglobal_int(g_uid2name_dialog);
-}
-
-// YES above NO, just left of the vote panel (right of it if there is no room),
-// sized like the chrome pills.
-static qbool vote_pill(qbool yes, float *cx, float *cy, float *hx, float *hy)
-{
-	float px, py, sx, sy, gap;
-	if (sscanf(Cvar_VariableString(&cvars_all, "hud_panel_vote_pos", ~0), "%f %f", &px, &py) != 2
-		|| sscanf(Cvar_VariableString(&cvars_all, "hud_panel_vote_size", ~0), "%f %f", &sx, &sy) != 2)
-		return false;
-	widget_half(cv("touch_chat_size", 0.060f), 2.4f, hx, hy);
-	gap = *hy * 0.35f;
-	*cx = px * ui_w() - *hx - gap;
-	if (*cx - *hx < 0)
-		*cx = (px + sx) * ui_w() + *hx + gap;
-	*cx = bound(*hx, *cx, ui_w() - *hx);
-	*cy = (py + sy * 0.5f) * ui_h() + (yes ? -1 : 1) * (*hy + gap * 0.5f);
-	*cy = bound(*hy, *cy, ui_h() - *hy);
-	return true;
-}
-
-static int vote_pill_at(float px, float py)
-{
-	float cx, cy, hx, hy;
-	if (!vote_pills_shown())
-		return ROLE_NONE;
-	if (vote_pill(true, &cx, &cy, &hx, &hy) && fabs(px - cx) <= hx * 1.1f && fabs(py - cy) <= hy * 1.1f)
-		return ROLE_VYES;
-	if (vote_pill(false, &cx, &cy, &hx, &hy) && fabs(px - cx) <= hx * 1.1f && fabs(py - cy) <= hy * 1.1f)
-		return ROLE_VNO;
-	return ROLE_NONE;
-}
-
 void TouchHUD_ProgsChanged(void)
 {
 	bind_weapons();
-	bind_vote();
 }
 
 // The wepent (viewmodels[0]) of the loaded CSQC, or NULL.
@@ -1219,8 +1139,8 @@ static int pill_at(float px, float py)
 // one look finger anywhere else. A tap fires nothing.
 static int assign_desk_role(float px, float py)
 {
-	int role = vote_pill_at(px, py);
-	if (role == ROLE_NONE && desk_pills())
+	int role = ROLE_NONE;
+	if (desk_pills())
 		role = pill_at(px, py);
 	if (role != ROLE_NONE)
 		return role;
@@ -1248,9 +1168,7 @@ static int assign_role(float px, float py)
 	int role;
 	if (desk_active())
 		return assign_desk_role(px, py);
-	role = vote_pill_at(px, py);
-	if (role == ROLE_NONE)
-		role = pill_at(px, py);
+	role = pill_at(px, py);
 	if (role != ROLE_NONE)
 		return role;
 	// The strip's grip, then its rows: tap a row to switch (Touch_Weapons_Hit).
@@ -1505,12 +1423,6 @@ static void pill_release(finger_t *f)
 	case ROLE_CHAT:
 		Cbuf_AddText(cmd_local, "messagemode\n");
 		break;
-	case ROLE_VYES:
-		Cbuf_AddText(cmd_local, "vyes\n");
-		break;
-	case ROLE_VNO:
-		Cbuf_AddText(cmd_local, "vno\n");
-		break;
 	case ROLE_PAUSE:
 		TouchHUD_ReleaseAll();
 		if (Cvar_VariableValue(&cvars_all, "menu_gamemenu", ~0) && !cls.demoplayback
@@ -1529,7 +1441,7 @@ static void pill_release(finger_t *f)
 // the map, or a map change. It hides the menu, so Escape there opened a menu
 // nobody could see, and a finger had nothing to press: a server that never
 // answered, or a slow download, kept a touch player waiting with no way out.
-// On a touchscreen a CANCEL pill sits under the progress, and it and Back
+// On a touchscreen a CANCEL pill sits in the top corner, and it and Back
 // (Escape) leave for the main menu.
 // ---------------------------------------------------------------------------
 static int loading_cancel_src;   // finger that went down on CANCEL
@@ -1541,11 +1453,14 @@ static qbool loading_cancellable(void)
 		&& (cls.connect_trying || (cls.state == ca_connected && cls.signon < SIGNONS));
 }
 
+// In the top corner where the CHAT pill sits by default, at the size of the
+// MENU and CHAT pills, mirrored for the left hand like them. A fixed place,
+// not the player's CHAT position: wherever CHAT was moved to, CANCEL stays
+// clear of the loading picture and of the progress text and bar at the bottom.
 static void loading_pill(float *cx, float *cy, float *hx, float *hy)
 {
-	widget_half(0.085f, 3.2f, hx, hy);
-	*cx = ui_w() * 0.5f;
-	*cy = ui_h() * 0.82f;
+	widget_center(0.862f, 0.088f, cx, cy);
+	widget_half(cv("touch_pause_size", 0.060f), cv("touch_pause_aspect", 2.9f), hx, hy);
 }
 
 static void loading_cancel(void)
@@ -1575,7 +1490,7 @@ static qbool loading_finger(int id, qbool down, float nx, float ny)
 		return false;
 	}
 	loading_pill(&cx, &cy, &hx, &hy);
-	on = fabs(px - cx) <= hx * 1.15f && fabs(py - cy) <= hy * 1.3f;
+	on = fabs(px - cx) <= hx * 1.2f && fabs(py - cy) <= hy * 1.2f;
 	if (down && on)
 		loading_cancel_src = id;
 	else if (!down && id == loading_cancel_src)
@@ -1594,7 +1509,8 @@ void TouchHUD_DrawLoading(void)
 		return;
 	shapes_probe();
 	loading_pill(&cx, &cy, &hx, &hy);
-	widget_chrome_pill(cx, cy, hx, hy, "CANCEL", loading_cancel_src != 0, 0.95f, C_DANGER);
+	// Quieter than the chrome in a match: there for whoever looks for it.
+	widget_chrome_pill(cx, cy, hx, hy, "CANCEL", loading_cancel_src != 0, 0.55f, C_DANGER);
 }
 
 // ---------------------------------------------------------------------------
@@ -1891,7 +1807,7 @@ void TouchHUD_Frame(void)
 		if (now - f->lost_time < grace)
 			continue;
 		// released
-		if (f->role == ROLE_CON || f->role == ROLE_CHAT || f->role == ROLE_PAUSE || f->role == ROLE_VYES || f->role == ROLE_VNO)
+		if (f->role == ROLE_CON || f->role == ROLE_CHAT || f->role == ROLE_PAUSE)
 			pill_release(f);
 		else if (f->role == ROLE_HOPLOCK)
 		{
@@ -2280,17 +2196,6 @@ static void draw_pill(const char *xk, float dx, const char *yk, float dy, const 
 	widget_chrome_pill(cx, cy, hx, hy, label, pressed, a, C_ACCENT);
 }
 
-static void draw_vote_pills(float a)
-{
-	float cx, cy, hx, hy;
-	if (!vote_pills_shown())
-		return;
-	if (vote_pill(true, &cx, &cy, &hx, &hy))
-		widget_chrome_pill(cx, cy, hx, hy, "YES", role_owned(ROLE_VYES), a, C_SUCCESS);
-	if (vote_pill(false, &cx, &cy, &hx, &hy))
-		widget_chrome_pill(cx, cy, hx, hy, "NO", role_owned(ROLE_VNO), a, C_DANGER);
-}
-
 // The weapon strip with the touch controls off: play at a desk keeps its
 // weapons in view (strip_drawn). Not while a touch CSQC is running, since it
 // draws the strip itself. On a touchscreen the pills stay too (desk_active).
@@ -2310,8 +2215,6 @@ static void draw_strip_only(void)
 		if (cv("touch_scores_visible", 1))
 			draw_pill("touch_scores_x", 0.272f, "touch_scores_y", 0.948f, "touch_scores_size", 0.060f, "touch_scores_aspect", 2.9f, "SCORE", key_scores, pa);
 	}
-	if (desk_active())
-		draw_vote_pills(a);
 	draw_weapon_strip(a);
 }
 
@@ -2350,7 +2253,6 @@ void TouchHUD_Draw(void)
 		draw_pill("touch_con_x", 0.090f, "touch_con_y", 0.948f, "touch_con_size", 0.060f, "touch_con_aspect", 2.9f, "CONSOLE", role_owned(ROLE_CON), a);
 	if (cv("touch_scores_visible", 1))
 		draw_pill("touch_scores_x", 0.272f, "touch_scores_y", 0.948f, "touch_scores_size", 0.060f, "touch_scores_aspect", 2.9f, "SCORE", key_scores, a);
-	draw_vote_pills(a);
 
 	if (cv("touch_move_visible", 1))
 		draw_move_stick(a);
