@@ -3,6 +3,7 @@
 #include "touch_widget.qh"
 #include "touch_layout.qh"
 #include "touch_weapons.qh"
+#include "touch_input.qh"
 #include <client/main.qh>
 #include <client/hud/hud.qh>
 #include <client/view.qh>
@@ -464,6 +465,36 @@ void Touch_Hud_GripEnd(void)
 	localcmd("saveconfig\n");
 }
 
+// The NADE row: the grenade icon and the bonus grenades in stock; while one
+// cooks, the fuse spent fills the row from the left, red near the end; while
+// the next is on its way, a faint icon that takes no touch.
+void Touch_Hud_DrawNadeRow(vector at, vector row_half, float u, float r, int state, float alpha)
+{
+	float pad = TOUCH_HUD_WEP_PAD * u;
+	float num = TOUCH_FONT_READOUT_SM * 0.8 * u;
+	float num_slot = Touch_Shape_LabelWidth(num, "9");
+	float left = at.x - row_half.x + pad;
+	float ink = (state == 3) ? TOUCH_A_INK * 0.25 : TOUCH_A_INK;
+	if (state == 2)
+	{
+		float t = bound(0, cvar("_cl_touch_nade_timer"), 1);
+		vector c = (t > 0.6) ? TOUCH_C_DANGER : TOUCH_C_ACCENT;
+		drawfill_builtin(at - row_half, eX * (row_half.x * 2 * t) + eY * (row_half.y * 2), c,
+			alpha * TOUCH_A_SURFACE_ACTIVE, DRAWFLAG_NORMAL);
+		Touch_DebugAddFills(1);
+	}
+	else if (Touch_NadeHeld())
+		Touch_Shape_RRect(at, row_half, r, TOUCH_C_ACCENT, alpha * TOUCH_A_SURFACE_LATCH);
+	float bonus = STAT(NADE_BONUS);
+	if (bonus >= 1)
+		Touch_Shape_LabelAligned(eX * (left + num_slot) + eY * at.y, num, ftos(floor(bonus)), 1, TOUCH_C_INK, alpha * ink);
+	float icon_left = left + num_slot + pad;
+	float icon_right = at.x + row_half.x - pad;
+	Touch_Hud_DrawSkinPicFit(eX * ((icon_left + icon_right) * 0.5) + eY * at.y,
+		eX * (icon_right - icon_left) + eY * (row_half.y * 2 - pad * 2), "nade_normal", alpha * ink);
+	Touch_Weapons_SetNade(at - row_half, row_half * 2, state == 1 || state == 2);
+}
+
 void Touch_Hud_DrawWeapons(float alpha)
 {
 	if (!autocvar_touch_weplist_visible)
@@ -472,15 +503,20 @@ void Touch_Hud_DrawWeapons(float alpha)
 	if (n <= 0)
 		return;
 
-	float u = Touch_Hud_WeaponsU(n);
+	// The engine's nade state (touch_nade.c): 0 none, 1 ready, 2 cooking, 3
+	// the next on its way. Its row's place is kept while the server has nades,
+	// so the weapon rows never move as a grenade comes and goes.
+	int nade_state = cvar("_cl_touch_nade");
+	int rows = n + (nade_state != 0);
+	float u = Touch_Hud_WeaponsU(rows);
 	float h = TOUCH_HUD_WEP_H * u;
 	float pad = TOUCH_HUD_WEP_PAD * u;
 	float w = TOUCH_HUD_WEP_W * u;
 	float grip = TOUCH_HUD_WEP_GRIP * u;
 	float r = TOUCH_R_SM * u;
 	vector row_half = eX * (w * 0.5) + eY * (h * 0.5);
-	vector center = Touch_Hud_WeaponsCenter(n, u);
-	float plate_h = n * h + grip + pad * 2;
+	vector center = Touch_Hud_WeaponsCenter(rows, u);
+	float plate_h = rows * h + grip + pad * 2;
 	// Centred on its anchor, so the strip grows in both directions as weapons are
 	// picked up instead of walking down the screen.
 	float top = center.y - plate_h * 0.5 + pad;
@@ -515,14 +551,16 @@ void Touch_Hud_DrawWeapons(float alpha)
 		slot += 1;
 	});
 
-	float grip_top = top + n * h;
+	if (nade_state != 0)
+		Touch_Hud_DrawNadeRow(eX * center.x + eY * (top + n * h + h * 0.5), row_half, u, r, nade_state, alpha);
+	float grip_top = top + rows * h;
 	Touch_Hud_DrawWeaponGrip(eX * center.x + eY * (grip_top + grip * 0.5), u,
 		touch_wep_grip_held, alpha);
 	// The grip's touch area starts at its top edge, never above it over the last
 	// row, and reaches down to a finger's width.
 	float reach = max(grip + pad, TOUCH_WEPLIST_GRIP_REACH * Touch_ScreenMin());
 	Touch_Weapons_SetGrip(eX * (center.x - w * 0.5 - pad) + eY * grip_top,
-		eX * (w + pad * 2) + eY * reach, u, n);
+		eX * (w + pad * 2) + eY * reach, u, rows);
 }
 
 void Touch_Hud_Draw(float alpha)

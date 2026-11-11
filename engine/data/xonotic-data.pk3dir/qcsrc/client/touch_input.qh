@@ -37,6 +37,9 @@ bool Touch_ZoomHeld(void);
 bool Touch_HookAvailable(void);
 bool Touch_HookHeld(void);
 float Touch_HookAlpha(void);
+// The NADE row's grenade (+touch_nade / -touch_nade to the engine).
+void Touch_SetNade(bool down);
+bool Touch_NadeHeld(void);
 // The keep-jumping chip (touch_hop_mode 3) and its tap.
 bool Touch_HopLockShown(void);
 bool Touch_HopLockHit(vector p);
