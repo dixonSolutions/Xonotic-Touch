@@ -246,6 +246,15 @@ void XonoticMobileHudTab_fill(entity me)
 			_("How far one tap turns you, in degrees. 180: face the other way")));
 			setDependent(e, "touch_turn_visible", 1, 1);
 
+	// Offhand grenades (touch_nade.c), on servers that have them (g_nades).
+	me.TR(me);
+		me.TD(me, 1, 1.2, e = makeXonoticTextLabel(0, _("Grenades:")));
+		me.TD(me, 1, 2.2, e = makeXonoticCheckBox_T(0, "cl_touch_nade_row", _("NADE row"),
+			_("A NADE row under the weapons on servers with offhand grenades: hold it to cook, let go to throw, drag off it to aim")));
+		me.TD(me, 1, 2.6, e = makeXonoticCheckBox_T(0, "cl_touch_nade_autothrow", _("Throw before it blows"),
+			_("A grenade held too long is thrown by itself just before it would blow up in your hand")));
+			setDependent(e, "cl_touch_nade_row", 1, 1);
+
 	me.TR(me);
 		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("With a keyboard attached")));
 	me.TR(me);
