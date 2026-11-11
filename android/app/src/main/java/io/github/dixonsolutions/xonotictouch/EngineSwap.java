@@ -90,6 +90,13 @@ final class EngineSwap {
 
     /** Host thread: main. Returns true to accept (the loader then swaps and reports through callbacks). */
     private static boolean onLiveSwap(File slotDir, String version, Object cb) {
+        if (KeepAliveService.engineBusy) {
+            // The host offers the swap when the app comes back to the front. A swap
+            // restarts the engine, which would drop the player's server, join or
+            // download: decline, and the release applies on the next start instead.
+            Log.i(TAG, "Live swap to " + version + " declined: the game is connected, joining or downloading");
+            return false;
+        }
         File lib = findEngine(slotDir);
         if (lib == null) {
             Log.w(TAG, "Live swap to " + version + " declined: no libmain in " + slotDir);
