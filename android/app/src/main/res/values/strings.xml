@@ -7,6 +7,12 @@
     <string name="boot_failed">Could not prepare game data</string>
     <string name="boot_retry">Retry</string>
     <string name="boot_quit">Quit</string>
+    <string name="boot_cancel">Cancel</string>
+    <string name="boot_cancelling">Cancelling…</string>
+    <string name="boot_paused">Paused</string>
+    <string name="boot_paused_detail">Stopped at %1$s. Resume carries on from there.</string>
+    <string name="boot_paused_detail_none">Resume carries on from where it stopped.</string>
+    <string name="boot_resume">Resume</string>
     <string name="boot_notice_channel">Game downloads</string>
     <string name="keepalive_channel">Staying connected in the background</string>
     <string name="keepalive_connection_title">Xonotic Touch is staying connected</string>
