@@ -32,8 +32,6 @@ const int TOUCH_ROLE_CHAT = 109;
 const int TOUCH_ROLE_SCORES = 110;
 // The weapons strip's resize grip (Touch_Hud_GripBegin).
 const int TOUCH_ROLE_WEPSIZE = 111;
-// YES / NO on a called vote (Touch_Vote_OnDown).
-const int TOUCH_ROLE_VOTE = 112;
 // The grappling hook, held (Touch_SetHook).
 const int TOUCH_ROLE_HOOK = 113;
 // The quick turn (touch_turn, on the press).

@@ -24,6 +24,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "csprogs.h"
 #include "touch_hud.h"
 #include "touch_aim.h"
+#include "touch_vote.h"
 #include "cl_collision.h"
 #include "snd_main.h"
 #include "clvm_cmds.h"
@@ -660,6 +661,8 @@ void CSQC_AddPrintText(const char *msg, size_t msg_len)
 	prvm_prog_t *prog = CLVM_prog;
 	char *start = cl.csqc_printtextbuf + cl.csqc_printtextbuf_len;
 	size_t writebytes = min(msg_len + 1, MAX_INPUTLINE - cl.csqc_printtextbuf_len);
+
+	TouchVote_ServerPrint(msg, msg_len); // Touch: vote lines (touch_vote.c)
 
 	if(prog->loaded && PRVM_clientfunction(CSQC_Parse_Print))
 	{

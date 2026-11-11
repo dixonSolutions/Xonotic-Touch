@@ -28,11 +28,3 @@ void Touch_Scores_DrawPill(float alpha);
 int Touch_Scores_OnDown(vector p);
 void Touch_Scores_OnMove(vector p);
 void Touch_Scores_OnUp(vector p);
-
-// YES / NO beside the vote panel while a called vote waits for this player.
-bool Touch_Vote_Shown(void);
-bool Touch_Vote_PillHit(vector p);
-void Touch_Vote_Draw(float alpha);
-int Touch_Vote_OnDown(vector p);
-void Touch_Vote_OnMove(vector p);
-void Touch_Vote_OnUp(vector p);

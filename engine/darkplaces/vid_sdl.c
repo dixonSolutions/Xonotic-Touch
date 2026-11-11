@@ -27,6 +27,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "touch_ui.h"
 #include "csprogs.h"
 #include "touch_hud.h"
+#include "touch_vote.h"
 #include "screen.h"
 #include "touch_android.h"
 
@@ -1983,6 +1984,9 @@ void Sys_SDL_HandleEvents(void)
 #endif
 				if (VID_TouchIsDirect(event.tfinger.touchId))
 					VID_NoteTouchUse();
+				// Touch: a finger on the vote chip or card stays out of the table
+				if (TouchVote_Finger(0, (int)event.tfinger.fingerId + 1, event.tfinger.x, event.tfinger.y))
+					break;
 				for (i = 0;i < MAXFINGERS-1;i++)
 				{
 					if (!multitouch[i][0])
@@ -2005,6 +2009,8 @@ void Sys_SDL_HandleEvents(void)
 #endif
 				if (VID_TouchIsDirect(event.tfinger.touchId))
 					VID_NoteTouchActivity();
+				if (TouchVote_Finger(2, (int)event.tfinger.fingerId + 1, event.tfinger.x, event.tfinger.y)) // Touch
+					break;
 				for (i = 0;i < MAXFINGERS-1;i++)
 				{
 					if (multitouch[i][0] == event.tfinger.fingerId + 1 && !vid_finger_lift[i])
@@ -2027,6 +2033,8 @@ void Sys_SDL_HandleEvents(void)
 #endif
 				if (VID_TouchIsDirect(event.tfinger.touchId))
 					VID_NoteTouchActivity();
+				if (TouchVote_Finger(1, (int)event.tfinger.fingerId + 1, event.tfinger.x, event.tfinger.y)) // Touch
+					break;
 				for (i = 0;i < MAXFINGERS-1;i++)
 				{
 					if (multitouch[i][0] == event.tfinger.fingerId + 1)
