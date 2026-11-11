@@ -1044,6 +1044,11 @@ Main menu is stock Xonotic (Singleplayer / Multiplayer / Media / Settings / …)
     screen, so taps there no longer press it.
   - The connection drops (timeout, kick) with the game menu open: the main
     menu overview comes up rather than an empty background.
+  - Leaving the app (Home, another app, the screen off) is not a way out on
+    Android: the match, a join and its downloads carry on, and the player
+    comes back to the screen they left (the loading screen while the join
+    runs, the game once in). A local match pauses until the return.
+    `docs/ANDROID.md` "In the background".
   - The chat and console sheets have their own CLOSE buttons; the quick menu,
     the team selection, the server welcome dialog and the main menu's own
     dialogs close on Back (their close button is the small x in the title
