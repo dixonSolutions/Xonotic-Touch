@@ -51,7 +51,7 @@ cvar_t cl_touch_autoshoot_release = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot
 	"Seconds auto-shoot keeps firing after the crosshair leaves the enemy (0 - 0.5)"};
 cvar_t cl_touch_autoshoot_radius = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_radius", "1.5",
 	"Auto-shoot fires while the crosshair is within this many degrees of the enemy's body (of where a projectile will meet it), "
-	"narrowed to what the weapon's spread or splash can cover at that distance; 0 = only on the body (at most 6)"};
+	"narrowed to what the weapon's spread or splash can cover at that distance; 0 = only on the body (at most 15)"};
 cvar_t cl_touch_autoshoot_alt = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_alt", "1",
 	"Auto-shoot uses secondary fire when it is the better shot: Shotgun melee point-blank, Crylink, MachineGun burst far away, "
 	"Arc bolts beyond the beam, the blaster shot of an empty Vaporizer or Overkill weapon"};
@@ -77,6 +77,21 @@ cvar_t cl_touch_autoswitch_smart = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoswitch
 	"Auto-switch picks by expected damage for the situation -- distance, how the enemy moves (standing, strafing, dodging, in the air), enemies grouped for splash, the time a switch costs -- instead of a fixed list per distance"};
 cvar_t cl_touch_autoswitch_combo = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoswitch_combo", "1",
 	"Auto-switch: once your blast has thrown the enemy into the air, switch at once to the instant-hit weapon that finishes them"};
+cvar_t cl_touch_autoshoot_clear = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_clear", "1",
+	"A steered Devastator rocket is flown clear of walls, floors, ledges and pillars on its way (its path is checked ahead the way the server turns it), "
+	"aimed at the body until close and at the floor beside a grounded enemy only for the final approach; an enemy that goes out of sight is steered to where it was last seen"};
+cvar_t cl_touch_autoshoot_volley = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_volley", "1",
+	"Devastator: launch the next rocket while one is still flying, once that one is on a line that hits by itself (it then flies straight); "
+	"the one remote detonation, which sets off every rocket of yours, is timed for the most damage, and no weapon switch happens while a rocket that still needs steering is out"};
+cvar_t cl_touch_autoshoot_head = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_head", "1",
+	"Aim at the head with a weapon that pays a headshot bonus, where the smaller target still does more damage on average (distance, spread, how the enemy moves). "
+	"In stock Xonotic no weapon does: only the Rifle can have a bonus and the stock balance sets it to 0 (see cl_touch_autoshoot_head_rifle); the Vortex has none"};
+cvar_t cl_touch_autoshoot_head_rifle = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_head_rifle", "0",
+	"The server's Rifle headshot multiplier (g_balance_rifle_primary_headshot_multiplier), which the client cannot read: 0 in stock Xonotic, 1.25 with the Nexuiz 2.5 balance"};
+cvar_t cl_touch_autoswitch_lastresort = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoswitch_lastresort", "1",
+	"Auto-switch never picks the Blaster (or another last-resort weapon) while another owned weapon can shoot, and leaves it at once when the server switched to it on an empty weapon"};
+cvar_t cl_touch_aimassist_hysteresis = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_hysteresis", "2",
+	"Aim helpers: the enemy already targeted stays the target unless another is this many degrees nearer the crosshair (0 = always the nearest)"};
 cvar_t cl_touch_aimassist = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist", "1",
 	"Touch controls: aim helpers -- the look drag slows down over an enemy (cl_touch_aimassist_friction) and the view is pulled gently toward one while a finger is on the aim control (cl_touch_aimassist_strength). "
 	"Only in touch mode; never active with a keyboard attached"};
@@ -90,7 +105,7 @@ cvar_t cl_touch_aimassist_track = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_t
 cvar_t cl_touch_aimassist_maxrate = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_maxrate", "90",
 	"Aim pull: hard cap on the pull, degrees per second (at most 180); it never snaps"};
 cvar_t cl_touch_aimassist_cone = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_cone", "8",
-	"Aim helpers: half-angle in degrees around the crosshair within which an enemy counts as near (1 - 15)"};
+	"Aim helpers: half-angle in degrees around the crosshair within which an enemy counts as near (1 - 60: up to the whole view)"};
 cvar_t cl_touch_autoshoot_weapons = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_weapons", "0",
 	"Auto-shoot weapons: 0 = every weapon, 1 = only instant-hit weapons (judged from the weapon in hand; for a weapon the engine does not know, from _cl_touch_weapon_class)"};
 cvar_t cl_touch_autoshoot_aimonly = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_aimonly", "0",
@@ -98,7 +113,7 @@ cvar_t cl_touch_autoshoot_aimonly = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot
 cvar_t cl_touch_aim_ring = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aim_ring", "1",
 	"Touch HUD: draw a ring at the crosshair while an enemy is within the aim-assist cone, a red one while the crosshair is on an enemy (with aim assist or auto-shoot on)"};
 cvar_t cl_touch_aim_range = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aim_range", "3000",
-	"Auto-shoot and aim helpers ignore enemies farther away than this many units"};
+	"Auto-shoot and aim helpers ignore enemies farther away than this many units; 0 = no limit (still only enemies in sight)"};
 cvar_t cl_touch_aim_debug = {CF_CLIENT, "cl_touch_aim_debug", "0",
 	"Print auto-shoot and aim-assist decisions to the console: target, weapon, fire mode and why, lead, switches, rockets (2 = also teammates under the crosshair)"};
 
@@ -123,8 +138,8 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 #define FRICTION_MAX   0.8f
 #define STRENGTH_MAX   1.0f
 #define MAXRATE_MAX    180.0f
-#define CONE_MAX       15.0f
-#define RADIUS_MAX     6.0f
+#define CONE_MAX       60.0f  // the whole view
+#define RADIUS_MAX     15.0f
 // Pull toward the target: the gap (degrees) closes at strength * SETTLE_GAIN
 // per second, 6/s at the default 0.6, so a 5 degree miss is mostly gone in a
 // fifth of a second; and strength * FOLLOW_SCALE of the target's own motion
@@ -177,14 +192,40 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 #define ROCKET_DEAD_RECKON 0.25f // no rocket seen this long after the press: assume it flies
 #define ROCKET_MAX_FLIGHT 4.0f
 #define ROCKET_RELEASE    0.06f
+#define ROCKET_REFIRE     1.1f  // g_balance_devastator_refire
+#define ROCKET_SPEED      1300.0f // g_balance_devastator_speed, and _speedaccel
+#define ROCKET_GUIDE_RATE 90.0f // g_balance_devastator_guiderate (deg/s)
+#define ROCKET_GUIDE_GOAL 512.0f // g_balance_devastator_guidegoal
+// path check (cl_touch_autoshoot_clear): simulated in steps of PLAN_DT for
+// at most PLAN_STEPS, redone every PLAN_EVERY seconds
+#define PLAN_DT           0.05f
+#define PLAN_STEPS        40
+#define PLAN_EVERY        0.1
+#define ROCKET_FLOOR_FINAL 400.0f // the floor beside a grounded target is aimed at only this close
+#define LAST_SEEN_EXTRAP  0.5f
+#define HEAD_WAIT         0.3f  // longest a head-aimed shot waits for the crosshair to reach the head  // a target out of sight is followed on its last velocity this long
+#define FREE_MAX          3     // own rockets flying straight (cl_touch_autoshoot_volley)
 #define PROJECTILE_ROCKET 2 // csqcprojectile_type of a Devastator rocket
 #define ROCKET_MODEL      "models/rocket.md3"
 
 #define ALTFIRE_READY     2 // TOUCH_ALTFIRE_READY (touch_altfire.h)
 
 // Devastator states.
-enum { RK_IDLE, RK_LAUNCH, RK_FLY, RK_DETONATE, RK_RELEASE };
-static const char *const rk_state_name[] = { "idle", "launch", "fly", "detonate", "release" };
+enum { RK_IDLE, RK_LAUNCH, RK_FLY, RK_DETONATE, RK_RELEASE, RK_VOLLEY };
+static const char *const rk_state_name[] = { "idle", "launch", "fly", "detonate", "release", "volley" };
+
+// an own rocket no longer guided (the next one took over): it flies straight
+typedef struct freerk_s
+{
+	int ent;
+	vec3_t org, vel;
+	double seen;
+	int target;
+	vec3_t tgt_org, tgt_vel; // the target as last seen
+	qbool good;      // its straight line hits the target, or the floor beside it
+	qbool certain;   // a direct hit within a moment
+	float t_hit;     // seconds until it gets there
+} freerk_t;
 
 static char vabuf[256];
 
@@ -245,6 +286,19 @@ static struct
 	float rk_closest;    // closest the rocket came to the target (debug)
 	vec3_t rk_org, rk_vel, rk_target_org, rk_target_vel;
 	int rk_before[16], rk_before_count;
+	float head_mult;     // headshot bonus of the fire in hand (cl_touch_autoshoot_head), 0 none
+	float head_spread;   // and its spread (radians)
+	double head_wait;    // since when a head-aimed shot waits for the crosshair
+	double rk_tseen;     // last time the target was in sight
+	int rk_lift_ent;     // launch path blocked: aim at this target's head until rk_lift_until
+	double rk_lift_until;
+	double rk_plan_next; // path check (cl_touch_autoshoot_clear)
+	qbool rk_way_on;     // steering via a waypoint around something in the way
+	vec3_t rk_way;
+	int rk_way_said;
+	double rk_fired;     // when the press that launched the guided rocket went out
+	freerk_t freerk[FREE_MAX];
+	int num_free;
 	// from the loaded CSQC
 	int teamplay_ofs, teamplay_type;
 	int projtype_ofs, projtype_type;
@@ -275,6 +329,12 @@ void TouchAim_Init(void)
 	Cvar_RegisterVariable(&cl_touch_autoshoot_group);
 	Cvar_RegisterVariable(&cl_touch_autoswitch_smart);
 	Cvar_RegisterVariable(&cl_touch_autoswitch_combo);
+	Cvar_RegisterVariable(&cl_touch_autoswitch_lastresort);
+	Cvar_RegisterVariable(&cl_touch_autoshoot_clear);
+	Cvar_RegisterVariable(&cl_touch_autoshoot_head);
+	Cvar_RegisterVariable(&cl_touch_autoshoot_head_rifle);
+	Cvar_RegisterVariable(&cl_touch_autoshoot_volley);
+	Cvar_RegisterVariable(&cl_touch_aimassist_hysteresis);
 	Cvar_RegisterVariable(&cl_touch_aimassist);
 	Cvar_RegisterVariable(&cl_touch_aimassist_friction);
 	Cvar_RegisterVariable(&cl_touch_aimassist_strength);
@@ -431,6 +491,8 @@ static void reset(void)
 	ta.fight_ent = 0;
 	ta.rk_state = RK_IDLE;
 	ta.rk_ent = 0;
+	ta.rk_way_on = false;
+	ta.num_free = 0;
 }
 
 static qbool is_spectator_slot(int n)
@@ -504,6 +566,43 @@ static qbool line_clear(const vec3_t from, const vec3_t to)
 	return !tr.startsolid && tr.fraction >= 0.999f;
 }
 
+// Whether a straight shot toward p gets there: a clear line, or for a splash
+// weapon one that ends close enough to p for the blast to reach it (a wall
+// beside the enemy is as good a place for a rocket to burst).
+static qbool shot_path_ok(const vec3_t eye, const vec3_t p, const touch_wep_fire_t *f)
+{
+	trace_t tr = CL_TraceLine(eye, p, MOVE_NOMONSTERS, NULL, SUPERCONTENTS_SOLID, 0, 0,
+		collision_extendmovelength.value, true, false, NULL, true, false);
+	if (!tr.startsolid && tr.fraction >= 0.999f)
+		return true;
+	return f && f->splash >= 60 && !tr.startsolid && VectorDistance(tr.endpos, p) < 0.8f * f->splash;
+}
+
+// A rocket launched toward p (cl_touch_autoshoot_clear): it leaves from the
+// eye with its own size (6 units across), so a ledge lip or a low wall the
+// eye just sees past can still stop it. Clear when the box trace reaches p,
+// or ends within reach of the blast there.
+static qbool launch_clear(const vec3_t eye, const vec3_t p, float splash)
+{
+	static const vec3_t mins = { -3, -3, -3 }, maxs = { 3, 3, 3 };
+	trace_t tr = CL_TraceBox(eye, mins, maxs, p, MOVE_NOMONSTERS, NULL, SUPERCONTENTS_SOLID, 0, 0, collision_extendmovelength.value, true, false, NULL, false);
+	if (tr.startsolid)
+		return line_clear(eye, p);
+	return tr.fraction >= 0.999f || VectorDistance(tr.endpos, p) < 0.6f * splash;
+}
+
+// The first stretch of a rocket's flight, before the server starts guiding
+// it (g_balance_devastator_guidedelay 0.2 s, some 220 units): straight along
+// the view as it is now, whatever the aim point.
+#define ROCKET_UNGUIDED 260.0f
+static qbool launch_clear_view(const vec3_t eye, float dist, float splash)
+{
+	vec3_t fwd, p;
+	AngleVectors(cl.viewangles, fwd, NULL, NULL);
+	VectorMA(eye, min(dist, ROCKET_UNGUIDED), fwd, p);
+	return launch_clear(eye, p, dist <= ROCKET_UNGUIDED ? splash : 0);
+}
+
 // Ray from o along unit d against an axis-aligned box: entry distance.
 static qbool ray_box(const vec3_t o, const vec3_t d, const vec3_t bmin, const vec3_t bmax, float *tnear)
 {
@@ -566,6 +665,8 @@ typedef struct aimtarget_s
 	float tof;          // flight time of the shot to the aim point
 	qbool has_lead;     // lead applied
 	qbool on_lead;      // the view ray goes through the led body
+	qbool lead_failed;  // a projectile in hand and no meeting point with this moving enemy
+	qbool head_aim;     // aimed at the head (a headshot bonus pays there)
 } aimtarget_t;
 
 static float signf(float v)
@@ -755,9 +856,14 @@ static qbool compute_lead(int n, const touch_wep_fire_t *fire, const vec3_t eye,
 	double now = host.realtime;
 	float gravity = cl.movevars_gravity, t_land = -1, k = 1;
 	vec3_t rel, aim, v;
-	qbool ok, feet = false;
+	qbool ok, feet = false, lifted;
 	VectorSubtract(center, eye, rel);
 	VectorCopy(vel, v);
+	// a rocket held because its launch path hit a lip: aim it at the head
+	// for a moment, the part of the body that clears the lip
+	lifted = guided && cl_touch_autoshoot_clear.integer && ta.rk_lift_ent == n && now < ta.rk_lift_until;
+	if (lifted)
+		rel[2] += center[2] - bmin[2] - 8;
 	// (a steered rocket is re-aimed in flight by its own straight-line intercept)
 	if (cl_touch_autoshoot_air.integer && t->airborne && t->t_land >= 0 && !guided)
 		t_land = t->t_land;
@@ -776,7 +882,7 @@ static qbool compute_lead(int n, const touch_wep_fire_t *fire, const vec3_t eye,
 		v[1] = d[1] * along + k * (vel[1] - d[1] * along);
 	}
 	// (only for a candidate near the crosshair: the floor point is traced)
-	if (cl_touch_autoshoot_feet.integer && candidate && t_land < 0 && fire->splash >= 100 && !t->airborne
+	if (cl_touch_autoshoot_feet.integer && candidate && t_land < 0 && fire->splash >= 100 && !t->airborne && !lifted
 		&& (fire->kind == TW_KIND_PROJ || fire->kind == TW_KIND_BALLISTIC) && bmin[2] < eye[2] - 16)
 	{
 		// the floor under the feet, a little on the shooter's side
@@ -799,7 +905,7 @@ static qbool compute_lead(int n, const touch_wep_fire_t *fire, const vec3_t eye,
 		if (fire->kind == TW_KIND_PROJ)
 		{
 			VectorAdd(eye, aim, fpw);
-			if (!line_clear(eye, fpw))
+			if (!line_clear(eye, fpw) || (guided && cl_touch_autoshoot_clear.integer && !launch_clear(eye, fpw, fire->splash)))
 			{
 				VectorSubtract(center, eye, rel);
 				ok = TouchWep_AimPointAir(fire, rel, v, latency, gravity, t_land, aim, tof);
@@ -841,8 +947,9 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep
 {
 	prvm_prog_t *prog = CLVM_prog;
 	int team_game = teamplay_mode();
-	float range = max(64.0f, cl_touch_aim_range.value);
-	float best_on = 1e9f;
+	float range = cl_touch_aim_range.value <= 0 ? 1e9f : max(64.0f, cl_touch_aim_range.value); // 0: no limit
+	float best_on = 1e9f, best_eff = 1e9f;
+	float hyst = bound(0.0f, cl_touch_aimassist_hysteresis.value, 15.0f); // degrees the current target is preferred by
 	double now = host.realtime;
 	int i;
 	*on_target = 0;
@@ -951,12 +1058,17 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep
 		// only once its centre is inside the cone. The aim point is the chest,
 		// or the head if the chest is hidden behind cover; led when it flies.
 		{
-			float yaw, pitch, rh, rv, ey, ep;
-			qbool on = n == *on_target;
+			float yaw, pitch, rh, rv, ey, ep, eff;
+			qbool on = n == *on_target, head_aim;
 			vec3_t aimp;
 			rh = atan(hw / dist) * (180.0f / M_PI);
 			rv = atan(0.5f * (maxs[2] - mins[2]) / dist) * (180.0f / M_PI);
 			VectorAdd(center, lead, aimp);
+			// a weapon with a headshot bonus: the head, where it pays more
+			head_aim = ta.head_mult > 1 && TouchWep_HeadBetter(ta.head_mult, hw, bmin[2], bmax[2],
+				TouchWep_AimSigma(dist, ta.tracks[n & (TRACK_MAX - 1)].cls, ta.head_spread));
+			if (head_aim)
+				aimp[2] += bmax[2] - 0.5f * TW_HEAD_ZONE_H - center[2];
 			angles_to(eye, aimp, &yaw, &pitch);
 			ey = wrap180(yaw - cl.viewangles[YAW]);
 			ep = pitch - cl.viewangles[PITCH];
@@ -972,7 +1084,10 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep
 				on_lead = on;
 				err = on ? 0 : edge_err(ey, ep, rh, rv);
 			}
-			if (err > cone || err > near_out->err)
+			// the target of last frame keeps its place unless another is
+			// clearly nearer the crosshair (a wide cone must not flip)
+			eff = err - (n == ta.track_ent ? hyst : 0);
+			if (err > cone || eff > best_eff)
 				continue;
 			if (!on && !line_clear(eye, center))
 			{
@@ -985,11 +1100,13 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep
 				angles_to(eye, aimp, &yaw, &pitch);
 				rv = atan(6.0f / dist) * (180.0f / M_PI);
 				err = on_lead ? 0 : edge_err(wrap180(yaw - cl.viewangles[YAW]), pitch - cl.viewangles[PITCH], rh, rv);
-				if (err > cone || err > near_out->err)
+				eff = err - (n == ta.track_ent ? hyst : 0);
+				if (err > cone || eff > best_eff)
 					continue;
 			}
-			if (err == near_out->err && near_out->entnum && n != *on_target)
+			if (eff == best_eff && near_out->entnum && n != *on_target)
 				continue;
+			best_eff = eff;
 			near_out->entnum = n;
 			near_out->err = err;
 			near_out->rh = rh;
@@ -1002,6 +1119,8 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep
 			VectorCopy(lead, near_out->lead);
 			near_out->tof = tof;
 			near_out->has_lead = has_lead;
+			near_out->lead_failed = fire && !has_lead && VectorLength(vel) > STAND_SPEED;
+			near_out->head_aim = head_aim;
 			near_out->on_lead = on_lead;
 		}
 	}
@@ -1099,15 +1218,19 @@ static int group_near(const aimtarget_t *near)
 }
 
 // Switch to the best owned weapon for the fight, under the guards.
+static qbool free_all_certain(void);
 static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *wep, double now)
 {
 	const char *names[72];
 	qbool ready[72];
 	int index[72], n = 0, i, best = -1, rank = 0, cur_rank = 0, heldpos = -1, mclass = TW_CLASS_STEADY, group = 0;
-	qbool cur_ok, smart = cl_touch_autoswitch_smart.integer != 0, combo = false;
+	qbool cur_ok, smart = cl_touch_autoswitch_smart.integer != 0, combo = false, escape;
 	float bu = 0, hu = 0;
 	const track_t *t;
 	if (!cl_touch_autoswitch.integer || held < 0 || !wep || TouchHook_InUse() || TouchHook_Rescuing())
+		return;
+	// a switch ends steering and remote detonation of every rocket out
+	if (ta.num_free && !free_all_certain())
 		return;
 	if (near->entnum != ta.fight_ent)
 	{
@@ -1121,9 +1244,12 @@ static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *we
 	// combo: our blast has just thrown the target into the air: finish it
 	// with an instant-hit weapon now, not after the usual pause
 	combo = cl_touch_autoswitch_combo.integer && mclass == TW_CLASS_AIR && wep->pri.splash >= 100 && now - ta.launcher_fired < 2.0;
+	// in hand: the Blaster or another last resort, most likely because the
+	// server switched to it when the real weapon ran dry: leave it at once
+	escape = cl_touch_autoswitch_lastresort.integer && TouchWep_IsFallback(wep->netname);
 	if (now - ta.manual_switch < MANUAL_GUARD)
 		return;
-	if (now - ta.own_switch < (combo ? 0.3f : smart ? OWN_GUARD_SMART : OWN_GUARD))
+	if (now - ta.own_switch < (combo || escape ? 0.3f : smart ? OWN_GUARD_SMART : OWN_GUARD))
 		return;
 	if (ta.switch_to >= 0)
 	{
@@ -1168,26 +1294,33 @@ static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *we
 	}
 	if (!combo && smart)
 	{
-		if (now - t->cls_since < CLASS_SETTLE)
+		if (!escape && now - t->cls_since < CLASS_SETTLE)
 			return; // how the target moves is not settled yet
 		group = group_near(near);
-		best = TouchWep_ChooseSmart(names, ready, n, heldpos, near->dist, mclass, group, &bu, &hu);
-		if (best < 0 || best == heldpos || !TouchWep_ShouldSwitchSmart(hu, cur_ok, bu))
+		best = TouchWep_ChooseSmart(names, ready, n, heldpos, near->dist, mclass, group, cl_touch_autoswitch_lastresort.integer != 0, &bu, &hu);
+		if (best < 0 || best == heldpos)
+			return;
+		if (!(escape && !TouchWep_IsFallback(names[best])) && !TouchWep_ShouldSwitchSmart(hu, cur_ok, bu))
 			return;
 	}
 	else if (!combo)
 	{
-		best = TouchWep_Choose(names, ready, n, near->dist, &rank);
+		best = TouchWep_Choose(names, ready, n, near->dist, cl_touch_autoswitch_lastresort.integer != 0, &rank);
 		if (best < 0 || index[best] == held)
 			return;
 		cur_rank = TouchWep_Rank(wep->netname, near->dist);
-		if (!TouchWep_ShouldSwitch(cur_rank, cur_ok, rank))
+		if (!(escape && !TouchWep_IsFallback(names[best])) && !TouchWep_ShouldSwitch(cur_rank, cur_ok, rank))
 			return;
 	}
+	// never trade a weapon that can still fire for a last resort
+	if (cl_touch_autoswitch_lastresort.integer && TouchWep_IsFallback(names[best]) && cur_ok)
+		return;
 	Cbuf_AddText(cmd_local, va(vabuf, sizeof(vabuf), "weapon_%s\n", names[best]));
 	if (cl_touch_aim_debug.integer)
 	{
-		if (combo)
+		if (escape && !TouchWep_IsFallback(names[best]))
+			Con_Printf("touch aim: switch %s -> %s at %.0f units (leaving a last-resort weapon)\n", wep->netname, names[best], near->dist);
+		else if (combo)
 			Con_Printf("touch aim: combo: player %d in the air after our blast: %s -> %s at %.0f units\n", near->entnum, wep->netname, names[best], near->dist);
 		else if (smart)
 			Con_Printf("touch aim: switch %s -> %s at %.0f units (target %s, %d more in reach of a blast; expected damage %.0f vs %.0f%s; %.1f s after the player's last pick)\n",
@@ -1425,18 +1558,281 @@ static qbool detonate_group(float radius, const vec3_t eye, float dt)
 	return TouchWep_DetonateGroup(ta.rk_org, ta.rk_vel, bodies, (const float (*)[3])vels, nb, smin, smax, radius, shot_latency(), dt);
 }
 
+// Path check (cl_touch_autoshoot_clear): fly the rocket ahead the way the
+// server steers it -- toward the view ray from eye through way (until it is
+// passed) and then aim, turning at most ROCKET_GUIDE_RATE -- against the
+// world only. ok: it gets to the blast point aim (passes within a quarter of
+// the splash radius, or bursts on something within 0.6 of it).
+typedef struct rkpath_s { qbool ok, hit_world; float miss, t; vec3_t end; } rkpath_t;
+static void rk_simulate(const vec3_t org0, const vec3_t vel0, const vec3_t eye, const float *way, const vec3_t aim, float splash, rkpath_t *r)
+{
+	static const vec3_t mins = { -2, -2, -2 }, maxs = { 2, 2, 2 };
+	vec3_t p, np, dir, view, seg, toaim, c;
+	float sp = VectorLength(vel0), best;
+	qbool via = way != NULL;
+	int i;
+	memset(r, 0, sizeof(*r));
+	r->miss = 1e9f;
+	if (sp < 1)
+		return;
+	VectorCopy(org0, p);
+	VectorScale(vel0, 1.0f / sp, dir);
+	best = VectorDistance(p, aim);
+	for (i = 0; i < PLAN_STEPS; i++)
+	{
+		trace_t tr;
+		float d, u, l2;
+		if (via)
+		{
+			vec3_t a, b;
+			VectorSubtract(p, way, a);
+			VectorSubtract(aim, way, b);
+			if (DotProduct(a, b) > 0 || VectorLength(a) < 96)
+				via = false;
+		}
+		VectorSubtract(via ? way : aim, eye, view);
+		VectorNormalize(view);
+		VectorCopy(p, np);
+		TouchWep_GuideStep(np, dir, &sp, eye, view, ROCKET_GUIDE_GOAL, ROCKET_GUIDE_RATE, ROCKET_SPEED, ROCKET_SPEED, PLAN_DT);
+		tr = CL_TraceBox(p, mins, maxs, np, MOVE_NOMONSTERS, NULL, SUPERCONTENTS_SOLID, 0, 0, collision_extendmovelength.value, true, false, NULL, false);
+		if (tr.startsolid) // grazing something already: judge by the centre line
+			tr = CL_TraceLine(p, np, MOVE_NOMONSTERS, NULL, SUPERCONTENTS_SOLID, 0, 0, collision_extendmovelength.value, true, false, NULL, false, false);
+		VectorSubtract(tr.endpos, p, seg);
+		VectorSubtract(aim, p, toaim);
+		l2 = DotProduct(seg, seg);
+		u = l2 > 1e-6f ? bound(0.0f, DotProduct(toaim, seg) / l2, 1.0f) : 0;
+		VectorMA(p, u, seg, c);
+		d = VectorDistance(c, aim);
+		best = min(best, d);
+		r->t += PLAN_DT * tr.fraction;
+		VectorCopy(tr.endpos, r->end);
+		if (d < 0.25f * splash)
+		{
+			r->ok = true;
+			break;
+		}
+		if (tr.fraction < 1 || tr.startsolid)
+		{
+			r->hit_world = true;
+			r->ok = VectorDistance(tr.endpos, aim) < 0.6f * splash;
+			break;
+		}
+		if (!via && i > 0 && VectorDistance(np, aim) > best + 1)
+		{
+			r->ok = best < 0.5f * splash; // passing by
+			break;
+		}
+		VectorCopy(np, p);
+	}
+	r->miss = best;
+}
+
+// Where to steer the rocket so it gets to aim: aim itself while the path
+// there is clear, else a waypoint over, beside or above what it would hit
+// (the first of a few that the simulated flight clears), then back onto aim.
+static void rk_steer_point(const vec3_t eye, const vec3_t aim, float splash, vec3_t out)
+{
+	static const float offs[][2] = { { 48, 0 }, { 96, 0 }, { 0, 64 }, { 0, -64 }, { 160, 0 }, { 0, 128 }, { 0, -128 }, { 96, 96 }, { 96, -96 }, { 240, 0 } }; // up, side
+	double now = host.realtime;
+	VectorCopy(aim, out);
+	if (!cl_touch_autoshoot_clear.integer || VectorLength(ta.rk_vel) < 100)
+	{
+		ta.rk_way_on = false;
+		return;
+	}
+	if (ta.rk_way_on)
+	{
+		vec3_t a, b;
+		VectorSubtract(ta.rk_org, ta.rk_way, a);
+		VectorSubtract(aim, ta.rk_way, b);
+		if (DotProduct(a, b) > 0 || VectorLength(a) < 96)
+		{
+			ta.rk_way_on = false;
+			ta.rk_plan_next = 0;
+			if (cl_touch_aim_debug.integer)
+				Con_Printf("touch aim: rocket path: waypoint passed, on to the target\n");
+		}
+	}
+	if (now >= ta.rk_plan_next)
+	{
+		rkpath_t direct, c;
+		ta.rk_plan_next = now + PLAN_EVERY;
+		rk_simulate(ta.rk_org, ta.rk_vel, eye, NULL, aim, splash, &direct);
+		if (direct.ok || !direct.hit_world)
+		{
+			if (ta.rk_way_on && cl_touch_aim_debug.integer)
+				Con_Printf("touch aim: rocket path: clear to the target again\n");
+			ta.rk_way_on = false;
+		}
+		else if (!ta.rk_way_on || (rk_simulate(ta.rk_org, ta.rk_vel, eye, ta.rk_way, aim, splash, &c), !c.ok))
+		{
+			vec3_t fwd, side, base, cand, best_way = { 0, 0, 0 }, up = { 0, 0, 1 };
+			float best_miss = direct.miss - 32;
+			int i, best = -1;
+			VectorSubtract(aim, ta.rk_org, fwd);
+			fwd[2] = 0;
+			VectorNormalize(fwd);
+			VectorSet(side, -fwd[1], fwd[0], 0);
+			VectorMA(direct.end, -48, fwd, base); // a step back from where it would hit
+			for (i = 0; i < (int)(sizeof(offs) / sizeof(offs[0])); i++)
+			{
+				VectorMA(base, offs[i][0], up, cand);
+				VectorMA(cand, offs[i][1], side, cand);
+				if (!line_clear(ta.rk_org, cand))
+					continue;
+				rk_simulate(ta.rk_org, ta.rk_vel, eye, cand, aim, splash, &c);
+				if (c.ok || c.miss < best_miss)
+				{
+					best = i;
+					best_miss = c.miss;
+					VectorCopy(cand, best_way);
+					if (c.ok)
+						break;
+				}
+			}
+			if (best >= 0)
+			{
+				if (cl_touch_aim_debug.integer && (!ta.rk_way_on || ta.rk_way_said != best))
+					Con_Printf("touch aim: rocket path: would hit something %.0f units from the target in %.2f s; steering via a point %.0f up, %.0f to the side%s\n",
+						VectorDistance(direct.end, aim), direct.t, offs[best][0], offs[best][1], best_miss < 0.5f * splash ? "" : " (best found, not clear)");
+				ta.rk_way_said = best;
+				ta.rk_way_on = true;
+				VectorCopy(best_way, ta.rk_way);
+			}
+			else
+				ta.rk_way_on = false;
+		}
+	}
+	if (ta.rk_way_on)
+		VectorCopy(ta.rk_way, out);
+}
+
+// Judge an own rocket that flies straight (cl_touch_autoshoot_volley):
+// where it meets the target (as last seen) or the world first.
+static void rk_judge_straight(const vec3_t org, const vec3_t vel, const vec3_t tgt, const vec3_t tvel, float splash, qbool *good, qbool *certain, float *t_hit)
+{
+	vec3_t rel, relv, end, at;
+	float t, d;
+	trace_t tr;
+	VectorSubtract(tgt, org, rel);
+	VectorSubtract(tvel, vel, relv);
+	d = TouchWep_PassDistance(rel, relv, 3.0f, &t);
+	VectorMA(org, t + 0.1f, vel, end);
+	tr = CL_TraceLine(org, end, MOVE_NOMONSTERS, NULL, SUPERCONTENTS_SOLID, 0, 0, collision_extendmovelength.value, true, false, NULL, false, false);
+	if (tr.fraction < 1 && tr.fraction * (t + 0.1f) < t)
+	{
+		// the world first: a burst on the floor or a wall beside the target still counts
+		*t_hit = tr.fraction * (t + 0.1f);
+		VectorMA(tgt, *t_hit, tvel, at);
+		*good = VectorDistance(tr.endpos, at) < 0.6f * splash;
+		*certain = false;
+		return;
+	}
+	*t_hit = t;
+	*good = d < 0.4f * splash;
+	*certain = d < 24; // through the body
+}
+
+// The own rockets flying straight: follow them, drop those gone.
+static void free_update(void)
+{
+	prvm_prog_t *prog = CLVM_prog;
+	double now = host.realtime;
+	const touch_wep_t *dev = TouchWep_Find("devastator");
+	float splash = dev ? dev->pri.splash : 110;
+	int i, k = 0;
+	for (i = 0; i < ta.num_free; i++)
+	{
+		freerk_t *f = &ta.freerk[i];
+		prvm_edict_t *ed = f->ent > 0 && f->ent < prog->num_edicts ? PRVM_EDICT_NUM(f->ent) : NULL;
+		vec3_t org, d;
+		if (!ed || ed->free || projectile_type(ed) != PROJECTILE_ROCKET)
+		{
+			if (cl_touch_aim_debug.integer)
+				Con_Printf("touch aim: earlier rocket (edict %d) gone\n", f->ent);
+			continue;
+		}
+		VectorCopy(PRVM_clientedictvector(ed, origin), org);
+		VectorSubtract(org, f->org, d);
+		if (VectorLength2(d) > 0.01f && now > f->seen)
+		{
+			VectorScale(d, 1.0f / (float)(now - f->seen), f->vel);
+			VectorCopy(org, f->org);
+			f->seen = now;
+		}
+		if (f->target == ta.rk_target && ta.rk_state == RK_FLY)
+		{
+			VectorCopy(ta.rk_target_org, f->tgt_org);
+			VectorCopy(ta.rk_target_vel, f->tgt_vel);
+		}
+		rk_judge_straight(f->org, f->vel, f->tgt_org, f->tgt_vel, splash, &f->good, &f->certain, &f->t_hit);
+		ta.freerk[k++] = *f;
+	}
+	ta.num_free = k;
+}
+
+// Every own rocket out is either gone or certain to hit by itself (a weapon
+// switch ends steering and remote detonation of them all).
+static qbool free_all_certain(void)
+{
+	int i;
+	for (i = 0; i < ta.num_free; i++)
+		if (!ta.freerk[i].certain)
+			return false;
+	return true;
+}
+
+// Hold the guided rocket's blast while an earlier one is still on its way
+// to a hit of its own (remote detonation sets off every rocket).
+static qbool free_hold(int target)
+{
+	int i;
+	for (i = 0; i < ta.num_free; i++)
+		if (ta.freerk[i].good && ta.freerk[i].t_hit > shot_latency())
+		{
+			if (cl_touch_aim_debug.integer >= 2)
+				Con_Printf("touch aim: holding the blast: an earlier rocket hits by itself in %.2f s\n", ta.freerk[i].t_hit);
+			return true;
+		}
+	return false;
+}
+
+// An earlier rocket that flies past its target (no hit of its own) at its
+// closest now: set them all off (the guided one with it).
+static qbool free_detonate(const vec3_t me, float splash)
+{
+	int i;
+	for (i = 0; i < ta.num_free; i++)
+	{
+		const freerk_t *f = &ta.freerk[i];
+		vec3_t late, rel_v;
+		if (f->good)
+			continue;
+		VectorSubtract(f->vel, f->tgt_vel, rel_v);
+		VectorMA(f->org, shot_latency(), rel_v, late);
+		if (TouchWep_Detonate(late, rel_v, f->tgt_org, me, splash))
+		{
+			rk_set(RK_DETONATE, va(vabuf, sizeof(vabuf), "earlier rocket %.0f units from player %d, flying past", VectorDistance(f->org, f->tgt_org), f->target));
+			return true;
+		}
+	}
+	return false;
+}
+
 // Devastator with steering: press fire once lined up, keep it held while the
 // rocket flies (the server guides it toward the view ray), detonate it next
 // to the enemy with a one-frame attack2, then release fire long enough for
 // the next press to launch again. Sets the fire bits and, while a rocket
 // flies, where the view should be pulled.
-static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool want_fire, qbool manual, float *pull_yaw, float *pull_pitch, qbool *pull)
+static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool want_fire, qbool manual, qbool ammo_more, float *pull_yaw, float *pull_pitch, qbool *pull)
 {
 	prvm_prog_t *prog = CLVM_prog;
 	double now = host.realtime;
 	float dt = bound(0.001f, (float)cl.realframetime, 0.1f);
 	const touch_wep_t *dev = TouchWep_Find("devastator");
 	*pull = false;
+	if (ta.num_free)
+		free_update();
 	switch (ta.rk_state)
 	{
 	case RK_IDLE:
@@ -1445,6 +1841,9 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 			rockets_before();
 			ta.rk_ent = 0;
 			ta.rk_target = near->entnum;
+			ta.rk_tseen = ta.rk_fired = now;
+			ta.rk_way_on = false;
+			ta.rk_plan_next = 0;
 			VectorCopy(near->center, ta.rk_target_org);
 			VectorCopy(near->vel, ta.rk_target_vel);
 			rk_set(RK_LAUNCH, va(vabuf, sizeof(vabuf), "lined up on player %d at %.0f units", near->entnum, near->dist));
@@ -1474,7 +1873,7 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 	case RK_FLY:
 	{
 		prvm_edict_t *ed = ta.rk_ent > 0 && ta.rk_ent < prog->num_edicts ? PRVM_EDICT_NUM(ta.rk_ent) : NULL;
-		vec3_t org, d, rel_v, me;
+		vec3_t org, d, rel_v, me, rk_late;
 		float sp;
 		if (!ta.rk_ent && now - ta.rk_launch < ROCKET_FIND_TIME)
 		{
@@ -1533,20 +1932,29 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 			set_firing(false, false, 0);
 			return;
 		}
-		// follow the target while it is still the one in view
+		// follow the target while it is still the one in view; out of sight,
+		// where it was last seen (on its last velocity for a moment: what
+		// the player knew), never where only the network says it is
 		if (near->entnum == ta.rk_target)
 		{
 			VectorCopy(near->center, ta.rk_target_org);
 			VectorCopy(near->vel, ta.rk_target_vel);
+			ta.rk_tseen = now;
 		}
-		else
+		else if (!cl_touch_autoshoot_clear.integer || now - ta.rk_tseen < LAST_SEEN_EXTRAP)
 			VectorMA(ta.rk_target_org, dt, ta.rk_target_vel, ta.rk_target_org);
+		else
+			VectorClear(ta.rk_target_vel);
 		VectorSubtract(ta.rk_vel, ta.rk_target_vel, rel_v);
 		ta.rk_closest = min(ta.rk_closest, VectorDistance(ta.rk_org, ta.rk_target_org));
 		Matrix4x4_OriginFromMatrix(&r_refdef.view.matrix, me);
+		// judged where the server will have rocket and target when the press
+		// arrives: the screen shows both that much late
+		VectorMA(ta.rk_org, cl_touch_autoshoot_predict.integer ? shot_latency() : 0, rel_v, rk_late);
 		if (dev && (cl_touch_autoshoot_group.integer && group_enemies() >= 2
 			? detonate_group(dev->pri.splash, me, dt)
-			: TouchWep_Detonate(ta.rk_org, rel_v, ta.rk_target_org, me, dev->pri.splash)))
+			: TouchWep_Detonate(rk_late, rel_v, ta.rk_target_org, me, dev->pri.splash))
+			&& !free_hold(ta.rk_target))
 		{
 			rk_set(RK_DETONATE, va(vabuf, sizeof(vabuf), "rocket %.0f units from player %d", VectorDistance(ta.rk_org, ta.rk_target_org), ta.rk_target));
 			// attack stays held this frame: with the rocket already out it
@@ -1554,20 +1962,82 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 			set_firing(true, true, ta.rk_target);
 			return;
 		}
+		// an earlier rocket flying past (not on a hitting line) is set off at
+		// its closest: the blast takes this one with it
+		if (dev && ta.num_free && free_detonate(me, dev->pri.splash))
+		{
+			set_firing(true, true, ta.rk_target);
+			return;
+		}
+		// the next rocket while this one flies, once this one hits by itself
+		if (cl_touch_autoshoot_volley.integer && ta.rk_ent && ammo_more && ta.num_free < FREE_MAX
+			&& now - ta.rk_fired >= ROCKET_REFIRE - ROCKET_RELEASE && dev)
+		{
+			qbool good, certain;
+			float t_hit;
+			rk_judge_straight(ta.rk_org, ta.rk_vel, ta.rk_target_org, ta.rk_target_vel, dev->pri.splash, &good, &certain, &t_hit);
+			if (good && t_hit > 0.2f)
+			{
+				freerk_t *f = &ta.freerk[ta.num_free++];
+				f->ent = ta.rk_ent;
+				VectorCopy(ta.rk_org, f->org);
+				VectorCopy(ta.rk_vel, f->vel);
+				f->seen = ta.rk_seen;
+				f->target = ta.rk_target;
+				VectorCopy(ta.rk_target_org, f->tgt_org);
+				VectorCopy(ta.rk_target_vel, f->tgt_vel);
+				f->good = good;
+				f->certain = certain;
+				f->t_hit = t_hit;
+				rockets_before();
+				ta.rk_ent = 0;
+				rk_set(RK_VOLLEY, va(vabuf, sizeof(vabuf), "rocket on a line that %s in %.2f s by itself: the next one", certain ? "hits the body" : "bursts beside the target", t_hit));
+				set_firing(false, false, 0);
+				return;
+			}
+		}
 		set_firing(true, false, ta.rk_target);
 		// keep the view on where the rocket will meet the target: the server
 		// steers it toward a point on the view ray ahead of it
 		sp = VectorLength(ta.rk_vel);
 		if (sp > 100)
 		{
-			vec3_t rel, aim;
-			float t = 0;
-			VectorSubtract(ta.rk_target_org, ta.rk_org, rel);
-			if (!TouchWep_InterceptTime(rel, ta.rk_target_vel, max(sp, dev ? dev->pri.speed : 1000), TW_LEAD_MAX_TIME, &t))
-				t = 0;
-			VectorMA(ta.rk_target_org, t, ta.rk_target_vel, aim);
+			// re-solved every frame from the rocket's own position and speed:
+			// a grounded target's floor point (a rocket that is not set off
+			// then bursts on the ground beside it), an airborne one's body on
+			// its fall (an airburst, set off by the detonation rule)
+			const track_t *tt = &ta.tracks[ta.rk_target & (TRACK_MAX - 1)];
+			touch_wep_fire_t rf;
+			vec3_t rel, aim, at;
+			float t = 0, t_land = -1;
+			memset(&rf, 0, sizeof(rf));
+			rf.kind = TW_KIND_PROJ;
+			rf.speed = max(sp, dev ? dev->pri.speed : 1000);
+			VectorCopy(ta.rk_target_org, at);
+			if (tt->airborne && tt->t_land >= 0)
+			{
+				if (cl_touch_autoshoot_air.integer)
+					t_land = tt->t_land;
+			}
+			else if (cl_touch_autoshoot_feet.integer && tt->bmin[2] < tt->bmax[2]
+				&& (!cl_touch_autoshoot_clear.integer || VectorDistance(ta.rk_org, ta.rk_target_org) < ROCKET_FLOOR_FINAL))
+				at[2] = tt->bmin[2] + 4 + (ta.rk_target_org[2] - 0.5f * (tt->bmin[2] + tt->bmax[2])); // its floor, followed with the body
+			VectorSubtract(at, ta.rk_org, rel);
+			if (!cl_touch_autoshoot_air.integer && !cl_touch_autoshoot_feet.integer)
+			{
+				// the body's straight-line meeting point
+				if (!TouchWep_InterceptTime(rel, ta.rk_target_vel, rf.speed, TW_LEAD_MAX_TIME, &t))
+					t = 0;
+				VectorMA(ta.rk_target_org, t, ta.rk_target_vel, aim);
+			}
+			else if (TouchWep_AimPointAir(&rf, rel, ta.rk_target_vel, 0, cl.movevars_gravity, t_land, aim, &t))
+				VectorAdd(ta.rk_org, aim, aim);
+			else
+				VectorCopy(at, aim);
 			if (cl_touch_autoshoot_group.integer && ta.group_valid)
 				VectorCopy(ta.group_point, aim); // the blast point for the whole group
+			if (dev)
+				rk_steer_point(eye, aim, dev->pri.splash, aim);
 			angles_to(eye, aim, pull_yaw, pull_pitch);
 			*pull = true;
 		}
@@ -1576,6 +2046,19 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 	case RK_DETONATE:
 		set_firing(false, false, 0);
 		rk_set(RK_RELEASE, "attack2 sent");
+		return;
+	case RK_VOLLEY:
+		// fire released for a moment (ending this rocket's guidance), then
+		// pressed again: the server launches the next one once its refire is up
+		set_firing(false, false, 0);
+		if (now - ta.rk_time >= ROCKET_RELEASE)
+		{
+			ta.rk_fired = now;
+			ta.rk_way_on = false;
+			ta.rk_plan_next = 0;
+			rk_set(RK_LAUNCH, "next rocket");
+			set_firing(true, false, ta.rk_target);
+		}
 		return;
 	case RK_RELEASE:
 	default:
@@ -1737,6 +2220,14 @@ static void aim_frame(void)
 			fire = NULL;
 	}
 
+	ta.head_mult = 0;
+	if (wep && cl_touch_autoshoot_head.integer)
+	{
+		const touch_wep_fire_t *hf = ta.last_mode == TW_MODE_SECONDARY && wep->sec.kind != TW_KIND_NONE ? &wep->sec : &wep->pri;
+		ta.head_mult = TouchWep_HeadMultiplier(wep->netname, ta.last_mode == TW_MODE_SECONDARY ? TW_MODE_SECONDARY : TW_MODE_PRIMARY, cl_touch_autoshoot_head_rifle.value);
+		ta.head_spread = hf->spread;
+	}
+
 	Matrix4x4_OriginFromMatrix(&r_refdef.view.matrix, eye);
 	AngleVectors(cl.viewangles, fwd, NULL, NULL);
 	// combat lock: the target auto-shoot fired at may be followed a little
@@ -1792,11 +2283,44 @@ static void aim_frame(void)
 			{
 				vec3_t lp;
 				VectorAdd(near.center, near.lead, lp);
-				if (!near.has_lead || (f && f->kind == TW_KIND_BALLISTIC) || line_clear(eye, lp))
+				if (!near.has_lead || (f && f->kind == TW_KIND_BALLISTIC) || (cl_touch_autoshoot_feet.integer ? guided || shot_path_ok(eye, lp, f) : line_clear(eye, lp)))
 					on_shoot = near.entnum;
+				// a rocket that would hit the lip in front of the muzzle
+				// (and likely its shooter) is held
+				if (on_shoot && guided && f && cl_touch_autoshoot_clear.integer && ta.rk_state == RK_IDLE && !launch_clear_view(eye, near.dist, f->splash))
+				{
+					static double said;
+					ta.rk_lift_ent = near.entnum;
+					ta.rk_lift_until = now + 3.0;
+					if (cl_touch_aim_debug.integer && now - said > 1)
+					{
+						Con_Printf("touch aim: rocket held: its launch path hits something in front of the muzzle\n");
+						said = now;
+					}
+					on_shoot = 0;
+				}
 			}
 		}
 	}
+
+	// a projectile that cannot meet a moving enemy (too far, or it outruns
+	// the shot) would only land where the enemy was: hold it. A steered
+	// rocket is re-aimed in flight and may still go.
+	if (on_shoot && near.entnum == on_shoot && near.lead_failed && !guided && cl_touch_autoshoot_predict.integer)
+		on_shoot = 0;
+
+	// aimed at the head: wait (up to HEAD_WAIT) until the pull has the
+	// crosshair at head height, not the first moment it touches the body
+	if (on_shoot && near.entnum == on_shoot && near.head_aim)
+	{
+		float zone = atan(0.5f * TW_HEAD_ZONE_H / max(near.dist, 1.0f)) * (180.0f / M_PI);
+		if (!ta.head_wait)
+			ta.head_wait = now;
+		if (fabs(near.pitch - cl.viewangles[PITCH]) > zone && now - ta.head_wait < HEAD_WAIT)
+			on_shoot = 0;
+	}
+	else
+		ta.head_wait = 0;
 
 	// primary or secondary for this weapon, distance and ammo
 	if (on_shoot && wep)
@@ -1878,7 +2402,7 @@ static void aim_frame(void)
 		}
 		else
 			ta.on_since = 0;
-		steer_devastator(eye, &near, want, manual, &pull_yaw, &pull_pitch, &pull_target_set);
+		steer_devastator(eye, &near, want, manual, weapon_ready(held, wep, held), &pull_yaw, &pull_pitch, &pull_target_set);
 		ta.fire_target = ta.rk_state != RK_IDLE ? ta.rk_target : 0;
 	}
 	else
@@ -1889,6 +2413,7 @@ static void aim_frame(void)
 		// attack would, for one, detonate a rocket at the muzzle).
 		qbool on = ta.firing, on2 = ta.firing2;
 		int target = ta.fire_target;
+		ta.num_free = 0; // no longer the Devastator: rockets out fly on unsteered
 		if (ta.rk_state != RK_IDLE)
 			rk_set(RK_IDLE, "not steering");
 		if (autoshoot && on_shoot)

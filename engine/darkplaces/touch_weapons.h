@@ -34,6 +34,9 @@ without the rest of the engine.
 
 #include <math.h>
 #include <string.h>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 // What a fire mode does.
 #define TW_KIND_NONE      0
@@ -59,6 +62,7 @@ without the rest of the engine.
 #define TW_NO_SWITCH_TO  8  // never auto-switched to
 #define TW_WEAK_SPLASH   16 // own splash is harmless enough to fire point-blank (Blaster)
 #define TW_MINES         32 // primary places mines that the secondary detonates
+#define TW_FALLBACK      64 // a last resort: auto-switch picks it only when nothing else owned can shoot
 
 typedef struct touch_wep_fire_s
 {
@@ -89,7 +93,7 @@ typedef struct touch_wep_s
 static const touch_wep_t touch_weapons[] =
 {
 	// netname        flags                              primary: kind              speed  up    accel max   splash spread range   damage   secondary                                   cost
-	{ "blaster",      TW_WEAK_SPLASH,                    { TW_KIND_PROJ,      6000,    0,    0,    0,   60,  0,     TW_FAR,  20 }, TW_SEC_SWITCH,   { 0 }, 0 },
+	{ "blaster",      TW_WEAK_SPLASH | TW_FALLBACK,      { TW_KIND_PROJ,      6000,    0,    0,    0,   60,  0,     TW_FAR,  20 }, TW_SEC_SWITCH,   { 0 }, 0 },
 	{ "shotgun",      0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0.12f, 1200,    48 }, TW_SEC_MELEE,    { TW_KIND_MELEE, 0, 0, 0, 0, 0, 0, 120, 70 }, 1 },
 	{ "machinegun",   0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0.03f, TW_FAR,   6 }, TW_SEC_SHOT,     { TW_KIND_HITSCAN, 0, 0, 0, 0, 0, 0, TW_FAR, 30 }, 1 },
 	{ "arc",          0,                                 { TW_KIND_BEAM,         0,    0,    0,    0,    0,  0,     1500,    25 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 2300, 0, 0, 0, 65, 0, TW_FAR, 25 }, 1 },
@@ -717,23 +721,35 @@ static qbool TouchWep_Usable(const touch_wep_t *w, float dist)
 
 // Best owned weapon for the distance among names[0..n-1], each with
 // ready[i] (has ammo for a shot): its index, or -1. *rank_out gets its rank.
-static int TouchWep_Choose(const char *const *names, const qbool *ready, int n, float dist, int *rank_out)
+// fallback_last: a fallback (the Blaster) only when no real weapon can shoot here.
+static int TouchWep_Choose(const char *const *names, const qbool *ready, int n, float dist, qbool fallback_last, int *rank_out)
 {
-	int i, best = -1, best_rank = 1 << 30;
-	for (i = 0; i < n; i++)
-	{
-		const touch_wep_t *w = TouchWep_Find(names[i]);
-		int r;
-		if (!ready[i] || !w || (w->flags & TW_NO_SWITCH_TO) || !TouchWep_Usable(w, dist))
-			continue;
-		r = TouchWep_Rank(names[i], dist);
-		if (r < 0 || r >= best_rank)
-			continue;
-		best = i;
-		best_rank = r;
-	}
+	int i, best = -1, best_rank = 1 << 30, pass;
+	for (pass = fallback_last ? 0 : 1; pass < 2 && best < 0; pass++)
+		for (i = 0; i < n; i++)
+		{
+			const touch_wep_t *w = TouchWep_Find(names[i]);
+			int r;
+			if (!ready[i] || !w || (w->flags & TW_NO_SWITCH_TO) || !TouchWep_Usable(w, dist))
+				continue;
+			if (!pass && (w->flags & TW_FALLBACK))
+				continue;
+			r = TouchWep_Rank(names[i], dist);
+			if (r < 0 || r >= best_rank)
+				continue;
+			best = i;
+			best_rank = r;
+		}
 	*rank_out = best >= 0 ? best_rank : -1;
 	return best;
+}
+
+// A last-resort weapon (TW_FALLBACK): picked by auto-switch only when no
+// other owned weapon can shoot, and never in place of a held one that can.
+static qbool TouchWep_IsFallback(const char *netname)
+{
+	const touch_wep_t *w = TouchWep_Find(netname);
+	return w && (w->flags & TW_FALLBACK);
 }
 
 // Whether to leave the current weapon for a candidate of rank cand_rank:
@@ -786,6 +802,126 @@ static qbool TouchWep_Detonate(const float rocket[3], const float rvel[3], const
 	d_ahead = sqrt(tw_dot(ahead, ahead));
 	// about to pass: it will be farther in a moment than it is now
 	return d_ahead > d;
+}
+
+// The server's rocket guidance (W_GuideProjectile, W_SteerProjectileTo):
+// each frame the rocket turns at most rate_deg * dt toward a goal on the
+// player's view ray, goal_ahead units beyond its own projection onto the
+// ray, and speeds up toward speed_max. One step of that: dir (unit) and
+// *speed updated, org moved by dt. eye/view: the view ray (view unit).
+static void TouchWep_GuideStep(float org[3], float dir[3], float *speed, const float eye[3], const float view[3],
+	float goal_ahead, float rate_deg, float accel, float speed_max, float dt)
+{
+	float rel[3], want[3], along, len, c, ang, maxang;
+	int k;
+	for (k = 0; k < 3; k++)
+		rel[k] = org[k] - eye[k];
+	along = tw_dot(rel, view) + goal_ahead;
+	for (k = 0; k < 3; k++)
+		want[k] = eye[k] + along * view[k] - org[k];
+	len = sqrt(tw_dot(want, want));
+	if (len > 1e-3f)
+	{
+		for (k = 0; k < 3; k++)
+			want[k] /= len;
+		c = tw_dot(dir, want);
+		c = c > 1 ? 1 : c < -1 ? -1 : c;
+		ang = acos(c);
+		maxang = rate_deg * dt * (float)(M_PI / 180.0);
+		if (ang <= maxang)
+			memcpy(dir, want, sizeof(want));
+		else if (c > -0.9998f)
+		{
+			// rotate dir toward want by maxang, in their plane
+			float sa = sin(ang), a = sin(ang - maxang) / sa, b = sin(maxang) / sa;
+			for (k = 0; k < 3; k++)
+				dir[k] = a * dir[k] + b * want[k];
+			len = sqrt(tw_dot(dir, dir));
+			for (k = 0; k < 3; k++)
+				dir[k] /= len;
+		}
+	}
+	if (*speed < speed_max)
+		*speed = *speed + accel * dt < speed_max ? *speed + accel * dt : speed_max;
+	for (k = 0; k < 3; k++)
+		org[k] += dir[k] * *speed * dt;
+}
+
+// A rocket flying straight (no longer guided) past a target that keeps its
+// velocity: the closest they come within tmax seconds, and when (*t).
+// rel: target minus rocket; relv: target velocity minus rocket velocity.
+static float TouchWep_PassDistance(const float rel[3], const float relv[3], float tmax, float *t)
+{
+	float vv = tw_dot(relv, relv), tc = vv > 1e-6f ? -tw_dot(rel, relv) / vv : 0, d[3];
+	int k;
+	tc = tc < 0 ? 0 : tc > tmax ? tmax : tc;
+	for (k = 0; k < 3; k++)
+		d[k] = rel[k] + relv[k] * tc;
+	*t = tc;
+	return sqrt(tw_dot(d, d));
+}
+
+// ---------------------------------------------------------------------------
+// Headshots
+// ---------------------------------------------------------------------------
+
+// What the server pays for a head hit (Headshot() in server/weapons/
+// tracing.qc): a box 0.6 of the player's width, from 1.3 * view_ofs_z -
+// 0.3 * maxs_z up to the top of the box -- the top 13 units of a standing
+// player. Only bullets fired with a headshot multiplier get more damage, and
+// in Xonotic's code that is the Rifle alone (fireBullet_falloff's
+// headshot_multiplier: 0 for the MachineGun, Shotgun and Overkill guns; the
+// Vortex and Vaporizer only announce a headshot, no extra damage). The stock
+// balance sets the Rifle's to 0 too, so by default no weapon has a bonus;
+// rifle_mult is the server's g_balance_rifle_primary_headshot_multiplier
+// when the player knows it differs (1.25 in the Nexuiz 2.5 balance).
+#define TW_HEAD_ZONE_H   13.0f
+#define TW_HEAD_ZONE_W   0.6f
+
+static float TouchWep_HeadMultiplier(const char *netname, int mode, float rifle_mult)
+{
+	if (netname && !strcmp(netname, "rifle") && mode == TW_MODE_PRIMARY)
+		return rifle_mult;
+	return 0;
+}
+
+// Aim error (one standard deviation, in units at the target) of a thumb
+// with aim assist against a target moving that way, plus the weapon's own
+// spread (radians): the model behind the expected-damage table.
+static float TouchWep_AimSigma(float dist, int mclass, float spread)
+{
+	static const float deg[4] = { 0.35f, 0.7f, 1.2f, 0.9f };
+	float d = deg[mclass < 0 || mclass > 3 ? 1 : mclass] * (float)(M_PI / 180.0) + spread;
+	return dist * d;
+}
+
+// Probability that a normal error of deviation sigma around c falls in [a, b].
+static float tw_pin(float a, float b, float c, float sigma)
+{
+	if (sigma <= 1e-4f)
+		return c >= a && c <= b ? 1.0f : 0.0f;
+	return 0.5f * (float)(erf((b - c) / (sigma * 1.41421356f)) - erf((a - c) / (sigma * 1.41421356f)));
+}
+
+// Expected damage of one shot (base damage 1) aimed at height z on a body
+// of half width hw from bmin_z to bmax_z, with a head bonus mult.
+static float TouchWep_ShotValue(float mult, float hw, float bmin_z, float bmax_z, float z, float sigma)
+{
+	float pbody = tw_pin(-hw, hw, 0, sigma) * tw_pin(bmin_z, bmax_z, z, sigma);
+	float phead = tw_pin(-TW_HEAD_ZONE_W * hw, TW_HEAD_ZONE_W * hw, 0, sigma) * tw_pin(bmax_z - TW_HEAD_ZONE_H, bmax_z, z, sigma);
+	return pbody + (mult > 1 ? (mult - 1) * phead : 0);
+}
+
+// Whether to aim at the head instead of the chest: only with a real bonus,
+// and only where the smaller zone still pays more on average (5 % margin).
+static qbool TouchWep_HeadBetter(float mult, float hw, float bmin_z, float bmax_z, float sigma)
+{
+	float chest, head;
+	if (mult <= 1)
+		return false;
+	chest = TouchWep_ShotValue(mult, hw, bmin_z, bmax_z, 0.5f * (bmin_z + bmax_z), sigma);
+	head = TouchWep_ShotValue(mult, hw, bmin_z, bmax_z, bmax_z - 0.5f * TW_HEAD_ZONE_H, sigma);
+	return head > 1.05f * chest;
 }
 
 // ---------------------------------------------------------------------------
@@ -1008,28 +1144,36 @@ static float TouchWep_Utility(const char *netname, float dist, int mclass, int g
 // The best owned weapon by expected damage: index into names[] or -1, and
 // its utility and the held one's. held: index of the weapon in hand in
 // names[] (-1 none). ready[i]: has ammo for a shot.
-static int TouchWep_ChooseSmart(const char *const *names, const qbool *ready, int n, int held, float dist, int mclass, int group, float *best_u, float *held_u)
+static int TouchWep_ChooseSmart(const char *const *names, const qbool *ready, int n, int held, float dist, int mclass, int group, qbool fallback_last, float *best_u, float *held_u)
 {
-	int i, best = -1;
+	int i, best = -1, pass;
 	float bu = 0;
 	*held_u = 0;
-	for (i = 0; i < n; i++)
+	if (held >= 0 && held < n && ready[held])
 	{
-		const touch_wep_t *w = TouchWep_Find(names[i]);
-		float u;
-		if (!ready[i] || !w || (w->flags & TW_NO_SWITCH_TO) || !TouchWep_Usable(w, dist))
-		{
-			continue;
-		}
-		u = TouchWep_Utility(names[i], dist, mclass, group, i == held ? 0 : TW_SWITCH_COST);
-		if (i == held)
-			*held_u = u;
-		if (u > bu)
-		{
-			bu = u;
-			best = i;
-		}
+		const touch_wep_t *w = TouchWep_Find(names[held]);
+		if (w && TouchWep_Usable(w, dist))
+			*held_u = TouchWep_Utility(names[held], dist, mclass, group, 0);
 	}
+	// fallback_last: a fallback (the Blaster) only when no real weapon can shoot here
+	for (pass = fallback_last ? 0 : 1; pass < 2 && best < 0; pass++)
+		for (i = 0; i < n; i++)
+		{
+			const touch_wep_t *w = TouchWep_Find(names[i]);
+			float u;
+			if (!ready[i] || !w || (w->flags & TW_NO_SWITCH_TO) || !TouchWep_Usable(w, dist))
+				continue;
+			if (!pass && (w->flags & TW_FALLBACK))
+				continue;
+			u = TouchWep_Utility(names[i], dist, mclass, group, i == held ? 0 : TW_SWITCH_COST);
+			if (pass && fallback_last && u <= 0)
+				u = 0.01f; // nothing else at all: still a weapon that fires
+			if (u > bu)
+			{
+				bu = u;
+				best = i;
+			}
+		}
 	*best_u = bu;
 	return best;
 }

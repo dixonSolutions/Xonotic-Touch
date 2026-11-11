@@ -412,19 +412,19 @@ static void test_smart(void)
 	CHECK_NEAR(67 * TW_HORIZON * 1.8f, TouchWep_Utility("mortar", 400, TW_CLASS_STEADY, 1, 0), 1e-3, "utility: a second enemy in the blast");
 	CHECK_NEAR(142 * TW_HORIZON, TouchWep_Utility("hagar", 400, TW_CLASS_STEADY, 1, 0), 1e-3, "utility: small splash gets no group bonus");
 	// erratic strafer at 700 with nothing in hand: hitscan
-	i = TouchWep_ChooseSmart(owned, ready, 5, -1, 700, TW_CLASS_ERRATIC, 0, &bu, &hu);
+	i = TouchWep_ChooseSmart(owned, ready, 5, -1, 700, TW_CLASS_ERRATIC, 0, true, &bu, &hu);
 	CHECK_EQ(1, i, "smart choice: erratic strafer at 700 -> machinegun");
 	// steady strafer at 700: an explosive at the feet
-	i = TouchWep_ChooseSmart(owned, ready, 5, -1, 700, TW_CLASS_STEADY, 0, &bu, &hu);
+	i = TouchWep_ChooseSmart(owned, ready, 5, -1, 700, TW_CLASS_STEADY, 0, true, &bu, &hu);
 	CHECK(i == 2 || i == 4, "smart choice: steady strafer at 700 -> mortar or devastator");
 	// airborne at 400: the machinegun beats the explosives
-	i = TouchWep_ChooseSmart(owned, ready, 5, -1, 400, TW_CLASS_AIR, 0, &bu, &hu);
+	i = TouchWep_ChooseSmart(owned, ready, 5, -1, 400, TW_CLASS_AIR, 0, true, &bu, &hu);
 	CHECK_EQ(1, i, "smart choice: airborne at 400 -> machinegun");
 	// standing group at 900: an explosive
-	i = TouchWep_ChooseSmart(owned, ready, 5, 1, 900, TW_CLASS_STAND, 2, &bu, &hu);
+	i = TouchWep_ChooseSmart(owned, ready, 5, 1, 900, TW_CLASS_STAND, 2, true, &bu, &hu);
 	CHECK(i == 2 || i == 4, "smart choice: a group of three -> an explosive");
 	// point-blank: nothing explosive
-	i = TouchWep_ChooseSmart(owned, ready, 5, 4, 120, TW_CLASS_STEADY, 0, &bu, &hu);
+	i = TouchWep_ChooseSmart(owned, ready, 5, 4, 120, TW_CLASS_STEADY, 0, true, &bu, &hu);
 	CHECK(i == 0 || i == 1, "smart choice: point-blank -> shotgun or machinegun");
 	// the one in hand keeps its place unless clearly beaten
 	CHECK(!TouchWep_ShouldSwitchSmart(100, true, 120), "smart switch: 20 % better is not enough");
@@ -432,8 +432,98 @@ static void test_smart(void)
 	CHECK(TouchWep_ShouldSwitchSmart(100, false, 10), "smart switch: the held one cannot shoot");
 	CHECK(!TouchWep_ShouldSwitchSmart(0, false, 0), "smart switch: nothing better to go to");
 	ready[1] = false;
-	i = TouchWep_ChooseSmart(owned, ready, 5, -1, 700, TW_CLASS_ERRATIC, 0, &bu, &hu);
+	i = TouchWep_ChooseSmart(owned, ready, 5, -1, 700, TW_CLASS_ERRATIC, 0, true, &bu, &hu);
 	CHECK(i != 1, "smart choice: no bullets, no machinegun");
+}
+
+static void test_fallback(void)
+{
+	static const char *const owned[] = { "blaster", "machinegun", "shotgun", "mortar" };
+	qbool ready[4] = { true, true, true, true };
+	float bu, hu;
+	int i, rank;
+	CHECK(TouchWep_IsFallback("blaster"), "fallback: the blaster is a last resort");
+	CHECK(!TouchWep_IsFallback("machinegun") && !TouchWep_IsFallback("railgun") && !TouchWep_IsFallback(NULL), "fallback: nothing else is");
+	// far (1600): the bots' far list ranks the blaster above the machinegun; not any more
+	i = TouchWep_Choose(owned, ready, 4, 1600, true, &rank);
+	CHECK(i != 0, "list choice at 1600: never the blaster while a real weapon can shoot");
+	ready[3] = false;
+	i = TouchWep_Choose(owned, ready, 4, 1600, true, &rank);
+	CHECK_EQ(1, i, "list choice at 1600, no mortar ammo: the machinegun");
+	i = TouchWep_Choose(owned, ready, 4, 1600, false, &rank);
+	CHECK_EQ(0, i, "the same with cl_touch_autoswitch_lastresort 0: the old list order (blaster)");
+	ready[3] = true;
+	// smart, standing target at 1500: the blaster's table DPS (22) beat the machinegun's (20)
+	i = TouchWep_ChooseSmart(owned, ready, 4, -1, 1500, TW_CLASS_STAND, 0, true, &bu, &hu);
+	CHECK(i != 0, "smart choice at 1500: never the blaster while a real weapon can shoot");
+	// machinegun and mortar out of ammo, shotgun out of range: the blaster is all there is
+	ready[1] = ready[3] = false;
+	i = TouchWep_Choose(owned, ready, 4, 2000, true, &rank);
+	CHECK_EQ(0, i, "list choice: nothing else can shoot at 2000 -> blaster");
+	i = TouchWep_ChooseSmart(owned, ready, 4, -1, 2000, TW_CLASS_STEADY, 0, true, &bu, &hu);
+	CHECK_EQ(0, i, "smart choice: nothing else can shoot at 2000 -> blaster");
+	CHECK(bu > 0, "smart choice: the last resort still scores above nothing");
+	// closer, the shotgun can shoot: not the blaster
+	i = TouchWep_ChooseSmart(owned, ready, 4, -1, 600, TW_CLASS_STEADY, 0, true, &bu, &hu);
+	CHECK_EQ(2, i, "smart choice: shotgun in reach -> shotgun, not the blaster");
+	// held the blaster (the server switched to it): a real weapon wins, whatever the margin
+	ready[1] = true;
+	i = TouchWep_ChooseSmart(owned, ready, 4, 0, 1500, TW_CLASS_STAND, 0, true, &bu, &hu);
+	CHECK_EQ(1, i, "smart choice with the blaster in hand: the machinegun");
+}
+
+static void test_guide(void)
+{
+	float eye[3] = { 0, 0, 0 }, org[3], dir[3], view[3], sp, prev[3], rel[3], relv[3], t, d;
+	int i;
+	// a rocket flying along +x, the view turned 90 degrees to +y: it turns
+	// at most 90 deg/s (4.5 degrees per 0.05 s step)
+	org[0] = 200; org[1] = 0; org[2] = 0;
+	dir[0] = 1; dir[1] = 0; dir[2] = 0;
+	view[0] = 0; view[1] = 1; view[2] = 0;
+	sp = 1000;
+	memcpy(prev, dir, sizeof(prev));
+	TouchWep_GuideStep(org, dir, &sp, eye, view, 512, 90, 1300, 1300, 0.05f);
+	CHECK(fabs(acos(tw_dot(prev, dir)) * 180 / M_PI - 4.5) < 0.01, "guide: one step turns by the rate limit");
+	CHECK(fabs(sp - 1065) < 0.01, "guide: speeds up toward 1300");
+	// left alone it settles onto the view ray
+	for (i = 0; i < 80; i++)
+		TouchWep_GuideStep(org, dir, &sp, eye, view, 512, 90, 1300, 1300, 0.05f);
+	CHECK(fabs(org[0]) < 20 && dir[1] > 0.99f, "guide: the rocket ends up flying along the view ray");
+	CHECK(sp == 1300, "guide: at full speed");
+	// a straight flight past a target: 50 units off at its closest, 1 s out
+	rel[0] = 1000; rel[1] = 50; rel[2] = 0;
+	relv[0] = -1000; relv[1] = 0; relv[2] = 0;
+	d = TouchWep_PassDistance(rel, relv, 3, &t);
+	CHECK(fabs(d - 50) < 0.01 && fabs(t - 1) < 0.001, "pass distance: 50 units at 1 s");
+	relv[0] = 1000;
+	d = TouchWep_PassDistance(rel, relv, 3, &t);
+	CHECK(t == 0 && d > 1000, "pass distance: flying away, closest now");
+}
+
+static void test_head(void)
+{
+	float s;
+	// stock: no weapon pays for the head (the Rifle's multiplier is 0, the
+	// Vortex has none at all)
+	CHECK(TouchWep_HeadMultiplier("vortex", TW_MODE_PRIMARY, 0) == 0, "head: the vortex has no headshot bonus");
+	CHECK(TouchWep_HeadMultiplier("vortex", TW_MODE_PRIMARY, 2) == 0, "head: the rifle setting does not give the vortex one");
+	CHECK(TouchWep_HeadMultiplier("vaporizer", TW_MODE_PRIMARY, 2) == 0 && TouchWep_HeadMultiplier("machinegun", TW_MODE_PRIMARY, 2) == 0, "head: nor the vaporizer or machinegun");
+	CHECK(TouchWep_HeadMultiplier("rifle", TW_MODE_PRIMARY, 0) == 0, "head: stock rifle: no bonus");
+	CHECK(TouchWep_HeadMultiplier("rifle", TW_MODE_PRIMARY, 1.25f) == 1.25f && TouchWep_HeadMultiplier("rifle", TW_MODE_SECONDARY, 1.25f) == 0, "head: rifle primary with the server's multiplier");
+	// no bonus: always the chest
+	CHECK(!TouchWep_HeadBetter(0, 16, -24, 45, 1), "head: no bonus -> chest");
+	CHECK(!TouchWep_HeadBetter(1, 16, -24, 45, 1), "head: multiplier 1 -> chest");
+	// a big bonus, a standing target close by: the head
+	s = TouchWep_AimSigma(300, TW_CLASS_STAND, 0);
+	CHECK(TouchWep_HeadBetter(2, 16, -24, 45, s), "head: x2 at 300 standing -> head");
+	// the Nexuiz 2.5 rifle (x1.25): head when close and still, chest far away or against a dodger
+	CHECK(TouchWep_HeadBetter(1.25f, 16, -24, 45, TouchWep_AimSigma(200, TW_CLASS_STAND, 0)), "head: x1.25 at 200 standing -> head");
+	CHECK(!TouchWep_HeadBetter(1.25f, 16, -24, 45, TouchWep_AimSigma(1500, TW_CLASS_STAND, 0)), "head: x1.25 at 1500 -> chest");
+	CHECK(!TouchWep_HeadBetter(1.25f, 16, -24, 45, TouchWep_AimSigma(800, TW_CLASS_ERRATIC, 0)), "head: x1.25 at 800 against a dodger -> chest");
+	// expected value sanity: a perfect aim at the head of a x2 weapon is worth 2
+	CHECK_NEAR(2.0f, TouchWep_ShotValue(2, 16, -24, 45, 38.5f, 0), 0.001f, "head: perfect head shot worth the multiplier");
+	CHECK_NEAR(1.0f, TouchWep_ShotValue(2, 16, -24, 45, 10.5f, 0), 0.001f, "head: perfect chest shot worth 1");
 }
 
 static void test_window(void)
@@ -530,32 +620,32 @@ static void test_choose(void)
 	int rank = -2, i;
 
 	// far (> 1050): vortex
-	i = TouchWep_Choose(owned, ready, 8, 2000, &rank);
+	i = TouchWep_Choose(owned, ready, 8, 2000, true, &rank);
 	CHECK(i == 5 && rank == 2, "far: vortex");
 	// mid: vortex is still above the devastator? no: the mid list puts the devastator second
-	i = TouchWep_Choose(owned, ready, 8, 800, &rank);
+	i = TouchWep_Choose(owned, ready, 8, 800, true, &rank);
 	CHECK(i == 4 && rank == 1, "mid: devastator");
 	// close: vortex
-	i = TouchWep_Choose(owned, ready, 8, 300, &rank);
+	i = TouchWep_Choose(owned, ready, 8, 300, true, &rank);
 	CHECK(i == 5 && rank == 2, "close: vortex");
 	// close without cells: shotgun
 	ready[5] = false;
-	i = TouchWep_Choose(owned, ready, 8, 300, &rank);
+	i = TouchWep_Choose(owned, ready, 8, 300, true, &rank);
 	CHECK(i == 1, "close, vortex empty: shotgun");
 	// mid without rockets either: machinegun
 	ready[3] = ready[4] = false;
-	i = TouchWep_Choose(owned, ready, 8, 800, &rank);
+	i = TouchWep_Choose(owned, ready, 8, 800, true, &rank);
 	CHECK(i == 2, "mid, no rockets or cells: machinegun");
 	// point-blank: never the devastator inside its own splash
 	ready[3] = ready[4] = true;
 	ready[1] = ready[2] = false;
-	i = TouchWep_Choose(owned, ready, 8, 120, &rank);
+	i = TouchWep_Choose(owned, ready, 8, 120, true, &rank);
 	CHECK(i == 0, "point-blank with only splash weapons and blaster: blaster");
 	// nothing usable at all
 	{
 		static const char *const junk[] = { "tuba", "porto", "hook", "minelayer", "seeker", "fireball", "railgun" };
 		qbool r[7] = { true, true, true, true, true, true, true };
-		i = TouchWep_Choose(junk, r, 7, 800, &rank);
+		i = TouchWep_Choose(junk, r, 7, 800, true, &rank);
 		CHECK(i == -1 && rank == -1, "only weapons a thumb should not get: none");
 	}
 
@@ -676,6 +766,9 @@ int main(void)
 	test_group();
 	test_detonate_group();
 	test_smart();
+	test_fallback();
+	test_guide();
+	test_head();
 	test_window();
 	test_modes();
 	test_choose();
