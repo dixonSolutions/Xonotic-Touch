@@ -105,9 +105,10 @@ The weapon strip is the one widget sized by an engine cvar rather than a `touch_
 `u = Touch_UIScale() × cl_touch_weplist_scale` (0 reads as 1.3, clamped 0.7–2.4); rows are
 `26u × 46u`, padding `4u`, and a `46u × 12u` grip under the last row, inside the plate, whose
 touch area reaches at least `0.07 × short axis` downward and never up over the last row.
-`n` owned rows make the plate `T = 26nu + 12u + 8u` tall; when `T > 0.92 × height` the unit
+`n` owned rows make the plate `T = 26nu + 12u + 8u` tall; when `T > 0.83 × height` the unit
 shrinks so `T` equals it, then the centre is clamped so the plate stays within
-`[0.04, 0.96] × height` and inside the screen across. A finger on the grip resizes:
+`[0.13, 0.96] × height` (below the top row of pills and the vote chip at its
+end) and inside the screen across. A finger on the grip resizes:
 `u = u_grab + 2 × (y − y_grab) / (26n + 12)`. Both HUDs implement this geometry
 ([CONTROLS.md — Weapon strip](CONTROLS.md#weapon-strip)).
 

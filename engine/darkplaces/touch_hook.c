@@ -17,6 +17,7 @@ are touch_rescue.h's.
 #include "touch_hook.h"
 #include "touch_rescue.h"
 #include "touch_turn.h"
+#include "touch_pause.h"
 
 extern cvar_t vid_touchscreen;
 extern qbool cl_touch_csqc_active;
@@ -527,6 +528,7 @@ void TouchHook_Frame(void)
 	float turn_rate = 0;
 	char publish[8];
 
+	TouchPause_Frame();
 	TouchTurn_Frame();
 	if (cl.worldmodel != th.hurt_model)
 		th_bind_map();
@@ -754,6 +756,7 @@ void TouchHook_Init(void)
 {
 	TouchTurn_Init();
 	TouchDodge_Init();
+	TouchPause_Init();
 	Cvar_RegisterVariable(&cl_touch_hook_rescue);
 	Cvar_RegisterVariable(&cl_touch_hook_rescue_turn);
 	Cvar_RegisterVariable(&cl_touch_hook_rescue_range);

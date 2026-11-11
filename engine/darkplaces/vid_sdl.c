@@ -1983,7 +1983,13 @@ void Sys_SDL_HandleEvents(void)
 				Con_DPrintf("SDL_FINGERDOWN for finger %i\n", (int)event.tfinger.fingerId);
 #endif
 				if (VID_TouchIsDirect(event.tfinger.touchId))
+				{
 					VID_NoteTouchUse();
+					// Touch: a finger on the screen means the window has focus. A
+					// FOCUS_LOST with no FOCUS_GAINED after it (a live engine swap,
+					// a system popup) otherwise holds a local game paused for good.
+					vid_hasfocus = true;
+				}
 				// Touch: a finger on the vote chip or card stays out of the table
 				if (TouchVote_Finger(0, (int)event.tfinger.fingerId + 1, event.tfinger.x, event.tfinger.y))
 					break;
