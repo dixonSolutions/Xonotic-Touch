@@ -413,6 +413,19 @@ static qbool numeric_type(int type)
 		&& type != ev_field && type != ev_function && type != ev_void;
 }
 
+// The damage-dealt stat: an int in current builds, a float in 0.8.6's
+// (whose bits read as a huge or negative int).
+static int dealt_stat(void)
+{
+	int v;
+	if (ta.stat_dealt < 0)
+		return 0;
+	v = cl.stats[ta.stat_dealt];
+	if (v < 0 || v > 100000000)
+		v = (int)cl.statsf[ta.stat_dealt];
+	return v;
+}
+
 void TouchAim_ProgsChanged(void)
 {
 	prvm_prog_t *prog = CLVM_prog;
@@ -470,7 +483,7 @@ void TouchAim_ProgsChanged(void)
 			}
 		}
 	}
-	ta.dealt_last = ta.stat_dealt >= 0 ? cl.stats[ta.stat_dealt] : 0;
+	ta.dealt_last = dealt_stat();
 	TouchHook_ProgsChanged();
 }
 
@@ -2590,7 +2603,7 @@ static void aim_frame(void)
 	// to the enemy auto-shoot is fighting: "already hurt" for the target choice
 	if (ta.stat_dealt >= 0)
 	{
-		int total = cl.stats[ta.stat_dealt], who = ta.fire_target ? ta.fire_target : ta.lock_ent;
+		int total = dealt_stat(), who = ta.fire_target ? ta.fire_target : ta.lock_ent;
 		if (total > ta.dealt_last && who > 0)
 		{
 			track_t *t = &ta.tracks[who & (TRACK_MAX - 1)];
