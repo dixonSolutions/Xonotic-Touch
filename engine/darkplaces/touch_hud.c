@@ -942,8 +942,10 @@ static float skin_pic_fit(cachepic_t *pic, float cx, float cy, float box_w, floa
 #define WEP_SCALE_MIN 0.7f
 #define WEP_SCALE_MAX 2.4f
 // Tallest the plate may be, and the band it stays inside, as parts of the
-// screen height.
-#define WEP_FIT_H 0.92f
+// screen height: from below the top row of pills (MENU, CHAT and the vote
+// chip at the end of it, touch_vote.c) to near the bottom edge.
+#define WEP_FIT_H 0.83f
+#define WEP_MARGIN_TOP 0.13f
 #define WEP_MARGIN_Y 0.04f
 // The grip's touch area reaches at least this far down, as a part of the
 // screen's short side.
@@ -998,7 +1000,7 @@ static int strip_layout(strip_t *st)
 	st->half_w = st->row_w * 0.5f + st->pad;
 	st->half_h = total * st->u * 0.5f;
 	widget_center(cv("touch_weplist_x", 0.962f), cv("touch_weplist_y", 0.360f), &st->cx, &st->cy);
-	st->cy = bound(WEP_MARGIN_Y * h + st->half_h, st->cy, (1 - WEP_MARGIN_Y) * h - st->half_h);
+	st->cy = bound(WEP_MARGIN_TOP * h + st->half_h, st->cy, (1 - WEP_MARGIN_Y) * h - st->half_h);
 	st->cx = bound(st->half_w, st->cx, w - st->half_w);
 	st->top = st->cy - st->half_h + st->pad;
 	st->grip_top = st->top + st->n * st->row_h;

@@ -81,7 +81,7 @@ feed and the chat feed each get a band that touches neither.
 | **SCORE** (bottom-left) | Tap → full scoreboard, tap again to clear; Escape also clears | `+showscores` / `-showscores`; also the `touch_scores` command |
 | Mobile HUD | Health, armour and ammo as one group, top-left | Bars for the two that have a maximum; reserve rounds beside the clip for weapons that reload |
 | Respawn / join | Tap **HOP** | `+jump`; the prompts name the button, not a key — see below |
-| **i** (vote chip, top bar) | Between MENU and CHAT while a vote waits for your answer, a red dot while it is new; tap → vote card — see [Votes](#votes) | `vote yes` / `vote no` / `vote abstain`, `impulse N` for the map vote |
+| **i** (vote chip, top bar) | Right of CHAT, at the end of the top bar, while a vote waits for your answer, a red dot while it is new; tap → vote card — see [Votes](#votes) | `vote yes` / `vote no` / `vote abstain`, `impulse N` for the map vote |
 
 Prompts that would normally name a key name the on-screen control instead in a touch
 session: "You are dead, press **HOP** to respawn", "Press **HOP** to join", "Press
@@ -122,8 +122,9 @@ no layout file is written, would be lost at the next start (the
 Geometry (`u` = the short axis ÷ 540 × `cl_touch_weplist_scale`): rows 26u high
 and 46u wide inside a 4u pad, the grip 12u high, about 75 px rows on a
 1920×1200 tablet at the default. A long inventory shrinks the strip until it
-and its grip fit 92% of the screen height, and wherever it is anchored the
-strip stays on screen. The grip's touch area reaches at least 7% of the short
+and its grip fit 83% of the screen height, and wherever it is anchored the
+strip stays on screen, below the top row of pills (13% of the height down)
+and above the bottom 4%. The grip's touch area reaches at least 7% of the short
 axis below its top edge, never up over the last row. A strip that is not drawn
 (dead, observing, hidden) takes no taps. The exact contract is in
 [TOUCH_LAYOUT_SPEC.md §3.1](TOUCH_LAYOUT_SPEC.md); the port's CSQC
@@ -165,10 +166,11 @@ the finger; dragging across options votes for none of them. A mouse keeps
 working as before.
 
 **A vote called mid-match** (`vcall`) and the map vote: a small round **i**
-chip appears in the top bar, between MENU and CHAT (mirrored with
-handedness), while a vote you can answer is open, and is not there otherwise.
-A red dot on it marks a vote you have not opened yet, and it pulses once when
-one arrives. It is there alive or dead, with the scoreboard up, spectating and
+chip appears at the end of the top bar, just right of CHAT in the top-right
+corner (top-left when left-handed), while a vote you can answer is open, and
+is not there otherwise. A red dot on it marks a vote you have not opened or
+answered yet, and it pulses once when one arrives. The card never opens by
+itself: a new vote only brings the chip and its dot. It is there alive or dead, with the scoreboard up, spectating and
 at intermission, with the controls on or hidden by a keyboard, in a local
 match and on any server. Behind a menu or dialog (the welcome dialog, the
 console, the chat sheet) it waits, and shows when that closes.

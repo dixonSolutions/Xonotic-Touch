@@ -519,46 +519,29 @@ static void update_state(void)
 // ---------------------------------------------------------------------------
 // Geometry
 // ---------------------------------------------------------------------------
-// The chip: in the gap between MENU and CHAT, as wide as CHAT is high, or
-// just past CHAT when the gap is too narrow. Both pills mirror with
-// handedness, so the chip does too. Clear of the timer (centre), the weapon
-// strip (right edge, from 0.2 of the height down when it is long) and the
-// stock score panel in the corner.
+// The chip: the last thing on the top row, just past CHAT on the side away
+// from MENU (the top-right corner; top-left when left-handed), as wide as
+// CHAT is high and centred on its row. The weapon strip keeps below that row
+// (WEP_MARGIN_TOP in touch_hud.c), so a long strip never reaches it.
 static void chip_place(float *cx, float *cy, float *r)
 {
 	float s = smin(), scale = max(0.01f, cv("touch_scale", 1.0f));
 	qbool flip = cv("touch_handedness", 0) != 0;
 	float mx = cv("touch_pause_x", 0.680f), chx_n = cv("touch_chat_x", 0.862f);
-	float mhy = s * cv("touch_pause_size", 0.060f) * scale * 0.5f;
-	float mhx = mhy * max(1.0f, cv("touch_pause_aspect", 2.9f));
 	float chy = s * cv("touch_chat_size", 0.060f) * scale * 0.5f;
 	float chx = chy * max(1.0f, cv("touch_chat_aspect", 2.9f));
-	float mxp, cxp, gap_l, gap_r, margin;
+	float cxp, margin;
 	if (flip)
 	{
 		mx = 1 - mx;
 		chx_n = 1 - chx_n;
 	}
-	mxp = mx * ui_w();
 	cxp = chx_n * ui_w();
 	*r = max(0.024f * s, chy);
 	*cy = cv("touch_chat_y", 0.088f) * ui_h();
 	margin = *r * 0.6f;
-	if (mxp < cxp)
-	{
-		gap_l = mxp + mhx;
-		gap_r = cxp - chx;
-	}
-	else
-	{
-		gap_l = cxp + chx;
-		gap_r = mxp - mhx;
-	}
-	if (gap_r - gap_l >= 2 * (*r + margin))
-		*cx = (gap_l + gap_r) * 0.5f;
-	else
-		*cx = cxp + (cxp >= mxp ? 1 : -1) * (chx + margin + *r);
-	*cx = bound(*r + margin, *cx, ui_w() - *r - margin);
+	*cx = cxp + (chx_n >= mx ? 1 : -1) * (chx + margin + *r);
+	*cx = bound(*r + margin * 0.5f, *cx, ui_w() - *r - margin * 0.5f);
 	*cy = bound(*r + margin, *cy, ui_h() - *r - margin);
 }
 
@@ -619,6 +602,8 @@ static void draw_chip(qbool badge, qbool pressed)
 	if (t >= 0 && t < 1.5f)
 		r *= 1 + 0.14f * fabs(sin(t * (float)M_PI * 2)) * (1 - t / 1.5f);
 	DrawQ_RoundedBox(cx, cy + r * 0.06f, r * 1.06f, r * 1.06f, r * 1.06f, 0, C_SHADOW[0], C_SHADOW[1], C_SHADOW[2], a * 0.35f, 0);
+	// a dark backing under the glass: it sits over the stock score panel
+	DrawQ_RoundedBox(cx, cy, r, r, r, 0, C_SURFACE[0], C_SURFACE[1], C_SURFACE[2], 0.75f, 0);
 	if (badge || pressed)
 		DrawQ_RoundedBox(cx, cy, r, r, r, 0, C_ACCENT[0], C_ACCENT[1], C_ACCENT[2], a * (pressed ? 0.85f : 0.62f), 0);
 	else
@@ -704,7 +689,9 @@ static void draw_card(void)
 	qbool ended = card.kind == CARD_CALL && !call.active;
 
 	w = min(0.86f * s, ui_w() - 2 * pad);
-	x = bound(pad, chip.cx - w * 0.5f, ui_w() - pad - w);
+	// anchored under the chip, outer edges in line (the corner it sits in)
+	x = chip.cx < ui_w() * 0.5f ? chip.cx - chip.r : chip.cx + chip.r - w;
+	x = bound(pad, x, ui_w() - pad - w);
 	y = chip.cy + chip.r + 0.025f * s;
 	card.nrows = 0;
 
