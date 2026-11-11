@@ -538,5 +538,8 @@ void Touch_Hud_Draw(float alpha)
 	// weapon strip stays up at the desk too (see TouchHUD_SyncStockPanels).
 	if (cvar("vid_touchscreen"))
 		Touch_Hud_DrawStatus(alpha);
-	Touch_Hud_DrawWeapons(alpha);
+	// Following someone, the weapons are theirs: the stock panel shows them, and
+	// a row tap would send an impulse to the spectator code.
+	if (!spectatee_status)
+		Touch_Hud_DrawWeapons(alpha);
 }

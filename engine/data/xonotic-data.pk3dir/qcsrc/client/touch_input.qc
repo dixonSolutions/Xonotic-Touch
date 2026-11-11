@@ -11,6 +11,7 @@
 #include "touch_defs.qh"
 #include "touch_weapons.qh"
 #include "touch_scores.qh"
+#include "touch_spectate.qh"
 #include "view.qh"
 #include <common/weapons/all.qh>
 #include <common/mapvoting/_mod.qh>
@@ -211,6 +212,10 @@ string Touch_CommandLabel(string command)
 {
 	if (!cvar("vid_touchscreen"))
 		return "";
+	// Spectating, the prompts name the spectator buttons (touch_spectate.qc).
+	string spec_label = Touch_Spec_CommandLabel(command);
+	if (spec_label != "")
+		return spec_label;
 	if (command == "+jump" && autocvar_touch_jump_visible)
 		return TOUCH_LABEL_JUMP;
 	// Xonotic's own binds use +fire; +attack is the engine name underneath it.
@@ -285,6 +290,7 @@ void Touch_SetHook(bool down)
 
 void Touch_ReleaseAll(void)
 {
+	Touch_Spec_Release();
 	int i;
 	Touch_SetKey("forward", false);
 	Touch_SetKey("back", false);
@@ -373,6 +379,11 @@ int Touch_AssignRole(vector p)
 
 	if (pills && Touch_Scores_PillHit(p))
 		return TOUCH_ROLE_SCORES;
+
+	// Spectating, the controls mean what the spectator code reads (touch_spectate.qc).
+	int spec_role = Touch_Spec_AssignRole(p);
+	if (spec_role != TOUCH_ROLE_NONE)
+		return spec_role;
 
 	// Before the rows: the grip's area starts where the last row ends, and the
 	// rows are inflated for fat fingers.
@@ -831,6 +842,10 @@ void Touch_Frame(void)
 		{
 			// a pill or the strip's grip: nothing to hold
 		}
+		else if (Touch_Spec_FingerFrame(role, touch_finger_first[i]))
+		{
+			// a spectator button: collected in Touch_Spec_Frame
+		}
 		else if (role == TOUCH_ROLE_MOVE)
 		{
 			move_active = true;
@@ -915,8 +930,19 @@ void Touch_Frame(void)
 	Touch_ReportWeaponClass();
 	Touch_ReportHudState((look_active || fire_count > 0) ? 1 : 0);
 
+	Touch_Spec_Frame();
+	if (touch_spec_attack)
+		fire_count += 1;
+	if (touch_spec_attack2)
+		fire2_down = true;
+	if (touch_spec_jump)
+		jump_down = true;
+	touch_spec_attack = false;
+	touch_spec_attack2 = false;
+
 	bool pressed_fire = fire_count > 0;
-	bool tap_fire = time < touch_tapfire_until;
+	// Spectating, +attack is "follow" / "next player": a look tap must not send it.
+	bool tap_fire = time < touch_tapfire_until && !Touch_Spec_State();
 	if (autocvar_touch_fire_mode == TOUCH_FIRE_TOGGLE)
 	{
 		if (pressed_fire && !touch_fire_edge)

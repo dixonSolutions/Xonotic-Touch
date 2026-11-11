@@ -1,0 +1,39 @@
+#pragma once
+
+// Spectating with the touch controls: the play controls take the spectator
+// meanings the server reads, labelled, as the engine HUD does on servers
+// (engine/darkplaces/touch_spectate.h is the table both follow).
+
+const int TOUCH_SPEC_NONE = 0;
+const int TOUCH_SPEC_OBSERVING = 1;   // free-fly
+const int TOUCH_SPEC_FOLLOWING = 2;   // watching a player
+const int TOUCH_SPEC_OUT = 3;         // out of the round, watching a player
+const int TOUCH_SPEC_OUT_FREE = 4;    // out of the round, free-flying
+
+// Spectator roles, held by a finger like the play roles.
+const int TOUCH_ROLE_SPEC_ATTACK = 300; // FOLLOW / NEXT: +attack while held
+const int TOUCH_ROLE_SPEC_PREV = 301;   // weapprev on the press
+const int TOUCH_ROLE_SPEC_FREE = 302;   // +attack2 while held: back to free-fly
+const int TOUCH_ROLE_SPEC_UP = 303;     // +moveup while held
+const int TOUCH_ROLE_SPEC_DOWN = 304;   // +movedown while held
+const int TOUCH_ROLE_SPEC_JOIN = 305;   // held long enough: +jump
+
+const float TOUCH_SPEC_JOIN_HOLD = 0.45;
+const float TOUCH_SPEC_JOIN_PRESS = 0.25;
+const float TOUCH_SPEC_JOIN_WAIT = 3;
+const float TOUCH_SPEC_JOIN_LOCKED = 15;
+
+int Touch_Spec_State(void);
+// The finger's role while spectating, TOUCH_ROLE_NONE when not spectating
+// (the play roles apply).
+int Touch_Spec_AssignRole(vector p);
+// True when the role is a spectator one (its output is collected).
+bool Touch_Spec_FingerFrame(int role, bool first);
+// After the finger loop: what the spectator fingers hold this frame.
+bool touch_spec_attack, touch_spec_attack2, touch_spec_jump;
+void Touch_Spec_Frame(void);
+// Draws the spectator controls; true when it did (the play controls are not drawn).
+bool Touch_Spec_DrawOverlay(float alpha);
+void Touch_Spec_Release(void);
+// The spectator button a prompt's command is on, "" if none (Touch_CommandLabel).
+string Touch_Spec_CommandLabel(string command);

@@ -12,6 +12,7 @@
 #include "touch_defs.qh"
 #include "touch_scores.qh"
 #include "touch_weapons.qh"
+#include "touch_spectate.qh"
 
 // Pressed and latched visuals cannot be reached from a screenshot harness: a
 // virtual uinput touchscreen is not routed to the game window, so the only way
@@ -182,6 +183,10 @@ void Touch_DrawOverlay(float overlayAlpha)
 		Touch_Console_Draw(overlayAlpha);
 		Touch_Scores_DrawPill(overlayAlpha);
 	}
+
+	// Spectating: the spectator controls instead of the play ones.
+	if (!Touch_CustomizeActive() && Touch_Spec_DrawOverlay(overlayAlpha))
+		return;
 
 	if (autocvar_touch_move_visible || autocvar_touch_debug)
 		Touch_DrawMoveStick(overlayAlpha);
