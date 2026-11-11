@@ -203,9 +203,18 @@ static td_player_t standing(float x, float y)
 	return p;
 }
 
+// Xonotic's stock movement (physicsX), the view toward the shooter (-y).
+// Every field set: a field left out reads whatever the stack held, and the
+// dash is modelled in the air.
 static td_move_t xonotic_move(int dodging)
 {
 	td_move_t m;
+	memset(&m, 0, sizeof(m));
+	m.fwd[0] = 0;
+	m.fwd[1] = -1;
+	m.airstrafeaccel = 18;
+	m.maxairstrafespeed = 100;
+	m.maxairspeed = 360;
 	m.maxspeed = 360;
 	m.accel = 15;
 	m.airaccel = 2;
@@ -419,7 +428,8 @@ static void test_dodge_and_motion(void)
 		plan.dodge = 1;
 		td_player_path(&p, &m, &plan, 24, path);
 		printf("  dodge model: %.0f at 0.2 s\n", path[7][0]);
-		CHECK(path[7][0] > strafe02 + 5, "dodge model: further than a strafe at 0.2 s");
+		// the 400 u/s burst over 0.1 s, then the air's strafe limit: 74
+		CHECK(path[7][0] > strafe02 + 5 && fabsf(path[7][0] - 74) < 4, "dodge model: about 74 at 0.2 s, further than a strafe");
 	}
 	r = shot(TD_KIND_ROCKET, 0, -500, 40, 0, 1300, 0, 0);
 	TouchDodge_Choose(&w, &r, &p, &m, still, 1.0f, 10, &c);
@@ -525,10 +535,6 @@ static void test_refined(void)
 	p = standing(0, 0);
 	p.onground = 0;
 	p.org[2] = 200;
-	m.fwd[0] = 0; m.fwd[1] = -1;
-	m.airstrafeaccel = 18;
-	m.maxairstrafespeed = 100;
-	m.maxairspeed = 360;
 	memset(&plan, 0, sizeof(plan));
 	plan.dir[0] = 1;
 	td_player_path(&p, &m, &plan, 16, path);

@@ -14,3 +14,13 @@ trap 'rm -rf "$out"' EXIT
 "$CC" -std=c99 -Wall -Wextra -Werror -Wno-unused-function \
     -I"$ROOT/engine/darkplaces" -o "$out/dodge_test" "$dir/dodge_test.c" -lm
 "$out/dodge_test"
+
+# Again under clang's MemorySanitizer and UBSan where clang is there: a field
+# of td_move_t left unset read stack garbage, which changed the modelled dash
+# from one compiler to the next with no warning.
+if command -v clang >/dev/null 2>&1; then
+    clang -std=c99 -O1 -g -fsanitize=memory,undefined -fno-sanitize-recover=all -Wno-unused-function \
+        -I"$ROOT/engine/darkplaces" -o "$out/dodge_test_msan" "$dir/dodge_test.c" -lm
+    "$out/dodge_test_msan" > /dev/null
+    echo "touch dodge: clean under MemorySanitizer and UBSan"
+fi
