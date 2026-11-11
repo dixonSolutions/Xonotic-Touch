@@ -203,6 +203,7 @@ typedef struct track_s
 	int lat_sign;        // side of its last clear sideways motion
 	double rev[4];       // times of its last strafe reversals, newest first
 	double cls_since;    // when the class last changed
+	double air_checked;  // when the ground under it was last traced
 } track_t;
 
 static struct
@@ -625,6 +626,32 @@ typedef struct gbody_s { int n; qbool enemy; vec3_t bmin, bmax, vel; } gbody_t;
 static gbody_t gbodies[GROUP_MAX];
 static int num_gbodies;
 
+// Keep only the candidates near the target (within GROUP_NEAR of its centre)
+// that are in sight -- the chest or at least the head: the only ones a
+// splash decision may count. The target itself is in sight already.
+#define GROUP_NEAR 300.0f
+static void gbodies_in_sight(const vec3_t eye, const vec3_t center, int target)
+{
+	int i, k = 0;
+	for (i = 0; i < num_gbodies; i++)
+	{
+		gbody_t *g = &gbodies[i];
+		vec3_t c, hd;
+		VectorMAM(0.5f, g->bmin, 0.5f, g->bmax, c);
+		if (g->n != target)
+		{
+			if (VectorDistance(c, center) > GROUP_NEAR)
+				continue;
+			VectorCopy(c, hd);
+			hd[2] = g->bmax[2] - 6;
+			if (!line_clear(eye, c) && !line_clear(eye, hd))
+				continue;
+		}
+		gbodies[k++] = *g;
+	}
+	num_gbodies = k;
+}
+
 // Motion of a player for the lead and the weapon choice: on the ground or
 // in the air (a short trace under its feet; the floor below and the time to
 // land when airborne), and its strafe reversals across the line of sight.
@@ -633,6 +660,7 @@ static int num_gbodies;
 #define REV_MIN_SPEED  120.0f  // a reversal: clear sideways speed on both sides
 #define REV_WINDOW     1.5f    // reversals counted over this many seconds
 #define STAND_SPEED    60.0f
+#define AIR_RECHECK    0.1f
 static void track_motion(int n, const vec3_t org, const vec3_t mins, const vec3_t eye, const vec3_t vel, qbool want_air, double now)
 {
 	track_t *t = &ta.tracks[n & (TRACK_MAX - 1)];
@@ -659,11 +687,18 @@ static void track_motion(int n, const vec3_t org, const vec3_t mins, const vec3_
 	for (k = 0; k < 4; k++)
 		if (t->rev[k] > 0 && now - t->rev[k] < REV_WINDOW)
 			nrev++;
-	// in the air: nothing solid within AIR_TRACE under the feet
-	t->airborne = false;
-	t->t_land = -1;
-	if (want_air)
+	// in the air: nothing solid within AIR_TRACE under the feet (traced at
+	// most every AIR_RECHECK seconds; the landing time follows every frame)
+	if (want_air && now - t->air_checked < AIR_RECHECK)
 	{
+		if (t->airborne)
+			t->t_land = TouchWep_LandTime(org[2] + mins[2] - t->floor_z, vel[2], cl.movevars_gravity);
+	}
+	else if (want_air)
+	{
+		t->air_checked = now;
+		t->airborne = false;
+		t->t_land = -1;
 		VectorCopy(org, a);
 		a[2] += mins[2] + 1;
 		VectorCopy(a, b);
@@ -677,6 +712,11 @@ static void track_motion(int n, const vec3_t org, const vec3_t mins, const vec3_
 			t->airborne = true;
 			t->t_land = TouchWep_LandTime(a[2] - 1 - t->floor_z, vel[2], cl.movevars_gravity);
 		}
+	}
+	else
+	{
+		t->airborne = false;
+		t->t_land = -1;
 	}
 	vh = sqrt(vel[0] * vel[0] + vel[1] * vel[1]);
 	mclass = t->airborne ? TW_CLASS_AIR : nrev >= 2 ? TW_CLASS_ERRATIC : vh < STAND_SPEED ? TW_CLASS_STAND : TW_CLASS_STEADY;
@@ -708,7 +748,7 @@ static float reversal_period(const track_t *t, double now, float *since)
 // (_air), and the floor at the feet for splash weapons (_feet: the target
 // point moves from the chest to the floor under the led feet, unless the
 // feet are above the eye or the floor point cannot be seen).
-static qbool compute_lead(int n, const touch_wep_fire_t *fire, const vec3_t eye, const vec3_t center, const vec3_t bmin, const vec3_t vel, float latency, qbool slew, qbool guided, vec3_t lead, float *tof)
+static qbool compute_lead(int n, const touch_wep_fire_t *fire, const vec3_t eye, const vec3_t center, const vec3_t bmin, const vec3_t vel, float latency, qbool slew, qbool guided, qbool candidate, vec3_t lead, float *tof)
 {
 	track_t *t = &ta.tracks[n & (TRACK_MAX - 1)];
 	double now = host.realtime;
@@ -734,7 +774,8 @@ static qbool compute_lead(int n, const touch_wep_fire_t *fire, const vec3_t eye,
 		v[0] = d[0] * along + k * (vel[0] - d[0] * along);
 		v[1] = d[1] * along + k * (vel[1] - d[1] * along);
 	}
-	if (cl_touch_autoshoot_feet.integer && t_land < 0 && fire->splash >= 100 && !t->airborne
+	// (only for a candidate near the crosshair: the floor point is traced)
+	if (cl_touch_autoshoot_feet.integer && candidate && t_land < 0 && fire->splash >= 100 && !t->airborne
 		&& (fire->kind == TW_KIND_PROJ || fire->kind == TW_KIND_BALLISTIC) && bmin[2] < eye[2] - 16)
 	{
 		// the floor under the feet, a little on the shooter's side
@@ -815,6 +856,7 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep
 		float dist, err, t, alpha, hw, tof = 0;
 		int n;
 		qbool enemy, has_lead = false, on_lead = false;
+		float e0;
 		if (ed->free)
 			continue;
 		n = (int)PRVM_clientedictfloat(ed, entnum);
@@ -851,21 +893,16 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep
 		VectorScale(dir, 1.0f / dist, dir);
 		if (collect && num_gbodies < GROUP_MAX)
 		{
-			// in sight: the chest, or at least the head
-			vec3_t hd;
-			VectorCopy(center, hd);
-			hd[2] = bmax[2] - 6;
-			if (line_clear(eye, center) || line_clear(eye, hd))
-			{
-				gbody_t *g = &gbodies[num_gbodies++];
-				g->n = n;
-				g->enemy = enemy;
-				VectorCopy(bmin, g->bmin);
-				VectorCopy(bmax, g->bmax);
-				VectorCopy(PRVM_clientedictvector(ed, velocity), g->vel);
-				if (VectorLength(g->vel) > TRACK_MAX_SPEED)
-					VectorClear(g->vel);
-			}
+			// a candidate: whether it is in sight is traced later, and only
+			// if it stands near the target (gbodies_in_sight)
+			gbody_t *g = &gbodies[num_gbodies++];
+			g->n = n;
+			g->enemy = enemy;
+			VectorCopy(bmin, g->bmin);
+			VectorCopy(bmax, g->bmax);
+			VectorCopy(PRVM_clientedictvector(ed, velocity), g->vel);
+			if (VectorLength(g->vel) > TRACK_MAX_SPEED)
+				VectorClear(g->vel);
 		}
 		if (!enemy)
 		{
@@ -894,17 +931,17 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep
 		VectorCopy(bmin, ta.tracks[n & (TRACK_MAX - 1)].bmin);
 		VectorCopy(bmax, ta.tracks[n & (TRACK_MAX - 1)].bmax);
 		// ground or air, reversals: only for those near enough the crosshair
-		// to matter (one or two short traces each)
+		// to matter (a short trace each, at most ten times a second)
 		{
-			float yaw0, pitch0, e0;
+			float yaw0, pitch0;
 			angles_to(eye, center, &yaw0, &pitch0);
 			e0 = sqrt(wrap180(yaw0 - cl.viewangles[YAW]) * wrap180(yaw0 - cl.viewangles[YAW]) + (pitch0 - cl.viewangles[PITCH]) * (pitch0 - cl.viewangles[PITCH]));
-			track_motion(n, org, mins, eye, vel, e0 < cone + 15 && (cl_touch_autoshoot_air.integer || cl_touch_autoswitch_smart.integer), now);
+			track_motion(n, org, mins, eye, vel, e0 < cone + 5 && (cl_touch_autoshoot_air.integer || cl_touch_autoswitch_smart.integer), now);
 		}
 		VectorClear(lead);
 		if (fire)
 		{
-			if (compute_lead(n, fire, eye, center, bmin, vel, latency, slew, guided, lead, &tof))
+			if (compute_lead(n, fire, eye, center, bmin, vel, latency, slew, guided, e0 < cone + 5, lead, &tof))
 				has_lead = true;
 		}
 
@@ -1713,6 +1750,10 @@ static void aim_frame(void)
 		&on_target, &friend_on, &near);
 	if (near.entnum && near.err > cone && near.entnum != ta.lock_ent)
 		near.entnum = 0;
+	if (near.entnum)
+		gbodies_in_sight(eye, near.center, near.entnum);
+	else
+		num_gbodies = 0;
 	// a blast for the whole group, when the weapon has one worth sharing
 	if (cl_touch_autoshoot_group.integer && near.entnum && fire && fire->splash >= 100)
 		group_aim(&near, fire, eye, shot_latency());
