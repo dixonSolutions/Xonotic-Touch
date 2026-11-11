@@ -168,6 +168,33 @@ static int tr_judge(tr_world_t *w, const float a[3], const float b[3], int *done
 	return TR_VOID; // a wall or a ceiling: not done
 }
 
+// The origin is estimated from the view, a unit or two off: on the frame a
+// player lands it can be in the floor, and against a wall in it. Step out of
+// whatever the box starts in, up first, then sideways; 0 when it cannot.
+static int tr_unstick(tr_world_t *w, float p[3])
+{
+	static const float off[][3] = { {0, 0, 4}, {4, 0, 0}, {-4, 0, 0}, {0, 4, 0}, {0, -4, 0}, {0, 0, 10}, {10, 0, 0}, {-10, 0, 0}, {0, 10, 0}, {0, -10, 0} };
+	tr_trace_t tr;
+	float q[3];
+	int i;
+	tr_trace(w, p, p, 1, &tr);
+	if (!tr.startsolid)
+		return 1;
+	for (i = 0; i < (int)(sizeof(off) / sizeof(off[0])); i++)
+	{
+		q[0] = p[0] + off[i][0];
+		q[1] = p[1] + off[i][1];
+		q[2] = p[2] + off[i][2];
+		tr_trace(w, q, q, 1, &tr);
+		if (!tr.startsolid)
+		{
+			memcpy(p, q, sizeof(q));
+			return 1;
+		}
+	}
+	return 0;
+}
+
 // Straight down from `from`, at most `depth` units (never past the world's
 // lowest point): ground, a death zone, or the void. A steep surface on the way
 // is slid down. With depth <= 0 the drop goes to the bottom of the world.
@@ -177,6 +204,11 @@ static int TouchRescue_Below(tr_world_t *w, const float from[3], float depth, tr
 	int slides, done, r;
 	memcpy(a, from, sizeof(a));
 	out->time = 0;
+	if (!tr_unstick(w, a))
+	{
+		memcpy(out->point, from, sizeof(out->point));
+		return out->outcome = TR_VOID; // buried: no answer from here
+	}
 	for (slides = 0; slides <= TR_MAX_SLIDES; slides++)
 	{
 		float bottom = w->floor_z - 64;
@@ -203,29 +235,21 @@ static int TouchRescue_Below(tr_world_t *w, const float from[3], float depth, tr
 	return out->outcome = TR_VOID;
 }
 
-// Where the arc from org at vel comes down. A start inside something (the
-// origin is estimated from the view, a unit or two low on the frame a player
-// lands) is tried a little higher, and if still inside is ground: whatever
-// that is, it is not a fall into the void.
+// Where the arc from org at vel comes down. A start inside something is
+// stepped out of (tr_unstick); one still inside is ground: whatever that is,
+// it is not a fall into the void.
 static int TouchRescue_Predict(tr_world_t *w, const float org[3], const float vel[3], tr_fall_t *out)
 {
 	float pos[3], v[3], next[3], at[3], normal[3];
 	float t = 0, g = w->gravity > 0 ? w->gravity : 800;
 	int seg, done, r;
-	tr_trace_t tr;
 	memcpy(pos, org, sizeof(pos));
 	memcpy(v, vel, sizeof(v));
-	tr_trace(w, pos, pos, 1, &tr);
-	if (tr.startsolid)
+	if (!tr_unstick(w, pos))
 	{
-		pos[2] += 4;
-		tr_trace(w, pos, pos, 1, &tr);
-		if (tr.startsolid)
-		{
-			memcpy(out->point, org, sizeof(out->point));
-			out->time = 0;
-			return out->outcome = TR_LAND;
-		}
+		memcpy(out->point, org, sizeof(out->point));
+		out->time = 0;
+		return out->outcome = TR_LAND;
 	}
 	for (seg = 0; seg < TR_MAX_SEGS && t < TR_HORIZON; seg++)
 	{
@@ -355,7 +379,9 @@ typedef struct tr_from_s
 // clear all the way. 2 when it is (ground), 1 when there is no ground on the
 // way but the box rises clear above home (the swing may carry the player
 // over), 0 when the box would wedge under a lip or hang below the ledge.
-#define TR_RELEASE_DROP    192.0f
+// A drop this long lands at under 900 u/s: no fall damage on the stock
+// balance (g_balance_falldamage_minspeed).
+#define TR_RELEASE_DROP    400.0f
 static int tr_pull_reaches(tr_world_t *w, const tr_from_t *from, const float a[3], float dist, float slack)
 {
 	float p[3], target[3], d[3], q[3];
@@ -526,8 +552,9 @@ static const char *const tr_phase_name[] = { "idle", "aim", "hold", "restore", "
 // Let go when ground is TR_RELEASE_DROP or closer under the player and the
 // fall ends on it.
 #define TR_MAX_HOLD        4.0f
-// Caught but stuck (rising or falling slower than TR_STUCK_SPEED, not over
-// ground) this long: wedged under a lip or a platform; let go rather than hang.
+// Caught but stuck (moving slower than TR_STUCK_SPEED, not over ground) this
+// long: wedged under a lip; let go rather than hang. The speed is the
+// position's, not the velocity's, which the rope keeps up while wedged.
 #define TR_STUCK_SPEED     80.0f
 #define TR_STUCK_TIME      1.0f
 // The hook must leave within this long of the decision (a weapon switch).
@@ -551,7 +578,7 @@ typedef struct tr_frame_s
 	float aim_err;      // AIM: degrees from the view to the anchor; RESTORE: to the saved view
 	float turn_rate;    // the player's own view turn this frame, deg/s
 	float pull_speed;   // HOLD: speed toward the anchor gained beyond free fall since the shot, u/s
-	float speed;        // HOLD: how fast the player rises or falls, u/s
+	float speed;        // HOLD: how fast the player's position changes, u/s
 	float attach_time;  // HOLD: seconds the hook may take to catch
 	float ground_below; // HOLD: distance down to ground, < 0 none within TR_RELEASE_DROP
 	float cooldown;     // seconds

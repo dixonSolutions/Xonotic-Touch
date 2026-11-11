@@ -321,6 +321,11 @@ static void test_predict(void)
 		CHECK_EQ(TR_VOID, TouchRescue_Below(&w, org, 192, &b), "no ground within a short drop above a high point");
 		v3(org, 700, 0, 100);
 		CHECK_EQ(TR_DEATH, TouchRescue_Below(&w, org, 0, &b), "beside the platform: sky all the way down");
+		// hanging pressed against a wall standing on the platform, the box a
+		// unit into it: still ground under the player
+		add_box(300, -64, 0, 400, 64, 600, K_SOLID);
+		v3(org, 415, 0, 150);
+		CHECK_EQ(TR_LAND, TouchRescue_Below(&w, org, 192, &b), "against a wall: ground below found");
 	}
 
 	// a landing on the lip, still moving outward, is not one to let go on
@@ -341,7 +346,7 @@ static void test_predict(void)
 	v3(vel, 320, 0, -100);
 	TouchRescue_Predict(&w, org, vel, &f);
 	printf("  a walk-off judged in %d traces\n", w.traces);
-	CHECK(w.traces <= TR_MAX_SEGS + TR_MAX_SLIDES + 4, "prediction stays within its trace budget");
+	CHECK(w.traces <= TR_MAX_SEGS + TR_MAX_SLIDES + 6, "prediction stays within its trace budget");
 }
 
 static tr_from_t from_eye(const float eye[3], float vx, float vz, float home_z)

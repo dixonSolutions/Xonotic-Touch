@@ -625,9 +625,9 @@ HUD → *Catch me with the hook when I fall off the map*):
    slowing into it) and the hook fires once the view is within 2°. With the
    Hook weapon the switch is made while the view turns.
 4. The hook is held while it pulls. It lets go once there is ground within
-   192 units under the player, the fall would end there, and not on the very
+   400 units under the player (a drop that does no fall damage), the fall would end there, and not on the very
    lip; or on landing, or when the hook has not caught in its flight time plus
-   0.35 s, or the player is wedged, neither rising nor falling, for 1 s, or after 4 s, or
+   0.35 s, or the player is wedged without moving for 1 s, or after 4 s, or
    when the fuel runs out.
 5. The view turns back to where the player was facing, unless they turned it
    themselves meanwhile. Then `cl_touch_hook_rescue_cooldown` seconds before

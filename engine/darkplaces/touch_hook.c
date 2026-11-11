@@ -102,9 +102,9 @@ static struct
 	qbool home_valid;
 	vec3_t last_org;
 	qbool last_org_valid;
-	// how fast the player really rises or falls: a player wedged under a
-	// ledge keeps the rope's velocity, and may slide along under it, without
-	// getting any higher
+	// how fast the player really moves: a player wedged under a ledge keeps
+	// the rope's velocity without going anywhere (one sliding along under a
+	// platform is moving, and often comes up over its edge)
 	vec3_t move_org;
 	double move_time;
 	float move_speed;
@@ -560,7 +560,7 @@ void TouchHook_Frame(void)
 	th.last_org_valid = true;
 	if (now - th.move_time >= 0.25 || now < th.move_time)
 	{
-		th.move_speed = th.move_time > 0 && now > th.move_time ? fabs(org[2] - th.move_org[2]) / (now - th.move_time) : 0;
+		th.move_speed = th.move_time > 0 && now > th.move_time ? VectorDistance(org, th.move_org) / (now - th.move_time) : 0;
 		VectorCopy(org, th.move_org);
 		th.move_time = now;
 	}
@@ -667,7 +667,7 @@ void TouchHook_Frame(void)
 			debug_line("rescue: no anchor in reach (%d traces, %.2f ms)", w.traces, search_ms);
 	}
 	else if (o.changed)
-		debug_line("rescue %s: %s (z %.0f, vz %.0f)", tr_phase_name[th.rs.phase], th.rs.why, org[2], vel[2]);
+		debug_line("rescue %s: %s (z %.0f, vz %.0f, moving at %.0f u/s)", tr_phase_name[th.rs.phase], th.rs.why, org[2], vel[2], th.move_speed);
 	if (th.rs.phase == TR_HOLD && th.rs.attached == now)
 		debug_line("rescue: the hook caught %.2f s after the shot (z %.0f)", now - th.fire_time, org[2]);
 
