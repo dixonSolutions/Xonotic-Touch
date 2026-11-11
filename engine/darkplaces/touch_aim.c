@@ -65,6 +65,12 @@ cvar_t cl_touch_autoshoot_safe = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_sa
 cvar_t cl_touch_autoswitch = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoswitch", "1",
 	"Touch controls: switch to the best weapon you own for the distance to the enemy you are fighting. "
 	"Never within 4 seconds of choosing a weapon yourself, nor while you hold FIRE or ALT"};
+cvar_t cl_touch_autoshoot_air = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_air", "1",
+	"Auto-shoot leads an enemy in the air along its fall under gravity, and aims where it lands when the shot would arrive after the landing"};
+cvar_t cl_touch_autoshoot_predict = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_predict", "1",
+	"Auto-shoot adds the time the screen lags the server to the lead, and against an enemy that keeps reversing its strafe leads toward the middle of the dodge instead of its far end"};
+cvar_t cl_touch_autoshoot_feet = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_feet", "1",
+	"Splash weapons (Devastator, Mortar, Electro, Crylink, RPC, Fireball) aim at the floor at a grounded enemy's feet, so a near miss still explodes beside them"};
 cvar_t cl_touch_aimassist = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist", "1",
 	"Touch controls: aim helpers -- the look drag slows down over an enemy (cl_touch_aimassist_friction) and the view is pulled gently toward one while a finger is on the aim control (cl_touch_aimassist_strength). "
 	"Only in touch mode; never active with a keyboard attached"};
@@ -165,6 +171,7 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 #define ROCKET_RELEASE    0.06f
 #define PROJECTILE_ROCKET 2 // csqcprojectile_type of a Devastator rocket
 #define ROCKET_MODEL      "models/rocket.md3"
+
 #define ALTFIRE_READY     2 // TOUCH_ALTFIRE_READY (touch_altfire.h)
 
 // Devastator states.
@@ -180,6 +187,14 @@ typedef struct track_s
 	vec3_t bmin, bmax;   // last seen box (cl_touch_aim_debug 3: miss distance)
 	vec3_t lead;         // motion part of the lead, slewed (cl_touch_aimassist_track)
 	double lead_time;    // 0 = start from the unslewed lead
+	// motion class (TW_CLASS_*), and what it is made of
+	int cls;
+	qbool airborne;
+	float t_land;        // seconds until it lands (airborne)
+	float floor_z;       // floor under it
+	int lat_sign;        // side of its last clear sideways motion
+	double rev[4];       // times of its last strafe reversals, newest first
+	double cls_since;    // when the class last changed
 } track_t;
 
 static struct
@@ -195,6 +210,7 @@ static struct
 	int fire_target;     // who auto-shoot is firing at (0 none)
 	int lock_ent;        // combat lock: last target fired at, and until when
 	double lock_until;
+
 	int last_mode;       // fire mode of the last shot decision (TW_MODE_*)
 	float lookscale;
 	int lock;
@@ -239,6 +255,9 @@ void TouchAim_Init(void)
 	Cvar_RegisterVariable(&cl_touch_autoshoot_steer);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_safe);
 	Cvar_RegisterVariable(&cl_touch_autoswitch);
+	Cvar_RegisterVariable(&cl_touch_autoshoot_air);
+	Cvar_RegisterVariable(&cl_touch_autoshoot_predict);
+	Cvar_RegisterVariable(&cl_touch_autoshoot_feet);
 	Cvar_RegisterVariable(&cl_touch_aimassist);
 	Cvar_RegisterVariable(&cl_touch_aimassist_friction);
 	Cvar_RegisterVariable(&cl_touch_aimassist_strength);
@@ -583,28 +602,169 @@ static void track_velocity(int n, prvm_edict_t *ed, const vec3_t org, double now
 	VectorCopy(t->vel, vel_out);
 }
 
-// The part of a lead that comes from the target's motion (what is left
-// after the lob for a standing target) may only slide at a pace the aim
-// pull can follow (TouchWep_LeadSlew), so a strafe that reverses does not
-// throw the aim point across to the other side in a few frames.
-static void slew_lead(int n, const touch_wep_fire_t *fire, const vec3_t rel, float latency, float gravity, const vec3_t vel, double now, vec3_t lead)
+// Motion of a player for the lead and the weapon choice: on the ground or
+// in the air (a short trace under its feet; the floor below and the time to
+// land when airborne), and its strafe reversals across the line of sight.
+#define AIR_TRACE      24.0f   // the game's own IsFlying test
+#define FLOOR_TRACE    1024.0f
+#define REV_MIN_SPEED  120.0f  // a reversal: clear sideways speed on both sides
+#define REV_WINDOW     1.5f    // reversals counted over this many seconds
+#define STAND_SPEED    60.0f
+static void track_motion(int n, const vec3_t org, const vec3_t mins, const vec3_t eye, const vec3_t vel, qbool want_air, double now)
 {
 	track_t *t = &ta.tracks[n & (TRACK_MAX - 1)];
-	vec3_t still, aim0, motion;
-	float tof0;
-	VectorClear(still);
-	VectorClear(aim0);
-	if (TouchWep_AimPoint(fire, rel, still, latency, gravity, aim0, &tof0))
-		VectorSubtract(aim0, rel, aim0); // the lob alone
-	else
-		VectorClear(aim0);
-	VectorSubtract(lead, aim0, motion);
-	if (t->lead_time <= 0 || now - t->lead_time > TRACK_STALE)
-		VectorCopy(motion, t->lead);
-	else
-		TouchWep_LeadSlew(t->lead, motion, VectorLength(vel), (float)(now - t->lead_time));
-	t->lead_time = now;
-	VectorAdd(aim0, t->lead, lead);
+	vec3_t a, b, d;
+	float lat, vh;
+	int mclass, k, nrev = 0;
+	trace_t tr;
+	// sideways speed across the line of sight, signed
+	VectorSubtract(org, eye, d);
+	d[2] = 0;
+	VectorNormalize(d);
+	lat = d[0] * vel[1] - d[1] * vel[0];
+	if (fabs(lat) > REV_MIN_SPEED)
+	{
+		int sign = lat > 0 ? 1 : -1;
+		if (t->lat_sign && sign != t->lat_sign)
+		{
+			for (k = 3; k > 0; k--)
+				t->rev[k] = t->rev[k - 1];
+			t->rev[0] = now;
+		}
+		t->lat_sign = sign;
+	}
+	for (k = 0; k < 4; k++)
+		if (t->rev[k] > 0 && now - t->rev[k] < REV_WINDOW)
+			nrev++;
+	// in the air: nothing solid within AIR_TRACE under the feet
+	t->airborne = false;
+	t->t_land = -1;
+	if (want_air)
+	{
+		VectorCopy(org, a);
+		a[2] += mins[2] + 1;
+		VectorCopy(a, b);
+		b[2] -= AIR_TRACE;
+		tr = CL_TraceLine(a, b, MOVE_NOMONSTERS, NULL, SUPERCONTENTS_SOLID, 0, 0, collision_extendmovelength.value, true, false, NULL, true, false);
+		if (tr.fraction >= 1)
+		{
+			b[2] = a[2] - FLOOR_TRACE;
+			tr = CL_TraceLine(a, b, MOVE_NOMONSTERS, NULL, SUPERCONTENTS_SOLID, 0, 0, collision_extendmovelength.value, true, false, NULL, true, false);
+			t->floor_z = tr.endpos[2];
+			t->airborne = true;
+			t->t_land = TouchWep_LandTime(a[2] - 1 - t->floor_z, vel[2], cl.movevars_gravity);
+		}
+	}
+	vh = sqrt(vel[0] * vel[0] + vel[1] * vel[1]);
+	mclass = t->airborne ? TW_CLASS_AIR : nrev >= 2 ? TW_CLASS_ERRATIC : vh < STAND_SPEED ? TW_CLASS_STAND : TW_CLASS_STEADY;
+	if (mclass != t->cls)
+	{
+		t->cls = mclass;
+		t->cls_since = now;
+	}
+}
+
+// Mean time between the target's recent strafe reversals (0: fewer than 2),
+// and the time since its last one.
+static float reversal_period(const track_t *t, double now, float *since)
+{
+	int k, m = 0;
+	*since = t->rev[0] > 0 ? (float)(now - t->rev[0]) : 0;
+	for (k = 1; k < 4; k++)
+		if (t->rev[k] > 0 && now - t->rev[k] < 2 * REV_WINDOW)
+			m = k;
+	if (m < 1)
+		return 0;
+	return (float)((t->rev[0] - t->rev[m]) / m);
+}
+
+// Where to aim at player n for this fire, as an offset from the body centre
+// (lead) with its flight time. Lead and latency as before; then, each under
+// its cvar: the lag of the screen behind the server and a lead shrunk toward
+// the middle of an erratic strafe (_predict), the fall of an enemy in the air
+// (_air), and the floor at the feet for splash weapons (_feet: the target
+// point moves from the chest to the floor under the led feet, unless the
+// feet are above the eye or the floor point cannot be seen).
+static qbool compute_lead(int n, const touch_wep_fire_t *fire, const vec3_t eye, const vec3_t center, const vec3_t bmin, const vec3_t vel, float latency, qbool slew, qbool guided, vec3_t lead, float *tof)
+{
+	track_t *t = &ta.tracks[n & (TRACK_MAX - 1)];
+	double now = host.realtime;
+	float gravity = cl.movevars_gravity, t_land = -1, k = 1;
+	vec3_t rel, aim, v;
+	qbool ok, feet = false;
+	VectorSubtract(center, eye, rel);
+	VectorCopy(vel, v);
+	// (a steered rocket is re-aimed in flight by its own straight-line intercept)
+	if (cl_touch_autoshoot_air.integer && t->airborne && t->t_land >= 0 && !guided)
+		t_land = t->t_land;
+	if (cl_touch_autoshoot_predict.integer && t->cls == TW_CLASS_ERRATIC)
+	{
+		// lead only the expected share of the sideways motion
+		float since, period = reversal_period(t, now, &since), along;
+		vec3_t d;
+		ok = TouchWep_AimPointAir(fire, rel, vel, latency, gravity, t_land, aim, tof);
+		k = TouchWep_LeadScale((ok ? *tof : 0.5f) + latency, period, since);
+		VectorCopy(rel, d);
+		d[2] = 0;
+		VectorNormalize(d);
+		along = DotProduct(vel, d);
+		v[0] = d[0] * along + k * (vel[0] - d[0] * along);
+		v[1] = d[1] * along + k * (vel[1] - d[1] * along);
+	}
+	if (cl_touch_autoshoot_feet.integer && t_land < 0 && fire->splash >= 100 && !t->airborne
+		&& (fire->kind == TW_KIND_PROJ || fire->kind == TW_KIND_BALLISTIC) && bmin[2] < eye[2] - 16)
+	{
+		// the floor under the feet, a little on the shooter's side
+		vec3_t fp, side;
+		VectorSubtract(eye, center, side);
+		side[2] = 0;
+		VectorNormalize(side);
+		VectorMA(center, 12, side, fp);
+		fp[2] = bmin[2] + 4;
+		VectorSubtract(fp, eye, rel);
+		feet = true;
+	}
+	ok = TouchWep_AimPointAir(fire, rel, v, latency, gravity, t_land, aim, tof);
+	if (!ok)
+		return false;
+	if (feet)
+	{
+		// the floor point must be in sight, or the shot hits whatever is between
+		vec3_t fpw;
+		if (fire->kind == TW_KIND_PROJ)
+		{
+			VectorAdd(eye, aim, fpw);
+			if (!line_clear(eye, fpw))
+			{
+				VectorSubtract(center, eye, rel);
+				ok = TouchWep_AimPointAir(fire, rel, v, latency, gravity, t_land, aim, tof);
+				if (!ok)
+					return false;
+				feet = false;
+			}
+		}
+	}
+	if (slew && *tof > 0)
+	{
+		// slide only the part of the aim that comes from the motion: the
+		// aim at the same point standing still is the fixed part
+		vec3_t still, aim0, motion;
+		float tof0;
+		VectorClear(still);
+		if (!TouchWep_AimPointAir(fire, rel, still, latency, gravity, -1, aim0, &tof0))
+			VectorCopy(rel, aim0);
+		VectorSubtract(aim, aim0, motion);
+		if (t->lead_time <= 0 || now - t->lead_time > TRACK_STALE)
+			VectorCopy(motion, t->lead);
+		else
+			TouchWep_LeadSlew(t->lead, motion, VectorLength(vel), (float)(now - t->lead_time));
+		t->lead_time = now;
+		VectorAdd(aim0, t->lead, aim);
+	}
+	// offset from the body centre
+	VectorSubtract(center, eye, rel);
+	VectorSubtract(aim, rel, lead);
+	return *tof > 0 || feet;
 }
 
 // One pass over the players the CSQC is drawing: the one under the crosshair
@@ -612,12 +772,12 @@ static void slew_lead(int n, const touch_wep_fire_t *fire, const vec3_t rel, flo
 // cone (for auto-shoot and the helpers), measured to where the shot should
 // go when `fire` is a projectile and lead is on. Both must be enemies, alive,
 // drawn, in range and in line of sight.
-static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep_fire_t *fire, float latency, qbool slew, int *on_target, int *friend_on, aimtarget_t *near_out)
+static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep_fire_t *fire, float latency, qbool slew, qbool guided, int *on_target, int *friend_on, aimtarget_t *near_out)
 {
 	prvm_prog_t *prog = CLVM_prog;
 	int team_game = teamplay_mode();
 	float range = max(64.0f, cl_touch_aim_range.value);
-	float best_on = 1e9f, gravity = cl.movevars_gravity;
+	float best_on = 1e9f;
 	double now = host.realtime;
 	int i;
 	*on_target = 0;
@@ -691,18 +851,19 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep
 		track_velocity(n, ed, org, now, vel);
 		VectorCopy(bmin, ta.tracks[n & (TRACK_MAX - 1)].bmin);
 		VectorCopy(bmax, ta.tracks[n & (TRACK_MAX - 1)].bmax);
+		// ground or air, reversals: only for those near enough the crosshair
+		// to matter (one or two short traces each)
+		{
+			float yaw0, pitch0, e0;
+			angles_to(eye, center, &yaw0, &pitch0);
+			e0 = sqrt(wrap180(yaw0 - cl.viewangles[YAW]) * wrap180(yaw0 - cl.viewangles[YAW]) + (pitch0 - cl.viewangles[PITCH]) * (pitch0 - cl.viewangles[PITCH]));
+			track_motion(n, org, mins, eye, vel, e0 < cone + 15 && cl_touch_autoshoot_air.integer, now);
+		}
 		VectorClear(lead);
 		if (fire)
 		{
-			vec3_t rel, aim;
-			VectorSubtract(center, eye, rel);
-			if (TouchWep_AimPoint(fire, rel, vel, latency, gravity, aim, &tof))
-			{
-				VectorSubtract(aim, rel, lead);
-				has_lead = tof > 0;
-				if (has_lead && slew)
-					slew_lead(n, fire, rel, latency, gravity, vel, now, lead);
-			}
+			if (compute_lead(n, fire, eye, center, bmin, vel, latency, slew, guided, lead, &tof))
+				has_lead = true;
 		}
 
 		// near the crosshair: how far the crosshair is from the body's edge,
@@ -781,6 +942,17 @@ static float latency_estimate(void)
 	return bound(0.0f, ms * 0.001f, 0.5f);
 }
 
+// Latency for a projectile's lead: the moves the server has not taken yet,
+// plus (cl_touch_autoshoot_predict) how far the drawn players trail the
+// newest snapshot -- about one server frame of interpolation.
+static float shot_latency(void)
+{
+	float l = latency_estimate();
+	if (cl_touch_autoshoot_predict.integer)
+		l += bound(0.0f, (float)(cl.mtime[0] - cl.mtime[1]), 0.1f);
+	return l;
+}
+
 // Whether weapon `index` has ammo for one primary shot.
 static qbool weapon_ready(int index, const touch_wep_t *w, int held)
 {
@@ -826,6 +998,7 @@ static void note_held(int held, double now)
 	ta.switch_to = -1;
 	ta.held_last = held;
 }
+
 
 // Switch to the best owned weapon for the fight, under the guards.
 static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *wep, double now)
@@ -1182,7 +1355,7 @@ static void aim_frame(void)
 {
 	double now = host.realtime;
 	float dt = bound(0.001f, (float)cl.realframetime, 0.1f);
-	qbool autoshoot, assist, aim_touch, manual, locked, pull_target_set = false;
+	qbool autoshoot, assist, aim_touch, manual, locked, guided, pull_target_set = false;
 	float friction, strength, cone, turn_yaw, turn_pitch, turn_mag, radius, pull_yaw = 0, pull_pitch = 0;
 	vec3_t eye, fwd;
 	int on_target, friend_on, on_shoot, held, mode = TW_MODE_PRIMARY, why = TW_WHY_DEFAULT;
@@ -1261,9 +1434,11 @@ static void aim_frame(void)
 	// combat lock: the target auto-shoot fired at may be followed a little
 	// beyond the cone; any other enemy only inside it
 	locked = cl_touch_aimassist_track.integer && ta.lock_ent && now < ta.lock_until;
-	// a steered rocket is re-aimed in flight: its launch takes the raw lead
-	scan(eye, fwd, locked ? cone + LOCK_CONE_EXTRA : cone, fire, fire ? latency_estimate() : 0,
-		cl_touch_aimassist_track.integer && !(wep && (wep->flags & TW_GUIDED) && cl_touch_autoshoot_steer.integer),
+	// a steered rocket is re-aimed in flight: it launches without the slew,
+	// the fall model or the interpolation term, which measured best
+	guided = wep && (wep->flags & TW_GUIDED) && cl_touch_autoshoot_steer.integer;
+	scan(eye, fwd, locked ? cone + LOCK_CONE_EXTRA : cone, fire, fire ? (guided ? latency_estimate() : shot_latency()) : 0,
+		cl_touch_aimassist_track.integer && !guided, guided,
 		&on_target, &friend_on, &near);
 	if (near.entnum && near.err > cone && near.entnum != ta.lock_ent)
 		near.entnum = 0;

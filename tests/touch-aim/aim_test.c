@@ -267,6 +267,175 @@ static void test_slew(void)
 	CHECK(fabs(cur[0] - 60) < 1e-3 && fabs(cur[1] - 80) < 1e-3, "slew: moves along the line toward the wanted lead");
 }
 
+static void test_air(void)
+{
+	const touch_wep_t *hagar = TouchWep_Find("hagar"), *mortar = TouchWep_Find("mortar");
+	float rel[3], vel[3], out[3], aim[3], aim2[3], tof, tof2, tl;
+	qbool ok;
+
+	// the fall: 100 up, running 100/s, lands after 0.5 s
+	tl = TouchWep_LandTime(100, 0, 800);
+	CHECK_NEAR(0.5, tl, 1e-4, "land time: 100 units, no vertical speed");
+	CHECK_NEAR((400 + sqrt(160000.0 + 1600)) / 800, TouchWep_LandTime(1, 400, 800), 1e-4, "land time: jumping up at 400");
+	CHECK_NEAR(0, TouchWep_LandTime(0, 300, 800), 1e-6, "land time: already down");
+	v3(rel, 0, 0, 100);
+	v3(vel, 100, 0, 0);
+	TouchWep_TargetAt(rel, vel, 800, tl, 0.25f, out);
+	CHECK_NEAR(75, out[2], 1e-3, "target in the air: fallen 25 units after 0.25 s");
+	TouchWep_TargetAt(rel, vel, 800, tl, 1.0f, out);
+	CHECK_NEAR(0, out[2], 1e-3, "target landed: on the floor");
+	CHECK_NEAR(50 + 100 * TW_LAND_SLOW * 0.5, out[0], 1e-3, "target landed: slower on the ground");
+	TouchWep_TargetAt(rel, vel, 800, -1, 1.0f, out);
+	CHECK_NEAR(100, out[0], 1e-6, "grounded model: straight line");
+	CHECK_NEAR(100, out[2], 1e-6, "grounded model: no fall");
+
+	// grounded: identical to the old solve
+	v3(rel, 900, 0, 0);
+	v3(vel, 0, 300, 0);
+	TouchWep_AimPoint(&hagar->pri, rel, vel, 0.05f, 800, aim, &tof);
+	TouchWep_AimPointAir(&hagar->pri, rel, vel, 0.05f, 800, -1, aim2, &tof2);
+	CHECK(aim[0] == aim2[0] && aim[1] == aim2[1] && aim[2] == aim2[2] && tof == tof2, "air solve with a grounded target is the old solve");
+
+	// Hagar at a target falling from 200 units up, 800 away: meets it on the fall
+	v3(rel, 800, 0, 200);
+	v3(vel, 0, 300, 0);
+	tl = TouchWep_LandTime(200, 0, 800);
+	ok = TouchWep_AimPointAir(&hagar->pri, rel, vel, 0.05f, 800, tl, aim, &tof);
+	CHECK(ok, "hagar at a falling target: solvable");
+	TouchWep_TargetAt(rel, vel, 800, tl, tof + 0.05f, out);
+	CHECK(fabs(out[0] - aim[0]) < 1e-3 && fabs(out[1] - aim[1]) < 1e-3 && fabs(out[2] - aim[2]) < 1e-3, "hagar at a falling target: aims where it will be");
+	CHECK_NEAR(2200 * tof, sqrt(aim[0] * aim[0] + aim[1] * aim[1] + aim[2] * aim[2]), 1.0, "hagar at a falling target: rocket flies exactly that far");
+	TouchWep_AimPoint(&hagar->pri, rel, vel, 0.05f, 800, aim2, &tof2);
+	CHECK(aim[2] < aim2[2] - 20, "hagar at a falling target: aims lower than the straight-line lead");
+
+	// Mortar at a jumping target: the lob comes down where it is then
+	v3(rel, 900, 0, 0);
+	v3(vel, 0, 250, 300);
+	tl = TouchWep_LandTime(1, 300, 800);
+	ok = TouchWep_AimPointAir(&mortar->pri, rel, vel, 0.05f, 800, tl, aim, &tof);
+	CHECK(ok, "mortar at a jumping target: solvable");
+	if (ok)
+	{
+		double dx = sqrt(aim[0] * aim[0] + aim[1] * aim[1]);
+		TouchWep_TargetAt(rel, vel, 800, tl, tof + 0.05f, out);
+		CHECK_NEAR(out[2], lob_height(1900, 225, 800, atan2(aim[2], dx), dx), 2.0, "mortar at a jumping target: the lob reaches its height then");
+	}
+}
+
+static void test_scale(void)
+{
+	CHECK_NEAR(1, TouchWep_LeadScale(0.4f, 0, 0), 1e-6, "lead scale: no reversals, full lead");
+	CHECK_NEAR(0.5, TouchWep_LeadScale(0.25f, 0.5f, 0), 1e-6, "lead scale: half the reversal period ahead, half the lead");
+	CHECK_NEAR(1, TouchWep_LeadScale(0.2f, 0.5f, 0), 1e-6, "lead scale: a shot faster than half a period keeps its full lead");
+	CHECK_NEAR(0.3, TouchWep_LeadScale(0.35f, 0.5f, 0), 1e-5, "lead scale: a slow shot leads the average share");
+	CHECK_NEAR(0.5, TouchWep_LeadScale(0.25f, 0.5f, 0.45f), 1e-6, "lead scale: the time since the last reversal does not cut it further");
+	CHECK_NEAR(0, TouchWep_LeadScale(0.8f, 0.5f, 0), 1e-6, "lead scale: flight longer than the period, no lead");
+}
+
+static void test_group(void)
+{
+	touch_wep_body_t b[3];
+	float cands[3][3], sc, p[3];
+	int best;
+	CHECK_NEAR(80, TouchWep_SplashDamage(0, 80, 40, 110), 1e-6, "splash: core at the blast");
+	CHECK_NEAR(40, TouchWep_SplashDamage(110, 80, 40, 110), 1e-6, "splash: edge at the radius");
+	CHECK_NEAR(60, TouchWep_SplashDamage(55, 80, 40, 110), 1e-6, "splash: halfway");
+	CHECK_NEAR(0, TouchWep_SplashDamage(111, 80, 40, 110), 1e-6, "splash: nothing beyond");
+	// two standing enemies 180 units apart (feet at x = 0 and 180)
+	v3(b[0].bmin, -16, -16, 0); v3(b[0].bmax, 16, 16, 69); b[0].weight = 1;
+	v3(b[1].bmin, 164, -16, 0); v3(b[1].bmax, 196, 16, 69); b[1].weight = 1;
+	v3(p, 0, 0, 0);
+	CHECK_NEAR(0, TouchWep_BoxGap(p, b[0].bmin, b[0].bmax), 1e-6, "gap: inside the box");
+	v3(p, 100, 0, 0);
+	CHECK_NEAR(64, TouchWep_BoxGap(p, b[1].bmin, b[1].bmax), 1e-6, "gap: beside the box");
+	v3(cands[0], 0, 0, 4);
+	v3(cands[1], 180, 0, 4);
+	v3(cands[2], 90, 0, 4);
+	best = TouchWep_BestImpact((const float (*)[3])cands, 3, b, 2, 80, 40, 110, -1, &sc);
+	CHECK_EQ(2, best, "group: the floor between two enemies 180 apart beats either one's feet");
+	CHECK_NEAR(2 * TouchWep_SplashDamage(74, 80, 40, 110), sc, 1e-3, "group: both caught by the splash");
+	// hysteresis: having aimed at A's feet, a point only a little better does not take over
+	b[1].weight = 0.1f;
+	best = TouchWep_BestImpact((const float (*)[3])cands, 3, b, 2, 80, 40, 110, 0, &sc);
+	CHECK_EQ(0, best, "group: keeps the point in use unless another is clearly better");
+	// a teammate at the midpoint makes it worse than one enemy alone
+	b[1].weight = 1;
+	v3(b[2].bmin, 74, -16, 0); v3(b[2].bmax, 106, 16, 69); b[2].weight = -0.5f;
+	CHECK_NEAR(2 * TouchWep_SplashDamage(74, 80, 40, 110) - 0.5 * 80, TouchWep_GroupScore(cands[2], b, 3, 80, 40, 110), 1e-3,
+		"group: a teammate in the blast takes half its damage off the score");
+	b[2].weight = -2;
+	best = TouchWep_BestImpact((const float (*)[3])cands, 3, b, 3, 80, 40, 110, -1, &sc);
+	CHECK_EQ(-1, best, "group: a heavily weighted teammate in every blast: no point is worth it");
+}
+
+static void test_detonate_group(void)
+{
+	touch_wep_body_t b[2];
+	float vels[2][3] = { { 0, 0, 0 }, { 0, 0, 0 } }, rocket[3], rv[3], smin[3], smax[3];
+	v3(smin, -16, -16, -24); v3(smax, 16, 16, 45);
+	// two enemies 150 apart at x = 1000, the rocket passes between them along x
+	v3(b[0].bmin, 984, -91, -24); v3(b[0].bmax, 1016, -59, 45); b[0].weight = 1;
+	v3(b[1].bmin, 984, 59, -24); v3(b[1].bmax, 1016, 91, 45); b[1].weight = 1;
+	v3(rv, 1300, 0, 0);
+	v3(rocket, 700, 0, 0);
+	CHECK(!TouchWep_DetonateGroup(rocket, rv, b, (const float (*)[3])vels, 2, smin, smax, 110, 0, 1.0f / 60), "group detonation: far away, wait");
+	v3(rocket, 960, 0, 0);
+	CHECK(!TouchWep_DetonateGroup(rocket, rv, b, (const float (*)[3])vels, 2, smin, smax, 110, 0, 1.0f / 60), "group detonation: still closing on both, wait");
+	v3(rocket, 1000, 0, 0);
+	CHECK(TouchWep_DetonateGroup(rocket, rv, b, (const float (*)[3])vels, 2, smin, smax, 110, 0, 1.0f / 60), "group detonation: between them, at the peak");
+	// with 80 ms latency the same press goes out ~100 units earlier
+	v3(rocket, 900, 0, 0);
+	CHECK(TouchWep_DetonateGroup(rocket, rv, b, (const float (*)[3])vels, 2, smin, smax, 110, 0.08f, 1.0f / 60), "group detonation: latency moves the press earlier");
+	// player standing right there: never
+	v3(smin, 984, -16, -24); v3(smax, 1016, 16, 45);
+	v3(rocket, 1000, 0, 0);
+	CHECK(!TouchWep_DetonateGroup(rocket, rv, b, (const float (*)[3])vels, 2, smin, smax, 110, 0, 1.0f / 60), "group detonation: never with the player in the blast");
+	// heading straight into one: let it hit
+	v3(smin, -16, -16, -24); v3(smax, 16, 16, 45);
+	v3(rocket, 950, -75, 0);
+	CHECK(!TouchWep_DetonateGroup(rocket, rv, b, (const float (*)[3])vels, 1, smin, smax, 110, 0, 0.05f), "group detonation: a direct hit is coming, wait for it");
+}
+
+static void test_smart(void)
+{
+	static const char *const owned[] = { "shotgun", "machinegun", "mortar", "vortex", "devastator" };
+	qbool ready[5] = { true, true, true, true, true };
+	float bu, hu;
+	int i;
+	CHECK_NEAR(142, TouchWep_ExpectedDPS("hagar", 400, TW_CLASS_STEADY), 1e-4, "dps: table value");
+	CHECK_NEAR(123, TouchWep_ExpectedDPS("hagar", 600, TW_CLASS_STEADY), 1e-4, "dps: interpolated");
+	CHECK_NEAR(35, TouchWep_ExpectedDPS("hagar", 4000, TW_CLASS_STEADY), 1e-4, "dps: beyond the table");
+	CHECK_NEAR(-1, TouchWep_ExpectedDPS("tuba", 400, TW_CLASS_STEADY), 1e-6, "dps: unknown weapon");
+	CHECK_NEAR(0, TouchWep_ExpectedDPS("devastator", 150, TW_CLASS_STAND), 1e-6, "dps: own blast range is worth nothing");
+	CHECK_NEAR(142 * TW_HORIZON, TouchWep_Utility("hagar", 400, TW_CLASS_STEADY, 0, 0), 1e-3, "utility: in hand");
+	CHECK_NEAR(52 * (TW_HORIZON - TW_SWITCH_COST), TouchWep_Utility("vortex", 400, TW_CLASS_STEADY, 0, TW_SWITCH_COST), 1e-3, "utility: switch cost");
+	CHECK_NEAR(67 * TW_HORIZON * 1.8f, TouchWep_Utility("mortar", 400, TW_CLASS_STEADY, 1, 0), 1e-3, "utility: a second enemy in the blast");
+	CHECK_NEAR(142 * TW_HORIZON, TouchWep_Utility("hagar", 400, TW_CLASS_STEADY, 1, 0), 1e-3, "utility: small splash gets no group bonus");
+	// erratic strafer at 700 with nothing in hand: hitscan
+	i = TouchWep_ChooseSmart(owned, ready, 5, -1, 700, TW_CLASS_ERRATIC, 0, &bu, &hu);
+	CHECK_EQ(1, i, "smart choice: erratic strafer at 700 -> machinegun");
+	// steady strafer at 700: an explosive at the feet
+	i = TouchWep_ChooseSmart(owned, ready, 5, -1, 700, TW_CLASS_STEADY, 0, &bu, &hu);
+	CHECK(i == 2 || i == 4, "smart choice: steady strafer at 700 -> mortar or devastator");
+	// airborne at 400: the machinegun beats the explosives
+	i = TouchWep_ChooseSmart(owned, ready, 5, -1, 400, TW_CLASS_AIR, 0, &bu, &hu);
+	CHECK_EQ(1, i, "smart choice: airborne at 400 -> machinegun");
+	// standing group at 900: an explosive
+	i = TouchWep_ChooseSmart(owned, ready, 5, 1, 900, TW_CLASS_STAND, 2, &bu, &hu);
+	CHECK(i == 2 || i == 4, "smart choice: a group of three -> an explosive");
+	// point-blank: nothing explosive
+	i = TouchWep_ChooseSmart(owned, ready, 5, 4, 120, TW_CLASS_STEADY, 0, &bu, &hu);
+	CHECK(i == 0 || i == 1, "smart choice: point-blank -> shotgun or machinegun");
+	// the one in hand keeps its place unless clearly beaten
+	CHECK(!TouchWep_ShouldSwitchSmart(100, true, 120), "smart switch: 20 % better is not enough");
+	CHECK(TouchWep_ShouldSwitchSmart(100, true, 131), "smart switch: 31 % better is");
+	CHECK(TouchWep_ShouldSwitchSmart(100, false, 10), "smart switch: the held one cannot shoot");
+	CHECK(!TouchWep_ShouldSwitchSmart(0, false, 0), "smart switch: nothing better to go to");
+	ready[1] = false;
+	i = TouchWep_ChooseSmart(owned, ready, 5, -1, 700, TW_CLASS_ERRATIC, 0, &bu, &hu);
+	CHECK(i != 1, "smart choice: no bullets, no machinegun");
+}
+
 static void test_window(void)
 {
 	const touch_wep_t *w;
@@ -502,6 +671,11 @@ int main(void)
 	test_ballistic();
 	test_aimpoint();
 	test_slew();
+	test_air();
+	test_scale();
+	test_group();
+	test_detonate_group();
+	test_smart();
 	test_window();
 	test_modes();
 	test_choose();
