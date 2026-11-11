@@ -13,6 +13,7 @@ applies to both.
 */
 
 #include "quakedef.h"
+#include "libcurl.h"
 #include "cl_screen.h"
 #include "csprogs.h"
 #include "touch_hud.h"
@@ -1444,14 +1445,16 @@ static void pill_release(finger_t *f)
 // nobody could see, and a finger had nothing to press: a server that never
 // answered, or a slow download, kept a touch player waiting with no way out.
 // On a touchscreen a CANCEL pill sits in the top corner, and it and Back
-// (Escape) leave for the main menu.
+// (Escape) leave for the main menu, for the whole join: from the connect
+// request and its retries to the last signon. That includes the stretch after
+// a server's "reconnect" (a map change) before its new map arrives, when
+// neither the loading screen nor the game nor the menu is drawn.
 // ---------------------------------------------------------------------------
 static int loading_cancel_src;   // finger that went down on CANCEL
 
-extern qbool scr_loading;
 static qbool loading_cancellable(void)
 {
-	return scr_loading && touch_device()
+	return touch_device()
 		&& (cls.connect_trying || (cls.state == ca_connected && cls.signon < SIGNONS));
 }
 
@@ -1471,6 +1474,14 @@ static void loading_cancel(void)
 	loading_cancel_src = 0;
 	// disconnect alone does not stop a connect the server has not answered yet
 	cls.connect_trying = false;
+	// nor the join's map and package downloads, which it lets run on. This
+	// stops every curl download (as "curl --cancel" does): libcurl.c has no
+	// call for only the join's.
+	if (Curl_Have_forthismap())
+	{
+		Con_Printf("Touch: the join's downloads are stopped\n");
+		Curl_CancelAll();
+	}
 	Cbuf_AddText(cmd_local, "\ndisconnect\ntogglemenu 1\n");
 }
 
@@ -1511,8 +1522,9 @@ void TouchHUD_DrawLoading(void)
 		return;
 	shapes_probe();
 	loading_pill(&cx, &cy, &hx, &hy);
-	// Quieter than the chrome in a match: there for whoever looks for it.
-	widget_chrome_pill(cx, cy, hx, hy, "CANCEL", loading_cancel_src != 0, 0.55f, C_DANGER);
+	// As plain as the chrome in a match, at its full opacity: easy to find on
+	// the dark loading screen without pulling the eye from the progress.
+	widget_chrome_pill(cx, cy, hx, hy, "CANCEL", loading_cancel_src != 0, 0.95f, C_DANGER);
 }
 
 // ---------------------------------------------------------------------------
