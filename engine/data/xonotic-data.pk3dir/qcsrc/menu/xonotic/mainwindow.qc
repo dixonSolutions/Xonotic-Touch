@@ -362,7 +362,7 @@ void MainWindow_configureMainWindow(entity me)
 	*/
 
 		// Stock Xonotic nexposee (Singleplayer / Multiplayer / …). Touch-specific
-		// entry points live under Settings → Touch controls, not a custom Play card.
+		// settings live under Settings → Mobile, not a custom Play card.
 		i = NEW(XonoticSingleplayerDialog);
 		i.configureDialog(i);
 		n.addItemCentered(n, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
