@@ -1930,6 +1930,8 @@ static void aim_frame(void)
 		ta.lock_ent = ta.fire_target;
 		ta.lock_until = now + LOCK_HOLD;
 	}
+	else if (ta.lock_ent && now < ta.lock_until && (TouchHook_InUse() || TouchHook_Rescuing()))
+		ta.lock_until = now + LOCK_HOLD; // held through the hook or a turn: the fight resumes after it
 	else if (ta.lock_ent && now >= ta.lock_until)
 	{
 		if (cl_touch_aim_debug.integer)
