@@ -45,6 +45,9 @@ public final class XonoticActivity extends SDLActivity {
      *  that is never cold-started from missing every release. */
     private static final long RECHECK_AFTER_MS = 60L * 60L * 1000L;
     private Thread resumeCheck;
+    /** Reads the engine's touch_netstate and keeps {@link KeepAliveService} in step. */
+    private Thread netStateWatch;
+    private static final long NETSTATE_POLL_MS = 2000;
     /** One update download at a time, whoever asked for it. */
     private final AtomicBoolean downloading = new AtomicBoolean();
     private InputManager inputManager;
@@ -85,6 +88,7 @@ public final class XonoticActivity extends SDLActivity {
         watchSoftKeyboard();
         watchInputDevices();
         startUpdateService();
+        watchNetState();
     }
 
     @Override
@@ -93,6 +97,10 @@ public final class XonoticActivity extends SDLActivity {
             inputManager.unregisterInputDeviceListener(inputDeviceListener);
         }
         stopUpdateService();
+        if (netStateWatch != null) {
+            netStateWatch.interrupt();
+        }
+        KeepAliveService.stop(this);
         EngineSwap.unregister();
         super.onDestroy();
     }
@@ -645,6 +653,54 @@ public final class XonoticActivity extends SDLActivity {
     @Override
     protected String getMainSharedObject() {
         return getApplicationInfo().nativeLibraryDir + "/libandysu_xonotic_loader.so";
+    }
+
+    /**
+     * While the engine is connected to a server, joining one or downloading
+     * (touch_netstate, written by vid_sdl.c when that changes), a foreground
+     * service keeps the process alive should the player leave the app; it
+     * stops as soon as the engine is idle. Started while the game is in front,
+     * the only time Android 12+ allows it, and kept through the background.
+     */
+    private void watchNetState() {
+        File state = new File(GameData.userDir(new File(baseDir)), "data/touch_netstate");
+        // Left by a process that was killed while connected: not this session's.
+        state.delete();
+        netStateWatch = new Thread(() -> {
+            String shown = "";
+            while (!Thread.currentThread().isInterrupted()) {
+                String kind = "idle";
+                String text = "";
+                try (BufferedReader reader = new BufferedReader(new FileReader(state))) {
+                    String line = reader.readLine();
+                    if (line != null) {
+                        kind = line.trim();
+                        String second = reader.readLine();
+                        text = second != null ? second.trim() : "";
+                    }
+                } catch (IOException e) {
+                    // Not written yet: nothing to keep alive.
+                }
+                String now = kind + "\n" + text;
+                boolean idle = kind.equals("idle") || kind.isEmpty();
+                KeepAliveService.engineBusy = !idle;
+                if (!now.equals(shown)) {
+                    if (idle) {
+                        KeepAliveService.stop(this);
+                    } else {
+                        KeepAliveService.show(this, KeepAliveService.KIND_CONNECTION, text);
+                    }
+                    shown = now;
+                }
+                try {
+                    Thread.sleep(NETSTATE_POLL_MS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }, "xonotic-netstate");
+        netStateWatch.setDaemon(true);
+        netStateWatch.start();
     }
 
     @Override

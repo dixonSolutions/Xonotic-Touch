@@ -265,6 +265,10 @@ public final class BootActivity extends Activity {
             // once, not after the delay that hides the quick unpack.
             reveal();
             requestNotificationPermission();
+            // Leaving the app mid-download must not freeze or end it
+            // (KeepAliveService); started now, while this screen is in front.
+            KeepAliveService.show(this, KeepAliveService.KIND_DOWNLOAD,
+                    getString(R.string.keepalive_download_text));
         }
         Thread preparation = new Thread(() -> {
             try {
@@ -287,6 +291,7 @@ public final class BootActivity extends Activity {
 
     private static void prepared(GameData data) {
         preparing.set(false);
+        KeepAliveService.stop(appContext);
         BootActivity live = visibleScreen();
         if (live != null) {
             live.launchEngine(data);
@@ -299,6 +304,7 @@ public final class BootActivity extends Activity {
 
     private static void failed(Throwable cause) {
         preparing.set(false);
+        KeepAliveService.stop(appContext);
         BootActivity live = visibleScreen();
         if (live != null) {
             live.showFailure(cause);
