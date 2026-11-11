@@ -463,14 +463,16 @@ be seen working.
 | `cl_touch_aimassist_friction` | `0.45` | Slowdown: fraction of look speed removed over an enemy, fading to the cone edge; not while turning toward one not yet reached (0 = off, max 0.8) |
 | `cl_touch_aimassist_strength` | `0.6` | Pull toward the nearest enemy in the cone (toward where the shot will meet it): follows strength × 2 of its motion across the view and closes the gap to the inner half of its body at strength × 10 per second, or strength × your own turn speed if faster (0 = off, max 1) |
 | `cl_touch_aimassist_maxrate` | `90` | Hard cap on the pull, degrees per second (max 180) |
-| `cl_touch_aimassist_cone` | `8` | Degrees from the crosshair to the edge of an enemy's body within which it counts as near (1–60: up to the whole view) |
+| `cl_touch_aimassist_cone` | `8` | Degrees from the crosshair to the edge of an enemy's body (or of where the shot meets it) within which it counts as near (1–60, and never beyond half the horizontal field of view: up to the edge of the view) |
 | `cl_touch_aimassist_hysteresis` | `2` | The enemy already targeted stays the target unless another is this many degrees nearer the crosshair, so a wide cone does not flip between two (0 = always the nearest, max 15) |
+| `cl_touch_aimassist_priority` | `1` | Several enemies in the cone: nearest the crosshair first, shifted by what each is worth (below); a new target is kept at least half a second. 0 = nearest only |
+| `cl_touch_autoshoot_teamsafe` | `1` | Team games: no shot while a teammate is on its line or inside its blast, and no rocket set off next to one |
 | `cl_touch_aimassist_track` | `1` | Follow a fight with the thumb at rest: keep pulling toward the enemy auto-shoot fired at (combat lock, below) and let a projectile's lead slide rather than jump when the enemy reverses; 0 = only while a finger aims |
 | `cl_touch_autoshoot_weapons` | `0` | 0 = every weapon, 1 = instant-hit fire only (judged from the weapon in hand; for a weapon the engine does not know, from `_cl_touch_weapon_class`) |
 | `cl_touch_autoshoot_aimonly` | `0` | 1 = auto-shoot only while a finger is on the aim area or FIRE |
 | `cl_touch_aim_ring` | `1` | Draw a ring at the crosshair: accent while an enemy is in the cone, red while the crosshair is on one (`_cl_touch_aim_lock`) |
 | `cl_touch_aim_range` | `3000` | Enemies farther than this (units) are ignored; 0 = no limit (still only enemies in sight) |
-| `cl_touch_aim_debug` | `0` | 1 = print each decision change (target, weapon, fire mode and why, lead, switches, rockets) and the reason the helpers are idle (menu open, keyboard in use, dead, ...) to the console, 2 = also teammates under the crosshair |
+| `cl_touch_aim_debug` | `0` | 1 = print each decision change (target, weapon, fire mode and why, lead, switches, rockets) and the reason the helpers are idle (menu open, keyboard in use, dead, ...) to the console; 2 = also teammates under the crosshair, hits and fire latency; 3 = how close each projectile came; 4 = frame cost every 5 s; 5 = the pull every frame |
 
 With `_radius 0`, `_delay 0.1`, `_alt 0`, `_lead 0`, `_steer 0`, `_safe 0`,
 `_autoswitch 0`, `_track 0`, strength `0.35` and rate `40` it behaves as the
@@ -493,7 +495,7 @@ first version did.
   tracked that the player could not see.
 - **Line of sight**: a world trace (plus CSQC brush models such as doors)
   from the view origin to the body; a led shot also needs a clear line to the
-  lead point.
+  lead point (not a steered rocket, which is re-aimed in flight).
 - Nothing runs in menus, the console, the chat sheet, the layout editor,
   intermission, while dead, spectating or watching a demo.
 
@@ -526,6 +528,11 @@ under its feet), and its strafe reversals across your line of sight.
 - **Dodging** (`_predict`): two or more reversals within 1.5 s make it
   erratic; its sideways motion is then led only by the share it keeps on
   average, `1 − flight / period`, and not at all when a reversal is due.
+- **Walls** (`_predict`): a lead that would carry the target on through a
+  wall stops at the wall -- a player runs into it and stops or turns, and a
+  shot led beyond it only hits the wall. The sideways part of the lead is cut
+  where a player-wide box clear of the floor meets the world (projectiles,
+  and the steered rocket in flight).
 - **Feet** (`_feet`): splash weapons (radius 100 or more: Devastator, Mortar,
   Electro bolt, Crylink volley, RPC, Fireball) aim at the floor under the led
   feet, 12 units on your side, unless the feet are above your eye, the
@@ -589,8 +596,18 @@ it held while the rocket flies (that is what makes the server steer it toward
 the view), keeps the view on where rocket and enemy will meet even with the
 thumb at rest, and sends a one-frame attack2 when the enemy is inside 0.8 of
 the 110-unit blast and the rocket stops closing, or the rocket is inside the
-blast and about to pass (never with you inside it). Then it lets go of fire
-so the next press launches again. Projectiles carry no owner, so "our" rocket
+blast and about to pass (never with you inside it). The detonation press is
+held until a move carrying it has gone out and for at least 50 ms: a press of
+one frame can fall between two packets, or two moves within one server frame,
+and the server would never see it. Then it lets go of fire so the next press
+launches again -- not before the last rocket's 1.1 s refire is nearly up (a
+press the server holds back launches nothing the client could follow). Only
+a rocket of ours that is seen is ever set off: a dead-reckoned one may not be
+out yet, and its blast would take the next rocket at the muzzle. In flight the view hold closes the gap to the meeting point
+faster than the ordinary pull (still under `_maxrate`): the rocket turns at
+90 deg/s toward the view and lags it anyway. The rocket's own velocity is the
+networked one when the CSQC moves it itself, else its interpolated motion.
+Projectiles carry no owner, so "our" rocket
 is the rocket projectile that appears near the muzzle after the press (the
 `csqcprojectile_type` field, or in 0.8.6's CSQC `cnt` plus the rocket model);
 if none is seen within a quarter second it is dead-reckoned along the view at
@@ -619,10 +636,17 @@ the 90 deg/s limit, the speed-up), traced against the world in 0.05 s steps
 with the rocket's size. When the path would hit a wall, floor, ledge lip or
 pillar short of the target, the view steers it via a waypoint -- the first of a
 few points above or beside the spot it would hit that the simulated flight
-clears -- and back onto the target once it is past. Far away the rocket aims
+clears -- and back onto the target once it is past. A way round is taken only
+when the simulation shows it gets there; the path is simulated only once the
+rocket's motion is known (a velocity guessed from its first frames would fly
+the simulation into the floor). Far away the rocket aims
 at the body (a rocket skimming the floor dies on the first bump); the floor
 beside a grounded enemy is aimed at only within 400 units, for the final
-approach. A rocket whose first, unguided 260 units straight along the view
+approach, and only for an enemy strafing across the view (a near miss is
+likely there): one standing, running at you or away is hit on the body. A
+rocket aimed at the floor is meant to hit it, so the path check does not
+count the floor near that point as an obstacle. A rocket whose first,
+unguided 260 units straight along the view
 would hit something (a lip the eye just sees over) is not fired; the aim moves
 to the head for 3 s, which usually clears it. An enemy that goes out of sight
 is steered to where it was last seen, on its last velocity for half a second
@@ -630,8 +654,10 @@ and then standing still; the client never steers to a position it only knows
 through a wall. The blast there goes off by the usual rule against that point.
 
 **Volleys** (`_volley`). Once the guided rocket's straight line from where it
-is now hits the target, or the floor or wall within reach of the blast, and
-the 1.1 s refire is up, fire is released for 60 ms and pressed again: the
+is now hits the target, or the floor or wall within reach of the blast, the
+1.1 s refire is up, and letting it go is safe -- the target stands, or a
+direct hit is less than 0.35 s away (a strafing enemy turns away from an
+unguided rocket still far out) -- fire is released for 60 ms and pressed again: the
 first rocket flies on straight, the next one launches and is the one steered.
 Every rocket out is followed. The one remote detonation (it sets off all of
 them) waits while an earlier rocket is still on its way to a hit of its own;
@@ -651,6 +677,31 @@ lands (the one you aim at counts 1.5, teammates count against, with half
 weight), drops points the shot cannot reach, and aims at the best when it
 beats the single-target point by 15 % (the same margin keeps it from
 flipping). Only enemies you can see count.
+
+**Several enemies** (`_priority`). Every enemy in the cone is a candidate;
+the one nearest the crosshair wins, the angle shifted by at most 2.5 degrees
+for what it is worth: +-1 for the share of the weapon in hand's best damage it
+would do at that distance against that kind of target, +1 for one facing you
+within 1200 units, +0.5 for one rushing in, +1 for one your hits hurt in the
+last 3 s (the damage-dealt stat every CSQC keeps for the hit sound, credited
+to the enemy auto-shoot is fighting), +0.5 for each other enemy near enough to
+share a splash weapon's blast (up to 3), and -1.5 for one running away beyond
+1000 units from a projectile weapon. The one targeted last frame keeps
+`_hysteresis` degrees of advantage, and a new target is kept at least 0.5 s
+while it stays in the cone. A candidate is traced for sight only when it is
+the best untested one, so a crowd costs a trace or two a frame. Every drawn
+player in range is collected for blast scoring (up to 64), and only the eight
+nearest the target are traced. The client cannot see an enemy's health on a
+stock server, so "already hurt" is what our own hits did.
+
+**Teammates** (`_teamsafe`, team games). Before any shot: a teammate whose box
+(widened by the weapon's spread at its distance) the view ray enters before
+the enemy -- anywhere along it for the Vortex, Vaporizer and Nex, which go
+through players -- or whose box is within the splash radius plus 16 units of
+where the shot meets the enemy, holds the shot, without the usual release
+tail. A remote detonation waits while a teammate is inside the blast. A
+teammate near the crosshair is never a target, does not catch the pull and
+does not stop it.
 
 **Switching** (`_autoswitch`). With `_smart` (default) each owned weapon with
 ammo for a shot is scored by its expected damage over the next 1.5 s: its
@@ -673,9 +724,12 @@ weapon with ammo can shoot at that distance, and never trade a weapon in hand
 that can still fire for it. The cause it fixes: the bots' far list ranks the
 Blaster above the MachineGun and Shotgun, and its table damage at 1500 units
 (22 per second) edged out the MachineGun's (20). When the server switches to
-the Blaster because the weapon in hand ran dry, auto-switch leaves it 0.3 s
-after its own last switch for the best owned weapon with ammo, without the
-usual margin or settle time.
+the Blaster because the weapon in hand ran dry, auto-switch leaves it at once
+for the best owned weapon with ammo, without the usual margin or settle time,
+and with no enemy in sight too (the distance of the last fight, or 800). On a
+stock server this drop happens only when the player's own `cl_weaponpriority`
+puts the Blaster above the weapons that still have ammo; with the default
+list the server picks a real weapon itself.
 
 Without `_smart`: the weapon list is the bots' preference for the
 distance (bands at 500 and 1050 units), without the Tuba, Mine Layer,
@@ -699,7 +753,9 @@ second (a finger left resting never aims by itself); and also while a steered
 rocket flies, or during a **combat lock** (`_track`): once auto-shoot has fired
 at an enemy, the pull keeps following that same enemy for 1 s after the last
 shot, out to 6 degrees beyond the cone, so a strafe reversal that takes the
-crosshair off the shot for a moment does not end the fight. The lock only
+crosshair off the shot for a moment does not end the fight. It lasts on while
+that enemy stays the target in sight and auto-shoot fired at it within the
+last 3 s: a Devastator between two rockets, or a reload. The lock only
 continues an engagement auto-shoot started; it never picks up a target by
 itself, and any other enemy still has to be inside the cone.
 
