@@ -1,5 +1,6 @@
 #include "menu.qh"
 #include "xonotic/touch_update_util.qh"
+#include "xonotic/dialog_touch_gamemenu.qh" // Touch
 
 #include "item.qh"
 
@@ -873,6 +874,7 @@ void m_draw(float width, float height)
 			// reload the menu so that disconnecting players don't
 			// have to press ESC to open it again
 			m_toggle(true);
+			TouchGameMenu_Disconnected(); // Touch: not a blank menu when the game menu was up
 
 			localcmd("\nmenu_cmd directmenu Welcome RESET\n");
 			connected_time = 0;
@@ -1170,6 +1172,7 @@ void m_setpointerfocus(entity wnd)
 
 void m_goto(string itemname, bool hide_menu_on_close)
 {
+	itemname = TouchGameMenu_Route(itemname); // Touch: finger-sized game menu on a touchscreen
 	if (!menuInitialized)
 	{
 		strcpy(m_goto_buffer, itemname);

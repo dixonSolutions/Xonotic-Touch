@@ -449,7 +449,7 @@ be seen working.
 | `cl_touch_aimassist_strength` | `0.6` | Pull toward the nearest enemy in the cone (toward where the shot will meet it): follows strength × 2 of its motion across the view and closes the gap to the inner half of its body at strength × 10 per second, or strength × your own turn speed if faster (0 = off, max 1) |
 | `cl_touch_aimassist_maxrate` | `90` | Hard cap on the pull, degrees per second (max 180) |
 | `cl_touch_aimassist_cone` | `8` | Degrees from the crosshair to the edge of an enemy's body within which it counts as near (1–15) |
-| `cl_touch_aimassist_track` | `1` | Keep pulling toward the enemy auto-shoot is firing at even while the thumb rests |
+| `cl_touch_aimassist_track` | `1` | Follow a fight with the thumb at rest: keep pulling toward the enemy auto-shoot fired at (combat lock, below) and let a projectile's lead slide rather than jump when the enemy reverses; 0 = only while a finger aims |
 | `cl_touch_autoshoot_weapons` | `0` | 0 = every weapon, 1 = instant-hit fire only (judged from the weapon in hand; for a weapon the engine does not know, from `_cl_touch_weapon_class`) |
 | `cl_touch_autoshoot_aimonly` | `0` | 1 = auto-shoot only while a finger is on the aim area or FIRE |
 | `cl_touch_aim_ring` | `1` | Draw a ring at the crosshair: accent while an enemy is in the cone, red while the crosshair is on one (`_cl_touch_aim_lock`) |
@@ -548,8 +548,20 @@ held, an earlier switch still on its way.
 applies it in `look_apply`; the port's CSQC reads it from
 `_cl_touch_aim_lookscale`. Pull works while a finger is on the aim control
 (look zone or FIRE) and you are turning or moving, or did in the last half
-second (a finger left resting never aims by itself); and also while auto-shoot
-is firing at that target (`_track`) or a steered rocket flies. Never against a
+second (a finger left resting never aims by itself); and also while a steered
+rocket flies, or during a **combat lock** (`_track`): once auto-shoot has fired
+at an enemy, the pull keeps following that same enemy for 1 s after the last
+shot, out to 6 degrees beyond the cone, so a strafe reversal that takes the
+crosshair off the shot for a moment does not end the fight. The lock only
+continues an engagement auto-shoot started; it never picks up a target by
+itself, and any other enemy still has to be inside the cone.
+
+With `_track` on, the part of a projectile's lead that comes from the enemy's
+motion may only move at twice the enemy's speed (at least 100 units/s): at a
+reversal the aim point slides across the body in about 0.3 s instead of
+jumping 15–20 degrees to the other side in a few frames, which the 90 deg/s
+pull could not follow. A steady strafe's lead is unchanged. The lob of a
+grenade is not slowed, only the motion part. Never against a
 turn heading away from the target, capped per second so it cannot snap. The
 port's CSQC reports the aim finger through `_cl_touch_hud_state`.
 
@@ -778,6 +790,30 @@ Main menu is stock Xonotic (Singleplayer / Multiplayer / Media / Settings / …)
   a suspect for the slow load and made no difference beyond the network's
   own variance, so the Touch default stays on.
 - **Pause** — Escape / GameMenu Resume (see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md)).
+- **Getting out, touch only** — every screen has a way back with a finger and
+  with Android Back (which SDL hands the engine as Escape):
+  - In a match (playing, dead, spectating, the scoreboard, intermission, the
+    end-of-match vote): the MENU pill or Back opens the game menu. On a
+    touchscreen that is `TouchGameMenu` (`dialog_touch_gamemenu.qc`): large
+    **Resume** and **Leave to main menu** (disconnect), then Join, Spectate,
+    Settings, Mobile settings, Servers, Quick menu, Profile and Quit. Back on
+    it returns to the game. Settings, Servers and the others opened from it
+    return to it when closed (Back or their close button) while still
+    connected. The MENU pill used to open the main menu overview instead,
+    which had no way back to the game or out of the server: its cvar check
+    could never succeed (`touch_hud.c`).
+  - Joining (a server that does not answer, a download, the map loading) or
+    a map change: the loading screen shows **CANCEL**; it and Back stop the
+    join and show the main menu. The menu is not drawn behind the loading
+    screen, so taps there no longer press it.
+  - The connection drops (timeout, kick) with the game menu open: the main
+    menu overview comes up rather than an empty background.
+  - The chat and console sheets have their own CLOSE buttons; the quick menu,
+    the team selection, the server welcome dialog and the main menu's own
+    dialogs close on Back (their close button is the small x in the title
+    bar). `hud_configure`: Back opens its setup dialog, whose Exit setup
+    button leaves it. Back on the main menu overview does nothing; it never
+    quits the game.
 
 ---
 

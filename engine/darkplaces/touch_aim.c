@@ -73,7 +73,7 @@ cvar_t cl_touch_aimassist_strength = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassis
 	"Aim pull toward the nearest visible enemy inside the cone (where a projectile will meet it) while a finger is on the aim control, while auto-shoot fires at it and while a Devastator rocket flies: "
 	"follows strength x 2 of its motion across the view and closes the gap at strength x 10 per second, or strength x your own turn speed, whichever is faster (0 = off, at most 1)"};
 cvar_t cl_touch_aimassist_track = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_track", "1",
-	"Aim pull: keep pulling toward the enemy auto-shoot is firing at even while the thumb rests (otherwise only while a finger is on the aim control and aiming)"};
+	"Aim pull: follow a fight with the thumb at rest -- keep pulling toward the enemy auto-shoot fired at for a moment after each shot, and let a projectile's lead slide rather than jump when the enemy reverses (0 = pull only while a finger is on the aim control and aiming)"};
 cvar_t cl_touch_aimassist_maxrate = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_maxrate", "90",
 	"Aim pull: hard cap on the pull, degrees per second (at most 180); it never snaps"};
 cvar_t cl_touch_aimassist_cone = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_cone", "8",
@@ -129,6 +129,13 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 // The player's own turn counts as heading away from the target only above
 // this rate (deg/s), so the look filter's decaying tail does not cancel the pull.
 #define AWAY_MIN_RATE  5.0f
+// Combat lock (cl_touch_aimassist_track): after auto-shoot has fired at a
+// target, the pull keeps tracking that same target for LOCK_HOLD seconds
+// with the thumb at rest, out to LOCK_CONE_EXTRA degrees beyond the cone,
+// so a reversing strafe that takes the crosshair off the shot for a moment
+// does not end the fight. It never starts without auto-shoot firing.
+#define LOCK_HOLD       1.0f
+#define LOCK_CONE_EXTRA 6.0f
 // A per-frame view change larger than this is a teleport or respawn, not a turn.
 #define TURN_SPIKE_DEG 60.0f
 // Target velocity: smoothed over about this many seconds; forgotten when a
@@ -137,6 +144,7 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 #define TRACK_STALE    0.5f
 #define TRACK_JUMP     300.0f
 #define TRACK_MAX      256
+#define TRACK_MAX_SPEED 2000.0f
 // Auto-switch guards (seconds): the enemy must be the target for FIGHT_MIN
 // before a switch; none for MANUAL_GUARD after the player picked a weapon,
 // nor within OWN_GUARD of the last automatic one; a request that has not
@@ -168,6 +176,8 @@ typedef struct track_s
 {
 	vec3_t org, vel;
 	double time;
+	vec3_t lead;         // motion part of the lead, slewed (cl_touch_aimassist_track)
+	double lead_time;    // 0 = start from the unslewed lead
 } track_t;
 
 static struct
@@ -181,6 +191,8 @@ static struct
 	double last_input;   // last frame the player turned or moved
 	qbool firing, firing2;
 	int fire_target;     // who auto-shoot is firing at (0 none)
+	int lock_ent;        // combat lock: last target fired at, and until when
+	double lock_until;
 	int last_mode;       // fire mode of the last shot decision (TW_MODE_*)
 	float lookscale;
 	int lock;
@@ -362,6 +374,7 @@ static void reset(void)
 	ta.said_target = ta.said_weapon = ta.said_mode = ta.said_why = -1;
 	ta.track_ent = 0;
 	ta.fire_target = 0;
+	ta.lock_ent = 0;
 	ta.fight_ent = 0;
 	ta.rk_state = RK_IDLE;
 	ta.rk_ent = 0;
@@ -528,8 +541,9 @@ static void track_velocity(int n, prvm_edict_t *ed, const vec3_t org, double now
 	VectorSubtract(org, t->org, d);
 	if (t->time <= 0 || dt > TRACK_STALE || VectorLength(d) > TRACK_JUMP)
 	{
+		t->lead_time = 0;
 		VectorClear(t->vel);
-		if (VectorLength2(v) > 1)
+		if (VectorLength2(v) > 1 && VectorLength(v) <= TRACK_MAX_SPEED)
 			VectorCopy(v, t->vel);
 		VectorCopy(org, t->org);
 		t->time = now;
@@ -543,6 +557,9 @@ static void track_velocity(int n, prvm_edict_t *ed, const vec3_t org, double now
 	}
 	if (VectorLength2(v) < 1 && VectorLength2(d) > 0.01f)
 		VectorScale(d, 1.0f / dt, v);
+	// a teleport or a respawn reads as one absurd sample: no player runs that fast
+	if (VectorLength(v) > TRACK_MAX_SPEED)
+		VectorScale(v, TRACK_MAX_SPEED / VectorLength(v), v);
 	f = bound(0.0f, dt / TRACK_SMOOTH, 1.0f);
 	VectorLerp(t->vel, f, v, t->vel);
 	VectorCopy(org, t->org);
@@ -550,12 +567,36 @@ static void track_velocity(int n, prvm_edict_t *ed, const vec3_t org, double now
 	VectorCopy(t->vel, vel_out);
 }
 
+// The part of a lead that comes from the target's motion (what is left
+// after the lob for a standing target) may only slide at a pace the aim
+// pull can follow (TouchWep_LeadSlew), so a strafe that reverses does not
+// throw the aim point across to the other side in a few frames.
+static void slew_lead(int n, const touch_wep_fire_t *fire, const vec3_t rel, float latency, float gravity, const vec3_t vel, double now, vec3_t lead)
+{
+	track_t *t = &ta.tracks[n & (TRACK_MAX - 1)];
+	vec3_t still, aim0, motion;
+	float tof0;
+	VectorClear(still);
+	VectorClear(aim0);
+	if (TouchWep_AimPoint(fire, rel, still, latency, gravity, aim0, &tof0))
+		VectorSubtract(aim0, rel, aim0); // the lob alone
+	else
+		VectorClear(aim0);
+	VectorSubtract(lead, aim0, motion);
+	if (t->lead_time <= 0 || now - t->lead_time > TRACK_STALE)
+		VectorCopy(motion, t->lead);
+	else
+		TouchWep_LeadSlew(t->lead, motion, VectorLength(vel), (float)(now - t->lead_time));
+	t->lead_time = now;
+	VectorAdd(aim0, t->lead, lead);
+}
+
 // One pass over the players the CSQC is drawing: the one under the crosshair
 // (for the old auto-shoot test and the ring) and the nearest one inside the
 // cone (for auto-shoot and the helpers), measured to where the shot should
 // go when `fire` is a projectile and lead is on. Both must be enemies, alive,
 // drawn, in range and in line of sight.
-static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep_fire_t *fire, float latency, int *on_target, int *friend_on, aimtarget_t *near_out)
+static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep_fire_t *fire, float latency, qbool slew, int *on_target, int *friend_on, aimtarget_t *near_out)
 {
 	prvm_prog_t *prog = CLVM_prog;
 	int team_game = teamplay_mode();
@@ -641,6 +682,8 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep
 			{
 				VectorSubtract(aim, rel, lead);
 				has_lead = tof > 0;
+				if (has_lead && slew)
+					slew_lead(n, fire, rel, latency, gravity, vel, now, lead);
 			}
 		}
 
@@ -1038,7 +1081,7 @@ void TouchAim_Frame(void)
 {
 	double now = host.realtime;
 	float dt = bound(0.001f, (float)cl.realframetime, 0.1f);
-	qbool autoshoot, assist, aim_touch, manual, pull_target_set = false;
+	qbool autoshoot, assist, aim_touch, manual, locked, pull_target_set = false;
 	float friction, strength, cone, turn_yaw, turn_pitch, turn_mag, radius, pull_yaw = 0, pull_pitch = 0;
 	vec3_t eye, fwd;
 	int on_target, friend_on, on_shoot, held, mode = TW_MODE_PRIMARY, why = TW_WHY_DEFAULT;
@@ -1114,7 +1157,15 @@ void TouchAim_Frame(void)
 
 	Matrix4x4_OriginFromMatrix(&r_refdef.view.matrix, eye);
 	AngleVectors(cl.viewangles, fwd, NULL, NULL);
-	scan(eye, fwd, cone, fire, fire ? latency_estimate() : 0, &on_target, &friend_on, &near);
+	// combat lock: the target auto-shoot fired at may be followed a little
+	// beyond the cone; any other enemy only inside it
+	locked = cl_touch_aimassist_track.integer && ta.lock_ent && now < ta.lock_until;
+	// a steered rocket is re-aimed in flight: its launch takes the raw lead
+	scan(eye, fwd, locked ? cone + LOCK_CONE_EXTRA : cone, fire, fire ? latency_estimate() : 0,
+		cl_touch_aimassist_track.integer && !(wep && (wep->flags & TW_GUIDED) && cl_touch_autoshoot_steer.integer),
+		&on_target, &friend_on, &near);
+	if (near.entnum && near.err > cone && near.entnum != ta.lock_ent)
+		near.entnum = 0;
 
 	if (cl_touch_aim_debug.integer && on_target != ta.debug_target)
 	{
@@ -1273,6 +1324,21 @@ void TouchAim_Frame(void)
 		ta.fire_target = on || on2 ? target : 0;
 	}
 
+	// combat lock: renewed while auto-shoot fires, kept LOCK_HOLD after
+	if (cl_touch_aimassist_track.integer && ta.fire_target && (ta.firing || ta.firing2))
+	{
+		if (cl_touch_aim_debug.integer && (ta.lock_ent != ta.fire_target || now >= ta.lock_until))
+			Con_Printf("touch aim: combat lock on player %d (%s)\n", ta.fire_target, player_name(ta.fire_target));
+		ta.lock_ent = ta.fire_target;
+		ta.lock_until = now + LOCK_HOLD;
+	}
+	else if (ta.lock_ent && now >= ta.lock_until)
+	{
+		if (cl_touch_aim_debug.integer)
+			Con_Printf("touch aim: combat lock on player %d ended\n", ta.lock_ent);
+		ta.lock_ent = 0;
+	}
+
 	// friction: full over the body, fading to nothing at the cone's edge.
 	// Not while the thumb is turning toward a body it has not reached yet:
 	// slowing that down only fights the pull and makes the target harder to
@@ -1314,7 +1380,7 @@ void TouchAim_Frame(void)
 	if (strength > 0 && near.entnum
 		&& ((aim_touch && now - ta.last_input < INPUT_HOLD)
 			|| ta.rk_state != RK_IDLE
-			|| (cl_touch_aimassist_track.integer && ta.fire_target && ta.fire_target == near.entnum && (ta.firing || ta.firing2))))
+			|| (cl_touch_aimassist_track.integer && ta.lock_ent && ta.lock_ent == near.entnum && now < ta.lock_until)))
 	{
 		float ey = wrap180(near.yaw - cl.viewangles[YAW]);
 		float ep = near.pitch - cl.viewangles[PITCH];

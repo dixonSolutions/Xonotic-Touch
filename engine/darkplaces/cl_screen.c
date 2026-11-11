@@ -1855,6 +1855,7 @@ static void SCR_DrawScreen (void)
 		}
 		else
 			SCR_DrawLoadingScreen();
+		TouchHUD_DrawLoading(); // Touch: CANCEL on a touchscreen
 	}
 
 	SCR_DrawConsole();

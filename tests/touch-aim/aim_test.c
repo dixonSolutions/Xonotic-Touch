@@ -217,6 +217,56 @@ static void test_aimpoint(void)
 	CHECK(!TouchWep_AimPoint(&hagar->pri, rel, vel, 0, 800, aim, &tof), "hagar at 3500 (1.6 s): no lead");
 }
 
+static void test_slew(void)
+{
+	float cur[3], want[3], t;
+	int frames;
+	// a steady strafe: the wanted lead holds still, the slewed one reaches it
+	v3(cur, 0, 0, 0);
+	v3(want, 0, 120, 0);
+	for (frames = 0; frames < 60; frames++)
+		TouchWep_LeadSlew(cur, want, 360, 1.0f / 60);
+	CHECK_NEAR(120, cur[1], 1e-3, "slew: a steady lead is reached and held exactly");
+	TouchWep_LeadSlew(cur, want, 360, 1.0f / 60);
+	CHECK_NEAR(120, cur[1], 1e-6, "slew: no drift once there");
+
+	// a reversal: the lead flips to the other side; it may move at most
+	// (2 x 360 + 100) units per second, so 240 units take about 0.29 s
+	v3(want, 0, -120, 0);
+	TouchWep_LeadSlew(cur, want, 360, 0.1f);
+	CHECK_NEAR(120 - 82, cur[1], 1e-3, "slew: one 0.1 s step moves 82 units toward the new side");
+	for (frames = 0, t = 0.1f; cur[1] > -120 + 1e-3f && frames < 1000; frames++, t += 1.0f / 60)
+		TouchWep_LeadSlew(cur, want, 360, 1.0f / 60);
+	CHECK_NEAR(240.0 / 820.0, t, 0.02, "slew: a full 240-unit flip takes 240 / 820 s");
+
+	// a standing target still slews at the floor rate
+	v3(cur, 0, 0, 0);
+	v3(want, 50, 0, 0);
+	TouchWep_LeadSlew(cur, want, 0, 0.1f);
+	CHECK_NEAR(10, cur[0], 1e-3, "slew: 100 u/s floor for a target that stopped");
+	// nothing moves with no time
+	TouchWep_LeadSlew(cur, want, 360, 0);
+	CHECK_NEAR(10, cur[0], 1e-6, "slew: dt 0 moves nothing");
+	TouchWep_LeadSlew(cur, want, 360, -1);
+	CHECK_NEAR(10, cur[0], 1e-6, "slew: negative dt moves nothing");
+	// a spike passes: the wanted lead falls from 2500 back to 120 units;
+	// the slewed one may not stay longer than the wanted one
+	v3(cur, 0, 2500, 0);
+	v3(want, 0, 120, 0);
+	TouchWep_LeadSlew(cur, want, 360, 1.0f / 60);
+	CHECK(cur[1] <= 120 + 1e-3f, "slew: never longer than the wanted lead after a spike");
+	// at a reversal the slewed lead stays on its side but shrinks with the wanted one
+	v3(cur, 0, 120, 0);
+	v3(want, 0, -60, 0);
+	TouchWep_LeadSlew(cur, want, 360, 1.0f / 60);
+	CHECK(cur[1] > 0 && cur[1] <= 60 + 1e-3f, "slew: reversing lead shrinks to the wanted length, on its way across");
+	// direction is kept: a diagonal move stays on the line to the target
+	v3(cur, 0, 0, 0);
+	v3(want, 300, 400, 0);
+	TouchWep_LeadSlew(cur, want, 0, 1);
+	CHECK(fabs(cur[0] - 60) < 1e-3 && fabs(cur[1] - 80) < 1e-3, "slew: moves along the line toward the wanted lead");
+}
+
 static void test_window(void)
 {
 	const touch_wep_t *w;
@@ -451,6 +501,7 @@ int main(void)
 	test_accel();
 	test_ballistic();
 	test_aimpoint();
+	test_slew();
 	test_window();
 	test_modes();
 	test_choose();
