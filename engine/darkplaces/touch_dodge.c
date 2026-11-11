@@ -66,6 +66,8 @@ cvar_t cl_touch_autododge_mindamage = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autodod
 #define WINDOW_MAX        1.5f
 #define TRACK_MAX         256
 
+static char vabuf[64];
+
 static struct
 {
 	int type_ofs, type_type;  // csqcprojectile_type, or .cnt
@@ -203,6 +205,7 @@ void TouchDodge_Frame(void)
 	float best_vel[2] = { 0, 0 };
 	int i, best_ent = 0, mycolors, traces = 0;
 	const char *best_name = "";
+	int best_count = 0;
 	float best_dist = 0;
 
 	td.buttons = 0;
@@ -259,10 +262,15 @@ void TouchDodge_Frame(void)
 			stop("the shot has passed");
 	}
 
-	// the worst shot coming
+	// the shots coming: judged together (a Crylink's pellets, a Hagar burst,
+	// two players' rockets), the soonest TD_MAX_PROJ of them
 	memset(&best, 0, sizeof(best));
 	if (!td.active || now - td.judged >= REJUDGE)
 	{
+		td_proj_t prs[TD_MAX_PROJ];
+		float eta[TD_MAX_PROJ], dists[TD_MAX_PROJ];
+		const char *names[TD_MAX_PROJ];
+		int ents[TD_MAX_PROJ], nprs = 0, k;
 		for (i = 1; i < prog->num_edicts; i++)
 		{
 			prvm_edict_t *ed = PRVM_EDICT_NUM(i);
@@ -299,16 +307,59 @@ void TouchDodge_Frame(void)
 			pr.radius = kind->radius;
 			pr.size = kind->size;
 			pr.world_blast = kind->world_blast;
-			TouchDodge_Choose(&w, &pr, &p, &m, td.active ? td.plan.dir : own_dir, window, mindmg * 0.5f, &c);
-			if (c.base_damage > best.base_damage)
+			// keep the soonest TD_MAX_PROJ: when full, this one replaces the
+			// latest if it is sooner
+			k = nprs;
+			if (nprs == TD_MAX_PROJ)
 			{
-				best = c;
-				best_vel[0] = vel[0];
-				best_vel[1] = vel[1];
-				best_ent = i;
-				best_name = kind->name;
-				best_dist = dist;
+				int latest = 0, q;
+				for (q = 1; q < nprs; q++)
+					if (eta[q] > eta[latest])
+						latest = q;
+				if (dist / speed >= eta[latest])
+					continue;
+				k = latest;
 			}
+			else
+				nprs++;
+			prs[k] = pr;
+			eta[k] = dist / speed;
+			ents[k] = i;
+			names[k] = kind->name;
+			dists[k] = dist;
+		}
+		// soonest first
+		for (k = 1; k < nprs; k++)
+		{
+			int q;
+			for (q = k; q > 0 && eta[q] < eta[q - 1]; q--)
+			{
+				td_proj_t tp = prs[q]; float te = eta[q]; int tn = ents[q]; const char *tname = names[q]; float tdist = dists[q];
+				prs[q] = prs[q - 1]; eta[q] = eta[q - 1]; ents[q] = ents[q - 1]; names[q] = names[q - 1]; dists[q] = dists[q - 1];
+				prs[q - 1] = tp; eta[q - 1] = te; ents[q - 1] = tn; names[q - 1] = tname; dists[q - 1] = tdist;
+			}
+		}
+		if (nprs)
+		{
+			best_name = names[0];
+			best_dist = dists[0];
+		}
+		if (nprs)
+		{
+			TouchDodge_ChooseAll(&w, prs, nprs, &p, &m, td.active ? td.plan.dir : own_dir, window, mindmg * 0.5f, &c);
+			best = c;
+			best_vel[0] = best_vel[1] = 0;
+			for (k = 0; k < nprs; k++)
+			{
+				float l = sqrt(prs[k].vel[0] * prs[k].vel[0] + prs[k].vel[1] * prs[k].vel[1]);
+				if (l > 1)
+				{
+					best_vel[0] += prs[k].vel[0] / l;
+					best_vel[1] += prs[k].vel[1] / l;
+				}
+			}
+			best_ent = ents[0];
+			best_count = nprs;
 		}
 		traces = w.traces;
 		td.judged = now;
@@ -339,8 +390,8 @@ void TouchDodge_Frame(void)
 			td.started = now;
 			td.until = now + best.when + 0.1;
 			if (cl_touch_aim_debug.integer)
-				Con_Printf("touch dodge: %s at %.0f units, hits in %.2f s for %.0f; escape %s%s -> %.0f (%d ruled out by walls or ledges)\n",
-					best_name, best_dist, best.when, best.base_damage, best.chosen.name,
+				Con_Printf("touch dodge: %s%s at %.0f units, hits in %.2f s for %.0f; escape %s%s -> %.0f (%d ruled out by walls or ledges)\n",
+					best_name, best_count > 1 ? va(vabuf, sizeof(vabuf), " and %d more", best_count - 1) : "", best_dist, best.when, best.base_damage, best.chosen.name,
 					best.chosen.dodge ? " with a dodge" : best.chosen.jump ? " with a jump" : "", best.damage, best.rejected);
 		}
 		else if (!td.active && best.base_damage >= mindmg && cl_touch_aim_debug.integer && td.said != best_name)

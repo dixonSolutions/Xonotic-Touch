@@ -367,23 +367,38 @@ typedef struct td_choice_s
 	int rejected;       // escapes ruled out by walls or ledges
 } td_choice_t;
 
-// Judge one projectile against the player: the damage if they carry on
-// (keeping their own input `own_dir`, zero for none), and the escape that
-// does best. Returns 1 when an escape cuts the damage by at least min_gain.
-static int TouchDodge_Choose(tr_world_t *w, const td_proj_t *pr, const td_player_t *p, const td_move_t *m, const float own_dir[2],
+// Judge the projectiles coming (a Crylink's pellets, a Hagar burst, two
+// players' rockets) against the player together: the damage of all of them
+// if the player carries on (keeping their own input `own_dir`, zero for
+// none), and the escape that does best against all of them, across their
+// combined direction. Returns 1 when an escape cuts the total by at least
+// min_gain.
+#define TD_MAX_PROJ 8
+static int TouchDodge_ChooseAll(tr_world_t *w, const td_proj_t *pr, int n, const td_player_t *p, const td_move_t *m, const float own_dir[2],
 	float window, float min_gain, td_choice_t *out)
 {
 	static float path[TD_MAX_STEPS][3];
-	td_flight_t f;
+	static td_flight_t f[TD_MAX_PROJ];
 	td_plan_t plans[TD_MAX_PLANS];
-	float shot[2], len, best, when;
-	int n, i;
+	float shot[2] = { 0, 0 }, len, best;
+	int nplans, i, j, steps = 0;
 	memset(out, 0, sizeof(*out));
-	TouchDodge_Fly(w, pr, window, &f);
-	shot[0] = pr->vel[0];
-	shot[1] = pr->vel[1];
+	if (n > TD_MAX_PROJ)
+		n = TD_MAX_PROJ;
+	for (j = 0; j < n; j++)
+	{
+		float l = sqrtf(pr[j].vel[0] * pr[j].vel[0] + pr[j].vel[1] * pr[j].vel[1]);
+		TouchDodge_Fly(w, &pr[j], window, &f[j]);
+		if (f[j].steps > steps)
+			steps = f[j].steps;
+		if (l > 1)
+		{
+			shot[0] += pr[j].vel[0] / l;
+			shot[1] += pr[j].vel[1] / l;
+		}
+	}
 	len = sqrtf(shot[0] * shot[0] + shot[1] * shot[1]);
-	if (len < 1)
+	if (len < 0.01f)
 	{
 		// falling straight down onto the player: any side will do
 		shot[0] = 1;
@@ -394,24 +409,31 @@ static int TouchDodge_Choose(tr_world_t *w, const td_proj_t *pr, const td_player
 		shot[0] /= len;
 		shot[1] /= len;
 	}
-	n = td_make_plans(shot, m, plans);
+	nplans = td_make_plans(shot, m, plans);
 	plans[0].dir[0] = own_dir[0];
 	plans[0].dir[1] = own_dir[1];
-	td_player_path(p, m, &plans[0], f.steps, path);
-	out->base_damage = TouchDodge_Damage(pr, &f, p, path, &out->when);
-	out->damage = out->base_damage;
-	out->chosen = plans[0];
-	best = out->base_damage;
-	if (out->base_damage <= 0)
-		return 0;
-	for (i = 1; i < n; i++)
+	out->when = -1;
+	for (i = 0; i < nplans; i++)
 	{
-		float d;
-		td_player_path(p, m, &plans[i], f.steps, path);
-		d = TouchDodge_Damage(pr, &f, p, path, &when);
+		float d = 0, when;
+		td_player_path(p, m, &plans[i], steps, path);
+		for (j = 0; j < n; j++)
+		{
+			d += TouchDodge_Damage(&pr[j], &f[j], p, path, &when);
+			if (i == 0 && when >= 0 && (out->when < 0 || when < out->when))
+				out->when = when;
+		}
+		if (i == 0)
+		{
+			out->base_damage = out->damage = best = d;
+			out->chosen = plans[0];
+			if (d <= 0)
+				return 0;
+			continue;
+		}
 		if (d >= best - 0.5f)
 			continue;
-		if (!TouchDodge_PathSafe(w, p, path, f.steps))
+		if (!TouchDodge_PathSafe(w, p, path, steps))
 		{
 			out->rejected++;
 			continue;
@@ -422,6 +444,13 @@ static int TouchDodge_Choose(tr_world_t *w, const td_proj_t *pr, const td_player
 		out->damage = d;
 	}
 	return out->plan > 0 && out->base_damage - out->damage >= min_gain;
+}
+
+// One projectile against the player (TouchDodge_ChooseAll with one).
+static int TouchDodge_Choose(tr_world_t *w, const td_proj_t *pr, const td_player_t *p, const td_move_t *m, const float own_dir[2],
+	float window, float min_gain, td_choice_t *out)
+{
+	return TouchDodge_ChooseAll(w, pr, 1, p, m, own_dir, window, min_gain, out);
 }
 
 #endif

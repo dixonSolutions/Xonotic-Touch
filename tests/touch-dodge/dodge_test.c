@@ -307,6 +307,32 @@ static void test_choices(void)
 	CHECK(!go, "an orb that misses: no dodge");
 }
 
+// a Crylink's six pellets: 10 each, under any one-shot threshold, 60 together
+static void test_pellets(void)
+{
+	tr_world_t w;
+	td_player_t p;
+	td_move_t m = xonotic_move(0);
+	td_proj_t r[6];
+	td_choice_t c;
+	int i, go;
+	arena();
+	w = world();
+	p = standing(0, 0);
+	for (i = 0; i < 6; i++)
+	{
+		// one at the centre and five on a ring 0.08 rad out, from 600 units
+		float a = i ? (i - 1) * 6.2832f / 5 : 0, sp = i ? 0.08f : 0;
+		r[i] = shot(TD_KIND_CRYLINK, 0, -600, 40, 2000 * sinf(sp) * cosf(a), 2000 * cosf(sp), 2000 * sinf(sp) * sinf(a), 0);
+	}
+	go = TouchDodge_Choose(&w, &r[0], &p, &m, still, 1.0f, 7.5f, &c);
+	CHECK(c.base_damage <= 10.5f, "one pellet alone: 10 at most");
+	go = TouchDodge_ChooseAll(&w, r, 6, &p, &m, still, 1.0f, 7.5f, &c);
+	printf("  crylink pellets from 600: carry on %.0f, %s -> %.0f\n", c.base_damage, c.chosen.name, c.damage);
+	CHECK(c.base_damage > 15, "six pellets together: over the 15 threshold that no single one reaches");
+	CHECK(go && c.damage <= c.base_damage * 0.5f, "six pellets: an escape halves it at least");
+}
+
 static void test_never(void)
 {
 	tr_world_t w;
@@ -408,6 +434,7 @@ static void test_dodge_and_motion(void)
 int main(void)
 {
 	test_choices();
+	test_pellets();
 	test_never();
 	test_dodge_and_motion();
 	printf("%d checks, %d failed\n", checks, failures);
