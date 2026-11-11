@@ -17,7 +17,7 @@ Keyboard-free text entry for the engine console and chat, with a no-typing comma
 4. **Hold for special characters**, as on iOS (below).
 5. **KEYBOARD / HIDE KEYS** toggle (below).
 6. Keyboard height / opacity / shade are engine cvars (`touch_kb_*` / `touch_conui_*`), tunable via cfg/console.
-   Settings → Touch controls covers presets, look sensitivity, opacity, and scale (no live preview panel).
+   Settings → Mobile → Controls covers presets, look sensitivity, opacity, and scale (no live preview panel).
 
 ## Hold for special characters
 

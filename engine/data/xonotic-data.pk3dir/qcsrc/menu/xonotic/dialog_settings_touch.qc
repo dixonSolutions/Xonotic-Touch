@@ -219,6 +219,18 @@ void XonoticMobileHudTab_fill(entity me)
 		me.TD(me, 1, me.columns, e = makeXonoticCheckBox_T(0, "cl_touch_hook_rescue", _("Catch me with the hook when I fall off the map"),
 			_("Falling with nothing below to land on, the hook fires at something it can catch, pulls you back and lets go over ground. Only with a hook, only in touch mode")));
 
+	// TURN (touch_turn.c): one tap turns the player round.
+	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Quick turn")));
+	me.TR(me);
+		me.TD(me, 1, 2, e = makeXonoticCheckBox_T(0, "touch_turn_visible", _("TURN button"),
+			_("A button by the move stick: one tap turns you round to face what was behind you")));
+		me.TD(me, 1, 1, e = makeXonoticTextLabel(0, _("Turn by:")));
+			setDependent(e, "touch_turn_visible", 1, 1);
+		me.TD(me, 1, 2.2, e = makeXonoticSlider_T(90, 360, 45, "touch_turn_angle",
+			_("How far one tap turns you, in degrees. 180: face the other way")));
+			setDependent(e, "touch_turn_visible", 1, 1);
+
 	me.TR(me);
 		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("With a keyboard attached")));
 	me.TR(me);
