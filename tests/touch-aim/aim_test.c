@@ -828,6 +828,28 @@ static void test_mates(void)
 	CHECK_EQ(TW_MATE_NONE, TouchWep_MateBlocks(&dev->pri, false, eye, fwd, 1000, impact, smin, smax), "mates: teammate beside the rocket's path, far from the blast");
 }
 
+// Ammo: shots left, time to dry, and keep / switch / keep away.
+static void test_ammo(void)
+{
+	CHECK_EQ(10, TouchWep_ShotsLeft(40, -1, 4), "ammo: 40 rockets = 10 Devastator shots");
+	CHECK_EQ(2, TouchWep_ShotsLeft(14, -1, 6), "ammo: 14 cells = 2 Vortex shots (no part shot)");
+	CHECK_EQ(0, TouchWep_ShotsLeft(3, -1, 4), "ammo: 3 rockets cannot pay for a Devastator shot");
+	CHECK_EQ(9, TouchWep_ShotsLeft(10, 80, 10), "ammo: clip and reserve both count");
+	CHECK_EQ(TW_SHOTS_UNLIMITED, TouchWep_ShotsLeft(-1, -1, 1), "ammo: unlimited");
+	CHECK_NEAR(0.5, TouchWep_TimeToDry(8, TouchWep_Refire("machinegun", false)), 1e-3, "ammo: 8 bullets of machinegun last 0.5 s");
+	CHECK_NEAR(1.1, TouchWep_Refire("devastator", false), 1e-4, "refire: devastator");
+	CHECK_NEAR(1, TouchWep_Refire("railgun", false), 1e-4, "refire: unknown weapon 1 s");
+	// empty: switch to a real weapon, or keep away when only a last resort is left
+	CHECK_EQ(TW_DRY_SWITCH, TouchWep_DryPlan(96, 0, 0.0625f, 150, false, 1.5f, 0.4f), "dry plan: empty hand, hagar there -> switch");
+	CHECK_EQ(TW_DRY_EVADE, TouchWep_DryPlan(96, 0, 0.0625f, 29, true, 1.5f, 0.4f), "dry plan: empty hand, only the blaster -> keep away");
+	CHECK_EQ(TW_DRY_EVADE, TouchWep_DryPlan(96, 0, 0.0625f, 0, false, 1.5f, 0.4f), "dry plan: nothing at all -> keep away");
+	// a few shots left of a good weapon: fire them out first
+	CHECK_EQ(TW_DRY_KEEP, TouchWep_DryPlan(96, 8, 0.0625f, 60, false, 1.5f, 0.4f), "dry plan: 0.5 s of machinegun left, a weaker one after: fire it out");
+	// one slow shot left of a weak weapon, a much better one ready: switch now
+	CHECK_EQ(TW_DRY_SWITCH, TouchWep_DryPlan(20, 1, 1.5f, 150, false, 1.5f, 0.4f), "dry plan: last weak shot, hagar ready -> switch now");
+	CHECK_EQ(TW_DRY_KEEP, TouchWep_DryPlan(96, 50, 0.0625f, 150, false, 1.5f, 0.4f), "dry plan: plenty left -> keep");
+}
+
 int main(void)
 {
 	test_intercept();
@@ -850,6 +872,7 @@ int main(void)
 	test_table();
 	test_priority();
 	test_mates();
+	test_ammo();
 	if (failures)
 	{
 		printf("%d of %d check(s) failed\n", failures, checks);

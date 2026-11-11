@@ -131,6 +131,8 @@ cvar_t cl_touch_aim_lock = {CF_CLIENT, "_cl_touch_aim_lock", "0",
 // CSQC -> engine: class of the weapon in hand: 0 unknown, 1 instant-hit, 2 other.
 cvar_t cl_touch_weapon_class = {CF_CLIENT, "_cl_touch_weapon_class", "0",
 	"Set by the port's CSQC: 0 unknown, 1 instant-hit weapon in hand, 2 projectile or other"};
+cvar_t cl_touch_aim_disengage = {CF_CLIENT, "_cl_touch_aim_disengage", "0",
+	"Set by the engine: 1 while the weapons left are not worth a fight (the one in hand is empty and only the Blaster or nothing has ammo): keep away and dodge"};
 cvar_t cl_touch_aim_lookscale = {CF_CLIENT, "_cl_touch_aim_lookscale", "1",
 	"Set by the engine: multiplier for touch look speed (aim friction near an enemy)"};
 // CSQC -> engine: the port's touch HUD state. -1 = not live (menu, layout
@@ -383,6 +385,7 @@ void TouchAim_Init(void)
 	Cvar_RegisterVariable(&cl_touch_aim_debug);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_active);
 	Cvar_RegisterVariable(&cl_touch_aim_lookscale);
+	Cvar_RegisterVariable(&cl_touch_aim_disengage);
 	Cvar_RegisterVariable(&cl_touch_hud_state);
 	TouchHook_Init();
 	ta.lookscale = 1;
@@ -1465,6 +1468,79 @@ static int group_near(const aimtarget_t *near)
 			c++;
 	}
 	return c;
+}
+
+static qbool free_all_certain(void);
+
+// The weapon in hand running low (TouchWep_DryPlan): fire it to the last shot
+// it can pay for, then switch at once to the best weapon with ammo -- before
+// the server's own empty switch, which may pick the Blaster -- or sooner when
+// the other weapon does more over the next moments. With nothing worth having
+// left, publish _cl_touch_aim_disengage for the dodge to keep away. True
+// when it asked for a switch.
+static qbool dry_check(const aimtarget_t *near, int held, const touch_wep_t *wep, double now)
+{
+	const char *names[72];
+	qbool ready[72];
+	int index[72], n = 0, i, best, nshots, plan, mclass;
+	float bu = 0, hu = 0, dist, held_dps, alt_dps = 0, refire;
+	qbool fight = near->entnum || (ta.lock_ent && now < ta.lock_until), engage = 0;
+	static int said_plan = -1;
+	if (held < 0 || !wep)
+	{
+		if (cl_touch_aim_disengage.integer)
+			Cvar_SetValueQuick(&cl_touch_aim_disengage, 0);
+		return false;
+	}
+	dist = near->entnum ? near->dist : ta.fight_dist > 0 ? ta.fight_dist : 800;
+	mclass = near->entnum ? ta.tracks[near->entnum & (TRACK_MAX - 1)].cls : TW_CLASS_STEADY;
+	nshots = TouchWep_ShotsLeft(TouchHUD_WeaponAmmo(held), TouchHUD_HeldClip(), wep->cost);
+	refire = TouchWep_Refire(wep->netname, ta.last_mode == TW_MODE_SECONDARY);
+	for (i = 0; i < TouchHUD_NumWeapons() && n < 72; i++)
+	{
+		if (!TouchHUD_WeaponOwned(i) || i == held)
+			continue;
+		index[n] = i;
+		names[n] = TouchHUD_WeaponName(i);
+		ready[n] = weapon_ready(i, TouchWep_Find(names[n]), held);
+		n++;
+	}
+	best = TouchWep_ChooseSmart(names, ready, n, -1, dist, mclass, 0, cl_touch_autoswitch_lastresort.integer != 0, &bu, &hu);
+	if (best >= 0)
+		alt_dps = max(0.01f, TouchWep_ExpectedDPS(names[best], dist, mclass));
+	held_dps = TouchWep_Usable(wep, dist) ? max(0.0f, TouchWep_ExpectedDPS(wep->netname, dist, mclass)) : 0;
+	plan = TouchWep_DryPlan(held_dps, nshots, refire, alt_dps, best >= 0 && TouchWep_IsFallback(names[best]), TW_HORIZON, TW_SWITCH_COST);
+	// nothing worth a fight: the hand is empty or a last resort, and so is
+	// everything else
+	engage = !((nshots <= 0 || TouchWep_IsFallback(wep->netname)) && (best < 0 || TouchWep_IsFallback(names[best])));
+	if (cl_touch_aim_disengage.integer != (fight && !engage))
+	{
+		Cvar_SetValueQuick(&cl_touch_aim_disengage, fight && !engage);
+		if (cl_touch_aim_debug.integer)
+			Con_Printf("touch aim: %s\n", fight && !engage ? va(vabuf, sizeof(vabuf), "disengage advised: %s in hand, nothing better with ammo", wep->netname)
+				: "disengage advice off");
+	}
+	if (nshots > 3)
+		said_plan = -1;
+	if (cl_touch_aim_debug.integer && nshots < TW_SHOTS_UNLIMITED && nshots <= 3 && plan != said_plan)
+		Con_Printf("touch aim: %s dry in %.2f s (%d shots left)%s\n", wep->netname, TouchWep_TimeToDry(nshots, refire), nshots,
+			plan == TW_DRY_SWITCH && best >= 0 ? va(vabuf, sizeof(vabuf), " -> %s", names[best]) : plan == TW_DRY_EVADE ? ": nothing better, keep away" : ": firing it out first");
+	if (nshots <= 3)
+		said_plan = plan;
+	if (plan != TW_DRY_SWITCH || best < 0 || !fight || !cl_touch_autoswitch.integer)
+		return false;
+	if (now - ta.manual_switch < MANUAL_GUARD || ta.switch_to >= 0 || TouchHook_InUse() || TouchHook_Rescuing())
+		return false;
+	if ((ta.rk_state != RK_IDLE && ta.rk_state != RK_RELEASE) || (ta.num_free && !free_all_certain()) || (in_attack.state & 3) || (in_button3.state & 3))
+		return false;
+	Cbuf_AddText(cmd_local, va(vabuf, sizeof(vabuf), "weapon_%s\n", names[best]));
+	if (cl_touch_aim_debug.integer)
+		Con_Printf("touch aim: switch %s -> %s at %.0f units (%s dry: %d shots left, expected damage %.0f vs %.0f per second)\n", wep->netname, names[best], dist,
+			wep->netname, nshots, alt_dps, held_dps);
+	ta.switch_to = index[best];
+	ta.switch_asked = now;
+	ta.own_switch = now;
+	return true;
 }
 
 // Switch to the best owned weapon for the fight, under the guards.
@@ -2693,8 +2769,6 @@ static void aim_frame(void)
 		mode = TouchWep_FireMode(wep, &s, &why);
 		if (mode == TW_MODE_NONE && !cl_touch_autoshoot_safe.integer && why != TW_WHY_NO_AMMO)
 			mode = TW_MODE_PRIMARY; // the player turned the safety rules off
-		if (mode == TW_MODE_NONE && why == TW_WHY_NO_AMMO && !cl_touch_autoswitch.integer)
-			mode = TW_MODE_PRIMARY; // fire on empty: the server switches to another weapon
 		if (cl_touch_autoshoot_weapons.integer == 1)
 		{
 			const touch_wep_fire_t *f = mode == TW_MODE_SECONDARY ? &wep->sec : &wep->pri;
@@ -2759,7 +2833,8 @@ static void aim_frame(void)
 	ta.lock = !assist && !autoshoot ? 0 : ((on_target || (near.entnum && near.on_lead)) ? 2 : (near.entnum ? 1 : 0));
 
 	// switch first: no rocket is launched while a switch is on its way
-	auto_switch(&near, held, wep, now);
+	if (!dry_check(&near, held, wep, now))
+		auto_switch(&near, held, wep, now);
 
 	if (autoshoot && wep && (wep->flags & TW_GUIDED) && cl_touch_autoshoot_steer.integer)
 	{

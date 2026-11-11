@@ -1195,6 +1195,78 @@ static float TouchWep_ExpectedDPS(const char *netname, float dist, int mclass)
 	return -1;
 }
 
+// ---------------------------------------------------------------------------
+// Ammo: how long the weapon in hand lasts, and what to do about it
+// ---------------------------------------------------------------------------
+
+// Seconds between shots of each fire (stock balance), for the time until a
+// weapon runs dry. 0: unknown (treated as 1 s).
+typedef struct touch_wep_refire_s { const char *netname; float pri, sec; } touch_wep_refire_t;
+static const touch_wep_refire_t touch_wep_refire[] =
+{
+	{ "blaster", 0.7f, 0 }, { "shotgun", 0.75f, 1.25f }, { "machinegun", 0.0625f, 0.625f }, { "arc", 0.1667f, 0.167f },
+	{ "mortar", 0.8f, 0.7f }, { "minelayer", 1.0f, 0 }, { "electro", 0.6f, 1.2f }, { "crylink", 0.7f, 0.7f },
+	{ "hlac", 0.078f, 1.0f }, { "vortex", 1.5f, 0 }, { "rifle", 1.2f, 0.9f }, { "vaporizer", 1.0f, 0.7f },
+	{ "hagar", 0.167f, 0.5f }, { "seeker", 0.75f, 0.1f }, { "devastator", 1.1f, 0 }, { "fireball", 2.0f, 1.5f },
+	{ "okhmg", 0.05f, 0.7f }, { "okmachinegun", 0.1f, 0.7f }, { "oknex", 1.0f, 0.7f }, { "okrpc", 1.0f, 0.7f }, { "okshotgun", 0.75f, 0.7f },
+};
+
+static float TouchWep_Refire(const char *netname, qbool secondary)
+{
+	int i;
+	if (!netname)
+		return 1;
+	for (i = 0; i < (int)(sizeof(touch_wep_refire) / sizeof(touch_wep_refire[0])); i++)
+		if (!strcmp(touch_wep_refire[i].netname, netname))
+		{
+			float r = secondary ? touch_wep_refire[i].sec : touch_wep_refire[i].pri;
+			return r > 0 ? r : 1;
+		}
+	return 1;
+}
+
+// Shots the weapon can still pay for: what is loaded (clip >= 0 on a
+// weapon that reloads) plus the reserve, at cost per shot. ammo < 0 or
+// cost <= 0: unlimited (a large number).
+#define TW_SHOTS_UNLIMITED 9999
+static int TouchWep_ShotsLeft(int ammo, int clip, int cost)
+{
+	int total;
+	if (ammo < 0 || cost <= 0)
+		return TW_SHOTS_UNLIMITED;
+	total = ammo + (clip > 0 ? clip : 0);
+	return total / cost;
+}
+
+// Seconds until the weapon in hand is dry, firing at its refire.
+static float TouchWep_TimeToDry(int shots, float refire)
+{
+	if (shots >= TW_SHOTS_UNLIMITED)
+		return 1e6f;
+	return shots * refire;
+}
+
+// What to do as the weapon in hand runs low, over the horizon (TW_HORIZON):
+// keep firing it until dry and switch then (losing the switch time after),
+// or switch now. held_dps / alt_dps: expected damage per second of the
+// weapon in hand and of the best other weapon with ammo (0: none).
+#define TW_DRY_KEEP   0
+#define TW_DRY_SWITCH 1 // switch now: the other weapon does more over the horizon, or the hand is empty
+#define TW_DRY_EVADE  2 // nothing worth having left: keep away and dodge rather than trade
+static int TouchWep_DryPlan(float held_dps, int shots, float refire, float alt_dps, qbool alt_is_fallback, float horizon, float switch_cost)
+{
+	float t_dry = TouchWep_TimeToDry(shots, refire), keep, now;
+	if (shots <= 0)
+		return alt_dps > 0 && !alt_is_fallback ? TW_DRY_SWITCH : TW_DRY_EVADE;
+	if (alt_dps <= 0 || t_dry > horizon)
+		return TW_DRY_KEEP; // not running low: the ordinary weapon choice decides
+	keep = held_dps * (t_dry < horizon ? t_dry : horizon);
+	if (t_dry + switch_cost < horizon)
+		keep += alt_dps * (horizon - t_dry - switch_cost);
+	now = horizon > switch_cost ? alt_dps * (horizon - switch_cost) : 0;
+	return now > keep * 1.1f ? TW_DRY_SWITCH : TW_DRY_KEEP;
+}
+
 // Share (0..1) of the weapon's best expected DPS against this motion class
 // that it has at this distance; -1 when the weapon is not in the table.
 static float TouchWep_DPSShare(const char *netname, float dist, int mclass)

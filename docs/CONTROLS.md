@@ -731,6 +731,23 @@ stock server this drop happens only when the player's own `cl_weaponpriority`
 puts the Blaster above the weapons that still have ammo; with the default
 list the server picks a real weapon itself.
 
+**Running dry.** The shots the weapon in hand can still pay for (loaded clip
+plus reserve, at its cost per shot) and its refire give the time until it is
+dry. Auto-shoot never presses a weapon that cannot pay for the shot (no dry
+press that makes the server switch by itself). As it runs low, the weapon is
+fired to its last shot and then the best weapon with ammo takes over; when
+the other weapon would do more over the next 1.5 s even after the 0.4 s
+switch (a last slow, weak shot against a ready Hagar), it switches at once.
+The server switches by itself the moment the last shot leaves, following the
+player's `cl_weaponpriority`; with the default list that is never the Blaster
+while a real weapon has ammo, and when it is, auto-switch leaves it at once
+(above). With nothing worth a fight left -- the hand empty or a last resort,
+and no better weapon with ammo -- the engine sets `_cl_touch_aim_disengage`
+to 1 while an enemy is in the fight, for the auto dodge to favour keeping
+away (`cl_touch_aim_debug` prints "disengage advised"). Weapons that reload
+count their loaded rounds and reserve together; the reload time is not
+modelled yet.
+
 Without `_smart`: the weapon list is the bots' preference for the
 distance (bands at 500 and 1050 units), without the Tuba, Mine Layer,
 Port-O-Launch, Hook, Fireball and Seeker; only owned weapons with ammo for a
