@@ -20,6 +20,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -32,6 +33,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Preparation belongs to the process, not to this screen: leaving the screen
  * during a download leaves the download running. If it finishes while nobody is
  * looking, a notification says so, and tapping it comes back here.
+ *
+ * While it works the screen offers Cancel: the download stops with what it
+ * fetched kept on disk (GameData stages it in parts), unpacking stops between
+ * files (each lands under a temporary name and is renamed when whole), and
+ * the screen then offers Resume and Quit.
  */
 public final class BootActivity extends Activity {
 
@@ -62,7 +68,15 @@ public final class BootActivity extends Activity {
     private TextView detail;
     private ProgressBar progress;
     private Button retry;
+    private Button cancel;
+    private Button quit;
     private Thread worker;
+    /** The process's one preparation thread while it runs, whichever screen started it. */
+    private static volatile Thread preparationThread;
+    /** Cancel was pressed: the preparation's end is a pause, not a failure. */
+    private static volatile boolean cancelRequested;
+    /** Quit was pressed: the stopped preparation needs no notification. */
+    private static volatile boolean quitting;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -84,6 +98,10 @@ public final class BootActivity extends Activity {
         progress = findViewById(R.id.boot_progress);
         retry = findViewById(R.id.boot_retry);
         retry.setOnClickListener(v -> start());
+        cancel = findViewById(R.id.boot_cancel);
+        cancel.setOnClickListener(v -> cancelPreparation());
+        quit = findViewById(R.id.boot_quit);
+        quit.setOnClickListener(v -> quitApp());
 
         appContext = getApplicationContext();
         readyData = null;
@@ -126,6 +144,7 @@ public final class BootActivity extends Activity {
             return;
         }
         retry.setVisibility(View.GONE);
+        quit.setVisibility(View.GONE);
         progress.setIndeterminate(true);
 
         GameData data = new GameData(this);
@@ -289,7 +308,10 @@ public final class BootActivity extends Activity {
             }
         }, "xonotic-bootstrap");
         worker = preparation;
+        preparationThread = preparation;
+        cancelRequested = false;
         preparation.start();
+        syncCancel();
     }
 
     /** The screen the player can see right now, or null once it has gone. */
@@ -298,7 +320,31 @@ public final class BootActivity extends Activity {
         return live != null && !live.isFinishing() && !live.isDestroyed() ? live : null;
     }
 
+    /** Stop the download or unpack; it ends in failed() with an InterruptedIOException. */
+    private void cancelPreparation() {
+        Thread running = preparationThread;
+        if (running == null || !running.isAlive()) {
+            return;
+        }
+        cancelRequested = true;
+        quitting = false;
+        cancel.setEnabled(false);
+        cancel.setText(R.string.boot_cancelling);
+        running.interrupt();
+    }
+
+    private void quitApp() {
+        quitting = true;
+        Thread running = preparationThread;
+        if (running != null) {
+            running.interrupt();
+        }
+        KeepAliveService.stop(this);
+        finishAndRemoveTask();
+    }
+
     private static void prepared(GameData data) {
+        preparationThread = null;
         preparing.set(false);
         KeepAliveService.stop(appContext);
         BootActivity live = visibleScreen();
@@ -312,6 +358,13 @@ public final class BootActivity extends Activity {
     }
 
     private static void failed(Throwable cause) {
+        preparationThread = null;
+        if (quitting) {
+            quitting = false;
+            preparing.set(false);
+            KeepAliveService.stop(appContext);
+            return;
+        }
         preparing.set(false);
         KeepAliveService.stop(appContext);
         BootActivity live = visibleScreen();
@@ -329,6 +382,7 @@ public final class BootActivity extends Activity {
         if (root != null) {
             root.setVisibility(View.VISIBLE);
         }
+        syncCancel();
     }
 
     /**
@@ -368,7 +422,26 @@ public final class BootActivity extends Activity {
         });
     }
 
+    /** Cancel while a preparation runs and has not been cancelled yet. */
+    private void syncCancel() {
+        Thread running = preparationThread;
+        boolean working = running != null && running.isAlive();
+        if (cancel == null) {
+            return;
+        }
+        cancel.setVisibility(working ? View.VISIBLE : View.GONE);
+        if (working && !cancelRequested) {
+            cancel.setEnabled(true);
+            cancel.setText(R.string.boot_cancel);
+        }
+        if (working) {
+            quit.setVisibility(View.GONE);
+            retry.setVisibility(View.GONE);
+        }
+    }
+
     private void applyProgress(String text, String note, int percent) {
+        syncCancel();
         status.setText(text);
         detail.setText(note);
         if (percent < 0) {
@@ -392,6 +465,18 @@ public final class BootActivity extends Activity {
 
     private void showFailure(Throwable cause) {
         reveal();
+        quit.setVisibility(View.VISIBLE);
+        if (cancelRequested || cause instanceof InterruptedIOException) {
+            cancelRequested = false;
+            progress.setIndeterminate(false);
+            status.setText(R.string.boot_paused);
+            detail.setText(lastDetail.isEmpty() ? getString(R.string.boot_paused_detail_none)
+                    : getString(R.string.boot_paused_detail, lastDetail));
+            retry.setText(R.string.boot_resume);
+            retry.setVisibility(View.VISIBLE);
+            return;
+        }
+        retry.setText(R.string.boot_retry);
         progress.setIndeterminate(false);
         progress.setProgress(0);
         status.setText(R.string.boot_failed);

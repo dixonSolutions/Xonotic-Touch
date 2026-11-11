@@ -275,6 +275,14 @@ during `FS_Init` and would not see anything Java staged afterwards.
    retry.
 3. Start `XonoticActivity`.
 
+While the boot screen shows work (the first-launch download, its extraction,
+an unpack after an update), it offers **Cancel**. The download stops with the
+parts it fetched kept on disk; the extraction and the unpack stop between
+files (a pk3 is written under a temporary name, so it can stop mid-file). The
+screen then says where it stopped and offers **Resume**, which carries on from
+there, and **Quit**. A cancelled download's threads are closed down before the
+screen says so, so a Resume never has two writers on one part.
+
 ## Updating
 
 A sideloaded app has no store behind it, so it watches its own release feed.
