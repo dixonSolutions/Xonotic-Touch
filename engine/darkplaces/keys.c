@@ -25,6 +25,7 @@
 #include "utf8lib.h"
 #include "csprogs.h"
 #include "touch_hud.h" // Touch
+#include "touch_vote.h" // Touch
 
 cvar_t con_closeontoggleconsole = {CF_CLIENT | CF_ARCHIVE, "con_closeontoggleconsole","1", "allows toggleconsole binds to close the console as well; when set to 2, this even works when not at the start of the line in console input; when set to 3, this works even if the toggleconsole key is the color tag"};
 
@@ -1913,6 +1914,12 @@ Key_Event (int key, int ascii, qbool down)
 		// Back cancels the join on a touchscreen
 		if (down && TouchHUD_LoadingBack())
 			return;
+		// Touch: in the game, Escape / Android Back closes the vote card first
+		if (down && keydest == key_game && TouchVote_Back())
+		{
+			tbl_keydest[key] = key_void;
+			return;
+		}
 
 		// in all modes shift-escape toggles console
 		if (keydown[K_SHIFT])
