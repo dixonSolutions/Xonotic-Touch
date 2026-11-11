@@ -14,8 +14,11 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import android.util.TypedValue;
+import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
+import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
@@ -90,23 +93,78 @@ public final class BootActivity extends Activity {
             finish();
             return;
         }
-        setContentView(R.layout.boot);
-
-        root = findViewById(R.id.boot_root);
-        status = findViewById(R.id.boot_status);
-        detail = findViewById(R.id.boot_detail);
-        progress = findViewById(R.id.boot_progress);
-        retry = findViewById(R.id.boot_retry);
+        buildScreen();
         retry.setOnClickListener(v -> start());
-        cancel = findViewById(R.id.boot_cancel);
         cancel.setOnClickListener(v -> cancelPreparation());
-        quit = findViewById(R.id.boot_quit);
         quit.setOnClickListener(v -> quitApp());
 
         appContext = getApplicationContext();
         readyData = null;
         showing = this;
         start();
+    }
+
+    /**
+     * The screen is built here, not inflated: under AndySU the layout and its
+     * ids would come from the installed host's resource table, which need not
+     * be this build's (see HostRes).
+     */
+    private void buildScreen() {
+        float dp = getResources().getDisplayMetrics().density;
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        int pad = Math.round(32 * dp);
+        box.setPadding(pad, pad, pad, pad);
+        // Starts invisible: shown only when there is something to wait for
+        // (unpacking, the first download, an update install, an error).
+        box.setVisibility(View.INVISIBLE);
+
+        status = new TextView(this);
+        status.setTextColor(0xFFF2F4F8);
+        status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        status.setText(HostRes.string(this, "boot_unpacking"));
+        box.addView(status, wrap(0));
+
+        detail = new TextView(this);
+        detail.setTextColor(0xFF8C93A3);
+        detail.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        detail.setText(HostRes.string(this, "boot_first_run"));
+        box.addView(detail, wrap(Math.round(8 * dp)));
+
+        progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progress.setMax(100);
+        LinearLayout.LayoutParams bar = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        bar.topMargin = Math.round(24 * dp);
+        box.addView(progress, bar);
+
+        LinearLayout buttons = new LinearLayout(this);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        box.addView(buttons, wrap(Math.round(24 * dp)));
+        retry = button(buttons, "boot_retry", 0);
+        cancel = button(buttons, "boot_cancel", 0);
+        quit = button(buttons, "boot_quit", Math.round(16 * dp));
+
+        root = box;
+        setContentView(box);
+    }
+
+    private static LinearLayout.LayoutParams wrap(int top) {
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        p.topMargin = top;
+        return p;
+    }
+
+    private Button button(LinearLayout row, String text, int start) {
+        Button b = new Button(this);
+        b.setText(HostRes.string(this, text));
+        b.setVisibility(View.GONE);
+        LinearLayout.LayoutParams p = wrap(0);
+        p.setMarginStart(start);
+        row.addView(b, p);
+        return b;
     }
 
     @Override
@@ -181,7 +239,7 @@ public final class BootActivity extends Activity {
                 bridge.publishIdle(installed);
             } else if (updater.cachedBytes(known) > 0) {
                 bridge.publishPaused(installed, known.version, updater.cachedPercent(known),
-                        getString(R.string.update_status_paused));
+                        HostRes.string(this, "update_status_paused"));
             } else {
                 bridge.publishAvailable(installed, known);
             }
@@ -202,11 +260,11 @@ public final class BootActivity extends Activity {
         AppUpdater updater = new AppUpdater(this);
         UpdateBridge bridge = new UpdateBridge(this, data.baseDir());
         new AlertDialog.Builder(this)
-            .setTitle(getString(R.string.update_title, update.version))
-            .setMessage(getString(R.string.update_message, updater.installedVersion()))
-            .setPositiveButton(R.string.update_install, (d, which) -> installUpdate(updater, bridge, update, data))
-            .setNegativeButton(R.string.update_later, (d, which) -> continueToGame(data))
-            .setNeutralButton(R.string.update_skip, (d, which) -> {
+            .setTitle(HostRes.string(this, "update_title", update.version))
+            .setMessage(HostRes.string(this, "update_message", updater.installedVersion()))
+            .setPositiveButton(HostRes.string(this, "update_install"), (d, which) -> installUpdate(updater, bridge, update, data))
+            .setNegativeButton(HostRes.string(this, "update_later"), (d, which) -> continueToGame(data))
+            .setNeutralButton(HostRes.string(this, "update_skip"), (d, which) -> {
                 updater.skip(update);
                 // The status file still says `available` from the check a
                 // moment ago. Left there, the in-game Updates screen spends the
@@ -223,7 +281,7 @@ public final class BootActivity extends Activity {
                                AppUpdater.Update update, GameData data) {
         reveal();
         progress.setIndeterminate(true);
-        status.setText(updater.isReady(update) ? R.string.update_installing : R.string.update_downloading);
+        status.setText(HostRes.string(this, updater.isReady(update) ? "update_installing" : "update_downloading"));
         detail.setText("");
         String installed = updater.installedVersion();
         // The failure callback is a broadcast receiver, so it can land before
@@ -247,7 +305,7 @@ public final class BootActivity extends Activity {
                             // never finishes.
                             failed.set(true);
                             bridge.publishInstallFailed(installed, update.version,
-                                    getString(R.string.update_status_failed));
+                                    HostRes.string(this, "update_status_failed"));
                             ui.post(() -> continueToGame(data));
                         })) {
                     // Waiting on the "install unknown apps" toggle; the settings
@@ -268,7 +326,7 @@ public final class BootActivity extends Activity {
                 Log.w(TAG, "Update install failed", e);
                 if (updater.cachedBytes(update) > 0 && !updater.isReady(update)) {
                     bridge.publishPaused(installed, update.version, updater.cachedPercent(update),
-                            getString(R.string.update_status_paused));
+                            HostRes.string(this, "update_status_paused"));
                 } else {
                     bridge.publishInstallFailed(installed, update.version,
                             String.valueOf(e.getMessage()));
@@ -296,7 +354,7 @@ public final class BootActivity extends Activity {
             // Leaving the app mid-download must not freeze or end it
             // (KeepAliveService); started now, while this screen is in front.
             KeepAliveService.show(this, KeepAliveService.KIND_DOWNLOAD,
-                    getString(R.string.keepalive_download_text));
+                    HostRes.string(this, "keepalive_download_text"));
         }
         Thread preparation = new Thread(() -> {
             try {
@@ -329,7 +387,7 @@ public final class BootActivity extends Activity {
         cancelRequested = true;
         quitting = false;
         cancel.setEnabled(false);
-        cancel.setText(R.string.boot_cancelling);
+        cancel.setText(HostRes.string(this, "boot_cancelling"));
         running.interrupt();
     }
 
@@ -352,8 +410,8 @@ public final class BootActivity extends Activity {
             live.launchEngine(data);
         } else {
             readyData = data;
-            notifyDone(appContext.getString(R.string.boot_notice_ready_title),
-                    appContext.getString(R.string.boot_notice_ready_text));
+            notifyDone(HostRes.string(appContext, "boot_notice_ready_title"),
+                    HostRes.string(appContext, "boot_notice_ready_text"));
         }
     }
 
@@ -372,8 +430,8 @@ public final class BootActivity extends Activity {
             live.showFailure(cause);
         } else {
             failedWhileAway = true;
-            notifyDone(appContext.getString(R.string.boot_notice_failed_title),
-                    appContext.getString(R.string.boot_notice_failed_text));
+            notifyDone(HostRes.string(appContext, "boot_notice_failed_title"),
+                    HostRes.string(appContext, "boot_notice_failed_text"));
         }
     }
 
@@ -432,7 +490,7 @@ public final class BootActivity extends Activity {
         cancel.setVisibility(working ? View.VISIBLE : View.GONE);
         if (working && !cancelRequested) {
             cancel.setEnabled(true);
-            cancel.setText(R.string.boot_cancel);
+            cancel.setText(HostRes.string(this, "boot_cancel"));
         }
         if (working) {
             quit.setVisibility(View.GONE);
@@ -469,17 +527,17 @@ public final class BootActivity extends Activity {
         if (cancelRequested || cause instanceof InterruptedIOException) {
             cancelRequested = false;
             progress.setIndeterminate(false);
-            status.setText(R.string.boot_paused);
-            detail.setText(lastDetail.isEmpty() ? getString(R.string.boot_paused_detail_none)
-                    : getString(R.string.boot_paused_detail, lastDetail));
-            retry.setText(R.string.boot_resume);
+            status.setText(HostRes.string(this, "boot_paused"));
+            detail.setText(lastDetail.isEmpty() ? HostRes.string(this, "boot_paused_detail_none")
+                    : HostRes.string(this, "boot_paused_detail", lastDetail));
+            retry.setText(HostRes.string(this, "boot_resume"));
             retry.setVisibility(View.VISIBLE);
             return;
         }
-        retry.setText(R.string.boot_retry);
+        retry.setText(HostRes.string(this, "boot_retry"));
         progress.setIndeterminate(false);
         progress.setProgress(0);
-        status.setText(R.string.boot_failed);
+        status.setText(HostRes.string(this, "boot_failed"));
         detail.setText(String.valueOf(cause.getMessage()));
         retry.setVisibility(View.VISIBLE);
     }
@@ -525,7 +583,7 @@ public final class BootActivity extends Activity {
     private static void createChannel(NotificationManager manager, String id, int importance) {
         if (Build.VERSION.SDK_INT >= 26) {
             manager.createNotificationChannel(new NotificationChannel(id,
-                    appContext.getString(R.string.boot_notice_channel), importance));
+                    HostRes.string(appContext, "boot_notice_channel"), importance));
         }
     }
 

@@ -94,7 +94,7 @@ final class UpdateBridge {
 
     void publishUpToDate(String installed) {
         publish(STATE_UPTODATE, installed, installed, 0, 0,
-                context.getString(R.string.update_status_current));
+                HostRes.string(context, "update_status_current"));
     }
 
     /**
@@ -107,7 +107,7 @@ final class UpdateBridge {
      * away the install it was offering.
      */
     void publishCheckFailed(String installed, AppUpdater.Update known) {
-        String message = context.getString(R.string.update_status_check_failed);
+        String message = HostRes.string(context, "update_status_check_failed");
         if (known == null) {
             publish(STATE_ERROR, installed, "", 0, 0, message);
             return;
@@ -119,7 +119,7 @@ final class UpdateBridge {
     void publishAvailable(String installed, AppUpdater.Update update) {
         publish(STATE_AVAILABLE, installed, update.version,
                 versionsBehind(installed, update.version), 0,
-                context.getString(R.string.update_status_available, update.version));
+                HostRes.string(context, "update_status_available", update.version));
     }
 
     void publishDownloading(String installed, String latest, int percent) {
@@ -130,14 +130,14 @@ final class UpdateBridge {
     void publishInstalling(String installed, String latest) {
         publish(STATE_INSTALLING, installed, latest,
                 versionsBehind(installed, latest), 100,
-                context.getString(R.string.update_status_installing));
+                HostRes.string(context, "update_status_installing"));
     }
 
     /** Downloaded and verified; it installs the next time the app starts. */
     void publishReady(String installed, String latest) {
         publish(STATE_READY, installed, latest,
                 versionsBehind(installed, latest), 100,
-                context.getString(R.string.update_status_ready, latest));
+                HostRes.string(context, "update_status_ready", latest));
     }
 
     /**
@@ -153,7 +153,7 @@ final class UpdateBridge {
     void publishNeedsPermission(String installed, String latest) {
         publish(STATE_NEEDS_PERMISSION, installed, latest,
                 versionsBehind(installed, latest), 100,
-                context.getString(R.string.update_status_permission));
+                HostRes.string(context, "update_status_permission"));
     }
 
     /**

@@ -165,7 +165,7 @@ public final class KeepAliveService extends Service {
         String channel = download ? "downloads" : CHANNEL_CONNECTION;
         if (Build.VERSION.SDK_INT >= 26) {
             manager.createNotificationChannel(new NotificationChannel(channel,
-                    context.getString(download ? R.string.boot_notice_channel : R.string.keepalive_channel),
+                    HostRes.string(context, download ? "boot_notice_channel" : "keepalive_channel"),
                     NotificationManager.IMPORTANCE_LOW));
         }
         Notification.Builder builder = Build.VERSION.SDK_INT >= 26
@@ -177,7 +177,7 @@ public final class KeepAliveService extends Service {
                 | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
         return builder
                 .setSmallIcon(download ? android.R.drawable.stat_sys_download : android.R.drawable.stat_notify_sync)
-                .setContentTitle(context.getString(download ? R.string.keepalive_download_title : R.string.keepalive_connection_title))
+                .setContentTitle(HostRes.string(context, download ? "keepalive_download_title" : "keepalive_connection_title"))
                 .setContentText(text != null ? text : "")
                 .setOngoing(true)
                 .setContentIntent(PendingIntent.getActivity(context, download ? 1 : 3, open, flags))

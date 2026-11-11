@@ -394,7 +394,7 @@ final class AppUpdater {
             throw new IOException("cannot create " + dir);
         }
         File part = partFile(update);
-        String status = context.getString(R.string.update_downloading);
+        String status = HostRes.string(context, "update_downloading");
 
         for (int attempt = 0; attempt < 2; attempt++) {
             long have = part.isFile() ? part.length() : 0;

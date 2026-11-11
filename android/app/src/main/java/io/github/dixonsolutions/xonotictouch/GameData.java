@@ -283,7 +283,7 @@ final class GameData {
             return;
         }
 
-        String status = context.getString(R.string.boot_unpacking);
+        String status = HostRes.string(context, "boot_unpacking");
         progress.update(status, "", -1);
         Log.i(TAG, "Unpacking " + BUNDLE_ASSET + " for " + version);
         long started = System.currentTimeMillis();
@@ -348,7 +348,7 @@ final class GameData {
             return;
         }
 
-        String status = context.getString(R.string.boot_downloading);
+        String status = HostRes.string(context, "boot_downloading");
         Log.i(TAG, "Fetching " + ASSET_ARCHIVE);
         // The archive is staged in parts rather than streamed into the pk3s: a
         // stopped run then resumes from the bytes on disk, and an unzip that
