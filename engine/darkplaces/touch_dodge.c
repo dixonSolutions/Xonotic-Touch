@@ -66,10 +66,6 @@ cvar_t cl_touch_autododge_cue = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autododge_cue
 	"Auto dodge: flash an arrow at the screen's edge the way a dodge goes"};
 cvar_t cl_touch_autododge_scope = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autododge_scope", "0",
 	"Auto dodge: where it works: 0 on servers and in local matches, 1 in local matches only"};
-cvar_t cl_touch_autododge_evade = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autododge_evade", "0",
-	"Auto dodge: while auto-shoot is on an enemy who faces you, strafe from side to side at random moments (your own sideways steering wins)"};
-cvar_t cl_touch_autododge_evade_range = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autododge_evade_range", "1500",
-	"Auto dodge: the evasive strafe only for an enemy closer than this, units"};
 cvar_t cl_touch_autododge_rear = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autododge_rear", "1",
 	"Auto dodge: also shots from behind or the side, out of view (never one behind a wall); 0: only shots in view"};
 
@@ -80,6 +76,7 @@ cvar_t cl_touch_autododge_rear = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autododge_re
 #define WINDOW_MIN        0.3f
 #define WINDOW_MAX        1.5f
 #define LEAD_MAX          0.6f    // the most a threat is flown ahead for the connection's delay
+#define LEAD_MARGIN       150.0f  // units of extra berth per second of that delay
 #define JUDGE_BUDGET      0.003   // seconds: a judgement dearer than this skips the next frame
 #define SWITCH_GAIN       5.0f    // a dodge under way changes course only for this much less damage
 #define SWITCH_HOLD       0.15    // and not within this long of its last change, unless it would be hit
@@ -124,12 +121,6 @@ static struct
 	double cue_time;
 	float cue_side, cue_fwd;
 	qbool cue_jump;
-	// the evasive strafe
-	qbool evading;
-	float evade_dir[2];
-	double evade_flip;
-	int evade_side;
-	double evade_time;
 	// the query
 	int unesc;
 	float unesc_damage, unesc_when;
@@ -389,107 +380,6 @@ static int crylink_join(td_proj_t *prs, int *ents, const char **names, float *et
 	return n;
 }
 
-// The nearest enemy player in view and in line who faces the player, within
-// range: 1 with the horizontal unit direction from the player to them.
-static qbool facing_enemy(const vec3_t eye, float range, float to_enemy[2])
-{
-	prvm_prog_t *prog = CLVM_prog;
-	int i, team_game = teamplay_mode();
-	int mine = cl.realplayerentity >= 1 && cl.realplayerentity <= cl.maxclients ? cl.scores[cl.realplayerentity - 1].colors & 15 : -1;
-	float best = range;
-	qbool found = false;
-	for (i = 1; i < prog->num_edicts; i++)
-	{
-		prvm_edict_t *ed = PRVM_EDICT_NUM(i);
-		vec3_t org, d, fwd, ang;
-		float dist;
-		int n;
-		if (ed->free)
-			continue;
-		n = (int)PRVM_clientedictfloat(ed, entnum);
-		if (n < 1 || n > cl.maxclients || n == cl.realplayerentity || n == cl.viewentity || !cl.scores[n - 1].name[0])
-			continue;
-		if (team_game != 0 && mine >= 0 && (cl.scores[n - 1].colors & 15) == mine)
-			continue; // a teammate
-		if (PRVM_clientedictfloat(ed, solid) == SOLID_CORPSE || !PRVM_clientedictfloat(ed, modelindex))
-			continue;
-		VectorCopy(PRVM_clientedictvector(ed, origin), org);
-		org[2] += 30;
-		VectorSubtract(org, eye, d);
-		dist = VectorLength(d);
-		if (dist >= best || !visible(eye, org))
-			continue;
-		// facing the player: their yaw within 30 degrees of the line to them
-		VectorSet(ang, 0, PRVM_clientedictvector(ed, angles)[1], 0);
-		AngleVectors(ang, fwd, NULL, NULL);
-		if (-(fwd[0] * d[0] + fwd[1] * d[1]) < 0.866f * sqrt(d[0] * d[0] + d[1] * d[1]))
-			continue;
-		best = dist;
-		to_enemy[0] = d[0];
-		to_enemy[1] = d[1];
-		found = true;
-	}
-	if (found)
-	{
-		float l = sqrt(to_enemy[0] * to_enemy[0] + to_enemy[1] * to_enemy[1]);
-		if (l < 1)
-			return false;
-		to_enemy[0] /= l;
-		to_enemy[1] /= l;
-	}
-	return found;
-}
-
-// The evasive strafe (cl_touch_autododge_evade): while auto-shoot is on an
-// enemy who faces the player, side to side across the line to them, turning
-// at random moments 0.3 - 0.7 s apart, keeping the player's own run toward or
-// away from them (away while out of useful ammo: _cl_touch_aim_disengage);
-// never over a ledge, into a wall or a mine, and never against the player's
-// own sideways steering. 1 when it sets the move direction `dir`.
-static qbool evade(tr_world_t *w, const td_player_t *p, const td_move_t *m, const td_hazards_t *hz, const vec3_t eye, const float own_dir[2], float own_mag, float dir[2])
-{
-	static float path[TD_MAX_STEPS][3];
-	cvar_t *dis = Cvar_FindVar(&cvars_all, "_cl_touch_aim_disengage", ~0);
-	float to[2] = { 0, 0 }, lat[2], along, k;
-	int tries;
-	double now = host.realtime;
-	if (!cl_touch_autododge_evade.integer || !(TouchAim_AutoFiring() || Cvar_VariableValue(&cvars_all, "_cl_touch_aim_lock", ~0) >= 1)
-		|| !facing_enemy(eye, bound(200.0f, cl_touch_autododge_evade_range.value, 4000.0f), to))
-		return false;
-	lat[0] = -to[1];
-	lat[1] = to[0];
-	if (own_mag > 0.1f && fabs(own_dir[0] * lat[0] + own_dir[1] * lat[1]) > 0.5f)
-		return false; // the player is strafing themselves
-	along = own_mag > 0.1f ? own_dir[0] * to[0] + own_dir[1] * to[1] : 0;
-	if (dis && dis->value > 0)
-		along = -0.7f; // out of useful ammo: away from them
-	if (now >= td.evade_flip || !td.evade_side)
-	{
-		td.evade_side = td.evade_side ? -td.evade_side : ((rand() & 1) ? 1 : -1);
-		td.evade_flip = now + 0.3 + 0.4 * (rand() / (double)RAND_MAX);
-	}
-	for (tries = 0; tries < 2; tries++)
-	{
-		td_plan_t plan;
-		memset(&plan, 0, sizeof(plan));
-		k = (float)td.evade_side;
-		dir[0] = lat[0] * k + to[0] * along;
-		dir[1] = lat[1] * k + to[1] * along;
-		{
-			float l = sqrt(dir[0] * dir[0] + dir[1] * dir[1]);
-			dir[0] /= l;
-			dir[1] /= l;
-		}
-		plan.dir[0] = dir[0];
-		plan.dir[1] = dir[1];
-		td_player_path(p, m, &plan, 16, path); // 0.4 s
-		if (TouchDodge_PathSafe(w, p, path, 16, hz && hz->n ? hz : NULL))
-			return true;
-		td.evade_side = -td.evade_side; // that way is a wall or a ledge
-	}
-	return false;
-}
-
 static void gate_changed(const char *why)
 {
 	if (cl_touch_aim_debug.integer && why != td.blocked_said)
@@ -528,7 +418,6 @@ void TouchDodge_Frame(void)
 	gate_changed(blocked);
 	if (blocked)
 	{
-		td.evading = false;
 		if (td.active)
 		{
 			td.n_blocked++;
@@ -666,6 +555,9 @@ void TouchDodge_Frame(void)
 			pr.accel = kind->accel;
 			pr.max_speed = kind->max_speed;
 			pr.prox = kind->prox;
+			// the later it is seen, the less sure where it and the player
+			// will be: a wider berth
+			pr.margin = lead * LEAD_MARGIN;
 			advance(&w, &pr, lead);
 			// keep the soonest TD_MAX_PROJ: when full, this one replaces the
 			// latest if it is sooner
@@ -756,7 +648,7 @@ void TouchDodge_Frame(void)
 		else if (best.base_damage >= mindmg)
 		{
 			const char *name = names[0];
-			if (best.plan > 0 && best.base_damage - best.damage >= mindmg * 0.5f)
+			if (best.plan > 0 && best.base_damage - best.damage >= mindmg * 0.5f && best.damage <= best.base_damage * 0.5f)
 			{
 				int tk = ents[0] & (TRACK_MAX - 1);
 				int reaction = td.track[tk].ent == ents[0] && td.track[tk].danger_frame >= 0 ? td.frame - td.track[tk].danger_frame : -1;
@@ -813,35 +705,9 @@ void TouchDodge_Frame(void)
 	}
 
 done:
-	if (!td.active)
-	{
-		float ed[2];
-		qbool was = td.evading;
-		td.evading = evade(&w, &p, &m, &hz, eye, own_dir, own_mag, ed);
-		if (td.evading)
-		{
-			td.evade_dir[0] = ed[0];
-			td.evade_dir[1] = ed[1];
-			td.evade_time += cl.realframetime;
-		}
-		if (td.evading != was && cl_touch_aim_debug.integer)
-			Con_Printf("touch dodge: evasive strafe %s\n", td.evading ? "on" : "off");
-	}
-	else
-		td.evading = false;
 	if (traces && Sys_DirtyTime() - t0 > JUDGE_BUDGET)
 		td.skip_next = true;
 steer:
-	if (!td.active && td.evading)
-	{
-		float df, ds;
-		VectorSet(ang, 0, cl.viewangles[YAW], 0);
-		AngleVectors(ang, fwd, right, NULL);
-		df = td.evade_dir[0] * fwd[0] + td.evade_dir[1] * fwd[1];
-		ds = td.evade_dir[0] * right[0] + td.evade_dir[1] * right[1];
-		cl.cmd.forwardmove = df * cl_forwardspeed.value;
-		cl.cmd.sidemove = ds * cl_sidespeed.value;
-	}
 	if (td.active)
 	{
 		// the move: the escape's direction, in the view's frame, at full speed
@@ -903,7 +769,6 @@ void TouchDodge_PrintStatus(void)
 	Con_Printf("touch dodge: %s; threats %d, dodges %d, left to the player's own path %d, no escape %d, stopped by the gate %d, course changes %d\n",
 		td.blocked_said ? va(vabuf, sizeof(vabuf), "off: %s", td.blocked_said) : (td.active ? "dodging" : "on"),
 		td.n_threats, td.n_dodges, td.n_own_path, td.n_no_escape, td.n_blocked, td.n_switched);
-	Con_Printf("touch dodge: evasive strafe %s, %.1f s of it so far\n", cl_touch_autododge_evade.integer ? "on" : "off", td.evade_time);
 	Con_Printf("touch dodge: reaction %.1f frames from the first frame a shot was dangerous, on average (most %d) over %d dodges; delay judged %.0f ms on average\n",
 		td.reaction_n ? (float)td.reaction_sum / td.reaction_n : 0.0f, td.reaction_max, td.reaction_n,
 		td.lead_n ? td.lead_sum * 1000 / td.lead_n : 0.0f);
@@ -917,8 +782,6 @@ void TouchDodge_Init(void)
 	Cvar_RegisterVariable(&cl_touch_autododge_cue);
 	Cvar_RegisterVariable(&cl_touch_autododge_scope);
 	Cvar_RegisterVariable(&cl_touch_autododge_rear);
-	Cvar_RegisterVariable(&cl_touch_autododge_evade);
-	Cvar_RegisterVariable(&cl_touch_autododge_evade_range);
 	td.type_ofs = -1;
 	td.teamplay_ofs = -1;
 }

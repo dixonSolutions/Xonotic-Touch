@@ -71,6 +71,7 @@ typedef struct td_proj_s
 	float accel;        // speeds up by this, u/s^2, up to max_speed (a Devastator rocket, a seeker)
 	float max_speed;
 	float prox;         // lies where it lands and explodes when the player comes this close (0: no)
+	float margin;       // extra uncertainty, units, on top of TD_SPLASH_MARGIN and the size (a late view of it)
 } td_proj_t;
 
 // What a stock weapon's projectile does (the 0.8.6 / current stock balance;
@@ -280,7 +281,7 @@ static float td_box_dist(const float q[3], const float o[3], const float mins[3]
 #define TD_SPLASH_MARGIN 32.0f
 static float td_splash(const td_proj_t *pr, float dist)
 {
-	if (dist >= pr->radius + TD_SPLASH_MARGIN)
+	if (dist >= pr->radius + TD_SPLASH_MARGIN + pr->margin)
 		return 0;
 	if (dist >= pr->radius)
 		return pr->edge;
@@ -428,7 +429,7 @@ static float TouchDodge_Damage(const td_proj_t *pr, const td_flight_t *f, const 
 	for (i = 0; i < f->steps; i++)
 	{
 		// through the box (with the projectile's own size) on the way: a hit
-		if (td_box_dist(f->pos[i], path[i], p->mins, p->maxs) <= pr->size)
+		if (td_box_dist(f->pos[i], path[i], p->mins, p->maxs) <= pr->size + pr->margin * 0.4f)
 		{
 			*when = (i + 1) * TD_STEP;
 			return pr->damage;
@@ -574,7 +575,7 @@ typedef struct td_choice_s
 // none), and the escape that does best against all of them, across their
 // combined direction, never near a lying mine in `hz`. Of escapes within a
 // point of the best, the one nearest the player's own direction. Returns 1
-// when an escape cuts the total by at least min_gain.
+// when an escape cuts the total by at least min_gain and at least halves it.
 #define TD_MAX_PROJ 8
 static int TouchDodge_ChooseAllHz(tr_world_t *w, const td_proj_t *pr, int n, const td_player_t *p, const td_move_t *m, const float own_dir[2],
 	float window, float min_gain, const td_hazards_t *hz, td_choice_t *out)
@@ -670,7 +671,7 @@ static int TouchDodge_ChooseAllHz(tr_world_t *w, const td_proj_t *pr, int n, con
 		out->damage = d;
 	}
 	(void)homing;
-	return out->plan > 0 && out->base_damage - out->damage >= min_gain;
+	return out->plan > 0 && out->base_damage - out->damage >= min_gain && out->damage <= out->base_damage * 0.5f;
 }
 
 static int TouchDodge_ChooseAll(tr_world_t *w, const td_proj_t *pr, int n, const td_player_t *p, const td_move_t *m, const float own_dir[2],
