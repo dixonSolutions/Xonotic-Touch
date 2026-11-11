@@ -1485,4 +1485,63 @@ static qbool TouchWep_ShouldSwitchSmart(float held_u, qbool held_can_shoot, floa
 	return best_u >= TW_SWITCH_GAIN * held_u + TW_SWITCH_EXTRA;
 }
 
+// ---------------------------------------------------------------------------
+// Offline practice: what only a match against bots on the player's own
+// machine may use
+// ---------------------------------------------------------------------------
+
+// Where the game runs. Filled by the engine every frame.
+typedef struct touch_practice_env_s
+{
+	qbool server_active;   // this process runs the server (sv.active)
+	qbool local_connection; // and this client is connected to it over the loopback
+	qbool demo;            // a demo is playing
+	int other_humans;      // clients of that server besides this one that are not bots
+} touch_practice_env_t;
+
+#define TW_GATE_OPEN          0
+#define TW_GATE_NO_SERVER     1
+#define TW_GATE_REMOTE        2
+#define TW_GATE_DEMO          3
+#define TW_GATE_HUMANS        4
+static const char *const touch_practice_why[] =
+{
+	"offline match", "not running the server here", "connected to another machine", "demo playback", "another player is connected",
+};
+
+// The one check every offline-only helper goes through: this client plays
+// on its own local server in the same process, over the loopback, with no
+// other human connected, and no demo plays. Anything else: closed.
+static int TouchWep_PracticeGate(const touch_practice_env_t *e)
+{
+	if (e->demo)
+		return TW_GATE_DEMO;
+	if (!e->server_active)
+		return TW_GATE_NO_SERVER;
+	if (!e->local_connection)
+		return TW_GATE_REMOTE;
+	if (e->other_humans > 0)
+		return TW_GATE_HUMANS;
+	return TW_GATE_OPEN;
+}
+
+// The offline helpers in effect: the player's preferences, each only when
+// the gate is open. With it closed every one is off, whatever was asked.
+typedef struct touch_practice_s
+{
+	qbool seethrough;      // enemies behind walls: markers, pre-aim, splash and rockets
+	qbool full360;         // enemies all around may be the target
+	qbool instant;         // the pull moves the whole way at once (no rate cap)
+} touch_practice_t;
+
+static touch_practice_t TouchWep_PracticeEffective(int gate, qbool want_seethrough, qbool want_360, qbool want_instant)
+{
+	touch_practice_t p;
+	qbool open = gate == TW_GATE_OPEN;
+	p.seethrough = open && want_seethrough;
+	p.full360 = open && want_360;
+	p.instant = open && want_instant;
+	return p;
+}
+
 #endif

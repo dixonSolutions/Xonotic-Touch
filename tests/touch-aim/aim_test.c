@@ -850,6 +850,42 @@ static void test_ammo(void)
 	CHECK_EQ(TW_DRY_KEEP, TouchWep_DryPlan(96, 50, 0.0625f, 150, false, 1.5f, 0.4f), "dry plan: plenty left -> keep");
 }
 
+// The offline gate: open only on the player's own server over the loopback,
+// no other human, no demo; and nothing offline-only gets through it closed.
+static void test_practice(void)
+{
+	int sa, lc, dm, hu, want;
+	for (sa = 0; sa < 2; sa++)
+		for (lc = 0; lc < 2; lc++)
+			for (dm = 0; dm < 2; dm++)
+				for (hu = 0; hu < 3; hu++)
+				{
+					touch_practice_env_t e;
+					int g;
+					e.server_active = sa;
+					e.local_connection = lc;
+					e.demo = dm;
+					e.other_humans = hu;
+					g = TouchWep_PracticeGate(&e);
+					CHECK((g == TW_GATE_OPEN) == (sa && lc && !dm && hu == 0), "practice gate: open exactly for the own server, loopback, no demo, no other human");
+					for (want = 0; want < 8; want++)
+					{
+						touch_practice_t p = TouchWep_PracticeEffective(g, want & 1, want & 2, want & 4);
+						if (g != TW_GATE_OPEN)
+							CHECK(!p.seethrough && !p.full360 && !p.instant, "practice: nothing offline-only with the gate closed, whatever the preferences");
+						else
+							CHECK(p.seethrough == !!(want & 1) && p.full360 == !!(want & 2) && p.instant == !!(want & 4), "practice: the preferences apply with the gate open");
+					}
+				}
+	{
+		touch_practice_env_t e = { true, true, false, 1 };
+		CHECK_EQ(TW_GATE_HUMANS, TouchWep_PracticeGate(&e), "practice gate: a friend joining closes it");
+		e.other_humans = 0;
+		e.local_connection = false;
+		CHECK_EQ(TW_GATE_REMOTE, TouchWep_PracticeGate(&e), "practice gate: connected elsewhere while a local server runs: closed");
+	}
+}
+
 int main(void)
 {
 	test_intercept();
@@ -873,6 +909,7 @@ int main(void)
 	test_priority();
 	test_mates();
 	test_ammo();
+	test_practice();
 	{
 		// the ghost is built only from frames in sight
 		touch_wep_ghost_t g;

@@ -533,7 +533,14 @@ void XonoticMobileTacticsTab_fill(entity me)
 			_("When the enemy you are fighting goes out of sight, keep the crosshair where it was last seen, for up to 3 seconds")));
 			setDependent(e, "cl_touch_aimassist", 1, 1);
 	me.TR(me);
-		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("A weapon you pick yourself is kept for 4 seconds.")));
+		me.TD(me, 1, 2, e = makeXonoticCheckBox_T(0, "cl_touch_practice_seethrough", _("See through walls"),
+			_("Offline practice: mark enemies behind walls, aim where they will come out, and reach them with splash and rockets. Only in a match against bots on this device with nobody else connected")));
+		me.TD(me, 1, 2, e = makeXonoticCheckBox_T(0, "cl_touch_practice_360", _("Full 360 targets"),
+			_("Offline practice: with Targets set to Full 360, enemies all around you can be the target. Only in a match against bots on this device")));
+		me.TD(me, 1, 2, e = makeXonoticCheckBox_T(0, "cl_touch_practice_instant", _("Instant turn"),
+			_("Offline practice: the aim moves onto the target at once. Only in a match against bots on this device")));
+	me.TR(me);
+		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("These three work only in offline matches against bots, never online.")));
 }
 
 entity makeXonoticMobileDynamicsTab()

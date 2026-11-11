@@ -57,4 +57,8 @@ void TouchAim_ProgsChanged(void);
 // the same rules.
 const char *TouchAim_BlockReason(void);
 
+// Offline practice markers (enemies behind walls, off the screen in Full
+// 360): drawn over either touch HUD, and only while the offline gate is open.
+void TouchAim_Draw(void);
+
 #endif
