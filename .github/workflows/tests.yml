@@ -36,6 +36,14 @@ jobs:
       - name: Server vote lines read back into vote events
         run: bash scripts/test-touch-vote.sh
 
+  touch-spectate:
+    name: Touch spectator controls
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Spectator meanings of the buttons and the held JOIN
+        run: bash scripts/test-touch-spectate.sh
+
   touch-aim:
     name: Touch auto-shoot weapon logic
     runs-on: ubuntu-latest
