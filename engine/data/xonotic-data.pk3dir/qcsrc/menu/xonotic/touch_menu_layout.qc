@@ -13,6 +13,7 @@ const string TOUCHMENU_KEYS =
 	"touch_zoom_x touch_zoom_y touch_zoom_size "
 	"touch_hook_x touch_hook_y touch_hook_size touch_hook_visible "
 	"touch_turn_x touch_turn_y touch_turn_size touch_turn_visible touch_turn_angle touch_turn_time "
+	"touch_hoplock_x touch_hoplock_y touch_hoplock_size touch_hoplock_visible "
 	"touch_dodge_x touch_dodge_y touch_dodge_size touch_dodge_visible "
 	"touch_look_zone_left touch_look_zone_right touch_edge_deadzone_px touch_handedness "
 	"touch_sens_base touch_sens_y_mult touch_invert_y touch_look_smoothing touch_look_deadzone_px "

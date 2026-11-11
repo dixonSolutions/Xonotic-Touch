@@ -177,6 +177,38 @@ void Touch_Widget_Capsule(vector center, vector half, string label, bool pressed
 	}
 }
 
+void Touch_Widget_Check(vector center, vector half, string label, bool on, bool pressed,
+	float alpha, vector accent)
+{
+	if (half.x < 2 || half.y < 2 || alpha <= 0)
+		return;
+	float fs = Touch_Widget_LabelSize(half, label);
+	float r = TOUCH_R_SM * Touch_UIScale();
+	float b = Touch_Widget_Border();
+
+	if (!Touch_Shape_Ready())
+	{
+		if (on || pressed)
+		{
+			drawfill_builtin(center - half, half * 2, accent, alpha * TOUCH_A_SURFACE_ACTIVE,
+				DRAWFLAG_NORMAL);
+			Touch_DebugAddFills(1);
+		}
+		Touch_Shape_Label(center, fs, label, TOUCH_C_INK, alpha * TOUCH_A_INK);
+		return;
+	}
+
+	// Off: no fill at all, only the box's edge, like an empty checkbox.
+	if (on || pressed)
+		Touch_Shape_RRect(center, half, r, accent, alpha * TOUCH_A_SURFACE_ACTIVE);
+	if (pressed)
+		Touch_Shape_RRect(center, half + '1 1 0' * (half.y * 0.18), r, accent, alpha * TOUCH_A_GLOW);
+	Touch_Shape_RRectRing(center, half, r, b * 2, TOUCH_C_SHADOW, alpha * TOUCH_A_CONTOUR);
+	Touch_Shape_RRectRing(center, half - '1 1 0' * (b * 0.5), r, b, (on ? accent : TOUCH_C_RIM),
+		alpha * (on ? TOUCH_A_RIM_ACTIVE : TOUCH_A_RIM));
+	Touch_Shape_Label(center, fs, label, TOUCH_C_INK, alpha * TOUCH_A_INK);
+}
+
 void Touch_Widget_Key(vector center, vector half, string label, bool pressed,
 	bool on, bool emphasis, float alpha, vector accent)
 {
