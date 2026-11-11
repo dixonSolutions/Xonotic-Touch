@@ -68,7 +68,7 @@ cvar_t cl_touch_autoswitch = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoswitch", "1"
 cvar_t cl_touch_autoshoot_air = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_air", "1",
 	"Auto-shoot leads an enemy in the air along its fall under gravity, and aims where it lands when the shot would arrive after the landing"};
 cvar_t cl_touch_autoshoot_predict = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_predict", "1",
-	"Auto-shoot adds the time the screen lags the server to the lead, and against an enemy that keeps reversing its strafe leads toward the middle of the dodge instead of its far end"};
+	"Auto-shoot adds the time the screen lags the server to the lead, stops a lead at a wall the enemy will run into, and leads instant-hit weapons by the part of a high ping the server's antilag does not cover (beyond 0.4 s)"};
 cvar_t cl_touch_autoshoot_feet = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_feet", "1",
 	"Splash weapons (Devastator, Mortar, Electro, Crylink, RPC, Fireball) aim at the floor at a grounded enemy's feet, so a near miss still explodes beside them"};
 cvar_t cl_touch_autoshoot_group = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_group", "1",
@@ -98,6 +98,10 @@ cvar_t cl_touch_aim_mode = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aim_mode", "1",
 cvar_t cl_touch_aimassist_priority = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_priority", "1",
 	"Aim helpers, several enemies in the cone: nearest the crosshair first, then the one the weapon in hand does most damage to, one facing you up close, "
 	"one you have just hurt, a group for a splash weapon; one running out of reach of a projectile counts less. A new target is kept at least half a second (0 = nearest the crosshair only)"};
+cvar_t cl_touch_aimassist_lastseen = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_lastseen", "1",
+	"Aim pull, during a fight: when the enemy goes out of sight, keep the crosshair where it was last seen, moving on its last seen course for a second, for up to 3 seconds -- never where it really is behind cover"};
+cvar_t cl_touch_autoshoot_combo = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_combo", "1",
+	"Auto-shoot uses two-step fire sequences that do more damage: Electro orbs lobbed at an enemy standing or coming at you, then the bolt that sets them off (with cl_touch_autoshoot_alt)"};
 cvar_t cl_touch_autoshoot_teamsafe = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_teamsafe", "1",
 	"Team games: auto-shoot holds fire while a teammate is on the line of the shot or would be inside its blast, and a rocket is not set off next to one"};
 cvar_t cl_touch_aimassist = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist", "1",
@@ -122,6 +126,8 @@ cvar_t cl_touch_aim_ring = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aim_ring", "1",
 	"Touch HUD: draw a ring at the crosshair while an enemy is within the aim-assist cone, a red one while the crosshair is on an enemy (with aim assist or auto-shoot on)"};
 cvar_t cl_touch_aim_range = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aim_range", "3000",
 	"Auto-shoot and aim helpers ignore enemies farther away than this many units; 0 = no limit (still only enemies in sight)"};
+cvar_t cl_touch_aim_dumptracks = {CF_CLIENT, "cl_touch_aim_dumptracks", "0",
+	"Testing: print every drawn player's position and velocity each frame (XTRK lines), also in demo playback, for the lead evaluator"};
 cvar_t cl_touch_aim_debug = {CF_CLIENT, "cl_touch_aim_debug", "0",
 	"Print auto-shoot and aim-assist decisions to the console: target, weapon, fire mode and why, lead, switches, rockets (2 = also teammates under the crosshair)"};
 
@@ -182,6 +188,8 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 #define ENGAGE_HOLD     3.0f
 // A per-frame view change larger than this is a teleport or respawn, not a turn.
 #define TURN_SPIKE_DEG 60.0f
+#define ANTILAG_MAX    0.4f
+#define ORB_HOLD       0.55f  // attack2 held this long lobs the Electro's three orbs   // g_antilag rewinds at most this much ping (ANTILAG_LATENCY)
 // Target velocity: smoothed over about this many seconds; forgotten when a
 // player was not seen for TRACK_STALE seconds or jumps TRACK_JUMP units.
 #define TRACK_SMOOTH   0.08f
@@ -271,6 +279,7 @@ typedef struct track_s
 	qbool facing;        // looking toward the player
 	float dealt;         // damage auto-shoot's hits did to it lately (the hit-sound stat)
 	double dealt_time;
+	touch_wep_ghost_t ghost; // last seen (cl_touch_aimassist_lastseen)
 } track_t;
 
 static struct
@@ -288,6 +297,8 @@ static struct
 	double lock_until;
 	double lock_fired;   // last time auto-shoot fired at lock_ent
 	double flick_time;   // last fast drag of the player's own
+	double orbs_time, orbs_until;
+	int ghost_said;      // the enemy held by its last seen point (debug) // Electro combo: when orbs were last lobbed, and the hold for them
 	double target_since; // when the current target (track_ent) was taken
 	int target_switches; // for cl_touch_aim_debug
 	int mate_said;       // teammate that last held fire (debug)
@@ -379,6 +390,8 @@ void TouchAim_Init(void)
 	Cvar_RegisterVariable(&cl_touch_aimassist_priority);
 	Cvar_RegisterVariable(&cl_touch_aim_mode);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_teamsafe);
+	Cvar_RegisterVariable(&cl_touch_autoshoot_combo);
+	Cvar_RegisterVariable(&cl_touch_aimassist_lastseen);
 	Cvar_RegisterVariable(&cl_touch_aimassist);
 	Cvar_RegisterVariable(&cl_touch_aimassist_friction);
 	Cvar_RegisterVariable(&cl_touch_aimassist_strength);
@@ -392,6 +405,7 @@ void TouchAim_Init(void)
 	Cvar_RegisterVariable(&cl_touch_aim_ring);
 	Cvar_RegisterVariable(&cl_touch_aim_range);
 	Cvar_RegisterVariable(&cl_touch_aim_debug);
+	Cvar_RegisterVariable(&cl_touch_aim_dumptracks);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_active);
 	Cvar_RegisterVariable(&cl_touch_aim_lookscale);
 	Cvar_RegisterVariable(&cl_touch_aim_disengage);
@@ -984,11 +998,13 @@ static qbool compute_lead(int n, const touch_wep_fire_t *fire, const vec3_t eye,
 		t_land = t->t_land;
 	if (cl_touch_autoshoot_predict.integer && t->cls == TW_CLASS_ERRATIC)
 	{
-		// lead only the expected share of the sideways motion
+		// the share of the sideways motion to lead (TouchWep_LeadShare:
+		// measured on bot movement, all of it)
 		float since, period = reversal_period(t, now, &since), along;
 		vec3_t d;
 		ok = TouchWep_AimPointAir(fire, rel, vel, latency, gravity, t_land, aim, tof);
-		k = TouchWep_LeadScale((ok ? *tof : 0.5f) + latency, period, since);
+		k = TouchWep_LeadShare(t->cls, (ok ? *tof : 0.5f) + latency, period);
+		(void)since;
 		VectorCopy(rel, d);
 		d[2] = 0;
 		VectorNormalize(d);
@@ -2565,6 +2581,8 @@ static void aim_frame(void)
 	qbool was_firing = ta.firing || ta.firing2;
 	const touch_wep_t *wep;
 	const touch_wep_fire_t *fire = NULL;
+	touch_wep_fire_t hitscan_fire;
+	float hitscan_lag;
 	aimtarget_t near;
 
 	const char *blocked = TouchAim_BlockReason();
@@ -2659,11 +2677,25 @@ static void aim_frame(void)
 		aim_touch = false;
 
 	// the fire whose flight the aim leads: last decision's mode
+	hitscan_lag = 0;
 	if (wep && cl_touch_autoshoot_lead.integer)
 	{
 		fire = ta.last_mode == TW_MODE_SECONDARY && wep->sec.kind != TW_KIND_NONE ? &wep->sec : &wep->pri;
 		if (fire->kind != TW_KIND_PROJ && fire->kind != TW_KIND_BALLISTIC)
+		{
+			// instant hits: the server's antilag rewinds the target by the
+			// ping, at most ANTILAG_MAX; beyond that the hit lands where the
+			// target has moved meanwhile, so lead by the uncovered part
 			fire = NULL;
+			if (cl_touch_autoshoot_predict.integer && latency_estimate() > ANTILAG_MAX)
+			{
+				memset(&hitscan_fire, 0, sizeof(hitscan_fire));
+				hitscan_fire.kind = TW_KIND_PROJ;
+				hitscan_fire.speed = 1e6f;
+				fire = &hitscan_fire;
+				hitscan_lag = latency_estimate() - ANTILAG_MAX;
+			}
+		}
 	}
 
 	ta.head_mult = 0;
@@ -2682,7 +2714,7 @@ static void aim_frame(void)
 	// a steered rocket is re-aimed in flight: it launches without the slew,
 	// the fall model or the interpolation term, which measured best
 	guided = wep && (wep->flags & TW_GUIDED) && cl_touch_autoshoot_steer.integer;
-	scan(eye, fwd, cone, locked ? cone + LOCK_CONE_EXTRA : 0, wep, fire, fire ? (guided ? latency_estimate() : shot_latency()) : 0,
+	scan(eye, fwd, cone, locked ? cone + LOCK_CONE_EXTRA : 0, wep, fire, fire ? (hitscan_lag > 0 ? hitscan_lag : guided ? latency_estimate() : shot_latency()) : 0,
 		cl_touch_aimassist_track.integer && !guided, guided,
 		cl_touch_autoshoot_group.integer || cl_touch_autoswitch_smart.integer || cl_touch_aimassist_priority.integer,
 		&on_target, &friend_on, &near);
@@ -2811,6 +2843,37 @@ static void aim_frame(void)
 		s.alt_ready = TouchHUD_AltFireState() == ALTFIRE_READY;
 		s.use_alt = cl_touch_autoshoot_alt.integer != 0;
 		mode = TouchWep_FireMode(wep, &s, &why);
+		// Electro combo: orbs first (the attack2 hold lobs up to three), the
+		// bolt that sets them off follows by the ordinary rule
+		if (cl_touch_autoshoot_combo.integer && s.use_alt && s.alt_ready && near.entnum == on_shoot && !strcmp(wep->netname, "electro"))
+		{
+			const track_t *ot = &ta.tracks[on_shoot & (TRACK_MAX - 1)];
+			if (now < ta.orbs_until)
+			{
+				mode = TW_MODE_SECONDARY;
+				why = TW_WHY_ORBS;
+			}
+			else if (now - ta.orbs_time > TW_ORB_CYCLE && TouchWep_ElectroOrbs(ot->cls, ot->range_rate, dist, TouchHUD_WeaponAmmo(held), group_near(&near)))
+			{
+				if (ta.last_mode == TW_MODE_SECONDARY)
+				{
+					// the lob was aimed last frame: throw
+					mode = TW_MODE_SECONDARY;
+					why = TW_WHY_ORBS;
+					ta.orbs_time = now;
+					ta.orbs_until = now + ORB_HOLD;
+					if (cl_touch_aim_debug.integer)
+						Con_Printf("touch aim: electro combo: orbs at player %d (%s, %.0f units)\n", on_shoot, touch_wep_class_name[ot->cls], dist);
+				}
+				else
+				{
+					// aim the lob first (the aim follows the last mode)
+					ta.last_mode = TW_MODE_SECONDARY;
+					mode = TW_MODE_NONE;
+					why = TW_WHY_ORBS;
+				}
+			}
+		}
 		if (mode == TW_MODE_NONE && !cl_touch_autoshoot_safe.integer && why != TW_WHY_NO_AMMO)
 			mode = TW_MODE_PRIMARY; // the player turned the safety rules off
 		if (cl_touch_autoshoot_weapons.integer == 1)
@@ -3009,7 +3072,47 @@ static void aim_frame(void)
 	// a thumb that stops a few degrees short or long still lands on the body.
 	if (turn_mag / dt > INPUT_MIN_RATE || cl.cmd.forwardmove != 0 || cl.cmd.sidemove != 0)
 		ta.last_input = now;
-	if (pull_target_set && near.entnum != ta.rk_target)
+	// last seen: the enemy of the fight went out of sight and nobody else is
+	// in view: the pull holds the crosshair where it was expected to be,
+	// from what was seen (the ghost is never fed a hidden position)
+	if (near.entnum)
+		TouchWep_GhostUpdate(&ta.tracks[near.entnum & (TRACK_MAX - 1)].ghost, true, near.center, near.vel, now);
+	if (!pull_target_set && !near.entnum && cl_touch_aimassist_lastseen.integer && cl_touch_aimassist_track.integer
+		&& ta.lock_ent && now - ta.lock_fired < ENGAGE_HOLD + TW_GHOST_KEEP)
+	{
+		track_t *gt = &ta.tracks[ta.lock_ent & (TRACK_MAX - 1)];
+		vec3_t gp, mv;
+		float conf;
+		if (TouchWep_GhostPoint(&gt->ghost, now, gp, &conf))
+		{
+			// not on through a wall it would have run into
+			VectorSubtract(gp, gt->ghost.org, mv);
+			clip_lead(gt->ghost.org, mv);
+			VectorAdd(gt->ghost.org, mv, gp);
+			angles_to(eye, gp, &pull_yaw, &pull_pitch);
+			pull_target_set = true;
+			ta.lock_until = now + LOCK_HOLD;
+			if (cl_touch_aim_debug.integer && ta.ghost_said != ta.lock_ent)
+				Con_Printf("touch aim: player %d out of sight: holding on where it was last seen%s\n", ta.lock_ent, cl_touch_aim_debug.integer >= 2 ? va(vabuf, sizeof(vabuf), " at %.3f", cl.time) : "");
+			ta.ghost_said = ta.lock_ent;
+		}
+		else if (ta.ghost_said)
+		{
+			if (cl_touch_aim_debug.integer)
+				Con_Printf("touch aim: player %d forgotten (out of sight too long)\n", ta.ghost_said);
+			ta.ghost_said = 0;
+			ta.lock_ent = 0;
+		}
+	}
+	else if (near.entnum)
+		ta.ghost_said = 0;
+	if (pull_target_set && !near.entnum && ta.rk_state == RK_IDLE)
+	{
+		near.entnum = ta.lock_ent;
+		near.err = 1;
+		near.rh = near.rv = 0.5f;
+	}
+	else if (pull_target_set && near.entnum != ta.rk_target)
 	{
 		// a guided rocket's target out of the cone: pull toward its meeting point anyway
 		near.entnum = ta.rk_target;
@@ -3090,9 +3193,35 @@ static void aim_frame(void)
 // The hook first: a fall rescue turns the view, and the aim pull stands down
 // while it does (TouchHook_Rescuing). Then the angles the next frame's turn is
 // measured from.
+// cl_touch_aim_dumptracks: the players the CSQC draws, one line each a
+// frame, for scripts/eval-lead (testing only; works in demo playback).
+static void dump_tracks(void)
+{
+	prvm_prog_t *prog = CLVM_prog;
+	int i;
+	if (!prog->loaded || cls.state != ca_connected)
+		return;
+	for (i = 1; i < prog->num_edicts; i++)
+	{
+		prvm_edict_t *ed = PRVM_EDICT_NUM(i);
+		int n;
+		float *o, *v;
+		if (ed->free)
+			continue;
+		n = (int)PRVM_clientedictfloat(ed, entnum);
+		if (n < 1 || n > cl.maxclients || PRVM_clientedictfloat(ed, solid) == SOLID_CORPSE || !PRVM_clientedictfloat(ed, modelindex))
+			continue;
+		o = PRVM_clientedictvector(ed, origin);
+		v = PRVM_clientedictvector(ed, velocity);
+		Con_Printf("XTRK %.4f %d %.1f %.1f %.1f %.1f %.1f %.1f\n", cl.time, n, o[0], o[1], o[2], v[0], v[1], v[2]);
+	}
+}
+
 void TouchAim_Frame(void)
 {
 	double t0;
+	if (cl_touch_aim_dumptracks.integer)
+		dump_tracks();
 	TouchHook_Frame();
 	t0 = Sys_DirtyTime();
 	aim_frame();
