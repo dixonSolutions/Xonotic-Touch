@@ -148,15 +148,27 @@ void XonoticMobileControlsTab_fill(entity me)
 			_("Tap FIRE to start firing and tap again to stop")));
 		me.TD(me, 1, 2.4, e = makeXonoticCheckBox_T(0, "touch_dodge_visible", _("Dodge button"),
 			_("Show a dodge button next to the move stick")));
+	// Bunny-hopping needs jump held. The default keeps HOP a plain button and
+	// puts the hold on its own KEEP switch, apart from it, so a jump never
+	// turns into hopping by accident.
+	me.TR(me);
+		me.TD(me, 1, 1.2, e = makeXonoticTextLabel(0, _("HOP button:")));
+		me.TD(me, 1, 1.2, e = makeXonoticRadioButton_T(3, "touch_hop_mode", "3", _("+ KEEP switch"),
+			_("HOP jumps while held. Tap the KEEP switch beside it to keep jumping with no finger down, and again to stop")));
+		me.TD(me, 1, 1.2, e = makeXonoticRadioButton_T(3, "touch_hop_mode", "0", _("Plain"),
+			_("HOP jumps while held, and nothing else")));
+		me.TD(me, 1, 1.2, e = makeXonoticRadioButton_T(3, "touch_hop_mode", "1", _("Hold to keep"),
+			_("Hold HOP briefly and it keeps jumping after you let go; tap it to stop")));
+		me.TD(me, 1, 1.2, e = makeXonoticRadioButton_T(3, "touch_hop_mode", "2", _("Auto-hop"),
+			_("Hop automatically while the move stick is held")));
 
 	me.TR(me);
-		me.TD(me, 1, 2, e = makeXonoticCommandButton(_("Customize layout"), '0 0 0', "touch_customize 1; togglemenu 0", COMMANDBUTTON_CLOSE));
-		me.TD(me, 1, 2, e = makeXonoticButton(_("Save layout"), '0 0 0'));
+		me.TD(me, 1, 1.5, e = makeXonoticCommandButton(_("Customize layout"), '0 0 0', "touch_customize 1; togglemenu 0", COMMANDBUTTON_CLOSE));
+		me.TD(me, 1, 1.5, e = makeXonoticButton(_("Save layout"), '0 0 0'));
 			e.onClick = TouchMenu_SaveLayout_Click;
-		me.TD(me, 1, 2, e = makeXonoticButton(_("Reset preset"), '0 0 0'));
+		me.TD(me, 1, 1.5, e = makeXonoticButton(_("Reset preset"), '0 0 0'));
 			e.onClick = TouchMenu_ResetPreset_Click;
-	me.TR(me);
-		me.TD(me, 1, 6, e = makeXonoticCommandButton(_("Apply & refresh"), '0 0 0', "menu_cmd sync", COMMANDBUTTON_APPLY));
+		me.TD(me, 1, 1.5, e = makeXonoticCommandButton(_("Apply & refresh"), '0 0 0', "menu_cmd sync", COMMANDBUTTON_APPLY));
 }
 
 entity makeXonoticMobileHudTab()
@@ -462,13 +474,4 @@ void XonoticMobileDynamicsTab_fill(entity me)
 		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Render scale:")));
 		me.TD(me, 1, 4.5, e = makeXonoticSlider_T(0.4, 1, 0.05, "r_viewscale", _("Fixed resolution scale for the 3D view (1 = full). The controls and text stay sharp. Lower is faster")));
 
-	me.TR(me);
-		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Jump button")));
-	me.TR(me);
-		me.TD(me, 1, 1.5, e = makeXonoticRadioButton_T(3, "touch_hop_mode", "0", _("Plain"),
-			_("A plain jump button: one press, one jump")));
-		me.TD(me, 1, 1.5, e = makeXonoticRadioButton_T(3, "touch_hop_mode", "1", _("Latch"),
-			_("Hold the jump button briefly to latch it down and keep hopping")));
-		me.TD(me, 1, 1.5, e = makeXonoticRadioButton_T(3, "touch_hop_mode", "2", _("Auto-hop"),
-			_("Hop automatically while the move stick is held")));
 }

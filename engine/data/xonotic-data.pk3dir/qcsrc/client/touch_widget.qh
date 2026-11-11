@@ -25,6 +25,11 @@ void Touch_Widget_Button(vector center, float radius, string label, bool pressed
 void Touch_Widget_Capsule(vector center, vector half, string label, bool pressed,
 	bool latched, float alpha, vector accent);
 
+// A checkbox the size of a button: hollow while off, filled with the accent
+// while on, so on and off read apart at a glance and from a press.
+void Touch_Widget_Check(vector center, vector half, string label, bool on, bool pressed,
+	float alpha, vector accent);
+
 // Keyboard key. A rounded rect rather than a capsule, because a grid of
 // capsules reads as a row of pills instead of a keyboard, and because square-ish
 // keys tile without wasted gaps. `on` is a sticky state (shift, layer);

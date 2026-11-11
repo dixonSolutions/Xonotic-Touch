@@ -68,7 +68,8 @@ feed and the chat feed each get a band that touches neither.
 | Fire | Hold; sliding off keeps firing and steers | `+attack` (+ look delta) |
 | **ALT** | Hold. Only there while the weapon in hand has a secondary fire it can fire; fades out when it runs dry | `+attack2` — see [Secondary fire](#secondary-fire-alt) |
 | **HOOK** | Hold to hook, let go to release; drag to steer like FIRE. Only there while a hook is to hand | offhand hook (`+hook`) or the Hook weapon — see [Grappling hook](#grappling-hook-hook-button-and-fall-rescue-engine) |
-| **HOP** | Tap = one jump, hold = latch (keeps hopping hands-free) | `+jump` |
+| **HOP** | Jumps while held; never latches by itself | `+jump` |
+| **KEEP** | Checkbox up and left of DUCK: tap to keep jumping with no finger down (HOP shows the latch), tap again to stop. Drops on death, in menus and with a keyboard | `+jump` held |
 | DUCK | Tap or hold | `+crouch` |
 | **TURN** (by the move stick) | Tap: the view turns round by `touch_turn_angle` (180°) in `touch_turn_time` (0.12 s), always to the right, pitch kept; adds to a look drag in progress | `touch_turn` (engine, `touch_turn.c`) |
 | Weapon strip (right edge) | Tap a weapon to switch to it; drag the grip under the strip to resize it — see [Weapon strip](#weapon-strip) | `impulse N` of the row |
@@ -408,7 +409,8 @@ Engine movement (already in `touch/xonotic.cfg`):
 | `touch_fire_mode` | int | 0=hold, 1=toggle | `0` | Hold for arena FPS |
 | `touch_fire_drag_look` | int | 0/1 | `1` | Sliding off FIRE keeps firing and steers — one thumb aims and shoots |
 | `touch_fire_slide_release` | int | 0/1 | `0` | Legacy: treat sliding off FIRE as release |
-| `touch_hop_mode` | int | 0=tap only, 1=tap + hold-to-latch, 2=always | `1` | Bunny-hop is a *held* key in Xonotic; the latch frees the thumb |
+| `touch_hop_mode` | int | 0=plain, 1=hold HOP to latch, 2=auto-hop while moving, 3=plain HOP + KEEP switch | `3` | Bunny-hop is a *held* key in Xonotic; the latch frees the thumb. Layouts on 1 move to 3 once (`touch_hop_version`) |
+| `touch_hoplock_x` / `_y` / `_size` / `_visible` | float | KEEP switch placement (mode 3) | `0.675` / `0.760` / `0.052` / `1` | Off the thumb's path to HOP, FIRE, DUCK, ALT and the strip, at least its own width clear of their grab margins |
 | `touch_look_tap_fire` | int | 0/1 | `1` | Short tap in the look zone fires |
 | `touch_look_tap_ms` | int | | `200` | Longest tap still counted as a shot |
 | `touch_zoom_mode` | int | 0=hold, 1=toggle | `0` | |
@@ -826,7 +828,7 @@ space-elevator: every escape inward, none off the edge.
 |---------|---------|-------------|
 | Swipe on weapon button | Next/prev weapon | Competitive cycle |
 | Hold fire + drag | Fire while steering (`touch_fire_drag_look`) | On by default |
-| Hold HOP | Latch bunny-hop until tapped again | On by default (`touch_hop_mode 1`) |
+| Tap KEEP | Keep bunny-hopping until KEEP is tapped again | On by default (`touch_hop_mode 3`); hold-to-latch HOP is `touch_hop_mode 1` |
 | Double-tap move stick dir | Dash | Competitive (`touch_dodge_mode 1`) |
 
 ### Multitouch (CSQC contract)
@@ -1147,7 +1149,7 @@ Build flow: clone repo (integrated `engine/`) → `fetch-sources.sh code` (if ne
 ### Remaining work
 
 1. **`touch_layout_apply_preset(string name)`** — in-game `exec touch/profiles/<name>.cfg` from the menu, so presets are switchable without the console.
-2. **Menu sliders for the new feel cvars** — `touch_hop_mode`, `touch_look_filter` and the 1€ pair are console-only today.
+2. **Menu sliders for the new feel cvars** — `touch_look_filter` and the 1€ pair are console-only today.
 3. **Hands-on validation of the input model** — the hop latch, fire-drag-look and tap-to-fire are implemented and compile-clean but have only been verified by forced state preview, not by two thumbs. See [TOUCH_UX_REDESIGN.md §11](TOUCH_UX_REDESIGN.md).
 
 ---
@@ -1156,7 +1158,7 @@ Build flow: clone repo (integrated `engine/`) → `fetch-sources.sh code` (if ne
 
 | Action | Touch mapping | Setting |
 |--------|---------------|---------|
-| Bunny-hop | Hold HOP to latch; tap to cancel | `touch_hop_mode` |
+| Bunny-hop | Tap KEEP to latch; tap it again to stop | `touch_hop_mode` |
 | Dash | Double-tap move dir (button available but hidden) | `touch_dodge_mode`, `touch_dodge_visible` |
 | Weapon switch | HUD strip; wheel / 3-slot / cycle button optional | `touch_weapon_mode`, `touch_weapon_visible` |
 | Zoom | Hold near fire | `touch_zoom_mode` |
@@ -1167,6 +1169,17 @@ Build flow: clone repo (integrated `engine/`) → `fetch-sources.sh code` (if ne
 | Chat | Pause or quick phrases | `touch_chat_mode` |
 
 ---
+
+## A local game that will not resume
+
+A local game pauses while the menu, the console or the chat line is open, and while
+the window has no focus. `touch_pause_status` in the console prints who holds the
+pause right now (engine, server, client; menu, console, chat line, window focus or
+the `pause` command) and every change since it was last asked. A finger on the screen
+gives the window its focus back, and on a touchscreen the `pause` command opens the
+game menu instead of freezing the game with nothing on screen. A pause the server keeps
+after the player has stopped sending the chat button (it happened during the start
+countdown) is lifted after 0.4 s, and a finger lifted during any pause is let go at once.
 
 ## Testing without a device
 

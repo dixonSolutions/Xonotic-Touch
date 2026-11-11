@@ -41,6 +41,7 @@ OBJ_COMMON= \
 	touch_turn.o \
 	touch_vote.o \
 	touch_dodge.o \
+	touch_pause.o \
 	vid_touchdetect.o \
 	cl_video.o \
 	cl_video_libavw.o \

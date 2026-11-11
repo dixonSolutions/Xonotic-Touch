@@ -13,6 +13,7 @@ applies to both.
 */
 
 #include "quakedef.h"
+#include "libcurl.h"
 #include "cl_screen.h"
 #include "csprogs.h"
 #include "touch_hud.h"
@@ -28,6 +29,7 @@ extern cvar_t vid_conwidth;
 extern cvar_t vid_conheight;
 extern cvar_t cl_forwardspeed;
 extern cvar_t cl_sidespeed;
+extern cvar_t cl_touch_aim_debug;
 extern qbool cl_touch_csqc_active;
 
 // vid_sdl.c's finger table: [i][0] = finger id + 1 (0 when up), [i][1..2] =
@@ -354,6 +356,27 @@ static void widget_capsule(float cx, float cy, float hx, float hy, const char *l
 	}
 }
 
+// As Touch_Widget_Check: a checkbox, hollow while off and filled with the
+// accent while on. Square corners: the engine has no rounded-rect ring.
+static void box_stroke(float cx, float cy, float hx, float hy, float w, const float *rgb, float a)
+{
+	DrawQ_Fill(cx - hx, cy - hy, hx * 2, w, rgb[0], rgb[1], rgb[2], a, 0);
+	DrawQ_Fill(cx - hx, cy + hy - w, hx * 2, w, rgb[0], rgb[1], rgb[2], a, 0);
+	DrawQ_Fill(cx - hx, cy - hy + w, w, hy * 2 - w * 2, rgb[0], rgb[1], rgb[2], a, 0);
+	DrawQ_Fill(cx + hx - w, cy - hy + w, w, hy * 2 - w * 2, rgb[0], rgb[1], rgb[2], a, 0);
+}
+static void widget_check(float cx, float cy, float hx, float hy, const char *label, qbool on, qbool pressed, float alpha, const float *accent)
+{
+	float b = widget_border();
+	if (hx < 2 || hy < 2 || alpha <= 0)
+		return;
+	if (on || pressed)
+		DrawQ_Fill(cx - hx, cy - hy, hx * 2, hy * 2, accent[0], accent[1], accent[2], alpha * A_SURFACE_ACTIVE, 0);
+	box_stroke(cx, cy, hx + b * 0.5f, hy + b * 0.5f, b * 2, C_SHADOW, alpha * A_CONTOUR);
+	box_stroke(cx, cy, hx, hy, b, on ? accent : C_RIM, alpha * (on ? A_RIM_ACTIVE : A_RIM));
+	shape_label(cx, cy, label_size(hx, hy, label), label, C_INK, alpha * A_INK);
+}
+
 static void widget_chrome_pill(float cx, float cy, float hx, float hy, const char *label, qbool pressed, float alpha, const float *accent)
 {
 	float a = pressed ? max(0.85f, alpha) : max(A_CHROME_REST, alpha * 0.8f);
@@ -375,7 +398,7 @@ enum
 {
 	ROLE_NONE = -1, ROLE_IGNORED = -2,
 	ROLE_MOVE = 0, ROLE_LOOK, ROLE_FIRE, ROLE_FIRE2, ROLE_HOOK,
-	ROLE_JUMP = 100, ROLE_CROUCH, ROLE_WEAPON, ROLE_ZOOM, ROLE_DODGE, ROLE_RELOAD, ROLE_CON, ROLE_PAUSE, ROLE_SHEET, ROLE_CHAT, ROLE_SCORES, ROLE_VYES, ROLE_VNO, ROLE_TURN,
+	ROLE_JUMP = 100, ROLE_CROUCH, ROLE_WEAPON, ROLE_ZOOM, ROLE_DODGE, ROLE_RELOAD, ROLE_CON, ROLE_PAUSE, ROLE_SHEET, ROLE_CHAT, ROLE_SCORES, ROLE_VYES, ROLE_VNO, ROLE_TURN, ROLE_HOPLOCK,
 	ROLE_WEPSTRIP = 200, ROLE_WEPGRIP
 };
 
@@ -1138,6 +1161,18 @@ static int assign_desk_role(float px, float py)
 	return role_owned(ROLE_LOOK) ? ROLE_IGNORED : ROLE_LOOK;
 }
 
+// touch_hop_mode 3: HOP is a plain button and the keep-jumping chip beside it
+// (touch_hoplock_*) holds jump down while it is on, as in touch_input.qc.
+#define HOP_CHIP 3
+static qbool hoplock_shown(void)
+{
+	return (int)cv("touch_hop_mode", HOP_CHIP) == HOP_CHIP && cv("touch_hoplock_visible", 1);
+}
+static qbool hoplock_hit(float px, float py)
+{
+	return hit_rect(px, py, cv("touch_hoplock_x", 0.675f), cv("touch_hoplock_y", 0.760f), cv("touch_hoplock_size", 0.052f), 1, 1.10f);
+}
+
 static qbool spec_hud(void);
 static int assign_spec_role(float px, float py);
 static void spec_frame(qbool *fire, qbool *fire2, qbool *jump);
@@ -1165,6 +1200,8 @@ static int assign_role(float px, float py)
 		return ROLE_FIRE2;
 	if (cv("touch_jump_visible", 1) && hit_rect(px, py, cv("touch_jump_x", 0.855f), cv("touch_jump_y", 0.885f), cv("touch_jump_size", 0.072f), cv("touch_jump_aspect", 2.6f), 1.10f))
 		return ROLE_JUMP;
+	if (hoplock_shown() && hoplock_hit(px, py))
+		return ROLE_HOPLOCK;
 	if (cv("touch_crouch_visible", 1) && hit_circle(px, py, cv("touch_crouch_x", 0.700f), cv("touch_crouch_y", 0.885f), cv("touch_crouch_size", 0.066f), 1.10f))
 		return ROLE_CROUCH;
 	if (weapon_button_shown() && hit_circle(px, py, cv("touch_weapon_x", 0.540f), cv("touch_weapon_y", 0.860f), cv("touch_weapon_size", 0.100f), 1.10f))
@@ -1421,14 +1458,16 @@ static void pill_release(finger_t *f)
 // nobody could see, and a finger had nothing to press: a server that never
 // answered, or a slow download, kept a touch player waiting with no way out.
 // On a touchscreen a CANCEL pill sits in the top corner, and it and Back
-// (Escape) leave for the main menu.
+// (Escape) leave for the main menu, for the whole join: from the connect
+// request and its retries to the last signon. That includes the stretch after
+// a server's "reconnect" (a map change) before its new map arrives, when
+// neither the loading screen nor the game nor the menu is drawn.
 // ---------------------------------------------------------------------------
 static int loading_cancel_src;   // finger that went down on CANCEL
 
-extern qbool scr_loading;
 static qbool loading_cancellable(void)
 {
-	return scr_loading && touch_device()
+	return touch_device()
 		&& (cls.connect_trying || (cls.state == ca_connected && cls.signon < SIGNONS));
 }
 
@@ -1448,6 +1487,14 @@ static void loading_cancel(void)
 	loading_cancel_src = 0;
 	// disconnect alone does not stop a connect the server has not answered yet
 	cls.connect_trying = false;
+	// nor the join's map and package downloads, which it lets run on. This
+	// stops every curl download (as "curl --cancel" does): libcurl.c has no
+	// call for only the join's.
+	if (Curl_Have_forthismap())
+	{
+		Con_Printf("Touch: the join's downloads are stopped\n");
+		Curl_CancelAll();
+	}
 	Cbuf_AddText(cmd_local, "\ndisconnect\ntogglemenu 1\n");
 }
 
@@ -1488,8 +1535,9 @@ void TouchHUD_DrawLoading(void)
 		return;
 	shapes_probe();
 	loading_pill(&cx, &cy, &hx, &hy);
-	// Quieter than the chrome in a match: there for whoever looks for it.
-	widget_chrome_pill(cx, cy, hx, hy, "CANCEL", loading_cancel_src != 0, 0.55f, C_DANGER);
+	// As plain as the chrome in a match, at its full opacity: easy to find on
+	// the dark loading screen without pulling the eye from the progress.
+	widget_chrome_pill(cx, cy, hx, hy, "CANCEL", loading_cancel_src != 0, 0.95f, C_DANGER);
 }
 
 // ---------------------------------------------------------------------------
@@ -1788,6 +1836,17 @@ void TouchHUD_Frame(void)
 		// released
 		if (f->role == ROLE_CON || f->role == ROLE_CHAT || f->role == ROLE_PAUSE)
 			pill_release(f);
+		else if (f->role == ROLE_HOPLOCK)
+		{
+			// a tap: lands on the chip and lifts on it; a finger that slid off
+			// changes nothing, and one that started on HOP is never the chip's
+			if (hoplock_shown() && hoplock_hit(f->last_x, f->last_y) && !TouchUI_IsSpectating() && cl.stats[STAT_HEALTH] > 0)
+			{
+				hop_latched = !hop_latched;
+				if (cl_touch_aim_debug.integer)
+					Con_Printf("touch: keep jumping %s\n", hop_latched ? "on" : "off");
+			}
+		}
 		else if (f->role == ROLE_WEAPON)
 			weapon_gesture(f, true);
 		else if (f->role == ROLE_WEPGRIP && f->resized)
@@ -1940,16 +1999,28 @@ void TouchHUD_Frame(void)
 		prev_zoom_down = zoom_down;
 	}
 
-	// hop: hold past touch_hop_latch_ms latches bunny-hop; a tap while latched clears it.
-	// Not for a spectator: jump is "join" there, and a latch would carry into
-	// the first life.
+	// hop: touch_hop_mode 1, hold past touch_hop_latch_ms latches bunny-hop and a
+	// tap while latched clears it; 3, the keep-jumping chip sets and clears the
+	// latch. A latch from one mode does not carry into another. Not for a
+	// spectator: jump is "join" there, and a latch would carry into the first
+	// life.
+	{
+		static int last_hop_mode = -1;
+		int hop_mode = (int)cv("touch_hop_mode", HOP_CHIP);
+		if (hop_mode != last_hop_mode)
+		{
+			hop_latched = false;
+			hop_cancelling = false;
+			last_hop_mode = hop_mode;
+		}
+	}
 	if (TouchUI_IsSpectating())
 	{
 		hop_latched = false;
 		hop_cancelling = false;
 		set_key("jump", &key_jump, jump_down);
 	}
-	else if (cv("touch_hop_mode", 1) == 1)
+	else if (cv("touch_hop_mode", HOP_CHIP) == 1)
 	{
 		static qbool prev_jump_down;
 		if (jump_down && !prev_jump_down)
@@ -1967,8 +2038,19 @@ void TouchHUD_Frame(void)
 		set_key("jump", &key_jump, hop_latched || (jump_down && !hop_cancelling));
 		prev_jump_down = jump_down;
 	}
+	else if (cv("touch_hop_mode", HOP_CHIP) == HOP_CHIP)
+	{
+		// HOP is a plain button; only the chip sets and clears the latch. A
+		// dead player drops it: held jump respawns.
+		if (cl.stats[STAT_HEALTH] <= 0)
+			hop_latched = false;
+		set_key("jump", &key_jump, jump_down || hop_latched);
+	}
 	else
+	{
+		hop_latched = false;
 		set_key("jump", &key_jump, jump_down);
+	}
 
 	set_key("crouch", &key_crouch, crouch_down);
 	set_key("showscores", &key_scores, scores_down);
@@ -2396,6 +2478,12 @@ void TouchHUD_Draw(void)
 		widget_center(cv("touch_jump_x", 0.855f), cv("touch_jump_y", 0.885f), &cx, &cy);
 		widget_half(cv("touch_jump_size", 0.072f), cv("touch_jump_aspect", 2.6f), &hx, &hy);
 		widget_capsule(cx, cy, hx, hy, "HOP", key_jump && !hop_latched, hop_latched, a, C_ACCENT);
+	}
+	if (hoplock_shown())
+	{
+		widget_center(cv("touch_hoplock_x", 0.675f), cv("touch_hoplock_y", 0.760f), &cx, &cy);
+		widget_half(cv("touch_hoplock_size", 0.052f), 1, &hx, &hy);
+		widget_check(cx, cy, hx, hy, "KEEP", hop_latched, role_owned(ROLE_HOPLOCK), a, C_ACCENT);
 	}
 	if (cv("touch_crouch_visible", 1))
 		draw_circle_widget("touch_crouch_x", 0.700f, "touch_crouch_y", 0.885f, "touch_crouch_size", 0.066f, "DUCK", key_crouch, a, C_ACCENT);
