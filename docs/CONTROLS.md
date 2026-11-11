@@ -778,6 +778,30 @@ Main menu is stock Xonotic (Singleplayer / Multiplayer / Media / Settings / …)
   a suspect for the slow load and made no difference beyond the network's
   own variance, so the Touch default stays on.
 - **Pause** — Escape / GameMenu Resume (see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md)).
+- **Getting out, touch only** — every screen has a way back with a finger and
+  with Android Back (which SDL hands the engine as Escape):
+  - In a match (playing, dead, spectating, the scoreboard, intermission, the
+    end-of-match vote): the MENU pill or Back opens the game menu. On a
+    touchscreen that is `TouchGameMenu` (`dialog_touch_gamemenu.qc`): large
+    **Resume** and **Leave to main menu** (disconnect), then Join, Spectate,
+    Settings, Mobile settings, Servers, Quick menu, Profile and Quit. Back on
+    it returns to the game. Settings, Servers and the others opened from it
+    return to it when closed (Back or their close button) while still
+    connected. The MENU pill used to open the main menu overview instead,
+    which had no way back to the game or out of the server: its cvar check
+    could never succeed (`touch_hud.c`).
+  - Joining (a server that does not answer, a download, the map loading) or
+    a map change: the loading screen shows **CANCEL**; it and Back stop the
+    join and show the main menu. The menu is not drawn behind the loading
+    screen, so taps there no longer press it.
+  - The connection drops (timeout, kick) with the game menu open: the main
+    menu overview comes up rather than an empty background.
+  - The chat and console sheets have their own CLOSE buttons; the quick menu,
+    the team selection, the server welcome dialog and the main menu's own
+    dialogs close on Back (their close button is the small x in the title
+    bar). `hud_configure`: Back opens its setup dialog, whose Exit setup
+    button leaves it. Back on the main menu overview does nothing; it never
+    quits the game.
 
 ---
 
