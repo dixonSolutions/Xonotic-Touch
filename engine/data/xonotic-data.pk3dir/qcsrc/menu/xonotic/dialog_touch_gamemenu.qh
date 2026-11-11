@@ -1,0 +1,23 @@
+#pragma once
+
+// The game menu on a touchscreen: what Escape, Android Back and the MENU pill
+// open while connected (TouchGameMenu_Route). The stock GameMenu's rows are a
+// thumb's width apart on a tablet; this one has finger-sized buttons, leaving
+// the server first among them.
+#include "rootdialog.qh"
+CLASS(XonoticTouchGameMenuDialog, XonoticRootDialog)
+	METHOD(XonoticTouchGameMenuDialog, fill, void(entity));
+	ATTRIB(XonoticTouchGameMenuDialog, title, string, _("Game menu"));
+	ATTRIB(XonoticTouchGameMenuDialog, color, vector, SKINCOLOR_DIALOG_QUIT);
+	ATTRIB(XonoticTouchGameMenuDialog, intendedWidth, float, 0.56);
+	ATTRIB(XonoticTouchGameMenuDialog, rows, float, 14);
+	ATTRIB(XonoticTouchGameMenuDialog, columns, float, 2);
+	ATTRIB(XonoticTouchGameMenuDialog, name, string, "TouchGameMenu");
+	ATTRIB(XonoticTouchGameMenuDialog, requiresConnection, bool, true);
+ENDCLASS(XonoticTouchGameMenuDialog)
+
+// m_goto's dialog name, swapped for TouchGameMenu on a touchscreen.
+string TouchGameMenu_Route(string itemname);
+// Called when a dialog closes: one opened from TouchGameMenu goes back to it
+// while still connected, instead of to the main menu overview. True if it did.
+bool TouchGameMenu_Return(entity dialog);

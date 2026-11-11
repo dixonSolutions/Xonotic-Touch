@@ -1,5 +1,6 @@
 #include "menu.qh"
 #include "xonotic/touch_update_util.qh"
+#include "xonotic/dialog_touch_gamemenu.qh" // Touch
 
 #include "item.qh"
 
@@ -1170,6 +1171,7 @@ void m_setpointerfocus(entity wnd)
 
 void m_goto(string itemname, bool hide_menu_on_close)
 {
+	itemname = TouchGameMenu_Route(itemname); // Touch: finger-sized game menu on a touchscreen
 	if (!menuInitialized)
 	{
 		strcpy(m_goto_buffer, itemname);

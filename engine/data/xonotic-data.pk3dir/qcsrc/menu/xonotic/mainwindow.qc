@@ -8,6 +8,7 @@
 #include "dialog_firstrun.qh"
 #include "touch_startup_util.qh"
 #include "dialog_touch_asset_fetch.qh"
+#include "dialog_touch_gamemenu.qh"
 #include "dialog_hudsetup_exit.qh"
 #include "dialog_hudpanel_notification.qh"
 #include "dialog_hudpanel_ammo.qh"
@@ -327,6 +328,10 @@ void MainWindow_configureMainWindow(entity me)
 	i = NEW(XonoticGameMenuDialog);
 	i.configureDialog(i);
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
+
+	i = NEW(XonoticTouchGameMenuDialog); // Touch: finger-sized game menu
+	i.configureDialog(i); // Touch
+	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z); // Touch
 
 	i = NEW(XonoticTeamSelectDialog);
 	i.configureDialog(i);
