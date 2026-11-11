@@ -19,3 +19,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Parse recorded /proc/bus/input/devices listings
         run: bash scripts/test-input-presence.sh
+
+  touch-altfire:
+    name: Touch ALT button
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stock-balance fallback, availability modes and fade
+        run: bash scripts/test-touch-altfire.sh

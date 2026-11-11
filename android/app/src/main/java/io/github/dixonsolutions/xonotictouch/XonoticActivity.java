@@ -33,6 +33,7 @@ public final class XonoticActivity extends SDLActivity {
 
     private String baseDir;
     private Thread updateService;
+    private AndySUBridge andysuBridge;
     /** Last release the check found, so Install and Skip know what they mean. */
     private volatile AppUpdater.Update lastSeenUpdate;
     /** When this process last asked the release feed (elapsedRealtime). The
@@ -72,6 +73,9 @@ public final class XonoticActivity extends SDLActivity {
         if (baseDir == null) {
             baseDir = new GameData(this).baseDir().getAbsolutePath();
         }
+        // The host may stage a live update as soon as its activity resumes.
+        // Register before SDL starts its native thread in super.onCreate().
+        EngineSwap.register(this);
         super.onCreate(savedInstanceState);
         watchSoftKeyboard();
         watchInputDevices();
@@ -84,6 +88,7 @@ public final class XonoticActivity extends SDLActivity {
             inputManager.unregisterInputDeviceListener(inputDeviceListener);
         }
         stopUpdateService();
+        EngineSwap.unregister();
         super.onDestroy();
     }
 
@@ -309,6 +314,8 @@ public final class XonoticActivity extends SDLActivity {
         }
         final UpdateBridge bridge = new UpdateBridge(this, new File(baseDir));
         final AppUpdater updater = new AppUpdater(this);
+        andysuBridge = new AndySUBridge(this, new File(baseDir));
+        andysuBridge.publish();
         updateService = new Thread(() -> {
             // Whatever BootActivity last published stands until someone asks for
             // something; re-checking here would double every launch's API call.
@@ -322,6 +329,12 @@ public final class XonoticActivity extends SDLActivity {
                 String request = bridge.takeRequest();
                 if (request != null) {
                     serveUpdateRequest(bridge, updater, request);
+                }
+                AndySUBridge payloadBridge = andysuBridge;
+                if (payloadBridge != null) {
+                    String payloadRequest = payloadBridge.takeRequest();
+                    if (payloadRequest != null) payloadBridge.serve(payloadRequest);
+                    payloadBridge.publish();
                 }
             }
         }, "xonotic-update-service");
@@ -341,14 +354,19 @@ public final class XonoticActivity extends SDLActivity {
         switch (request) {
             case "auto-on":
             case "auto-off":
-                // Nothing to publish. The preference is the only thing that
-                // changed, and any record written around it would have to
-                // invent the seven lines above line 8 -- throwing away a
-                // release the boot check already found, and greying out the
-                // Install and Skip buttons that were about to take it. The next
-                // real publish carries the new preference; until then the menu
-                // holds the value it just asked for.
-                AppUpdater.setAutoInstall(this, "auto-on".equals(request));
+                // The menu checkbox controls AndySU's persistent payload mode
+                // when present, otherwise the APK install preference. Its
+                // status file is republished after a payload mode change.
+                if (AndySUCompat.present()) {
+                    try {
+                        AndySUCompat.setMode("auto-on".equals(request) ? "auto" : "off");
+                        if (andysuBridge != null) andysuBridge.publish();
+                    } catch (ReflectiveOperationException | RuntimeException e) {
+                        Log.w("XonoticTouch", "Could not change AndySU update mode", e);
+                    }
+                } else {
+                    AppUpdater.setAutoInstall(this, "auto-on".equals(request));
+                }
                 return;
             case "skip": {
                 AppUpdater.Update target = targetUpdate(bridge, updater, installed);
@@ -507,8 +525,20 @@ public final class XonoticActivity extends SDLActivity {
 
     @Override
     protected String[] getLibraries() {
-        // libpng is absent on purpose: image_png.c dlopen()s it by name.
-        return new String[] { "SDL2", "main" };
+        // libpng is absent on purpose: image_png.c dlopen()s it by name. libmain is not loaded here
+        // any more: the resident loader dlopen()s it (AndySU live engine swap, see
+        // testbeds/patches/xonotic-touch/LIVE_SWAP.md) and answers nativeInputDevices for it.
+        return new String[] { "SDL2", "andysu_xonotic_loader" };
+    }
+
+    @Override
+    protected String getMainSharedObject() {
+        return getApplicationInfo().nativeLibraryDir + "/libandysu_xonotic_loader.so";
+    }
+
+    @Override
+    protected String getMainFunction() {
+        return "AndySU_SDL_main";
     }
 
     @Override

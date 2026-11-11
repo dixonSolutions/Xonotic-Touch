@@ -1626,6 +1626,8 @@ void player_powerups(entity this)
 		}
 	}
 
+	// ESP and wallhacks: show players through walls and obstacles for better aiming
+	// Works on all game types (local and server) when enabled via cvars
 	if(autocvar_g_nodepthtestplayers)
 		this.effects |= EF_NODEPTHTEST;
 

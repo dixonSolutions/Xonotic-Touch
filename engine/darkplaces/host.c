@@ -26,6 +26,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "libcurl.h"
 #include "taskqueue.h"
 #include "utf8lib.h"
+#ifdef ANDYSU_SWAP
+#include "andysu_engine.h"
+#endif
 
 /*
 
@@ -559,6 +562,10 @@ void Host_Init (void)
 		Cbuf_Execute(cmd_local->cbuf);
 	}
 
+#ifdef ANDYSU_SWAP
+	Andysu_RestoreState(); // after a live swap: reconnect / reload the map; test hooks
+#endif
+
 	if (!sv.active && !cls.demoplayback && !cls.connect_trying)
 	{
 #ifdef CONFIG_MENU
@@ -616,6 +623,15 @@ void Host_Shutdown(void)
 	Host_UnlockSession();
 
 	Con_Shutdown();
+#ifdef ANDYSU_SWAP
+	if (andysu_swapping)
+	{
+		// The process lives on and so does this library's address space: give back what an
+		// exit() would have (pk3 file descriptors, every memory pool).
+		FS_Shutdown();
+		Mem_FreeAllPools();
+	}
+#endif
 	Memory_Shutdown();
 }
 

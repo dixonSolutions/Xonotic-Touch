@@ -150,7 +150,7 @@ string Touch_CommandLabel(string command)
 	// Xonotic's own binds use +fire; +attack is the engine name underneath it.
 	if ((command == "+fire" || command == "+attack") && autocvar_touch_fire_visible)
 		return TOUCH_LABEL_FIRE;
-	if (command == "+fire2" && autocvar_touch_fire2_visible)
+	if (command == "+fire2" && Touch_Fire2Available())
 		return TOUCH_LABEL_FIRE2;
 	if (command == "+crouch" && autocvar_touch_crouch_visible)
 		return TOUCH_LABEL_CROUCH;
@@ -303,7 +303,7 @@ int Touch_AssignRole(vector p)
 
 	if (autocvar_touch_fire_visible && Touch_HitCircle(p, autocvar_touch_fire_x, autocvar_touch_fire_y, autocvar_touch_fire_size, 1.15))
 		return TOUCH_ROLE_FIRE;
-	if (autocvar_touch_fire2_visible && Touch_HitCircle(p, autocvar_touch_fire2_x, autocvar_touch_fire2_y, autocvar_touch_fire2_size, 1.15))
+	if (Touch_Fire2Available() && Touch_HitCircle(p, autocvar_touch_fire2_x, autocvar_touch_fire2_y, autocvar_touch_fire2_size, 1.15))
 		return TOUCH_ROLE_FIRE2;
 	if (autocvar_touch_jump_visible && Touch_HitRect(p, autocvar_touch_jump_x, autocvar_touch_jump_y, autocvar_touch_jump_size, autocvar_touch_jump_aspect, 1.10))
 		return TOUCH_ROLE_JUMP;
@@ -915,6 +915,58 @@ bool Touch_HopLatched(void)
 bool Touch_Fire2Held(void)
 {
 	return Touch_RoleOwned(TOUCH_ROLE_FIRE2);
+}
+
+// ALT is contextual by default (touch_fire2_visible 2), the way mobile shooters
+// show an ability button only while there is an ability to use: it is there
+// while +fire2 would fire the weapon in hand, and fades out when the weapon has
+// no secondary or it has run dry (out of ammo, no mines left to detonate). The
+// server says which, in STAT(TOUCH_ALTFIRE): only it knows the balance.
+//
+// Availability is the input rule and changes at once, so a fading button
+// already takes no new touch; the fade is only how it looks. A finger already
+// on it keeps it until lifted, like every other role.
+const float TOUCH_FIRE2_FADE_IN = 0.12;
+const float TOUCH_FIRE2_FADE_OUT = 0.35;
+float touch_fire2_fade;
+float touch_fire2_fade_time;
+int touch_fire2_reported = -1;
+
+bool Touch_Fire2Available(void)
+{
+	float mode = autocvar_touch_fire2_visible;
+	if (mode <= 0)
+		return false;
+	if (mode == 1)
+		return true;
+	return STAT(TOUCH_ALTFIRE) == TOUCH_ALTFIRE_READY;
+}
+
+// 0..1 multiplier for drawing ALT; advances the fade, so call it once a frame.
+float Touch_Fire2Alpha(void)
+{
+	float dt = bound(0, time - touch_fire2_fade_time, 0.1);
+	touch_fire2_fade_time = time;
+
+	// _touch_fire2_state: what the server said (0 none, 1 empty, 2 ready), for
+	// tests and the touch_debug readout.
+	int state = STAT(TOUCH_ALTFIRE);
+	if (state != touch_fire2_reported)
+	{
+		touch_fire2_reported = state;
+		cvar_set("_touch_fire2_state", ftos(state));
+	}
+
+	if (autocvar_touch_fire2_visible <= 0)
+		return touch_fire2_fade = 0;
+	// Edit mode places it, and touch_debug 3 previews every control.
+	if (Touch_CustomizeActive() || autocvar_touch_debug >= 3)
+		return touch_fire2_fade = 1;
+	if (Touch_Fire2Available())
+		touch_fire2_fade = min(1, touch_fire2_fade + dt / TOUCH_FIRE2_FADE_IN);
+	else
+		touch_fire2_fade = max(0, touch_fire2_fade - dt / TOUCH_FIRE2_FADE_OUT);
+	return touch_fire2_fade;
 }
 
 bool Touch_CrouchHeld(void)

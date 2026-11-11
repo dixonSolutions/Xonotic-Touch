@@ -894,6 +894,19 @@ void Memory_Init (void)
 		mem_mutex = Thread_CreateMutex();
 }
 
+#ifdef ANDYSU_SWAP
+// Live engine swap: the library stays mapped after its engine shut down, so release everything the
+// engine allocated (an exit() would have). Nothing may allocate from the pools afterwards.
+void Mem_FreeAllPools(void)
+{
+	while (poolchain)
+	{
+		mempool_t *pool = poolchain;
+		_Mem_FreePool(&pool, __FILE__, __LINE__);
+	}
+}
+#endif
+
 void Memory_Shutdown (void)
 {
 //	Mem_FreePool (&zonemempool);

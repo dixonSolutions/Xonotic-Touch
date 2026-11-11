@@ -17,7 +17,7 @@ CLASS(XonoticTouchUpdatesDialog, XonoticDialog)
 	ATTRIB(XonoticTouchUpdatesDialog, tooltip, string, _("Installed version, available updates, and how they are installed"));
 	ATTRIB(XonoticTouchUpdatesDialog, color, vector, SKINCOLOR_DIALOG_SETTINGS);
 	ATTRIB(XonoticTouchUpdatesDialog, intendedWidth, float, 0.8);
-	ATTRIB(XonoticTouchUpdatesDialog, rows, float, 14);
+	ATTRIB(XonoticTouchUpdatesDialog, rows, float, 20);
 	ATTRIB(XonoticTouchUpdatesDialog, columns, float, 6);
 
 	// Labels re-pointed from the status file every poll rather than rebuilt:
@@ -32,6 +32,12 @@ CLASS(XonoticTouchUpdatesDialog, XonoticDialog)
 	ATTRIB(XonoticTouchUpdatesDialog, installButton, entity);
 	ATTRIB(XonoticTouchUpdatesDialog, skipButton, entity);
 	ATTRIB(XonoticTouchUpdatesDialog, autoBox, entity);
+	ATTRIB(XonoticTouchUpdatesDialog, payloadStatusLabel, entity);
+	ATTRIB(XonoticTouchUpdatesDialog, payloadLatestLabel, entity);
+	ATTRIB(XonoticTouchUpdatesDialog, payloadMessageLabel, entity);
+	ATTRIB(XonoticTouchUpdatesDialog, payloadProgressBar, entity);
+	ATTRIB(XonoticTouchUpdatesDialog, payloadCheckButton, entity);
+	ATTRIB(XonoticTouchUpdatesDialog, payloadApplyButton, entity);
 
 	// Poll clock. The status file is written by another process, so there is
 	// nothing to subscribe to — but re-reading it every frame would be a file
@@ -43,6 +49,7 @@ CLASS(XonoticTouchUpdatesDialog, XonoticDialog)
 	// Set when a request could not be written; the dialog says so rather than
 	// leaving a button that silently does nothing.
 	ATTRIB(XonoticTouchUpdatesDialog, requestFailed, bool, false);
+	ATTRIB(XonoticTouchUpdatesDialog, payloadRequestFailed, bool, false);
 ENDCLASS(XonoticTouchUpdatesDialog)
 
 entity makeXonoticTouchUpdatesDialog();

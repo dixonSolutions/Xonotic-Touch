@@ -48,6 +48,9 @@ TARGET_LARGE_MM = 26.0
 WIDGETS = [
     ("MOVE",    "touch_move",   "left",  "stick"),
     ("FIRE",    "touch_fire",   "right", "button"),
+    # Contextual by default; the competitive preset moves it to the top-left
+    # for the left index finger, which this thumb model does not cover.
+    ("ALT",     "touch_fire2",  "right", "button"),
     ("JUMP",    "touch_jump",   "right", "button"),
     ("CROUCH",  "touch_crouch", "right", "button"),
     ("WEAPON",  "touch_weapon", "right", "button"),

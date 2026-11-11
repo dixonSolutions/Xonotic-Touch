@@ -93,7 +93,8 @@ const int TOUCH_WIDGET_WEAPON = 4;
 const int TOUCH_WIDGET_ZOOM = 5;
 const int TOUCH_WIDGET_RELOAD = 6;
 const int TOUCH_WIDGET_DODGE = 7;
-const int TOUCH_WIDGET_COUNT = 8;
+const int TOUCH_WIDGET_FIRE2 = 8;
+const int TOUCH_WIDGET_COUNT = 9;
 
 // Customize-mode toolbar actions, in on-screen order left to right.
 const int TOUCH_CUSTOMIZE_SAVE = 0;

@@ -16,6 +16,12 @@ bool touchUpdate_auto;
 bool touchUpdate_haveStatus;
 bool touchUpdate_cvarReady;
 
+string touchAndySU_state;
+string touchAndySU_installed;
+string touchAndySU_latest;
+string touchAndySU_message;
+float touchAndySU_percent;
+
 /** The auto-update value we have asked the platform layer for and not yet seen
  *  come back on line 8; -1 when nothing is in flight.
  *
@@ -44,6 +50,7 @@ void TouchUpdate_ensureCvar()
 void TouchUpdate_read()
 {
 	TouchUpdate_ensureCvar();
+	TouchAndySU_read();
 
 	float fh = fopen(TOUCH_UPDATE_STATUS_FILE, FILE_READ);
 	if (fh < 0)
@@ -102,6 +109,62 @@ void TouchUpdate_read()
 	}
 	if (cvar(TOUCH_UPDATE_AUTO_CVAR) != (touchUpdate_auto ? 1 : 0))
 		cvar_set(TOUCH_UPDATE_AUTO_CVAR, touchUpdate_auto ? "1" : "0");
+}
+
+void TouchAndySU_read()
+{
+	float fh = fopen(TOUCH_ANDYSU_STATUS_FILE, FILE_READ);
+	if (fh < 0)
+	{
+		strcpy(touchAndySU_state, "unavailable");
+		strcpy(touchAndySU_installed, "");
+		strcpy(touchAndySU_latest, "");
+		strcpy(touchAndySU_message, "");
+		touchAndySU_percent = 0;
+		return;
+	}
+	string format = fgets(fh);
+	string state = fgets(fh);
+	string installed = fgets(fh);
+	string latest = fgets(fh);
+	string percent = fgets(fh);
+	string message = fgets(fh);
+	fgets(fh); // automatic mode, mirrored by the shared checkbox above
+	fgets(fh); // effective host mode
+	fclose(fh);
+	if (stof(format) != TOUCH_ANDYSU_FORMAT)
+	{
+		strcpy(touchAndySU_state, "unavailable");
+		strcpy(touchAndySU_message, _("Unknown AndySU status format"));
+		return;
+	}
+	strcpy(touchAndySU_state, (state != string_null && state != "") ? state : "idle");
+	strcpy(touchAndySU_installed, (installed != string_null) ? installed : "");
+	strcpy(touchAndySU_latest, (latest != string_null) ? latest : "");
+	strcpy(touchAndySU_message, (message != string_null) ? message : "");
+	touchAndySU_percent = bound(0, stof(percent), 100);
+}
+
+string TouchAndySU_state() { return touchAndySU_state != string_null ? touchAndySU_state : "unavailable"; }
+string TouchAndySU_installed() { return touchAndySU_installed != string_null ? touchAndySU_installed : ""; }
+string TouchAndySU_latest() { return touchAndySU_latest != string_null ? touchAndySU_latest : ""; }
+string TouchAndySU_message() { return touchAndySU_message != string_null ? touchAndySU_message : ""; }
+float TouchAndySU_percent() { return touchAndySU_percent; }
+
+bool TouchAndySU_busy()
+{
+	string state = TouchAndySU_state();
+	return state == "checking" || state == "downloading" || state == "applying";
+}
+
+bool TouchAndySU_request(string token)
+{
+	float fh = fopen(TOUCH_ANDYSU_REQUEST_FILE, FILE_WRITE);
+	if (fh < 0)
+		return false;
+	fputs(fh, strcat(token, "\n"));
+	fclose(fh);
+	return true;
 }
 
 string TouchUpdate_stateName()
@@ -181,7 +244,9 @@ bool TouchUpdate_request(string token)
 
 string TouchUpdate_versionLine()
 {
-	string v = TouchUpdate_installed();
+	string v = TouchAndySU_installed();
+	if (v == "")
+		v = TouchUpdate_installed();
 	if (v == "")
 		return _("Xonotic Touch (development build)");
 	return strcat(_("Xonotic Touch"), " ", v);
@@ -189,6 +254,9 @@ string TouchUpdate_versionLine()
 
 string TouchUpdate_shortStatus()
 {
+	string payload = TouchAndySU_state();
+	if (payload != "unavailable" && payload != "incompatible")
+		return _("AndySU payload status is shown below");
 	string s = TouchUpdate_stateName();
 
 	if (s == TOUCH_UPDATE_CHECKING)

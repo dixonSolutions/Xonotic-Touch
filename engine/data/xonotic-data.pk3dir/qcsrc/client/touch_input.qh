@@ -22,6 +22,10 @@ bool Touch_JumpHeld(void);
 bool Touch_CrouchHeld(void);
 bool Touch_HopLatched(void);
 bool Touch_Fire2Held(void);
+// ALT takes touches (touch_fire2_visible, and in mode 2 STAT(TOUCH_ALTFIRE)).
+bool Touch_Fire2Available(void);
+// 0..1 draw multiplier for ALT's fade; call once a frame.
+float Touch_Fire2Alpha(void);
 // The engine's touch auto-shoot is holding fire (touch_aim.c): FIRE glows.
 bool Touch_AutoShootEngaged(void);
 

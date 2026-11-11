@@ -37,6 +37,9 @@
 #include "taskqueue.h"
 #include "thread.h"
 #include "libcurl.h"
+#ifdef ANDYSU_SWAP
+#include "andysu_engine.h"
+#endif
 
 
 sys_t sys;
@@ -761,6 +764,9 @@ void Sys_Error (const char *error, ...)
 	// don't want a dead window left blocking the OS UI or the abort dialog
 	VID_Shutdown();
 	S_StopAllSounds();
+#ifdef ANDYSU_SWAP
+	Andysu_AbortStart(string); // trial of a swapped-in engine: longjmp to the loader, does not return
+#endif
 
 	host.state = host_failed; // make Sys_HandleSignal() call _Exit()
 	Sys_SDL_Dialog("Engine Error", string);
@@ -1091,16 +1097,23 @@ static void Sys_InitSignals(void)
 {
 	// Windows only supports the C99 signals
 	signal(SIGINT,  Sys_HandleSignal);
+#ifndef ANDYSU_SWAP
+	// Under the AndySU loader the host owns the crash signals: its handler writes the crash marker
+	// (so the trial rolls back) and relaunches. Replacing it with Sys_HandleCrash left a trial
+	// crash hanging in the "Engine Crash" dialog until the watchdog fired.
 	signal(SIGILL,  Sys_HandleCrash);
 	signal(SIGABRT, Sys_HandleCrash);
 	signal(SIGFPE,  Sys_HandleCrash);
 	signal(SIGSEGV, Sys_HandleCrash);
+#endif
 	signal(SIGTERM, Sys_HandleSignal);
 #ifndef WIN32
 	// POSIX has several others worth catching
 	signal(SIGHUP,  Sys_HandleSignal);
 	signal(SIGQUIT, Sys_HandleSignal);
+#ifndef ANDYSU_SWAP
 	signal(SIGBUS,  Sys_HandleCrash);
+#endif
 	signal(SIGPIPE, Sys_HandleSignal);
 #endif
 }
@@ -1141,6 +1154,10 @@ static void Sys_Frame(void)
 	if (setjmp(host.abortframe)) // Something bad happened, or the server disconnected
 		host.state = host_active; // In case we were loading
 
+#ifdef ANDYSU_SWAP
+	Andysu_FrameHook(); // loader asked for a swap? then host.state becomes host_shutdown
+#endif
+
 	if (host.state >= host_shutdown) // see Sys_HandleCrash() comments
 	{
 #ifdef __EMSCRIPTEN__
@@ -1150,6 +1167,13 @@ static void Sys_Frame(void)
 		Sys_AllowProfiling(false);
 #endif
 		Host_Shutdown();
+#ifdef ANDYSU_SWAP
+		if (andysu_swapping)
+		{
+			andysu_leave = true; // swap: return to the loader, no exit()
+			return;
+		}
+#endif
 		exit(0);
 	}
 
@@ -1214,8 +1238,14 @@ int Sys_Main(int argc, char *argv[])
 #ifdef __EMSCRIPTEN__
 	emscripten_set_main_loop(Sys_Frame, 0, true); // doesn't return
 #else
+#ifdef ANDYSU_SWAP
+	while(!andysu_leave)
+		Sys_Frame();
+	return ANDYSU_RUN_SWAP;
+#else
 	while(true)
 		Sys_Frame();
+#endif
 #endif
 
 	return 0;
