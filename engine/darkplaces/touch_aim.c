@@ -177,6 +177,7 @@ typedef struct track_s
 {
 	vec3_t org, vel;
 	double time;
+	vec3_t bmin, bmax;   // last seen box (cl_touch_aim_debug 3: miss distance)
 	vec3_t lead;         // motion part of the lead, slewed (cl_touch_aimassist_track)
 	double lead_time;    // 0 = start from the unslewed lead
 } track_t;
@@ -219,6 +220,13 @@ static struct
 	int projtype_ofs, projtype_type;
 	qbool projtype_is_cnt;
 } ta;
+
+#define SHOT_MAX 32
+#define SHOT_SEEN_MAX 16384
+typedef struct shot_s { int ent, type, target; float closest; double born; vec3_t last; } shot_t;
+static shot_t shots[SHOT_MAX];
+static int num_shots;
+static unsigned char shot_seen[SHOT_SEEN_MAX];
 
 void TouchAim_Init(void)
 {
@@ -273,6 +281,8 @@ void TouchAim_ProgsChanged(void)
 	ta.rk_ent = 0;
 	ta.held_last = -1;
 	ta.switch_to = -1;
+	num_shots = 0;
+	memset(shot_seen, 0, sizeof(shot_seen));
 	if (!prog->loaded)
 		return;
 	d = PRVM_ED_FindGlobal(prog, "teamplay");
@@ -679,6 +689,8 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep
 
 		// where a projectile meets this player, as an offset from the body
 		track_velocity(n, ed, org, now, vel);
+		VectorCopy(bmin, ta.tracks[n & (TRACK_MAX - 1)].bmin);
+		VectorCopy(bmax, ta.tracks[n & (TRACK_MAX - 1)].bmax);
 		VectorClear(lead);
 		if (fire)
 		{
@@ -866,6 +878,12 @@ static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *we
 	ta.switch_to = index[best];
 	ta.switch_asked = now;
 	ta.own_switch = now;
+}
+
+static int projectile_type_raw(prvm_edict_t *ed)
+{
+	prvm_eval_t *v = PRVM_EDICTFIELDVALUE(ed, ta.projtype_ofs);
+	return ta.projtype_type == ev_float ? (int)v->_float : v->_int;
 }
 
 // The csqcprojectile_type of a CSQC projectile entity, -1 for anything else.
@@ -1084,6 +1102,79 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 		if (now - ta.rk_time >= ROCKET_RELEASE)
 			rk_set(RK_IDLE, "fire released");
 		return;
+	}
+}
+
+// cl_touch_aim_debug 3: every projectile that appears next to the player is
+// taken as one of ours and followed until it is gone; its closest approach to
+// the box of the enemy auto-shoot was aiming at is printed, as a measure of
+// how well the lead works. Projectiles carry no owner, hence "next to the
+// player". Debug only: nothing of this runs otherwise.
+static qbool is_projectile(prvm_prog_t *prog, prvm_edict_t *ed)
+{
+	return !ed->free && !strcmp(PRVM_GetString(prog, PRVM_clientedictstring(ed, classname)), "ENT_CLIENT_PROJECTILE");
+}
+
+static float box_dist(const vec3_t p, const vec3_t bmin, const vec3_t bmax)
+{
+	vec3_t d;
+	int k;
+	for (k = 0; k < 3; k++)
+		d[k] = p[k] < bmin[k] ? bmin[k] - p[k] : p[k] > bmax[k] ? p[k] - bmax[k] : 0;
+	return VectorLength(d);
+}
+
+static void debug_shots(const vec3_t eye, int target)
+{
+	prvm_prog_t *prog = CLVM_prog;
+	double now = host.realtime;
+	int i, k;
+	for (k = 0; k < num_shots; k++)
+	{
+		shot_t *sh = &shots[k];
+		prvm_edict_t *ed = sh->ent < prog->num_edicts ? PRVM_EDICT_NUM(sh->ent) : NULL;
+		const track_t *t = &ta.tracks[sh->target & (TRACK_MAX - 1)];
+		if (ed && is_projectile(prog, ed))
+		{
+			// along the path flown since the last frame, not only its end
+			vec3_t p;
+			int f;
+			for (f = 1; f <= 4; f++)
+			{
+				VectorLerp(sh->last, f * 0.25f, PRVM_clientedictvector(ed, origin), p);
+				if (sh->target)
+					sh->closest = min(sh->closest, box_dist(p, t->bmin, t->bmax));
+			}
+			VectorCopy(PRVM_clientedictvector(ed, origin), sh->last);
+			continue;
+		}
+		if (sh->target)
+			Con_Printf("touch aim: shot %d at player %d: closest %.0f units after %.2f s, last seen at %.0f %.0f %.0f\n", sh->type, sh->target, sh->closest, now - sh->born, sh->last[0], sh->last[1], sh->last[2]);
+		if (sh->ent < SHOT_SEEN_MAX)
+			shot_seen[sh->ent] = 0;
+		shots[k--] = shots[--num_shots];
+	}
+	for (i = 1; i < prog->num_edicts && i < SHOT_SEEN_MAX; i++)
+	{
+		prvm_edict_t *ed = PRVM_EDICT_NUM(i);
+		if (!is_projectile(prog, ed))
+		{
+			shot_seen[i] = 0;
+			continue;
+		}
+		if (shot_seen[i])
+			continue;
+		shot_seen[i] = 1;
+		if (num_shots < SHOT_MAX && VectorDistance(PRVM_clientedictvector(ed, origin), eye) < 200)
+		{
+			shot_t *sh = &shots[num_shots++];
+			sh->ent = i;
+			sh->type = ta.projtype_ofs >= 0 ? projectile_type_raw(ed) : -1;
+			sh->target = target;
+			sh->closest = 1e9f;
+			sh->born = now;
+			VectorCopy(PRVM_clientedictvector(ed, origin), sh->last);
+		}
 	}
 }
 
@@ -1434,6 +1525,8 @@ static void aim_frame(void)
 			cl.viewangles[PITCH] = bound(-89.0f, cl.viewangles[PITCH] + pp, 89.0f);
 		}
 	}
+	if (cl_touch_aim_debug.integer >= 3)
+		debug_shots(eye, ta.fire_target ? ta.fire_target : ta.lock_ent ? ta.lock_ent : near.entnum);
 	ta.track_ent = near.entnum;
 	ta.track_yaw = near.yaw;
 	ta.track_pitch = near.pitch;
