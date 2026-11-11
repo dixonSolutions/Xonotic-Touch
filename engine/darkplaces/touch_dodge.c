@@ -19,7 +19,10 @@ its dead zone), so how far it is pushed says nothing, but where it points
 does. Moving mostly across the shot's path, either way, the player is
 steering out of the line or deliberately across it, and the dodge stands
 down; running toward or away from the shooter, the dodge takes them sideways
-and keeps half of the run. Never with a keyboard or a mouse aiming
+until the shot has passed (well under a second), at full speed: keeping part
+of the run would cost most of the sideways acceleration (Xonotic accelerates
+only up to the speed already going the wished way). Never with a keyboard or
+a mouse aiming
 (the aim helpers' rules), while hooking or being rescued, or during a quick
 turn.
 */
@@ -57,7 +60,7 @@ cvar_t cl_touch_autododge_mindamage = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autodod
 #define DODGE_BUTTON      8192    // button11: +dodge
 #define JUMP_BUTTON       2
 #define STEERING_ACROSS   0.7f    // the player's own move this much across the shot's path: theirs
-#define KEEP_RUN          0.5f    // share of a run toward / away from the shooter kept while dodging
+#define KEEP_RUN          0.0f    // share of a run toward / away from the shooter kept while dodging
 #define REJUDGE           0.1f    // seconds between second looks at a dodge under way
 #define WINDOW_MIN        0.3f
 #define WINDOW_MAX        1.5f
@@ -351,8 +354,8 @@ void TouchDodge_Frame(void)
 done:
 	if (td.active)
 	{
-		// the move: the escape's direction, plus half of the player's own run
-		// along the shot's path, in the view's frame, at full speed
+		// the move: the escape's direction (plus KEEP_RUN of the player's own
+		// run along the shot's path), in the view's frame, at full speed
 		float d[2], along[2], a, l;
 		float df, ds;
 		along[0] = own_dir[0] - (own_dir[0] * td.across[0] + own_dir[1] * td.across[1]) * td.across[0];
