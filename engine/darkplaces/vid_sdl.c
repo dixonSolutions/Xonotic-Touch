@@ -1972,7 +1972,13 @@ void Sys_SDL_HandleEvents(void)
 				Con_DPrintf("SDL_FINGERDOWN for finger %i\n", (int)event.tfinger.fingerId);
 #endif
 				if (VID_TouchIsDirect(event.tfinger.touchId))
+				{
 					VID_NoteTouchUse();
+					// Touch: a finger on the screen means the window has focus. A
+					// FOCUS_LOST with no FOCUS_GAINED after it (a live engine swap,
+					// a system popup) otherwise holds a local game paused for good.
+					vid_hasfocus = true;
+				}
 				for (i = 0;i < MAXFINGERS-1;i++)
 				{
 					if (!multitouch[i][0])
