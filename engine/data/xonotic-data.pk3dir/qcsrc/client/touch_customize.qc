@@ -43,6 +43,8 @@ vector Touch_Customize_GetWidgetPos(int wid)
 			return autocvar_touch_reload_x * eX + autocvar_touch_reload_y * eY + autocvar_touch_reload_size * eZ;
 		case TOUCH_WIDGET_FIRE2:
 			return autocvar_touch_fire2_x * eX + autocvar_touch_fire2_y * eY + autocvar_touch_fire2_size * eZ;
+		case TOUCH_WIDGET_HOOK:
+			return autocvar_touch_hook_x * eX + autocvar_touch_hook_y * eY + autocvar_touch_hook_size * eZ;
 		default:
 			return autocvar_touch_dodge_x * eX + autocvar_touch_dodge_y * eY + autocvar_touch_dodge_size * eZ;
 	}
@@ -70,6 +72,8 @@ void Touch_Customize_SetWidgetPos(int wid, float nx, float ny)
 			cvar_set("touch_reload_x", ftos(nx)); cvar_set("touch_reload_y", ftos(ny)); break;
 		case TOUCH_WIDGET_FIRE2:
 			cvar_set("touch_fire2_x", ftos(nx)); cvar_set("touch_fire2_y", ftos(ny)); break;
+		case TOUCH_WIDGET_HOOK:
+			cvar_set("touch_hook_x", ftos(nx)); cvar_set("touch_hook_y", ftos(ny)); break;
 		default:
 			cvar_set("touch_dodge_x", ftos(nx)); cvar_set("touch_dodge_y", ftos(ny)); break;
 	}
@@ -89,6 +93,7 @@ string Touch_Customize_WidgetLabel(int wid)
 		case TOUCH_WIDGET_ZOOM: return "ZOOM";
 		case TOUCH_WIDGET_RELOAD: return TOUCH_LABEL_RELOAD;
 		case TOUCH_WIDGET_FIRE2: return TOUCH_LABEL_FIRE2;
+		case TOUCH_WIDGET_HOOK: return TOUCH_LABEL_HOOK;
 		default: return TOUCH_LABEL_DODGE;
 	}
 }
@@ -116,6 +121,8 @@ bool Touch_Customize_WidgetEnabled(int wid)
 		// Contextual ALT (touch_fire2_visible 2) is placed like any other button,
 		// whatever the weapon in hand: edit mode is where it has to be findable.
 		case TOUCH_WIDGET_FIRE2: return boolean(autocvar_touch_fire2_visible);
+		// HOOK the same: placed whether or not this server has a hook.
+		case TOUCH_WIDGET_HOOK: return boolean(autocvar_touch_hook_visible);
 		default: return boolean(autocvar_touch_dodge_visible);
 	}
 }

@@ -67,6 +67,9 @@ bool touch_key_attack2;
 bool touch_key_jump;
 bool touch_key_crouch;
 bool touch_key_zoom;
+// HOOK is held through the engine's +touch_hook (touch_hook.c), which knows
+// which hook the server offers and does the weapon switch for the Hook weapon.
+bool touch_key_hook;
 bool touch_owns_forward;
 bool touch_owns_back;
 bool touch_owns_left;
@@ -216,6 +219,8 @@ string Touch_CommandLabel(string command)
 		return TOUCH_LABEL_FIRE2;
 	if (command == "+crouch" && autocvar_touch_crouch_visible)
 		return TOUCH_LABEL_CROUCH;
+	if (command == "+hook" && Touch_HookAvailable())
+		return TOUCH_LABEL_HOOK;
 	return "";
 }
 
@@ -268,6 +273,15 @@ void Touch_SetKey(string key, bool down)
 	}
 }
 
+void Touch_SetHook(bool down)
+{
+	if (down == touch_key_hook)
+		return;
+	touch_key_hook = down;
+	localcmd(down ? "+touch_hook\n" : "-touch_hook\n");
+	touch_debug_cmds += 1;
+}
+
 void Touch_ReleaseAll(void)
 {
 	int i;
@@ -280,6 +294,7 @@ void Touch_ReleaseAll(void)
 	Touch_SetKey("jump", false);
 	Touch_SetKey("crouch", false);
 	Touch_SetKey("zoom", false);
+	Touch_SetHook(false);
 	touch_fire_down = false;
 	touch_fire_toggle_state = false;
 	touch_zoom_toggle_state = false;
@@ -391,6 +406,8 @@ int Touch_AssignRole(vector p)
 		return TOUCH_ROLE_WEAPON;
 	if (Touch_ZoomAvailable() && Touch_HitCircle(p, autocvar_touch_zoom_x, autocvar_touch_zoom_y, autocvar_touch_zoom_size, 1.10))
 		return TOUCH_ROLE_ZOOM;
+	if (Touch_HookAvailable() && Touch_HitCircle(p, autocvar_touch_hook_x, autocvar_touch_hook_y, autocvar_touch_hook_size, 1.10))
+		return TOUCH_ROLE_HOOK;
 	if (autocvar_touch_reload_visible && Touch_HitCircle(p, autocvar_touch_reload_x, autocvar_touch_reload_y, autocvar_touch_reload_size, 1.10))
 		return TOUCH_ROLE_RELOAD;
 	if (autocvar_touch_dodge_visible && Touch_HitCircle(p, autocvar_touch_dodge_x, autocvar_touch_dodge_y, autocvar_touch_dodge_size, 1.10))
@@ -801,6 +818,7 @@ void Touch_Frame(void)
 	bool jump_down = false;
 	bool crouch_down = false;
 	bool zoom_down = false;
+	bool hook_down = false;
 	bool move_active = false;
 	bool look_active = false;
 	vector look_accum = '0 0 0';
@@ -839,13 +857,16 @@ void Touch_Frame(void)
 			look_last = pos;
 			look_first = touch_finger_first[i];
 		}
-		else if (role == TOUCH_ROLE_FIRE)
+		else if (role == TOUCH_ROLE_FIRE || role == TOUCH_ROLE_HOOK)
 		{
-			fire_count += 1;
+			if (role == TOUCH_ROLE_FIRE)
+				fire_count += 1;
+			else
+				hook_down = true;
 			// CoD Mobile's "R-Fire BTN for camera rotation": the fire button is
 			// also an aim surface, so shoot-while-aiming is one finger instead of
 			// two. Fire is not released when the drag starts. A dedicated look
-			// finger keeps priority.
+			// finger keeps priority. HOOK too: the hook goes where the view looks.
 			if (autocvar_touch_fire_drag_look && !look_active)
 			{
 				vector from_down = pos - touch_finger_down_pos[i];
@@ -1002,6 +1023,7 @@ void Touch_Frame(void)
 		Touch_SetKey("zoom", zoom_down);
 	}
 
+	Touch_SetHook(hook_down);
 }
 
 bool Touch_InputEvent(float bInputType, float nPrimary, float nSecondary)
@@ -1182,6 +1204,41 @@ float Touch_ZoomAlpha(void)
 	return touch_zoom_fade = Touch_FadeStep(touch_zoom_fade, Touch_ZoomAvailable() || touch_key_zoom, dt);
 }
 
+// HOOK is contextual like ZOOM (touch_hook_visible 2): there while the engine
+// says a hook is to hand -- the server's offhand hook, or the Hook weapon with
+// fuel (_cl_touch_hook_avail, touch_hook.c). Never while a mouse aims, like the
+// rest of the hook: it is for touch play only.
+bool Touch_HookAvailable(void)
+{
+	float mode = autocvar_touch_hook_visible;
+	if (mode <= 0 || cvar("vid_touchscreen_mouselook"))
+		return false;
+	if (mode == 1)
+		return true;
+	return cvar("_cl_touch_hook_avail") > 0;
+}
+
+// Held by the finger, or by the engine's fall rescue (_cl_touch_hook_state 2).
+bool Touch_HookHeld(void)
+{
+	return touch_key_hook || cvar("_cl_touch_hook_state") > 0;
+}
+
+float touch_hook_fade;
+float touch_hook_fade_time;
+
+// 0..1 multiplier for drawing HOOK; advances the fade, so call it once a frame.
+float Touch_HookAlpha(void)
+{
+	float dt = bound(0, time - touch_hook_fade_time, 0.1);
+	touch_hook_fade_time = time;
+	if (autocvar_touch_hook_visible <= 0)
+		return touch_hook_fade = 0;
+	if (Touch_CustomizeActive() || autocvar_touch_debug >= 3)
+		return touch_hook_fade = 1;
+	return touch_hook_fade = Touch_FadeStep(touch_hook_fade, Touch_HookAvailable() || Touch_HookHeld(), dt);
+}
+
 bool Touch_CrouchHeld(void)
 {
 	return touch_key_crouch;
@@ -1212,6 +1269,7 @@ string Touch_DebugRoleName(int role)
 	if (role == TOUCH_ROLE_CROUCH) return "CR";
 	if (role == TOUCH_ROLE_WEAPON) return "WEP";
 	if (role == TOUCH_ROLE_ZOOM) return "ZOOM";
+	if (role == TOUCH_ROLE_HOOK) return "HOOK";
 	if (role == TOUCH_ROLE_DODGE) return "DODGE";
 	if (role == TOUCH_ROLE_RELOAD) return "R";
 	if (role == TOUCH_ROLE_CON) return "CON";

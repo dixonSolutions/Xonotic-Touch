@@ -25,6 +25,8 @@ keyboard, or touch mode forced to Always).
 #define TOUCH_AIM_H
 
 #include "qtypes.h"
+// The hook's button bits go out with auto-shoot's (CL_SendMove).
+#include "touch_hook.h"
 
 void TouchAim_Init(void);
 
@@ -49,5 +51,10 @@ void TouchAim_SetHudAimTouch(qbool touching);
 
 // A CSQC was loaded or unloaded: re-read which of its globals say teamplay.
 void TouchAim_ProgsChanged(void);
+
+// Why the touch helpers may not act this frame (keyboard, mouse aiming, dead,
+// spectating, menu...), or NULL when they may. The hook (touch_hook.c) obeys
+// the same rules.
+const char *TouchAim_BlockReason(void);
 
 #endif

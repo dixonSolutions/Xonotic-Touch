@@ -67,6 +67,7 @@ feed and the chat feed each get a band that touches neither.
 | Look zone | Short tap = fire | `+attack` for one frame |
 | Fire | Hold; sliding off keeps firing and steers | `+attack` (+ look delta) |
 | **ALT** | Hold. Only there while the weapon in hand has a secondary fire it can fire; fades out when it runs dry | `+attack2` — see [Secondary fire](#secondary-fire-alt) |
+| **HOOK** | Hold to hook, let go to release; drag to steer like FIRE. Only there while a hook is to hand | offhand hook (`+hook`) or the Hook weapon — see [Grappling hook](#grappling-hook-hook-button-and-fall-rescue-engine) |
 | **HOP** | Tap = one jump, hold = latch (keeps hopping hands-free) | `+jump` |
 | DUCK | Tap or hold | `+crouch` |
 | Weapon strip (right edge) | Tap a weapon to switch to it; drag the grip under the strip to resize it — see [Weapon strip](#weapon-strip) | `impulse N` of the row |
@@ -263,6 +264,7 @@ keeps its physical size across aspect ratios — `mm = _size × 183.2` on the
 | Weapon | `touch_weapon_` | — | no (the weapon strip switches weapons) |
 | Weapon strip | `touch_weplist_` | `_x`, `_y`, `_visible` only: sized by `cl_touch_weplist_scale` — see [Weapon strip](#weapon-strip) | yes |
 | Zoom | `touch_zoom_` | `touch_zoom_visible` 0 never / 1 always / 2 contextual | contextual (`2`) |
+| Hook | `touch_hook_` | `touch_hook_visible` 0 never / 1 always / 2 while a hook is to hand | contextual (`2`) |
 | Dash | `touch_dodge_` | — | no |
 | Reload | `touch_reload_` | — | no |
 
@@ -581,6 +583,100 @@ not applied to the target). Charge weapons are simply held. Team detection
 relies on Xonotic forcing team colours; a mod that does not will be treated
 conservatively.
 
+### Grappling hook: HOOK button and fall rescue (engine)
+
+Xonotic's grappling hook comes two ways, and which one a server offers decides
+what the touch controls can do. Both are handled in the engine client
+(`engine/darkplaces/touch_hook.c`, decisions in `touch_rescue.h`), so they work
+the same on a public server and in a local match.
+
+- **The offhand hook** (`g_grappling_hook 1` on the server): `+hook`
+  (`button6`) fires it and holds it. The client learns about it from the
+  server's welcome message: the CSQC sets bit 8 of its `active_mutators`
+  global, in 0.8.6 and in today's code alike, whatever `cl_welcome` says. A
+  server that also runs nades or the offhand blaster gives `+hook` to those, so
+  there the offhand hook is not counted.
+- **The Hook weapon** (a pickup, or a server's start weapons): it needs fuel.
+  Holding HOOK switches to it, fires it once it is in hand (attack while the
+  switch is still on its way would fire the weapon going away), and takes the
+  previous weapon back on release, unless the player picked another meanwhile.
+
+Hooks fly at 1800 u/s, pull at 2000 u/s, catch on any solid surface and are
+lost on sky. With neither, nothing can hook: HOOK is not shown
+(`touch_hook_visible 2`) and the rescue does nothing.
+
+**HOOK button.** Up and in from FIRE, between ALT and ZOOM and left of the
+weapon strip at its largest. Hold it and the hook goes out along the view and
+pulls; let go and it lets go. A finger dragged on it turns the view as on FIRE
+(`touch_fire_drag_look`), since the hook goes where the player looks. It glows
+while the rescue holds the hook. It is hidden with a keyboard attached (the
+controls are off), while a mouse aims next to the touch controls, and in the
+stock vote and intermission screens like every other control. Movable in the
+layout editor; mirrored by `touch_handedness`. Stock prompts that name `+hook`
+("press HOOK to use it") name the button.
+
+**Fall rescue** (`cl_touch_hook_rescue`, on by default; Settings → Mobile →
+HUD → *Catch me with the hook when I fall off the map*):
+
+1. While the player falls (moving down, not hooking by hand), the arc from
+   their position and velocity under gravity is followed with the player's box
+   in up to 8 segments over 2.5 s, then straight down. It ends on ground (a
+   floor flat enough to stand on, or water), or in a death zone: sky, lava or
+   slime, a `trigger_hurt` volume (read from the map's own entity list, since
+   the client never sees those triggers), or nothing above the world's lowest
+   point. A jump, a drop to a lower floor and a jump pad arc that lands all
+   end on ground and never trigger it.
+2. Judged bad for 0.06 s: the rescue looks for an anchor. Rays go from the eye
+   at points above where the player last stood, then fan upward round the way
+   back. A point counts if it is solid, above the eye, within
+   `cl_touch_hook_rescue_range`, and the player's box can be pulled from where
+   it will be when the hook catches to a point with ground under it (or, failing
+   that, to well above the ledge the player left). Points whose line runs into
+   the lip of the ledge are skipped.
+3. The view turns to the anchor (up to `cl_touch_hook_rescue_turn` deg/s,
+   slowing into it) and the hook fires once the view is within 2°. With the
+   Hook weapon the switch is made while the view turns.
+4. The hook is held while it pulls. It lets go once there is ground within
+   400 units under the player (a drop that does no fall damage), the fall would end there, and not on the very
+   lip; or on landing, or when the hook has not caught in its flight time plus
+   0.35 s, or the player is wedged without moving for 1 s, or after 4 s, or
+   when the fuel runs out.
+5. The view turns back to where the player was facing, unless they turned it
+   themselves meanwhile. Then `cl_touch_hook_rescue_cooldown` seconds before
+   the next rescue (cut short once the player has stood on ground for 0.2 s).
+
+The player always wins: pressing HOOK takes the hold over at once, a hard turn
+of the view while the rescue aims cancels it, and auto-shoot and auto-switch
+stand down while the hook is out. Like the shoot helpers it runs only in touch
+mode, never with a keyboard attached or while a mouse aims, and never while
+dead, spectating or in a menu. `cl_touch_aim_debug 1` prints one line per
+decision (the fall, the anchor and its cost, fired, caught, released and why);
+`2` also prints every fall judged and the frame cost of judging.
+
+| Cvar | Default | What it does |
+|------|---------|--------------|
+| `touch_hook_visible` | `2` | HOOK: 0 never, 1 always, 2 while a hook is to hand |
+| `cl_touch_hook_rescue` | `1` | The fall rescue (archived; off in the Competitive preset) |
+| `cl_touch_hook_rescue_turn` | `720` | Fastest view turn to the anchor and back, deg/s (180–1440) |
+| `cl_touch_hook_rescue_range` | `1600` | Farthest anchor, units (400–3000) |
+| `cl_touch_hook_rescue_cooldown` | `1` | Seconds between rescues (0.3–5) |
+| `_cl_touch_hook_avail` | — | Set by the engine: 0 none, 1 offhand hook, 2 Hook weapon |
+| `_cl_touch_hook_state` | — | Set by the engine: 1 HOOK held, 2 the rescue holds or aims |
+
+Commands: `+touch_hook` / `-touch_hook` (what the port's HOOK button sends),
+`touch_hook_status` (one line of state, for tests and bug reports).
+
+Limits: air control is not modelled, so a player steering hard toward a ledge
+is judged by where they are heading. The pull is judged as a straight line,
+but the rope swings; an anchor that only works if the hook catches quickly is
+still tried when nothing better is in reach, and may leave the player wedged
+under the lip (let go after 1 s). On open maps with nothing above the edge
+(much of space-elevator) there is no anchor and the rescue stays out of the
+way. The offhand hook's fuel (`g_grappling_hook_useammo`) is not visible to the
+client: with none, the hook does not catch and is let go. A sky floor with no
+`trigger_hurt` under it does not kill, but counts as a death zone: there is
+nothing to stand on down there.
+
 **Fire, zoom, weapons (recommended defaults):**
 
 | Option | Values | Default | Notes |
@@ -701,9 +797,9 @@ cvar is on exactly one of them:
 | Sub-tab | Rows |
 |---------|------|
 | **Controls** | Input mode (Dynamic / Touch / Keyboard & mouse, switch mid-game, announce, touch-only), layout presets, opacity, scale, glass tint, left-handed, stick dead zone and reach, FIRE hold / toggle, dodge button, customize / save / reset |
-| **HUD** | Weapon bar: size (`cl_touch_weplist_scale` 0.7–2.4), across (`touch_weplist_x`), down (`touch_weplist_y` 0.15–0.85), show; readout size (`touch_hud_scale`); *Keep MENU, CHAT and SCORE on screen with a keyboard* (`touch_desk_pills`) |
-| **Aim** | Look sensitivity, vertical, invert; aim assist on / off with Light, Medium (the defaults) and Strong; slowdown, pull (0–1), catch cone (1–15°), max pull (0–180°/s), target ring |
-| **Auto-shoot** | Auto-shoot on / off, reaction delay (0–0.5 s), shoot radius (0–6°), keep firing, which weapons; shot choice: secondary fire when better, lead moving targets, guide and detonate rockets, switch to the best weapon; aim-area-only, range — see [Shoot helpers](#shoot-helpers-auto-shoot-and-aim-assist-engine) |
+| **HUD** | Weapon bar: size (`cl_touch_weplist_scale` 0.7–2.4), across (`touch_weplist_x`), down (`touch_weplist_y` 0.15–0.85), show; readout size (`touch_hud_scale`); grappling hook: HOOK button off / when available / always (`touch_hook_visible`), *Catch me with the hook when I fall off the map* (`cl_touch_hook_rescue`); *Keep MENU, CHAT and SCORE on screen with a keyboard* (`touch_desk_pills`) |
+| **Aim** | Look sensitivity, vertical, invert; aim assist on / off with Light, Medium (the defaults) and Strong; slowdown, pull (0–1), catch cone (1–15°), max pull (0–180°/s), target ring, *Keep tracking the enemy I am shooting* (`cl_touch_aimassist_track`) |
+| **Auto-shoot** | Auto-shoot on / off, reaction delay (0–0.5 s), shoot radius (0–6°), keep firing, which weapons; shot choice: secondary fire when better, lead moving targets, guide and detonate rockets, switch to the best weapon, *Hold fire when the blast would hit me* (`cl_touch_autoshoot_safe`); aim-area-only, range — see [Shoot helpers](#shoot-helpers-auto-shoot-and-aim-assist-engine) |
 | **Dynamics** | Performance profile, frame cap, vsync, dynamic resolution, render scale, jump button mode |
 
 The original intent groups, kept for the menus not built yet. Shallow tree for
@@ -929,6 +1025,7 @@ Build flow: clone repo (integrated `engine/`) → `fetch-sources.sh code` (if ne
 | Dash | Double-tap move dir (button available but hidden) | `touch_dodge_mode`, `touch_dodge_visible` |
 | Weapon switch | HUD strip; wheel / 3-slot / cycle button optional | `touch_weapon_mode`, `touch_weapon_visible` |
 | Zoom | Hold near fire | `touch_zoom_mode` |
+| Grappling hook | Hold HOOK; caught automatically when falling off the map | `touch_hook_visible`, `cl_touch_hook_rescue` |
 | Use / E | Small button or long-press context | Hide in DM if unused |
 | Scoreboard | SCORE pill toggles it; also the `touch_scores` command | `touch_scores_visible` |
 | Chat | Pause or quick phrases | `touch_chat_mode` |
@@ -947,6 +1044,12 @@ Validate cfg syntax:
 
 ```bash
 ./scripts/test-touch-profiles.sh
+```
+
+Fall rescue decisions (where a fall ends, the anchor, when to fire and let go):
+
+```bash
+./scripts/test-touch-hook.sh
 ```
 
 Screen + sens consistency:

@@ -92,6 +92,16 @@ void Touch_DefineCvars(void)
 	// Contextual like ALT (2): only while the weapon in hand has a scope
 	// (Vortex, Rifle, Vaporizer, MachineGun). 1 = always, 0 = never.
 	Touch_RegisterCvar("touch_zoom_visible", "2");
+	// HOOK, the grappling hook (+touch_hook: the engine holds the offhand hook,
+	// or switches to the Hook weapon, fires it and switches back). Contextual
+	// by default (2): only while the engine says a hook is to hand
+	// (_cl_touch_hook_avail). 1 = always, 0 = never. Up and in from FIRE,
+	// between ALT and ZOOM, and left of the weapon strip at its largest
+	// (scripts/audit-touch-ergonomics.py).
+	Touch_RegisterCvar("touch_hook_x", "0.765");
+	Touch_RegisterCvar("touch_hook_y", "0.615");
+	Touch_RegisterCvar("touch_hook_size", "0.100"); // 18 mm, like ZOOM and ALT
+	Touch_RegisterCvar("touch_hook_visible", "2");
 	Touch_RegisterCvar("touch_dodge_x", "0.165");
 	Touch_RegisterCvar("touch_dodge_y", "0.480");
 	Touch_RegisterCvar("touch_dodge_size", "0.100");

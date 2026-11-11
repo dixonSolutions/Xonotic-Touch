@@ -36,6 +36,7 @@ primary, no lead, no switching.
 #include "touch_hud.h"
 #include "touch_aim.h"
 #include "touch_weapons.h"
+#include "touch_hook.h"
 
 extern cvar_t vid_touchscreen;
 extern qbool cl_touch_csqc_active;
@@ -246,6 +247,7 @@ void TouchAim_Init(void)
 	Cvar_RegisterVariable(&cl_touch_autoshoot_active);
 	Cvar_RegisterVariable(&cl_touch_aim_lookscale);
 	Cvar_RegisterVariable(&cl_touch_hud_state);
+	TouchHook_Init();
 	ta.lookscale = 1;
 	ta.teamplay_ofs = -1;
 	ta.projtype_ofs = -1;
@@ -298,6 +300,7 @@ void TouchAim_ProgsChanged(void)
 		if (numeric_type(ta.projtype_type))
 			ta.projtype_ofs = d->ofs;
 	}
+	TouchHook_ProgsChanged();
 }
 
 qbool TouchAim_AutoFiring(void)
@@ -339,6 +342,9 @@ static const char *player_name(int n)
 // What auto-shoot holds: primary and/or secondary fire, at target.
 static void set_firing(qbool on, qbool on2, int target)
 {
+	// the hook is held, or its weapon is coming or going: no shot on top
+	if (TouchHook_InUse())
+		on = on2 = false;
 	if (ta.firing == on && ta.firing2 == on2)
 		return;
 	ta.firing = on;
@@ -391,7 +397,7 @@ static qbool is_spectator_slot(int n)
 // Why this frame may not assist, or NULL when it may. The reason is printed
 // under cl_touch_aim_debug so "it does nothing" can be told apart from "it is
 // switched off for this reason".
-static const char *aim_block_reason(void)
+const char *TouchAim_BlockReason(void)
 {
 	int me = cl.realplayerentity;
 	// Touch mode only: the engine clears vid_touchscreen when a physical
@@ -784,7 +790,11 @@ static void note_held(int held, double now)
 {
 	if (held == ta.held_last)
 		return;
-	if (held >= 0 && held == ta.switch_to)
+	if (TouchHook_InUse())
+	{
+		// the hook's weapon switch, there and back: not the player's choice
+	}
+	else if (held >= 0 && held == ta.switch_to)
 	{
 		if (cl_touch_aim_debug.integer)
 			Con_Printf("touch aim: switch landed: %s\n", TouchHUD_WeaponName(held));
@@ -812,7 +822,7 @@ static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *we
 	qbool ready[72];
 	int index[72], n = 0, i, best, rank, cur_rank;
 	qbool cur_ok;
-	if (!cl_touch_autoswitch.integer || held < 0 || !wep)
+	if (!cl_touch_autoswitch.integer || held < 0 || !wep || TouchHook_InUse())
 		return;
 	if (near->entnum != ta.fight_ent)
 	{
@@ -1077,7 +1087,7 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 	}
 }
 
-void TouchAim_Frame(void)
+static void aim_frame(void)
 {
 	double now = host.realtime;
 	float dt = bound(0.001f, (float)cl.realframetime, 0.1f);
@@ -1089,7 +1099,7 @@ void TouchAim_Frame(void)
 	const touch_wep_fire_t *fire = NULL;
 	aimtarget_t near;
 
-	const char *blocked = aim_block_reason();
+	const char *blocked = TouchAim_BlockReason();
 	if (blocked)
 	{
 		if (cl_touch_aim_debug.integer && (ta.was_allowed || !ta.blocked_said || strcmp(ta.blocked_said, blocked)))
@@ -1377,7 +1387,7 @@ void TouchAim_Frame(void)
 		near.yaw = pull_yaw;
 		near.pitch = pull_pitch;
 	}
-	if (strength > 0 && near.entnum
+	if (strength > 0 && near.entnum && !TouchHook_Rescuing()
 		&& ((aim_touch && now - ta.last_input < INPUT_HOLD)
 			|| ta.rk_state != RK_IDLE
 			|| (cl_touch_aimassist_track.integer && ta.lock_ent && ta.lock_ent == near.entnum && now < ta.lock_until)))
@@ -1431,4 +1441,14 @@ void TouchAim_Frame(void)
 	VectorCopy(cl.viewangles, ta.prev_angles);
 	ta.prev_valid = true;
 	publish();
+}
+
+// The hook first: a fall rescue turns the view, and the aim pull stands down
+// while it does (TouchHook_Rescuing). Then the angles the next frame's turn is
+// measured from.
+void TouchAim_Frame(void)
+{
+	TouchHook_Frame();
+	aim_frame();
+	TouchHook_EndFrame();
 }
