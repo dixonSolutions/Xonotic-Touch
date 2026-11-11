@@ -46,6 +46,11 @@ qbool VID_SDL_HasTouchDevices(void)
 	return false;
 }
 
+qbool VID_TouchQueuedTap(float x0, float y0, float x1, float y1)
+{
+	return false;
+}
+
 qbool VID_InitMode(const viddef_mode_t *mode)
 {
 	return false;
