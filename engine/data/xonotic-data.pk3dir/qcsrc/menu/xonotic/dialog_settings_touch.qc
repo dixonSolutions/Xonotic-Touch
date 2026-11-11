@@ -324,14 +324,27 @@ void XonoticMobileAimTab_fill(entity me)
 		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_aimassist_track", _("Keep tracking the enemy I am shooting"),
 			_("While auto-shoot fires at an enemy the pull keeps following them, even with your thumb resting. Off: only while a finger is on the aim area and moving")));
 			setDependent(e, "cl_touch_aimassist", 1, 1);
-	// Engine-side (touch_dodge.c), like the aim helpers.
+	// Engine-side (touch_dodge.c), like the aim helpers: its own section.
 	me.TR(me);
-		me.TD(me, 1, 6, e = makeXonoticCheckBox_T(0, "cl_touch_autododge", _("Dodge enemy rockets and grenades I can see coming"),
-			_("Step aside from a rocket, grenade, bolt, orb or crylink about to hit you, while you keep aiming. Your own sideways steering always wins; never off a ledge")));
+		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Auto dodge")));
 	me.TR(me);
-		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("Never aims at teammates or through walls.")));
+		me.TD(me, 1, 2, e = makeXonoticCheckBox_T(0, "cl_touch_autododge", _("Auto dodge"),
+			_("Step aside from an enemy rocket, grenade, bolt, orb, mine or crylink about to hit you, while you keep aiming. Left alone when your own path already clears it; never off a ledge or into a mine")));
+		me.TD(me, 1, 2, e = makeXonoticRadioButton_T(4, "cl_touch_autododge_scope", "0", _("Servers and local"),
+			_("Dodge on servers and in local matches")));
+			setDependent(e, "cl_touch_autododge", 1, 1);
+		me.TD(me, 1, 2, e = makeXonoticRadioButton_T(4, "cl_touch_autododge_scope", "1", _("Local only"),
+			_("Dodge only in local matches against bots")));
+			setDependent(e, "cl_touch_autododge", 1, 1);
 	me.TR(me);
-		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("Touch mode only: off while a keyboard or mouse is playing.")));
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autododge_rear", _("Shots from behind too"),
+			_("Also dodge shots from behind and the side, out of view. Never one behind a wall")));
+			setDependent(e, "cl_touch_autododge", 1, 1);
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autododge_cue", _("Show an arrow when it dodges"),
+			_("Flash an arrow at the edge of the screen the way a dodge goes")));
+			setDependent(e, "cl_touch_autododge", 1, 1);
+	me.TR(me);
+		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("Touch mode only: off while a keyboard or mouse is playing. Never through walls.")));
 }
 
 entity makeXonoticMobileAutoShootTab()
