@@ -8,6 +8,10 @@
     <string name="boot_retry">Retry</string>
     <string name="boot_quit">Quit</string>
     <string name="boot_notice_channel">Game downloads</string>
+    <string name="keepalive_channel">Staying connected in the background</string>
+    <string name="keepalive_connection_title">Xonotic Touch is staying connected</string>
+    <string name="keepalive_download_title">Xonotic Touch is downloading</string>
+    <string name="keepalive_download_text">Game data: maps, textures and music</string>
     <string name="boot_notice_ready_title">Xonotic is ready</string>
     <string name="boot_notice_ready_text">Game data is downloaded. Tap to play.</string>
     <string name="boot_notice_failed_title">Xonotic download stopped</string>

@@ -29,6 +29,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "touch_hud.h"
 #include "touch_vote.h"
 #include "screen.h"
+#include "touch_android.h"
 
 #ifndef __IPHONEOS__
 #ifdef MACOSX
@@ -1711,6 +1712,15 @@ void Sys_SDL_HandleEvents(void)
 			case SDL_APP_TERMINATING:
 				Host_SaveConfig(CONFIGFILENAME);
 				break;
+#ifdef __ANDROID__
+			case SDL_APP_DIDENTERBACKGROUND: // Touch: keep running, without drawing
+				memset(multitouch, 0, sizeof(multitouch));
+				TouchAndroid_Background(true);
+				break;
+			case SDL_APP_DIDENTERFOREGROUND:
+				TouchAndroid_Background(false);
+				break;
+#endif
 			case SDL_KEYDOWN:
 			case SDL_KEYUP:
 #ifdef DEBUGSDLEVENTS
@@ -2087,6 +2097,9 @@ void Sys_SDL_HandleEvents(void)
 	// one stray blur left the game ignoring every key and click.
 	vid_hasfocus = Sys_EM_PageFocused();
 #endif
+#ifdef __ANDROID__
+	TouchAndroid_AfterEvents(); // Touch: background, held map load, touch_netstate
+#endif
 	vid_activewindow = !vid_hidden && vid_hasfocus;
 
 	VID_UpdateMouseGrab();
@@ -2427,6 +2440,9 @@ void VID_Init (void)
 	SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
 #endif
 
+#ifdef __ANDROID__
+	TouchAndroid_Init(); // Touch: keep running in the background
+#endif
 	if (SDL_Init(SDL_INIT_VIDEO) < 0)
 		Sys_Error ("Failed to init SDL video subsystem: %s", SDL_GetError());
 	if (SDL_InitSubSystem(SDL_INIT_JOYSTICK) < 0)

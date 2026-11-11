@@ -207,16 +207,19 @@ console, the chat sheet) it waits, and shows when that closes.
 
 Tapping it opens a card over the match: who called the vote and what it is
 for, then a large row per choice: **Yes**, **No** and **Abstain**, with the
-live yes / no counts and your own answer marked. Tap a row to vote; the card
-stays open with your choice marked, and on a server that lets you change your
-mind (the stock default) another row changes it. When the vote ends the card
-shows the result for a moment, then goes with the chip; after you vote and
-close the card, the chip goes too. The card closes with its **x**, a tap
-outside it, or Back. The server does not send the time left of a called vote,
-so the card does not show one.
+live yes / no counts at the right. Tap a row to vote; the card stays open and
+the row you chose gets a green border (no row has one before you vote), and on
+a server that lets you change your mind (the stock default) another row
+changes it. There is no message line: when the vote ends the card's title
+reads how it ended (Accepted, Rejected, ...) for a moment, then the card goes
+with the chip; after you vote and close the card, the chip goes too. The card
+closes with its small **x** in the title row (its touch area stops above the
+first row), a tap outside it, or Back. The server does not send the time left
+of a called vote, so the card does not show one.
 
 At match end the same chip opens the map (or gametype) vote as a list ranked
-by votes, with the counts, your pick marked and the seconds left; tap one to
+by votes, with the counts and the seconds left, your pick with the same green
+border; tap one to
 vote. The full-screen vote screen stays and is tappable as before.
 
 Where the vote state comes from: the loaded CSQC's own vote globals
@@ -1285,6 +1288,11 @@ Main menu is stock Xonotic (Singleplayer / Multiplayer / Media / Settings / …)
     screen, so taps there no longer press it.
   - The connection drops (timeout, kick) with the game menu open: the main
     menu overview comes up rather than an empty background.
+  - Leaving the app (Home, another app, the screen off) is not a way out on
+    Android: the match, a join and its downloads carry on, and the player
+    comes back to the screen they left (the loading screen while the join
+    runs, the game once in). A local match pauses until the return.
+    `docs/ANDROID.md` "In the background".
   - The chat and console sheets have their own CLOSE buttons; the quick menu,
     the team selection, the server welcome dialog and the main menu's own
     dialogs close on Back (their close button is the small x in the title
