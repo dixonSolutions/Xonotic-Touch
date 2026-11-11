@@ -388,8 +388,9 @@ static const char *player_name(int n)
 // What auto-shoot holds: primary and/or secondary fire, at target.
 static void set_firing(qbool on, qbool on2, int target)
 {
-	// the hook is held, or its weapon is coming or going: no shot on top
-	if (TouchHook_InUse())
+	// the hook is held, or its weapon is coming or going, or a fall rescue or
+	// a TURN spin owns the view: no shot on top
+	if (TouchHook_InUse() || TouchHook_Rescuing())
 		on = on2 = false;
 	if (ta.firing == on && ta.firing2 == on2)
 		return;
@@ -1106,7 +1107,7 @@ static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *we
 	qbool cur_ok, smart = cl_touch_autoswitch_smart.integer != 0, combo = false;
 	float bu = 0, hu = 0;
 	const track_t *t;
-	if (!cl_touch_autoswitch.integer || held < 0 || !wep || TouchHook_InUse())
+	if (!cl_touch_autoswitch.integer || held < 0 || !wep || TouchHook_InUse() || TouchHook_Rescuing())
 		return;
 	if (near->entnum != ta.fight_ent)
 	{
