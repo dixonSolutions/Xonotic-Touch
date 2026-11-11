@@ -1888,7 +1888,7 @@ static void rk_simulate(const vec3_t org0, const vec3_t vel0, const vec3_t eye, 
 // Where to steer the rocket so it gets to aim: aim itself while the path
 // there is clear, else a waypoint over, beside or above what it would hit
 // (the first of a few that the simulated flight clears), then back onto aim.
-static void rk_steer_point(const vec3_t eye, const vec3_t aim, float splash, vec3_t out)
+static void rk_steer_point(const vec3_t eye, const vec3_t aim, float splash, qbool floor_aim, vec3_t out)
 {
 	static const float offs[][2] = { { 48, 0 }, { 96, 0 }, { 0, 64 }, { 0, -64 }, { 160, 0 }, { 0, 128 }, { 0, -128 }, { 96, 96 }, { 96, -96 }, { 240, 0 } }; // up, side
 	double now = host.realtime;
@@ -1918,7 +1918,9 @@ static void rk_steer_point(const vec3_t eye, const vec3_t aim, float splash, vec
 		rkpath_t direct, c;
 		ta.rk_plan_next = now + PLAN_EVERY;
 		rk_simulate(ta.rk_org, ta.rk_vel, eye, NULL, aim, splash, &direct);
-		if (direct.ok || !direct.hit_world)
+		// (a rocket aimed at the floor is meant to hit it: only something
+		// clearly short of the floor point counts as in the way)
+		if (direct.ok || !direct.hit_world || (floor_aim && VectorDistance(direct.end, aim) < 1.5f * splash))
 		{
 			if (ta.rk_way_on && cl_touch_aim_debug.integer)
 				Con_Printf("touch aim: rocket path: clear to the target again\n");
@@ -2293,6 +2295,7 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 			touch_wep_fire_t rf;
 			vec3_t rel, aim, at;
 			float t = 0, t_land = -1;
+			qbool floor_aim = false;
 			memset(&rf, 0, sizeof(rf));
 			rf.kind = TW_KIND_PROJ;
 			rf.speed = max(sp, dev ? dev->pri.speed : 1000);
@@ -2303,8 +2306,15 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 					t_land = tt->t_land;
 			}
 			else if (cl_touch_autoshoot_feet.integer && tt->bmin[2] < tt->bmax[2]
-				&& (!cl_touch_autoshoot_clear.integer || VectorDistance(ta.rk_org, ta.rk_target_org) < ROCKET_FLOOR_FINAL))
-				at[2] = tt->bmin[2] + 4 + (ta.rk_target_org[2] - 0.5f * (tt->bmin[2] + tt->bmax[2])); // its floor, followed with the body
+				&& (!cl_touch_autoshoot_clear.integer || (VectorDistance(ta.rk_org, ta.rk_target_org) < ROCKET_FLOOR_FINAL
+					&& (tt->cls == TW_CLASS_STEADY || tt->cls == TW_CLASS_ERRATIC) && fabs(tt->range_rate) < TW_PRIO_SPEED)))
+			{
+				// its floor, followed with the body -- for an enemy strafing
+				// across the view, where a near miss is likely; one standing,
+				// running at you or away is hit directly on the body
+				at[2] = tt->bmin[2] + 4 + (ta.rk_target_org[2] - 0.5f * (tt->bmin[2] + tt->bmax[2]));
+				floor_aim = true;
+			}
 			VectorSubtract(at, ta.rk_org, rel);
 			if (!cl_touch_autoshoot_air.integer && !cl_touch_autoshoot_feet.integer)
 			{
@@ -2331,7 +2341,7 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 			if (cl_touch_autoshoot_group.integer && ta.group_valid)
 				VectorCopy(ta.group_point, aim); // the blast point for the whole group
 			if (dev)
-				rk_steer_point(eye, aim, dev->pri.splash, aim);
+				rk_steer_point(eye, aim, dev->pri.splash, floor_aim, aim);
 			angles_to(eye, aim, pull_yaw, pull_pitch);
 			*pull = true;
 		}
