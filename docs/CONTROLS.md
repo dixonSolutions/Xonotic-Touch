@@ -1144,7 +1144,9 @@ the window has no focus. `touch_pause_status` in the console prints who holds th
 pause right now (engine, server, client; menu, console, chat line, window focus or
 the `pause` command) and every change since it was last asked. A finger on the screen
 gives the window its focus back, and on a touchscreen the `pause` command opens the
-game menu instead of freezing the game with nothing on screen.
+game menu instead of freezing the game with nothing on screen. A pause the server keeps
+after the player has stopped sending the chat button (it happened during the start
+countdown) is lifted after 0.4 s, and a finger lifted during any pause is let go at once.
 
 ## Testing without a device
 
