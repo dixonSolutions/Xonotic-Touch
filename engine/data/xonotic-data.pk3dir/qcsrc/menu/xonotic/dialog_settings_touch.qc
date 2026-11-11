@@ -392,6 +392,16 @@ void XonoticMobileAutoShootTab_fill(entity me)
 			e.configureXonoticTextSliderValues(e);
 			setDependent(e, "cl_touch_autoshoot", 1, 1);
 	me.TR(me);
+		me.TD(me, 1, 2, e = makeXonoticTextLabel(0, _("Keep the target:")));
+		me.TD(me, 1, 4, e = makeXonoticSlider_T(0, 10, 0.5, "cl_touch_aimassist_hysteresis",
+			_("The enemy already targeted stays the target unless another is this many degrees nearer the crosshair. 0: always the nearest")));
+	me.TR(me);
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_aimassist_priority", _("Pick the best of several enemies"),
+			_("Nearest the crosshair first, then the one your weapon hurts most, one facing you up close, one already hurt, a group for a blast weapon")));
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoshoot_teamsafe", _("Never with a teammate in the way"),
+			_("Hold fire while a teammate is on the line of the shot or would be inside its blast")));
+			setDependent(e, "cl_touch_autoshoot", 1, 1);
+	me.TR(me);
 		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("Only visible enemies, never teammates or through walls. Touch mode only.")));
 }
 
@@ -460,9 +470,17 @@ void XonoticMobileTacticsTab_fill(entity me)
 		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoswitch_lastresort", _("Blaster only as a last resort"),
 			_("Never switch to the Blaster while another weapon you hold can shoot, and leave it at once when your weapon runs dry")));
 			setDependent(e, "cl_touch_autoswitch", 1, 1);
-		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoshoot_head", _("Aim at the head when it pays"),
+		me.TD(me, 1, 1.6, e = makeXonoticCheckBox_T(0, "cl_touch_autoshoot_head", _("Head shots"),
 			_("Aim at the head with a weapon that does more damage there. In standard Xonotic none does, the Vortex included: only a server that gives the Rifle a headshot bonus")));
 			setDependent(e, "cl_touch_autoshoot", 1, 1);
+		me.TD(me, 1, 1.4, e = makeXonoticTextSlider_T("cl_touch_autoshoot_head_rifle",
+			_("The server's Rifle headshot multiplier, which the game cannot read: none in standard Xonotic, 1.25 with the Nexuiz 2.5 balance")));
+			e.addValue(e, _("No bonus"), "0");
+			e.addValue(e, "x1.25", "1.25");
+			e.addValue(e, "x1.5", "1.5");
+			e.addValue(e, "x2", "2");
+			e.configureXonoticTextSliderValues(e);
+			setDependent(e, "cl_touch_autoshoot_head", 1, 1);
 	me.TR(me);
 		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("A weapon you pick yourself is kept for 4 seconds.")));
 }
