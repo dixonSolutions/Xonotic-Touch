@@ -536,6 +536,8 @@ be seen working.
 | `cl_touch_aimassist_hysteresis` | `2` | The enemy already targeted stays the target unless another is this many degrees nearer the crosshair, so a wide cone does not flip between two (0 = always the nearest, max 15) |
 | `cl_touch_aim_mode` | `1` | Who may be the target: 0 = Radius (within `_cone` of the crosshair), 1 = Field of view (anyone on screen; `_cone` is not used), 2 = Full 360 (offline matches only; anywhere else it works as 1). Always only enemies in sight |
 | `cl_touch_aimassist_priority` | `1` | Several enemies in the cone: nearest the crosshair first, shifted by what each is worth (below); a new target is kept at least half a second. 0 = nearest only |
+| `cl_touch_autoshoot_combo` | `1` | Two-step fire that does more damage: Electro orbs, then the bolt that sets them off (with `_alt`) |
+| `cl_touch_aimassist_lastseen` | `1` | During a fight, an enemy that goes out of sight is held where it was last seen (below) |
 | `cl_touch_autoshoot_teamsafe` | `1` | Team games: no shot while a teammate is on its line or inside its blast, and no rocket set off next to one |
 | `cl_touch_aimassist_track` | `1` | Follow a fight with the thumb at rest: keep pulling toward the enemy auto-shoot fired at (combat lock, below) and let a projectile's lead slide rather than jump when the enemy reverses; 0 = only while a finger aims |
 | `cl_touch_autoshoot_weapons` | `0` | 0 = every weapon, 1 = instant-hit fire only (judged from the weapon in hand; for a weapon the engine does not know, from `_cl_touch_weapon_class`) |
@@ -595,9 +597,16 @@ under its feet), and its strafe reversals across your line of sight.
   (the floor under it, and the time to reach it, from one longer trace).
   The shot meets it on the fall; a shot that would arrive after the landing
   aims at where it lands, then slows to half its speed on the ground.
-- **Dodging** (`_predict`): two or more reversals within 1.5 s make it
-  erratic; its sideways motion is then led only by the share it keeps on
-  average, `1 − flight / period`, and not at all when a reversal is due.
+- **Dodging**: two or more reversals within 1.5 s make it erratic (for
+  the weapon choice). It is led in full like any other target: replaying
+  230,000 frames of skill 8-10 bot movement through the tracker
+  (`tests/touch-aim/eval_lead.c`, tracks from `cl_touch_aim_dumptracks`)
+  at 50, 250 and 350 ms of ping, the full lead put the most shots within
+  16 and within 60 units of where the target really was for every motion
+  class; leading dodgers short, as an earlier version did, cut the shots
+  landing within 60 units at 500 units from 35 % to 15 % at 250 ms.
+- **High ping** (`_predict`): instant-hit weapons are led by the part of
+  the ping beyond 0.4 s, which the server's antilag does not rewind.
 - **Walls** (`_predict`): a lead that would carry the target on through a
   wall stops at the wall -- a player runs into it and stops or turns, and a
   shot led beyond it only hits the wall. The sideways part of the lead is cut
@@ -649,6 +658,7 @@ other exact instant hits wait for the body itself.
 | MachineGun | sustained fire; the burst beyond 1500 units |
 | Arc | beam inside its 1500 range, bolts beyond |
 | Crylink | secondary (the tight volley) |
+| Electro (`_combo`) | three orbs (secondary) at an enemy standing or running at you, 300-900 units, then the bolt that sets them off; primary otherwise |
 | Vaporizer | primary; the blaster shot once out of cells |
 | Overkill weapons | primary; the blaster shot once out of ammo |
 | Electro, Hagar, HLAC, Mortar, Rifle, Vortex, Blaster, Devastator | primary (Hagar load, Electro orbs and Mortar bounce stay manual) |
@@ -854,6 +864,30 @@ that enemy stays the target in sight and auto-shoot fired at it within the
 last 3 s: a Devastator between two rockets, or a reload. The lock only
 continues an engagement auto-shoot started; it never picks up a target by
 itself, and any other enemy still has to be inside the cone.
+
+**Tracking on servers: what the player saw.** Only enemies in sight are
+targets, and the tracks (smoothed velocity, motion class, last-seen point)
+are fed only from frames in which the enemy was in sight. When the enemy of
+the fight goes out of sight (`_lastseen`), the pull holds the crosshair on
+where it was expected along its last seen course for a second, then on that
+point, for up to 3 s while nobody else is in view; it never follows the
+enemy's true position behind cover. When the enemy shows again it is the
+same track, taken back at once. Measured: a bot that turned back while out
+of sight left the crosshair on its last seen course (the view stayed at 66
+degrees while the bot went on to 92); 0.4 s after it showed again the
+crosshair was back on it.
+
+**Secondary fire, measured** (8 s against bots, local, damage with
+secondary rules / primary only): Crylink secondary 149-349 / 0-44 (its
+primary spread rarely lands beyond 350 units); Electro orbs-then-bolt
+standing 622 / 512, running at you and away 592 / 440, steady strafe
+422 / 347, but a dodger 70 / 100 and a group of three 1016 / 1102, so the
+orbs are kept for a standing or approaching enemy alone. Rifle pellets at
+500 units (+4 to +11 %, a group -15 %), Crylink primary inside 350 units,
+the Hagar's load and the HLAC's burst (90 per second against the
+primary's 128) were not adopted. Shotgun melee, MachineGun burst, Arc bolt,
+Devastator detonation are as before; the Vortex has no secondary shot, the
+Vaporizer's is a push only, and the Mine Layer stays manual.
 
 **Working with the player's own view.** A drag faster than 120 deg/s is a
 new look: the target held before loses its hysteresis and half-second hold
