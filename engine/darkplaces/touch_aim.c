@@ -73,6 +73,10 @@ cvar_t cl_touch_autoshoot_feet = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_fe
 	"Splash weapons (Devastator, Mortar, Electro, Crylink, RPC, Fireball) aim at the floor at a grounded enemy's feet, so a near miss still explodes beside them"};
 cvar_t cl_touch_autoshoot_group = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_group", "1",
 	"Splash weapons aim where the blast catches the most visible enemies (never teammates), and a Devastator rocket is set off where it does the most damage to all of them"};
+cvar_t cl_touch_autoswitch_smart = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoswitch_smart", "1",
+	"Auto-switch picks by expected damage for the situation -- distance, how the enemy moves (standing, strafing, dodging, in the air), enemies grouped for splash, the time a switch costs -- instead of a fixed list per distance"};
+cvar_t cl_touch_autoswitch_combo = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoswitch_combo", "1",
+	"Auto-switch: once your blast has thrown the enemy into the air, switch at once to the instant-hit weapon that finishes them"};
 cvar_t cl_touch_aimassist = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist", "1",
 	"Touch controls: aim helpers -- the look drag slows down over an enemy (cl_touch_aimassist_friction) and the view is pulled gently toward one while a finger is on the aim control (cl_touch_aimassist_strength). "
 	"Only in touch mode; never active with a keyboard attached"};
@@ -161,6 +165,8 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 #define FIGHT_MIN      0.25f
 #define MANUAL_GUARD   4.0f
 #define OWN_GUARD      2.0f
+#define OWN_GUARD_SMART 0.6f // cl_touch_autoswitch_smart: switch cost is in the choice itself
+#define CLASS_SETTLE   0.3f  // a motion class must hold this long before a switch on it
 #define SWITCH_WAIT    1.5f
 // Devastator: how far from the eye a fresh rocket may be to be ours, how
 // long to wait for it to appear (refire 1.1 s plus the trip to the server),
@@ -216,6 +222,7 @@ static struct
 	qbool group_valid;
 	vec3_t group_point;
 	int group_count, group_said;
+	double launcher_fired; // last time a splash launcher fired at the target (combo)
 
 	int last_mode;       // fire mode of the last shot decision (TW_MODE_*)
 	float lookscale;
@@ -265,6 +272,8 @@ void TouchAim_Init(void)
 	Cvar_RegisterVariable(&cl_touch_autoshoot_predict);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_feet);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_group);
+	Cvar_RegisterVariable(&cl_touch_autoswitch_smart);
+	Cvar_RegisterVariable(&cl_touch_autoswitch_combo);
 	Cvar_RegisterVariable(&cl_touch_aimassist);
 	Cvar_RegisterVariable(&cl_touch_aimassist_friction);
 	Cvar_RegisterVariable(&cl_touch_aimassist_strength);
@@ -890,7 +899,7 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep
 			float yaw0, pitch0, e0;
 			angles_to(eye, center, &yaw0, &pitch0);
 			e0 = sqrt(wrap180(yaw0 - cl.viewangles[YAW]) * wrap180(yaw0 - cl.viewangles[YAW]) + (pitch0 - cl.viewangles[PITCH]) * (pitch0 - cl.viewangles[PITCH]));
-			track_motion(n, org, mins, eye, vel, e0 < cone + 15 && cl_touch_autoshoot_air.integer, now);
+			track_motion(n, org, mins, eye, vel, e0 < cone + 15 && (cl_touch_autoshoot_air.integer || cl_touch_autoswitch_smart.integer), now);
 		}
 		VectorClear(lead);
 		if (fire)
@@ -1032,14 +1041,34 @@ static void note_held(int held, double now)
 	ta.held_last = held;
 }
 
+// How many enemies besides the target stand close enough to share a blast
+// with it (for the weapon choice).
+static int group_near(const aimtarget_t *near)
+{
+	int i, c = 0;
+	for (i = 0; i < num_gbodies; i++)
+	{
+		const gbody_t *g = &gbodies[i];
+		float dx, dy;
+		if (!g->enemy || g->n == near->entnum)
+			continue;
+		dx = 0.5f * (g->bmin[0] + g->bmax[0]) - near->center[0];
+		dy = 0.5f * (g->bmin[1] + g->bmax[1]) - near->center[1];
+		if (sqrt(dx * dx + dy * dy) < 2 * 110 + 32)
+			c++;
+	}
+	return c;
+}
 
 // Switch to the best owned weapon for the fight, under the guards.
 static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *wep, double now)
 {
 	const char *names[72];
 	qbool ready[72];
-	int index[72], n = 0, i, best, rank, cur_rank;
-	qbool cur_ok;
+	int index[72], n = 0, i, best = -1, rank = 0, cur_rank = 0, heldpos = -1, mclass = TW_CLASS_STEADY, group = 0;
+	qbool cur_ok, smart = cl_touch_autoswitch_smart.integer != 0, combo = false;
+	float bu = 0, hu = 0;
+	const track_t *t;
 	if (!cl_touch_autoswitch.integer || held < 0 || !wep || TouchHook_InUse())
 		return;
 	if (near->entnum != ta.fight_ent)
@@ -1049,7 +1078,14 @@ static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *we
 	}
 	if (!near->entnum || now - ta.fight_since < FIGHT_MIN)
 		return;
-	if (now - ta.manual_switch < MANUAL_GUARD || now - ta.own_switch < OWN_GUARD)
+	t = &ta.tracks[near->entnum & (TRACK_MAX - 1)];
+	mclass = t->cls;
+	// combo: our blast has just thrown the target into the air: finish it
+	// with an instant-hit weapon now, not after the usual pause
+	combo = cl_touch_autoswitch_combo.integer && mclass == TW_CLASS_AIR && wep->pri.splash >= 100 && now - ta.launcher_fired < 2.0;
+	if (now - ta.manual_switch < MANUAL_GUARD)
+		return;
+	if (now - ta.own_switch < (combo ? 0.3f : smart ? OWN_GUARD_SMART : OWN_GUARD))
 		return;
 	if (ta.switch_to >= 0)
 	{
@@ -1065,22 +1101,63 @@ static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *we
 	{
 		if (!TouchHUD_WeaponOwned(i))
 			continue;
+		if (i == held)
+			heldpos = n;
 		index[n] = i;
 		names[n] = TouchHUD_WeaponName(i);
 		ready[n] = weapon_ready(i, TouchWep_Find(names[n]), held);
 		n++;
 	}
-	best = TouchWep_Choose(names, ready, n, near->dist, &rank);
-	if (best < 0 || index[best] == held)
-		return;
-	cur_rank = TouchWep_Rank(wep->netname, near->dist);
 	cur_ok = weapon_ready(held, wep, held) && TouchWep_Usable(wep, near->dist);
-	if (!TouchWep_ShouldSwitch(cur_rank, cur_ok, rank))
-		return;
+	if (combo)
+	{
+		// the best instant-hit weapon owned, by its damage against a target in the air
+		for (i = 0; i < n; i++)
+		{
+			const touch_wep_t *w = TouchWep_Find(names[i]);
+			float u;
+			if (!ready[i] || !w || i == heldpos || (w->pri.kind != TW_KIND_HITSCAN && w->pri.kind != TW_KIND_BEAM) || !TouchWep_Usable(w, near->dist))
+				continue;
+			u = TouchWep_Utility(names[i], near->dist, TW_CLASS_AIR, 0, TW_SWITCH_COST);
+			if (u > bu)
+			{
+				bu = u;
+				best = i;
+			}
+		}
+		if (best < 0)
+			combo = false;
+	}
+	if (!combo && smart)
+	{
+		if (now - t->cls_since < CLASS_SETTLE)
+			return; // how the target moves is not settled yet
+		group = group_near(near);
+		best = TouchWep_ChooseSmart(names, ready, n, heldpos, near->dist, mclass, group, &bu, &hu);
+		if (best < 0 || best == heldpos || !TouchWep_ShouldSwitchSmart(hu, cur_ok, bu))
+			return;
+	}
+	else if (!combo)
+	{
+		best = TouchWep_Choose(names, ready, n, near->dist, &rank);
+		if (best < 0 || index[best] == held)
+			return;
+		cur_rank = TouchWep_Rank(wep->netname, near->dist);
+		if (!TouchWep_ShouldSwitch(cur_rank, cur_ok, rank))
+			return;
+	}
 	Cbuf_AddText(cmd_local, va(vabuf, sizeof(vabuf), "weapon_%s\n", names[best]));
 	if (cl_touch_aim_debug.integer)
-		Con_Printf("touch aim: switch %s -> %s at %.0f units (%s; rank %d -> %d; %.1f s after the player's last pick)\n", wep->netname, names[best], near->dist,
-			!cur_ok ? "current cannot shoot here" : cur_rank < 0 ? "current not on the list" : "clearly better", cur_rank, rank, now - ta.manual_switch);
+	{
+		if (combo)
+			Con_Printf("touch aim: combo: player %d in the air after our blast: %s -> %s at %.0f units\n", near->entnum, wep->netname, names[best], near->dist);
+		else if (smart)
+			Con_Printf("touch aim: switch %s -> %s at %.0f units (target %s, %d more in reach of a blast; expected damage %.0f vs %.0f%s; %.1f s after the player's last pick)\n",
+				wep->netname, names[best], near->dist, touch_wep_class_name[mclass], group, bu, hu, cur_ok ? "" : ", current cannot shoot here", now - ta.manual_switch);
+		else
+			Con_Printf("touch aim: switch %s -> %s at %.0f units (%s; rank %d -> %d; %.1f s after the player's last pick)\n", wep->netname, names[best], near->dist,
+				!cur_ok ? "current cannot shoot here" : cur_rank < 0 ? "current not on the list" : "clearly better", cur_rank, rank, now - ta.manual_switch);
+	}
 	ta.switch_to = index[best];
 	ta.switch_asked = now;
 	ta.own_switch = now;
@@ -1632,7 +1709,7 @@ static void aim_frame(void)
 	guided = wep && (wep->flags & TW_GUIDED) && cl_touch_autoshoot_steer.integer;
 	scan(eye, fwd, locked ? cone + LOCK_CONE_EXTRA : cone, fire, fire ? (guided ? latency_estimate() : shot_latency()) : 0,
 		cl_touch_aimassist_track.integer && !guided, guided,
-		cl_touch_autoshoot_group.integer,
+		cl_touch_autoshoot_group.integer || cl_touch_autoswitch_smart.integer,
 		&on_target, &friend_on, &near);
 	if (near.entnum && near.err > cone && near.entnum != ta.lock_ent)
 		near.entnum = 0;
@@ -1798,6 +1875,10 @@ static void aim_frame(void)
 		set_firing(on, on2, target);
 		ta.fire_target = on || on2 ? target : 0;
 	}
+
+	// a splash launcher fired at the target (for the knock-up combo)
+	if (ta.firing && ta.fire_target && wep && wep->pri.splash >= 100)
+		ta.launcher_fired = now;
 
 	// combat lock: renewed while auto-shoot fires, kept LOCK_HOLD after
 	if (cl_touch_aimassist_track.integer && ta.fire_target && (ta.firing || ta.firing2))
