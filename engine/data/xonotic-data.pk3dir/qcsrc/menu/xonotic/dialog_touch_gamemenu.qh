@@ -21,3 +21,6 @@ string TouchGameMenu_Route(string itemname);
 // Called when a dialog closes: one opened from TouchGameMenu goes back to it
 // while still connected, instead of to the main menu overview. True if it did.
 bool TouchGameMenu_Return(entity dialog);
+// The connection dropped (timeout, kick, server gone): the game menu, which
+// needs one, closes, so show the main menu overview rather than nothing.
+void TouchGameMenu_Disconnected();

@@ -874,6 +874,7 @@ void m_draw(float width, float height)
 			// reload the menu so that disconnecting players don't
 			// have to press ESC to open it again
 			m_toggle(true);
+			TouchGameMenu_Disconnected(); // Touch: not a blank menu when the game menu was up
 
 			localcmd("\nmenu_cmd directmenu Welcome RESET\n");
 			connected_time = 0;

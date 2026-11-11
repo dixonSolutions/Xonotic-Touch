@@ -29,6 +29,13 @@ bool TouchGameMenu_Return(entity dialog)
 	return true;
 }
 
+void TouchGameMenu_Disconnected()
+{
+	touch_gamemenu_return = false;
+	if (TouchGameMenu_Wanted())
+		m_goto("nexposee", false);
+}
+
 void TouchGameMenu_Open(entity btn, entity me)
 {
 	touch_gamemenu_return = true;
