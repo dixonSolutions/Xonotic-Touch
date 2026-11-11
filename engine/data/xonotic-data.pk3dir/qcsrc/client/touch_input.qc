@@ -23,6 +23,9 @@ vector touch_finger_down_pos[TOUCH_MAX_FINGERS];
 vector touch_finger_last_pos[TOUCH_MAX_FINGERS];
 vector touch_finger_prev_pos[TOUCH_MAX_FINGERS];
 vector touch_finger_accum[TOUCH_MAX_FINGERS];
+// Down and lost times are on the frame clock, not `time`: game time stops
+// while the game is paused, and on it a lifted finger was never let go, so
+// the move stick stayed pushed (and lit) until the pause ended.
 float touch_finger_down_time[TOUCH_MAX_FINGERS];
 float touch_finger_lost_time[TOUCH_MAX_FINGERS];
 bool touch_finger_first[TOUCH_MAX_FINGERS];
@@ -448,7 +451,7 @@ int Touch_ClaimFinger(int src, vector pos)
 		touch_finger_last_pos[i] = pos;
 		touch_finger_prev_pos[i] = pos;
 		touch_finger_accum[i] = '0 0 0';
-		touch_finger_down_time[i] = time;
+		touch_finger_down_time[i] = gettime(GETTIME_FRAMESTART);
 		touch_finger_lost_time[i] = 0;
 		touch_finger_first[i] = true;
 		touch_finger_live[i] = true;
@@ -609,8 +612,8 @@ void Touch_PollFingers(void)
 			continue;
 		}
 		if (touch_finger_lost_time[i] <= 0)
-			touch_finger_lost_time[i] = time;
-		if (time - touch_finger_lost_time[i] < grace)
+			touch_finger_lost_time[i] = gettime(GETTIME_FRAMESTART);
+		if (gettime(GETTIME_FRAMESTART) - touch_finger_lost_time[i] < grace)
 		{
 			touch_finger_live[i] = true;
 			touch_finger_accum[i] = '0 0 0';
