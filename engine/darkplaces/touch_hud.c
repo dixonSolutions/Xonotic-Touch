@@ -408,6 +408,7 @@ static qbool was_active;
 
 // look
 static float look_vel_x, look_vel_y, look_prev_raw_x, look_prev_raw_y, look_dvel_x, look_dvel_y;
+static float look_carry_x, look_carry_y, look_carry_dt; // movement too small to apply yet (look_apply)
 static qbool look_active;
 static double look_prev_time;
 
@@ -1272,8 +1273,21 @@ static void look_apply(float raw_x, float raw_y, float dt)
 {
 	float vrx, vry, a, cutoff, dvx, dvy, da, k, yaw, pitch, cap;
 	dt = bound(1.0f / 240.0f, dt, 0.1f);
-	if (sqrt(raw_x * raw_x + raw_y * raw_y) < cv("touch_look_deadzone_px", 4) * 0.25f)
+	// A frame's movement under a quarter of the deadzone (1 px) is carried,
+	// not dropped, and applied once it adds up: a resting finger's sensor
+	// noise stays out (a 1 px hysteresis on its position) while a slow aiming
+	// drag still turns the view. Dropping it lost every drag slower than
+	// 1 px a frame -- 60 px/s at 60 fps -- and made slow aim depend on the
+	// frame rate.
+	look_carry_x += raw_x;
+	look_carry_y += raw_y;
+	look_carry_dt += dt;
+	if (sqrt(look_carry_x * look_carry_x + look_carry_y * look_carry_y) < cv("touch_look_deadzone_px", 4) * 0.25f)
 		return;
+	raw_x = look_carry_x;
+	raw_y = look_carry_y;
+	dt = bound(1.0f / 240.0f, look_carry_dt, 0.1f);
+	look_carry_x = look_carry_y = look_carry_dt = 0;
 	vrx = raw_x / dt;
 	vry = raw_y / dt;
 	if (cv("touch_look_filter", 1) == 0)
@@ -1301,7 +1315,7 @@ static void look_apply(float raw_x, float raw_y, float dt)
 		look_dvel_y += (dvy - look_dvel_y) * da;
 		look_prev_raw_x = vrx;
 		look_prev_raw_y = vry;
-		cutoff = max(cv("touch_look_fcmin", 1.5f), 0.01f)
+		cutoff = max(cv("touch_look_fcmin", 3.0f), 0.01f)
 			+ max(cv("touch_look_beta", 0.03f), 0.0f) * sqrt(look_dvel_x * look_dvel_x + look_dvel_y * look_dvel_y);
 		a = look_alpha(cutoff, dt);
 		look_vel_x += (vrx - look_vel_x) * a;
@@ -1332,6 +1346,7 @@ static void look_begin(void)
 	look_vel_x = look_vel_y = 0;
 	look_prev_raw_x = look_prev_raw_y = 0;
 	look_dvel_x = look_dvel_y = 0;
+	look_carry_x = look_carry_y = look_carry_dt = 0;
 	look_prev_time = host.realtime;
 }
 
