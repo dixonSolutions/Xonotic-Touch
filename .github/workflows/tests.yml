@@ -44,6 +44,14 @@ jobs:
       - name: Where a fall ends, the hook's anchor, when to fire and let go
         run: bash scripts/test-touch-hook.sh
 
+  touch-dodge:
+    name: Touch auto dodge logic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Damage if the player carries on, the escape chosen, walls and ledges
+        run: bash scripts/test-touch-dodge.sh
+
   release-changelog:
     name: Release changelog
     runs-on: ubuntu-latest
