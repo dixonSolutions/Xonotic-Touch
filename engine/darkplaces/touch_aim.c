@@ -195,9 +195,8 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 #define ENGAGE_HOLD     3.0f
 // A per-frame view change larger than this is a teleport or respawn, not a turn.
 #define TURN_SPIKE_DEG 60.0f
-#define ANTILAG_MAX    0.4f
-#define ORB_HOLD       0.55f
-#define OVER_DIVE      400.0f // a rocket over cover dives at its target this close (horizontally)  // attack2 held this long lobs the Electro's three orbs   // g_antilag rewinds at most this much ping (ANTILAG_LATENCY)
+#define ANTILAG_MAX    0.4f   // g_antilag rewinds at most this much ping (ANTILAG_LATENCY)
+#define ORB_HOLD       0.55f  // attack2 held this long lobs the Electro's three orbs
 // Target velocity: smoothed over about this many seconds; forgotten when a
 // player was not seen for TRACK_STALE seconds or jumps TRACK_JUMP units.
 #define TRACK_SMOOTH   0.08f
@@ -2524,12 +2523,10 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 				VectorCopy(at, aim);
 			// offline practice, a target behind a wall: over the cover first,
 			// down onto the target only once the rocket is nearly above it
-			if (practice.seethrough && ta.rk_over_valid && near->entnum == ta.rk_target && near->hidden)
-			{
-				float hx = ta.rk_org[0] - ta.rk_target_org[0], hy = ta.rk_org[1] - ta.rk_target_org[1];
-				if (sqrt(hx * hx + hy * hy) > OVER_DIVE)
-					VectorCopy(ta.rk_over, aim);
-			}
+			// (until the rocket itself has a clear line down to it)
+			if (practice.seethrough && ta.rk_over_valid && near->entnum == ta.rk_target && near->hidden
+				&& !line_clear(ta.rk_org, ta.rk_target_org))
+				VectorCopy(ta.rk_over, aim);
 			if (cl_touch_autoshoot_group.integer && ta.group_valid)
 				VectorCopy(ta.group_point, aim); // the blast point for the whole group
 			if (dev)
@@ -2840,7 +2837,8 @@ static void aim_frame(void)
 		{
 			VectorCopy(near.center, over);
 			over[2] += 48 * k;
-			if (line_clear(eye, over) && line_clear(over, near.center))
+			// the rocket's own size must pass, not only the eye's line
+			if (launch_clear(eye, over, 0) && line_clear(over, near.center))
 			{
 				angles_to(eye, over, &near.yaw, &near.pitch);
 				near.err = edge_err(wrap180(near.yaw - cl.viewangles[YAW]), near.pitch - cl.viewangles[PITCH], near.rh, near.rv);

@@ -960,6 +960,32 @@ the same machine, the same build drew no markers, did not pre-aim at or fire
 at a bot behind a ledge, and did not turn to a bot behind the player (the
 view stayed at -90 degrees; offline it turned to 89).
 
+#### Not built: the ground-shot jump
+
+Shooting the floor under the feet to launch out of a blast, or to attack
+from the air, was measured and left out. One shot looking straight down
+(and 60 degrees down while running), local and on a stock 0.8.6 server, the
+same within a few points:
+
+| Weapon | Self damage | Height | Distance in 1.5 s (running) |
+|---|---|---|---|
+| Blaster | 11-13 | 190-250 | 185 |
+| Devastator | 49-52 | 250 | 186 |
+| Mortar | 33-36 | 94-155 | 235-274 |
+| Electro | 24-26 | 64-97 | 120-163 |
+| Hagar | 14-16 | 14-25 | 39 |
+| Crylink | 14-39 | 0 | 0-10 |
+
+(Height is capped near 250 by the test arena's ceiling.) Only the Blaster
+launches far for little damage, and only with the Blaster already in hand
+(a switch costs 0.4 s). The escape needs the view turned 60-90 degrees down
+before the shot: at the pull's cap on servers (90, at most 180 degrees a
+second) that takes 0.3-1 s, while a rocket judged unescapable by the dodge is
+under 0.3 s away. Turning faster would be the instant snap that only offline
+practice may use. Attack from the air needs nothing new: splash weapons
+already aim at the floor by a grounded enemy's feet when the player is
+higher, and stock servers do not add the shooter's speed to projectiles.
+
 ### Grappling hook: HOOK button and fall rescue (engine)
 
 Xonotic's grappling hook comes two ways, and which one a server offers decides
