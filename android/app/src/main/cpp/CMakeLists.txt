@@ -21,6 +21,8 @@ endif()
 ##### Source list, straight from makefile.inc ##################################
 
 file(READ "${DP_DIR}/makefile.inc" _mk)
+# A file added to the list re-runs this configure step in an existing build tree.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${DP_DIR}/makefile.inc")
 # Fold the makefile's line continuations so each OBJ_ list is one line.
 string(REPLACE "\\\n" " " _mk "${_mk}")
 
