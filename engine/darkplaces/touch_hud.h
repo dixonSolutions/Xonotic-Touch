@@ -43,6 +43,8 @@ qbool TouchHUD_FingerIsPointer(void);
 // there, true if it cancelled the join.
 void TouchHUD_DrawLoading(void);
 qbool TouchHUD_LoadingBack(void);
+// A new local game stops after its map loads, before its server spawns (sv_main.c).
+qbool TouchHUD_LoadingCancelled(void);
 
 // Draw the overlay (called from the 2D overlay pass, key_game only).
 void TouchHUD_Draw(void);
