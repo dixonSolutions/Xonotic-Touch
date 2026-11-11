@@ -224,7 +224,7 @@ void Touch_DefineCvars(void)
 	// fast movement stays lag-free. fcmin governs slow-speed jitter in Hz, beta
 	// governs high-speed lag. 2 restores the old fixed exponential smoother.
 	Touch_RegisterCvar("touch_look_filter", "1");
-	Touch_RegisterCvar("touch_look_fcmin", "1.5");
+	Touch_RegisterCvar("touch_look_fcmin", "3.0");
 	Touch_RegisterCvar("touch_look_beta", "0.03");
 	// A tap in the look zone that never becomes a drag fires one shot.
 	Touch_RegisterCvar("touch_look_tap_fire", "1");
