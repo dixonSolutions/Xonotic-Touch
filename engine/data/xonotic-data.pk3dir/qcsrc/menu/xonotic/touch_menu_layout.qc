@@ -11,6 +11,7 @@ const string TOUCHMENU_KEYS =
 	"touch_crouch_x touch_crouch_y touch_crouch_size "
 	"touch_weapon_x touch_weapon_y touch_weapon_size "
 	"touch_zoom_x touch_zoom_y touch_zoom_size "
+	"touch_hook_x touch_hook_y touch_hook_size touch_hook_visible "
 	"touch_dodge_x touch_dodge_y touch_dodge_size touch_dodge_visible "
 	"touch_look_zone_left touch_look_zone_right touch_edge_deadzone_px touch_handedness "
 	"touch_sens_base touch_sens_y_mult touch_invert_y touch_look_smoothing touch_look_deadzone_px "

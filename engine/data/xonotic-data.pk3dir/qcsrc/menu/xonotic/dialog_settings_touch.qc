@@ -204,6 +204,21 @@ void XonoticMobileHudTab_fill(entity me)
 		me.TD(me, 1, 1.8, e = makeXonoticSlider_T(0.6, 1.4, 0.05, "touch_hud_scale",
 			_("Size of the health, armor and ammo readouts. The weapon bar has its own size above")));
 
+	// The engine's (touch_hook.c), so both work on public servers too.
+	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Grappling hook")));
+	me.TR(me);
+		me.TD(me, 1, 1.2, e = makeXonoticTextLabel(0, _("Hook button:")));
+		me.TD(me, 1, 1.2, e = makeXonoticRadioButton_T(5, "touch_hook_visible", "0", _("Off"),
+			_("Never show the HOOK button")));
+		me.TD(me, 1, 1.8, e = makeXonoticRadioButton_T(5, "touch_hook_visible", "2", _("When available"),
+			_("Show HOOK while you have a grappling hook: the server's offhand hook, or the Hook weapon with fuel. Hold it to hook, let go to release")));
+		me.TD(me, 1, 1.8, e = makeXonoticRadioButton_T(5, "touch_hook_visible", "1", _("Always"),
+			_("Always show HOOK. Where there is no hook it sends what the hook key would")));
+	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticCheckBox_T(0, "cl_touch_hook_rescue", _("Catch me with the hook when I fall off the map"),
+			_("Falling with nothing below to land on, the hook fires at something it can catch, pulls you back and lets go over ground. Only with a hook, only in touch mode")));
+
 	me.TR(me);
 		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("With a keyboard attached")));
 	me.TR(me);
@@ -280,8 +295,11 @@ void XonoticMobileAimTab_fill(entity me)
 		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(0, 180, 10, "cl_touch_aimassist_maxrate", _("The fastest the pull can turn the view, in degrees per second. It never snaps")));
 			setDependent(e, "cl_touch_aimassist", 1, 1);
 	me.TR(me);
-		me.TD(me, 1, 6, e = makeXonoticCheckBox_T(0, "cl_touch_aim_ring", _("Show target ring"),
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_aim_ring", _("Show target ring"),
 			_("Draw a ring at the crosshair while an enemy is near (accent colour) or under it (red), so you can see the helpers working")));
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_aimassist_track", _("Keep tracking the enemy I am shooting"),
+			_("While auto-shoot fires at an enemy the pull keeps following them, even with your thumb resting. Off: only while a finger is on the aim area and moving")));
+			setDependent(e, "cl_touch_aimassist", 1, 1);
 	me.TR(me);
 		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("Never aims at teammates or through walls.")));
 	me.TR(me);
@@ -348,6 +366,10 @@ void XonoticMobileAutoShootTab_fill(entity me)
 			setDependent(e, "cl_touch_autoshoot", 1, 1);
 		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoswitch", _("Switch to the best weapon for the fight"),
 			_("Switch to a better weapon you hold for the enemy in sight and its distance. Never right after you chose one yourself")));
+	me.TR(me);
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoshoot_safe", _("Hold fire when the blast would hit me"),
+			_("Do not fire when the shot would catch you in its own blast, the enemy is out of the weapon's reach, or the weapon is not one to fire by itself (Port-O-Launch, Hook, Tuba)")));
+			setDependent(e, "cl_touch_autoshoot", 1, 1);
 
 	me.TR(me);
 		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Conditions")));
@@ -362,9 +384,7 @@ void XonoticMobileAutoShootTab_fill(entity me)
 			_("Enemies farther away than this many units are ignored by auto-shoot and aim assist")));
 			setDependent(e, "cl_touch_autoshoot", 1, 1);
 	me.TR(me);
-		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("Only at visible enemies in sight: never teammates, spectators or through walls.")));
-	me.TR(me);
-		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("Touch mode only: off while a keyboard or mouse is playing.")));
+		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("Only visible enemies, never teammates or through walls. Touch mode only.")));
 }
 
 entity makeXonoticMobileDynamicsTab()
