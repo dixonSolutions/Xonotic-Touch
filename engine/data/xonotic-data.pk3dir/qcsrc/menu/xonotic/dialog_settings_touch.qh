@@ -52,6 +52,15 @@ CLASS(XonoticMobileAutoShootTab, XonoticTab)
 ENDCLASS(XonoticMobileAutoShootTab)
 entity makeXonoticMobileAutoShootTab();
 
+CLASS(XonoticMobileTacticsTab, XonoticTab)
+	METHOD(XonoticMobileTacticsTab, fill, void(entity));
+	ATTRIB(XonoticMobileTacticsTab, intendedWidth, float, 0.9);
+	ATTRIB(XonoticMobileTacticsTab, rows, float, 14);
+	ATTRIB(XonoticMobileTacticsTab, columns, float, 6);
+	ATTRIB(XonoticMobileTacticsTab, name, string, "mobiletactics");
+ENDCLASS(XonoticMobileTacticsTab)
+entity makeXonoticMobileTacticsTab();
+
 CLASS(XonoticMobileDynamicsTab, XonoticTab)
 	METHOD(XonoticMobileDynamicsTab, fill, void(entity));
 	ATTRIB(XonoticMobileDynamicsTab, intendedWidth, float, 0.9);

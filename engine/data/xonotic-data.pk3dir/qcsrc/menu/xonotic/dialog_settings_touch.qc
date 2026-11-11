@@ -43,7 +43,9 @@ void TouchMenu_ResetPreset_Click(entity me, entity other)
 //   Controls    input mode, layout, size and look of the controls, sticks and buttons
 //   HUD         the weapon bar, the readouts, what stays with a keyboard attached
 //   Aim         look speed, aim assist and its strength
-//   Auto-shoot  auto-shoot, its timing, its shot choices and its conditions
+//   Auto-shoot  auto-shoot, its timing and its conditions
+//   Tactics     shot choices: secondary fire, lead, rockets, weapon switching,
+//               and how shots read a moving enemy or a group
 //   Dynamics    performance profile, frame rate, dynamic resolution, hop
 entity makeXonoticTouchSettingsTab()
 {
@@ -57,11 +59,12 @@ void XonoticTouchSettingsTab_fill(entity me)
 	// One row of sub-tab buttons, then the sub-tab itself: 15.5 = 1.5 + 14.
 	entity mc = makeXonoticTabController(me.rows - 1.5);
 	me.TR(me);
-		me.TD(me, 1, 1.2, mc.makeTabButton(mc, _("Controls"),   makeXonoticMobileControlsTab()));
-		me.TD(me, 1, 1.2, mc.makeTabButton(mc, _("HUD"),        makeXonoticMobileHudTab()));
-		me.TD(me, 1, 1.2, mc.makeTabButton(mc, _("Aim"),        makeXonoticMobileAimTab()));
-		me.TD(me, 1, 1.2, mc.makeTabButton(mc, _("Auto-shoot"), makeXonoticMobileAutoShootTab()));
-		me.TD(me, 1, 1.2, mc.makeTabButton(mc, _("Dynamics"),   makeXonoticMobileDynamicsTab()));
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Controls"),   makeXonoticMobileControlsTab()));
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("HUD"),        makeXonoticMobileHudTab()));
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Aim"),        makeXonoticMobileAimTab()));
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Auto-shoot"), makeXonoticMobileAutoShootTab()));
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Tactics"),    makeXonoticMobileTacticsTab()));
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Dynamics"),   makeXonoticMobileDynamicsTab()));
 	me.gotoRC(me, 1.5, 0);
 		me.TD(me, me.rows - 1.5, me.columns, mc);
 }
@@ -368,6 +371,33 @@ void XonoticMobileAutoShootTab_fill(entity me)
 			setDependent(e, "cl_touch_autoshoot", 1, 1);
 
 	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Conditions")));
+	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticCheckBox_T(0, "cl_touch_autoshoot_aimonly", _("Only while a finger is on the aim area or FIRE"),
+			_("Off: auto-shoot also fires with no finger down, as soon as an enemy walks into the crosshair")));
+			setDependent(e, "cl_touch_autoshoot", 1, 1);
+	me.TR(me);
+		me.TD(me, 1, 2, e = makeXonoticTextLabel(0, _("Maximum range:")));
+			setDependent(e, "cl_touch_autoshoot", 1, 1);
+		me.TD(me, 1, 4, e = makeXonoticSlider_T(500, 6000, 250, "cl_touch_aim_range",
+			_("Enemies farther away than this many units are ignored by auto-shoot and aim assist")));
+			setDependent(e, "cl_touch_autoshoot", 1, 1);
+	me.TR(me);
+		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("Only visible enemies, never teammates or through walls. Touch mode only.")));
+}
+
+entity makeXonoticMobileTacticsTab()
+{
+	entity me = NEW(XonoticMobileTacticsTab);
+	me.configureDialog(me);
+	return me;
+}
+
+void XonoticMobileTacticsTab_fill(entity me)
+{
+	entity e;
+
+	me.TR(me);
 		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Shot choice")));
 	me.TR(me);
 		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoshoot_alt", _("Use secondary fire when it is the better shot"),
@@ -388,19 +418,30 @@ void XonoticMobileAutoShootTab_fill(entity me)
 			setDependent(e, "cl_touch_autoshoot", 1, 1);
 
 	me.TR(me);
-		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Conditions")));
+		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Reading the fight")));
 	me.TR(me);
-		me.TD(me, 1, me.columns, e = makeXonoticCheckBox_T(0, "cl_touch_autoshoot_aimonly", _("Only while a finger is on the aim area or FIRE"),
-			_("Off: auto-shoot also fires with no finger down, as soon as an enemy walks into the crosshair")));
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoshoot_air", _("Lead enemies in the air"),
+			_("Aim where a jumping or falling enemy will be on its way down, or where it lands if the shot arrives later")));
+			setDependent(e, "cl_touch_autoshoot", 1, 1);
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoshoot_predict", _("Predict dodging enemies"),
+			_("Against an enemy that keeps changing direction, aim between where it goes instead of far ahead, and allow for the delay of the screen")));
 			setDependent(e, "cl_touch_autoshoot", 1, 1);
 	me.TR(me);
-		me.TD(me, 1, 2, e = makeXonoticTextLabel(0, _("Maximum range:")));
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoshoot_feet", _("Aim explosives at the feet"),
+			_("Rockets, grenades and other blast weapons aim at the floor under the enemy, so a near miss still hurts")));
 			setDependent(e, "cl_touch_autoshoot", 1, 1);
-		me.TD(me, 1, 4, e = makeXonoticSlider_T(500, 6000, 250, "cl_touch_aim_range",
-			_("Enemies farther away than this many units are ignored by auto-shoot and aim assist")));
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoshoot_group", _("Aim explosives at groups"),
+			_("Aim a blast where it catches the most enemies you can see, never teammates, and set off rockets where they hurt all of them most")));
 			setDependent(e, "cl_touch_autoshoot", 1, 1);
 	me.TR(me);
-		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("Only visible enemies, never teammates or through walls. Touch mode only.")));
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoswitch_smart", _("Pick weapons by expected damage"),
+			_("Choose the weapon for the distance, how the enemy moves and how many stand together, counting the time a switch takes")));
+			setDependent(e, "cl_touch_autoswitch", 1, 1);
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autoswitch_combo", _("Finish knocked-up enemies"),
+			_("After your blast throws an enemy into the air, switch at once to an instant-hit weapon to finish it")));
+			setDependent(e, "cl_touch_autoswitch", 1, 1);
+	me.TR(me);
+		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("A weapon you pick yourself is kept for 4 seconds.")));
 }
 
 entity makeXonoticMobileDynamicsTab()
