@@ -92,6 +92,11 @@ cvar_t cl_touch_autoswitch_lastresort = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autos
 	"Auto-switch never picks the Blaster (or another last-resort weapon) while another owned weapon can shoot, and leaves it at once when the server switched to it on an empty weapon"};
 cvar_t cl_touch_aimassist_hysteresis = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_hysteresis", "2",
 	"Aim helpers: the enemy already targeted stays the target unless another is this many degrees nearer the crosshair (0 = always the nearest)"};
+cvar_t cl_touch_aimassist_priority = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_priority", "1",
+	"Aim helpers, several enemies in the cone: nearest the crosshair first, then the one the weapon in hand does most damage to, one facing you up close, "
+	"one you have just hurt, a group for a splash weapon; one running out of reach of a projectile counts less. A new target is kept at least half a second (0 = nearest the crosshair only)"};
+cvar_t cl_touch_autoshoot_teamsafe = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_teamsafe", "1",
+	"Team games: auto-shoot holds fire while a teammate is on the line of the shot or would be inside its blast, and a rocket is not set off next to one"};
 cvar_t cl_touch_aimassist = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist", "1",
 	"Touch controls: aim helpers -- the look drag slows down over an enemy (cl_touch_aimassist_friction) and the view is pulled gently toward one while a finger is on the aim control (cl_touch_aimassist_strength). "
 	"Only in touch mode; never active with a keyboard attached"};
@@ -145,6 +150,7 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 // fifth of a second; and strength * FOLLOW_SCALE of the target's own motion
 // across the view is followed (all of it from strength 0.5).
 #define SETTLE_GAIN    10.0f
+#define SETTLE_GAIN_ROCKET 25.0f
 #define FOLLOW_SCALE   2.0f
 // A target that jumps further than this in one frame (teleport, aim point
 // switching between chest and head) is not followed that frame.
@@ -164,6 +170,7 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 // does not end the fight. It never starts without auto-shoot firing.
 #define LOCK_HOLD       1.0f
 #define LOCK_CONE_EXTRA 6.0f
+#define ENGAGE_HOLD     3.0f
 // A per-frame view change larger than this is a teleport or respawn, not a turn.
 #define TURN_SPIKE_DEG 60.0f
 // Target velocity: smoothed over about this many seconds; forgotten when a
@@ -192,6 +199,7 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 #define ROCKET_DEAD_RECKON 0.25f // no rocket seen this long after the press: assume it flies
 #define ROCKET_MAX_FLIGHT 4.0f
 #define ROCKET_RELEASE    0.06f
+#define DETONATE_HOLD     0.05f // attack2 held at least this long for a detonation
 #define ROCKET_REFIRE     1.1f  // g_balance_devastator_refire
 #define ROCKET_SPEED      1300.0f // g_balance_devastator_speed, and _speedaccel
 #define ROCKET_GUIDE_RATE 90.0f // g_balance_devastator_guiderate (deg/s)
@@ -201,6 +209,7 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 #define PLAN_DT           0.05f
 #define PLAN_STEPS        40
 #define PLAN_EVERY        0.1
+#define PLAN_SETTLE       0.08  // seconds of tracking before the rocket's path is simulated
 #define ROCKET_FLOOR_FINAL 400.0f // the floor beside a grounded target is aimed at only this close
 #define LAST_SEEN_EXTRAP  0.5f
 #define HEAD_WAIT         0.3f  // longest a head-aimed shot waits for the crosshair to reach the head  // a target out of sight is followed on its last velocity this long
@@ -245,6 +254,12 @@ typedef struct track_s
 	double rev[4];       // times of its last strafe reversals, newest first
 	double cls_since;    // when the class last changed
 	double air_checked;  // when the ground under it was last traced
+	// for choosing among several (cl_touch_aimassist_priority)
+	double seen_since;   // in sight without a break since then
+	float range_rate;    // units/s away from the player (< 0 closing in)
+	qbool facing;        // looking toward the player
+	float dealt;         // damage auto-shoot's hits did to it lately (the hit-sound stat)
+	double dealt_time;
 } track_t;
 
 static struct
@@ -260,6 +275,19 @@ static struct
 	int fire_target;     // who auto-shoot is firing at (0 none)
 	int lock_ent;        // combat lock: last target fired at, and until when
 	double lock_until;
+	double lock_fired;   // last time auto-shoot fired at lock_ent
+	double target_since; // when the current target (track_ent) was taken
+	int target_switches; // for cl_touch_aim_debug
+	int mate_said;       // teammate that last held fire (debug)
+	double shootable_since; // first frame of the current chance to shoot (fire latency, debug)
+	int shootable_frames;
+	int stat_dealt;      // index of STAT_HITSOUND_DAMAGE_DEALT_TOTAL, -1 none
+	int dealt_last;
+	qbool dropped;       // the server switched to a last-resort weapon off an empty one
+	float fight_dist;    // distance of the last target, for a switch without one
+	double cost_time;    // frame cost (cl_touch_aim_debug 4)
+	int cost_frames, cost_players;
+	double cost_since;
 	// groups: the blast point chosen last frame (relative to nothing: world)
 	qbool group_valid;
 	vec3_t group_point;
@@ -297,6 +325,7 @@ static struct
 	vec3_t rk_way;
 	int rk_way_said;
 	double rk_fired;     // when the press that launched the guided rocket went out
+	double rk_launch_seen; // when the guided rocket was first tracked
 	freerk_t freerk[FREE_MAX];
 	int num_free;
 	// from the loaded CSQC
@@ -335,6 +364,8 @@ void TouchAim_Init(void)
 	Cvar_RegisterVariable(&cl_touch_autoshoot_head_rifle);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_volley);
 	Cvar_RegisterVariable(&cl_touch_aimassist_hysteresis);
+	Cvar_RegisterVariable(&cl_touch_aimassist_priority);
+	Cvar_RegisterVariable(&cl_touch_autoshoot_teamsafe);
 	Cvar_RegisterVariable(&cl_touch_aimassist);
 	Cvar_RegisterVariable(&cl_touch_aimassist_friction);
 	Cvar_RegisterVariable(&cl_touch_aimassist_strength);
@@ -358,6 +389,7 @@ void TouchAim_Init(void)
 	ta.held_last = -1;
 	ta.switch_to = -1;
 	ta.manual_switch = ta.own_switch = -100;
+	ta.stat_dealt = -1;
 }
 
 // A float or int global/field the CSQC may declare either way.
@@ -406,6 +438,25 @@ void TouchAim_ProgsChanged(void)
 		if (numeric_type(ta.projtype_type))
 			ta.projtype_ofs = d->ofs;
 	}
+	// the damage the player has dealt, which every CSQC keeps for the hit
+	// sound: STAT_HITSOUND_DAMAGE_DEALT_TOTAL.m_id is its stat number
+	ta.stat_dealt = -1;
+	d = PRVM_ED_FindGlobal(prog, "STAT_HITSOUND_DAMAGE_DEALT_TOTAL");
+	{
+		mdef_t *f_id = PRVM_ED_FindField(prog, "m_id");
+		if (d && f_id && (d->type & ~DEF_SAVEGLOBAL) == ev_entity)
+		{
+			int e = PRVM_GLOBALFIELDEDICT(d->ofs);
+			if (e > 0 && e < prog->num_edicts)
+			{
+				prvm_eval_t *v = PRVM_EDICTFIELDVALUE(PRVM_EDICT_NUM(e), f_id->ofs);
+				int id = (f_id->type & ~DEF_SAVEGLOBAL) == ev_float ? (int)v->_float : v->_int;
+				if (id > 0 && id < MAX_CL_STATS)
+					ta.stat_dealt = id;
+			}
+		}
+	}
+	ta.dealt_last = ta.stat_dealt >= 0 ? cl.stats[ta.stat_dealt] : 0;
 	TouchHook_ProgsChanged();
 }
 
@@ -722,28 +773,44 @@ static void track_velocity(int n, prvm_edict_t *ed, const vec3_t org, double now
 }
 
 // Visible players (enemies and teammates) for splash scoring: their boxes
-// and velocities, collected by scan when a splash decision may need them.
-#define GROUP_MAX 8
-typedef struct gbody_s { int n; qbool enemy; vec3_t bmin, bmax, vel; } gbody_t;
+// and velocities, collected by scan when a splash decision may need them --
+// every drawn player in range (32 a side fit), traced only later and only
+// near the target.
+#define GROUP_MAX 64
+typedef struct gbody_s { int n; qbool enemy; vec3_t bmin, bmax, vel; float d; } gbody_t;
 static gbody_t gbodies[GROUP_MAX];
 static int num_gbodies;
 
 // Keep only the candidates near the target (within GROUP_NEAR of its centre)
 // that are in sight -- the chest or at least the head: the only ones a
-// splash decision may count. The target itself is in sight already.
+// splash decision may count, the GROUP_AIM_MAX nearest at most (the blast
+// point search is quadratic in them). The target itself is in sight already.
 #define GROUP_NEAR 300.0f
+#define GROUP_AIM_MAX 8
 static void gbodies_in_sight(const vec3_t eye, const vec3_t center, int target)
 {
-	int i, k = 0;
+	int i, j, k = 0, n = 0;
 	for (i = 0; i < num_gbodies; i++)
+	{
+		gbody_t g = gbodies[i];
+		vec3_t c;
+		VectorMAM(0.5f, g.bmin, 0.5f, g.bmax, c);
+		g.d = g.n == target ? -1 : VectorDistance(c, center);
+		if (g.d > GROUP_NEAR)
+			continue;
+		// nearest first (the target leads)
+		for (j = n; j > 0 && gbodies[j - 1].d > g.d; j--)
+			gbodies[j] = gbodies[j - 1];
+		gbodies[j] = g;
+		n++;
+	}
+	for (i = 0; i < n && k < GROUP_AIM_MAX; i++)
 	{
 		gbody_t *g = &gbodies[i];
 		vec3_t c, hd;
 		VectorMAM(0.5f, g->bmin, 0.5f, g->bmax, c);
 		if (g->n != target)
 		{
-			if (VectorDistance(c, center) > GROUP_NEAR)
-				continue;
 			VectorCopy(c, hd);
 			hd[2] = g->bmax[2] - 6;
 			if (!line_clear(eye, c) && !line_clear(eye, hd))
@@ -843,6 +910,25 @@ static float reversal_period(const track_t *t, double now, float *since)
 	return (float)((t->rev[0] - t->rev[m]) / m);
 }
 
+// A player runs into a wall and stops; a lead that carries it on through
+// the wall sends the shot (or a steered rocket) into the wall. The sideways
+// part of a lead from the body centre is cut where a box the width of a
+// player, clear of the floor, would meet the world (cl_touch_autoshoot_predict).
+static void clip_lead(const vec3_t center, vec3_t lead)
+{
+	static const vec3_t mins = { -14, -14, -8 }, maxs = { 14, 14, 8 };
+	vec3_t to;
+	trace_t tr;
+	if (lead[0] * lead[0] + lead[1] * lead[1] < 16 * 16)
+		return;
+	VectorSet(to, center[0] + lead[0], center[1] + lead[1], center[2]);
+	tr = CL_TraceBox(center, mins, maxs, to, MOVE_NOMONSTERS, NULL, SUPERCONTENTS_SOLID, 0, 0, collision_extendmovelength.value, true, false, NULL, false);
+	if (tr.startsolid || tr.fraction >= 1)
+		return;
+	lead[0] = tr.endpos[0] - center[0];
+	lead[1] = tr.endpos[1] - center[1];
+}
+
 // Where to aim at player n for this fire, as an offset from the body centre
 // (lead) with its flight time. Lead and latency as before; then, each under
 // its cvar: the lag of the screen behind the server and a lead shrunk toward
@@ -935,36 +1021,90 @@ static qbool compute_lead(int n, const touch_wep_fire_t *fire, const vec3_t eye,
 	// offset from the body centre
 	VectorSubtract(center, eye, rel);
 	VectorSubtract(aim, rel, lead);
+	if (cl_touch_autoshoot_predict.integer && fire->kind == TW_KIND_PROJ && candidate)
+		clip_lead(center, lead);
 	return *tof > 0 || feet;
 }
 
+// Teammates seen this frame (cl_touch_autoshoot_teamsafe): a shot is held
+// while one is on its line or would be in its blast.
+#define MATE_MAX 64
+typedef struct mate_s { int n; vec3_t bmin, bmax; } mate_t;
+static mate_t mates[MATE_MAX];
+static int num_mates;
+
+// Enemies inside the cone this frame, before one is chosen.
+#define CAND_MAX 64
+typedef struct cand_s { aimtarget_t a; float eff; qbool on; qbool tested; } cand_t;
+static cand_t tcands[CAND_MAX];
+static int num_cands;
+
+// A new target is kept at least this long while it stays a candidate
+// (cl_touch_aimassist_priority), so two enemies of about the same worth do
+// not take turns.
+#define TARGET_HOLD 0.5
+// Damage dealt counts toward "already hurt" this long.
+#define DEALT_KEEP 3.0
+// Facing the player: within this many degrees of looking straight at them.
+#define FACING_DEG 35.0f
+
+// Degrees by which an enemy counts nearer the crosshair (TouchWep_PriorityBonus).
+static float priority_bonus(const aimtarget_t *a, const touch_wep_t *wep, const touch_wep_fire_t *fire, double now)
+{
+	const track_t *t = &ta.tracks[a->entnum & (TRACK_MAX - 1)];
+	touch_wep_prio_t p;
+	int i;
+	memset(&p, 0, sizeof(p));
+	p.dist = a->dist;
+	p.dps_share = wep ? TouchWep_DPSShare(wep->netname, a->dist, t->cls) : -1;
+	p.facing = t->facing;
+	p.range_rate = t->range_rate;
+	p.instant = !fire || fire->kind == TW_KIND_HITSCAN || fire->kind == TW_KIND_BEAM || fire->kind == TW_KIND_MELEE;
+	p.dealt = now - t->dealt_time < DEALT_KEEP ? t->dealt : 0;
+	if (fire && fire->splash >= 100)
+		for (i = 0; i < num_gbodies; i++)
+		{
+			const gbody_t *g = &gbodies[i];
+			float dx = 0.5f * (g->bmin[0] + g->bmax[0]) - a->center[0], dy = 0.5f * (g->bmin[1] + g->bmax[1]) - a->center[1];
+			if (g->enemy && g->n != a->entnum && sqrt(dx * dx + dy * dy) < 2 * fire->splash + 32)
+				p.group++;
+		}
+	return TouchWep_PriorityBonus(&p);
+}
+
 // One pass over the players the CSQC is drawing: the one under the crosshair
-// (for the old auto-shoot test and the ring) and the nearest one inside the
-// cone (for auto-shoot and the helpers), measured to where the shot should
-// go when `fire` is a projectile and lead is on. Both must be enemies, alive,
-// drawn, in range and in line of sight.
-static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep_fire_t *fire, float latency, qbool slew, qbool guided, qbool collect, int *on_target, int *friend_on, aimtarget_t *near_out)
+// (for the old auto-shoot test and the ring), the teammates, and the enemies
+// inside the cone, measured to where the shot should go when `fire` is a
+// projectile and lead is on. Then the target among them: the nearest to the
+// crosshair (cl_touch_aimassist_priority: shifted by what each is worth),
+// the one held last frame preferred. All must be enemies, alive, drawn, in
+// range and in line of sight.
+static void scan(const vec3_t eye, const vec3_t fwd, float cone, float lock_cone, const touch_wep_t *wep, const touch_wep_fire_t *fire, float latency, qbool slew, qbool guided, qbool collect, int *on_target, int *friend_on, aimtarget_t *near_out)
 {
 	prvm_prog_t *prog = CLVM_prog;
 	int team_game = teamplay_mode();
 	float range = cl_touch_aim_range.value <= 0 ? 1e9f : max(64.0f, cl_touch_aim_range.value); // 0: no limit
-	float best_on = 1e9f, best_eff = 1e9f;
+	float best_on = 1e9f;
 	float hyst = bound(0.0f, cl_touch_aimassist_hysteresis.value, 15.0f); // degrees the current target is preferred by
+	qbool prio = cl_touch_aimassist_priority.integer != 0;
 	double now = host.realtime;
-	int i;
+	int i, players = 0;
 	*on_target = 0;
 	*friend_on = 0;
 	num_gbodies = 0;
+	num_mates = 0;
+	num_cands = 0;
 	memset(near_out, 0, sizeof(*near_out));
 	near_out->err = 1e9f;
 	for (i = 1; i < prog->num_edicts; i++)
 	{
 		prvm_edict_t *ed = PRVM_EDICT_NUM(i);
-		vec3_t org, mins, maxs, bmin, bmax, center, head, dir, vel, lead, lbmin, lbmax;
+		vec3_t org, mins, maxs, bmin, bmax, center, dir, vel, lead, lbmin, lbmax;
 		float dist, err, t, alpha, hw, tof = 0;
 		int n;
 		qbool enemy, has_lead = false, on_lead = false;
 		float e0;
+		track_t *tr;
 		if (ed->free)
 			continue;
 		n = (int)PRVM_clientedictfloat(ed, entnum);
@@ -999,6 +1139,7 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep
 		if (dist < 1 || dist > range)
 			continue;
 		VectorScale(dir, 1.0f / dist, dir);
+		players++;
 		if (collect && num_gbodies < GROUP_MAX)
 		{
 			// a candidate: whether it is in sight is traced later, and only
@@ -1014,6 +1155,13 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep
 		}
 		if (!enemy)
 		{
+			if (num_mates < MATE_MAX)
+			{
+				mate_t *m = &mates[num_mates++];
+				m->n = n;
+				VectorCopy(bmin, m->bmin);
+				VectorCopy(bmax, m->bmax);
+			}
 			// only noted for cl_touch_aim_debug 2: a teammate under the crosshair
 			if (cl_touch_aim_debug.integer >= 2 && ray_box(eye, fwd, bmin, bmax, &t))
 				*friend_on = n;
@@ -1036,37 +1184,45 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep
 
 		// where a projectile meets this player, as an offset from the body
 		track_velocity(n, ed, org, now, vel);
-		VectorCopy(bmin, ta.tracks[n & (TRACK_MAX - 1)].bmin);
-		VectorCopy(bmax, ta.tracks[n & (TRACK_MAX - 1)].bmax);
+		tr = &ta.tracks[n & (TRACK_MAX - 1)];
+		VectorCopy(bmin, tr->bmin);
+		VectorCopy(bmax, tr->bmax);
+		// coming or going, and whether it looks this way
+		tr->range_rate = DotProduct(vel, dir);
+		{
+			float ay = PRVM_clientedictvector(ed, angles)[YAW] * (float)(M_PI / 180.0);
+			tr->facing = -(cos(ay) * dir[0] + sin(ay) * dir[1]) > cos(FACING_DEG * (float)(M_PI / 180.0)) * sqrt(dir[0] * dir[0] + dir[1] * dir[1]);
+		}
 		// ground or air, reversals: only for those near enough the crosshair
 		// to matter (a short trace each, at most ten times a second)
 		{
 			float yaw0, pitch0;
 			angles_to(eye, center, &yaw0, &pitch0);
 			e0 = sqrt(wrap180(yaw0 - cl.viewangles[YAW]) * wrap180(yaw0 - cl.viewangles[YAW]) + (pitch0 - cl.viewangles[PITCH]) * (pitch0 - cl.viewangles[PITCH]));
-			track_motion(n, org, mins, eye, vel, e0 < cone + 5 && (cl_touch_autoshoot_air.integer || cl_touch_autoswitch_smart.integer), now);
+			track_motion(n, org, mins, eye, vel, e0 < max(cone, lock_cone) + 5 && (cl_touch_autoshoot_air.integer || cl_touch_autoswitch_smart.integer), now);
 		}
 		VectorClear(lead);
 		if (fire)
 		{
-			if (compute_lead(n, fire, eye, center, bmin, vel, latency, slew, guided, e0 < cone + 5, lead, &tof))
+			if (compute_lead(n, fire, eye, center, bmin, vel, latency, slew, guided, e0 < max(cone, lock_cone) + 5, lead, &tof))
 				has_lead = true;
 		}
 
 		// near the crosshair: how far the crosshair is from the body's edge,
 		// so a big close body counts as soon as the crosshair nears it, not
-		// only once its centre is inside the cone. The aim point is the chest,
-		// or the head if the chest is hidden behind cover; led when it flies.
+		// only once its centre is inside the cone. The aim point is the chest
+		// (the head where a headshot bonus pays); led when it flies.
 		{
-			float yaw, pitch, rh, rv, ey, ep, eff;
-			qbool on = n == *on_target, head_aim;
+			float yaw, pitch, rh, rv, ey, ep, near_err;
+			qbool head_aim;
 			vec3_t aimp;
+			cand_t *c;
 			rh = atan(hw / dist) * (180.0f / M_PI);
 			rv = atan(0.5f * (maxs[2] - mins[2]) / dist) * (180.0f / M_PI);
 			VectorAdd(center, lead, aimp);
 			// a weapon with a headshot bonus: the head, where it pays more
 			head_aim = ta.head_mult > 1 && TouchWep_HeadBetter(ta.head_mult, hw, bmin[2], bmax[2],
-				TouchWep_AimSigma(dist, ta.tracks[n & (TRACK_MAX - 1)].cls, ta.head_spread));
+				TouchWep_AimSigma(dist, tr->cls, ta.head_spread));
 			if (head_aim)
 				aimp[2] += bmax[2] - 0.5f * TW_HEAD_ZONE_H - center[2];
 			angles_to(eye, aimp, &yaw, &pitch);
@@ -1081,49 +1237,136 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep
 			}
 			else
 			{
-				on_lead = on;
-				err = on ? 0 : edge_err(ey, ep, rh, rv);
+				on_lead = n == *on_target;
+				err = on_lead ? 0 : edge_err(ey, ep, rh, rv);
 			}
+			// in the cone: the led body or the body itself (a thumb on the
+			// body of a fast target is near it, however long the lead); the
+			// enemy of the combat lock may be followed out to lock_cone
+			near_err = err;
+			if (has_lead)
+			{
+				float y0, p0;
+				angles_to(eye, center, &y0, &p0);
+				near_err = min(err, n == *on_target ? 0 : edge_err(wrap180(y0 - cl.viewangles[YAW]), p0 - cl.viewangles[PITCH], rh, rv));
+			}
+			if (near_err > (n == ta.lock_ent && lock_cone > cone ? lock_cone : cone) || num_cands >= CAND_MAX)
+				continue;
+			c = &tcands[num_cands++];
+			memset(c, 0, sizeof(*c));
+			c->on = n == *on_target;
+			c->a.entnum = n;
+			c->a.err = err;
+			c->a.rh = rh;
+			c->a.rv = rv;
+			c->a.yaw = yaw;
+			c->a.pitch = pitch;
+			c->a.dist = dist;
+			VectorCopy(center, c->a.center);
+			VectorCopy(vel, c->a.vel);
+			VectorCopy(lead, c->a.lead);
+			c->a.tof = tof;
+			c->a.has_lead = has_lead;
+			c->a.lead_failed = fire && !has_lead && VectorLength(vel) > STAND_SPEED;
+			c->a.head_aim = head_aim;
+			c->a.on_lead = on_lead;
 			// the target of last frame keeps its place unless another is
 			// clearly nearer the crosshair (a wide cone must not flip)
-			eff = err - (n == ta.track_ent ? hyst : 0);
-			if (err > cone || eff > best_eff)
-				continue;
-			if (!on && !line_clear(eye, center))
-			{
-				VectorCopy(center, head);
-				head[2] = bmax[2] - 6;
-				if (!line_clear(eye, head))
-					continue;
-				// only the head shows: aim at it, and count only it as the body
-				VectorAdd(head, lead, aimp);
-				angles_to(eye, aimp, &yaw, &pitch);
-				rv = atan(6.0f / dist) * (180.0f / M_PI);
-				err = on_lead ? 0 : edge_err(wrap180(yaw - cl.viewangles[YAW]), pitch - cl.viewangles[PITCH], rh, rv);
-				eff = err - (n == ta.track_ent ? hyst : 0);
-				if (err > cone || eff > best_eff)
-					continue;
-			}
-			if (eff == best_eff && near_out->entnum && n != *on_target)
-				continue;
-			best_eff = eff;
-			near_out->entnum = n;
-			near_out->err = err;
-			near_out->rh = rh;
-			near_out->rv = rv;
-			near_out->yaw = yaw;
-			near_out->pitch = pitch;
-			near_out->dist = dist;
-			VectorCopy(center, near_out->center);
-			VectorCopy(vel, near_out->vel);
-			VectorCopy(lead, near_out->lead);
-			near_out->tof = tof;
-			near_out->has_lead = has_lead;
-			near_out->lead_failed = fire && !has_lead && VectorLength(vel) > STAND_SPEED;
-			near_out->head_aim = head_aim;
-			near_out->on_lead = on_lead;
+			c->eff = near_err - (n == ta.track_ent ? hyst : 0);
 		}
 	}
+	ta.cost_players = players;
+
+	// what each is worth, then the best one that is in sight (traced in
+	// order of preference, so mostly once)
+	if (prio)
+		for (i = 0; i < num_cands; i++)
+		{
+			cand_t *c = &tcands[i];
+			c->eff -= priority_bonus(&c->a, wep, fire, now);
+			if (c->a.entnum == ta.track_ent && ta.track_ent && now - ta.target_since < TARGET_HOLD)
+				c->eff -= 1000; // just taken: kept a moment while it stays in sight
+		}
+	for (;;)
+	{
+		cand_t *best = NULL;
+		vec3_t head, aimp;
+		for (i = 0; i < num_cands; i++)
+		{
+			cand_t *c = &tcands[i];
+			if (c->tested)
+				continue;
+			if (!best || c->eff < best->eff || (c->eff == best->eff && c->on && !best->on))
+				best = c;
+		}
+		if (!best)
+			break;
+		best->tested = true;
+		if (!best->on && !line_clear(eye, best->a.center))
+		{
+			float dist = best->a.dist, yaw, pitch;
+			VectorCopy(best->a.center, head);
+			head[2] = ta.tracks[best->a.entnum & (TRACK_MAX - 1)].bmax[2] - 6;
+			if (!line_clear(eye, head))
+				continue;
+			// only the head shows: aim at it, and count only it as the body
+			VectorAdd(head, best->a.lead, aimp);
+			angles_to(eye, aimp, &yaw, &pitch);
+			best->a.yaw = yaw;
+			best->a.pitch = pitch;
+			best->a.rv = atan(6.0f / dist) * (180.0f / M_PI);
+			best->a.err = best->a.on_lead ? 0 : edge_err(wrap180(yaw - cl.viewangles[YAW]), pitch - cl.viewangles[PITCH], best->a.rh, best->a.rv);
+			if (best->a.err > (best->a.entnum == ta.lock_ent && lock_cone > cone ? lock_cone : cone))
+				continue;
+		}
+		*near_out = best->a;
+		break;
+	}
+	if (near_out->entnum != ta.track_ent)
+	{
+		if (near_out->entnum && ta.track_ent)
+		{
+			ta.target_switches++;
+			if (cl_touch_aim_debug.integer)
+				Con_Printf("touch aim: target switch %d -> %d (%d candidates in the cone; switch %d)\n", ta.track_ent, near_out->entnum, num_cands, ta.target_switches);
+		}
+		ta.target_since = now;
+	}
+}
+
+// A teammate the shot about to go would hit or catch (cl_touch_autoshoot_teamsafe),
+// or 0. impact: where it meets the enemy (world).
+static int mate_blocks(const vec3_t eye, const vec3_t fwd, float target_dist, const touch_wep_t *wep, const touch_wep_fire_t *f, const vec3_t impact, int *how)
+{
+	int i;
+	for (i = 0; i < num_mates; i++)
+	{
+		int r = TouchWep_MateBlocks(f, wep && (wep->flags & TW_PIERCE) && f == &wep->pri, eye, fwd, target_dist, impact, mates[i].bmin, mates[i].bmax);
+		if (r != TW_MATE_NONE)
+		{
+			*how = r;
+			return mates[i].n;
+		}
+	}
+	return 0;
+}
+
+// A teammate within reach of a blast at p (a rocket set off there), under
+// cl_touch_autoshoot_teamsafe: the detonation waits.
+static qbool mate_at_blast(const vec3_t p, float radius)
+{
+	int i;
+	if (!cl_touch_autoshoot_teamsafe.integer)
+		return false;
+	for (i = 0; i < num_mates; i++)
+		if (TouchWep_BoxGap(p, mates[i].bmin, mates[i].bmax) < radius + TW_MATE_MARGIN)
+		{
+			if (cl_touch_aim_debug.integer && ta.mate_said != mates[i].n)
+				Con_Printf("touch aim: rocket not set off: teammate %d (%s) inside the blast\n", mates[i].n, player_name(mates[i].n));
+			ta.mate_said = mates[i].n;
+			return true;
+		}
+	return false;
 }
 
 // Seconds between this client sending a move and the server acting on it,
@@ -1185,8 +1428,12 @@ static void note_held(int held, double now)
 	else if (ta.held_last >= 0 && held >= 0 && !weapon_ready(ta.held_last, TouchWep_Find(TouchHUD_WeaponName(ta.held_last)), -1))
 	{
 		// the last one ran dry: the server switched by itself, not the player
+		ta.dropped = TouchWep_IsFallback(TouchHUD_WeaponName(held));
 		if (cl_touch_aim_debug.integer)
 			Con_Printf("touch aim: weapon now %s (%s ran out of ammo)\n", TouchHUD_WeaponName(held), TouchHUD_WeaponName(ta.held_last));
+		ta.switch_to = -1;
+		ta.held_last = held;
+		return;
 	}
 	else
 	{
@@ -1196,6 +1443,7 @@ static void note_held(int held, double now)
 	}
 	ta.switch_to = -1;
 	ta.held_last = held;
+	ta.dropped = false;
 }
 
 // How many enemies besides the target stand close enough to share a blast
@@ -1224,8 +1472,8 @@ static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *we
 	const char *names[72];
 	qbool ready[72];
 	int index[72], n = 0, i, best = -1, rank = 0, cur_rank = 0, heldpos = -1, mclass = TW_CLASS_STEADY, group = 0;
-	qbool cur_ok, smart = cl_touch_autoswitch_smart.integer != 0, combo = false, escape;
-	float bu = 0, hu = 0;
+	qbool cur_ok, smart = cl_touch_autoswitch_smart.integer != 0, combo = false, escape, dropped;
+	float bu = 0, hu = 0, dist;
 	const track_t *t;
 	if (!cl_touch_autoswitch.integer || held < 0 || !wep || TouchHook_InUse() || TouchHook_Rescuing())
 		return;
@@ -1237,15 +1485,22 @@ static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *we
 		ta.fight_ent = near->entnum;
 		ta.fight_since = now;
 	}
-	if (!near->entnum || now - ta.fight_since < FIGHT_MIN)
+	if (near->entnum)
+		ta.fight_dist = near->dist;
+	// the server dropped the player to the Blaster (or another last resort)
+	// off an empty weapon: leave it at once for the best owned weapon with
+	// ammo, whether an enemy is in sight or not (that was no pick of theirs)
+	dropped = cl_touch_autoswitch_lastresort.integer && ta.dropped && TouchWep_IsFallback(wep->netname);
+	if (!dropped && (!near->entnum || now - ta.fight_since < FIGHT_MIN))
 		return;
-	t = &ta.tracks[near->entnum & (TRACK_MAX - 1)];
-	mclass = t->cls;
+	dist = near->entnum ? near->dist : ta.fight_dist > 0 ? ta.fight_dist : 800;
+	t = near->entnum ? &ta.tracks[near->entnum & (TRACK_MAX - 1)] : NULL;
+	mclass = t ? t->cls : TW_CLASS_STEADY;
 	// combo: our blast has just thrown the target into the air: finish it
 	// with an instant-hit weapon now, not after the usual pause
-	combo = cl_touch_autoswitch_combo.integer && mclass == TW_CLASS_AIR && wep->pri.splash >= 100 && now - ta.launcher_fired < 2.0;
-	// in hand: the Blaster or another last resort, most likely because the
-	// server switched to it when the real weapon ran dry: leave it at once
+	combo = cl_touch_autoswitch_combo.integer && t && mclass == TW_CLASS_AIR && wep->pri.splash >= 100 && now - ta.launcher_fired < 2.0;
+	// in hand: the Blaster or another last resort: a real weapon wins
+	// whatever the margin (the server's drop, or a fight it cannot win)
 	escape = cl_touch_autoswitch_lastresort.integer && TouchWep_IsFallback(wep->netname);
 	if (now - ta.manual_switch < MANUAL_GUARD)
 		return;
@@ -1272,7 +1527,7 @@ static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *we
 		ready[n] = weapon_ready(i, TouchWep_Find(names[n]), held);
 		n++;
 	}
-	cur_ok = weapon_ready(held, wep, held) && TouchWep_Usable(wep, near->dist);
+	cur_ok = weapon_ready(held, wep, held) && TouchWep_Usable(wep, dist);
 	if (combo)
 	{
 		// the best instant-hit weapon owned, by its damage against a target in the air
@@ -1280,9 +1535,9 @@ static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *we
 		{
 			const touch_wep_t *w = TouchWep_Find(names[i]);
 			float u;
-			if (!ready[i] || !w || i == heldpos || (w->pri.kind != TW_KIND_HITSCAN && w->pri.kind != TW_KIND_BEAM) || !TouchWep_Usable(w, near->dist))
+			if (!ready[i] || !w || i == heldpos || (w->pri.kind != TW_KIND_HITSCAN && w->pri.kind != TW_KIND_BEAM) || !TouchWep_Usable(w, dist))
 				continue;
-			u = TouchWep_Utility(names[i], near->dist, TW_CLASS_AIR, 0, TW_SWITCH_COST);
+			u = TouchWep_Utility(names[i], dist, TW_CLASS_AIR, 0, TW_SWITCH_COST);
 			if (u > bu)
 			{
 				bu = u;
@@ -1294,10 +1549,10 @@ static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *we
 	}
 	if (!combo && smart)
 	{
-		if (!escape && now - t->cls_since < CLASS_SETTLE)
+		if (!escape && t && now - t->cls_since < CLASS_SETTLE)
 			return; // how the target moves is not settled yet
-		group = group_near(near);
-		best = TouchWep_ChooseSmart(names, ready, n, heldpos, near->dist, mclass, group, cl_touch_autoswitch_lastresort.integer != 0, &bu, &hu);
+		group = near->entnum ? group_near(near) : 0;
+		best = TouchWep_ChooseSmart(names, ready, n, heldpos, dist, mclass, group, cl_touch_autoswitch_lastresort.integer != 0, &bu, &hu);
 		if (best < 0 || best == heldpos)
 			return;
 		if (!(escape && !TouchWep_IsFallback(names[best])) && !TouchWep_ShouldSwitchSmart(hu, cur_ok, bu))
@@ -1305,10 +1560,10 @@ static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *we
 	}
 	else if (!combo)
 	{
-		best = TouchWep_Choose(names, ready, n, near->dist, cl_touch_autoswitch_lastresort.integer != 0, &rank);
+		best = TouchWep_Choose(names, ready, n, dist, cl_touch_autoswitch_lastresort.integer != 0, &rank);
 		if (best < 0 || index[best] == held)
 			return;
-		cur_rank = TouchWep_Rank(wep->netname, near->dist);
+		cur_rank = TouchWep_Rank(wep->netname, dist);
 		if (!(escape && !TouchWep_IsFallback(names[best])) && !TouchWep_ShouldSwitch(cur_rank, cur_ok, rank))
 			return;
 	}
@@ -1319,14 +1574,15 @@ static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *we
 	if (cl_touch_aim_debug.integer)
 	{
 		if (escape && !TouchWep_IsFallback(names[best]))
-			Con_Printf("touch aim: switch %s -> %s at %.0f units (leaving a last-resort weapon)\n", wep->netname, names[best], near->dist);
+			Con_Printf("touch aim: switch %s -> %s at %.0f units (leaving a last-resort weapon%s)\n", wep->netname, names[best], dist,
+				dropped ? " the server switched to when the last one ran dry" : "");
 		else if (combo)
-			Con_Printf("touch aim: combo: player %d in the air after our blast: %s -> %s at %.0f units\n", near->entnum, wep->netname, names[best], near->dist);
+			Con_Printf("touch aim: combo: player %d in the air after our blast: %s -> %s at %.0f units\n", near->entnum, wep->netname, names[best], dist);
 		else if (smart)
 			Con_Printf("touch aim: switch %s -> %s at %.0f units (target %s, %d more in reach of a blast; expected damage %.0f vs %.0f%s; %.1f s after the player's last pick)\n",
-				wep->netname, names[best], near->dist, touch_wep_class_name[mclass], group, bu, hu, cur_ok ? "" : ", current cannot shoot here", now - ta.manual_switch);
+				wep->netname, names[best], dist, touch_wep_class_name[mclass], group, bu, hu, cur_ok ? "" : ", current cannot shoot here", now - ta.manual_switch);
 		else
-			Con_Printf("touch aim: switch %s -> %s at %.0f units (%s; rank %d -> %d; %.1f s after the player's last pick)\n", wep->netname, names[best], near->dist,
+			Con_Printf("touch aim: switch %s -> %s at %.0f units (%s; rank %d -> %d; %.1f s after the player's last pick)\n", wep->netname, names[best], dist,
 				!cur_ok ? "current cannot shoot here" : cur_rank < 0 ? "current not on the list" : "clearly better", cur_rank, rank, now - ta.manual_switch);
 	}
 	ta.switch_to = index[best];
@@ -1635,7 +1891,9 @@ static void rk_steer_point(const vec3_t eye, const vec3_t aim, float splash, vec
 	static const float offs[][2] = { { 48, 0 }, { 96, 0 }, { 0, 64 }, { 0, -64 }, { 160, 0 }, { 0, 128 }, { 0, -128 }, { 96, 96 }, { 96, -96 }, { 240, 0 } }; // up, side
 	double now = host.realtime;
 	VectorCopy(aim, out);
-	if (!cl_touch_autoshoot_clear.integer || VectorLength(ta.rk_vel) < 100)
+	// (only once the rocket's own motion is known: a velocity guessed from
+	// its first frames would fly the simulation into the floor)
+	if (!cl_touch_autoshoot_clear.integer || VectorLength(ta.rk_vel) < 800 || now - ta.rk_launch_seen < PLAN_SETTLE)
 	{
 		ta.rk_way_on = false;
 		return;
@@ -1669,6 +1927,7 @@ static void rk_steer_point(const vec3_t eye, const vec3_t aim, float splash, vec
 			vec3_t fwd, side, base, cand, best_way = { 0, 0, 0 }, up = { 0, 0, 1 };
 			float best_miss = direct.miss - 32;
 			int i, best = -1;
+			qbool found = false;
 			VectorSubtract(aim, ta.rk_org, fwd);
 			fwd[2] = 0;
 			VectorNormalize(fwd);
@@ -1687,14 +1946,19 @@ static void rk_steer_point(const vec3_t eye, const vec3_t aim, float splash, vec
 					best_miss = c.miss;
 					VectorCopy(cand, best_way);
 					if (c.ok)
+					{
+						found = true;
 						break;
+					}
 				}
 			}
-			if (best >= 0)
+			// only a way round that gets there: a guess that does not is
+			// worse than flying straight at the target
+			if (best >= 0 && found)
 			{
 				if (cl_touch_aim_debug.integer && (!ta.rk_way_on || ta.rk_way_said != best))
-					Con_Printf("touch aim: rocket path: would hit something %.0f units from the target in %.2f s; steering via a point %.0f up, %.0f to the side%s\n",
-						VectorDistance(direct.end, aim), direct.t, offs[best][0], offs[best][1], best_miss < 0.5f * splash ? "" : " (best found, not clear)");
+					Con_Printf("touch aim: rocket path: would hit something %.0f units from the target in %.2f s; steering via a point %.0f up, %.0f to the side\n",
+						VectorDistance(direct.end, aim), direct.t, offs[best][0], offs[best][1]);
 				ta.rk_way_said = best;
 				ta.rk_way_on = true;
 				VectorCopy(best_way, ta.rk_way);
@@ -1810,7 +2074,7 @@ static qbool free_detonate(const vec3_t me, float splash)
 			continue;
 		VectorSubtract(f->vel, f->tgt_vel, rel_v);
 		VectorMA(f->org, shot_latency(), rel_v, late);
-		if (TouchWep_Detonate(late, rel_v, f->tgt_org, me, splash))
+		if (TouchWep_Detonate(late, rel_v, f->tgt_org, me, splash) && !mate_at_blast(late, splash))
 		{
 			rk_set(RK_DETONATE, va(vabuf, sizeof(vabuf), "earlier rocket %.0f units from player %d, flying past", VectorDistance(f->org, f->tgt_org), f->target));
 			return true;
@@ -1824,7 +2088,7 @@ static qbool free_detonate(const vec3_t me, float splash)
 // to the enemy with a one-frame attack2, then release fire long enough for
 // the next press to launch again. Sets the fire bits and, while a rocket
 // flies, where the view should be pulled.
-static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool want_fire, qbool manual, qbool ammo_more, float *pull_yaw, float *pull_pitch, qbool *pull)
+static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool want_fire, qbool manual, qbool ammo_more, int mate_block, float *pull_yaw, float *pull_pitch, qbool *pull)
 {
 	prvm_prog_t *prog = CLVM_prog;
 	double now = host.realtime;
@@ -1860,7 +2124,7 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 		{
 			VectorCopy(PRVM_clientedictvector(PRVM_EDICT_NUM(ta.rk_ent), origin), ta.rk_org);
 			VectorClear(ta.rk_vel);
-			ta.rk_seen = now;
+			ta.rk_seen = ta.rk_launch_seen = now;
 			rk_set(RK_FLY, va(vabuf, sizeof(vabuf), "tracking own rocket, edict %d", ta.rk_ent));
 		}
 		else if (now - ta.rk_time > ROCKET_DEAD_RECKON)
@@ -1884,7 +2148,7 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 				ed = PRVM_EDICT_NUM(ta.rk_ent);
 				VectorCopy(PRVM_clientedictvector(ed, origin), ta.rk_org);
 				VectorClear(ta.rk_vel);
-				ta.rk_seen = now;
+				ta.rk_seen = ta.rk_launch_seen = now;
 				if (cl_touch_aim_debug.integer)
 					Con_Printf("touch aim: rocket seen after all, edict %d\n", ta.rk_ent);
 			}
@@ -1918,10 +2182,18 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 			VectorSubtract(org, ta.rk_org, d);
 			if (VectorLength2(d) > 0.01f && now > ta.rk_seen)
 			{
+				// its velocity: networked for a projectile the CSQC moves
+				// itself, else from its interpolated motion, smoothed
 				float f = bound(0.0f, (float)(now - ta.rk_seen) / 0.05f, 1.0f);
 				vec3_t v;
-				VectorScale(d, 1.0f / (float)(now - ta.rk_seen), v);
-				VectorLerp(ta.rk_vel, f, v, ta.rk_vel);
+				VectorCopy(PRVM_clientedictvector(ed, velocity), v);
+				if (VectorLength2(v) < 100 * 100)
+				{
+					VectorScale(d, 1.0f / (float)(now - ta.rk_seen), v);
+					VectorLerp(ta.rk_vel, f, v, ta.rk_vel);
+				}
+				else
+					VectorCopy(v, ta.rk_vel);
 				VectorCopy(org, ta.rk_org);
 				ta.rk_seen = now;
 			}
@@ -1954,7 +2226,7 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 		if (dev && (cl_touch_autoshoot_group.integer && group_enemies() >= 2
 			? detonate_group(dev->pri.splash, me, dt)
 			: TouchWep_Detonate(rk_late, rel_v, ta.rk_target_org, me, dev->pri.splash))
-			&& !free_hold(ta.rk_target))
+			&& !free_hold(ta.rk_target) && !mate_at_blast(rk_late, dev->pri.splash))
 		{
 			rk_set(RK_DETONATE, va(vabuf, sizeof(vabuf), "rocket %.0f units from player %d", VectorDistance(ta.rk_org, ta.rk_target_org), ta.rk_target));
 			// attack stays held this frame: with the rocket already out it
@@ -1970,7 +2242,7 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 			return;
 		}
 		// the next rocket while this one flies, once this one hits by itself
-		if (cl_touch_autoshoot_volley.integer && ta.rk_ent && ammo_more && ta.num_free < FREE_MAX
+		if (cl_touch_autoshoot_volley.integer && ta.rk_ent && ammo_more && !mate_block && ta.num_free < FREE_MAX
 			&& now - ta.rk_fired >= ROCKET_REFIRE - ROCKET_RELEASE && dev)
 		{
 			qbool good, certain;
@@ -2031,7 +2303,18 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 				VectorMA(ta.rk_target_org, t, ta.rk_target_vel, aim);
 			}
 			else if (TouchWep_AimPointAir(&rf, rel, ta.rk_target_vel, 0, cl.movevars_gravity, t_land, aim, &t))
+			{
 				VectorAdd(ta.rk_org, aim, aim);
+				if (cl_touch_autoshoot_predict.integer)
+				{
+					// not through a wall the target will stop at
+					vec3_t mv;
+					VectorSubtract(aim, at, mv);
+					clip_lead(ta.rk_target_org, mv);
+					aim[0] = at[0] + mv[0];
+					aim[1] = at[1] + mv[1];
+				}
+			}
 			else
 				VectorCopy(at, aim);
 			if (cl_touch_autoshoot_group.integer && ta.group_valid)
@@ -2044,6 +2327,14 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 		return;
 	}
 	case RK_DETONATE:
+		// attack2 stays down until a move carrying it has gone out and the
+		// server has had a frame to see it (a one-frame press can fall
+		// between two packets, or two moves within one server frame)
+		if ((cl.timesincepacket > 0 || now - ta.rk_time < DETONATE_HOLD) && now - ta.rk_time < 0.25)
+		{
+			set_firing(true, true, ta.rk_target);
+			return;
+		}
 		set_firing(false, false, 0);
 		rk_set(RK_RELEASE, "attack2 sent");
 		return;
@@ -2149,7 +2440,8 @@ static void aim_frame(void)
 	qbool autoshoot, assist, aim_touch, manual, locked, guided, pull_target_set = false;
 	float friction, strength, cone, turn_yaw, turn_pitch, turn_mag, radius, pull_yaw = 0, pull_pitch = 0;
 	vec3_t eye, fwd;
-	int on_target, friend_on, on_shoot, held, mode = TW_MODE_PRIMARY, why = TW_WHY_DEFAULT;
+	int on_target, friend_on, on_shoot, shootable, held, mode = TW_MODE_PRIMARY, why = TW_WHY_DEFAULT, mate_block;
+	qbool was_firing = ta.firing || ta.firing2;
 	const touch_wep_t *wep;
 	const touch_wep_fire_t *fire = NULL;
 	aimtarget_t near;
@@ -2175,8 +2467,31 @@ static void aim_frame(void)
 	assist = cl_touch_aimassist.integer != 0;
 	friction = assist ? bound(0.0f, cl_touch_aimassist_friction.value, FRICTION_MAX) : 0;
 	strength = assist ? bound(0.0f, cl_touch_aimassist_strength.value, STRENGTH_MAX) : 0;
-	cone = bound(1.0f, cl_touch_aimassist_cone.value, CONE_MAX);
+	// the cone reaches at most the edge of the view: half the horizontal
+	// field of view, and never beyond CONE_MAX
+	cone = CONE_MAX;
+	if (r_refdef.view.frustum_x > 0)
+		cone = min(cone, (float)(atan(r_refdef.view.frustum_x) * (180.0 / M_PI)));
+	cone = bound(1.0f, cl_touch_aimassist_cone.value, max(1.0f, cone));
 	radius = bound(0.0f, cl_touch_autoshoot_radius.value, RADIUS_MAX);
+
+	// damage our hits did (the hit-sound stat every CSQC keeps), credited
+	// to the enemy auto-shoot is fighting: "already hurt" for the target choice
+	if (ta.stat_dealt >= 0)
+	{
+		int total = cl.stats[ta.stat_dealt], who = ta.fire_target ? ta.fire_target : ta.lock_ent;
+		if (total > ta.dealt_last && who > 0)
+		{
+			track_t *t = &ta.tracks[who & (TRACK_MAX - 1)];
+			if (now - t->dealt_time > DEALT_KEEP)
+				t->dealt = 0;
+			t->dealt += total - ta.dealt_last;
+			t->dealt_time = now;
+			if (cl_touch_aim_debug.integer >= 2)
+				Con_Printf("touch aim: hit for %d on player %d (%.0f lately)\n", total - ta.dealt_last, who, t->dealt);
+		}
+		ta.dealt_last = total;
+	}
 
 	// the weapon in hand, and whether the player picked it
 	held = TouchHUD_HeldWeapon();
@@ -2236,9 +2551,9 @@ static void aim_frame(void)
 	// a steered rocket is re-aimed in flight: it launches without the slew,
 	// the fall model or the interpolation term, which measured best
 	guided = wep && (wep->flags & TW_GUIDED) && cl_touch_autoshoot_steer.integer;
-	scan(eye, fwd, locked ? cone + LOCK_CONE_EXTRA : cone, fire, fire ? (guided ? latency_estimate() : shot_latency()) : 0,
+	scan(eye, fwd, cone, locked ? cone + LOCK_CONE_EXTRA : 0, wep, fire, fire ? (guided ? latency_estimate() : shot_latency()) : 0,
 		cl_touch_aimassist_track.integer && !guided, guided,
-		cl_touch_autoshoot_group.integer || cl_touch_autoswitch_smart.integer,
+		cl_touch_autoshoot_group.integer || cl_touch_autoswitch_smart.integer || cl_touch_aimassist_priority.integer,
 		&on_target, &friend_on, &near);
 	if (near.entnum && near.err > cone && near.entnum != ta.lock_ent)
 		near.entnum = 0;
@@ -2283,7 +2598,9 @@ static void aim_frame(void)
 			{
 				vec3_t lp;
 				VectorAdd(near.center, near.lead, lp);
-				if (!near.has_lead || (f && f->kind == TW_KIND_BALLISTIC) || (cl_touch_autoshoot_feet.integer ? guided || shot_path_ok(eye, lp, f) : line_clear(eye, lp)))
+				// (a guided rocket is re-aimed in flight: its lead point may
+				// lie beyond a wall the target will turn at)
+				if (!near.has_lead || guided || (f && f->kind == TW_KIND_BALLISTIC) || (cl_touch_autoshoot_feet.integer ? shot_path_ok(eye, lp, f) : line_clear(eye, lp)))
 					on_shoot = near.entnum;
 				// a rocket that would hit the lip in front of the muzzle
 				// (and likely its shooter) is held
@@ -2302,6 +2619,8 @@ static void aim_frame(void)
 			}
 		}
 	}
+
+	shootable = on_shoot;
 
 	// a projectile that cannot meet a moving enemy (too far, or it outruns
 	// the shot) would only land where the enemy was: hold it. A steered
@@ -2371,6 +2690,38 @@ static void aim_frame(void)
 	if (mode == TW_MODE_NONE)
 		on_shoot = 0;
 
+	// a teammate on the line of the shot, or where its blast lands: hold
+	// (a guided rocket's teammates are judged again at the detonation)
+	mate_block = 0;
+	if (on_shoot && num_mates && cl_touch_autoshoot_teamsafe.integer)
+	{
+		const touch_wep_fire_t *f = wep ? (mode == TW_MODE_SECONDARY && wep->sec.kind != TW_KIND_NONE ? &wep->sec : &wep->pri) : NULL;
+		touch_wep_fire_t unknown;
+		vec3_t ip;
+		int how = 0;
+		if (!f)
+		{
+			// a weapon the table does not know: as a hitscan, the line only
+			memset(&unknown, 0, sizeof(unknown));
+			unknown.kind = TW_KIND_HITSCAN;
+			f = &unknown;
+		}
+		if (near.entnum == on_shoot && f->kind == TW_KIND_BALLISTIC)
+			VectorMA(near.center, near.tof, near.vel, ip);
+		else if (near.entnum == on_shoot)
+			VectorAdd(near.center, near.lead, ip);
+		else
+			VectorCopy(ta.tracks[on_shoot & (TRACK_MAX - 1)].org, ip);
+		mate_block = mate_blocks(eye, fwd, VectorDistance(eye, ip), wep, f, ip, &how);
+		if (mate_block)
+		{
+			if (cl_touch_aim_debug.integer && ta.mate_said != mate_block)
+				Con_Printf("touch aim: holding fire: teammate %d (%s) %s\n", mate_block, player_name(mate_block), how == TW_MATE_LINE ? "on the line of the shot" : "inside the blast");
+			on_shoot = 0;
+		}
+	}
+	ta.mate_said = mate_block;
+
 	if (cl_touch_aim_debug.integer && (near.entnum != ta.said_target || held != ta.said_weapon || (on_shoot ? mode : -1) != ta.said_mode || why != ta.said_why))
 	{
 		if (near.entnum)
@@ -2402,7 +2753,7 @@ static void aim_frame(void)
 		}
 		else
 			ta.on_since = 0;
-		steer_devastator(eye, &near, want, manual, weapon_ready(held, wep, held), &pull_yaw, &pull_pitch, &pull_target_set);
+		steer_devastator(eye, &near, want, manual, weapon_ready(held, wep, held), mate_block, &pull_yaw, &pull_pitch, &pull_target_set);
 		ta.fire_target = ta.rk_state != RK_IDLE ? ta.rk_target : 0;
 	}
 	else
@@ -2437,24 +2788,50 @@ static void aim_frame(void)
 				target = 0;
 			}
 		}
-		if (manual)
+		// the player's own press decides alone; a teammate in the way stops
+		// the shot at once (no release tail)
+		if (manual || mate_block)
 			on = on2 = false;
 		set_firing(on, on2, target);
 		ta.fire_target = on || on2 ? target : 0;
 	}
 
+	// fire latency (cl_touch_aim_debug 2): frames from the target becoming
+	// shootable (in the fire window) to auto-shoot pressing
+	if (shootable)
+	{
+		if (!ta.shootable_since)
+		{
+			ta.shootable_since = now;
+			ta.shootable_frames = 0;
+		}
+		else
+			ta.shootable_frames++;
+	}
+	if ((ta.firing || ta.firing2) && !was_firing && cl_touch_aim_debug.integer >= 2)
+		Con_Printf("touch aim: fire latency: %d frames (%.0f ms) after the target came into the fire window\n",
+			ta.shootable_since ? ta.shootable_frames : -1, ta.shootable_since ? (now - ta.shootable_since) * 1000 : -1.0);
+	if (!shootable)
+		ta.shootable_since = 0;
+
 	// a splash launcher fired at the target (for the knock-up combo)
 	if (ta.firing && ta.fire_target && wep && wep->pri.splash >= 100)
 		ta.launcher_fired = now;
 
-	// combat lock: renewed while auto-shoot fires, kept LOCK_HOLD after
+	// combat lock: renewed while auto-shoot fires, kept LOCK_HOLD after, and
+	// for as long as that enemy stays the target in sight and was fired at
+	// within ENGAGE_HOLD (a Devastator between rockets, a reload): the fight
+	// auto-shoot started goes on with the thumb at rest
 	if (cl_touch_aimassist_track.integer && ta.fire_target && (ta.firing || ta.firing2))
 	{
 		if (cl_touch_aim_debug.integer && (ta.lock_ent != ta.fire_target || now >= ta.lock_until))
 			Con_Printf("touch aim: combat lock on player %d (%s)\n", ta.fire_target, player_name(ta.fire_target));
 		ta.lock_ent = ta.fire_target;
 		ta.lock_until = now + LOCK_HOLD;
+		ta.lock_fired = now;
 	}
+	else if (cl_touch_aimassist_track.integer && ta.lock_ent && now < ta.lock_until && near.entnum == ta.lock_ent && now - ta.lock_fired < ENGAGE_HOLD)
+		ta.lock_until = now + LOCK_HOLD;
 	else if (ta.lock_ent && now < ta.lock_until && (TouchHook_InUse() || TouchHook_Rescuing()))
 		ta.lock_until = now + LOCK_HOLD; // held through the hook or a turn: the fight resumes after it
 	else if (ta.lock_ent && now >= ta.lock_until)
@@ -2502,6 +2879,9 @@ static void aim_frame(void)
 		near.yaw = pull_yaw;
 		near.pitch = pull_pitch;
 	}
+	if (cl_touch_aim_debug.integer >= 5 && near.entnum)
+		Con_Printf("touch aim: pull? target %d err %.1f yaw %+.1f pitch %+.1f lock %d until %+.2f fired %.2f ago touch %d input %.2f ago rocket %s\n", near.entnum, near.err,
+			wrap180(near.yaw - cl.viewangles[YAW]), near.pitch - cl.viewangles[PITCH], ta.lock_ent, ta.lock_until - now, now - ta.lock_fired, aim_touch, now - ta.last_input, rk_state_name[ta.rk_state]);
 	if (strength > 0 && near.entnum && !TouchHook_Rescuing()
 		&& ((aim_touch && now - ta.last_input < INPUT_HOLD)
 			|| ta.rk_state != RK_IDLE
@@ -2532,7 +2912,9 @@ static void aim_frame(void)
 				float gap = sqrt(gy * gy + gp * gp);
 				if (gap > 0.01f)
 				{
-					float rate = strength * max(turn_rate, SETTLE_GAIN * gap);
+					// a guided rocket's view hold closes faster: the rocket
+					// turns toward the view at 90 deg/s and lags it anyway
+					float rate = strength * max(turn_rate, (ta.rk_state == RK_FLY ? SETTLE_GAIN_ROCKET : SETTLE_GAIN) * gap);
 					float step = min(rate * dt, gap);
 					py += gy / gap * step;
 					pp += gp / gap * step;
@@ -2565,7 +2947,24 @@ static void aim_frame(void)
 // measured from.
 void TouchAim_Frame(void)
 {
+	double t0;
 	TouchHook_Frame();
+	t0 = Sys_DirtyTime();
 	aim_frame();
+	if (cl_touch_aim_debug.integer >= 4)
+	{
+		// frame cost of the aim helpers, every 5 seconds
+		double dt = Sys_DirtyTime() - t0, now = host.realtime;
+		ta.cost_time += dt;
+		ta.cost_frames++;
+		if (now - ta.cost_since >= 5)
+		{
+			if (ta.cost_since > 0 && ta.cost_frames)
+				Con_Printf("touch aim: frame cost %.1f us on average over %d frames, %d players in range\n", ta.cost_time / ta.cost_frames * 1e6, ta.cost_frames, ta.cost_players);
+			ta.cost_since = now;
+			ta.cost_time = 0;
+			ta.cost_frames = 0;
+		}
+	}
 	TouchHook_EndFrame();
 }
