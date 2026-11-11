@@ -98,6 +98,13 @@ cvar_t cl_touch_aim_mode = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aim_mode", "1",
 cvar_t cl_touch_aimassist_priority = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_priority", "1",
 	"Aim helpers, several enemies in the cone: nearest the crosshair first, then the one the weapon in hand does most damage to, one facing you up close, "
 	"one you have just hurt, a group for a splash weapon; one running out of reach of a projectile counts less. A new target is kept at least half a second (0 = nearest the crosshair only)"};
+cvar_t cl_touch_practice_seethrough = {CF_CLIENT | CF_ARCHIVE, "cl_touch_practice_seethrough", "1",
+	"Offline practice, only in a match against bots on this machine with nobody else connected: mark enemies behind walls, pre-aim where they will appear, "
+	"fire splash weapons that reach them round cover and steer rockets to them. Never anywhere else, whatever this says"};
+cvar_t cl_touch_practice_360 = {CF_CLIENT | CF_ARCHIVE, "cl_touch_practice_360", "1",
+	"Offline practice (as above): with Targets set to Full 360 (cl_touch_aim_mode 2), enemies all around may be the target, with a marker at the screen edge. Anywhere else Full 360 works as Field of view"};
+cvar_t cl_touch_practice_instant = {CF_CLIENT | CF_ARCHIVE, "cl_touch_practice_instant", "0",
+	"Offline practice (as above): the aim pull moves onto the target at once instead of at cl_touch_aimassist_maxrate. Never anywhere else"};
 cvar_t cl_touch_aimassist_lastseen = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_lastseen", "1",
 	"Aim pull, during a fight: when the enemy goes out of sight, keep the crosshair where it was last seen, moving on its last seen course for a second, for up to 3 seconds -- never where it really is behind cover"};
 cvar_t cl_touch_autoshoot_combo = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_combo", "1",
@@ -189,7 +196,8 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 // A per-frame view change larger than this is a teleport or respawn, not a turn.
 #define TURN_SPIKE_DEG 60.0f
 #define ANTILAG_MAX    0.4f
-#define ORB_HOLD       0.55f  // attack2 held this long lobs the Electro's three orbs   // g_antilag rewinds at most this much ping (ANTILAG_LATENCY)
+#define ORB_HOLD       0.55f
+#define OVER_DIVE      400.0f // a rocket over cover dives at its target this close (horizontally)  // attack2 held this long lobs the Electro's three orbs   // g_antilag rewinds at most this much ping (ANTILAG_LATENCY)
 // Target velocity: smoothed over about this many seconds; forgotten when a
 // player was not seen for TRACK_STALE seconds or jumps TRACK_JUMP units.
 #define TRACK_SMOOTH   0.08f
@@ -298,7 +306,10 @@ static struct
 	double lock_fired;   // last time auto-shoot fired at lock_ent
 	double flick_time;   // last fast drag of the player's own
 	double orbs_time, orbs_until;
-	int ghost_said;      // the enemy held by its last seen point (debug) // Electro combo: when orbs were last lobbed, and the hold for them
+	int ghost_said;      // the enemy held by its last seen point (debug)
+	qbool said_hidden;
+	qbool rk_over_valid; // offline practice: the point over cover a rocket goes by
+	vec3_t rk_over; // Electro combo: when orbs were last lobbed, and the hold for them
 	double target_since; // when the current target (track_ent) was taken
 	int target_switches; // for cl_touch_aim_debug
 	int mate_said;       // teammate that last held fire (debug)
@@ -392,6 +403,9 @@ void TouchAim_Init(void)
 	Cvar_RegisterVariable(&cl_touch_autoshoot_teamsafe);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_combo);
 	Cvar_RegisterVariable(&cl_touch_aimassist_lastseen);
+	Cvar_RegisterVariable(&cl_touch_practice_seethrough);
+	Cvar_RegisterVariable(&cl_touch_practice_360);
+	Cvar_RegisterVariable(&cl_touch_practice_instant);
 	Cvar_RegisterVariable(&cl_touch_aimassist);
 	Cvar_RegisterVariable(&cl_touch_aimassist_friction);
 	Cvar_RegisterVariable(&cl_touch_aimassist_strength);
@@ -660,6 +674,35 @@ static qbool line_clear(const vec3_t from, const vec3_t to)
 	return !tr.startsolid && tr.fraction >= 0.999f;
 }
 
+// Offline practice (touch_weapons.h TouchWep_PracticeGate): the one check,
+// made every frame, that decides whether anything offline-only may run.
+static touch_practice_t practice;
+static int practice_gate_now, practice_gate_said = -1;
+// enemies to mark this frame (behind a wall, or off the screen in Full 360)
+#define MARK_MAX 64
+typedef struct mark_s { vec3_t org; float dist; qbool hidden; } mark_t;
+static mark_t marks[MARK_MAX];
+static int num_marks;
+
+static int practice_gate(void)
+{
+	touch_practice_env_t e;
+	int i;
+	memset(&e, 0, sizeof(e));
+	e.demo = cls.demoplayback;
+	e.server_active = sv.active;
+	e.local_connection = cls.state == ca_connected && cls.netcon && LHNETADDRESS_GetAddressType(&cls.netcon->peeraddress) == LHNETADDRESSTYPE_LOOP;
+	if (sv.active && svs.clients)
+		for (i = 0; i < svs.maxclients; i++)
+		{
+			const client_t *c = &svs.clients[i];
+			// bots have no connection; this client's own comes over the loopback
+			if (c->active && c->netconnection && LHNETADDRESS_GetAddressType(&c->netconnection->peeraddress) != LHNETADDRESSTYPE_LOOP)
+				e.other_humans++;
+		}
+	return TouchWep_PracticeGate(&e);
+}
+
 // Whether a straight shot toward p gets there: a clear line, or for a splash
 // weapon one that ends close enough to p for the blast to reach it (a wall
 // beside the enemy is as good a place for a rocket to burst).
@@ -761,6 +804,7 @@ typedef struct aimtarget_s
 	qbool on_lead;      // the view ray goes through the led body
 	qbool lead_failed;  // a projectile in hand and no meeting point with this moving enemy
 	qbool head_aim;     // aimed at the head (a headshot bonus pays there)
+	qbool hidden;       // behind a wall: only ever a target in offline practice
 } aimtarget_t;
 
 static float signf(float v)
@@ -1214,6 +1258,23 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, float lock_cone
 		}
 		hw = 0.5f * max(maxs[0] - mins[0], maxs[1] - mins[1]);
 
+		// offline practice: mark an enemy behind a wall, or off the screen in Full 360
+		if ((practice.seethrough || practice.full360) && num_marks < MARK_MAX)
+		{
+			vec3_t hd;
+			qbool hid;
+			VectorCopy(center, hd);
+			hd[2] = bmax[2] - 6;
+			hid = !line_clear(eye, center) && !line_clear(eye, hd);
+			if ((hid && practice.seethrough) || practice.full360)
+			{
+				mark_t *mk = &marks[num_marks++];
+				VectorCopy(center, mk->org);
+				mk->dist = dist;
+				mk->hidden = hid;
+			}
+		}
+
 		// under the crosshair: the view ray enters the body, and nothing solid
 		// stands between the eye and that point
 		if (ray_box(eye, fwd, bmin, bmax, &t) && t < best_on)
@@ -1353,7 +1414,14 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, float lock_cone
 			VectorCopy(best->a.center, head);
 			head[2] = ta.tracks[best->a.entnum & (TRACK_MAX - 1)].bmax[2] - 6;
 			if (!line_clear(eye, head))
-				continue;
+			{
+				// behind a wall: a target only in offline practice
+				if (!practice.seethrough)
+					continue;
+				best->a.hidden = true;
+				*near_out = best->a;
+				break;
+			}
 			// only the head shows: aim at it, and count only it as the body
 			VectorAdd(head, best->a.lead, aimp);
 			angles_to(eye, aimp, &yaw, &pitch);
@@ -2454,6 +2522,14 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 			}
 			else
 				VectorCopy(at, aim);
+			// offline practice, a target behind a wall: over the cover first,
+			// down onto the target only once the rocket is nearly above it
+			if (practice.seethrough && ta.rk_over_valid && near->entnum == ta.rk_target && near->hidden)
+			{
+				float hx = ta.rk_org[0] - ta.rk_target_org[0], hy = ta.rk_org[1] - ta.rk_target_org[1];
+				if (sqrt(hx * hx + hy * hy) > OVER_DIVE)
+					VectorCopy(ta.rk_over, aim);
+			}
 			if (cl_touch_autoshoot_group.integer && ta.group_valid)
 				VectorCopy(ta.group_point, aim); // the blast point for the whole group
 			if (dev)
@@ -2592,6 +2668,9 @@ static void aim_frame(void)
 			Con_Printf("touch aim: inactive: %s\n", blocked);
 		ta.blocked_said = blocked;
 		ta.was_allowed = false;
+		// nothing offline-only outlives the frame that allowed it
+		memset(&practice, 0, sizeof(practice));
+		num_marks = 0;
 		reset();
 		publish();
 		return;
@@ -2601,6 +2680,19 @@ static void aim_frame(void)
 			cl.scores[cl.realplayerentity - 1].colors, TouchHUD_Active() ? "engine" : "CSQC", TouchHUD_NumWeapons());
 	ta.was_allowed = true;
 	ta.blocked_said = NULL;
+
+	practice_gate_now = practice_gate();
+	practice = TouchWep_PracticeEffective(practice_gate_now, cl_touch_practice_seethrough.integer != 0,
+		cl_touch_practice_360.integer != 0 && cl_touch_aim_mode.integer == 2, cl_touch_practice_instant.integer != 0);
+	if (cl_touch_aim_debug.integer && practice_gate_now != practice_gate_said)
+	{
+		if (practice_gate_now == TW_GATE_OPEN)
+			Con_Printf("touch aim: practice helpers: on (offline match; see-through %d, full 360 %d, instant %d)\n", practice.seethrough, practice.full360, practice.instant);
+		else
+			Con_Printf("touch aim: practice helpers: off (not an offline match: %s)\n", touch_practice_why[practice_gate_now]);
+	}
+	practice_gate_said = practice_gate_now;
+	num_marks = 0;
 
 	autoshoot = cl_touch_autoshoot.integer != 0;
 	assist = cl_touch_aimassist.integer != 0;
@@ -2615,6 +2707,8 @@ static void aim_frame(void)
 	// anyone on screen; Radius mode: the cone the player set
 	if (cl_touch_aim_mode.integer <= 0)
 		cone = bound(1.0f, cl_touch_aimassist_cone.value, max(1.0f, cone));
+	else if (practice.full360)
+		cone = 180; // offline practice: all around
 	radius = bound(0.0f, cl_touch_autoshoot_radius.value, RADIUS_MAX);
 
 	// damage our hits did (the hit-sound stat every CSQC keeps), credited
@@ -2734,6 +2828,29 @@ static void aim_frame(void)
 		gbodies_in_sight(eye, near.center, near.entnum);
 	else
 		num_gbodies = 0;
+	// offline practice: a rocket at a target behind a wall goes over it: the
+	// launch aims at the lowest point above the target that the eye sees and
+	// that sees the target
+	if (practice.seethrough && guided && near.entnum && near.hidden && ta.rk_state == RK_IDLE)
+	{
+		vec3_t over;
+		int k;
+		ta.rk_over_valid = false;
+		for (k = 1; k <= 10; k++)
+		{
+			VectorCopy(near.center, over);
+			over[2] += 48 * k;
+			if (line_clear(eye, over) && line_clear(over, near.center))
+			{
+				angles_to(eye, over, &near.yaw, &near.pitch);
+				near.err = edge_err(wrap180(near.yaw - cl.viewangles[YAW]), near.pitch - cl.viewangles[PITCH], near.rh, near.rv);
+				near.on_lead = near.err <= 0;
+				VectorCopy(over, ta.rk_over);
+				ta.rk_over_valid = true;
+				break;
+			}
+		}
+	}
 	// a blast for the whole group, when the weapon has one worth sharing
 	if (cl_touch_autoshoot_group.integer && near.entnum && fire && fire->splash >= 100)
 		group_aim(&near, fire, eye, shot_latency());
@@ -2793,6 +2910,16 @@ static void aim_frame(void)
 		}
 	}
 
+	// a target behind a wall (offline practice): only a splash weapon whose
+	// blast reaches it round the cover fires; anything else only pre-aims
+	if (on_shoot && near.entnum == on_shoot && near.hidden)
+	{
+		const touch_wep_fire_t *f = wep ? (ta.last_mode == TW_MODE_SECONDARY && wep->sec.kind != TW_KIND_NONE ? &wep->sec : &wep->pri) : NULL;
+		vec3_t lp;
+		VectorAdd(near.center, near.lead, lp);
+		if (!f || f->splash < 60 || !(guided || shot_path_ok(eye, lp, f)))
+			on_shoot = 0;
+	}
 	shootable = on_shoot;
 
 	// a projectile that cannot meet a moving enemy (too far, or it outruns
@@ -2924,10 +3051,10 @@ static void aim_frame(void)
 	}
 	ta.mate_said = mate_block;
 
-	if (cl_touch_aim_debug.integer && (near.entnum != ta.said_target || held != ta.said_weapon || (on_shoot ? mode : -1) != ta.said_mode || why != ta.said_why))
+	if (cl_touch_aim_debug.integer && (near.entnum != ta.said_target || held != ta.said_weapon || (on_shoot ? mode : -1) != ta.said_mode || why != ta.said_why || near.hidden != ta.said_hidden))
 	{
 		if (near.entnum)
-			Con_Printf("touch aim: target %d (%s) at %.0f units, %.1f deg off; weapon %s: %s (%s)%s\n", near.entnum, player_name(near.entnum), near.dist, near.err,
+			Con_Printf("touch aim: target %d (%s)%s at %.0f units, %.1f deg off; weapon %s: %s (%s)%s\n", near.entnum, player_name(near.entnum), near.hidden ? " behind a wall" : "", near.dist, near.err,
 				held >= 0 ? TouchHUD_WeaponName(held) : "?", !on_shoot ? "hold" : mode == TW_MODE_SECONDARY ? "secondary" : "primary",
 				wep ? touch_wep_why[why] : "unknown weapon",
 				near.has_lead ? va(vabuf, sizeof(vabuf), ", lead %.2f s (%.0f units)", near.tof, VectorLength(near.lead)) : "");
@@ -2935,6 +3062,7 @@ static void aim_frame(void)
 		ta.said_weapon = held;
 		ta.said_mode = on_shoot ? mode : -1;
 		ta.said_why = why;
+		ta.said_hidden = near.hidden;
 	}
 
 	ta.lock = !assist && !autoshoot ? 0 : ((on_target || (near.entnum && near.on_lead)) ? 2 : (near.entnum ? 1 : 0));
@@ -3129,6 +3257,7 @@ static void aim_frame(void)
 			wrap180(near.yaw - cl.viewangles[YAW]), near.pitch - cl.viewangles[PITCH], ta.lock_ent, ta.lock_until - now, now - ta.lock_fired, aim_touch, now - ta.last_input, rk_state_name[ta.rk_state]);
 	if (strength > 0 && near.entnum && !TouchHook_Rescuing()
 		&& ((aim_touch && now - ta.last_input < INPUT_HOLD)
+			|| practice.seethrough || practice.full360 // offline practice: the pull acts on its own
 			|| ta.rk_state != RK_IDLE
 			|| (cl_touch_aimassist_track.integer && ta.lock_ent && ta.lock_ent == near.entnum && now < ta.lock_until)))
 	{
@@ -3170,6 +3299,14 @@ static void aim_frame(void)
 			}
 			len = sqrt(py * py + pp * pp);
 			cap = bound(0.0f, cl_touch_aimassist_maxrate.value, MAXRATE_MAX) * dt;
+			if (practice.instant)
+			{
+				// offline practice: the whole way at once
+				py = ey;
+				pp = ep;
+				len = sqrt(py * py + pp * pp);
+				cap = len + 1;
+			}
 			if (len > cap)
 			{
 				py *= cap / len;
@@ -3193,6 +3330,52 @@ static void aim_frame(void)
 // The hook first: a fall rescue turns the view, and the aim pull stands down
 // while it does (TouchHook_Rescuing). Then the angles the next frame's turn is
 // measured from.
+// Offline practice markers: enemies behind walls (an outlined square and the
+// distance) and, in Full 360, enemies off the screen (a square at the edge,
+// toward them). Drawn by the engine so both touch HUDs get them; nothing is
+// collected unless the gate is open.
+void TouchAim_Draw(void)
+{
+	vec3_t org, fwd, left, up, d;
+	float w = vid_conwidth.value, h = vid_conheight.value, fx = r_refdef.view.frustum_x, fy = r_refdef.view.frustum_y;
+	int i;
+	if (!num_marks || practice_gate() != TW_GATE_OPEN || fx <= 0 || fy <= 0)
+		return;
+	Matrix4x4_ToVectors(&r_refdef.view.matrix, fwd, left, up, org);
+	for (i = 0; i < num_marks; i++)
+	{
+		const mark_t *mk = &marks[i];
+		float df, x, y, s = bound(8.0f, 9000.0f / max(mk->dist, 1.0f), 40.0f);
+		qbool off;
+		char txt[16];
+		VectorSubtract(mk->org, org, d);
+		df = DotProduct(d, fwd);
+		x = 0.5f * w * (1 - DotProduct(d, left) / (max(df, 1.0f) * fx));
+		y = 0.5f * h * (1 - DotProduct(d, up) / (max(df, 1.0f) * fy));
+		off = df <= 1 || x < 0 || x > w || y < 0 || y > h;
+		if (off)
+		{
+			// at the edge, toward it
+			float ax = -DotProduct(d, left), ay = -DotProduct(d, up), m = max(fabs(ax) / (0.5f * w - 12), fabs(ay) / (0.5f * h - 12));
+			if (m <= 0)
+				continue;
+			x = 0.5f * w + ax / m;
+			y = 0.5f * h + ay / m;
+			s = 12;
+			DrawQ_Fill(x - s * 0.5f, y - s * 0.5f, s, s, 1, 0.3f, 0.1f, 0.85f, 0);
+			continue;
+		}
+		if (!mk->hidden)
+			continue;
+		DrawQ_Fill(x - s * 0.5f, y - s * 0.5f, s, 2, 1, 0.5f, 0.1f, 0.9f, 0);
+		DrawQ_Fill(x - s * 0.5f, y + s * 0.5f - 2, s, 2, 1, 0.5f, 0.1f, 0.9f, 0);
+		DrawQ_Fill(x - s * 0.5f, y - s * 0.5f, 2, s, 1, 0.5f, 0.1f, 0.9f, 0);
+		DrawQ_Fill(x + s * 0.5f - 2, y - s * 0.5f, 2, s, 1, 0.5f, 0.1f, 0.9f, 0);
+		dpsnprintf(txt, sizeof(txt), "%.0f", mk->dist);
+		DrawQ_String(x - 12, y + s * 0.5f + 2, txt, 0, 10, 10, 1, 0.6f, 0.2f, 0.9f, 0, NULL, true, FONT_CHAT);
+	}
+}
+
 // cl_touch_aim_dumptracks: the players the CSQC draws, one line each a
 // frame, for scripts/eval-lead (testing only; works in demo playback).
 static void dump_tracks(void)

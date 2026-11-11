@@ -11,6 +11,7 @@
 #include "touch_ui.h"
 #include "touch_hud.h"
 #include "touch_vote.h"
+#include "touch_aim.h" // Touch: offline practice markers
 #ifdef CONFIG_VIDEO_CAPTURE
 #include "cap_avi.h"
 #include "cap_ogg.h"
@@ -1569,6 +1570,7 @@ static void SCR_DrawTouchscreenOverlay(void)
 	// Engine copy of the Touch HUD, only while a server's CSQC is running.
 	TouchHUD_Draw();
 	TouchVote_Draw(); // Touch: vote chip and card, over either touch HUD
+	TouchAim_Draw(); // Touch: offline practice markers
 
 	// Console / chat sheet shade (cvar-driven).
 	if (kd == key_console)

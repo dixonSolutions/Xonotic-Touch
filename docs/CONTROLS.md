@@ -932,6 +932,34 @@ player. Team detection
 relies on Xonotic forcing team colours; a mod that does not will be treated
 conservatively.
 
+#### Offline practice (engine, offline matches only)
+
+Three helpers exist only for practice against bots: **see through walls**
+(`cl_touch_practice_seethrough`, default 1: an orange square with the
+distance marks an enemy behind a wall; the pull pre-aims at it; a splash
+weapon whose blast reaches it round the cover fires, and a Devastator rocket
+goes over the cover and dives onto it), **Full 360** (`cl_touch_practice_360`,
+default 1, with Targets set to Full 360: enemies all around may be the target,
+with a square at the screen edge toward one off the screen), and **instant
+turn** (`cl_touch_practice_instant`, default 0: the pull moves onto the target
+at once). While they are active the pull also works with the thumb at rest.
+
+They run only when one check, made every frame (`TouchWep_PracticeGate`),
+says this is an offline match: this process runs the server, this client is
+connected to it over the loopback, no other human is connected (every other
+slot is a bot or empty), and no demo plays. The preferences sit below it:
+with the gate closed every one of them is off, whatever the cvars, a config,
+an alias or a server's command says (`TouchWep_PracticeEffective`, tested for
+every combination), and the helpers behave exactly as on any server. There is
+no setting that allows them anywhere else. `cl_touch_aim_debug` prints
+"practice helpers: on" or "off (not an offline match: ...)" when it changes.
+Measured: on a listen server the helpers switched off on the frame a second
+client's connection was accepted, before it had finished connecting, and on
+again on the frame it dropped; connected to a separate dedicated server on
+the same machine, the same build drew no markers, did not pre-aim at or fire
+at a bot behind a ledge, and did not turn to a bot behind the player (the
+view stayed at -90 degrees; offline it turned to 89).
+
 ### Grappling hook: HOOK button and fall rescue (engine)
 
 Xonotic's grappling hook comes two ways, and which one a server offers decides
