@@ -11,6 +11,7 @@ Run through scripts/test-touch-aim.sh.
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 typedef bool qbool;
 
@@ -754,6 +755,79 @@ static void test_table(void)
 	CHECK(TouchWep_Find(NULL) == NULL && TouchWep_Find("") == NULL && TouchWep_Find("railgun") == NULL, "unknown netnames");
 }
 
+// Several enemies: the priority shift and its parts.
+static void test_priority(void)
+{
+	touch_wep_prio_t p;
+	float base, b;
+	memset(&p, 0, sizeof(p));
+	p.dist = 800;
+	p.dps_share = 0.5f;
+	p.instant = true;
+	base = TouchWep_PriorityBonus(&p);
+	CHECK_NEAR(0, base, 1e-4, "priority: an average enemy gets no shift");
+	p.dps_share = 1;
+	CHECK_NEAR(1, TouchWep_PriorityBonus(&p), 1e-4, "priority: best damage +1 degree");
+	p.dps_share = 0;
+	CHECK_NEAR(-1, TouchWep_PriorityBonus(&p), 1e-4, "priority: no damage -1 degree");
+	p.dps_share = -1;
+	CHECK_NEAR(0, TouchWep_PriorityBonus(&p), 1e-4, "priority: weapon unknown: no damage term");
+	p.facing = true;
+	CHECK_NEAR(1, TouchWep_PriorityBonus(&p), 1e-4, "priority: facing the player up close +1");
+	p.dist = 2000;
+	CHECK_NEAR(0, TouchWep_PriorityBonus(&p), 1e-4, "priority: facing from far away counts nothing");
+	p.dist = 800;
+	p.facing = false;
+	p.range_rate = -300;
+	CHECK_NEAR(0.5f, TouchWep_PriorityBonus(&p), 1e-4, "priority: rushing in +0.5");
+	p.range_rate = 300;
+	p.dist = 1500;
+	CHECK_NEAR(0, TouchWep_PriorityBonus(&p), 1e-4, "priority: running away from a hitscan weapon: no penalty");
+	p.instant = false;
+	CHECK_NEAR(-1.5f, TouchWep_PriorityBonus(&p), 1e-4, "priority: running out of a projectile's reach -1.5");
+	p.range_rate = 0;
+	p.dist = 800;
+	p.dealt = 40;
+	CHECK_NEAR(1, TouchWep_PriorityBonus(&p), 1e-4, "priority: already hurt +1");
+	p.dealt = 0;
+	p.group = 5;
+	CHECK_NEAR(1.5f, TouchWep_PriorityBonus(&p), 1e-4, "priority: group bonus capped at three others");
+	p.group = 3;
+	p.dealt = 40;
+	p.facing = true;
+	p.range_rate = -300;
+	p.dps_share = 1;
+	b = TouchWep_PriorityBonus(&p);
+	CHECK_NEAR(TW_PRIO_CAP, b, 1e-4, "priority: everything at once is capped (the angle still decides)");
+	// the share of the weapon's best DPS
+	CHECK_NEAR(1, TouchWep_DPSShare("hagar", 150, TW_CLASS_STAND), 1e-4, "dps share: hagar point-blank is its best");
+	CHECK(TouchWep_DPSShare("hagar", 2500, TW_CLASS_ERRATIC) < 0.05f, "dps share: hagar far at a dodger is nothing");
+	CHECK(TouchWep_DPSShare("railgun", 500, TW_CLASS_STAND) < 0, "dps share: unknown weapon");
+}
+
+// Teammates in the way of a shot.
+static void test_mates(void)
+{
+	const touch_wep_t *mg = TouchWep_Find("machinegun"), *vortex = TouchWep_Find("vortex"), *dev = TouchWep_Find("devastator"), *mortar = TouchWep_Find("mortar");
+	float eye[3] = { 0, 0, 0 }, fwd[3] = { 1, 0, 0 }, impact[3] = { 1000, 0, 0 };
+	float lmin[3] = { 484, -16, -40 }, lmax[3] = { 516, 16, 29 };     // on the line, halfway
+	float smin[3] = { 484, 60, -40 }, smax[3] = { 516, 92, 29 };      // beside the line, halfway
+	float bmin[3] = { 1300, -16, -40 }, bmax[3] = { 1332, 16, 29 };   // on the line, behind the enemy
+	float nmin[3] = { 1040, 40, -40 }, nmax[3] = { 1072, 72, 29 };    // next to the enemy
+	float t;
+	CHECK(TouchWep_RayBox(eye, fwd, lmin, lmax, &t) && fabs(t - 484) < 0.01f, "ray box: entry distance");
+	CHECK(!TouchWep_RayBox(eye, fwd, smin, smax, &t), "ray box: miss beside");
+	CHECK_EQ(TW_MATE_LINE, TouchWep_MateBlocks(&mg->pri, false, eye, fwd, 1000, impact, lmin, lmax), "mates: teammate on the machinegun's line");
+	CHECK_EQ(TW_MATE_NONE, TouchWep_MateBlocks(&mg->pri, false, eye, fwd, 1000, impact, smin, smax), "mates: teammate beside the line is clear");
+	CHECK_EQ(TW_MATE_NONE, TouchWep_MateBlocks(&mg->pri, false, eye, fwd, 1000, impact, bmin, bmax), "mates: teammate behind the enemy: the bullet stops at the enemy");
+	CHECK_EQ(TW_MATE_LINE, TouchWep_MateBlocks(&vortex->pri, true, eye, fwd, 1000, impact, bmin, bmax), "mates: teammate behind the enemy: the vortex goes through");
+	CHECK_EQ(TW_MATE_BLAST, TouchWep_MateBlocks(&dev->pri, false, eye, fwd, 1000, impact, nmin, nmax), "mates: teammate inside the rocket's blast");
+	CHECK_EQ(TW_MATE_LINE, TouchWep_MateBlocks(&dev->pri, false, eye, fwd, 1000, impact, lmin, lmax), "mates: teammate in front of the rocket");
+	CHECK_EQ(TW_MATE_NONE, TouchWep_MateBlocks(&mortar->pri, false, eye, fwd, 1000, impact, lmin, lmax), "mates: a lob passes over a teammate on the way");
+	CHECK_EQ(TW_MATE_BLAST, TouchWep_MateBlocks(&mortar->pri, false, eye, fwd, 1000, impact, nmin, nmax), "mates: but not one next to where it lands");
+	CHECK_EQ(TW_MATE_NONE, TouchWep_MateBlocks(&dev->pri, false, eye, fwd, 1000, impact, smin, smax), "mates: teammate beside the rocket's path, far from the blast");
+}
+
 int main(void)
 {
 	test_intercept();
@@ -774,6 +848,8 @@ int main(void)
 	test_choose();
 	test_detonate();
 	test_table();
+	test_priority();
+	test_mates();
 	if (failures)
 	{
 		printf("%d of %d check(s) failed\n", failures, checks);

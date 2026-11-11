@@ -63,6 +63,7 @@ without the rest of the engine.
 #define TW_WEAK_SPLASH   16 // own splash is harmless enough to fire point-blank (Blaster)
 #define TW_MINES         32 // primary places mines that the secondary detonates
 #define TW_FALLBACK      64 // a last resort: auto-switch picks it only when nothing else owned can shoot
+#define TW_PIERCE       128 // the primary goes on through players it hits (Vortex, Vaporizer)
 
 typedef struct touch_wep_fire_s
 {
@@ -102,9 +103,9 @@ static const touch_wep_t touch_weapons[] =
 	{ "electro",      0,                                 { TW_KIND_PROJ,      2500,    0,    0,    0,  100,  0,     TW_FAR,  40 }, TW_SEC_SHOT,     { TW_KIND_BALLISTIC, 1000, 200, 0, 0, 150, 0, 1200, 30 }, 4 },
 	{ "crylink",      0,                                 { TW_KIND_PROJ,      2000,    0,    0,    0,   80,  0.08f, 2000,    60 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 3000, 0, 0, 0, 100, 0.01f, 2500, 40 }, 3 },
 	{ "hlac",         0,                                 { TW_KIND_PROJ,      6000,    0,    0,    0,   60,  0.03f, TW_FAR,  10 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0.15f, 1200, 90 }, 1 },
-	{ "vortex",       0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0,     TW_FAR,  80 }, TW_SEC_ZOOM,     { 0 }, 6 },
+	{ "vortex",       TW_PIERCE,                         { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0,     TW_FAR,  80 }, TW_SEC_ZOOM,     { 0 }, 6 },
 	{ "rifle",        0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0,     TW_FAR,  80 }, TW_SEC_SHOT,     { TW_KIND_HITSCAN, 0, 0, 0, 0, 0, 0.04f, 2000, 80 }, 10 },
-	{ "vaporizer",    0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0,     TW_FAR, 150 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0, TW_FAR, 20 }, 10 },
+	{ "vaporizer",    TW_PIERCE,                         { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0,     TW_FAR, 150 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0, TW_FAR, 20 }, 10 },
 	{ "hagar",        0,                                 { TW_KIND_PROJ,      2200,    0,    0,    0,   65,  0,     TW_FAR,  25 }, TW_SEC_LOAD,     { 0 }, 1 },
 	{ "seeker",       TW_NO_SWITCH_TO,                   { TW_KIND_PROJ,      5000,    0,    0,    0,    0,  0,     TW_FAR,   0 }, TW_SEC_SHOT,     { TW_KIND_BALLISTIC, 3000, 1000, 0, 0, 100, 0.4f, 300, 15 }, 1 },
 	{ "devastator",   TW_GUIDED | TW_ONE_PER_PRESS,      { TW_KIND_PROJ,      1000,    0, 1300, 1300,  110,  0,     TW_FAR,  80 }, TW_SEC_DETONATE, { 0 }, 4 },
@@ -115,7 +116,7 @@ static const touch_wep_t touch_weapons[] =
 	// Overkill: every secondary is a blaster shot.
 	{ "okhmg",        0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0.03f, TW_FAR,  30 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0, TW_FAR, 20 }, 1 },
 	{ "okmachinegun", 0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0.03f, TW_FAR,  25 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0, TW_FAR, 20 }, 1 },
-	{ "oknex",        0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0,     TW_FAR, 100 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0, TW_FAR, 20 }, 10 },
+	{ "oknex",        TW_PIERCE,                         { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0,     TW_FAR, 100 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0, TW_FAR, 20 }, 10 },
 	{ "okrpc",        0,                                 { TW_KIND_PROJ,      2500,    0, 5000,10000,  300,  0,     TW_FAR, 150 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0, TW_FAR, 20 }, 10 },
 	{ "okshotgun",    0,                                 { TW_KIND_HITSCAN,      0,    0,    0,    0,    0,  0.07f, 1200,   170 }, TW_SEC_SHOT,     { TW_KIND_PROJ, 6000, 0, 0, 0, 60, 0, TW_FAR, 20 }, 3 },
 };
@@ -765,6 +766,83 @@ static qbool TouchWep_ShouldSwitch(int cur_rank, qbool cur_can_shoot, int cand_r
 }
 
 // ---------------------------------------------------------------------------
+// Teammates
+// ---------------------------------------------------------------------------
+
+#define TW_MATE_NONE  0
+#define TW_MATE_LINE  1 // on the line of the shot, before the enemy (or anywhere on it for a piercing shot)
+#define TW_MATE_BLAST 2 // inside the blast at the impact point
+#define TW_MATE_MARGIN 16.0f
+
+static float TouchWep_BoxGap(const float p[3], const float bmin[3], const float bmax[3]);
+
+// Ray from o along unit d into an axis-aligned box: the entry distance.
+static qbool TouchWep_RayBox(const float o[3], const float d[3], const float bmin[3], const float bmax[3], float *tnear)
+{
+	float t0 = 0, t1 = 1e9f;
+	int k;
+	for (k = 0; k < 3; k++)
+	{
+		if (fabs(d[k]) < 1e-6f)
+		{
+			if (o[k] < bmin[k] || o[k] > bmax[k])
+				return false;
+		}
+		else
+		{
+			float inv = 1.0f / d[k], a = (bmin[k] - o[k]) * inv, b = (bmax[k] - o[k]) * inv;
+			if (a > b)
+			{
+				float tmp = a;
+				a = b;
+				b = tmp;
+			}
+			t0 = a > t0 ? a : t0;
+			t1 = b < t1 ? b : t1;
+			if (t0 > t1)
+				return false;
+		}
+	}
+	*tnear = t0;
+	return true;
+}
+
+// Whether a shot of fire f (pierce: it goes on through players) from eye
+// along dir at an enemy target_dist away, meeting it at impact, would hit
+// or catch a teammate whose box is bmin..bmax. The line is widened by the
+// shot's spread at that distance; a lob is judged by its blast only.
+static int TouchWep_MateBlocks(const touch_wep_fire_t *f, qbool pierce, const float eye[3], const float dir[3], float target_dist, const float impact[3],
+	const float bmin[3], const float bmax[3])
+{
+	float t, pad, lo[3], hi[3], c[3];
+	int k;
+	if (!f || f->kind == TW_KIND_NONE)
+		return TW_MATE_NONE;
+	if (f->kind != TW_KIND_BALLISTIC)
+	{
+		for (k = 0; k < 3; k++)
+		{
+			lo[k] = bmin[k];
+			hi[k] = bmax[k];
+		}
+		// widened by half the spread cone at the box's own distance
+		for (k = 0; k < 3; k++)
+			c[k] = 0.5f * (bmin[k] + bmax[k]) - eye[k];
+		pad = 4 + 0.5f * f->spread * sqrt(tw_dot(c, c));
+		for (k = 0; k < 3; k++)
+		{
+			lo[k] -= pad;
+			hi[k] += pad;
+		}
+		if (TouchWep_RayBox(eye, dir, lo, hi, &t) && (pierce || t < target_dist))
+			return TW_MATE_LINE;
+	}
+	if (f->splash > 0 && f->kind != TW_KIND_HITSCAN && f->kind != TW_KIND_BEAM && TouchWep_BoxGap(impact, bmin, bmax) < f->splash + TW_MATE_MARGIN)
+		return TW_MATE_BLAST;
+	return TW_MATE_NONE;
+}
+
+// ---------------------------------------------------------------------------
 // Devastator detonation
 // ---------------------------------------------------------------------------
 
@@ -1115,6 +1193,70 @@ static float TouchWep_ExpectedDPS(const char *netname, float dist, int mclass)
 		return v[4];
 	}
 	return -1;
+}
+
+// Share (0..1) of the weapon's best expected DPS against this motion class
+// that it has at this distance; -1 when the weapon is not in the table.
+static float TouchWep_DPSShare(const char *netname, float dist, int mclass)
+{
+	float top = 0, d;
+	int k;
+	for (k = 0; k < 5; k++)
+	{
+		float v = TouchWep_ExpectedDPS(netname, touch_wep_dps_dist[k], mclass);
+		if (v < 0)
+			return -1;
+		if (v > top)
+			top = v;
+	}
+	d = TouchWep_ExpectedDPS(netname, dist, mclass);
+	return top > 0 ? d / top : 0;
+}
+
+// ---------------------------------------------------------------------------
+// Several enemies: which one first
+// ---------------------------------------------------------------------------
+
+// What the choice between several visible enemies looks at. The angle from
+// the crosshair decides; these shift it by at most TW_PRIO_CAP degrees.
+typedef struct touch_wep_prio_s
+{
+	float dist;        // eye to the enemy
+	float dps_share;   // TouchWep_DPSShare of the weapon in hand, -1 unknown
+	qbool facing;      // looking toward the player
+	float range_rate;  // units/s away from the player (< 0 closing in)
+	qbool instant;     // the weapon in hand hits at once (hitscan, beam)
+	float dealt;       // damage done to it in the last few seconds
+	int group;         // other enemies near enough to share a blast (splash weapon)
+} touch_wep_prio_t;
+
+#define TW_PRIO_CAP        2.5f   // degrees, either way
+#define TW_PRIO_THREAT_DIST 1200.0f
+#define TW_PRIO_REACH      1000.0f // beyond this a fleeing enemy is out of a projectile's reach
+#define TW_PRIO_SPEED      150.0f  // units/s that count as closing in or running away
+#define TW_PRIO_HURT       20.0f   // damage that marks an enemy as hurt
+
+// Degrees by which an enemy counts as nearer the crosshair than it is:
+// more for one the weapon does more damage to (+-1), one facing the player
+// up close (+1) or rushing in (+0.5), one already hurt (+1), a group for a
+// splash weapon (+0.5 each other enemy, up to 3); less for one running out
+// of a projectile's reach (-1.5).
+static float TouchWep_PriorityBonus(const touch_wep_prio_t *p)
+{
+	float b = 0;
+	if (p->dps_share >= 0)
+		b += 2 * (p->dps_share - 0.5f);
+	if (p->facing && p->dist < TW_PRIO_THREAT_DIST)
+		b += 1;
+	if (p->range_rate < -TW_PRIO_SPEED)
+		b += 0.5f;
+	if (p->dealt >= TW_PRIO_HURT)
+		b += 1;
+	if (p->group > 0)
+		b += 0.5f * (p->group < 3 ? p->group : 3);
+	if (!p->instant && p->range_rate > TW_PRIO_SPEED && p->dist > TW_PRIO_REACH)
+		b -= 1.5f;
+	return b > TW_PRIO_CAP ? TW_PRIO_CAP : b < -TW_PRIO_CAP ? -TW_PRIO_CAP : b;
 }
 
 // Seconds a switch costs before the new weapon fires: the old weapon's
