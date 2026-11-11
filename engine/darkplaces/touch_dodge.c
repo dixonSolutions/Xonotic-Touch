@@ -109,7 +109,7 @@ static struct
 	const char *blocked_said;
 	// per edict: velocities derived from positions, for projectiles that send
 	// none; the frame it was first seen (reaction); counted as a threat
-	struct { vec3_t org; double time; int ent; int first_frame, danger_frame; qbool threat, dodged, no_escape; } track[TRACK_MAX];
+	struct { vec3_t org; double time, first_time; int ent; int first_frame, danger_frame; qbool threat, dodged, no_escape; } track[TRACK_MAX];
 	int frame;
 	double cost_sum;
 	int cost_frames;
@@ -261,6 +261,7 @@ static void proj_velocity(prvm_prog_t *prog, prvm_edict_t *ed, int n, const vec3
 	if (td.track[k].ent != n || host.realtime - td.track[k].time > 0.5)
 	{
 		td.track[k].first_frame = td.frame;
+		td.track[k].first_time = host.realtime;
 		td.track[k].danger_frame = -1;
 		td.track[k].threat = td.track[k].dodged = td.track[k].no_escape = false;
 	}
@@ -528,7 +529,14 @@ void TouchDodge_Frame(void)
 					VectorCopy(org, hz.org[hz.n++]);
 				continue;
 			}
-			if (speed < 50 || DotProduct(vel, to) <= 0 || dist > speed * (window + lead + 0.2f))
+			if (kind->nade)
+			{
+				// it blows where it is, flying, rolling or lying: near enough
+				// to reach, not only coming this way
+				if (dist > kind->radius + 100 + speed * (window + lead))
+					continue;
+			}
+			else if (speed < 50 || DotProduct(vel, to) <= 0 || dist > speed * (window + lead + 0.2f))
 				continue; // still, flying away, or not here within the window
 			if (!visible(eye, org))
 				continue; // a wall between: never through one
@@ -556,6 +564,14 @@ void TouchDodge_Frame(void)
 			pr.accel = kind->accel;
 			pr.max_speed = kind->max_speed;
 			pr.prox = kind->prox;
+			pr.life = -1;
+			if (kind->nade)
+			{
+				// its fuse: at most TD_NADE_FUSE_SEEN from when it was first seen
+				int tk = i & (TRACK_MAX - 1);
+				double age = td.track[tk].ent == i ? now - td.track[tk].first_time : 0;
+				pr.life = max(0.1f, TD_NADE_FUSE_SEEN - (float)age - lead);
+			}
 			// the later it is seen, the less sure where it and the player
 			// will be: a wider berth
 			pr.margin = lead * LEAD_MARGIN;

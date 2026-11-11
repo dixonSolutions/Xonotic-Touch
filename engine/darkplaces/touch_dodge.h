@@ -72,6 +72,7 @@ typedef struct td_proj_s
 	float max_speed;
 	float prox;         // lies where it lands and explodes when the player comes this close (0: no)
 	float margin;       // extra uncertainty, units, on top of TD_SPLASH_MARGIN and the size (a late view of it)
+	float life;         // blows this long from now wherever it is (< 0: not on a timer); a nade
 } td_proj_t;
 
 // What a stock weapon's projectile does (the 0.8.6 / current stock balance;
@@ -91,34 +92,68 @@ typedef struct td_proj_s
 #define TD_KIND_RPC              60
 #define TD_KIND_MINE             9
 #define TD_KIND_SEEKER_MISSILE   12
+// Offhand grenades (the nades mutator): the ones that hurt or hold an enemy.
+// Translocate, spawn, veil, monster and ammo ones do neither and are left alone.
+#define TD_KIND_NADE             71
+#define TD_KIND_NADE_BURN        72
+#define TD_KIND_NADE_NAPALM      73
+#define TD_KIND_NADE_NAPALM_BURN 74
+#define TD_KIND_NADE_ICE         76
+#define TD_KIND_NADE_ICE_BURN    77
+#define TD_KIND_NADE_HEAL        80
+#define TD_KIND_NADE_HEAL_BURN   81
+#define TD_KIND_NADE_ENTRAP      84
+#define TD_KIND_NADE_ENTRAP_BURN 85
+#define TD_KIND_NADE_DARK        90
+#define TD_KIND_NADE_DARK_BURN   91
+// A thrown nade has cooked at least a second of its 3.5 s fuse (stock), and
+// mostly a little more: it is judged to blow this long after it is first
+// seen (sooner is no harm: the player just steps out earlier).
+#define TD_NADE_FUSE_SEEN        2.0f
 
 typedef struct td_kind_s
 {
 	int kind; const char *name; float damage, edge, radius, size; int world_blast;
 	float bounce, fuse, homing, accel, max_speed, prox;
+	int nade;           // on a fuse from its throw (td_proj_t.life), and dangerous lying too
 } td_kind_t;
 
-// kind, name, damage, edge, radius, size, world_blast, bounce, fuse, homing, accel, max_speed, prox
+// kind, name, damage, edge, radius, size, world_blast, bounce, fuse, homing, accel, max_speed, prox, nade
 static const td_kind_t td_kinds[] = {
 	// leaves at 1000 u/s, reaching 1300 in a quarter of a second
-	{ TD_KIND_ROCKET,           "rocket",         80,  40,    110, 4,  1, 0,    -1,   0,     1300, 1300, 0 },
-	{ TD_KIND_GRENADE,          "mortar grenade", 55,  25,    120, 3,  1, 0,    -1,   0,     0,    0,    0 },
+	{ TD_KIND_ROCKET,           "rocket",         80,  40,    110, 4,  1, 0,    -1,   0,     1300, 1300, 0, 0 },
+	{ TD_KIND_GRENADE,          "mortar grenade", 55,  25,    120, 3,  1, 0,    -1,   0,     0,    0,    0, 0 },
 	// bounces, blows 0.5 s after the first bounce or on a player
-	{ TD_KIND_GRENADE_BOUNCING, "mortar grenade", 55,  30,    120, 3,  0, 0.5f, 0.5f, 0,     0,    0,    0 },
-	{ TD_KIND_ELECTRO_BEAM,     "electro bolt",   40,  20,    100, 3,  1, 0,    -1,   0,     0,    0,    0 },
+	{ TD_KIND_GRENADE_BOUNCING, "mortar grenade", 55,  30,    120, 3,  0, 0.5f, 0.5f, 0,     0,    0,    0, 0 },
+	{ TD_KIND_ELECTRO_BEAM,     "electro bolt",   40,  20,    100, 3,  1, 0,    -1,   0,     0,    0,    0, 0 },
 	// bounces; blows on a player
-	{ TD_KIND_ELECTRO,          "electro orb",    30,  15,    150, 3,  0, 0.3f, -1,   0,     0,    0,    0 },
-	{ TD_KIND_HAGAR,            "hagar rocket",   25,  12.5f, 65,  2,  1, 0,    -1,   0,     0,    0,    0 },
-	{ TD_KIND_HAGAR_BOUNCING,   "hagar rocket",   35,  17.5f, 80,  2,  1, 0,    -1,   0,     0,    0,    0 },
-	{ TD_KIND_CRYLINK,          "crylink",        10,  5,     80,  2,  1, 0,    -1,   0,     0,    0,    0 },
-	{ TD_KIND_CRYLINK_BOUNCING, "crylink",        10,  5,     80,  2,  1, 0,    -1,   0,     0,    0,    0 },
-	{ TD_KIND_ARC_BOLT,         "arc bolt",       25,  12.5f, 65,  2,  1, 0,    -1,   0,     0,    0,    0 },
-	{ TD_KIND_FIREBALL,         "fireball",       200, 50,    200, 16, 1, 0,    -1,   0,     0,    0,    0 },
-	{ TD_KIND_RPC,              "rpc rocket",     150, 50,    300, 4,  1, 0,    -1,   0,     0,    0,    0 },
+	{ TD_KIND_ELECTRO,          "electro orb",    30,  15,    150, 3,  0, 0.3f, -1,   0,     0,    0,    0, 0 },
+	{ TD_KIND_HAGAR,            "hagar rocket",   25,  12.5f, 65,  2,  1, 0,    -1,   0,     0,    0,    0, 0 },
+	{ TD_KIND_HAGAR_BOUNCING,   "hagar rocket",   35,  17.5f, 80,  2,  1, 0,    -1,   0,     0,    0,    0, 0 },
+	{ TD_KIND_CRYLINK,          "crylink",        10,  5,     80,  2,  1, 0,    -1,   0,     0,    0,    0, 0 },
+	{ TD_KIND_CRYLINK_BOUNCING, "crylink",        10,  5,     80,  2,  1, 0,    -1,   0,     0,    0,    0, 0 },
+	{ TD_KIND_ARC_BOLT,         "arc bolt",       25,  12.5f, 65,  2,  1, 0,    -1,   0,     0,    0,    0, 0 },
+	{ TD_KIND_FIREBALL,         "fireball",       200, 50,    200, 16, 1, 0,    -1,   0,     0,    0,    0, 0 },
+	{ TD_KIND_RPC,              "rpc rocket",     150, 50,    300, 4,  1, 0,    -1,   0,     0,    0,    0, 0 },
 	// homes: the stock turn rate, per server frame (taken as a TD_STEP)
-	{ TD_KIND_SEEKER_MISSILE,   "seeker missile", 30,  10,    80,  4,  1, 0,    -1,   0.65f, 1400, 1300, 0 },
+	{ TD_KIND_SEEKER_MISSILE,   "seeker missile", 30,  10,    80,  4,  1, 0,    -1,   0.65f, 1400, 1300, 0, 0 },
 	// lands, then blows 0.1 - 0.3 s after an enemy comes within 125
-	{ TD_KIND_MINE,             "mine",           40,  20,    175, 4,  0, 0,    -1,   0,     0,    0,    125 },
+	{ TD_KIND_MINE,             "mine",           40,  20,    175, 4,  0, 0,    -1,   0,     0,    0,    125, 0 },
+	// nades: bounce, and blow on their fuse; the damage of each kind at the
+	// stock radius, or what holding still in it is worth (ice freezes, entrap
+	// slows, darkness blinds, heal hurts a foe)
+	{ TD_KIND_NADE,             "nade",           225, 90,    300, 8,  0, 0.5f, -1,   0,     0,    0,    0,   1 },
+	{ TD_KIND_NADE_BURN,        "nade",           225, 90,    300, 8,  0, 0.5f, -1,   0,     0,    0,    0,   1 },
+	{ TD_KIND_NADE_NAPALM,      "napalm nade",    60,  30,    300, 8,  0, 0.5f, -1,   0,     0,    0,    0,   1 },
+	{ TD_KIND_NADE_NAPALM_BURN, "napalm nade",    60,  30,    300, 8,  0, 0.5f, -1,   0,     0,    0,    0,   1 },
+	{ TD_KIND_NADE_ICE,         "ice nade",       100, 100,   300, 8,  0, 0.5f, -1,   0,     0,    0,    0,   1 },
+	{ TD_KIND_NADE_ICE_BURN,    "ice nade",       100, 100,   300, 8,  0, 0.5f, -1,   0,     0,    0,    0,   1 },
+	{ TD_KIND_NADE_HEAL,        "heal nade",      40,  40,    300, 8,  0, 0.5f, -1,   0,     0,    0,    0,   1 },
+	{ TD_KIND_NADE_HEAL_BURN,   "heal nade",      40,  40,    300, 8,  0, 0.5f, -1,   0,     0,    0,    0,   1 },
+	{ TD_KIND_NADE_ENTRAP,      "entrap nade",    40,  40,    300, 8,  0, 0.5f, -1,   0,     0,    0,    0,   1 },
+	{ TD_KIND_NADE_ENTRAP_BURN, "entrap nade",    40,  40,    300, 8,  0, 0.5f, -1,   0,     0,    0,    0,   1 },
+	{ TD_KIND_NADE_DARK,        "darkness nade",  30,  30,    300, 8,  0, 0.5f, -1,   0,     0,    0,    0,   1 },
+	{ TD_KIND_NADE_DARK_BURN,   "darkness nade",  30,  30,    300, 8,  0, 0.5f, -1,   0,     0,    0,    0,   1 },
 };
 
 static const td_kind_t *TouchDodge_Kind(int kind)
@@ -405,6 +440,15 @@ static void TouchDodge_FlyAt(tr_world_t *w, const td_proj_t *pr, float seconds, 
 		}
 		memcpy(f->pos[i], next, sizeof(f->pos[i]));
 		memcpy(o, next, sizeof(o));
+		if (pr->life >= 0 && (i + 1) * TD_STEP >= pr->life)
+		{
+			// its fuse runs out here
+			memcpy(f->impact, next, sizeof(f->impact));
+			f->impact_step = i;
+			f->blast = 1;
+			f->steps = i + 1;
+			return;
+		}
 		if (bounced >= 0 && pr->fuse >= 0 && (i - bounced + 1) * TD_STEP >= pr->fuse)
 		{
 			memcpy(f->impact, next, sizeof(f->impact));
@@ -426,9 +470,10 @@ static float TouchDodge_Damage(const td_proj_t *pr, const td_flight_t *f, const 
 {
 	int i;
 	*when = -1;
-	for (i = 0; i < f->steps; i++)
+	// through the box (with the projectile's own size) on the way: a hit;
+	// a nade bounces off a player and only blows on its fuse
+	for (i = 0; i < f->steps && pr->life < 0; i++)
 	{
-		// through the box (with the projectile's own size) on the way: a hit
 		if (td_box_dist(f->pos[i], path[i], p->mins, p->maxs) <= pr->size + pr->margin * 0.4f)
 		{
 			*when = (i + 1) * TD_STEP;

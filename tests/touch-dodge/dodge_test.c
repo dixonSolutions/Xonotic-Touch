@@ -241,6 +241,7 @@ static td_proj_t shot(int kind, float x, float y, float z, float vx, float vy, f
 	p.radius = k->radius;
 	p.size = k->size;
 	p.world_blast = k->world_blast;
+	p.life = -1;
 	return p;
 }
 
@@ -451,6 +452,7 @@ static td_proj_t shot_full(int kind, float x, float y, float z, float vx, float 
 	p.accel = k->accel;
 	p.max_speed = k->max_speed;
 	p.prox = k->prox;
+	p.life = -1;
 	return p;
 }
 
@@ -540,6 +542,27 @@ static void test_refined(void)
 	td_player_path(&p, &m, &plan, 16, path);
 	printf("  air strafe model: %.0f sideways in 0.4 s\n", path[15][0]);
 	CHECK(path[15][0] < 45, "in the air: a strafe moves little (air strafe speed 100)");
+
+	// a nade lying 120 units off with 0.8 s of fuse left: get out of its 300
+	// radius; standing there takes its blast
+	arena();
+	w = world();
+	p = standing(0, 0);
+	m = xonotic_move(0);
+	r = shot_full(TD_KIND_NADE, 120, 0, 8, 0, 0, 0, 800);
+	r.life = 0.8f;
+	go = TouchDodge_Choose(&w, &r, &p, &m, still, 1.2f, 10, &c);
+	printf("  nade lying beside the player, 0.8 s of fuse: carry on %.0f, %s -> %.0f\n", c.base_damage, c.chosen.name, c.damage);
+	CHECK(c.base_damage > 150, "nade lying beside the player: its blast standing still");
+	CHECK(go && c.damage < c.base_damage * 0.5f && c.chosen.dir[0] < 0, "nade lying beside the player: an escape away from it halves it");
+	// a nade flying through the player bounces off: only its fuse counts
+	r = shot_full(TD_KIND_NADE, 0, -400, 40, 0, 900, 0, 0);
+	r.life = 2.0f;
+	go = TouchDodge_Choose(&w, &r, &p, &m, still, 1.2f, 10, &c);
+	CHECK(c.base_damage == 0, "nade passing through with its fuse far off: no hit");
+	// the kinds that neither hurt nor hold an enemy are not dodged
+	CHECK(TouchDodge_Kind(78) == NULL && TouchDodge_Kind(79) == NULL && TouchDodge_Kind(86) == NULL && TouchDodge_Kind(88) == NULL,
+		"translocate, spawn, veil and ammo nades are not dodged");
 
 	// the blast margin: just outside the radius still counts as the edge
 	r = shot(TD_KIND_ROCKET, 0, 0, 0, 0, 0, 0, 0);
