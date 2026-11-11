@@ -331,6 +331,42 @@ static qbool TouchWep_AimPoint(const touch_wep_fire_t *f, const float rel[3], co
 	return true;
 }
 
+// How fast the part of the lead that comes from the target's motion may
+// move: TW_LEAD_SLEW times the target's own speed, and at least
+// TW_LEAD_SLEW_MIN units per second. A strafe that reverses flips that part
+// from one side of the body to the other within a few frames; slewed, the
+// aim point slides across the body instead of jumping, at an angular speed
+// the aim pull can follow, while a steady strafe's lead is untouched.
+#define TW_LEAD_SLEW      2.0f
+#define TW_LEAD_SLEW_MIN  100.0f
+
+// Move cur toward want by at most the slew allowed over dt seconds for a
+// target moving at target_speed. The slewed lead is never longer than the
+// wanted one: it may only lag in direction, so a lead that collapses (the
+// target stops, or one bad velocity sample passes) shrinks at once.
+static void TouchWep_LeadSlew(float cur[3], const float want[3], float target_speed, float dt)
+{
+	float d[3], len, step, cl, wl;
+	int i;
+	for (i = 0; i < 3; i++)
+		d[i] = want[i] - cur[i];
+	len = sqrt(tw_dot(d, d));
+	step = (TW_LEAD_SLEW * target_speed + TW_LEAD_SLEW_MIN) * (dt > 0 ? dt : 0);
+	if (len <= step || len < 1e-4f)
+	{
+		for (i = 0; i < 3; i++)
+			cur[i] = want[i];
+		return;
+	}
+	for (i = 0; i < 3; i++)
+		cur[i] += d[i] * (step / len);
+	cl = sqrt(tw_dot(cur, cur));
+	wl = sqrt(tw_dot(want, want));
+	if (cl > wl && cl > 1e-4f)
+		for (i = 0; i < 3; i++)
+			cur[i] *= wl / cl;
+}
+
 // ---------------------------------------------------------------------------
 // When to pull the trigger
 // ---------------------------------------------------------------------------

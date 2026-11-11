@@ -941,7 +941,7 @@ static cachepic_t *skin_pic(const char *name)
 {
 	char path[128];
 	cachepic_t *pic;
-	const char *skin = Cvar_VariableString(&cvars_all, "hud_skin", 0);
+	const char *skin = Cvar_VariableString(&cvars_all, "hud_skin", ~0);
 	if (skin && skin[0])
 	{
 		dpsnprintf(path, sizeof(path), "gfx/hud/%s/%s", skin, name);
@@ -1449,8 +1449,8 @@ static void pill_release(finger_t *f)
 		break;
 	case ROLE_PAUSE:
 		TouchHUD_ReleaseAll();
-		if (Cvar_VariableValue(&cvars_all, "menu_gamemenu", 0) && !cls.demoplayback
-			&& Cvar_VariableValue(&cvars_all, "_menu_gamemenu_dialog_available", 0))
+		if (Cvar_VariableValue(&cvars_all, "menu_gamemenu", ~0) && !cls.demoplayback
+			&& Cvar_VariableValue(&cvars_all, "_menu_gamemenu_dialog_available", ~0))
 			Cbuf_AddText(cmd_local, "\nmenu_showgamemenudialog\n");
 		else
 			Cbuf_AddText(cmd_local, "\ntogglemenu 1\n");
@@ -1458,6 +1458,79 @@ static void pill_release(finger_t *f)
 	default:
 		break;
 	}
+}
+
+// ---------------------------------------------------------------------------
+// The loading screen: a join waiting for the server, downloading or loading
+// the map, or a map change. It hides the menu, so Escape there opened a menu
+// nobody could see, and a finger had nothing to press: a server that never
+// answered, or a slow download, kept a touch player waiting with no way out.
+// On a touchscreen a CANCEL pill sits under the progress, and it and Back
+// (Escape) leave for the main menu.
+// ---------------------------------------------------------------------------
+static int loading_cancel_src;   // finger that went down on CANCEL
+
+extern qbool scr_loading;
+static qbool loading_cancellable(void)
+{
+	return scr_loading && touch_device()
+		&& (cls.connect_trying || (cls.state == ca_connected && cls.signon < SIGNONS));
+}
+
+static void loading_pill(float *cx, float *cy, float *hx, float *hy)
+{
+	widget_half(0.085f, 3.2f, hx, hy);
+	*cx = ui_w() * 0.5f;
+	*cy = ui_h() * 0.82f;
+}
+
+static void loading_cancel(void)
+{
+	Con_Printf("Touch: join cancelled from the loading screen\n");
+	loading_cancel_src = 0;
+	// disconnect alone does not stop a connect the server has not answered yet
+	cls.connect_trying = false;
+	Cbuf_AddText(cmd_local, "\ndisconnect\ntogglemenu 1\n");
+}
+
+qbool TouchHUD_LoadingBack(void)
+{
+	if (!loading_cancellable())
+		return false;
+	loading_cancel();
+	return true;
+}
+
+static qbool loading_finger(int id, qbool down, float nx, float ny)
+{
+	float cx, cy, hx, hy, px = nx * ui_w(), py = ny * ui_h();
+	qbool on;
+	if (!loading_cancellable())
+	{
+		loading_cancel_src = 0;
+		return false;
+	}
+	loading_pill(&cx, &cy, &hx, &hy);
+	on = fabs(px - cx) <= hx * 1.15f && fabs(py - cy) <= hy * 1.3f;
+	if (down && on)
+		loading_cancel_src = id;
+	else if (!down && id == loading_cancel_src)
+	{
+		if (on)
+			loading_cancel();
+		loading_cancel_src = 0;
+	}
+	return true;
+}
+
+void TouchHUD_DrawLoading(void)
+{
+	float cx, cy, hx, hy;
+	if (!loading_cancellable())
+		return;
+	shapes_probe();
+	loading_pill(&cx, &cy, &hx, &hy);
+	widget_chrome_pill(cx, cy, hx, hy, "CANCEL", loading_cancel_src != 0, 0.95f, C_DANGER);
 }
 
 // ---------------------------------------------------------------------------
@@ -1514,27 +1587,31 @@ qbool TouchHUD_FingerIsPointer(void)
 	return cursor_was && cursor_finger_pointer;
 }
 
-void TouchHUD_CursorFinger(int id, qbool down, float nx, float ny)
+qbool TouchHUD_CursorFinger(int id, qbool down, float nx, float ny)
 {
+	// The loading screen takes every finger: the menu under it is not drawn,
+	// and a tap there used to press whatever of it lay under the finger.
+	if (loading_finger(id, down, nx, ny))
+		return true;
 	if (!cursor_wanted() || id <= 0)
-		return;
+		return false;
 	if (down)
 	{
 		float px = nx * ui_w(), py = ny * ui_h();
 		int role;
 		if (cursor_src)
-			return;
+			return false;
 		role = cursor_pill_at(px, py);
 		if (role != ROLE_NONE)
 		{
 			if (cursor_pill_src)
-				return;
+				return false;
 			memset(&cursor_pill, 0, sizeof(cursor_pill));
 			cursor_pill.role = role;
 			cursor_pill.down_x = cursor_pill.last_x = px;
 			cursor_pill.down_y = cursor_pill.last_y = py;
 			cursor_pill_src = id;
-			return;
+			return false;
 		}
 		// The press waits for one frame drawn with the landing point, not for
 		// the finger to keep still: a finger on glass never quite does.
@@ -1561,6 +1638,7 @@ void TouchHUD_CursorFinger(int id, qbool down, float nx, float ny)
 		cursor_pill_src = 0;
 		pill_release(&cursor_pill);
 	}
+	return false;
 }
 
 static void cursor_end(void)
