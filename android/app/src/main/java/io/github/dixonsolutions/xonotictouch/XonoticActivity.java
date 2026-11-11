@@ -414,7 +414,7 @@ public final class XonoticActivity extends SDLActivity {
         }
         if (!asked && !AppUpdater.onUnmeteredNetwork(this)) {
             bridge.publishPaused(installed, update.version, updater.cachedPercent(update),
-                    getString(R.string.update_status_waiting_wifi));
+                    HostRes.string(this, "update_status_waiting_wifi"));
             return;
         }
         if (!downloading.compareAndSet(false, true)) {
@@ -433,7 +433,7 @@ public final class XonoticActivity extends SDLActivity {
                 Log.w("XonoticTouch", "Update download stopped", e);
                 if (updater.cachedBytes(update) > 0) {
                     bridge.publishPaused(installed, update.version, updater.cachedPercent(update),
-                            getString(R.string.update_status_paused));
+                            HostRes.string(this, "update_status_paused"));
                 } else {
                     bridge.publishInstallFailed(installed, update.version, String.valueOf(e.getMessage()));
                 }
@@ -537,7 +537,7 @@ public final class XonoticActivity extends SDLActivity {
                 bridge.publishReady(installed, found.version);
             } else if (updater.cachedBytes(found) > 0) {
                 bridge.publishPaused(installed, found.version, updater.cachedPercent(found),
-                        getString(R.string.update_status_paused));
+                        HostRes.string(this, "update_status_paused"));
             } else {
                 bridge.publishAvailable(installed, found);
             }
@@ -578,7 +578,7 @@ public final class XonoticActivity extends SDLActivity {
             if (!updater.installCached(update, () -> {
                         failed.set(true);
                         bridge.publishInstallFailed(installed, latest,
-                                getString(R.string.update_status_failed));
+                                HostRes.string(this, "update_status_failed"));
                     })) {
                 bridge.publishNeedsPermission(installed, latest);
                 return;

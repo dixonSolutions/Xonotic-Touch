@@ -84,6 +84,14 @@ jobs:
       - name: Check updater selection and configuration
         run: bash scripts/test-andysu-release.sh
 
+  host-resources:
+    name: No R ids in app code (AndySU hosts keep their own resource table)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check app code resolves resources by name
+        run: bash scripts/test-host-resources.sh
+
   upstream-sync:
     name: Upstream sync tool
     runs-on: ubuntu-latest
