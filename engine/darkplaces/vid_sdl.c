@@ -29,6 +29,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "touch_hud.h"
 #include "touch_vote.h"
 #include "screen.h"
+#include "touch_android.h"
 
 #ifndef __IPHONEOS__
 #ifdef MACOSX
@@ -1038,6 +1039,29 @@ qbool VID_SDL_HasTouchDevices(void)
 	return false;
 }
 
+// Touch: inside a long loading frame the events wait in SDL's queue until it
+// is over. A finger down in the normalised rectangle, or Back / Escape,
+// queued meanwhile: true, and the fingers and keys are dropped from the queue
+// (touch_hud.c, CANCEL on the loading screen).
+qbool VID_TouchQueuedTap(float x0, float y0, float x1, float y1)
+{
+	SDL_Event ev[64];
+	int i, n;
+	SDL_PumpEvents();
+	n = SDL_PeepEvents(ev, 64, SDL_PEEKEVENT, SDL_KEYDOWN, SDL_FINGERMOTION);
+	for (i = 0; i < n; i++)
+	{
+		if ((ev[i].type == SDL_KEYDOWN && (ev[i].key.keysym.sym == SDLK_AC_BACK || ev[i].key.keysym.sym == SDLK_ESCAPE))
+			|| (ev[i].type == SDL_FINGERDOWN && ev[i].tfinger.x >= x0 && ev[i].tfinger.x <= x1 && ev[i].tfinger.y >= y0 && ev[i].tfinger.y <= y1))
+		{
+			SDL_FlushEvents(SDL_FINGERDOWN, SDL_FINGERMOTION);
+			SDL_FlushEvents(SDL_KEYDOWN, SDL_KEYUP);
+			return true;
+		}
+	}
+	return false;
+}
+
 // Keys that say someone is playing on a keyboard: letters, digits,
 // punctuation, arrows, keypad, space / enter / tab / backspace and the
 // modifiers. Not Escape or Back (a phone's back gesture arrives as a key),
@@ -1688,6 +1712,15 @@ void Sys_SDL_HandleEvents(void)
 			case SDL_APP_TERMINATING:
 				Host_SaveConfig(CONFIGFILENAME);
 				break;
+#ifdef __ANDROID__
+			case SDL_APP_DIDENTERBACKGROUND: // Touch: keep running, without drawing
+				memset(multitouch, 0, sizeof(multitouch));
+				TouchAndroid_Background(true);
+				break;
+			case SDL_APP_DIDENTERFOREGROUND:
+				TouchAndroid_Background(false);
+				break;
+#endif
 			case SDL_KEYDOWN:
 			case SDL_KEYUP:
 #ifdef DEBUGSDLEVENTS
@@ -2064,6 +2097,9 @@ void Sys_SDL_HandleEvents(void)
 	// one stray blur left the game ignoring every key and click.
 	vid_hasfocus = Sys_EM_PageFocused();
 #endif
+#ifdef __ANDROID__
+	TouchAndroid_AfterEvents(); // Touch: background, held map load, touch_netstate
+#endif
 	vid_activewindow = !vid_hidden && vid_hasfocus;
 
 	VID_UpdateMouseGrab();
@@ -2404,6 +2440,9 @@ void VID_Init (void)
 	SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
 #endif
 
+#ifdef __ANDROID__
+	TouchAndroid_Init(); // Touch: keep running in the background
+#endif
 	if (SDL_Init(SDL_INIT_VIDEO) < 0)
 		Sys_Error ("Failed to init SDL video subsystem: %s", SDL_GetError());
 	if (SDL_InitSubSystem(SDL_INIT_JOYSTICK) < 0)

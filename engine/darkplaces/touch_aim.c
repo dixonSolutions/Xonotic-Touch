@@ -390,8 +390,9 @@ static qbool is_spectator_slot(int n)
 {
 	int frags = cl.scores[n - 1].frags;
 	// Nexuiz-derived games mark spectators and out-of-game players this way
-	// (the engine's own trace code relies on it, cl_collision.c).
-	return frags == -666 || frags == -616;
+	// (the engine's own trace code relies on it, cl_collision.c); out of the
+	// round is -669 since Xonotic 0.8.6.
+	return frags == -666 || frags == -616 || frags == -669;
 }
 
 // Why this frame may not assist, or NULL when it may. The reason is printed

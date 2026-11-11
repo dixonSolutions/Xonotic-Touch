@@ -1858,8 +1858,8 @@ static void SCR_DrawScreen (void)
 		}
 		else
 			SCR_DrawLoadingScreen();
-		TouchHUD_DrawLoading(); // Touch: CANCEL on a touchscreen
 	}
+	TouchHUD_DrawLoading(); // Touch: CANCEL while joining, on a touchscreen
 
 	SCR_DrawConsole();
 	SCR_DrawInfobar();

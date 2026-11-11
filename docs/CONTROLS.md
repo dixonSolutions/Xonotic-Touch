@@ -80,22 +80,52 @@ feed and the chat feed each get a band that touches neither.
 | **CHAT** (top-right) | Tap → modal chat sheet: backlog, field, on-screen QWERTY | `say` / `say_team`; also the `touch_chat [team]` command for a hardware key |
 | **SCORE** (bottom-left) | Tap → full scoreboard, tap again to clear; Escape also clears | `+showscores` / `-showscores`; also the `touch_scores` command |
 | Mobile HUD | Health, armour and ammo as one group, top-left | Bars for the two that have a maximum; reserve rounds beside the clip for weapons that reload |
-| Respawn / join | Tap **HOP** | `+jump`; the prompts name the button, not a key — see below |
+| Respawn / join | Respawn: tap **HOP**. Join: hold **HOLD TO JOIN** while spectating | `+jump`; the prompts name the button, not a key — see below and [Spectating](#spectating) |
 | **i** (vote chip, top bar) | Right of CHAT, at the end of the top bar, while a vote waits for your answer, a red dot while it is new; tap → vote card — see [Votes](#votes) | `vote yes` / `vote no` / `vote abstain`, `impulse N` for the map vote |
 
 Prompts that would normally name a key name the on-screen control instead in a touch
-session: "You are dead, press **HOP** to respawn", "Press **HOP** to join", "Press
-**FIRE** to spectate". Only controls that are actually visible get named, and
+session: "You are dead, press **HOP** to respawn", "Press **JOIN** to join",
+"Press **FOLLOW** to spectate". Only controls that are actually visible get named, and
 commands with no touch control (gametype info) keep their key name.
 
-Observing or spectating, the controls map to the stock spectator keys: the
-stick flies (`+forward` and the rest), drag looks, **FIRE** (`+attack`)
-spectates the next player, **ALT** (`+attack2`) goes back to observing, the
-weapon strip cycles players, and **HOP** (`+jump`) joins. HOP is a plain button
-there: no hop latch, and auto-hop does not hold it while the stick moves, or the
-observer would join the moment they flew anywhere. A finger still on HOP when
-the join lands is spent on the join: the first life starts with jump up, and
-the latch waits for the next press.
+### Spectating
+
+Observing, following a player or out of the round, the play controls take the
+spectator meanings the server reads, and their labels say so. The same in a
+local match (the port's CSQC) and on any server (the engine HUD):
+
+| State | Where FIRE is | Where ALT is | Where HOP is | Where DUCK is | Stick and drag | JOIN |
+|-------|---------------|--------------|--------------|---------------|----------------|------|
+| Observing (free-fly) | **FOLLOW** (`+attack`): follow a player | — | **UP** (`+moveup`) | **DOWN** (`+movedown`) | fly and turn the camera | held |
+| Following a player | **NEXT** (`+attack`) | **PREV** (`weapprev`) | **FREE** (`+attack2`): back to free-fly | — | drag turns; no stick | held |
+| Out of the round, following (Clan Arena and the like) | **NEXT** | **PREV** | — | — | drag turns | — |
+| Out of the round, free-flying | **FOLLOW** | — | **UP** | **DOWN** | fly | — |
+
+- **JOIN** is a separate pill at the bottom middle, **HOLD TO JOIN**: it fills
+  while held and sends the join (`+jump`, what the server reads as "press jump
+  to join", team selection included) after 0.45 s, so a thumb resting there or
+  a quick tap never joins. Nothing else sends `+jump` while spectating, which
+  is why UP is `+moveup`, not jump. If the server does not take the join
+  (joining locked, teams full, spectate-only), the player is still spectating
+  3 s later and the pill reads **LOCKED** for 15 s; holding it again retries.
+- A look-zone tap does not fire while spectating (it would follow or skip a
+  player), and auto-shoot never fires.
+- The weapon strip is not drawn: the weapons are the followed player's, the
+  stock weapons panel shows them, and a row tap would send an impulse to the
+  spectator code. Following someone, their health, armour and ammo show
+  read-only. ALT fire, ZOOM, HOOK, WEP and the hop latch are not drawn; TURN
+  stays. The followed player's name is in the stock "Spectating:" line.
+- The stock prompts name the buttons in a local match: "Press **JOIN** to
+  join", "Press **FOLLOW** to spectate", "Press **NEXT** or **PREV** for next or
+  previous player".
+- MENU, CHAT, SCORE, CONSOLE and the vote chip stay. The COMMANDS tab of the
+  console still lists the spectator actions too.
+
+The state comes from the scoreboard: frags -666 is a spectator, -616 (0.8.6)
+or -669 (later builds) a player out of the round; following when the view is
+another player's. The table is `engine/darkplaces/touch_spectate.h`, checked
+by `scripts/test-touch-spectate.sh`; the port's CSQC follows it in
+`touch_spectate.qc` (from `spectatee_status` and the entity's spectator state).
 
 ### Weapon strip
 
@@ -177,16 +207,19 @@ console, the chat sheet) it waits, and shows when that closes.
 
 Tapping it opens a card over the match: who called the vote and what it is
 for, then a large row per choice: **Yes**, **No** and **Abstain**, with the
-live yes / no counts and your own answer marked. Tap a row to vote; the card
-stays open with your choice marked, and on a server that lets you change your
-mind (the stock default) another row changes it. When the vote ends the card
-shows the result for a moment, then goes with the chip; after you vote and
-close the card, the chip goes too. The card closes with its **x**, a tap
-outside it, or Back. The server does not send the time left of a called vote,
-so the card does not show one.
+live yes / no counts at the right. Tap a row to vote; the card stays open and
+the row you chose gets a green border (no row has one before you vote), and on
+a server that lets you change your mind (the stock default) another row
+changes it. There is no message line: when the vote ends the card's title
+reads how it ended (Accepted, Rejected, ...) for a moment, then the card goes
+with the chip; after you vote and close the card, the chip goes too. The card
+closes with its small **x** in the title row (its touch area stops above the
+first row), a tap outside it, or Back. The server does not send the time left
+of a called vote, so the card does not show one.
 
 At match end the same chip opens the map (or gametype) vote as a list ranked
-by votes, with the counts, your pick marked and the seconds left; tap one to
+by votes, with the counts and the seconds left, your pick with the same green
+border; tap one to
 vote. The full-screen vote screen stays and is tappable as before.
 
 Where the vote state comes from: the loaded CSQC's own vote globals
@@ -433,8 +466,9 @@ CSQC mirrors the value in `_touch_fire2_state` for tests and debugging.
 | Fireball, Hook, Porto, Tuba, Vaporizer | infinite | never |
 | Weapons from mutators | ready while `wr_checkammo2` allows | hidden otherwise |
 
-Unlimited ammo keeps every ammo-based secondary ready. Spectating another
-player, ALT is there and goes back to observing. Observing, or dead, it is not.
+Unlimited ammo keeps every ammo-based secondary ready. Observing, dead or
+spectating, ALT fire is not there; following a player, ALT's place is **PREV**
+([Spectating](#spectating)).
 
 **ZOOM** is contextual the same way (`touch_zoom_visible 2`, the default): it
 fades in while the weapon in hand has a scope — Vortex, Rifle, Vaporizer and
@@ -1010,6 +1044,11 @@ Main menu is stock Xonotic (Singleplayer / Multiplayer / Media / Settings / …)
     screen, so taps there no longer press it.
   - The connection drops (timeout, kick) with the game menu open: the main
     menu overview comes up rather than an empty background.
+  - Leaving the app (Home, another app, the screen off) is not a way out on
+    Android: the match, a join and its downloads carry on, and the player
+    comes back to the screen they left (the loading screen while the join
+    runs, the game once in). A local match pauses until the return.
+    `docs/ANDROID.md` "In the background".
   - The chat and console sheets have their own CLOSE buttons; the quick menu,
     the team selection, the server welcome dialog and the main menu's own
     dialogs close on Back (their close button is the small x in the title

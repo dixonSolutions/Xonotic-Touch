@@ -30,6 +30,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #endif
 #include "cl_video.h"
 #include "float.h"
+#include "touch_android.h" // Touch: background map load
 
 const char *svc_strings[128] =
 {
@@ -1155,6 +1156,10 @@ static void CL_BeginDownloads(qbool aborteddownload)
 			Con_Printf("Keeping local %s (cl_csqc_download 0) — touch controls stay available\n", csqc_progname.string);
 	}
 
+#ifdef __ANDROID__
+	if (cl.loadmodel_current < cl.loadmodel_total && TouchAndroid_HoldMapLoad())
+		return; // Touch: no GL context in the background, the load waits (touch_android.c)
+#endif
 	if (cl.loadmodel_current < cl.loadmodel_total)
 	{
 		// loading models
@@ -1394,6 +1399,16 @@ static void CL_BeginDownloads(qbool aborteddownload)
 			CL_ForwardToServer("prespawn");
 	}
 }
+
+#ifdef __ANDROID__
+// Touch: carry on with a load TouchAndroid_HoldMapLoad held while the app was in the background
+void CL_ResumeHeldLoad(void);
+void CL_ResumeHeldLoad(void)
+{
+	if (cls.state == ca_connected && cl.loadbegun && !cl.loadfinished)
+		CL_BeginDownloads(false);
+}
+#endif
 
 static void CL_BeginDownloads_f(cmd_state_t *cmd)
 {

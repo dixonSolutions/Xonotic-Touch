@@ -152,6 +152,55 @@ server queries, and the server browser would list nothing. `start.sh` passes
 it for the window title and undoes that with `-customgamenetworkfiltername
 Xonotic`.
 
+## In the background
+
+Home, the app switcher, another app on top or the screen turned off do not
+end a match, a join or a download:
+
+* **Connected to a server**: the engine keeps running without drawing
+  (`touch_android.c`). SDL's default would block its main thread from
+  `onPause`/`onStop` until the return; no packet went out and the server
+  dropped the player after `net_messagetimeout` (30 s in Xonotic). Now it
+  reads and sends packets at `cl_maxidlefps` and the player stays in the
+  match, standing still: a public server is never paused, so they can be
+  killed meanwhile. A map change while away loads in the background.
+* **Joining** (waiting for the server, curl downloading the server's maps,
+  loading the map): carries on. The map loads into the GL context bound
+  without a surface (`EGL_KHR_surfaceless_context`); on a device without that
+  extension the load waits for the return. The player comes back to the
+  loading screen while the join runs, or to the game once it is done.
+* **First-launch data download**: carries on; when it finishes while away, a
+  notification says the game is ready and the next return starts it.
+* **Local game**: paused while away (the engine waits for the return, using
+  no CPU) and running again on return. In the main menu with nothing going
+  on, the engine waits the same way.
+
+While the engine is connected, joining or downloading (it writes the state to
+`userdata/data/touch_netstate`, which `XonoticActivity` reads every 2 s), and
+while the first-launch download runs, `KeepAliveService` is a foreground
+service with a notification ("Xonotic Touch is staying connected: Connected
+to <server> - <map>") and holds a partial wake lock. Without it Android
+freezes a background app's process within seconds (Android 14+), can kill it
+for memory, and lets the CPU sleep with the screen off. The service stops as
+soon as the engine is idle. Android 12+ only lets it start while the app is in
+front, which is when a join starts; later changes only update the
+notification. If notifications are denied (Android 13+) the service still
+runs, without a visible notification.
+
+The launcher icon brings a running game back as it was: the boot screen does
+not prepare data or install a downloaded update under it. Under an AndySU host
+a live engine swap is declined while connected, joining or downloading and
+applies on the next start.
+
+Limits: if Android kills the process anyway (some vendors' battery savers do,
+foreground service or not), or the player swipes the game out of the recent
+apps, the connection is gone and the next start is a cold one, with no offer
+to rejoin. Doze and app standby buckets are not exercised by the test VM; a
+foreground service is exempt from Doze's network cut-off, but this has only
+been tried on BlissOS (Android 13 x86_64), not on a phone or tablet left
+asleep for a long time. Keeping a connection costs battery: the engine runs
+at `cl_maxidlefps` while away.
+
 ## Permissions
 
 The merged manifest (`aapt2 dump permissions`) declares exactly:
@@ -160,11 +209,15 @@ The merged manifest (`aapt2 dump permissions`) declares exactly:
 |---|---|
 | `INTERNET` | first-launch data download, servers, map downloads, update check |
 | `ACCESS_NETWORK_STATE` | the mobile-data setting |
+| `POST_NOTIFICATIONS` | download and staying-connected notifications (Android 13+) |
+| `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`, `FOREGROUND_SERVICE_SPECIAL_USE` | `KeepAliveService`: the data download, and a server connection kept while in the background |
+| `WAKE_LOCK` | the CPU keeps running with the screen off while connected, joining or downloading |
 | `REQUEST_INSTALL_PACKAGES` | the self-updater hands its APK to `PackageInstaller` |
 | `UPDATE_PACKAGES_WITHOUT_USER_ACTION` | later updates without the confirm dialog (Android 12+) |
 
-None of them is a runtime ("dangerous") permission, so the app never shows a
-permission prompt. Nothing asks for storage, Bluetooth, location, nearby
+Only `POST_NOTIFICATIONS` is a runtime permission: the boot screen asks for it
+on Android 13+ when the first-launch download starts, and everything works if
+it is refused. Nothing asks for storage, Bluetooth, location, nearby
 devices or the microphone: SDL's Bluetooth controller support checks
 `BLUETOOTH_CONNECT` and quietly skips itself without it, and the engine never
 calls `SDL_AndroidRequestPermission`. Everything the app writes is in its own

@@ -121,7 +121,8 @@ typedef enum touchui_specmode_e
 	TOUCHUI_SPEC_NONE = 0,
 	TOUCHUI_SPEC_OBSERVING,   /* free-flying observer (spectatee_status -1) */
 	TOUCHUI_SPEC_WATCHING,    /* spectating another player */
-	TOUCHUI_SPEC_OUT          /* out of the round (-616), watching others */
+	TOUCHUI_SPEC_OUT,         /* out of the round (-616), watching others */
+	TOUCHUI_SPEC_OUT_FREE     /* out of the round, free-flying */
 }
 touchui_specmode_t;
 
@@ -136,7 +137,7 @@ touchui_specentry_t;
 #define TOUCHUI_SPEC_BIT(m) (1u << (m))
 static const touchui_specentry_t touchui_spec_entries[] = {
 	/* "Press primary fire to spectate" */
-	{ "spectate", "+fire\ndefer 0.2 -fire", TOUCHUI_SPEC_BIT(TOUCHUI_SPEC_OBSERVING) },
+	{ "spectate", "+fire\ndefer 0.2 -fire", TOUCHUI_SPEC_BIT(TOUCHUI_SPEC_OBSERVING) | TOUCHUI_SPEC_BIT(TOUCHUI_SPEC_OUT_FREE) },
 	/* "Press next weapon or previous weapon for next or previous player" */
 	{ "next player", "weapnext", TOUCHUI_SPEC_BIT(TOUCHUI_SPEC_WATCHING) | TOUCHUI_SPEC_BIT(TOUCHUI_SPEC_OUT) },
 	{ "prev player", "weapprev", TOUCHUI_SPEC_BIT(TOUCHUI_SPEC_WATCHING) | TOUCHUI_SPEC_BIT(TOUCHUI_SPEC_OUT) },
@@ -168,11 +169,15 @@ static touchui_specmode_t TouchUI_SpectatorMode(void)
 	 * -616 (touch_aim.c, cl_collision.c). A spectator's view is moved to the
 	 * player they watch with svc_setview. */
 	frags = cl.scores[me - 1].frags;
+	/* Xonotic since 0.8.6 marks a player out of the round -669
+	 * (FRAGS_PLAYER_OUT_OF_GAME): the same as -616 here. */
+	if (frags == -669)
+		frags = -616;
 	if (frags != -666 && frags != -616)
 		return TOUCHUI_SPEC_NONE;
 	if (cl.viewentity != me && cl.viewentity >= 1 && cl.viewentity <= cl.maxclients)
 		return frags == -666 ? TOUCHUI_SPEC_WATCHING : TOUCHUI_SPEC_OUT;
-	return frags == -666 ? TOUCHUI_SPEC_OBSERVING : TOUCHUI_SPEC_NONE;
+	return frags == -666 ? TOUCHUI_SPEC_OBSERVING : TOUCHUI_SPEC_OUT_FREE;
 }
 
 /* Observing or watching: jump means "join" there, not a hop (touch_hud.c). */
@@ -184,6 +189,20 @@ qbool TouchUI_IsSpectating(void)
 qbool TouchUI_IsWatching(void)
 {
 	return TouchUI_SpectatorMode() == TOUCHUI_SPEC_WATCHING;
+}
+
+/* As TOUCHSPEC_* (touch_spectate.h): 0 playing, 1 observing, 2 following a
+ * player, 3 out of the round and watching, 4 out of the round, free-flying. */
+int TouchUI_SpectatorState(void)
+{
+	switch (TouchUI_SpectatorMode())
+	{
+	case TOUCHUI_SPEC_OBSERVING: return 1;
+	case TOUCHUI_SPEC_WATCHING: return 2;
+	case TOUCHUI_SPEC_OUT: return 3;
+	case TOUCHUI_SPEC_OUT_FREE: return 4;
+	default: return 0;
+	}
 }
 
 static void TouchUI_UpdateSpectatorEntries(void)

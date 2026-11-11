@@ -387,6 +387,7 @@ static struct
 	double close_at;        // the result has been shown long enough
 	rect_t box;
 	float close_cx, close_cy, close_r;
+	float header_bottom;    // the header band's bottom: the x's touch area stops there
 	int nrows;
 	rect_t row[MAX_ROWS];
 	int choice[MAX_ROWS];
@@ -661,14 +662,12 @@ static void draw_row(int i, const char *label, int count, qbool chosen, float a)
 	qbool held = target_held(T_ROW + i);
 	char buf[MAP_NAME_LEN + 8];
 	float ra = card.enabled[i] ? a : a * 0.45f;
+	box(b->x, b->y, b->w, b->h, rad, held ? C_ACCENT : C_INK, ra * (held ? 0.55f : 0.10f));
+	// the player's own pick: a green border (2 px at 960x600), nothing else
 	if (chosen)
-		box(b->x, b->y, b->w, b->h, rad, C_ACCENT, ra * 0.80f);
+		box_rim(b->x, b->y, b->w, b->h, rad, max(1.5f, smin() / 300.0f), C_SUCCESS, 1.0f);
 	else
-		box(b->x, b->y, b->w, b->h, rad, held ? C_ACCENT : C_INK, ra * (held ? 0.55f : 0.10f));
-	box_rim(b->x, b->y, b->w, b->h, rad, stroke, chosen ? C_ACCENT_LIGHT : C_INK, ra * (chosen ? 0.95f : 0.45f));
-	// the player's own pick: a pip at the left
-	if (chosen)
-		DrawQ_RoundedBox(b->x + pad + fs * 0.25f, b->y + b->h * 0.5f, fs * 0.25f, fs * 0.25f, fs * 0.25f, 0, C_INK[0], C_INK[1], C_INK[2], ra, 0);
+		box_rim(b->x, b->y, b->w, b->h, rad, stroke, C_INK, ra * 0.45f);
 	if (count >= 0)
 	{
 		dpsnprintf(buf, sizeof(buf), "%d", count);
@@ -678,10 +677,39 @@ static void draw_row(int i, const char *label, int count, qbool chosen, float a)
 	text_at(b->x + pad + fs * 0.8f, b->y + (b->h - fs) * 0.5f, fs, buf, C_INK, ra * 0.95f);
 }
 
+// The header band: the title at the left and the close "x" at the right,
+// tall enough for the x, so the content below (and the first row) starts
+// clear of it. The x's touch area is kept inside this band.
+static float card_header(float x, float y, float w, float s)
+{
+	float cr = 0.030f * s, inset = 0.018f * s;
+	card.close_r = cr;
+	card.close_cx = x + w - inset - cr;
+	card.close_cy = y + inset + cr;
+	card.header_bottom = y + 2 * (inset + cr);
+	return card.header_bottom;
+}
+
+static void draw_close(void)
+{
+	float cr = card.close_r, k = cr * 0.40f, lw = max(1.0f, cr * 0.09f);
+	qbool held = target_held(T_CLOSE);
+	int d;
+	DrawQ_RoundedBox(card.close_cx, card.close_cy, cr, cr, cr, 0, held ? C_ACCENT[0] : C_INK[0], held ? C_ACCENT[1] : C_INK[1], held ? C_ACCENT[2] : C_INK[2], held ? 0.7f : 0.12f, 0);
+	// the cross: two diagonals of overlapping dots (DrawQ_RoundedBox is
+	// axis-aligned, and GL lines have no width on GLES)
+	for (d = -6; d <= 6; d++)
+	{
+		float o = k * d / 6.0f;
+		DrawQ_RoundedBox(card.close_cx + o, card.close_cy + o, lw, lw, lw, 0, 1, 1, 1, 0.9f, 0);
+		DrawQ_RoundedBox(card.close_cx + o, card.close_cy - o, lw, lw, lw, 0, 1, 1, 1, 0.9f, 0);
+	}
+}
+
 static void draw_card(void)
 {
-	float s = smin(), w, x, y, pad = 0.035f * s, h, cy;
-	float fs_title = 0.042f * s, fs_sub = 0.040f * s, fs_text = 0.052f * s, fs_foot = 0.038f * s;
+	float s = smin(), w, x, y, pad = 0.035f * s, h, cy, head_h;
+	float fs_title = 0.042f * s, fs_sub = 0.040f * s, fs_text = 0.052f * s;
 	float row_h, row_gap = 0.020f * s, a = 1.0f, stroke = max(1.0f, s / 360.0f);
 	char buf[256], line[256];
 	const float *rgb;
@@ -709,15 +737,18 @@ static void draw_card(void)
 			// a refused change leaves only the answer already given
 			card.enabled[i] = !ended && !(pr.refused && mine && mine != choices[i]);
 		}
-		h = pad + fs_title + pad * 0.6f + fs_sub * 1.3f + fs_text * 1.4f + pad * 0.5f + n * (row_h + row_gap) + fs_foot * 1.6f + pad * 0.6f;
+		head_h = card_header(0, 0, w, s);
+		h = head_h + pad * 0.3f + fs_sub * 1.3f + fs_text * 1.4f + pad * 0.6f + n * (row_h + row_gap) + pad * 0.5f;
 		y = min(y, ui_h() - pad - h);
+		card_header(x, y, w, s);
 		card.box.x = x; card.box.y = y; card.box.w = w; card.box.h = h;
 		box(x, y + stroke * 2, w, h, pad * 0.6f, C_SHADOW, 0.45f);
 		box(x, y, w, h, pad * 0.6f, C_SURFACE, 0.90f);
 		box_rim(x, y, w, h, pad * 0.6f, stroke, C_INK, 0.35f);
-		cy = y + pad;
-		text_at(x + pad, cy, fs_title, "VOTE", C_ACCENT_LIGHT, a);
-		cy += fs_title + pad * 0.6f;
+		// the title, or how the vote ended while the card is still up
+		rgb = C_ACCENT_LIGHT;
+		text_at(x + pad, card.close_cy - fs_title * 0.5f, fs_title, ended ? result_label(&rgb) : "VOTE", rgb, a);
+		cy = card.header_bottom + pad * 0.3f;
 		if (shown_caller[0])
 			dpsnprintf(buf, sizeof(buf), "%s calls a vote for", shown_caller);
 		else
@@ -727,7 +758,7 @@ static void draw_card(void)
 		cy += fs_sub * 1.3f;
 		fit_text(shown_text, fs_text, w - 2 * pad, line, sizeof(line));
 		text_at(x + pad, cy, fs_text, line, C_INK, a);
-		cy += fs_text * 1.4f + pad * 0.5f;
+		cy += fs_text * 1.4f + pad * 0.6f;
 		for (i = 0; i < n; i++)
 		{
 			rect_t *b = &card.row[i];
@@ -736,26 +767,6 @@ static void draw_card(void)
 			draw_row(i, choice_name(card.choice[i]), i == 0 ? yes : i == 1 ? no : -1, mine == card.choice[i], a);
 			cy += row_h + row_gap;
 		}
-		// footer: the result, or the player's answer, or what is needed
-		rgb = C_INK;
-		if (ended)
-		{
-			const char *res = result_label(&rgb);
-			if (result_yes >= 0 && result_no >= 0)
-				dpsnprintf(buf, sizeof(buf), "%s (%d yes, %d no)", res, result_yes, result_no);
-			else
-				dp_strlcpy(buf, res, sizeof(buf));
-		}
-		else if (pr.refused && mine)
-			dpsnprintf(buf, sizeof(buf), "You voted %s. This server keeps your first answer.", choice_name(mine));
-		else if (mine)
-			dpsnprintf(buf, sizeof(buf), "You voted %s. Tap another row to change it.", choice_name(mine));
-		else if (call.needed > 0)
-			dpsnprintf(buf, sizeof(buf), "%d yes vote%s needed. Tap to vote.", call.needed, call.needed == 1 ? "" : "s");
-		else
-			dp_strlcpy(buf, "Tap to vote.", sizeof(buf));
-		fit_text(buf, fs_foot, w - 2 * pad, line, sizeof(line));
-		text_at(x + pad, cy + fs_foot * 0.2f, fs_foot, line, rgb, a * (ended ? 1.0f : 0.7f));
 	}
 	else
 	{
@@ -778,27 +789,29 @@ static void draw_card(void)
 			}
 		row_gap = 0.012f * s;
 		row_h = 0.095f * s;
-		h = pad + fs_title + pad * 0.8f + n * (row_h + row_gap) + fs_foot * 1.6f + pad * 0.6f;
+		head_h = card_header(0, 0, w, s);
+		h = head_h + pad * 0.4f + n * (row_h + row_gap) + pad * 0.5f;
 		if (h > ui_h() - 2 * pad)
 		{
 			// shrink the rows to fit the screen
-			float fixed = pad + fs_title + pad * 0.8f + fs_foot * 1.6f + pad * 0.6f;
+			float fixed = head_h + pad * 0.4f + pad * 0.5f;
 			row_h = max(0.05f * s, (ui_h() - 2 * pad - fixed) / n - row_gap);
 			h = fixed + n * (row_h + row_gap);
 		}
 		y = bound(pad, y, ui_h() - pad - h);
+		card_header(x, y, w, s);
 		card.box.x = x; card.box.y = y; card.box.w = w; card.box.h = h;
 		box(x, y + stroke * 2, w, h, pad * 0.6f, C_SHADOW, 0.45f);
 		box(x, y, w, h, pad * 0.6f, C_SURFACE, 0.90f);
 		box_rim(x, y, w, h, pad * 0.6f, stroke, C_INK, 0.35f);
-		cy = y + pad;
+		cy = card.close_cy - fs_title * 0.5f;
 		text_at(x + pad, cy, fs_title, mapv.gtv ? "GAMETYPE VOTE" : "MAP VOTE", C_ACCENT_LIGHT, a);
 		if (mapv.timeleft >= 0 && !mapv.decided)
 		{
 			dpsnprintf(buf, sizeof(buf), "%d s", (int)ceil(mapv.timeleft));
-			text_at(x + w - pad * 2 - 0.09f * s - text_width(buf, fs_title), cy, fs_title, buf, C_INK, a * 0.7f);
+			text_at(card.close_cx - card.close_r - pad * 0.6f - text_width(buf, fs_title), cy, fs_title, buf, C_INK, a * 0.7f);
 		}
-		cy += fs_title + pad * 0.8f;
+		cy = card.header_bottom + pad * 0.4f;
 		for (i = 0; i < n && i < MAX_ROWS; i++)
 		{
 			int k = order[i];
@@ -810,36 +823,13 @@ static void draw_card(void)
 			draw_row(i, mapv.name[k], counts ? max(0, mapv.votes[k]) : -1, pick == k, a);
 			cy += row_h + row_gap;
 		}
-		if (mapv.decided)
-			dp_strlcpy(buf, "Voting is over.", sizeof(buf));
-		else if (pick >= 0)
-			dpsnprintf(buf, sizeof(buf), "Your vote: %s. Tap another to change it.", mapv.name[pick]);
-		else
-			dp_strlcpy(buf, "Tap one to vote.", sizeof(buf));
-		fit_text(buf, fs_foot, w - 2 * pad, line, sizeof(line));
-		text_at(x + pad, cy + fs_foot * 0.2f, fs_foot, line, C_INK, a * 0.7f);
 	}
 
-	// close "x", top right of the card
-	card.close_r = 0.045f * s;
-	card.close_cx = x + w - pad * 0.6f - card.close_r;
-	card.close_cy = y + pad * 0.6f + card.close_r;
-	{
-		float cr = card.close_r, k = cr * 0.36f, lw = max(1.0f, cr * 0.07f);
-		qbool held = target_held(T_CLOSE);
-		DrawQ_RoundedBox(card.close_cx, card.close_cy, cr, cr, cr, 0, held ? C_ACCENT[0] : C_INK[0], held ? C_ACCENT[1] : C_INK[1], held ? C_ACCENT[2] : C_INK[2], held ? 0.7f : 0.12f, 0);
-		// the cross: two diagonals of overlapping dots (DrawQ_RoundedBox is
-		// axis-aligned, and GL lines have no width on GLES)
-		{
-			int d;
-			for (d = -6; d <= 6; d++)
-			{
-				float o = k * d / 6.0f;
-				DrawQ_RoundedBox(card.close_cx + o, card.close_cy + o, lw, lw, lw, 0, 1, 1, 1, 0.9f, 0);
-				DrawQ_RoundedBox(card.close_cx + o, card.close_cy - o, lw, lw, lw, 0, 1, 1, 1, 0.9f, 0);
-			}
-		}
-	}
+	draw_close();
+	if (!card.drawn && card.nrows > 0)
+		Con_DPrintf("Touch vote: card %.0f %.0f %.0fx%.0f of %.0fx%.0f, header to %.0f, x at %.0f %.0f r %.0f, first row %.0f..%.0f x %.0f..%.0f\n",
+			x, y, w, card.box.h, ui_w(), ui_h(), card.header_bottom, card.close_cx, card.close_cy, card.close_r,
+			card.row[0].y, card.row[0].y + card.row[0].h, card.row[0].x, card.row[0].x + card.row[0].w);
 	card.drawn = true;
 }
 
@@ -883,12 +873,13 @@ static int target_at(float px, float py)
 	if (card.open && card.drawn)
 	{
 		float cdx = px - card.close_cx, cdy = py - card.close_cy;
-		cr = card.close_r * 1.4f;
-		if (cdx * cdx + cdy * cdy <= cr * cr)
-			return T_CLOSE;
 		for (i = 0; i < card.nrows; i++)
 			if (in_rect(&card.row[i], px, py, card.row[i].h * 0.05f))
 				return card.enabled[i] ? T_ROW + i : T_CARD;
+		// the x: a little larger than drawn, but never below the header band
+		cr = card.close_r * 1.5f;
+		if (cdx * cdx + cdy * cdy <= cr * cr && py < card.header_bottom && px <= card.box.x + card.box.w)
+			return T_CLOSE;
 		if (in_rect(&card.box, px, py, 0))
 			return T_CARD;
 	}
