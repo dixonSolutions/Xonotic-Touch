@@ -92,6 +92,9 @@ cvar_t cl_touch_autoswitch_lastresort = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autos
 	"Auto-switch never picks the Blaster (or another last-resort weapon) while another owned weapon can shoot, and leaves it at once when the server switched to it on an empty weapon"};
 cvar_t cl_touch_aimassist_hysteresis = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_hysteresis", "2",
 	"Aim helpers: the enemy already targeted stays the target unless another is this many degrees nearer the crosshair (0 = always the nearest)"};
+cvar_t cl_touch_aim_mode = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aim_mode", "1",
+	"Aim helpers, who may be the target: 0 = Radius (within cl_touch_aimassist_cone of the crosshair), 1 = Field of view (anyone on screen), "
+	"2 = Full 360 (offline matches only; elsewhere it works as 1). Always only enemies in sight"};
 cvar_t cl_touch_aimassist_priority = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_priority", "1",
 	"Aim helpers, several enemies in the cone: nearest the crosshair first, then the one the weapon in hand does most damage to, one facing you up close, "
 	"one you have just hurt, a group for a splash weapon; one running out of reach of a projectile counts less. A new target is kept at least half a second (0 = nearest the crosshair only)"};
@@ -165,6 +168,10 @@ cvar_t cl_touch_hud_state = {CF_CLIENT, "_cl_touch_hud_state", "0",
 // The player's own turn counts as heading away from the target only above
 // this rate (deg/s), so the look filter's decaying tail does not cancel the pull.
 #define AWAY_MIN_RATE  5.0f
+#define AWAY_NOISE_RATE 15.0f // slower than this, or sideways, a turn does not stop the pull
+#define LEAVE_RATE     30.0f  // a drag leaving a target this fast is not slowed down
+#define FLICK_RATE     120.0f // a drag this fast is a new look: the old target loses its hold
+#define FLICK_KEEP     1.0f   // seconds after one in which the fight follows the new view
 // Combat lock (cl_touch_aimassist_track): after auto-shoot has fired at a
 // target, the pull keeps tracking that same target for LOCK_HOLD seconds
 // with the thumb at rest, out to LOCK_CONE_EXTRA degrees beyond the cone,
@@ -280,6 +287,7 @@ static struct
 	int lock_ent;        // combat lock: last target fired at, and until when
 	double lock_until;
 	double lock_fired;   // last time auto-shoot fired at lock_ent
+	double flick_time;   // last fast drag of the player's own
 	double target_since; // when the current target (track_ent) was taken
 	int target_switches; // for cl_touch_aim_debug
 	int mate_said;       // teammate that last held fire (debug)
@@ -369,6 +377,7 @@ void TouchAim_Init(void)
 	Cvar_RegisterVariable(&cl_touch_autoshoot_volley);
 	Cvar_RegisterVariable(&cl_touch_aimassist_hysteresis);
 	Cvar_RegisterVariable(&cl_touch_aimassist_priority);
+	Cvar_RegisterVariable(&cl_touch_aim_mode);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_teamsafe);
 	Cvar_RegisterVariable(&cl_touch_aimassist);
 	Cvar_RegisterVariable(&cl_touch_aimassist_friction);
@@ -515,7 +524,8 @@ static void set_firing(qbool on, qbool on2, int target)
 	if (cl_touch_aim_debug.integer)
 	{
 		if ((on || on2) && target > 0 && target <= cl.maxclients)
-			Con_Printf("touch aim: auto-shoot ON%s at player %d (%s)\n", on && on2 ? " (primary+secondary)" : on2 ? " (secondary)" : "", target, player_name(target));
+			Con_Printf("touch aim: auto-shoot ON%s at player %d (%s)%s\n", on && on2 ? " (primary+secondary)" : on2 ? " (secondary)" : "", target, player_name(target),
+				cl_touch_aim_debug.integer >= 2 ? va(vabuf, sizeof(vabuf), " at %.3f", cl.time) : "");
 		else
 			Con_Printf("touch aim: auto-shoot OFF\n");
 	}
@@ -2569,7 +2579,10 @@ static void aim_frame(void)
 	cone = CONE_MAX;
 	if (r_refdef.view.frustum_x > 0)
 		cone = min(cone, (float)(atan(r_refdef.view.frustum_x) * (180.0 / M_PI)));
-	cone = bound(1.0f, cl_touch_aimassist_cone.value, max(1.0f, cone));
+	// Field of view mode (and Full 360, which only an offline match gets):
+	// anyone on screen; Radius mode: the cone the player set
+	if (cl_touch_aim_mode.integer <= 0)
+		cone = bound(1.0f, cl_touch_aimassist_cone.value, max(1.0f, cone));
 	radius = bound(0.0f, cl_touch_autoshoot_radius.value, RADIUS_MAX);
 
 	// damage our hits did (the hit-sound stat every CSQC keeps), credited
@@ -2617,6 +2630,13 @@ static void aim_frame(void)
 			turn_yaw = turn_pitch = 0;
 	}
 	turn_mag = sqrt(turn_yaw * turn_yaw + turn_pitch * turn_pitch);
+	// a fast drag of the player's own: no hysteresis or hold for the old
+	// target next, so whatever the view now points nearest wins at once
+	if (turn_mag / dt > FLICK_RATE)
+	{
+		ta.track_ent = 0;
+		ta.flick_time = now;
+	}
 	if (TouchHUD_Active())
 		aim_touch = ta.hud_aim_touch;
 	else if (cl_touch_csqc_active)
@@ -2654,6 +2674,16 @@ static void aim_frame(void)
 		&on_target, &friend_on, &near);
 	if (near.entnum && near.err > cone && near.entnum != ta.lock_ent)
 		near.entnum = 0;
+	// the player turned the view away during a fight: the engagement goes on
+	// with the enemy they now look nearest to, not the one they left
+	if (cl_touch_aimassist_track.integer && ta.lock_ent && near.entnum && near.entnum != ta.lock_ent
+		&& now - ta.lock_fired < ENGAGE_HOLD && now - ta.flick_time < FLICK_KEEP)
+	{
+		if (cl_touch_aim_debug.integer)
+			Con_Printf("touch aim: combat lock moves to player %d (the player turned toward them)\n", near.entnum);
+		ta.lock_ent = near.entnum;
+		ta.lock_until = now + LOCK_HOLD;
+	}
 	if (near.entnum)
 		gbodies_in_sight(eye, near.center, near.entnum);
 	else
@@ -2667,7 +2697,7 @@ static void aim_frame(void)
 	if (cl_touch_aim_debug.integer && on_target != ta.debug_target)
 	{
 		if (on_target)
-			Con_Printf("touch aim: crosshair on player %d (%s)\n", on_target, player_name(on_target));
+			Con_Printf("touch aim: crosshair on player %d (%s)%s\n", on_target, player_name(on_target), cl_touch_aim_debug.integer >= 2 ? va(vabuf, sizeof(vabuf), " at %.3f", cl.time) : "");
 		ta.debug_target = on_target;
 	}
 	if (cl_touch_aim_debug.integer >= 2 && friend_on != ta.debug_friend)
@@ -2946,7 +2976,9 @@ static void aim_frame(void)
 	{
 		float ey = wrap180(near.yaw - cl.viewangles[YAW]), ep = near.pitch - cl.viewangles[PITCH];
 		qbool approaching = !on_target && turn_mag / dt > AWAY_MIN_RATE && turn_yaw * ey + turn_pitch * ep > 0;
-		if (!approaching)
+		// nor while a deliberate drag is leaving it: that is the player's choice
+		qbool leaving = turn_mag / dt > LEAVE_RATE && turn_yaw * ey + turn_pitch * ep < 0;
+		if (!approaching && !leaving)
 			ta.lookscale = 1.0f - friction * bound(0.0f, 1.0f - near.err / cone, 1.0f);
 	}
 	else if (friction > 0 && on_target)
@@ -2986,7 +3018,10 @@ static void aim_frame(void)
 		float ey = wrap180(near.yaw - cl.viewangles[YAW]);
 		float ep = near.pitch - cl.viewangles[PITCH];
 		float turn_rate = turn_mag / dt;
-		qbool away = turn_rate > AWAY_MIN_RATE && (turn_yaw * ey + turn_pitch * ep) < 0;
+		// heading away: clearly against the target (not a thumb drifting
+		// sideways, not a slow drift); the pull resumes the first frame the
+		// drag slows down or turns back
+		qbool away = turn_rate > AWAY_NOISE_RATE && (turn_yaw * ey + turn_pitch * ep) < -0.5f * turn_mag * sqrt(ey * ey + ep * ep);
 		if (!away)
 		{
 			float py = 0, pp = 0, len, cap;

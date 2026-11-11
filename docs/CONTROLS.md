@@ -465,6 +465,7 @@ be seen working.
 | `cl_touch_aimassist_maxrate` | `90` | Hard cap on the pull, degrees per second (max 180) |
 | `cl_touch_aimassist_cone` | `8` | Degrees from the crosshair to the edge of an enemy's body (or of where the shot meets it) within which it counts as near (1–60, and never beyond half the horizontal field of view: up to the edge of the view) |
 | `cl_touch_aimassist_hysteresis` | `2` | The enemy already targeted stays the target unless another is this many degrees nearer the crosshair, so a wide cone does not flip between two (0 = always the nearest, max 15) |
+| `cl_touch_aim_mode` | `1` | Who may be the target: 0 = Radius (within `_cone` of the crosshair), 1 = Field of view (anyone on screen; `_cone` is not used), 2 = Full 360 (offline matches only; anywhere else it works as 1). Always only enemies in sight |
 | `cl_touch_aimassist_priority` | `1` | Several enemies in the cone: nearest the crosshair first, shifted by what each is worth (below); a new target is kept at least half a second. 0 = nearest only |
 | `cl_touch_autoshoot_teamsafe` | `1` | Team games: no shot while a teammate is on its line or inside its blast, and no rocket set off next to one |
 | `cl_touch_aimassist_track` | `1` | Follow a fight with the thumb at rest: keep pulling toward the enemy auto-shoot fired at (combat lock, below) and let a projectile's lead slide rather than jump when the enemy reverses; 0 = only while a finger aims |
@@ -775,6 +776,22 @@ that enemy stays the target in sight and auto-shoot fired at it within the
 last 3 s: a Devastator between two rockets, or a reload. The lock only
 continues an engagement auto-shoot started; it never picks up a target by
 itself, and any other enemy still has to be inside the cone.
+
+**Working with the player's own view.** A drag faster than 120 deg/s is a
+new look: the target held before loses its hysteresis and half-second hold
+at once, so whatever the view now points nearest wins, and for 1 s the
+fight (the combat lock) moves to the enemy the player turned toward. The
+pull pauses only while the drag clearly opposes it (faster than 15 deg/s and
+more against the target than sideways: a drifting thumb does not stop it)
+and resumes the first frame the drag slows or turns back; slowdown is off
+while a drag deliberately leaves a target. In Field of view mode a fight
+goes on after the player flicked the view away and let go: measured at 30
+fps against a strafing bot 700 units away, a 69-degree flick was back on the
+body in 0.77 s and firing in 0.70 s (90 deg/s cap; 0.60 / 0.53 s at 180);
+with the Radius mode's 8-degree cone, and in the build before, it never came
+back. The pull follows the target's motion across the view frame to frame,
+which already includes the player's own movement (running, strafing, a
+dodge step), so the crosshair stays on while the body moves.
 
 With `_track` on, the part of a projectile's lead that comes from the enemy's
 motion may only move at twice the enemy's speed (at least 100 units/s): at a

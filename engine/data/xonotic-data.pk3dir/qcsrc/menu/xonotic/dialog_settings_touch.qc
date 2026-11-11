@@ -303,8 +303,10 @@ void XonoticMobileAimTab_fill(entity me)
 	me.TR(me);
 		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Catch cone:")));
 			setDependent(e, "cl_touch_aimassist", 1, 1);
-		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(1, 60, 1, "cl_touch_aimassist_cone", _("How many degrees from the crosshair an enemy still counts as near. Up to 60: the whole view")));
+			setDependentAND(e, "cl_touch_aim_mode", 0, 0);
+		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(1, 60, 1, "cl_touch_aimassist_cone", _("How many degrees from the crosshair an enemy still counts as near (Targets: Radius, Settings > Auto-shoot). Up to 60: the whole view")));
 			setDependent(e, "cl_touch_aimassist", 1, 1);
+			setDependentAND(e, "cl_touch_aim_mode", 0, 0);
 		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Max pull:")));
 			setDependent(e, "cl_touch_aimassist", 1, 1);
 		me.TD(me, 1, 1.5, e = makeXonoticSlider_T(0, 180, 10, "cl_touch_aimassist_maxrate", _("The fastest the pull can turn the view, in degrees per second. It never snaps")));
@@ -391,6 +393,14 @@ void XonoticMobileAutoShootTab_fill(entity me)
 			e.addValue(e, _("Unlimited"), "0");
 			e.configureXonoticTextSliderValues(e);
 			setDependent(e, "cl_touch_autoshoot", 1, 1);
+	me.TR(me);
+		me.TD(me, 1, 1.2, e = makeXonoticTextLabel(0, _("Targets:")));
+		me.TD(me, 1, 1.2, e = makeXonoticRadioButton_T(5, "cl_touch_aim_mode", "0", _("Radius"),
+			_("Enemies within the catch cone (Settings > Aim) of the crosshair")));
+		me.TD(me, 1, 1.6, e = makeXonoticRadioButton_T(5, "cl_touch_aim_mode", "1", _("Field of view"),
+			_("Any enemy on screen; the catch cone is not used")));
+		me.TD(me, 1, 2, e = makeXonoticRadioButton_T(5, "cl_touch_aim_mode", "2", _("Full 360 (offline only)"),
+			_("Enemies all around you, in offline matches against bots only. Anywhere else it works as Field of view")));
 	me.TR(me);
 		me.TD(me, 1, 2, e = makeXonoticTextLabel(0, _("Keep the target:")));
 		me.TD(me, 1, 4, e = makeXonoticSlider_T(0, 10, 0.5, "cl_touch_aimassist_hysteresis",
