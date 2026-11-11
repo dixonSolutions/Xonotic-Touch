@@ -1493,7 +1493,7 @@ static void pill_release(finger_t *f)
 // the map, or a map change. It hides the menu, so Escape there opened a menu
 // nobody could see, and a finger had nothing to press: a server that never
 // answered, or a slow download, kept a touch player waiting with no way out.
-// On a touchscreen a CANCEL pill sits under the progress, and it and Back
+// On a touchscreen a CANCEL pill sits in the top corner, and it and Back
 // (Escape) leave for the main menu.
 // ---------------------------------------------------------------------------
 static int loading_cancel_src;   // finger that went down on CANCEL
@@ -1505,11 +1505,14 @@ static qbool loading_cancellable(void)
 		&& (cls.connect_trying || (cls.state == ca_connected && cls.signon < SIGNONS));
 }
 
+// In the top corner where the CHAT pill sits by default, at the size of the
+// MENU and CHAT pills, mirrored for the left hand like them. A fixed place,
+// not the player's CHAT position: wherever CHAT was moved to, CANCEL stays
+// clear of the loading picture and of the progress text and bar at the bottom.
 static void loading_pill(float *cx, float *cy, float *hx, float *hy)
 {
-	widget_half(0.085f, 3.2f, hx, hy);
-	*cx = ui_w() * 0.5f;
-	*cy = ui_h() * 0.82f;
+	widget_center(0.862f, 0.088f, cx, cy);
+	widget_half(cv("touch_pause_size", 0.060f), cv("touch_pause_aspect", 2.9f), hx, hy);
 }
 
 static void loading_cancel(void)
@@ -1539,7 +1542,7 @@ static qbool loading_finger(int id, qbool down, float nx, float ny)
 		return false;
 	}
 	loading_pill(&cx, &cy, &hx, &hy);
-	on = fabs(px - cx) <= hx * 1.15f && fabs(py - cy) <= hy * 1.3f;
+	on = fabs(px - cx) <= hx * 1.2f && fabs(py - cy) <= hy * 1.2f;
 	if (down && on)
 		loading_cancel_src = id;
 	else if (!down && id == loading_cancel_src)
@@ -1558,7 +1561,8 @@ void TouchHUD_DrawLoading(void)
 		return;
 	shapes_probe();
 	loading_pill(&cx, &cy, &hx, &hy);
-	widget_chrome_pill(cx, cy, hx, hy, "CANCEL", loading_cancel_src != 0, 0.95f, C_DANGER);
+	// Quieter than the chrome in a match: there for whoever looks for it.
+	widget_chrome_pill(cx, cy, hx, hy, "CANCEL", loading_cancel_src != 0, 0.55f, C_DANGER);
 }
 
 // ---------------------------------------------------------------------------
