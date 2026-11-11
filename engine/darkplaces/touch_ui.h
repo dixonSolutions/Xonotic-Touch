@@ -104,6 +104,8 @@ void TouchUI_ReloadPalette(void);
 qbool TouchUI_IsSpectating(void);
 /* Spectating another player: ALT (+fire2) goes back to observing. */
 qbool TouchUI_IsWatching(void);
+/* TOUCHSPEC_* of touch_spectate.h: playing, observing, following, out of the round. */
+int TouchUI_SpectatorState(void);
 
 /*
  * Fill out[] with items for a sheet drawn inside (x,y,w,h).

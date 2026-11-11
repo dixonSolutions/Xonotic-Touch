@@ -22,6 +22,7 @@ applies to both.
 #include "touch_turn.h"
 #include "touch_ui.h"
 #include "touch_altfire.h"
+#include "touch_spectate.h"
 
 extern cvar_t vid_touchscreen;
 extern cvar_t vid_conwidth;
@@ -461,9 +462,12 @@ static void set_key(const char *name, qbool *state, qbool down)
 	exec_now(buf);
 }
 
+static void spec_release(void);
+
 void TouchHUD_ReleaseAll(void)
 {
 	int i;
+	spec_release();
 	set_key("forward", &key_forward, false);
 	set_key("back", &key_back, false);
 	set_key("moveleft", &key_left, false);
@@ -553,7 +557,10 @@ static int owned_weapon_count(void);
 static qbool strip_shown(void)
 {
 	return CLVM_prog->loaded && cv("touch_mobile_hud", 1) && cv("touch_weplist_visible", 1)
-		&& stat_weapons >= 0 && owned_weapon_count() > 0;
+		&& stat_weapons >= 0 && owned_weapon_count() > 0
+		// spectating, the weapons are the followed player's: the stock panel
+		// shows them, and a row tap would send an impulse to the spectator code
+		&& !TouchUI_IsSpectating();
 }
 
 static void stock_panel(const char *name, qbool on)
@@ -1169,11 +1176,17 @@ static qbool hoplock_hit(float px, float py)
 	return hit_rect(px, py, cv("touch_hoplock_x", 0.675f), cv("touch_hoplock_y", 0.760f), cv("touch_hoplock_size", 0.052f), 1, 1.10f);
 }
 
+static qbool spec_hud(void);
+static int assign_spec_role(float px, float py);
+static void spec_frame(qbool *fire, qbool *fire2, qbool *jump);
+
 static int assign_role(float px, float py)
 {
 	int role;
 	if (desk_active())
 		return assign_desk_role(px, py);
+	if (spec_hud())
+		return assign_spec_role(px, py);
 	role = pill_at(px, py);
 	if (role != ROLE_NONE)
 		return role;
@@ -1891,7 +1904,8 @@ void TouchHUD_Frame(void)
 			// tap in the look zone fires once (touch_look_tap_fire); not at
 			// the desk, where the mouse fires
 			float dx = f->last_x - f->down_x, dy = f->last_y - f->down_y;
-			if (!desk && cv("touch_look_tap_fire", 1) && now - f->down_time < cv("touch_look_tap_ms", 200) * 0.001
+			// nor spectating, where +attack is "follow" / "next player"
+			if (!desk && !TouchUI_IsSpectating() && cv("touch_look_tap_fire", 1) && now - f->down_time < cv("touch_look_tap_ms", 200) * 0.001
 				&& fabs(dx) < 12 && fabs(dy) < 12)
 				tapfire_until = now + 0.08;
 			look_active = false;
@@ -1977,6 +1991,9 @@ void TouchHUD_Frame(void)
 
 	// a finger on the look zone or FIRE is on the aim control: the only time
 	// aim magnetism may pull (touch_aim.c)
+	// spectating: the buttons' spectator meanings (touch_spectate.h)
+	spec_frame(&fire_count, &fire2_down, &jump_down);
+
 	TouchAim_SetHudAimTouch(!desk && (look_seen || fire_count));
 
 	// movement keys from the stick (Touch_ApplyMove thresholds)
@@ -2273,6 +2290,185 @@ static void draw_strip_only(void)
 	draw_weapon_strip(a);
 }
 
+// ---------------------------------------------------------------------------
+// Spectating (touch_spectate.h). Observing, following a player or out of the
+// round, the play controls take the spectator meanings the server's
+// spectator code reads, and say so: FOLLOW / NEXT and PREV where FIRE and ALT
+// are, FREE (back to free-fly) or UP where HOP is, DOWN where DUCK is, and a
+// held JOIN in the bottom middle. The stick and the look drag fly the camera
+// while observing. Weapons, ALT fire, ZOOM, HOOK and the hop latch are not
+// drawn: a spectator has none of them, and their keys mean something else.
+// ---------------------------------------------------------------------------
+#define ROLE_SPEC_ATTACK 300   // FOLLOW / NEXT: +attack while held
+#define ROLE_SPEC_PREV   301   // weapprev on the press
+#define ROLE_SPEC_FREE   302   // +attack2 while held
+#define ROLE_SPEC_UP     303   // +moveup while held
+#define ROLE_SPEC_DOWN   304   // +movedown while held
+#define ROLE_SPEC_JOIN   305   // held: +jump once it has been held long enough
+
+static touchspec_join_t spec_join;
+static qbool key_moveup, key_movedown;
+static int spec_last_state;
+
+static qbool spec_hud(void)
+{
+	return TouchHUD_Active() && TouchUI_SpectatorState() != TOUCHSPEC_NONE;
+}
+
+static void spec_release(void)
+{
+	set_key("moveup", &key_moveup, false);
+	set_key("movedown", &key_movedown, false);
+	spec_join.hold_start = 0;
+}
+
+static void spec_join_pill(float *cx, float *cy, float *hx, float *hy)
+{
+	widget_center(cv("touch_spec_join_x", 0.500f), cv("touch_spec_join_y", 0.885f), cx, cy);
+	widget_half(cv("touch_jump_size", 0.072f), 2.8f, hx, hy);
+}
+
+static qbool spec_slot_hit(int slot, float px, float py)
+{
+	switch (slot)
+	{
+	case TOUCHSPEC_SLOT_FIRE:
+		return hit_circle(px, py, cv("touch_fire_x", 0.855f), cv("touch_fire_y", 0.680f), cv("touch_fire_size", 0.140f), 1.15f);
+	case TOUCHSPEC_SLOT_ALT:
+		return hit_circle(px, py, cv("touch_fire2_x", 0.770f), cv("touch_fire2_y", 0.755f), cv("touch_fire2_size", 0.100f), 1.15f);
+	case TOUCHSPEC_SLOT_HOP:
+		return hit_rect(px, py, cv("touch_jump_x", 0.855f), cv("touch_jump_y", 0.885f), cv("touch_jump_size", 0.072f), cv("touch_jump_aspect", 2.6f), 1.10f);
+	case TOUCHSPEC_SLOT_DUCK:
+		return hit_circle(px, py, cv("touch_crouch_x", 0.700f), cv("touch_crouch_y", 0.885f), cv("touch_crouch_size", 0.066f), 1.10f);
+	default:
+		return false;
+	}
+}
+
+static int spec_action_role(int action)
+{
+	switch (action)
+	{
+	case TOUCHSPEC_ACT_FOLLOW:
+	case TOUCHSPEC_ACT_NEXT: return ROLE_SPEC_ATTACK;
+	case TOUCHSPEC_ACT_PREV: return ROLE_SPEC_PREV;
+	case TOUCHSPEC_ACT_FREE: return ROLE_SPEC_FREE;
+	case TOUCHSPEC_ACT_UP: return ROLE_SPEC_UP;
+	case TOUCHSPEC_ACT_DOWN: return ROLE_SPEC_DOWN;
+	default: return ROLE_NONE;
+	}
+}
+
+static int assign_spec_role(float px, float py)
+{
+	int state = TouchUI_SpectatorState(), slot, role = pill_at(px, py);
+	float cx, cy, hx, hy;
+	if (role != ROLE_NONE)
+		return role;
+	if (in_edge_deadzone(px, py))
+		return ROLE_IGNORED;
+	if (TouchSpec_JoinShown(state))
+	{
+		spec_join_pill(&cx, &cy, &hx, &hy);
+		if (fabs(px - cx) <= hx * 1.1f && fabs(py - cy) <= hy * 1.2f)
+			return role_owned(ROLE_SPEC_JOIN) ? ROLE_IGNORED : ROLE_SPEC_JOIN;
+	}
+	for (slot = 0; slot < TOUCHSPEC_SLOTS; slot++)
+	{
+		int action = TouchSpec_SlotAction(state, slot);
+		if (action != TOUCHSPEC_ACT_NONE && spec_slot_hit(slot, px, py))
+			return spec_action_role(action);
+	}
+	if (TouchTurn_ButtonShown() && hit_circle(px, py, cv("touch_turn_x", 0.300f), cv("touch_turn_y", 0.840f), cv("touch_turn_size", 0.085f), 1.10f))
+		return ROLE_TURN;
+	if (TouchSpec_StickShown(state) && (in_move_zone(px, py)
+		|| (cv("touch_move_visible", 1) && hit_circle(px, py, cv("touch_move_x", 0.170f), cv("touch_move_y", 0.680f), cv("touch_move_size", 0.229f), 1.0f))))
+		return role_owned(ROLE_MOVE) ? ROLE_IGNORED : ROLE_MOVE;
+	return role_owned(ROLE_LOOK) ? ROLE_IGNORED : ROLE_LOOK;
+}
+
+// The spectator roles' outputs for this frame, folded into TouchHUD_Frame's
+// own: +attack (fire), +attack2 (fire2) and +jump (jump) go out with the rest.
+static void spec_frame(qbool *fire, qbool *fire2, qbool *jump)
+{
+	int state = TouchUI_SpectatorState(), j;
+	qbool up = false, down = false, join_held = false;
+	if (state != spec_last_state)
+	{
+		Con_DPrintf("Touch HUD: spectator state %d -> %d (view %d of %d, frags %d)\n", spec_last_state, state, cl.viewentity, cl.realplayerentity,
+			cl.scores && cl.realplayerentity >= 1 && cl.realplayerentity <= cl.maxclients ? cl.scores[cl.realplayerentity - 1].frags : 0);
+		spec_last_state = state;
+	}
+	for (j = 0; j < MAX_FINGERS; j++)
+	{
+		finger_t *f = &fingers[j];
+		if (!f->used)
+			continue;
+		switch (f->role)
+		{
+		case ROLE_SPEC_ATTACK: *fire = true; break;
+		case ROLE_SPEC_FREE: *fire2 = true; break;
+		case ROLE_SPEC_UP: up = true; break;
+		case ROLE_SPEC_DOWN: down = true; break;
+		case ROLE_SPEC_JOIN: join_held = true; break;
+		case ROLE_SPEC_PREV:
+			if (!f->fired)
+			{
+				exec_now("weapprev");
+				f->fired = true;
+			}
+			break;
+		default: break;
+		}
+	}
+	set_key("moveup", &key_moveup, up && TouchSpec_StickShown(state));
+	set_key("movedown", &key_movedown, down && TouchSpec_StickShown(state));
+	if (TouchSpec_JoinFrame(&spec_join, state, join_held, host.realtime) && state != TOUCHSPEC_NONE)
+		*jump = true;
+}
+
+static const char *spec_label(int state, int slot)
+{
+	return TouchSpec_ActionLabel(TouchSpec_SlotAction(state, slot));
+}
+
+static void draw_spec_hud(float a)
+{
+	int state = TouchUI_SpectatorState();
+	float cx, cy, hx, hy;
+	const char *label;
+	if (TouchSpec_StickShown(state) && cv("touch_move_visible", 1))
+		draw_move_stick(a);
+	if ((label = spec_label(state, TOUCHSPEC_SLOT_FIRE))[0])
+		draw_circle_widget("touch_fire_x", 0.855f, "touch_fire_y", 0.680f, "touch_fire_size", 0.140f, label, key_attack, a, C_ACCENT);
+	if ((label = spec_label(state, TOUCHSPEC_SLOT_ALT))[0])
+		draw_circle_widget("touch_fire2_x", 0.770f, "touch_fire2_y", 0.755f, "touch_fire2_size", 0.100f, label, role_owned(ROLE_SPEC_PREV), a, C_ACCENT);
+	if ((label = spec_label(state, TOUCHSPEC_SLOT_HOP))[0])
+	{
+		widget_center(cv("touch_jump_x", 0.855f), cv("touch_jump_y", 0.885f), &cx, &cy);
+		widget_half(cv("touch_jump_size", 0.072f), cv("touch_jump_aspect", 2.6f), &hx, &hy);
+		widget_capsule(cx, cy, hx, hy, label, role_owned(ROLE_SPEC_FREE) || role_owned(ROLE_SPEC_UP), false, a, C_ACCENT);
+	}
+	if ((label = spec_label(state, TOUCHSPEC_SLOT_DUCK))[0])
+		draw_circle_widget("touch_crouch_x", 0.700f, "touch_crouch_y", 0.885f, "touch_crouch_size", 0.066f, label, key_movedown, a, C_ACCENT);
+	if (TouchTurn_ButtonShown())
+		draw_circle_widget("touch_turn_x", 0.300f, "touch_turn_y", 0.840f, "touch_turn_size", 0.085f, "TURN", TouchTurn_Spinning() || role_owned(ROLE_TURN), a, C_ACCENT);
+	if (TouchSpec_JoinShown(state))
+	{
+		// JOIN fills from the left while held; LOCKED after a join the
+		// server did not take.
+		qbool locked = TouchSpec_JoinLocked(&spec_join, host.realtime);
+		float p = TouchSpec_JoinProgress(&spec_join, host.realtime);
+		spec_join_pill(&cx, &cy, &hx, &hy);
+		widget_capsule(cx, cy, hx, hy, locked ? "LOCKED" : "HOLD TO JOIN", false, false, locked ? a * 0.45f : a, C_SUCCESS);
+		if (p > 0)
+			DrawQ_RoundedBox(cx - hx + hx * p, cy, hx * p, hy, min(hy, hx * p), 0, C_SUCCESS[0], C_SUCCESS[1], C_SUCCESS[2], a * 0.55f, 0);
+	}
+	// following someone: their health, armour and ammo, read only
+	if ((state == TOUCHSPEC_FOLLOWING || state == TOUCHSPEC_OUT) && cl.stats[STAT_HEALTH] > 0)
+		draw_vitals(a);
+}
+
 void TouchHUD_Draw(void)
 {
 	float a;
@@ -2308,6 +2504,11 @@ void TouchHUD_Draw(void)
 		draw_pill("touch_con_x", 0.090f, "touch_con_y", 0.948f, "touch_con_size", 0.060f, "touch_con_aspect", 2.9f, "CONSOLE", role_owned(ROLE_CON), a);
 	if (cv("touch_scores_visible", 1))
 		draw_pill("touch_scores_x", 0.272f, "touch_scores_y", 0.948f, "touch_scores_size", 0.060f, "touch_scores_aspect", 2.9f, "SCORE", key_scores, a);
+	if (spec_hud())
+	{
+		draw_spec_hud(a);
+		return;
+	}
 
 	if (cv("touch_move_visible", 1))
 		draw_move_stick(a);
