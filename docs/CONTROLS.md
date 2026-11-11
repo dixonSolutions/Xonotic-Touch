@@ -679,6 +679,63 @@ client: with none, the hook does not catch and is let go. A sky floor with no
 `trigger_hurt` under it does not kill, but counts as a death zone: there is
 nothing to stand on down there.
 
+### Auto dodge (engine)
+
+When an enemy projectile the player can see is about to hit, the move steps
+aside for them; the view never turns, and auto-shoot and the aim pull carry on
+(`engine/darkplaces/touch_dodge.c`, decisions in `touch_dodge.h`).
+
+- **What it sees.** Every CSQC projectile (an edict drawn by `Projectile_Draw`,
+  in 0.8.6 and today's CSQC alike): its type (`csqcprojectile_type`, `.cnt` in
+  0.8.6), origin, velocity (from its positions when the server sends none) and
+  gravity factor, and its owner's colours (`colormap`: the team's in a team
+  game, the owner's own in FFA). No owner id is sent, so a projectile in the
+  player's own colours is theirs or a teammate's and is left alone. Only
+  projectiles the eye has a clear line to count.
+- **What it dodges.** Rockets (Devastator), Mortar grenades, Electro bolts and
+  orbs, Hagar rockets, Crylink pellets, Arc bolts, the Fireball and the RPC,
+  with the stock damage and blast radius of each. Hitscan weapons give no
+  warning, and the 6000 u/s Blaster and HLAC bolts next to none: not dodged.
+- **The judgement.** The soonest eight shots coming within
+  `cl_touch_autododge_window` seconds are judged together (a Crylink spread or a
+  Hagar burst is the sum of its pellets), each followed along its flight (straight, or under its gravity) until it
+  meets the world; the player along each escape with Xonotic's movement
+  (ground acceleration and friction from the server's movevars, a jump, and the
+  dodging mutator's 400 u/s burst when the server has `g_dodging`): both sides
+  square to the shot, the same angled back away from it, straight back, each
+  plain, with a jump and with a dodge. The damage is the full damage if the shot
+  passes through the player's box, else its splash where it lands. An escape
+  must keep ground under the player all the way (the fall rescue's judgement:
+  never off a ledge into the void or lava) and not run into a wall. It goes if
+  the shot would do at least `cl_touch_autododge_mindamage` and the escape saves
+  at least half of that.
+- **The move.** The escape goes into the outgoing move only (never the key
+  state), a jump or a dodge into its button bits for its first 0.1 s, and stops
+  once the shot has passed or is gone.
+- **The player's steering wins.** The touch move stick is digital (full speed
+  past its dead zone), so it is the direction that counts: moving mostly across
+  the shot's path, either way, the player is steering out of the line or
+  deliberately across it, and the dodge stands down; running toward or away
+  from the shooter, the dodge takes them sideways until the shot has passed.
+- **Never** with a keyboard or a mouse aiming (the aim helpers' rules), while
+  hooking or being rescued, during a quick turn, dead, spectating or in a menu.
+
+| Cvar | Default | What it does |
+|------|---------|--------------|
+| `cl_touch_autododge` | `1` | Auto dodge (archived; off in the Competitive preset). Settings → Mobile → Aim |
+| `cl_touch_autododge_window` | `0.8` | How far ahead a shot is judged, seconds (0.3–1.5) |
+| `cl_touch_autododge_mindamage` | `15` | Only for a shot that would do this much, saving at least half (5–100) |
+
+`cl_touch_aim_debug 1` prints one line per decision (the shot, its distance,
+when and how hard it would hit, the escape and what it saves, how many escapes
+walls or ledges ruled out, and why a dodge ended); `2` adds the frame cost; `3`
+every projectile seen.
+
+Limits: the stock balance is assumed (another server's damage or radii shift
+the judgement); a homing Seeker missile and the Mine Layer's mines are not
+dodged; more than eight shots at once are judged by the soonest eight; air control is
+not modelled, so a dodge in the air is judged as the ground one.
+
 **Fire, zoom, weapons (recommended defaults):**
 
 | Option | Values | Default | Notes |
@@ -801,7 +858,7 @@ cvar is on exactly one of them:
 |---------|------|
 | **Controls** | Input mode (Dynamic / Touch / Keyboard & mouse, switch mid-game, announce, touch-only), layout presets, opacity, scale, glass tint, left-handed, stick dead zone and reach, FIRE hold / toggle, dodge button, customize / save / reset |
 | **HUD** | Weapon bar: size (`cl_touch_weplist_scale` 0.7–2.4), across (`touch_weplist_x`), down (`touch_weplist_y` 0.15–0.85), show; readout size (`touch_hud_scale`); grappling hook: HOOK button off / when available / always (`touch_hook_visible`), *Catch me with the hook when I fall off the map* (`cl_touch_hook_rescue`); quick turn: TURN button (`touch_turn_visible`), turn by (`touch_turn_angle` 90–360); *Keep MENU, CHAT and SCORE on screen with a keyboard* (`touch_desk_pills`) |
-| **Aim** | Look sensitivity, vertical, invert; aim assist on / off with Light, Medium (the defaults) and Strong; slowdown, pull (0–1), catch cone (1–15°), max pull (0–180°/s), target ring, *Keep tracking the enemy I am shooting* (`cl_touch_aimassist_track`) |
+| **Aim** | Look sensitivity, vertical, invert; aim assist on / off with Light, Medium (the defaults) and Strong; slowdown, pull (0–1), catch cone (1–15°), max pull (0–180°/s), target ring, *Keep tracking the enemy I am shooting* (`cl_touch_aimassist_track`), *Dodge enemy rockets and grenades I can see coming* (`cl_touch_autododge`) |
 | **Auto-shoot** | Auto-shoot on / off, reaction delay (0–0.5 s), shoot radius (0–6°), keep firing, which weapons; shot choice: secondary fire when better, lead moving targets, guide and detonate rockets, switch to the best weapon, *Hold fire when the blast would hit me* (`cl_touch_autoshoot_safe`); aim-area-only, range — see [Shoot helpers](#shoot-helpers-auto-shoot-and-aim-assist-engine) |
 | **Dynamics** | Performance profile, frame cap, vsync, dynamic resolution, render scale, jump button mode |
 
