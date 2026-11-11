@@ -35,11 +35,29 @@
         android:layout_marginTop="24dp"
         android:max="100" />
 
-    <Button
-        android:id="@+id/boot_retry"
+    <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
-        android:visibility="gone"
-        android:text="@string/boot_retry" />
+        android:orientation="horizontal">
+        <Button
+            android:id="@+id/boot_retry"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:text="@string/boot_retry" />
+        <Button
+            android:id="@+id/boot_cancel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:text="@string/boot_cancel" />
+        <Button
+            android:id="@+id/boot_quit"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:visibility="gone"
+            android:text="@string/boot_quit" />
+    </LinearLayout>
 </LinearLayout>

@@ -68,5 +68,9 @@ void TouchDodge_Init(void);
 void TouchDodge_ProgsChanged(void);
 void TouchDodge_Frame(void);
 int TouchDodge_Buttons(void);
+// The dodge's cue (cl_touch_autododge_cue), drawn over either HUD, and its
+// counts for touch_hook_status.
+void TouchDodge_DrawCue(void);
+void TouchDodge_PrintStatus(void);
 
 #endif

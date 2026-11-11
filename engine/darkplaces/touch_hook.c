@@ -750,6 +750,7 @@ static void TouchHook_Status_f(cmd_state_t *cmd)
 	Con_Printf("touch hook: avail %d held %d buttons %d rescue %s; eye %.0f %.0f %.0f vel %.0f %.0f %.0f onground %d; view %.1f %.1f; hurt volumes %d\n",
 		th.avail, th.held, th.buttons, tr_phase_name[th.rs.phase], eye[0], eye[1], eye[2],
 		cl.mvelocity[0][0], cl.mvelocity[0][1], cl.mvelocity[0][2], cl.onground, cl.viewangles[PITCH], cl.viewangles[YAW], th.num_hurt);
+	TouchDodge_PrintStatus();
 }
 
 void TouchHook_Init(void)
@@ -765,7 +766,7 @@ void TouchHook_Init(void)
 	Cvar_RegisterVariable(&cl_touch_hook_state);
 	Cmd_AddCommand(CF_CLIENT, "+touch_hook", TouchHook_Down_f, "hold the grappling hook from the touch controls' HOOK button (the offhand hook, or the Hook weapon switched to and back)");
 	Cmd_AddCommand(CF_CLIENT, "-touch_hook", TouchHook_Up_f, "let go of the grappling hook held by +touch_hook");
-	Cmd_AddCommand(CF_CLIENT, "touch_hook_status", TouchHook_Status_f, "print the hook's state: what hook there is, the hold, the fall rescue's phase, position and velocity");
+	Cmd_AddCommand(CF_CLIENT, "touch_hook_status", TouchHook_Status_f, "print the hook's state (what hook there is, the hold, the fall rescue's phase, position and velocity) and auto dodge's: on or why off, its counts and reaction");
 	th.hook_index = -1;
 	th.prev_weapon = -1;
 	th.mut_ofs0 = th.mut_ofs1 = -1;

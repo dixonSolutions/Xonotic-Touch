@@ -26,6 +26,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -381,6 +382,9 @@ final class GameData {
         private long[] lengths;
         private long done;
         private long lastReport;
+        /** Cancelled: the part threads stop, and their retry loop must not start them again. */
+        private volatile boolean stopped;
+        private final List<HttpURLConnection> open = new ArrayList<>();
 
         ArchiveFetch(File dir, Progress progress, String status) {
             this.dir = dir;
@@ -475,6 +479,7 @@ final class GameData {
                     job.get();
                 }
             } catch (InterruptedException e) {
+                stopped = true;
                 Thread.currentThread().interrupt();
                 throw new InterruptedIOException("Download cancelled");
             } catch (ExecutionException e) {
@@ -485,6 +490,24 @@ final class GameData {
                 throw new IOException(String.valueOf(cause), cause);
             } finally {
                 pool.shutdownNow();
+                if (stopped) {
+                    // A read blocked in the socket does not see the interrupt
+                    // (and the HTTP stack may clear it): close the connections,
+                    // and wait for the part threads to be gone, so a Resume
+                    // never has two writers on one part file.
+                    synchronized (open) {
+                        for (HttpURLConnection connection : open) {
+                            connection.disconnect();
+                        }
+                    }
+                    try {
+                        if (!pool.awaitTermination(15, TimeUnit.SECONDS)) {
+                            Log.w(TAG, "Download threads still running after cancel");
+                        }
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
             }
         }
 
@@ -494,7 +517,7 @@ final class GameData {
                     transfer(n);
                     return;
                 } catch (IOException e) {
-                    if (attempt >= DOWNLOAD_ATTEMPTS || Thread.currentThread().isInterrupted()) {
+                    if (attempt >= DOWNLOAD_ATTEMPTS || stopped || Thread.currentThread().isInterrupted()) {
                         throw e;
                     }
                     Log.w(TAG, "Part " + n + " stopped, retrying", e);
@@ -520,6 +543,9 @@ final class GameData {
             long from = starts[n] + have;
             long to = starts[n] + lengths[n] - 1;
             HttpURLConnection connection = request(ranged ? "bytes=" + from + "-" + to : null);
+            synchronized (open) {
+                open.add(connection);
+            }
             try {
                 int code = connection.getResponseCode();
                 if (code != (ranged ? HttpURLConnection.HTTP_PARTIAL : HttpURLConnection.HTTP_OK)) {
@@ -532,7 +558,7 @@ final class GameData {
                     int read;
                     while (remaining > 0
                             && (read = in.read(buffer, 0, (int) Math.min(buffer.length, remaining))) > 0) {
-                        if (Thread.currentThread().isInterrupted()) {
+                        if (stopped || Thread.currentThread().isInterrupted()) {
                             throw new InterruptedIOException("Download cancelled");
                         }
                         out.write(buffer, 0, read);
@@ -545,6 +571,9 @@ final class GameData {
                 }
             } finally {
                 connection.disconnect();
+                synchronized (open) {
+                    open.remove(connection);
+                }
             }
         }
 
@@ -638,6 +667,11 @@ final class GameData {
         int files = 0;
         ZipEntry entry;
         while ((entry = zip.getNextEntry()) != null) {
+            if (Thread.currentThread().isInterrupted()) {
+                // Cancel on the boot screen: stop between files; each one
+                // already written is whole (written under a temporary name).
+                throw new InterruptedIOException("Unpacking cancelled");
+            }
             String name = entry.getName();
             if (strip != null) {
                 if (!name.startsWith(strip)) {
@@ -683,6 +717,10 @@ final class GameData {
             try (OutputStream sink = new FileOutputStream(target)) {
                 int read;
                 while ((read = zip.read(buffer)) > 0) {
+                    // A pk3 goes to a temporary name, so it can stop mid-file.
+                    if (strip != null && Thread.currentThread().isInterrupted()) {
+                        throw new InterruptedIOException("Unpacking cancelled");
+                    }
                     sink.write(buffer, 0, read);
                 }
             } catch (IOException e) {
