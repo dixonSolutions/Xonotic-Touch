@@ -417,14 +417,24 @@ static double look_prev_time;
 // (MAX_KEY_BINDS); the port's CSQC uses 50001 (TOUCH_HOLD_KEY).
 #define TOUCH_HUD_HOLD_KEY 50000
 
+// Run a game command now, not at the next frame's turn of the command buffer:
+// this runs inside IN_Move, before the frame's move is built, so a press goes
+// out in this frame's move rather than the next (one frame of input lag, 33 ms
+// at the thermal profile's 30 fps). Only for commands that just set input
+// state (buttons, impulses); anything that opens a screen keeps the buffer.
+static void exec_now(const char *text)
+{
+	Cmd_ExecuteString(cmd_local, text, strlen(text), src_local, false); // maybe inside a buffered command already: no lock
+}
+
 static void set_key(const char *name, qbool *state, qbool down)
 {
 	char buf[64];
 	if (*state == down)
 		return;
 	*state = down;
-	dpsnprintf(buf, sizeof(buf), "%s%s %d\n", down ? "+" : "-", name, TOUCH_HUD_HOLD_KEY);
-	Cbuf_AddText(cmd_local, buf);
+	dpsnprintf(buf, sizeof(buf), "%s%s %d", down ? "+" : "-", name, TOUCH_HUD_HOLD_KEY);
+	exec_now(buf);
 }
 
 void TouchHUD_ReleaseAll(void)
@@ -1418,13 +1428,13 @@ static void weapon_gesture(finger_t *f, qbool up)
 		return;
 	if (fabs(dy) > swipe && fabs(dy) > fabs(dx))
 	{
-		Cbuf_AddText(cmd_local, dy < 0 ? "weapprev\n" : "weapnext\n");
+		exec_now(dy < 0 ? "weapprev" : "weapnext");
 		f->fired = true;
 		return;
 	}
 	if (up && host.realtime - f->down_time < 0.35 && fabs(dx) < swipe && fabs(dy) < swipe)
 	{
-		Cbuf_AddText(cmd_local, "weapnext\n");
+		exec_now("weapnext");
 		f->fired = true;
 	}
 }
@@ -1781,8 +1791,8 @@ void TouchHUD_Frame(void)
 				f->impulse = strip_hit(px, py);
 				if (f->impulse >= 0)
 				{
-					dpsnprintf(cmd, sizeof(cmd), "impulse %d\n", f->impulse);
-					Cbuf_AddText(cmd_local, cmd);
+					dpsnprintf(cmd, sizeof(cmd), "impulse %d", f->impulse);
+					exec_now(cmd);
 					strip_selected_impulse = f->impulse;
 				}
 			}
@@ -1793,11 +1803,11 @@ void TouchHUD_Frame(void)
 				f->grab_u = st.u;
 			}
 			if (f->role == ROLE_RELOAD)
-				Cbuf_AddText(cmd_local, "weapon_reload\n");
+				exec_now("weapon_reload");
 			if (f->role == ROLE_TURN)
 				TouchTurn_Start(); // on the press: nothing to undo
 			if (f->role == ROLE_DODGE)
-				Cbuf_AddText(cmd_local, "+dodge\n-dodge\n");
+				Cbuf_AddText(cmd_local, "+dodge\n-dodge\n"); // a press and release in one frame would never be seen
 		}
 		else
 		{
