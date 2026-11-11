@@ -71,6 +71,8 @@ cvar_t cl_touch_autoshoot_predict = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot
 	"Auto-shoot adds the time the screen lags the server to the lead, and against an enemy that keeps reversing its strafe leads toward the middle of the dodge instead of its far end"};
 cvar_t cl_touch_autoshoot_feet = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_feet", "1",
 	"Splash weapons (Devastator, Mortar, Electro, Crylink, RPC, Fireball) aim at the floor at a grounded enemy's feet, so a near miss still explodes beside them"};
+cvar_t cl_touch_autoshoot_group = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_group", "1",
+	"Splash weapons aim where the blast catches the most visible enemies (never teammates), and a Devastator rocket is set off where it does the most damage to all of them"};
 cvar_t cl_touch_aimassist = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist", "1",
 	"Touch controls: aim helpers -- the look drag slows down over an enemy (cl_touch_aimassist_friction) and the view is pulled gently toward one while a finger is on the aim control (cl_touch_aimassist_strength). "
 	"Only in touch mode; never active with a keyboard attached"};
@@ -210,6 +212,10 @@ static struct
 	int fire_target;     // who auto-shoot is firing at (0 none)
 	int lock_ent;        // combat lock: last target fired at, and until when
 	double lock_until;
+	// groups: the blast point chosen last frame (relative to nothing: world)
+	qbool group_valid;
+	vec3_t group_point;
+	int group_count, group_said;
 
 	int last_mode;       // fire mode of the last shot decision (TW_MODE_*)
 	float lookscale;
@@ -258,6 +264,7 @@ void TouchAim_Init(void)
 	Cvar_RegisterVariable(&cl_touch_autoshoot_air);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_predict);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_feet);
+	Cvar_RegisterVariable(&cl_touch_autoshoot_group);
 	Cvar_RegisterVariable(&cl_touch_aimassist);
 	Cvar_RegisterVariable(&cl_touch_aimassist_friction);
 	Cvar_RegisterVariable(&cl_touch_aimassist_strength);
@@ -602,6 +609,13 @@ static void track_velocity(int n, prvm_edict_t *ed, const vec3_t org, double now
 	VectorCopy(t->vel, vel_out);
 }
 
+// Visible players (enemies and teammates) for splash scoring: their boxes
+// and velocities, collected by scan when a splash decision may need them.
+#define GROUP_MAX 8
+typedef struct gbody_s { int n; qbool enemy; vec3_t bmin, bmax, vel; } gbody_t;
+static gbody_t gbodies[GROUP_MAX];
+static int num_gbodies;
+
 // Motion of a player for the lead and the weapon choice: on the ground or
 // in the air (a short trace under its feet; the floor below and the time to
 // land when airborne), and its strafe reversals across the line of sight.
@@ -772,7 +786,7 @@ static qbool compute_lead(int n, const touch_wep_fire_t *fire, const vec3_t eye,
 // cone (for auto-shoot and the helpers), measured to where the shot should
 // go when `fire` is a projectile and lead is on. Both must be enemies, alive,
 // drawn, in range and in line of sight.
-static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep_fire_t *fire, float latency, qbool slew, qbool guided, int *on_target, int *friend_on, aimtarget_t *near_out)
+static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep_fire_t *fire, float latency, qbool slew, qbool guided, qbool collect, int *on_target, int *friend_on, aimtarget_t *near_out)
 {
 	prvm_prog_t *prog = CLVM_prog;
 	int team_game = teamplay_mode();
@@ -782,6 +796,7 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep
 	int i;
 	*on_target = 0;
 	*friend_on = 0;
+	num_gbodies = 0;
 	memset(near_out, 0, sizeof(*near_out));
 	near_out->err = 1e9f;
 	for (i = 1; i < prog->num_edicts; i++)
@@ -825,6 +840,24 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, const touch_wep
 		if (dist < 1 || dist > range)
 			continue;
 		VectorScale(dir, 1.0f / dist, dir);
+		if (collect && num_gbodies < GROUP_MAX)
+		{
+			// in sight: the chest, or at least the head
+			vec3_t hd;
+			VectorCopy(center, hd);
+			hd[2] = bmax[2] - 6;
+			if (line_clear(eye, center) || line_clear(eye, hd))
+			{
+				gbody_t *g = &gbodies[num_gbodies++];
+				g->n = n;
+				g->enemy = enemy;
+				VectorCopy(bmin, g->bmin);
+				VectorCopy(bmax, g->bmax);
+				VectorCopy(PRVM_clientedictvector(ed, velocity), g->vel);
+				if (VectorLength(g->vel) > TRACK_MAX_SPEED)
+					VectorClear(g->vel);
+			}
+		}
 		if (!enemy)
 		{
 			// only noted for cl_touch_aim_debug 2: a teammate under the crosshair
@@ -1121,6 +1154,162 @@ static int find_own_rocket(const vec3_t eye)
 	return best;
 }
 
+// Splash weapons and groups (cl_touch_autoshoot_group): when two or more
+// visible enemies stand near the target, score blast points -- the previous
+// one, each enemy's floor point, the floor between each close pair -- by
+// the splash they deal to every visible enemy where they will be when the
+// shot lands (the aimed-at one counting 1.5, teammates against), and aim at
+// the best if it beats the single-target point by TW_GROUP_HYSTERESIS.
+static void group_aim(aimtarget_t *near, const touch_wep_fire_t *f, const vec3_t eye, float latency)
+{
+	touch_wep_body_t bodies[GROUP_MAX];
+	float cands[1 + 1 + GROUP_MAX + GROUP_MAX * (GROUP_MAX - 1) / 2][3];
+	float feet[GROUP_MAX][3];
+	int isfeet[GROUP_MAX];
+	int ncand = 0, nb = 0, i, j, cur = -1, own_i, best, nenemy = 0, hit = 0, near_i = -1;
+	float T = near->tof + latency, R = f->splash, core = f->damage, edge = 0.5f * f->damage, sc, own_sc, yaw, pitch;
+	vec3_t aim, p;
+	for (i = 0; i < num_gbodies; i++)
+	{
+		const gbody_t *g = &gbodies[i];
+		const track_t *t = &ta.tracks[g->n & (TRACK_MAX - 1)];
+		touch_wep_body_t *b = &bodies[nb];
+		int k;
+		for (k = 0; k < 3; k++)
+		{
+			float shift = k < 2 ? t->vel[k] * T : 0;
+			b->bmin[k] = g->bmin[k] + shift - eye[k];
+			b->bmax[k] = g->bmax[k] + shift - eye[k];
+		}
+		b->weight = !g->enemy ? -0.5f : g->n == near->entnum ? 1.5f : 1;
+		if (g->enemy)
+		{
+			feet[nenemy][0] = 0.5f * (b->bmin[0] + b->bmax[0]);
+			feet[nenemy][1] = 0.5f * (b->bmin[1] + b->bmax[1]);
+			feet[nenemy][2] = b->bmin[2] + 4;
+			isfeet[nenemy] = b->bmin[2] < -16; // feet below the eye: the floor is in sight
+			if (!isfeet[nenemy])
+				feet[nenemy][2] = 0.5f * (b->bmin[2] + b->bmax[2]);
+			if (g->n == near->entnum)
+				near_i = nenemy;
+			nenemy++;
+		}
+		nb++;
+	}
+	if (nenemy < 2 || near_i < 0)
+	{
+		ta.group_valid = false;
+		return;
+	}
+	if (ta.group_valid)
+	{
+		VectorSubtract(ta.group_point, eye, cands[ncand]);
+		cur = ncand++;
+	}
+	// the single-target point: where the shot meets the target (for a lob,
+	// whose aim point only gives the launch direction, the target's floor point)
+	if (f->kind == TW_KIND_BALLISTIC)
+		VectorCopy(feet[near_i], cands[ncand]);
+	else
+	{
+		VectorAdd(near->center, near->lead, p);
+		VectorSubtract(p, eye, cands[ncand]);
+	}
+	own_i = ncand++;
+	for (i = 0; i < nenemy; i++)
+		if (f->kind != TW_KIND_BALLISTIC || i != near_i)
+			VectorCopy(feet[i], cands[ncand++]);
+	for (i = 0; i < nenemy; i++)
+		for (j = i + 1; j < nenemy; j++)
+		{
+			float dx = feet[i][0] - feet[j][0], dy = feet[i][1] - feet[j][1];
+			if (sqrt(dx * dx + dy * dy) < 2 * R + 32)
+			{
+				VectorMAM(0.5f, feet[i], 0.5f, feet[j], cands[ncand]);
+				ncand++;
+			}
+		}
+	// a point the shot cannot reach scores nothing
+	for (i = 0; i < ncand; i++)
+	{
+		if (i == own_i || i == cur)
+			continue;
+		VectorAdd(eye, cands[i], p);
+		if (!line_clear(eye, p))
+			VectorSet(cands[i], 1e6f, 1e6f, 1e6f);
+	}
+	best = TouchWep_BestImpact((const float (*)[3])cands, ncand, bodies, nb, core, edge, R, cur, &sc);
+	own_sc = TouchWep_GroupScore(cands[own_i], bodies, nb, core, edge, R);
+	// the group point must beat the target alone: by the hysteresis margin
+	// to take over, at all to stay
+	if (best < 0 || best == own_i || sc < own_sc * (best == cur ? 1.0f : TW_GROUP_HYSTERESIS))
+	{
+		ta.group_valid = false;
+		return;
+	}
+	for (i = 0; i < nb; i++)
+		if (bodies[i].weight > 0 && TouchWep_SplashDamage(TouchWep_BoxGap(cands[best], bodies[i].bmin, bodies[i].bmax), core, edge, R) > 0)
+			hit++;
+	// aim there: straight at it, or the lob that comes down on it
+	VectorCopy(cands[best], aim);
+	if (f->kind == TW_KIND_BALLISTIC)
+	{
+		vec3_t zero;
+		float tof;
+		VectorClear(zero);
+		if (!TouchWep_AimPoint(f, cands[best], zero, 0, cl.movevars_gravity, aim, &tof))
+		{
+			ta.group_valid = false;
+			return;
+		}
+	}
+	VectorAdd(eye, cands[best], ta.group_point);
+	ta.group_valid = true;
+	VectorAdd(eye, aim, p);
+	VectorSubtract(p, near->center, near->lead);
+	angles_to(eye, p, &yaw, &pitch);
+	near->yaw = yaw;
+	near->pitch = pitch;
+	near->err = edge_err(wrap180(yaw - cl.viewangles[YAW]), pitch - cl.viewangles[PITCH], near->rh, near->rv);
+	near->on_lead = near->err <= 0;
+	near->has_lead = true;
+	if (cl_touch_aim_debug.integer && (hit != ta.group_said || cl_touch_aim_debug.integer >= 3))
+		Con_Printf("touch aim: group: blast point %.0f %.0f %.0f catches %d of %d enemies (score %.0f, aimed-at player alone %.0f)\n",
+			ta.group_point[0], ta.group_point[1], ta.group_point[2], hit, nenemy, sc, own_sc);
+	ta.group_said = hit;
+}
+
+// Visible enemies collected this frame.
+static int group_enemies(void)
+{
+	int i, c = 0;
+	for (i = 0; i < num_gbodies; i++)
+		if (gbodies[i].enemy)
+			c++;
+	return c;
+}
+
+// Remote detonation by the damage to every visible enemy (TouchWep_DetonateGroup),
+// used when two or more are in sight; one alone keeps the single-target rule.
+static qbool detonate_group(float radius, const vec3_t eye, float dt)
+{
+	touch_wep_body_t bodies[GROUP_MAX];
+	float vels[GROUP_MAX][3];
+	vec3_t smin, smax;
+	int i, nb = 0;
+	for (i = 0; i < num_gbodies; i++)
+	{
+		VectorCopy(gbodies[i].bmin, bodies[nb].bmin);
+		VectorCopy(gbodies[i].bmax, bodies[nb].bmax);
+		bodies[nb].weight = gbodies[i].enemy ? 1 : -0.5f;
+		VectorCopy(ta.tracks[gbodies[i].n & (TRACK_MAX - 1)].vel, vels[nb]);
+		nb++;
+	}
+	VectorSet(smin, eye[0] - 16, eye[1] - 16, eye[2] - 59);
+	VectorSet(smax, eye[0] + 16, eye[1] + 16, eye[2] + 10);
+	return TouchWep_DetonateGroup(ta.rk_org, ta.rk_vel, bodies, (const float (*)[3])vels, nb, smin, smax, radius, shot_latency(), dt);
+}
+
 // Devastator with steering: press fire once lined up, keep it held while the
 // rocket flies (the server guides it toward the view ray), detonate it next
 // to the enemy with a one-frame attack2, then release fire long enough for
@@ -1240,7 +1429,9 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 		VectorSubtract(ta.rk_vel, ta.rk_target_vel, rel_v);
 		ta.rk_closest = min(ta.rk_closest, VectorDistance(ta.rk_org, ta.rk_target_org));
 		Matrix4x4_OriginFromMatrix(&r_refdef.view.matrix, me);
-		if (dev && TouchWep_Detonate(ta.rk_org, rel_v, ta.rk_target_org, me, dev->pri.splash))
+		if (dev && (cl_touch_autoshoot_group.integer && group_enemies() >= 2
+			? detonate_group(dev->pri.splash, me, dt)
+			: TouchWep_Detonate(ta.rk_org, rel_v, ta.rk_target_org, me, dev->pri.splash)))
 		{
 			rk_set(RK_DETONATE, va(vabuf, sizeof(vabuf), "rocket %.0f units from player %d", VectorDistance(ta.rk_org, ta.rk_target_org), ta.rk_target));
 			// attack stays held this frame: with the rocket already out it
@@ -1260,6 +1451,8 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 			if (!TouchWep_InterceptTime(rel, ta.rk_target_vel, max(sp, dev ? dev->pri.speed : 1000), TW_LEAD_MAX_TIME, &t))
 				t = 0;
 			VectorMA(ta.rk_target_org, t, ta.rk_target_vel, aim);
+			if (cl_touch_autoshoot_group.integer && ta.group_valid)
+				VectorCopy(ta.group_point, aim); // the blast point for the whole group
 			angles_to(eye, aim, pull_yaw, pull_pitch);
 			*pull = true;
 		}
@@ -1439,9 +1632,15 @@ static void aim_frame(void)
 	guided = wep && (wep->flags & TW_GUIDED) && cl_touch_autoshoot_steer.integer;
 	scan(eye, fwd, locked ? cone + LOCK_CONE_EXTRA : cone, fire, fire ? (guided ? latency_estimate() : shot_latency()) : 0,
 		cl_touch_aimassist_track.integer && !guided, guided,
+		cl_touch_autoshoot_group.integer,
 		&on_target, &friend_on, &near);
 	if (near.entnum && near.err > cone && near.entnum != ta.lock_ent)
 		near.entnum = 0;
+	// a blast for the whole group, when the weapon has one worth sharing
+	if (cl_touch_autoshoot_group.integer && near.entnum && fire && fire->splash >= 100)
+		group_aim(&near, fire, eye, shot_latency());
+	else
+		ta.group_valid = false;
 
 	if (cl_touch_aim_debug.integer && on_target != ta.debug_target)
 	{
