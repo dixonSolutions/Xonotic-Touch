@@ -2668,6 +2668,9 @@ static void aim_frame(void)
 			Con_Printf("touch aim: inactive: %s\n", blocked);
 		ta.blocked_said = blocked;
 		ta.was_allowed = false;
+		// nothing offline-only outlives the frame that allowed it
+		memset(&practice, 0, sizeof(practice));
+		num_marks = 0;
 		reset();
 		publish();
 		return;
@@ -3336,7 +3339,7 @@ void TouchAim_Draw(void)
 	vec3_t org, fwd, left, up, d;
 	float w = vid_conwidth.value, h = vid_conheight.value, fx = r_refdef.view.frustum_x, fy = r_refdef.view.frustum_y;
 	int i;
-	if (!num_marks || practice_gate_now != TW_GATE_OPEN || fx <= 0 || fy <= 0)
+	if (!num_marks || practice_gate() != TW_GATE_OPEN || fx <= 0 || fy <= 0)
 		return;
 	Matrix4x4_ToVectors(&r_refdef.view.matrix, fwd, left, up, org);
 	for (i = 0; i < num_marks; i++)
