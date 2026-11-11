@@ -17,6 +17,7 @@ applies to both.
 #include "csprogs.h"
 #include "touch_hud.h"
 #include "touch_aim.h"
+#include "touch_hook.h"
 #include "touch_ui.h"
 #include "touch_altfire.h"
 
@@ -371,7 +372,7 @@ static void widget_chrome_pill(float cx, float cy, float hx, float hy, const cha
 enum
 {
 	ROLE_NONE = -1, ROLE_IGNORED = -2,
-	ROLE_MOVE = 0, ROLE_LOOK, ROLE_FIRE, ROLE_FIRE2,
+	ROLE_MOVE = 0, ROLE_LOOK, ROLE_FIRE, ROLE_FIRE2, ROLE_HOOK,
 	ROLE_JUMP = 100, ROLE_CROUCH, ROLE_WEAPON, ROLE_ZOOM, ROLE_DODGE, ROLE_RELOAD, ROLE_CON, ROLE_PAUSE, ROLE_SHEET, ROLE_CHAT, ROLE_SCORES, ROLE_VYES, ROLE_VNO,
 	ROLE_WEPSTRIP = 200, ROLE_WEPGRIP
 };
@@ -387,7 +388,7 @@ typedef struct finger_s
 	double lost_time;   // 0 while reported
 	qbool first_frame;
 	qbool fired;        // role-specific one-shot (pill tap, weapon swipe)
-	qbool draglook;     // FIRE finger that has escaped into a look drag
+	qbool draglook;     // FIRE or HOOK finger that has escaped into a look drag
 	float prev_look_x, prev_look_y;
 	int impulse;        // ROLE_WEPSTRIP: the row's impulse
 	float grab_u;       // ROLE_WEPGRIP: the strip's unit when the grip was taken
@@ -438,6 +439,7 @@ void TouchHUD_ReleaseAll(void)
 	set_key("crouch", &key_crouch, false);
 	set_key("showscores", &key_scores, false);
 	set_key("zoom", &key_zoom, false);
+	TouchHook_SetHudButton(false);
 	hop_latched = false;
 	hop_cancelling = false;
 	tapfire_until = 0;
@@ -598,7 +600,7 @@ static int num_weapons = 0;
 // code), -1 on any other server: touch_altfire.h then judges from the stock
 // balance.
 static int stat_altfire = -1;
-static float fire2_fade, zoom_fade;
+static float fire2_fade, zoom_fade, hook_fade;
 // The CSQC's viewmodels[0] (the wepent) tells the held weapon and its clip,
 // which no stat does: global offset plus the fields read from it each frame.
 typedef struct qcfield_s { int ofs; int type; } qcfield_t;
@@ -1224,6 +1226,8 @@ static int assign_role(float px, float py)
 		return ROLE_WEAPON;
 	if (zoom_available() && hit_circle(px, py, cv("touch_zoom_x", 0.860f), cv("touch_zoom_y", 0.480f), cv("touch_zoom_size", 0.100f), 1.10f))
 		return ROLE_ZOOM;
+	if (TouchHook_ButtonShown() && hit_circle(px, py, cv("touch_hook_x", 0.765f), cv("touch_hook_y", 0.615f), cv("touch_hook_size", 0.100f), 1.10f))
+		return ROLE_HOOK;
 	if (cv("touch_reload_visible", 0) && hit_circle(px, py, cv("touch_reload_x", 0.720f), cv("touch_reload_y", 0.480f), cv("touch_reload_size", 0.100f), 1.10f))
 		return ROLE_RELOAD;
 	if (cv("touch_dodge_visible", 0) && hit_circle(px, py, cv("touch_dodge_x", 0.165f), cv("touch_dodge_y", 0.480f), cv("touch_dodge_size", 0.100f), 1.10f))
@@ -1371,6 +1375,33 @@ void TouchHUD_LookWithoutControls(void)
 		look_prev_time = now;
 		last_x = x;
 		last_y = y;
+	}
+}
+
+// touch_fire_drag_look: FIRE (and HOOK, which goes where the player looks) is
+// also an aim surface. The drag starts once the finger has left the look
+// deadzone; a dedicated look finger keeps priority.
+static void button_drag_look(finger_t *f, qbool *look_seen, float *look_dx, float *look_dy)
+{
+	float ddx, ddy;
+	if (!cv("touch_fire_drag_look", 1) || *look_seen)
+		return;
+	ddx = f->last_x - f->down_x;
+	ddy = f->last_y - f->down_y;
+	if (!f->draglook && sqrt(ddx * ddx + ddy * ddy) >= cv("touch_look_deadzone_px", 4))
+	{
+		f->draglook = true;
+		look_begin();
+		f->prev_look_x = f->last_x;
+		f->prev_look_y = f->last_y;
+	}
+	if (f->draglook)
+	{
+		*look_seen = true;
+		*look_dx += f->last_x - f->prev_look_x;
+		*look_dy += f->last_y - f->prev_look_y;
+		f->prev_look_x = f->last_x;
+		f->prev_look_y = f->last_y;
 	}
 }
 
@@ -1601,6 +1632,7 @@ void TouchHUD_Frame(void)
 	double now = host.realtime;
 	float dt;
 	float grace = cv("touch_finger_grace_ms", 120) * 0.001f;
+	qbool hook_down = false;
 	qbool fire_count = false, fire2_down = false, zoom_down = false, jump_down = false, crouch_down = false, scores_down = false, move_active = false, look_seen = false;
 	float look_dx = 0, look_dy = 0;
 	qbool look_first = false;
@@ -1726,7 +1758,7 @@ void TouchHUD_Frame(void)
 			Host_SaveConfig(CONFIGFILENAME);
 			Con_DPrintf("Touch HUD: weapon strip size %.2f saved\n", cl_touch_weplist_scale.value);
 		}
-		else if (f->role == ROLE_FIRE && f->draglook)
+		else if ((f->role == ROLE_FIRE || f->role == ROLE_HOOK) && f->draglook)
 			look_active = false;
 		else if (f->role == ROLE_LOOK)
 		{
@@ -1775,28 +1807,11 @@ void TouchHUD_Frame(void)
 			break;
 		case ROLE_FIRE:
 			fire_count = true;
-			// touch_fire_drag_look: the fire button is also an aim surface. The
-			// drag starts once the finger has left the look deadzone; a dedicated
-			// look finger keeps priority.
-			if (cv("touch_fire_drag_look", 1) && !look_seen)
-			{
-				float ddx = f->last_x - f->down_x, ddy = f->last_y - f->down_y;
-				if (!f->draglook && sqrt(ddx * ddx + ddy * ddy) >= cv("touch_look_deadzone_px", 4))
-				{
-					f->draglook = true;
-					look_begin();
-					f->prev_look_x = f->last_x;
-					f->prev_look_y = f->last_y;
-				}
-				if (f->draglook)
-				{
-					look_seen = true;
-					look_dx += f->last_x - f->prev_look_x;
-					look_dy += f->last_y - f->prev_look_y;
-					f->prev_look_x = f->last_x;
-					f->prev_look_y = f->last_y;
-				}
-			}
+			button_drag_look(f, &look_seen, &look_dx, &look_dy);
+			break;
+		case ROLE_HOOK:
+			hook_down = true;
+			button_drag_look(f, &look_seen, &look_dx, &look_dy);
 			break;
 		case ROLE_FIRE2:
 			fire2_down = true;
@@ -1914,6 +1929,8 @@ void TouchHUD_Frame(void)
 
 	set_key("crouch", &key_crouch, crouch_down);
 	set_key("showscores", &key_scores, scores_down);
+	// HOOK: held while the finger is down (touch_hook.c does the rest)
+	TouchHook_SetHudButton(hook_down);
 }
 
 // ---------------------------------------------------------------------------
@@ -2184,6 +2201,11 @@ void TouchHUD_Draw(void)
 			draw_circle_widget("touch_fire2_x", 0.770f, "touch_fire2_y", 0.755f, "touch_fire2_size", 0.100f, "ALT", key_attack2, a * fire2_fade, C_DANGER);
 		if (zoom_fade > 0)
 			draw_circle_widget("touch_zoom_x", 0.860f, "touch_zoom_y", 0.480f, "touch_zoom_size", 0.100f, "ZOOM", key_zoom, a * zoom_fade, C_ACCENT);
+		// HOOK fades the same way: there while a hook is to hand
+		// (touch_hook_visible 2), and while it is held
+		hook_fade = cv("touch_hook_visible", 2) > 0 ? TouchAltFire_Fade(hook_fade, TouchHook_ButtonShown() || TouchHook_Held(), fade_dt) : 0;
+		if (hook_fade > 0)
+			draw_circle_widget("touch_hook_x", 0.765f, "touch_hook_y", 0.615f, "touch_hook_size", 0.100f, "HOOK", TouchHook_Held(), a * hook_fade, C_ACCENT);
 	}
 	if (cv("touch_reload_visible", 0))
 		draw_circle_widget("touch_reload_x", 0.720f, "touch_reload_y", 0.480f, "touch_reload_size", 0.100f, "RLD", role_owned(ROLE_RELOAD), a, C_ACCENT);
