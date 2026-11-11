@@ -217,6 +217,12 @@ static void test_predict(void)
 	v3(org, 300, 0, 60);
 	v3(vel, -320, 0, -150);
 	CHECK_EQ(TR_LAND, predict(org, vel, &f), "jump toward the middle lands");
+	// landing: the origin estimated a unit into the floor, still moving down
+	v3(org, 0, 0, 23);
+	v3(vel, 0, 0, -250);
+	CHECK_EQ(TR_LAND, predict(org, vel, &f), "landing frame, origin a unit into the floor");
+	v3(org, 500, 0, 20);
+	CHECK_EQ(TR_LAND, predict(org, vel, &f), "landing at the edge, 4 units into the floor");
 	// a running jump near the edge that still comes down on the platform
 	v3(org, 380, 0, 40);
 	v3(vel, 320, 0, -50);
@@ -335,7 +341,7 @@ static void test_predict(void)
 	v3(vel, 320, 0, -100);
 	TouchRescue_Predict(&w, org, vel, &f);
 	printf("  a walk-off judged in %d traces\n", w.traces);
-	CHECK(w.traces <= TR_MAX_SEGS + TR_MAX_SLIDES + 2, "prediction stays within its trace budget");
+	CHECK(w.traces <= TR_MAX_SEGS + TR_MAX_SLIDES + 4, "prediction stays within its trace budget");
 }
 
 static tr_from_t from_eye(const float eye[3], float vx, float vz, float home_z)
@@ -448,6 +454,7 @@ static tr_frame_t falling(double now)
 	f.attach_time = 0.6f;
 	f.ground_below = -1;
 	f.speed = 400;
+	f.hook_out = 1;
 	f.cooldown = 1;
 	return f;
 }
@@ -641,6 +648,37 @@ static void test_rescue(void)
 	n = run(&s, &f, 400, &o);
 	CHECK_EQ(TR_RESTORE, s.phase, "a hang is let go");
 	CHECK(n >= 235 && n <= 245, "a hang lasts TR_MAX_HOLD");
+
+	// the Hook weapon: ready while aiming, the view kept on the anchor until
+	// the switch lands and the hook leaves; the catch is timed from then
+	TouchRescue_Reset(&s);
+	f = falling(84);
+	run(&s, &f, 30, &o);
+	CHECK(o.prepare, "weapon: switched to while aiming");
+	f.aim_err = 0;
+	f.hook_out = 0;
+	run(&s, &f, 1, &o);
+	CHECK_EQ(TR_HOLD, s.phase, "weapon: decided");
+	f.pull_speed = -300;
+	run(&s, &f, 30, &o);
+	CHECK_EQ(TR_HOLD, s.phase, "weapon: still waiting on the switch past the attach time");
+	CHECK(o.hold && o.aim, "weapon: holding, view kept on the anchor");
+	f.hook_out = 1;
+	run(&s, &f, 1, &o);
+	CHECK(!o.aim, "weapon: hook out, the view is left alone");
+	n = run(&s, &f, 120, &o);
+	CHECK_EQ(TR_RESTORE, s.phase, "weapon: no catch, released");
+	CHECK(n >= 34 && n <= 38, "weapon: catch timed from the hook leaving");
+	// a switch that never lands
+	TouchRescue_Reset(&s);
+	f = falling(87);
+	run(&s, &f, 30, &o);
+	f.aim_err = 0;
+	f.hook_out = 0;
+	run(&s, &f, 1, &o);
+	n = run(&s, &f, 120, &o);
+	CHECK_EQ(TR_RESTORE, s.phase, "weapon: never fired, given up");
+	CHECK(n >= 70 && n <= 74, "weapon: after TR_SWITCH_TIMEOUT");
 
 	// caught, then wedged motionless under a lip: let go after TR_STUCK_TIME
 	TouchRescue_Reset(&s);

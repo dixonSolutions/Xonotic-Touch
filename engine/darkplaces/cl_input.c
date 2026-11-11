@@ -1826,6 +1826,7 @@ void CL_SendMove(void)
 	if (in_button14.state  & 3) bits |=  65536;
 	if (in_button15.state  & 3) bits |= 131072;
 	if (in_button16.state  & 3) bits |= 262144;
+	bits |= TouchHook_Buttons(); // Touch: HOOK button and fall rescue (button6, or attack with the Hook weapon)
 	// button bits 19-31 unused currently
 	// rotate/zoom view serverside if PRYDON_CLIENTCURSOR cursor is at edge of screen
 	if(cl_prydoncursor.integer > 0)

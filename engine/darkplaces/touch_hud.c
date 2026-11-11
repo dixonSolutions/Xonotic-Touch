@@ -2234,6 +2234,25 @@ int TouchHUD_HeldWeapon(void)
 	return held_weapon_index();
 }
 
+// The weapon in hand once a switch has landed (the wepent's activeweapon;
+// switchweapon changes as soon as the server takes the request).
+int TouchHUD_ActiveWeapon(void)
+{
+	prvm_prog_t *prog = CLVM_prog;
+	prvm_edict_t *ve = wepent(), *we;
+	int id, i;
+	if (!ve || f_activeweapon.ofs < 0)
+		return -1;
+	we = edict_or_null(prog, PRVM_EDICTFIELDEDICT(ve, f_activeweapon.ofs));
+	if (!we)
+		return -1;
+	id = qcfield_int(prog, we, f_wep_id);
+	for (i = 0; i < num_weapons; i++)
+		if (weapons[i].id == id)
+			return i;
+	return -1;
+}
+
 int TouchHUD_HeldClip(void)
 {
 	prvm_prog_t *prog = CLVM_prog;

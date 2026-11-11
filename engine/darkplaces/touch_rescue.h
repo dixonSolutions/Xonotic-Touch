@@ -203,14 +203,30 @@ static int TouchRescue_Below(tr_world_t *w, const float from[3], float depth, tr
 	return out->outcome = TR_VOID;
 }
 
-// Where the arc from org at vel comes down.
+// Where the arc from org at vel comes down. A start inside something (the
+// origin is estimated from the view, a unit or two low on the frame a player
+// lands) is tried a little higher, and if still inside is ground: whatever
+// that is, it is not a fall into the void.
 static int TouchRescue_Predict(tr_world_t *w, const float org[3], const float vel[3], tr_fall_t *out)
 {
 	float pos[3], v[3], next[3], at[3], normal[3];
 	float t = 0, g = w->gravity > 0 ? w->gravity : 800;
 	int seg, done, r;
+	tr_trace_t tr;
 	memcpy(pos, org, sizeof(pos));
 	memcpy(v, vel, sizeof(v));
+	tr_trace(w, pos, pos, 1, &tr);
+	if (tr.startsolid)
+	{
+		pos[2] += 4;
+		tr_trace(w, pos, pos, 1, &tr);
+		if (tr.startsolid)
+		{
+			memcpy(out->point, org, sizeof(out->point));
+			out->time = 0;
+			return out->outcome = TR_LAND;
+		}
+	}
 	for (seg = 0; seg < TR_MAX_SEGS && t < TR_HORIZON; seg++)
 	{
 		float speed = sqrtf(tr_dot(v, v)), dt;
@@ -469,7 +485,8 @@ static int TouchRescue_FindAnchor(tr_world_t *w, const tr_from_t *from, const fl
 //          TR_CONFIRM seconds, with a hook to hand and not hooking by hand:
 //          look for an anchor (out.find_anchor) and go to AIM.
 // AIM      turn the view to the anchor (out.aim); fire once it is on it.
-// HOLD     hold the hook (out.hold) while it pulls; let go once there is
+// HOLD     hold the hook (out.hold); until it has left (a switch to the Hook
+//          weapon first) keep the view on the anchor. Then let go once there is
 //          ground under the player within TR_RELEASE_DROP and the fall would
 //          end on ground, or on landing; give up when the pull has not
 //          started within the attach time, after TR_MAX_HOLD, or when the
@@ -513,6 +530,8 @@ static const char *const tr_phase_name[] = { "idle", "aim", "hold", "restore", "
 // wedged under a lip; let go rather than hang.
 #define TR_STUCK_SPEED     80.0f
 #define TR_STUCK_TIME      0.6f
+// The hook must leave within this long of the decision (a weapon switch).
+#define TR_SWITCH_TIMEOUT  1.2f
 // The view goes back within this long, or is left where it is.
 #define TR_RESTORE_TIME    0.6f
 #define TR_GROUND_RESET    0.2f
@@ -524,6 +543,7 @@ typedef struct tr_frame_s
 	int allowed;        // touch mode, alive, playing, the rescue switched on
 	int available;      // a hook can be fired now
 	int manual;         // the player is hooking by hand
+	int hook_out;       // HOLD: the hook has been sent (the weapon is in hand)
 	int onground;
 	float vz;           // vertical velocity
 	int fall;           // where the fall ends (TR_LAND / TR_VOID / TR_DEATH), -1 not known
@@ -531,7 +551,7 @@ typedef struct tr_frame_s
 	float aim_err;      // AIM: degrees from the view to the anchor; RESTORE: to the saved view
 	float turn_rate;    // the player's own view turn this frame, deg/s
 	float pull_speed;   // HOLD: speed toward the anchor gained beyond free fall since the shot, u/s
-	float speed;        // HOLD: the player's speed, u/s
+	float speed;        // HOLD: how fast the player's position changes, u/s
 	float attach_time;  // HOLD: seconds the hook may take to catch
 	float ground_below; // HOLD: distance down to ground, < 0 none within TR_RELEASE_DROP
 	float cooldown;     // seconds
@@ -542,7 +562,8 @@ typedef struct tr_state_s
 	int phase;
 	double since;       // the phase began
 	double void_since;  // the fall was first judged bad (0 = it is not)
-	double fired;       // the hook was fired
+	double fired;       // the hook was asked for
+	double out;         // the hook left (0 = not yet)
 	double attached;    // the pull was first seen (0 = not yet)
 	double ground_since; // COOLDOWN: standing since (0 = in the air)
 	double stuck_since; // HOLD: caught but not moving since (0 = moving)
@@ -553,6 +574,7 @@ typedef struct tr_state_s
 typedef struct tr_out_s
 {
 	int hold;           // hold the hook this frame
+	int prepare;        // AIM: get the hook ready (switch to the Hook weapon)
 	int aim;            // turn the view toward the anchor
 	int restore;        // turn the view back
 	int find_anchor;    // look for an anchor now (entering AIM)
@@ -593,7 +615,9 @@ static void TouchRescue_Step(tr_state_t *s, const tr_frame_t *f, tr_out_t *o)
 		s->player_turned = 0;
 		s->attached = 0;
 		s->stuck_since = 0;
+		s->out = 0;
 		o->find_anchor = 1;
+		o->prepare = 1;
 		tr_go(s, o, TR_AIM, f->now, f->fall == TR_DEATH ? "falling into a death zone" : "falling into the void");
 		break;
 	case TR_AIM:
@@ -620,9 +644,14 @@ static void TouchRescue_Step(tr_state_t *s, const tr_frame_t *f, tr_out_t *o)
 			tr_go(s, o, TR_HOLD, f->now, "on the anchor: hook fired");
 		}
 		else
+		{
 			o->aim = 1;
+			o->prepare = 1;
+		}
 		break;
 	case TR_HOLD:
+		if (!s->out && f->hook_out)
+			s->out = f->now;
 		if (f->turn_rate > TR_TURN_NOTICE)
 			s->player_turned = 1;
 		if (!s->attached && f->pull_speed > TR_ATTACH_SPEED)
@@ -639,7 +668,9 @@ static void TouchRescue_Step(tr_state_t *s, const tr_frame_t *f, tr_out_t *o)
 			tr_go(s, o, TR_RESTORE, f->now, "landed");
 		else if (!f->available)
 			tr_go(s, o, TR_RESTORE, f->now, "the hook is gone (no fuel)");
-		else if (!s->attached && f->now - s->fired > f->attach_time)
+		else if (!s->out && f->now - s->fired > TR_SWITCH_TIMEOUT)
+			tr_go(s, o, TR_RESTORE, f->now, "the hook was never fired");
+		else if (s->out && !s->attached && f->now - s->out > f->attach_time)
 			tr_go(s, o, TR_RESTORE, f->now, "the hook did not catch");
 		else if (s->attached && f->ground_below >= 0 && f->ground_below <= TR_RELEASE_DROP && f->fall == TR_LAND)
 			tr_go(s, o, TR_RESTORE, f->now, "back over ground");
@@ -648,7 +679,10 @@ static void TouchRescue_Step(tr_state_t *s, const tr_frame_t *f, tr_out_t *o)
 		else if (f->now - s->fired > TR_MAX_HOLD)
 			tr_go(s, o, TR_RESTORE, f->now, "held too long");
 		else
+		{
 			o->hold = 1;
+			o->aim = !s->out; // the anchor moves in the view as the player falls
+		}
 		break;
 	case TR_RESTORE:
 		if (f->turn_rate > TR_TURN_NOTICE)
