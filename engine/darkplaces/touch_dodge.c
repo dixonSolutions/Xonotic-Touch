@@ -746,7 +746,7 @@ void TouchDodge_DrawCue(void)
 	if (!cl_touch_autododge_cue.integer || td.cue_time <= 0 || age < 0 || age > CUE_TIME || !vid_touchscreen.integer)
 		return;
 	a = (float)(1 - age / CUE_TIME);
-	fs = h * 0.07f;
+	fs = h * 0.12f;
 	if (fabs(td.cue_side) >= fabs(td.cue_fwd))
 	{
 		s = td.cue_side < 0 ? "<<" : ">>";
@@ -759,9 +759,14 @@ void TouchDodge_DrawCue(void)
 		x = w * 0.5f - DrawQ_TextWidth(s, 0, fs, fs, false, FONT_CENTERPRINT) * 0.5f;
 		y = td.cue_fwd < 0 ? h * 0.80f : h * 0.12f;
 	}
+	// a dark copy under it: it shows over a bright wall as over a dark one
+	DrawQ_String(x + fs * 0.05f, y + fs * 0.05f, s, 0, fs, fs, 0, 0, 0, a * 0.7f, 0, NULL, false, FONT_CENTERPRINT);
 	DrawQ_String(x, y, s, 0, fs, fs, 0.506f, 0.816f, 1.0f, a, 0, NULL, false, FONT_CENTERPRINT);
 	if (td.cue_jump)
+	{
+		DrawQ_String(x + fs * 0.05f, y - fs + fs * 0.05f, "^", 0, fs, fs, 0, 0, 0, a * 0.7f, 0, NULL, false, FONT_CENTERPRINT);
 		DrawQ_String(x, y - fs, "^", 0, fs, fs, 0.506f, 0.816f, 1.0f, a, 0, NULL, false, FONT_CENTERPRINT);
+	}
 }
 
 // For touch_hook_status.
