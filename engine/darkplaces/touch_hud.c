@@ -18,6 +18,7 @@ applies to both.
 #include "touch_hud.h"
 #include "touch_aim.h"
 #include "touch_hook.h"
+#include "touch_turn.h"
 #include "touch_ui.h"
 #include "touch_altfire.h"
 
@@ -373,7 +374,7 @@ enum
 {
 	ROLE_NONE = -1, ROLE_IGNORED = -2,
 	ROLE_MOVE = 0, ROLE_LOOK, ROLE_FIRE, ROLE_FIRE2, ROLE_HOOK,
-	ROLE_JUMP = 100, ROLE_CROUCH, ROLE_WEAPON, ROLE_ZOOM, ROLE_DODGE, ROLE_RELOAD, ROLE_CON, ROLE_PAUSE, ROLE_SHEET, ROLE_CHAT, ROLE_SCORES, ROLE_VYES, ROLE_VNO,
+	ROLE_JUMP = 100, ROLE_CROUCH, ROLE_WEAPON, ROLE_ZOOM, ROLE_DODGE, ROLE_RELOAD, ROLE_CON, ROLE_PAUSE, ROLE_SHEET, ROLE_CHAT, ROLE_SCORES, ROLE_VYES, ROLE_VNO, ROLE_TURN,
 	ROLE_WEPSTRIP = 200, ROLE_WEPGRIP
 };
 
@@ -1228,6 +1229,8 @@ static int assign_role(float px, float py)
 		return ROLE_ZOOM;
 	if (TouchHook_ButtonShown() && hit_circle(px, py, cv("touch_hook_x", 0.765f), cv("touch_hook_y", 0.615f), cv("touch_hook_size", 0.100f), 1.10f))
 		return ROLE_HOOK;
+	if (TouchTurn_ButtonShown() && hit_circle(px, py, cv("touch_turn_x", 0.300f), cv("touch_turn_y", 0.840f), cv("touch_turn_size", 0.085f), 1.10f))
+		return ROLE_TURN;
 	if (cv("touch_reload_visible", 0) && hit_circle(px, py, cv("touch_reload_x", 0.720f), cv("touch_reload_y", 0.480f), cv("touch_reload_size", 0.100f), 1.10f))
 		return ROLE_RELOAD;
 	if (cv("touch_dodge_visible", 0) && hit_circle(px, py, cv("touch_dodge_x", 0.165f), cv("touch_dodge_y", 0.480f), cv("touch_dodge_size", 0.100f), 1.10f))
@@ -1791,6 +1794,8 @@ void TouchHUD_Frame(void)
 			}
 			if (f->role == ROLE_RELOAD)
 				Cbuf_AddText(cmd_local, "weapon_reload\n");
+			if (f->role == ROLE_TURN)
+				TouchTurn_Start(); // on the press: nothing to undo
 			if (f->role == ROLE_DODGE)
 				Cbuf_AddText(cmd_local, "+dodge\n-dodge\n");
 		}
@@ -2285,6 +2290,8 @@ void TouchHUD_Draw(void)
 		if (hook_fade > 0)
 			draw_circle_widget("touch_hook_x", 0.765f, "touch_hook_y", 0.615f, "touch_hook_size", 0.100f, "HOOK", TouchHook_Held(), a * hook_fade, C_ACCENT);
 	}
+	if (TouchTurn_ButtonShown())
+		draw_circle_widget("touch_turn_x", 0.300f, "touch_turn_y", 0.840f, "touch_turn_size", 0.085f, "TURN", TouchTurn_Spinning() || role_owned(ROLE_TURN), a, C_ACCENT);
 	if (cv("touch_reload_visible", 0))
 		draw_circle_widget("touch_reload_x", 0.720f, "touch_reload_y", 0.480f, "touch_reload_size", 0.100f, "RLD", role_owned(ROLE_RELOAD), a, C_ACCENT);
 	if (cv("touch_dodge_visible", 0))

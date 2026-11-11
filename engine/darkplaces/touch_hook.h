@@ -50,8 +50,8 @@ qbool TouchHook_Held(void);
 // Auto-shoot and auto-switch stand down: the hook is held, its weapon switch
 // is on the way, or the previous weapon is being taken back.
 qbool TouchHook_InUse(void);
-// The rescue owns the view (aiming, holding or handing it back): the aim pull
-// stands down.
+// The rescue owns the view (aiming, holding or handing it back), or a quick
+// turn (touch_turn.c) is spinning it: the aim pull stands down.
 qbool TouchHook_Rescuing(void);
 
 // The engine HUD's HOOK finger.
