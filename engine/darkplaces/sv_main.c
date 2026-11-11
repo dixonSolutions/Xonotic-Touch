@@ -24,6 +24,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "libcurl.h"
 #include "csprogs.h"
 #include "thread.h"
+#include "touch_hud.h" // Touch: CANCEL on the loading screen
 
 // current client
 client_t *host_client;
@@ -1865,6 +1866,8 @@ void SV_SpawnServer (const char *map)
 
 		return;
 	}
+	if (!sv.active && TouchHUD_LoadingCancelled()) // Touch: CANCEL tapped while a new local game's map loaded
+		return;
 
 	Collision_Cache_Reset(true);
 

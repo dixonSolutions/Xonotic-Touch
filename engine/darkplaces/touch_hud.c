@@ -517,10 +517,13 @@ static void TouchHUD_RestoreViewmodel_f(cmd_state_t *cmd)
 	Con_Printf("Touch: first-person weapon model turned back on (r_drawviewmodel 1)\n");
 }
 
+static void TouchHUD_CancelJoin_f(cmd_state_t *cmd);
+
 void TouchHUD_Init(void)
 {
 	Cvar_RegisterVariable(&touch_viewmodel_restored);
 	Cvar_RegisterVariable(&cl_touch_weplist_scale);
+	Cmd_AddCommand(CF_CLIENT, "_touch_cancel_join", TouchHUD_CancelJoin_f, "stop a connect attempt (CANCEL on the loading screen)");
 	Cmd_AddCommand(CF_CLIENT, "_touch_restore_viewmodel", TouchHUD_RestoreViewmodel_f, "turn r_drawviewmodel back on once for installs that archived the old forced 0 (queued by Host_Init)");
 }
 
@@ -1441,21 +1444,33 @@ static void pill_release(finger_t *f)
 
 // ---------------------------------------------------------------------------
 // The loading screen: a join waiting for the server, downloading or loading
-// the map, or a map change. It hides the menu, so Escape there opened a menu
-// nobody could see, and a finger had nothing to press: a server that never
-// answered, or a slow download, kept a touch player waiting with no way out.
-// On a touchscreen a CANCEL pill sits in the top corner, and it and Back
-// (Escape) leave for the main menu, for the whole join: from the connect
-// request and its retries to the last signon. That includes the stretch after
-// a server's "reconnect" (a map change) before its new map arrives, when
-// neither the loading screen nor the game nor the menu is drawn.
+// the map, a local game's server starting, or a map change. It hides the
+// menu, so Escape there opened a menu nobody could see, and a finger had
+// nothing to press: a server that never answered, or a slow download, kept a
+// touch player waiting with no way out. On a touchscreen a CANCEL pill sits
+// in the top corner, and it and Back (Escape) leave for the main menu, for
+// the whole join: from the connect request and its retries to the last
+// signon, and whenever the loading screen is up. That includes the stretch
+// after a server's "reconnect" (a map change) before its new map arrives,
+// when neither the loading screen nor the game nor the menu is drawn.
+//
+// A local game's server loads its map inside the `map` command, and every
+// load runs inside one frame: 20 to 60 s on a tablet. The loaders redraw the
+// loading screen meanwhile (CL_KeepaliveMessage), but fingers and keys are
+// only read once the frame is over. So each redraw inside a long frame also
+// looks in SDL's queue for a tap on CANCEL or Back: the pill turns to
+// CANCELLING at once, and the disconnect (which shuts a local server down)
+// runs as soon as the command that is loading returns, before the client
+// starts its own load. Nothing is torn down from inside a loader.
 // ---------------------------------------------------------------------------
 static int loading_cancel_src;   // finger that went down on CANCEL
+static qbool loading_cancelling; // tapped: CANCELLING until the loading screen is gone
 
+extern qbool scr_loading;
 static qbool loading_cancellable(void)
 {
 	return touch_device()
-		&& (cls.connect_trying || (cls.state == ca_connected && cls.signon < SIGNONS));
+		&& (scr_loading || cls.connect_trying || (cls.state == ca_connected && cls.signon < SIGNONS));
 }
 
 // In the top corner where the CHAT pill sits by default, at the size of the
@@ -1472,6 +1487,7 @@ static void loading_cancel(void)
 {
 	Con_Printf("Touch: join cancelled from the loading screen\n");
 	loading_cancel_src = 0;
+	loading_cancelling = true;
 	// disconnect alone does not stop a connect the server has not answered yet
 	cls.connect_trying = false;
 	// nor the join's map and package downloads, which it lets run on. This
@@ -1482,7 +1498,21 @@ static void loading_cancel(void)
 		Con_Printf("Touch: the join's downloads are stopped\n");
 		Curl_CancelAll();
 	}
-	Cbuf_AddText(cmd_local, "\ndisconnect\ntogglemenu 1\n");
+	// _touch_cancel_join: the connect a local game's `map` starts after its
+	// server is up, when the tap came while that server was loading
+	Cbuf_AddText(cmd_local, "\ndisconnect\n_touch_cancel_join\ntogglemenu 1\n");
+}
+
+qbool TouchHUD_LoadingCancelled(void)
+{
+	if (loading_cancelling)
+		Con_Printf("Touch: the local game stops before its server spawns\n");
+	return loading_cancelling;
+}
+
+static void TouchHUD_CancelJoin_f(cmd_state_t *cmd)
+{
+	cls.connect_trying = false;
 }
 
 qbool TouchHUD_LoadingBack(void)
@@ -1517,14 +1547,25 @@ static qbool loading_finger(int id, qbool down, float nx, float ny)
 
 void TouchHUD_DrawLoading(void)
 {
+	static unsigned int drawn_in_frame;
 	float cx, cy, hx, hy;
 	if (!loading_cancellable())
+	{
+		loading_cancelling = false;
 		return;
+	}
 	shapes_probe();
 	loading_pill(&cx, &cy, &hx, &hy);
+	// Drawn again in the same frame: a load redrawing its progress, while
+	// input waits for the frame to end (see above).
+	if (drawn_in_frame == host.framecount && !loading_cancelling && loading_cancel_src == 0
+		&& VID_TouchQueuedTap((cx - hx * 1.2f) / ui_w(), (cy - hy * 1.2f) / ui_h(), (cx + hx * 1.2f) / ui_w(), (cy + hy * 1.2f) / ui_h()))
+		loading_cancel();
+	drawn_in_frame = host.framecount;
 	// As plain as the chrome in a match, at its full opacity: easy to find on
 	// the dark loading screen without pulling the eye from the progress.
-	widget_chrome_pill(cx, cy, hx, hy, "CANCEL", loading_cancel_src != 0, 0.95f, C_DANGER);
+	widget_chrome_pill(cx, cy, hx, hy, loading_cancelling ? "CANCELLING" : "CANCEL",
+		loading_cancel_src != 0 || loading_cancelling, 0.95f, C_DANGER);
 }
 
 // ---------------------------------------------------------------------------

@@ -1038,6 +1038,29 @@ qbool VID_SDL_HasTouchDevices(void)
 	return false;
 }
 
+// Touch: inside a long loading frame the events wait in SDL's queue until it
+// is over. A finger down in the normalised rectangle, or Back / Escape,
+// queued meanwhile: true, and the fingers and keys are dropped from the queue
+// (touch_hud.c, CANCEL on the loading screen).
+qbool VID_TouchQueuedTap(float x0, float y0, float x1, float y1)
+{
+	SDL_Event ev[64];
+	int i, n;
+	SDL_PumpEvents();
+	n = SDL_PeepEvents(ev, 64, SDL_PEEKEVENT, SDL_KEYDOWN, SDL_FINGERMOTION);
+	for (i = 0; i < n; i++)
+	{
+		if ((ev[i].type == SDL_KEYDOWN && (ev[i].key.keysym.sym == SDLK_AC_BACK || ev[i].key.keysym.sym == SDLK_ESCAPE))
+			|| (ev[i].type == SDL_FINGERDOWN && ev[i].tfinger.x >= x0 && ev[i].tfinger.x <= x1 && ev[i].tfinger.y >= y0 && ev[i].tfinger.y <= y1))
+		{
+			SDL_FlushEvents(SDL_FINGERDOWN, SDL_FINGERMOTION);
+			SDL_FlushEvents(SDL_KEYDOWN, SDL_KEYUP);
+			return true;
+		}
+	}
+	return false;
+}
+
 // Keys that say someone is playing on a keyboard: letters, digits,
 // punctuation, arrows, keypad, space / enter / tab / backspace and the
 // modifiers. Not Escape or Back (a phone's back gesture arrives as a key),
