@@ -1844,6 +1844,7 @@ void SV_SpawnServer (const char *map)
 		Sys_MakeProcessNice();
 	else
 	{
+		TouchHUD_LocalGameLoading(); // Touch: CANCEL shows for a local game's map load
 		SCR_BeginLoadingPlaque(false);
 		S_StopAllSounds();
 	}

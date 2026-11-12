@@ -45,6 +45,12 @@ void TouchHUD_DrawLoading(void);
 qbool TouchHUD_LoadingBack(void);
 // A new local game stops after its map loads, before its server spawns (sv_main.c).
 qbool TouchHUD_LoadingCancelled(void);
+// SV_SpawnServer put the loading screen up: a local game's map load is a join
+// CANCEL can leave (the app's startup and a renderer restart are not).
+void TouchHUD_LocalGameLoading(void);
+// SCR_PushLoadingScreen: CANCEL was tapped, so the join stops here, at the
+// start of the next item loaded. Does not return when it stops it.
+void TouchHUD_LoadingAbortPoint(void);
 
 // Draw the overlay (called from the 2D overlay pass, key_game only).
 void TouchHUD_Draw(void);

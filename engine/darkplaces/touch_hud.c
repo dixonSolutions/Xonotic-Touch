@@ -1519,23 +1519,39 @@ static void pill_release(finger_t *f)
 // after a server's "reconnect" (a map change) before its new map arrives,
 // when neither the loading screen nor the game nor the menu is drawn.
 //
+// Not the app's own startup, nor a renderer restart: the loading screen is
+// up for those too, but there is no join to leave. A local game's map load
+// counts from SV_SpawnServer (TouchHUD_LocalGameLoading) until the loading
+// screen is gone.
+//
 // A local game's server loads its map inside the `map` command, and every
-// load runs inside one frame: 20 to 60 s on a tablet. The loaders redraw the
-// loading screen meanwhile (CL_KeepaliveMessage), but fingers and keys are
-// only read once the frame is over. So each redraw inside a long frame also
-// looks in SDL's queue for a tap on CANCEL or Back: the pill turns to
-// CANCELLING at once, and the disconnect (which shuts a local server down)
-// runs as soon as the command that is loading returns, before the client
-// starts its own load. Nothing is torn down from inside a loader.
+// load runs inside one frame: 20 to 60 s on a tablet, most of it the QC's
+// model and sound precaches, not the map. The loaders redraw the loading
+// screen meanwhile (CL_KeepaliveMessage, SCR_PushLoadingScreen), but fingers
+// and keys are only read once the frame is over. So each redraw inside a long
+// frame also looks in SDL's queue for a tap on CANCEL or Back: the pill turns
+// to CANCELLING at once. The join then stops at the start of the next item
+// loaded (TouchHUD_LoadingAbortPoint, from SCR_PushLoadingScreen): the frame
+// is unwound the way Host_Error unwinds it, without the error. Where it cannot
+// be unwound, the disconnect runs once the command that is loading returns.
 // ---------------------------------------------------------------------------
 static int loading_cancel_src;   // finger that went down on CANCEL
 static qbool loading_cancelling; // tapped: CANCELLING until the loading screen is gone
+static qbool loading_localgame;  // SV_SpawnServer put the loading screen up
 
 extern qbool scr_loading;
 static qbool loading_cancellable(void)
 {
+	if (!scr_loading)
+		loading_localgame = false;
 	return touch_device()
-		&& (scr_loading || cls.connect_trying || (cls.state == ca_connected && cls.signon < SIGNONS));
+		&& (cls.connect_trying || (cls.state == ca_connected && cls.signon < SIGNONS)
+			|| (scr_loading && loading_localgame));
+}
+
+void TouchHUD_LocalGameLoading(void)
+{
+	loading_localgame = true;
 }
 
 // In the top corner where the CHAT pill sits by default, at the size of the
@@ -1566,6 +1582,56 @@ static void loading_cancel(void)
 	// _touch_cancel_join: the connect a local game's `map` starts after its
 	// server is up, when the tap came while that server was loading
 	Cbuf_AddText(cmd_local, "\ndisconnect\n_touch_cancel_join\ntogglemenu 1\n");
+}
+
+// The start of an item loaded (a model, a sound, a precache step), CANCEL
+// tapped: stop the join now, as Host_Error would, instead of after the whole
+// load. Every loader starts an item with SCR_PushLoadingScreen before it
+// changes anything, so nothing is left half built; a model or sound not
+// loaded yet is simply loaded the next time. A QC caught mid-precache is
+// reset (its Shutdown skipped, as on a crash). Not while the menu QC runs:
+// resetting it would leave no menu to go back to.
+void TouchHUD_LoadingAbortPoint(void)
+{
+	cmd_buf_t *cbuf = cmd_local->cbuf;
+	int i;
+	if (!loading_cancelling || !loading_cancellable())
+		return;
+	if (host.framecount < 1 || host.state != host_active || cls.state == ca_dedicated)
+		return;
+#ifdef CONFIG_MENU
+	if (MVM_prog->loaded && MVM_prog->depth > 0)
+		return;
+#endif
+	Con_Printf("Touch: the join stops now\n");
+	for (i = 0; i < PRVM_PROG_MAX; i++)
+	{
+		prvm_prog_t *prog = PRVM_GetProg(i);
+		if (!prog->loaded || prog->depth <= 0)
+			continue;
+		if (prog == SVVM_prog)
+			PRVM_serverfunction(SV_Shutdown) = 0;
+		else if (prog == CLVM_prog)
+			PRVM_clientfunction(CSQC_Shutdown) = 0;
+		PRVM_Prog_Reset(prog);
+	}
+	CL_Parse_ErrorCleanUp();
+	if (host.hook.SV_Shutdown)
+		host.hook.SV_Shutdown();
+	// The command that was loading (`map`) is still first in the buffer until
+	// it returns: drop it, or the next frame runs it again, and what was
+	// queued behind it (a local game's connect). Deferred commands stay, unlike
+	// Host_Error's Cbuf_Clear.
+	while (!List_Is_Empty(&cbuf->start))
+	{
+		cbuf->size -= List_Entry(cbuf->start.next, cmd_input_t, list)->length;
+		List_Move_Tail(cbuf->start.next, &cbuf->free);
+	}
+	cls.connect_trying = false;
+	loading_localgame = false;
+	CL_Disconnect();
+	Cbuf_AddText(cmd_local, "togglemenu 1\n");
+	Host_AbortCurrentFrame();
 }
 
 qbool TouchHUD_LoadingCancelled(void)

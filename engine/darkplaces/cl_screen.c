@@ -2012,6 +2012,7 @@ void SCR_PushLoadingScreen (const char *msg, float len_in_parent)
 
 	if (scr_loading)
 		CL_UpdateScreen();
+	TouchHUD_LoadingAbortPoint(); // Touch: CANCEL tapped, the join stops before this item loads
 }
 
 void SCR_PopLoadingScreen (qbool redraw)
