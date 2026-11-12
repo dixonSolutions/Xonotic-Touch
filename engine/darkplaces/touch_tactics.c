@@ -66,6 +66,10 @@ cvar_t cl_touch_practice_exact = {CF_CLIENT | CF_ARCHIVE, "cl_touch_practice_exa
 	"Offline practice only (as above): lead shots from each enemy's exact velocity on the local server, and aim at any distance"};
 cvar_t cl_touch_practice_exposure = {CF_CLIENT | CF_ARCHIVE, "cl_touch_practice_exposure", "0",
 	"Offline practice only (as above): while the autopilot fights one enemy, prefer spots the other enemies cannot see"};
+cvar_t cl_touch_practice_threat = {CF_CLIENT | CF_ARCHIVE, "cl_touch_practice_threat", "1",
+	"Offline practice only (as above): the autopilot sizes up the enemy it fights from its weapon and health: stays out of reach of a "
+	"short-range weapon it outranges, closes in on one that outranges it when stronger and keeps out of its sight when weaker, and backs off "
+	"to health when one more hit would kill"};
 cvar_t cl_touch_practice_pilot = {CF_CLIENT | CF_ARCHIVE, "cl_touch_practice_pilot", "1",
 	"Offline practice only (as above): while the stick is idle, move for you: keep the weapon's best range and strafe, chase a nearly dead enemy, "
 	"back into cover when outnumbered, head for the nearest enemy when none is in sight. Touching the stick takes over"};
@@ -120,6 +124,7 @@ static struct
 	double slow_since, stuck_until;
 	vec3_t stuck_dir;
 	const char *mode, *mode_said;
+	int cover_skip;      // the enemy choose()'s cover leaves out (the one fought), 0 none
 	int dodges, stucks;
 	// cl_touch_aim_debug 3: the last moves, printed when the player dies
 	struct { double t; vec3_t org, dir; float score; const char *mode; qbool ground; } trail[16];
@@ -876,6 +881,7 @@ static qbool plan(double now, qbool pilot, qbool dodge, vec3_t want, qbool *cove
 	int n, threat = 0;
 	float tbest = 1e9f;
 	*cover = false;
+	tt.cover_skip = 0;
 	VectorClear(want);
 
 	// someone has the player in their sights: step across their line
@@ -936,7 +942,9 @@ static qbool plan(double now, qbool pilot, qbool dodge, vec3_t want, qbool *cove
 		return true;
 	}
 
-	if (tt.num_aiming >= 2 || tt.num_seen >= 3 || (tt.my_eff < 70 && f->seen && f->eff > tt.my_eff * 1.5f))
+	if (tt.num_aiming >= 2 || tt.num_seen >= 3 || (tt.my_eff < 70 && f->seen && f->eff > tt.my_eff * 1.5f)
+		// one more hit from it kills, and it would take more than that to kill it
+		|| (cl_touch_practice_threat.integer && f->seen && f->aiming && f->dmg >= tt.my_eff && f->eff > tt.my_eff))
 	{
 		// outnumbered or losing: away from them, into cover
 		for (n = 1; n <= tt.maxn; n++)
@@ -967,9 +975,39 @@ static qbool plan(double now, qbool pilot, qbool dodge, vec3_t want, qbool *cove
 	if (f->seen)
 	{
 		vec3_t to, perp;
-		float r = best_range(tt.e[tt.me].weapon), radial;
+		float my_r = best_range(tt.e[tt.me].weapon), r = my_r, radial;
+		const char *mode = "fight";
+		qbool hide = false;
 		if (f->eff < 50)
+		{
 			r *= 0.5f; // nearly dead: close in and finish it
+			mode = "finish";
+		}
+		else if (cl_touch_practice_threat.integer && f->kind != TW_KIND_NONE)
+		{
+			float their_r = best_range(f->weapon);
+			if (their_r < 0.75f * my_r)
+			{
+				// a short-range weapon this one outranges: stay out of its reach
+				r = max(my_r, their_r + 300);
+				mode = "kite";
+			}
+			else if (their_r > 1.4f * my_r)
+			{
+				if (tt.my_eff >= f->eff)
+				{
+					// it wins at range and this side is stronger: close in
+					r = 0.7f * my_r;
+					mode = "rush";
+				}
+				else
+				{
+					// it wins at range and this side is weaker: out of its sight
+					hide = true;
+					mode = "break";
+				}
+			}
+		}
 		VectorSubtract(f->center, tt.my_center, to);
 		flat_norm(to);
 		radial = bound(-1.0f, (f->dist - r) / max(r, 200.0f), 1.0f);
@@ -982,9 +1020,15 @@ static qbool plan(double now, qbool pilot, qbool dodge, vec3_t want, qbool *cove
 		VectorScale(to, radial, want);
 		VectorMA(want, 0.9f, perp, want);
 		flat_norm(want);
-		tt.mode = f->eff < 50 ? "finish" : "fight";
+		tt.mode = mode;
 		// the others in sight: fight from where they cannot see
 		*cover = cl_touch_practice_exposure.integer && tt.num_seen >= 2;
+		tt.cover_skip = tt.focus;
+		if (hide)
+		{
+			*cover = true;
+			tt.cover_skip = 0; // its sight too
+		}
 		return true;
 	}
 	// nobody in sight: a frozen mate to thaw (Freeze Tag: stand by it), a
@@ -1065,7 +1109,7 @@ static void steer(double now)
 
 	if (now >= tt.eval_next || !tt.steering)
 	{
-		choose(want, cover, tt.mode && (!strcmp(tt.mode, "fight") || !strcmp(tt.mode, "finish")) ? tt.focus : 0);
+		choose(want, cover, tt.cover_skip);
 		tt.eval_next = now + TT_EVAL;
 	}
 	tt.steering = true;
@@ -1212,6 +1256,7 @@ void TouchTactics_Init(void)
 	Cvar_RegisterVariable(&cl_touch_practice_pilot);
 	Cvar_RegisterVariable(&cl_touch_practice_exact);
 	Cvar_RegisterVariable(&cl_touch_practice_exposure);
+	Cvar_RegisterVariable(&cl_touch_practice_threat);
 	Cmd_AddCommand(CF_CLIENT, "touch_tactics_status", TouchTactics_Status_f, "Offline tactics: the gate, the modes, and every player's health, armour, weapon and aim");
 	tt.gate_said = -1;
 }

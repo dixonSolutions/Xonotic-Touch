@@ -108,7 +108,7 @@ cvar_t cl_touch_practice_360 = {CF_CLIENT | CF_ARCHIVE, "cl_touch_practice_360",
 cvar_t cl_touch_practice_instant = {CF_CLIENT | CF_ARCHIVE, "cl_touch_practice_instant", "0",
 	"Offline practice (as above): the aim pull moves onto the target at once instead of at cl_touch_aimassist_maxrate. Never anywhere else"};
 cvar_t cl_touch_aimassist_lastseen = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_lastseen", "1",
-	"Aim pull, during a fight: when the enemy goes out of sight, keep the crosshair where it was last seen, moving on its last seen course for a second, for up to 3 seconds -- never where it really is behind cover"};
+	"Aim pull, during a fight: when the enemy goes out of sight, keep the crosshair where it was last seen, moving on its last seen course for a second, for up to 3 seconds, while that point is in clear view -- never where it really is behind cover, and never on a wall it went behind"};
 cvar_t cl_touch_autoshoot_combo = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_combo", "1",
 	"Auto-shoot uses two-step fire sequences that do more damage: Electro orbs lobbed at an enemy standing or coming at you, then the bolt that sets them off (with cl_touch_autoshoot_alt)"};
 cvar_t cl_touch_autoshoot_teamsafe = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_teamsafe", "1",
@@ -2426,6 +2426,15 @@ static void steer_devastator(const vec3_t eye, const aimtarget_t *near, qbool wa
 			VectorMA(ta.rk_target_org, dt, ta.rk_target_vel, ta.rk_target_org);
 		else
 			VectorClear(ta.rk_target_vel);
+		// gone behind cover (and no offline see-through): steering on would
+		// only fly the rocket, and the view, into the wall it went behind
+		if (near->entnum != ta.rk_target && !practice.seethrough && now - ta.rk_tseen >= LAST_SEEN_EXTRAP
+			&& !line_clear(ta.rk_org, ta.rk_target_org) && !line_clear(eye, ta.rk_target_org))
+		{
+			rk_set(RK_RELEASE, va(vabuf, sizeof(vabuf), "player %d went behind cover", ta.rk_target));
+			set_firing(false, false, 0);
+			return;
+		}
 		VectorSubtract(ta.rk_vel, ta.rk_target_vel, rel_v);
 		ta.rk_closest = min(ta.rk_closest, VectorDistance(ta.rk_org, ta.rk_target_org));
 		Matrix4x4_OriginFromMatrix(&r_refdef.view.matrix, me);
@@ -2936,8 +2945,30 @@ static void aim_frame(void)
 		const touch_wep_fire_t *f = wep ? (ta.last_mode == TW_MODE_SECONDARY && wep->sec.kind != TW_KIND_NONE ? &wep->sec : &wep->pri) : NULL;
 		vec3_t lp;
 		VectorAdd(near.center, near.lead, lp);
-		if (!f || f->splash < 60 || !(guided || shot_path_ok(eye, lp, f)))
+		// a steered rocket follows the crosshair: with no way over the
+		// cover it only flies into the wall in front
+		if (!f || f->splash < 60 || !(guided ? ta.rk_over_valid || launch_clear(eye, near.center, f->splash) : shot_path_ok(eye, lp, f)))
 			on_shoot = 0;
+	}
+	// a steered rocket at a target in sight: the straight line there must
+	// carry it, or end where its blast still reaches (only the head showing
+	// over a low wall puts the wall in its way)
+	else if (on_shoot && near.entnum == on_shoot && guided && ta.rk_state == RK_IDLE && wep && cl_touch_autoshoot_clear.integer
+		&& !launch_clear(eye, near.center, wep->pri.splash))
+	{
+		vec3_t hd;
+		VectorCopy(near.center, hd);
+		hd[2] = ta.tracks[near.entnum & (TRACK_MAX - 1)].bmax[2] - 6;
+		if (!launch_clear(eye, hd, 0))
+		{
+			static double said;
+			if (cl_touch_aim_debug.integer && now - said > 1)
+			{
+				Con_Printf("touch aim: rocket held: no clear launch line to player %d\n", near.entnum);
+				said = now;
+			}
+			on_shoot = 0;
+		}
 	}
 	shootable = on_shoot;
 
@@ -3230,12 +3261,19 @@ static void aim_frame(void)
 		track_t *gt = &ta.tracks[ta.lock_ent & (TRACK_MAX - 1)];
 		vec3_t gp, mv;
 		float conf;
-		if (TouchWep_GhostPoint(&gt->ghost, now, gp, &conf))
+		qbool held_point = TouchWep_GhostPoint(&gt->ghost, now, gp, &conf);
+		if (held_point)
 		{
 			// not on through a wall it would have run into
 			VectorSubtract(gp, gt->ghost.org, mv);
 			clip_lead(gt->ghost.org, mv);
 			VectorAdd(gt->ghost.org, mv, gp);
+			// and only a point the eye sees: never held on a wall the enemy
+			// went behind (offline see-through aims through it on purpose)
+			held_point = practice.seethrough || line_clear(eye, gp);
+		}
+		if (held_point)
+		{
 			angles_to(eye, gp, &pull_yaw, &pull_pitch);
 			pull_target_set = true;
 			ta.lock_until = now + LOCK_HOLD;
@@ -3243,10 +3281,11 @@ static void aim_frame(void)
 				Con_Printf("touch aim: player %d out of sight: holding on where it was last seen%s\n", ta.lock_ent, cl_touch_aim_debug.integer >= 2 ? va(vabuf, sizeof(vabuf), " at %.3f", cl.time) : "");
 			ta.ghost_said = ta.lock_ent;
 		}
-		else if (ta.ghost_said)
+		else
 		{
+			// out of sight too long, or behind cover: the fight with it ends
 			if (cl_touch_aim_debug.integer)
-				Con_Printf("touch aim: player %d forgotten (out of sight too long)\n", ta.ghost_said);
+				Con_Printf("touch aim: player %d forgotten (%s)\n", ta.lock_ent, ta.ghost_said ? "out of sight too long" : "behind cover");
 			ta.ghost_said = 0;
 			ta.lock_ent = 0;
 		}

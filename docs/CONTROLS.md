@@ -741,6 +741,12 @@ to the head for 3 s, which usually clears it. An enemy that goes out of sight
 is steered to where it was last seen, on its last velocity for half a second
 and then standing still; the client never steers to a position it only knows
 through a wall. The blast there goes off by the usual rule against that point.
+Once neither the rocket nor the eye has a clear line to that point (the enemy
+went behind a wall), fire is released and the view is no longer pulled
+there; outside offline practice a rocket is never steered into cover. A
+rocket at an enemy in sight is launched only when the straight line to its
+body is clear for the rocket's size, or ends within its blast, or the head
+is in clear view.
 
 **Volleys** (`_volley`). Once the guided rocket's straight line from where it
 is now hits the target, or the floor or wall within reach of the blast, the
@@ -871,7 +877,13 @@ are fed only from frames in which the enemy was in sight. When the enemy of
 the fight goes out of sight (`_lastseen`), the pull holds the crosshair on
 where it was expected along its last seen course for a second, then on that
 point, for up to 3 s while nobody else is in view; it never follows the
-enemy's true position behind cover. When the enemy shows again it is the
+enemy's true position behind cover. The held point must be in clear view:
+once it lies behind a wall (the enemy went round a corner or behind
+cover) the fight ends there -- the combat lock is dropped, the pull lets go
+and auto-shoot does not fire at the wall. Measured on a dedicated server
+(Devastator arena, 3 skill-8 bots, 3 matches each): the crosshair was held
+on a point behind a wall 14 times before, once after; 9 fights were ended
+behind cover and 2 rockets released instead of being steered into it. When the enemy shows again it is the
 same track, taken back at once. Measured: a bot that turned back while out
 of sight left the crosshair on its last seen course (the view stayed at 66
 degrees while the bot went on to 92); 0.4 s after it showed again the
@@ -938,7 +950,8 @@ Three helpers exist only for practice against bots: **see through walls**
 (`cl_touch_practice_seethrough`, default 1: an orange square with the
 distance marks an enemy behind a wall; the pull pre-aims at it; a splash
 weapon whose blast reaches it round the cover fires, and a Devastator rocket
-goes over the cover and dives onto it), **Full 360** (`cl_touch_practice_360`,
+goes over the cover and dives onto it; with no way over, the rocket is held
+rather than steered into the wall in front), **Full 360** (`cl_touch_practice_360`,
 default 1, with Targets set to Full 360: enemies all around may be the target,
 with a square at the screen edge toward one off the screen), and **instant
 turn** (`cl_touch_practice_instant`, default 0: the pull moves onto the target
@@ -1017,8 +1030,8 @@ on the player's own machine, it reads the local server directly.
 - **Autopilot** (`cl_touch_practice_pilot`, default 1): while the stick is
   idle it moves for you. *fight*: keep the held weapon's best range to the
   focus and strafe it, reversing at random; *finish*: close in on one that
-  is nearly dead; *cover*: with two aiming at you, three in sight, or
-  losing the trade, back away toward the spots fewest enemies can see
+  is nearly dead; *cover*: with two aiming at you, three in sight, losing
+  the trade, or (with `_threat`) one aiming at you whose next hit kills, back away toward the spots fewest enemies can see
   (taking health or armour on the way); *collect*: with nobody in sight,
   fetch a weapon you lack, health when hurt, or armour, on about your own
   level (no route finding; one that gets no nearer for 4 s is left for
@@ -1031,6 +1044,13 @@ on the player's own machine, it reads the local server directly.
   is never fetched, and standing in a hazard the way back to the last safe
   spot wins. With `cl_touch_practice_exposure` 1 (default 0) a fight also
   prefers spots the other enemies cannot see. Touching the stick takes over.
+- **Threat** (`cl_touch_practice_threat`, default 1): the fight is sized up
+  from the focus's weapon and health. *kite*: its weapon is short-range
+  (Shotgun, Crylink, Arc, Blaster) and yours outranges it: hold beyond its
+  best range plus 300 units; *rush*: its weapon outranges yours (Vortex,
+  Rifle) and you have more health and armour left: close to 70% of your
+  weapon's range; *break*: outranged and weaker: keep out of its sight
+  (cover counting the focus too) instead of trading shots in the open.
 - Runs from the hook's frame before auto dodge and the ledge guard, so a
   projectile dodge or a ledge stop still wins.
 - `touch_tactics_status` prints the gate, the mode and every player's
@@ -1056,7 +1076,13 @@ to 26 / 12; preferring hidden spots in a fight (`exposure`) did not help
 (21 / 13 vs 26 / 12 Vortex, 13 / 14 vs 16 / 17 Devastator), so it is off.
 The centre-line ground check, the pit-edge item check and the momentum
 check took lava deaths from 4 in 20 matches to 0 in 16 (48 / 21 Vortex,
-36 / 35 Devastator over 8 matches each). On a Galaxy Tab Active5 in touch
+36 / 35 Devastator over 8 matches each). With normal weapon pickups (the
+bots carry mixed weapons), `_threat` 1 against 0 over two rounds of 4
+matches: 29 kills / 19 deaths against 14 / 19; adding exposure only when
+not ahead did worse (7 / 13), so exposure stays off. Holding rockets with
+no path over the cover (Devastator arena, 4 matches each): rockets bursting
+600 or more units from the target 54% -> 7%, within 150 units 18% -> 47%,
+kills unchanged (22 / 12, 21 / 14). On a Galaxy Tab Active5 in touch
 mode, a 3-minute local match against 3 skill-8 bots: 5 kills / 2 deaths.
 
 | Cvar | Default | Purpose |
@@ -1067,6 +1093,7 @@ mode, a 3-minute local match against 3 skill-8 bots: 5 kills / 2 deaths.
 | `cl_touch_practice_exact` | `1` | Lead from the local server's velocities; any range |
 | `cl_touch_practice_exposure` | `0` | In a fight, prefer spots the other enemies cannot see |
 | `cl_touch_practice_pilot` | `1` | Move for you while the stick is idle |
+| `cl_touch_practice_threat` | `1` | Range and exposure from the enemy's weapon and health |
 
 ### Grappling hook: HOOK button and fall rescue (engine)
 
