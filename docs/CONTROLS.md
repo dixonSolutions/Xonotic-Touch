@@ -932,23 +932,31 @@ player. Team detection
 relies on Xonotic forcing team colours; a mod that does not will be treated
 conservatively.
 
-#### Mobile aim assist (touch builds, every match)
+#### Offline practice (engine, offline matches only)
 
-Three helpers are part of the touch aim assist and run in every match on a
-touch device: **see through walls** (`cl_touch_practice_seethrough`, default 1:
-an orange square with the distance marks an enemy behind a wall; the pull
-pre-aims at it; a splash weapon whose blast reaches it round the cover fires,
-and a Devastator rocket goes over the cover and dives onto it), **Full 360**
-(`cl_touch_practice_360`, default 1, with Targets set to Full 360: enemies
-all around may be the target, with a square at the screen edge toward one off
-the screen), and **instant turn** (`cl_touch_practice_instant`, default 0: the
-pull moves onto the target at once). While they are active the pull also works
-with the thumb at rest.
+Three helpers exist only for practice against bots: **see through walls**
+(`cl_touch_practice_seethrough`, default 1: an orange square with the
+distance marks an enemy behind a wall; the pull pre-aims at it; a splash
+weapon whose blast reaches it round the cover fires, and a Devastator rocket
+goes over the cover and dives onto it), **Full 360** (`cl_touch_practice_360`,
+default 1, with Targets set to Full 360: enemies all around may be the target,
+with a square at the screen edge toward one off the screen), and **instant
+turn** (`cl_touch_practice_instant`, default 0: the pull moves onto the target
+at once). While they are active the pull also works with the thumb at rest.
 
-On a touch build these are always on, in a local match and on a server alike;
-the offline gate (`TouchWep_PracticeGate`) still applies to non-touch builds,
-where every one of them is off with the gate closed. `cl_touch_aim_debug`
-prints "practice helpers: on (mobile; ...)" when active.
+They, and the offline tactics below, run only where `cl_touch_esp_enabled`
+allows: `local` (the default) or `off`. There is no server value; any other
+value is taken as `local`, with a console note. `local` means the offline gate
+(`TouchWep_PracticeGate`), checked every frame: this process runs the server,
+this client is connected to it over the loopback, no other human is connected
+(every other slot is a bot or empty), and no demo plays. With the gate closed
+every one of them is off, whatever the cvars, a config, an alias or a server's
+command says, and the helpers behave exactly as on any server.
+`cl_touch_aim_debug` prints "practice helpers: on" or "off (...)" when it
+changes. Measured: connected to a dedicated server on the same machine with
+`cl_touch_esp_enabled all`, the client printed "off (not running the server
+here)" and drew no labels or markers, while the ordinary aim assist stayed
+active.
 
 #### Not built: the ground-shot jump
 
@@ -975,6 +983,90 @@ under 0.3 s away. Turning faster would be the instant snap that only offline
 practice may use. Attack from the air needs nothing new: splash weapons
 already aim at the floor by a grounded enemy's feet when the player is
 higher, and stock servers do not add the shooter's speed to projectiles.
+
+### Offline tactics (engine, bots on this machine only)
+
+`engine/darkplaces/touch_tactics.c`. Everything here runs only while the
+offline gate (`TouchWep_PracticeGate`) is open: this process runs the
+server, this client is on it over the loopback, no other human is
+connected, and no demo plays. The gate is checked every frame, with no
+mobile exception; on any other server none of it reads, draws, steers or
+picks a weapon, whatever the cvars say. Like the rest of the aim assist it
+runs only in touch mode (`vid_touchscreen`), and there it is on by default. Because the only opponents are bots
+on the player's own machine, it reads the local server directly.
+
+- **Intel** (`cl_touch_practice_intel`, default 1): every enemy's health,
+  armour, held weapon, position, velocity and aim (the server's `v_angle`).
+  A label over each enemy shows health/armour, a bar, and the weapon: white
+  in sight, orange behind a wall, red with `!` while it aims at you; `*`
+  marks the focus.
+- **Target choice**: the aim helpers count an enemy as nearer the crosshair
+  when it is nearly dead (up to 2.5°), aims at you (1.5°) or carries a
+  strong weapon (0.5°), so the fight goes to the one worth taking first.
+- **Finishing weapon**: when the target has 160 or less left to kill (armour
+  counted at `g_balance_armor_blockpercent`), the auto-switch takes an owned
+  instant-hit weapon whose one shot kills it (Shotgun damage falls with
+  range). Against a target behind a wall it takes the best splash weapon.
+- **Aim dodge** (`cl_touch_practice_aimdodge`, default 1): while an enemy
+  with line of sight holds its aim on you, the move steps across its line
+  toward the side with room, changing course every 0.25–0.55 s at random.
+  Only while the stick is idle (or the autopilot drives).
+- **Exact lead** (`cl_touch_practice_exact`, default 1): the aim helpers
+  lead each enemy from its velocity on the local server instead of one
+  smoothed from drawn positions, and aim at any distance.
+- **Autopilot** (`cl_touch_practice_pilot`, default 1): while the stick is
+  idle it moves for you. *fight*: keep the held weapon's best range to the
+  focus and strafe it, reversing at random; *finish*: close in on one that
+  is nearly dead; *cover*: with two aiming at you, three in sight, or
+  losing the trade, back away toward the spots fewest enemies can see
+  (taking health or armour on the way); *collect*: with nobody in sight,
+  fetch a weapon you lack, health when hurt, or armour, on about your own
+  level (no route finding; one that gets no nearer for 4 s is left for
+  20 s); *hunt*: otherwise head for the focus. Each direction is chosen
+  from 16 by tracing the player's box: room, safe ground along the way (no
+  void, lava, slime or death volume), a jump over a low step only onto safe
+  ground, and a random step when stuck. Safe ground is judged straight
+  under the player's centre as well as under the box, so a trench along a
+  wall or the lip of a pit is not taken for floor; a pickup in or over lava
+  is never fetched, and standing in a hazard the way back to the last safe
+  spot wins. With `cl_touch_practice_exposure` 1 (default 0) a fight also
+  prefers spots the other enemies cannot see. Touching the stick takes over.
+- Runs from the hook's frame before auto dodge and the ledge guard, so a
+  projectile dodge or a ledge stop still wins.
+- `touch_tactics_status` prints the gate, the mode and every player's
+  health, armour, weapon, distance and aim; `cl_touch_aim_debug 1` logs
+  mode changes, finishing switches and fetched pickups, and 3 the last
+  moves before each death. `touch_tactics_probe x y z` prints the ground
+  check and the contents below a point.
+
+Measured on Stormkeep against 3 skill-5 bots, 3 matches each with the stick
+idle and auto-shoot on: all three off, 5 kills / 4 deaths; all on, 13 kills
+/ 4 deaths, with the Vortex and Devastator picked up on the way.
+Game types (local, 3 skill-8 bots, Stormkeep; Dance for CTF): deathmatch,
+team deathmatch, Clan Arena, Freeze Tag and CTF. In team games the
+server's `team` field marks mates (never the focus, no team kills in the
+runs). In Freeze Tag a frozen enemy is passed over (it takes no damage) and
+a frozen mate in sight is walked to and stood by until thawed (*revive*
+mode; two thaws in four matches). The setting `cl_touch_esp_enabled` (above)
+covers all of it.
+
+Against 3 skill-8 bots, 2-minute matches with the stick idle: in a Vortex
+arena the server's exact velocities raised 12 kills / 14 deaths (4 matches)
+to 26 / 12; preferring hidden spots in a fight (`exposure`) did not help
+(21 / 13 vs 26 / 12 Vortex, 13 / 14 vs 16 / 17 Devastator), so it is off.
+The centre-line ground check, the pit-edge item check and the momentum
+check took lava deaths from 4 in 20 matches to 0 in 16 (48 / 21 Vortex,
+36 / 35 Devastator over 8 matches each). On a Galaxy Tab Active5 in touch
+mode, a 3-minute local match against 3 skill-8 bots: 5 kills / 2 deaths.
+
+| Cvar | Default | Purpose |
+|------|---------|---------|
+| `cl_touch_esp_enabled` | `local` | `local` (offline gate) or `off`; no server value |
+| `cl_touch_practice_intel` | `1` | Enemy labels, target choice, finishing and behind-a-wall weapons |
+| `cl_touch_practice_aimdodge` | `1` | Step out of an aiming enemy's line while the stick is idle |
+| `cl_touch_practice_exact` | `1` | Lead from the local server's velocities; any range |
+| `cl_touch_practice_exposure` | `0` | In a fight, prefer spots the other enemies cannot see |
+| `cl_touch_practice_pilot` | `1` | Move for you while the stick is idle |
 
 ### Grappling hook: HOOK button and fall rescue (engine)
 

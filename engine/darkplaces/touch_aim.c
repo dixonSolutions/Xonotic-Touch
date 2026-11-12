@@ -37,6 +37,8 @@ primary, no lead, no switching.
 #include "touch_aim.h"
 #include "touch_weapons.h"
 #include "touch_hook.h"
+#include "touch_tactics.h"
+extern cvar_t cl_touch_esp_enabled;
 
 extern cvar_t vid_touchscreen;
 extern qbool cl_touch_csqc_active;
@@ -1176,11 +1178,14 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, float lock_cone
 	prvm_prog_t *prog = CLVM_prog;
 	int team_game = teamplay_mode();
 	float range = cl_touch_aim_range.value <= 0 ? 1e9f : max(64.0f, cl_touch_aim_range.value); // 0: no limit
+	extern cvar_t cl_touch_practice_exact;
 	float best_on = 1e9f;
 	float hyst = bound(0.0f, cl_touch_aimassist_hysteresis.value, 15.0f); // degrees the current target is preferred by
 	qbool prio = cl_touch_aimassist_priority.integer != 0;
 	double now = host.realtime;
 	int i, players = 0;
+	if (TouchTactics_Open() && cl_touch_practice_exact.integer)
+		range = 1e9f; // offline only: any distance
 	*on_target = 0;
 	*friend_on = 0;
 	num_gbodies = 0;
@@ -1293,6 +1298,7 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, float lock_cone
 
 		// where a projectile meets this player, as an offset from the body
 		track_velocity(n, ed, org, now, vel);
+		TouchTactics_ExactVelocity(n, vel); // offline only: the server's own velocity
 		tr = &ta.tracks[n & (TRACK_MAX - 1)];
 		VectorCopy(bmin, tr->bmin);
 		VectorCopy(bmax, tr->bmax);
@@ -1393,6 +1399,7 @@ static void scan(const vec3_t eye, const vec3_t fwd, float cone, float lock_cone
 		{
 			cand_t *c = &tcands[i];
 			c->eff -= priority_bonus(&c->a, wep, fire, now);
+			c->eff -= TouchTactics_TargetBonus(c->a.entnum); // offline only: nearly dead, aiming at the player
 			if (c->a.entnum == ta.track_ent && ta.track_ent && now - ta.target_since < TARGET_HOLD)
 				c->eff -= 1000; // just taken: kept a moment while it stays in sight
 		}
@@ -1735,6 +1742,14 @@ static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *we
 		}
 		if (best < 0)
 			combo = false;
+	}
+	// offline only: a sure one-shot kill, or a splash weapon for a target behind a wall
+	if (!combo && near->entnum && (i = TouchTactics_PickWeapon(near->entnum, dist, names, ready, n, heldpos)) >= 0)
+	{
+		if (i == heldpos)
+			return;
+		best = i;
+		combo = true;
 	}
 	if (!combo && smart)
 	{
@@ -2682,16 +2697,17 @@ static void aim_frame(void)
 	ta.was_allowed = true;
 	ta.blocked_said = NULL;
 
-	practice_gate_now = practice_gate();
-	// Mobile (touch) builds: the practice helpers are always available, on
-	// every server as well as in a local match -- see-through walls, full 360
-	// targets and instant turn are part of the touch aim assist, not an
-	// offline-only cheat. The offline gate still decides them elsewhere.
-	practice = TouchWep_PracticeEffective(TW_GATE_OPEN, cl_touch_practice_seethrough.integer != 0,
+	// see-through, full 360 and instant turn: only where cl_touch_esp_enabled
+	// and the offline gate allow (a local match against bots)
+	practice_gate_now = TouchTactics_EspGate(practice_gate());
+	practice = TouchWep_PracticeEffective(practice_gate_now, cl_touch_practice_seethrough.integer != 0,
 		cl_touch_practice_360.integer != 0 && cl_touch_aim_mode.integer == 2, cl_touch_practice_instant.integer != 0);
 	if (cl_touch_aim_debug.integer && practice_gate_now != practice_gate_said)
 	{
-		Con_Printf("touch aim: practice helpers: on (mobile; see-through %d, full 360 %d, instant %d)\n", practice.seethrough, practice.full360, practice.instant);
+		if (practice_gate_now == TW_GATE_OPEN)
+			Con_Printf("touch aim: practice helpers: on (local match; see-through %d, full 360 %d, instant %d)\n", practice.seethrough, practice.full360, practice.instant);
+		else
+			Con_Printf("touch aim: practice helpers: off (%s)\n", strcmp(cl_touch_esp_enabled.string, "off") ? touch_practice_why[practice_gate_now] : "cl_touch_esp_enabled is off");
 	}
 	practice_gate_said = practice_gate_now;
 	num_marks = 0;
@@ -3342,9 +3358,10 @@ void TouchAim_Draw(void)
 	vec3_t org, fwd, left, up, d;
 	float w = vid_conwidth.value, h = vid_conheight.value, fx = r_refdef.view.frustum_x, fy = r_refdef.view.frustum_y;
 	int i;
+	TouchTactics_Draw(); // offline only: health, armour, weapon and aim of every enemy
 	// Mobile (touch) builds draw the practice markers in every match; elsewhere
 	// they stay offline-only.
-	if (!num_marks || (!vid_touchscreen.integer && practice_gate() != TW_GATE_OPEN) || fx <= 0 || fy <= 0)
+	if (!num_marks || TouchTactics_EspGate(practice_gate()) != TW_GATE_OPEN || fx <= 0 || fy <= 0)
 		return;
 	Matrix4x4_ToVectors(&r_refdef.view.matrix, fwd, left, up, org);
 	for (i = 0; i < num_marks; i++)

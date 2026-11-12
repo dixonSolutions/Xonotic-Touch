@@ -42,6 +42,7 @@ OBJ_COMMON= \
 	touch_vote.o \
 	touch_dodge.o \
 	touch_ledge.o \
+	touch_tactics.o \
 	touch_pause.o \
 	touch_nade.o \
 	touch_android.o \

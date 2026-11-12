@@ -19,6 +19,7 @@ are touch_rescue.h's.
 #include "touch_turn.h"
 #include "touch_pause.h"
 #include "touch_nade.h"
+#include "touch_tactics.h"
 
 extern cvar_t vid_touchscreen;
 extern qbool cl_touch_csqc_active;
@@ -413,7 +414,7 @@ static void TouchHook_Up_f(cmd_state_t *cmd)
 
 int TouchHook_Buttons(void)
 {
-	return th.buttons | TouchDodge_Buttons() | TouchNade_Buttons();
+	return th.buttons | TouchDodge_Buttons() | TouchNade_Buttons() | TouchTactics_Buttons();
 }
 
 // The server runs the nades mutator (offhand grenades on +hook).
@@ -727,6 +728,9 @@ void TouchHook_Frame(void)
 		}
 	}
 
+	// offline tactics (bots on this machine only): the autopilot and aim dodge
+	// write the move first, so auto dodge and the ledge guard judge it
+	TouchTactics_Frame();
 	// auto dodge: after the hook, which it stands down for
 	TouchDodge_Frame();
 	// the ledge guard: after the dodge, which it stands down for
@@ -770,6 +774,7 @@ void TouchHook_Init(void)
 	TouchTurn_Init();
 	TouchDodge_Init();
 	TouchLedge_Init();
+	TouchTactics_Init();
 	TouchPause_Init();
 	TouchNade_Init();
 	Cvar_RegisterVariable(&cl_touch_hook_rescue);
