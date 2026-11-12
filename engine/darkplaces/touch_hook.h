@@ -75,4 +75,9 @@ int TouchDodge_Buttons(void);
 void TouchDodge_DrawCue(void);
 void TouchDodge_PrintStatus(void);
 
+// The ledge guard (touch_ledge.c), run from the hook's frame after the dodge.
+void TouchLedge_Init(void);
+void TouchLedge_Frame(void);
+void TouchLedge_PrintStatus(void);
+
 #endif

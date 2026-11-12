@@ -1188,6 +1188,48 @@ first frame a shot was dangerous, at 30 fps and up to 250 ms. Cost: 0.13 ms a
 judged frame (median), 0.46 ms at most, on a desktop CPU; a frame over 3 ms
 skips the next judgement.
 
+### Ledge guard (engine)
+
+A thumb on a virtual stick overshoots, and on a floating map (space-elevator,
+geoplanetary, darkzone) one step too far is a death. `touch_ledge.c` runs from
+the hook's frame after auto dodge: while the player is on the ground and jump
+is not held, the move the stick put in `cl.cmd` is flown ahead (auto dodge's
+ground physics) for `cl_touch_ledgeguard_ahead` seconds plus the connection's
+delay, and the ground under each point is looked for with the player's own box
+(the fall rescue's drop, so its trigger_hurt volumes count). The box only
+falls once all of it is off the floor, so walking a narrow bridge is left
+alone. When the path runs off the edge, the move is replaced, in this order:
+turned up to 45 degrees (the side nearer the slide), so a player angled at the
+edge slides along it; the same direction slower, so they creep up to the edge;
+no input; a brake against the slide. The decisions are in `touch_ledge.h`
+(plain C, `scripts/test-touch-ledge.sh`).
+
+In the air (a jump pad, a step off a ramp, a jump) the stick is flown for
+0.4 s and the arc from there traced in short pieces to where it comes down.
+Only when the player's own input comes down in the void or a death zone and
+another move lands (the stick turned up to 45 degrees, let go, or pulled
+against the flight) is the move changed: a jump that lands is left alone, and
+so is one nothing can save (the fall rescue's turn).
+
+It stands down with a keyboard or mouse (the aim helpers' rules), on the
+ground while jump is held (a jump across a gap is meant), and while a dodge,
+the hook or a fall rescue moves the player. `touch_hook_status` prints how many frames it
+acted and what it did; `cl_touch_aim_debug 1` prints a line per edge met.
+
+| Cvar | Default | Meaning |
+|------|---------|---------|
+| `cl_touch_ledgeguard` | `1` | `0` off, `1` the void, lava, slime and hurt zones, `2` also any drop deeper than `cl_touch_ledgeguard_drop`. Settings → Mobile → Aim → Ledge guard |
+| `cl_touch_ledgeguard_drop` | `192` | Mode 2: deepest drop you may walk off, units (64–1024) |
+| `cl_touch_ledgeguard_ahead` | `0.3` | Seconds of the move judged ahead, on top of the connection's delay (0.15–0.8) |
+
+A walk onto one of the map's jump pads or teleporters (`trigger_push`,
+`trigger_teleport`, read from its entity list) is never held back, however
+much void lies under it.
+
+Limits: moving platforms are judged where the client sees them; the air
+judgement models Xonotic's air acceleration but not air stopping, so it
+brakes a little later than it could.
+
 ### Grenades (engine, both HUDs)
 
 On a server with offhand grenades (`g_nades`) a NADE row sits under the last

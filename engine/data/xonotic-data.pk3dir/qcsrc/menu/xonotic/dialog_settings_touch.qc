@@ -357,6 +357,15 @@ void XonoticMobileAimTab_fill(entity me)
 		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_autododge_cue", _("Show an arrow when it dodges"),
 			_("Flash an arrow at the edge of the screen the way a dodge goes")));
 			setDependent(e, "cl_touch_autododge", 1, 1);
+	// Engine-side (touch_ledge.c): keeps the stick from walking you off a ledge.
+	me.TR(me);
+		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Ledge guard:")));
+		me.TD(me, 1, 1, e = makeXonoticRadioButton_T(6, "cl_touch_ledgeguard", "0", _("Off"),
+			_("Walk off any ledge")));
+		me.TD(me, 1, 1.7, e = makeXonoticRadioButton_T(6, "cl_touch_ledgeguard", "1", _("Deadly falls"),
+			_("Stop, slow or turn you along the edge before you walk into the void, lava or a hurt zone. Jumping is never held back")));
+		me.TD(me, 1, 1.8, e = makeXonoticRadioButton_T(6, "cl_touch_ledgeguard", "2", _("Any long drop"),
+			_("Also keep you from walking off a drop deeper than cl_touch_ledgeguard_drop units (192 unless changed). Jumping is never held back")));
 	me.TR(me);
 		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("Touch mode only: off while a keyboard or mouse is playing. Never through walls.")));
 }

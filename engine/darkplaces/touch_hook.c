@@ -729,6 +729,8 @@ void TouchHook_Frame(void)
 
 	// auto dodge: after the hook, which it stands down for
 	TouchDodge_Frame();
+	// the ledge guard: after the dodge, which it stands down for
+	TouchLedge_Frame();
 
 	// the cost of judging falls, with cl_touch_aim_debug 2: once a second
 	if (th.traces)
@@ -760,12 +762,14 @@ static void TouchHook_Status_f(cmd_state_t *cmd)
 		th.avail, th.held, th.buttons, tr_phase_name[th.rs.phase], eye[0], eye[1], eye[2],
 		cl.mvelocity[0][0], cl.mvelocity[0][1], cl.mvelocity[0][2], cl.onground, cl.viewangles[PITCH], cl.viewangles[YAW], th.num_hurt);
 	TouchDodge_PrintStatus();
+	TouchLedge_PrintStatus();
 }
 
 void TouchHook_Init(void)
 {
 	TouchTurn_Init();
 	TouchDodge_Init();
+	TouchLedge_Init();
 	TouchPause_Init();
 	TouchNade_Init();
 	Cvar_RegisterVariable(&cl_touch_hook_rescue);
