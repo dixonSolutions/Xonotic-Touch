@@ -107,6 +107,9 @@ cvar_t cl_touch_practice_360 = {CF_CLIENT | CF_ARCHIVE, "cl_touch_practice_360",
 	"Offline practice (as above): with Targets set to Full 360 (cl_touch_aim_mode 2), enemies all around may be the target, with a marker at the screen edge. Anywhere else Full 360 works as Field of view"};
 cvar_t cl_touch_practice_instant = {CF_CLIENT | CF_ARCHIVE, "cl_touch_practice_instant", "0",
 	"Offline practice (as above): the aim pull moves onto the target at once instead of at cl_touch_aimassist_maxrate. Never anywhere else"};
+cvar_t cl_touch_practice_burst = {CF_CLIENT | CF_ARCHIVE, "cl_touch_practice_burst", "0",
+	"Offline practice (as above): a splash shot at an enemy behind cover aims where its simulated flight bursts next to the enemy (over the cover, round it, on the floor by it), "
+	"and fires only while the shot from the view as it is now would burst there (0, the default: the straight line to the enemy must end near it). Never anywhere else"};
 cvar_t cl_touch_aimassist_lastseen = {CF_CLIENT | CF_ARCHIVE, "cl_touch_aimassist_lastseen", "1",
 	"Aim pull, during a fight: when the enemy goes out of sight, keep the crosshair where it was last seen, moving on its last seen course for a second, for up to 3 seconds, while that point is in clear view -- never where it really is behind cover, and never on a wall it went behind"};
 cvar_t cl_touch_autoshoot_combo = {CF_CLIENT | CF_ARCHIVE, "cl_touch_autoshoot_combo", "1",
@@ -373,7 +376,9 @@ static struct
 
 #define SHOT_MAX 32
 #define SHOT_SEEN_MAX 16384
-typedef struct shot_s { int ent, type, target; float closest; double born; vec3_t last; } shot_t;
+typedef struct shot_s { int ent, type, target; qbool hidden; float closest; double born; vec3_t last; } shot_t;
+static qbool shot_hidden; // the shots now going out were fired at a target behind cover (debug)
+static double shot_hidden_fired; // last frame auto-shoot decided to fire at a target behind cover
 static shot_t shots[SHOT_MAX];
 static int num_shots;
 static unsigned char shot_seen[SHOT_SEEN_MAX];
@@ -406,6 +411,7 @@ void TouchAim_Init(void)
 	Cvar_RegisterVariable(&cl_touch_autoshoot_teamsafe);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_combo);
 	Cvar_RegisterVariable(&cl_touch_aimassist_lastseen);
+	Cvar_RegisterVariable(&cl_touch_practice_burst);
 	Cvar_RegisterVariable(&cl_touch_practice_seethrough);
 	Cvar_RegisterVariable(&cl_touch_practice_360);
 	Cvar_RegisterVariable(&cl_touch_practice_instant);
@@ -1862,6 +1868,228 @@ static int find_own_rocket(const vec3_t eye)
 	return best;
 }
 
+// ---------------------------------------------------------------------------
+// Offline practice: a splash shot at an enemy behind cover
+// ---------------------------------------------------------------------------
+// The shot is simulated as the server flies it -- a straight box trace, or
+// a lob stepped under gravity -- to its first impact. It counts only where
+// that impact bursts within reach of the body, with a clear line from the
+// blast to it (RadiusDamage), well away from the player, and not on sky (a
+// shot that hits sky vanishes). Candidate burst points ring the enemy where
+// it will be when the shot lands; the best is cached for HB_CACHE.
+#define HB_BOX     4.0f   // half size of the projectile's box
+#define HB_STEP    0.04f  // lob simulation step, seconds
+#define HB_TMAX    2.5f   // longest lob followed
+#define HB_CACHE   0.05   // seconds a found aim is kept
+#define HB_REACH   0.6f   // of the splash radius: the farthest burst that counts
+typedef struct hburst_s
+{
+	int ent;
+	double until;
+	qbool valid;
+	float yaw, pitch, score;
+	vec3_t impact;
+} hburst_t;
+static hburst_t hb;
+
+// First impact of a shot fired along (yaw, pitch), and its flight time;
+// false when it hits nothing in range, starts in a wall, or hits sky.
+static qbool hb_impact(const vec3_t eye, const touch_wep_fire_t *f, float yaw, float pitch, float reach, vec3_t impact, float *tof)
+{
+	static const vec3_t mins = { -HB_BOX, -HB_BOX, -HB_BOX }, maxs = { HB_BOX, HB_BOX, HB_BOX };
+	vec3_t ang, fwd, up, a, b, v;
+	trace_t tr;
+	float t, g = cl.movevars_gravity;
+	VectorSet(ang, pitch, yaw, 0);
+	AngleVectors(ang, fwd, NULL, up);
+	if (f->kind != TW_KIND_BALLISTIC)
+	{
+		VectorMA(eye, reach, fwd, b);
+		tr = CL_TraceBox(eye, mins, maxs, b, MOVE_NOMONSTERS, NULL, SUPERCONTENTS_SOLID, 0, 0, collision_extendmovelength.value, true, false, NULL, false);
+		if (tr.startsolid || tr.fraction >= 1 || (tr.hitq3surfaceflags & (Q3SURFACEFLAG_SKY | Q3SURFACEFLAG_NOIMPACT)))
+			return false;
+		VectorCopy(tr.endpos, impact);
+		*tof = f->speed > 0 ? VectorDistance(eye, impact) / f->speed : 0;
+		return true;
+	}
+	VectorScale(fwd, f->speed, v);
+	VectorMA(v, f->speed_up, up, v);
+	VectorCopy(eye, a);
+	for (t = 0; t < HB_TMAX; t += HB_STEP)
+	{
+		b[0] = a[0] + v[0] * HB_STEP;
+		b[1] = a[1] + v[1] * HB_STEP;
+		b[2] = a[2] + v[2] * HB_STEP - 0.5f * g * HB_STEP * HB_STEP;
+		v[2] -= g * HB_STEP;
+		tr = CL_TraceBox(a, mins, maxs, b, MOVE_NOMONSTERS, NULL, SUPERCONTENTS_SOLID, 0, 0, collision_extendmovelength.value, true, false, NULL, false);
+		if (tr.startsolid)
+			return false;
+		if (tr.fraction < 1)
+		{
+			if (tr.hitq3surfaceflags & (Q3SURFACEFLAG_SKY | Q3SURFACEFLAG_NOIMPACT))
+				return false;
+			VectorCopy(tr.endpos, impact);
+			*tof = t + tr.fraction * HB_STEP;
+			return true;
+		}
+		VectorCopy(b, a);
+	}
+	return false;
+}
+
+// What a burst at p does to a body box (bmin, bmax) with centre c: 0 when it
+// is out of reach, too near the player, or the blast has no line to the
+// body, else 1 at the body falling to 0 at HB_REACH of the radius.
+static float hb_value(const vec3_t p, const vec3_t eye, const vec3_t c, const vec3_t bmin, const vec3_t bmax, float splash)
+{
+	float gap = TouchWep_BoxGap(p, bmin, bmax);
+	vec3_t q, d, hd;
+	if (gap > HB_REACH * splash || VectorDistance(p, eye) < splash + 32)
+		return 0;
+	// the blast's line to the body, from just off the surface it hit
+	VectorSubtract(c, p, d);
+	VectorNormalize(d);
+	VectorMA(p, 2, d, q);
+	VectorCopy(c, hd);
+	hd[2] = bmax[2] - 6;
+	if (!line_clear(q, c) && !line_clear(q, hd))
+		return 0;
+	return 1 - gap / (HB_REACH * splash);
+}
+
+// Launch angles for a lob through p: low arc, or high (over cover).
+static qbool hb_lob(const vec3_t eye, const vec3_t p, const touch_wep_fire_t *f, qbool high, float *yaw, float *pitch)
+{
+	float dx = sqrt((p[0] - eye[0]) * (p[0] - eye[0]) + (p[1] - eye[1]) * (p[1] - eye[1])), dz = p[2] - eye[2];
+	float v2 = f->speed * f->speed + f->speed_up * f->speed_up, g = cl.movevars_gravity, disc, phi;
+	if (dx < 1 || g <= 0)
+		return false;
+	disc = v2 * v2 - g * (g * dx * dx + 2 * dz * v2);
+	if (disc < 0)
+		return false;
+	phi = atan((v2 + (high ? 1 : -1) * sqrt(disc)) / (g * dx)) - atan2(f->speed_up, f->speed);
+	*yaw = atan2(p[1] - eye[1], p[0] - eye[0]) * (180.0f / M_PI);
+	*pitch = -phi * (180.0f / M_PI);
+	return *pitch > -85 && *pitch < 85;
+}
+
+// The enemy's body after t seconds (exact velocity offline), kept out of
+// walls it would run into: centre and box.
+static void hb_where(const aimtarget_t *near, float t, vec3_t c, vec3_t bmin, vec3_t bmax)
+{
+	const track_t *trk = &ta.tracks[near->entnum & (TRACK_MAX - 1)];
+	vec3_t mv;
+	VectorScale(near->vel, t, mv);
+	mv[2] = 0;
+	clip_lead(near->center, mv);
+	VectorAdd(near->center, mv, c);
+	VectorAdd(trk->bmin, mv, bmin);
+	VectorAdd(trk->bmax, mv, bmax);
+}
+
+// Candidate i's burst point round body (c, bmin, bmax): 0 the body, 1-2
+// above it, 3 the floor under it, 4-19 a ring of 8 at the feet at two radii.
+static qbool hb_point(int i, const vec3_t c, const vec3_t bmin, const vec3_t bmax, float splash, vec3_t p)
+{
+	VectorCopy(c, p);
+	if (i == 1 || i == 2)
+		p[2] = bmax[2] + 24 * i;
+	else if (i == 3)
+	{
+		vec3_t down;
+		trace_t tr;
+		VectorCopy(c, down);
+		down[2] -= 256;
+		tr = CL_TraceLine(c, down, MOVE_NOMONSTERS, NULL, SUPERCONTENTS_SOLID, 0, 0, collision_extendmovelength.value, true, false, NULL, true, false);
+		if (tr.startsolid || tr.fraction >= 1)
+			return false;
+		VectorCopy(tr.endpos, p);
+	}
+	else if (i >= 4)
+	{
+		float a = (i & 7) * (float)(M_PI / 4), r = (i < 12 ? 0.3f : 0.55f) * splash + 16;
+		p[0] += r * cos(a);
+		p[1] += r * sin(a);
+		p[2] = bmin[2] + 4;
+	}
+	return true;
+}
+
+// Fires the burst search models: a straight projectile or a lob that bursts
+// on its first impact, with a tight spread. Not mines (they stick), the
+// bouncing lobs (Mortar and Electro secondary), or a scatter.
+static qbool hb_fire_ok(const touch_wep_t *w, const touch_wep_fire_t *f)
+{
+	if (!w || !f || f->splash < 60 || f->spread > 0.05f || (w->flags & (TW_MINES | TW_GUIDED)))
+		return false;
+	if (f->kind == TW_KIND_PROJ)
+		return true;
+	return f->kind == TW_KIND_BALLISTIC && f == &w->pri;
+}
+
+// Search the burst points round a hidden enemy for this fire (both arcs of
+// a lob); the best aim goes into hb.
+static void hb_search(const vec3_t eye, const aimtarget_t *near, const touch_wep_fire_t *f, float latency)
+{
+	vec3_t c, bmin, bmax, p, imp;
+	float best = 0, t, tof, yaw = 0, pitch = 0, v;
+	int i, arc, pass;
+	qbool ok;
+	hb.valid = false;
+	hb.ent = near->entnum;
+	hb.until = host.realtime + HB_CACHE;
+	for (arc = 0; arc < (f->kind == TW_KIND_BALLISTIC ? 2 : 1); arc++)
+		for (i = 0; i < 20; i++)
+		{
+			// where the enemy is when the shot lands: the flight time of
+			// the first solve sets the meeting point of the second
+			t = latency + (f->speed > 0 ? near->dist / f->speed : 0);
+			ok = false;
+			for (pass = 0; pass < 2; pass++)
+			{
+				hb_where(near, t, c, bmin, bmax);
+				if (!hb_point(i, c, bmin, bmax, f->splash, p))
+					break;
+				if (f->kind != TW_KIND_BALLISTIC)
+					angles_to(eye, p, &yaw, &pitch);
+				else if (!hb_lob(eye, p, f, arc != 0, &yaw, &pitch))
+					break;
+				ok = hb_impact(eye, f, yaw, pitch, VectorDistance(eye, p) + f->splash, imp, &tof);
+				if (!ok)
+					break;
+				t = latency + tof;
+			}
+			if (!ok)
+				continue;
+			hb_where(near, t, c, bmin, bmax);
+			v = hb_value(imp, eye, c, bmin, bmax, f->splash);
+			if (v <= 0)
+				continue;
+			// of two as good, the one nearer the view now (on target sooner)
+			v -= 0.002f * (fabs(wrap180(yaw - cl.viewangles[YAW])) + fabs(pitch - cl.viewangles[PITCH]));
+			if (v > best)
+			{
+				best = v;
+				hb.valid = true;
+				hb.yaw = yaw;
+				hb.pitch = pitch;
+				hb.score = v;
+				VectorCopy(imp, hb.impact);
+			}
+		}
+}
+
+// Whether a shot from the view as it is now bursts where it counts.
+static qbool hb_view_ok(const vec3_t eye, const aimtarget_t *near, const touch_wep_fire_t *f, float latency)
+{
+	vec3_t imp, c, bmin, bmax;
+	float tof;
+	if (!hb_impact(eye, f, cl.viewangles[YAW], cl.viewangles[PITCH], near->dist + 2 * f->splash, imp, &tof))
+		return false;
+	hb_where(near, latency + tof, c, bmin, bmax);
+	return hb_value(imp, eye, c, bmin, bmax, f->splash) > 0;
+}
+
 // Splash weapons and groups (cl_touch_autoshoot_group): when two or more
 // visible enemies stand near the target, score blast points -- the previous
 // one, each enemy's floor point, the floor between each close pair -- by
@@ -2642,7 +2870,7 @@ static void debug_shots(const vec3_t eye, int target)
 			continue;
 		}
 		if (sh->target)
-			Con_Printf("touch aim: shot %d at player %d: closest %.0f units after %.2f s, last seen at %.0f %.0f %.0f\n", sh->type, sh->target, sh->closest, now - sh->born, sh->last[0], sh->last[1], sh->last[2]);
+			Con_Printf("touch aim: shot %d at player %d%s: closest %.0f units after %.2f s, last seen at %.0f %.0f %.0f\n", sh->type, sh->target, sh->hidden ? " (behind cover)" : "", sh->closest, now - sh->born, sh->last[0], sh->last[1], sh->last[2]);
 		if (sh->ent < SHOT_SEEN_MAX)
 			shot_seen[sh->ent] = 0;
 		shots[k--] = shots[--num_shots];
@@ -2664,6 +2892,7 @@ static void debug_shots(const vec3_t eye, int target)
 			sh->ent = i;
 			sh->type = ta.projtype_ofs >= 0 ? projectile_type_raw(ed) : -1;
 			sh->target = target;
+			sh->hidden = shot_hidden;
 			sh->closest = 1e9f;
 			sh->born = now;
 			VectorCopy(PRVM_clientedictvector(ed, origin), sh->last);
@@ -2884,6 +3113,24 @@ static void aim_frame(void)
 		group_aim(&near, fire, eye, shot_latency());
 	else
 		ta.group_valid = false;
+	// offline practice: a splash shot (not a steered rocket) at a target
+	// behind cover aims where its simulated impact bursts next to it
+	if (practice.seethrough && cl_touch_practice_burst.integer && !guided && near.entnum && near.hidden && hb_fire_ok(wep, fire))
+	{
+		if (hb.ent != near.entnum || now >= hb.until)
+			hb_search(eye, &near, fire, shot_latency());
+		if (hb.valid)
+		{
+			near.yaw = hb.yaw;
+			near.pitch = hb.pitch;
+			near.rh = near.rv = 0.5f;
+			near.err = edge_err(wrap180(near.yaw - cl.viewangles[YAW]), near.pitch - cl.viewangles[PITCH], near.rh, near.rv);
+			near.on_lead = near.err <= 0;
+			ta.group_valid = false;
+		}
+	}
+	else
+		hb.valid = false;
 
 	if (cl_touch_aim_debug.integer && on_target != ta.debug_target)
 	{
@@ -2918,7 +3165,7 @@ static void aim_frame(void)
 				VectorAdd(near.center, near.lead, lp);
 				// (a guided rocket is re-aimed in flight: its lead point may
 				// lie beyond a wall the target will turn at)
-				if (!near.has_lead || guided || (f && f->kind == TW_KIND_BALLISTIC) || (cl_touch_autoshoot_feet.integer ? shot_path_ok(eye, lp, f) : line_clear(eye, lp)))
+				if (!near.has_lead || guided || (f && f->kind == TW_KIND_BALLISTIC) || (near.hidden && hb.valid) || (cl_touch_autoshoot_feet.integer ? shot_path_ok(eye, lp, f) : line_clear(eye, lp)))
 					on_shoot = near.entnum;
 				// a rocket that would hit the lip in front of the muzzle
 				// (and likely its shooter) is held
@@ -2946,8 +3193,11 @@ static void aim_frame(void)
 		vec3_t lp;
 		VectorAdd(near.center, near.lead, lp);
 		// a steered rocket follows the crosshair: with no way over the
-		// cover it only flies into the wall in front
-		if (!f || f->splash < 60 || !(guided ? ta.rk_over_valid || launch_clear(eye, near.center, f->splash) : shot_path_ok(eye, lp, f)))
+		// cover it only flies into the wall in front; anything else fires only when the shot from the view as it is now
+		// is simulated to burst within reach of where the target will be
+		if (!f || f->splash < 60 || !(guided ? ta.rk_over_valid || launch_clear(eye, near.center, f->splash)
+			: !cl_touch_practice_burst.integer ? shot_path_ok(eye, lp, f)
+			: hb.valid && hb.ent == near.entnum && hb_fire_ok(wep, f) && hb_view_ok(eye, &near, f, shot_latency())))
 			on_shoot = 0;
 	}
 	// a steered rocket at a target in sight: the straight line there must
@@ -3375,7 +3625,12 @@ static void aim_frame(void)
 		}
 	}
 	if (cl_touch_aim_debug.integer >= 3)
+	{
+		if (on_shoot && near.entnum == on_shoot && near.hidden)
+			shot_hidden_fired = now;
+		shot_hidden = now - shot_hidden_fired < 0.15;
 		debug_shots(eye, ta.fire_target ? ta.fire_target : ta.lock_ent ? ta.lock_ent : near.entnum);
+	}
 	ta.track_ent = near.entnum;
 	ta.track_yaw = near.yaw;
 	ta.track_pitch = near.pitch;

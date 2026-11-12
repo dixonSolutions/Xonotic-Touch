@@ -951,7 +951,10 @@ Three helpers exist only for practice against bots: **see through walls**
 distance marks an enemy behind a wall; the pull pre-aims at it; a splash
 weapon whose blast reaches it round the cover fires, and a Devastator rocket
 goes over the cover and dives onto it; with no way over, the rocket is held
-rather than steered into the wall in front), **Full 360** (`cl_touch_practice_360`,
+rather than steered into the wall in front; any other splash shot fires
+only when the straight line to the enemy ends within reach of its blast, or
+with `cl_touch_practice_burst` 1 where its simulated flight bursts next to
+the enemy: see "Shots at an enemy behind cover" below), **Full 360** (`cl_touch_practice_360`,
 default 1, with Targets set to Full 360: enemies all around may be the target,
 with a square at the screen edge toward one off the screen), and **instant
 turn** (`cl_touch_practice_instant`, default 0: the pull moves onto the target
@@ -970,6 +973,37 @@ changes. Measured: connected to a dedicated server on the same machine with
 `cl_touch_esp_enabled all`, the client printed "off (not running the server
 here)" and drew no labels or markers, while the ordinary aim assist stayed
 active.
+
+#### Shots at an enemy behind cover (offline practice)
+
+`cl_touch_practice_burst` (default 0). With it on and see-through on, a splash shot at an enemy behind a wall is aimed
+where it does the most, not at the body through the wall. Candidate burst
+points ring where the enemy will be when the shot lands (its velocity on
+the local server, kept out of walls it would run into): on the body, 24
+and 48 units above it, the floor under it, and eight points at its feet at
+two radii. For each, the shot is flown as the server flies it -- a box trace
+the projectile's size for straight shots, a lob stepped every 0.04 s under
+the world's gravity for the Mortar, on both its low and its high arc (over
+the cover) -- to its first impact; the enemy's position is solved again
+from that flight time. A burst counts only within 60% of the splash radius
+of the body, with a clear line from the blast to its centre or head, more
+than the radius plus 32 units from the player, and not on sky (a shot into
+sky vanishes) or from inside a wall. The best (most splash, then nearest
+the view) is cached for 50 ms; at most 40 simulated shots per search.
+Before each shot the one from the view as it is now is simulated the same
+way, and fire is held unless it bursts where it counts: no shot goes into
+the wall in front, up a wall, or at thin geometry far from the enemy.
+Mines (they stick), bouncing lobs (Mortar and Electro secondary) and
+scatter weapons are not modelled and do not fire at a hidden enemy.
+
+Measured (Mortar arena, 3 skill-8 bots, 8 two-minute matches each, every
+projectile followed to its closest pass by its target): shots fired at an
+enemy behind cover already missed by 300 units or more in 0 of 13 with the
+straight-line check, and 0 of 12 with the burst search; kills / deaths 26 /
+28 off, 32 / 22 on; but shots at enemies in sight missed that far 12% of the
+time off and 25% on (21% with the low arc alone), in 7 of 8 matches. So it
+stays off. In a Hagar arena the 65-unit blast leaves no burst point within
+reach, and nothing fires at a hidden enemy with it on.
 
 #### Not built: the ground-shot jump
 
@@ -1051,6 +1085,42 @@ on the player's own machine, it reads the local server directly.
   Rifle) and you have more health and armour left: close to 70% of your
   weapon's range; *break*: outranged and weaker: keep out of its sight
   (cover counting the focus too) instead of trading shots in the open.
+- **Fight detours** (`cl_touch_practice_detour`, default 1): during a fight
+  (also while dodging or backing into cover) a pickup within 350 units on
+  the player's level is blended into the move when it is worth it now:
+  health by how hurt you are (Mega first), big armour when short, a weapon
+  you lack whose best range suits the focus's distance better than the one
+  in hand, ammo for the one in hand under 15. Only with the player's box
+  clear all the way, safe ground at the pickup, and no more enemies seeing
+  the player there than now; dropped after 1.5 s (and that pickup left for
+  10 s).
+- **Objectives** (`cl_touch_practice_objectives`, default 1). CTF (the
+  local server's `item_flag_team` entities: team, `ctf_status`, carrier,
+  base): carrying the enemy flag, head home in cover (dodges and health
+  detours still run); with your own flag not home, wait by your base or
+  fight its carrier once in sight; your own flag dropped within 2500 units,
+  go and return it (unless fighting someone far from it); the enemy flag at
+  its base or dropped, go and take it while nobody is in sight or when it is
+  within 600 units. Far goals follow the bots' waypoint graph (`waypoint`
+  entities and their `wp00`-`wp31` links and costs, read once per map;
+  Dijkstra from the waypoint nearest the player in clear view to the one
+  nearest the goal, replanned every second, when the goal moves 200 units,
+  or when a waypoint is not reached in 4 s). Priority (target choice and
+  the autopilot's focus): the enemy carrying your flag +3, one within 800
+  units of your flag base +1, in team games one whose aim passes by a mate
+  it has a line to +1. Outnumbered in a team game, *cover* also leans
+  toward the nearest mate more than 300 units away.
+- **Fight position** (`cl_touch_practice_position`, default 0): every 0.3 s
+  16 standable points round the player (96 and 192 units) are scored for
+  sight of the focus, cover from the others, the weapon's range, height,
+  the pickup being gone for and room round them (no ledge or corner), and
+  the move leans toward the best. Measured no better, so off.
+- **Pickup magnet** (`cl_touch_practice_magnet`, default 0; radius
+  `cl_touch_practice_magnet_radius`, 96): a pickup within the radius and in
+  clear view is touched by the player through the server's own touch
+  function, as if walked over. It changes the game's rules, so it is off;
+  only the player's own edict, never bots, and only behind the offline
+  gate.
 - Runs from the hook's frame before auto dodge and the ledge guard, so a
   projectile dodge or a ledge stop still wins.
 - `touch_tactics_status` prints the gate, the mode and every player's
@@ -1082,7 +1152,17 @@ matches: 29 kills / 19 deaths against 14 / 19; adding exposure only when
 not ahead did worse (7 / 13), so exposure stays off. Holding rockets with
 no path over the cover (Devastator arena, 4 matches each): rockets bursting
 600 or more units from the target 54% -> 7%, within 150 units 18% -> 47%,
-kills unchanged (22 / 12, 21 / 14). On a Galaxy Tab Active5 in touch
+kills unchanged (22 / 12, 21 / 14). Fight detours and position, 3 matches
+each with normal pickups: neither 10 / 10, detours 15 / 2, position 10 / 9,
+both 10 / 5; Vortex arena neither 18 / 6, both 20 / 8; Devastator arena
+neither 23 / 10, both 11 / 7, detours alone 22 / 14 (4 matches). The magnet
+(radius 96, one match): 44 pickups by it, 7 / 1. Objectives, 4 matches
+each, off / on: CTF on Dance with routes 14 / 0 / 17 / 11, enemy flag taken 0
+/ 2 times (no capture: the carrier died on the way home; straight-line
+steering without routes never reached it); Freeze Tag 25 / 14 / 27 / 10
+(a priority on enemies by a frozen mate made it 20 / 16 / 7 / 23, so it was
+dropped); Clan Arena 10 / 10 / 17 / 7; team deathmatch 6 / 7 / 5 / 9. No team
+kills in any of them. On a Galaxy Tab Active5 in touch
 mode, a 3-minute local match against 3 skill-8 bots: 5 kills / 2 deaths.
 
 | Cvar | Default | Purpose |
@@ -1094,6 +1174,11 @@ mode, a 3-minute local match against 3 skill-8 bots: 5 kills / 2 deaths.
 | `cl_touch_practice_exposure` | `0` | In a fight, prefer spots the other enemies cannot see |
 | `cl_touch_practice_pilot` | `1` | Move for you while the stick is idle |
 | `cl_touch_practice_threat` | `1` | Range and exposure from the enemy's weapon and health |
+| `cl_touch_practice_detour` | `1` | Step aside for a pickup close by during a fight |
+| `cl_touch_practice_objectives` | `1` | CTF flag play on waypoint routes; carrier and mate-hitter priority |
+| `cl_touch_practice_position` | `0` | Lean toward the best nearby spot to fight from |
+| `cl_touch_practice_magnet` | `0` | Pick up items within `_magnet_radius` (96) in clear view |
+| `cl_touch_practice_burst` | `0` | Simulated burst point for splash shots at a hidden enemy |
 
 ### Grappling hook: HOOK button and fall rescue (engine)
 

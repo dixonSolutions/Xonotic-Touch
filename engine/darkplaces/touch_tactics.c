@@ -70,6 +70,21 @@ cvar_t cl_touch_practice_threat = {CF_CLIENT | CF_ARCHIVE, "cl_touch_practice_th
 	"Offline practice only (as above): the autopilot sizes up the enemy it fights from its weapon and health: stays out of reach of a "
 	"short-range weapon it outranges, closes in on one that outranges it when stronger and keeps out of its sight when weaker, and backs off "
 	"to health when one more hit would kill"};
+cvar_t cl_touch_practice_detour = {CF_CLIENT | CF_ARCHIVE, "cl_touch_practice_detour", "1",
+	"Offline practice only (as above): during a fight the autopilot steps aside for a pickup close by that is worth it now (health or armour by how hurt you are, "
+	"a weapon you lack that does better at this range, ammo for the weapon in hand when low), if no more enemies see it there; for at most 1.5 s"};
+cvar_t cl_touch_practice_position = {CF_CLIENT | CF_ARCHIVE, "cl_touch_practice_position", "0",
+	"Offline practice only (as above): during a fight the autopilot moves toward the best nearby spot to fight from: in sight of the enemy, hidden from the others, "
+	"at the weapon's range, higher ground, near the pickup it is going for, never a ledge or a dead end"};
+cvar_t cl_touch_practice_magnet = {CF_CLIENT | CF_ARCHIVE, "cl_touch_practice_magnet", "0",
+	"Offline practice only (as above): pickups within cl_touch_practice_magnet_radius of you, in clear view, are picked up as if touched. "
+	"Changes the game's rules, so off by default; never for bots, never anywhere else"};
+cvar_t cl_touch_practice_magnet_radius = {CF_CLIENT | CF_ARCHIVE, "cl_touch_practice_magnet_radius", "96",
+	"Offline practice only: how far (units) the pickup magnet reaches"};
+cvar_t cl_touch_practice_objectives = {CF_CLIENT | CF_ARCHIVE, "cl_touch_practice_objectives", "1",
+	"Offline practice only (as above): play the game type: in CTF fetch the enemy flag, carry it home avoiding fights, return your own when dropped, "
+	"and go first for the enemy carrying your flag or near your base; in team games go first for whoever is hitting your mates or camping a frozen one, "
+	"and keep near your mates when outnumbered"};
 cvar_t cl_touch_practice_pilot = {CF_CLIENT | CF_ARCHIVE, "cl_touch_practice_pilot", "1",
 	"Offline practice only (as above): while the stick is idle, move for you: keep the weapon's best range and strafe, chase a nearly dead enemy, "
 	"back into cover when outnumbered, head for the nearest enemy when none is in sight. Touching the stick takes over"};
@@ -93,7 +108,22 @@ typedef struct intel_s
 	char weapon[32];
 	int kind;        // TW_KIND_* of its weapon's primary
 	float dmg;       // that primary's damage
+	float team;
+	qbool hits_mate; // an enemy whose aim passes by one of the player's mates
 } intel_t;
+
+// CTF flags, read from the local server (classname item_flag_team)
+#define TT_FLAGS 4
+#define FLAG_AT_BASE 1
+#define FLAG_DROPPED 2
+#define FLAG_CARRIED 3
+typedef struct flag_s
+{
+	float team;
+	int status;      // FLAG_AT_BASE, FLAG_DROPPED, FLAG_CARRIED (4: being passed)
+	int carrier;     // player edict carrying it, 0 none
+	vec3_t base, pos;
+} flag_t;
 
 static struct
 {
@@ -125,6 +155,12 @@ static struct
 	vec3_t stuck_dir;
 	const char *mode, *mode_said;
 	int cover_skip;      // the enemy choose()'s cover leaves out (the one fought), 0 none
+	// game type
+	qbool team_game;
+	float my_team;
+	flag_t flags[TT_FLAGS];
+	int num_flags, my_flag, enemy_flag; // indices, -1 none
+	double flags_next;
 	int dodges, stucks;
 	// cl_touch_aim_debug 3: the last moves, printed when the player dies
 	struct { double t; vec3_t org, dir; float score; const char *mode; qbool ground; } trail[16];
@@ -142,6 +178,18 @@ static struct
 	int item_ban[8];
 	double item_ban_until[8];
 	int pickups_tried;
+
+	// a pickup close by, taken during a fight
+	double near_next, near_since;
+	int near_item;
+	vec3_t near_org;
+	int near_ban;
+	double near_ban_until;
+	int detours, magnet_pickups;
+	// the spot to fight from
+	double spot_next;
+	qbool have_spot;
+	vec3_t spot;
 } tt;
 
 // cl_touch_esp_enabled over the offline gate: "off" closes it; anything but
@@ -255,6 +303,84 @@ static qbool is_frozen(prvm_prog_t *prog, prvm_edict_t *ed)
 	return ofs >= 0 && PRVM_EDICTFIELDVALUE(ed, ofs)->_int != 0;
 }
 
+// A field of ed by name (cached per loaded progs): a float or an int.
+static int field_ofs(prvm_prog_t *prog, const char *name, int *is_float)
+{
+	mdef_t *d = PRVM_ED_FindField(prog, name);
+	if (!d)
+		return -1;
+	*is_float = (d->type & ~DEF_SAVEGLOBAL) == ev_float;
+	return d->ofs;
+}
+
+// CTF: every flag's team, state, carrier, base and where it is now.
+static void read_flags(prvm_prog_t *prog)
+{
+	static const void *for_defs;
+	static int ofs_status = -1, ofs_base = -1, status_float;
+	int i, base_float;
+	tt.num_flags = 0;
+	tt.my_flag = tt.enemy_flag = -1;
+	if (!cl_touch_practice_objectives.integer)
+		return;
+	if (for_defs != (const void *)prog->fielddefs)
+	{
+		for_defs = prog->fielddefs;
+		ofs_status = field_ofs(prog, "ctf_status", &status_float);
+		ofs_base = field_ofs(prog, "dropped_origin", &base_float); // ctf_spawnorigin
+	}
+	if (ofs_status < 0 || ofs_base < 0)
+		return;
+	for (i = svs.maxclients + 1; i < prog->num_edicts && tt.num_flags < TT_FLAGS; i++)
+	{
+		prvm_edict_t *ed = PRVM_EDICT_NUM(i);
+		flag_t *fl;
+		int carrier;
+		if (ed->free || strcmp(sv_string(prog, ed, prog->fieldoffsets.classname), "item_flag_team"))
+			continue;
+		fl = &tt.flags[tt.num_flags];
+		fl->team = PRVM_serveredictfloat(ed, team);
+		fl->status = status_float ? (int)ed->fields.fp[ofs_status] : ed->fields.ip[ofs_status];
+		VectorCopy(ed->fields.fp + ofs_base, fl->base);
+		carrier = PRVM_NUM_FOR_EDICT(PRVM_PROG_TO_EDICT(PRVM_serveredictedict(ed, owner)));
+		fl->carrier = fl->status == FLAG_CARRIED && carrier >= 1 && carrier <= svs.maxclients ? carrier : 0;
+		if (fl->carrier)
+			VectorCopy(PRVM_serveredictvector(PRVM_EDICT_NUM(fl->carrier), origin), fl->pos);
+		else
+			VectorCopy(PRVM_serveredictvector(ed, origin), fl->pos);
+		if (fl->team == tt.my_team)
+			tt.my_flag = tt.num_flags;
+		else if (tt.enemy_flag < 0)
+			tt.enemy_flag = tt.num_flags;
+		tt.num_flags++;
+	}
+}
+
+// What the game type adds to an enemy's priority: the one carrying the
+// player's flag, one near the player's flag base, one hitting a mate.
+static float objective_bonus(int n)
+{
+	const intel_t *t = &tt.e[n];
+	float b = 0;
+	if (!cl_touch_practice_objectives.integer || !t->live || !t->enemy || t->frozen)
+		return 0;
+	if (tt.my_flag >= 0)
+	{
+		const flag_t *mf = &tt.flags[tt.my_flag];
+		if (mf->carrier == n)
+			b += 3;
+		else if (VectorDistance(t->org, mf->base) < 800)
+			b += 1;
+	}
+	if (t->hits_mate)
+		b += 1;
+	// (one standing by a frozen mate, camping the thaw, was tried first:
+	// Freeze Tag went 24 / 17 -> 17 / 22 and 20 / 16 -> 7 / 23)
+	return b;
+}
+
+static void wp_check(prvm_prog_t *prog, double now);
+
 static void read_intel(double now)
 {
 	prvm_prog_t *prog = SVVM_prog;
@@ -309,6 +435,8 @@ static void read_intel(double now)
 		tt.was_alive = alive;
 	}
 	my_team = PRVM_serveredictfloat(me, team);
+	tt.team_game = team_game;
+	tt.my_team = my_team;
 	tt.num_seen = tt.num_aiming = 0;
 
 	for (n = 1; n <= tt.maxn; n++)
@@ -326,7 +454,9 @@ static void read_intel(double now)
 			|| PRVM_serveredictfloat(ed, solid) == SOLID_NOT)
 			continue;
 		t->live = true;
-		t->enemy = !team_game || PRVM_serveredictfloat(ed, team) != my_team;
+		t->team = PRVM_serveredictfloat(ed, team);
+		t->enemy = !team_game || t->team != my_team;
+		t->hits_mate = false;
 		t->frozen = is_frozen(prog, ed);
 		t->health = PRVM_serveredictfloat(ed, health);
 		t->armor = PRVM_serveredictfloat(ed, armorvalue);
@@ -364,7 +494,39 @@ static void read_intel(double now)
 			tt.num_aiming++;
 	}
 
-	// the focus: in sight, nearly dead, aiming at the player, near
+	// team games: an enemy whose aim passes by a mate it has a line to
+	if (team_game)
+		for (n = 1; n <= tt.maxn; n++)
+		{
+			intel_t *t = &tt.e[n];
+			int m;
+			if (!t->live || !t->enemy || t->frozen || t->kind == TW_KIND_NONE)
+				continue;
+			for (m = 1; m <= tt.maxn && !t->hits_mate; m++)
+			{
+				const intel_t *mt = &tt.e[m];
+				vec3_t to, miss;
+				float along;
+				if (!mt->live || mt->enemy || mt->frozen)
+					continue;
+				VectorSubtract(mt->center, t->eye, to);
+				along = DotProduct(to, t->aimdir);
+				if (along <= 0)
+					continue;
+				VectorMA(to, -along, t->aimdir, miss);
+				t->hits_mate = VectorLength(miss) < 36 + along * 0.03f && line_clear(t->eye, mt->center);
+			}
+		}
+	if (now >= tt.flags_next)
+	{
+		read_flags(prog);
+		if (tt.num_flags)
+			wp_check(prog, now);
+		tt.flags_next = now + 0.2;
+	}
+
+	// the focus: in sight, nearly dead, aiming at the player, near, and what
+	// the game type makes urgent
 	{
 		int best = 0;
 		float bs = -1e9f;
@@ -374,7 +536,7 @@ static void read_intel(double now)
 			float s;
 			if (!t->live || !t->enemy || t->frozen)
 				continue;
-			s = (t->seen ? 3 : 0) + 2 * (1 - min(t->eff, 200.0f) / 200) + (t->aiming ? 2 : 0) - t->dist / 800;
+			s = (t->seen ? 3 : 0) + 2 * (1 - min(t->eff, 200.0f) / 200) + (t->aiming ? 2 : 0) - t->dist / 800 + objective_bonus(n);
 			if (n == tt.focus)
 				s += 1;
 			if (s > bs)
@@ -416,7 +578,8 @@ float TouchTactics_TargetBonus(int entnum)
 		b += 1.5f;
 	if (t->dmg >= 80)
 		b += 0.5f;
-	return min(b, 4.0f);
+	b += objective_bonus(entnum);
+	return min(b, 6.0f);
 }
 
 int TouchTactics_PickWeapon(int entnum, float dist, const char *const *names, const qbool *ready, int n, int heldpos)
@@ -834,6 +997,236 @@ static void item_progress(double now)
 	tt.item = 0;
 }
 
+// Ammo of a kind on the player (Xonotic's ammo_* fields; float or int).
+static float ammo_of(prvm_prog_t *prog, prvm_edict_t *ed, const char *field)
+{
+	mdef_t *d = PRVM_ED_FindField(prog, field);
+	if (!d)
+		return -1;
+	if ((d->type & ~DEF_SAVEGLOBAL) == ev_float)
+		return ed->fields.fp[d->ofs];
+	return (float)ed->fields.ip[d->ofs];
+}
+
+// The ammo kind a weapon fires, NULL for none.
+static const char *ammo_kind(const char *w)
+{
+	static const struct { const char *w, *a; } k[] =
+	{
+		{ "shotgun", "item_shells" }, { "machinegun", "item_bullets" }, { "rifle", "item_bullets" },
+		{ "mortar", "item_rockets" }, { "devastator", "item_rockets" }, { "hagar", "item_rockets" },
+		{ "minelayer", "item_rockets" }, { "seeker", "item_rockets" },
+		{ "vortex", "item_cells" }, { "electro", "item_cells" }, { "crylink", "item_cells" },
+		{ "hlac", "item_cells" }, { "arc", "item_cells" }, { "vaporizer", "item_cells" },
+	};
+	int i;
+	for (i = 0; i < (int)(sizeof(k) / sizeof(k[0])); i++)
+		if (!strcmp(k[i].w, w))
+			return k[i].a;
+	return NULL;
+}
+
+static float best_range(const char *wep);
+static int seen_from(const vec3_t p, int skip);
+
+// What a pickup close by is worth in the middle of a fight: health and
+// armour by how hurt the player is, a weapon not owned that does better at
+// the focus's range than the one in hand, ammo for the one in hand when low.
+static float fight_item_value(prvm_prog_t *prog, prvm_edict_t *me, const char *cname, float health, float armor)
+{
+	const char *held = tt.e[tt.me].weapon, *ak;
+	if (!strncmp(cname, "item_health", 11))
+	{
+		if (strstr(cname, "mega"))
+			return health < 150 ? 4 : 0;
+		if (strstr(cname, "big"))
+			return health < 100 ? (125 - health) / 25 : 0;
+		return health < 90 ? (100 - health) / 30 : 0;
+	}
+	if (!strncmp(cname, "item_armor", 10))
+	{
+		if (strstr(cname, "mega") || strstr(cname, "large") || strstr(cname, "big"))
+			return armor < 100 ? 2.5f : 0;
+		return armor < 50 && health < 100 ? 0.6f : 0;
+	}
+	if (!strncmp(cname, "weapon_", 7) && tt.focus)
+	{
+		const char *w = cname + 7;
+		float d = tt.e[tt.focus].dist;
+		if (owns(w))
+			return 0;
+		// nearer its best range to this enemy than the weapon in hand
+		return fabs(best_range(w) - d) + 150 < fabs(best_range(held) - d) ? 2 : 0;
+	}
+	ak = ammo_kind(held);
+	if (ak && !strcmp(cname, ak))
+	{
+		float a = ammo_of(prog, me, !strcmp(ak, "item_shells") ? "ammo_shells" : !strcmp(ak, "item_bullets") ? "ammo_nails"
+			: !strcmp(ak, "item_rockets") ? "ammo_rockets" : "ammo_cells");
+		return a >= 0 && a < 15 ? 1.5f : 0;
+	}
+	return 0;
+}
+
+// A pickup close by worth a detour during a fight: within 350 units, on the
+// player's level, a clear way there with safe ground, and no more enemies
+// seeing the player there than now.
+static void pick_near(double now)
+{
+	prvm_prog_t *prog = SVVM_prog;
+	prvm_edict_t *me = PRVM_EDICT_NUM(tt.me);
+	float health = PRVM_serveredictfloat(me, health), armor = PRVM_serveredictfloat(me, armorvalue), bs = 0;
+	int i, best = 0, seen_now = seen_from(tt.my_org, 0);
+	vec3_t bo = { 0, 0, 0 };
+	for (i = svs.maxclients + 1; i < prog->num_edicts; i++)
+	{
+		prvm_edict_t *ed = PRVM_EDICT_NUM(i);
+		const char *cname;
+		float v, d;
+		vec3_t o, q, dir;
+		trace_t tr;
+		static const vec3_t mins = { -16, -16, 0 }, maxs = { 16, 16, 44 };
+		if (ed->free || PRVM_serveredictfloat(ed, solid) != SOLID_TRIGGER)
+			continue;
+		VectorCopy(PRVM_serveredictvector(ed, origin), o);
+		d = VectorDistance(o, tt.my_org);
+		if (d > 350 || fabs(o[2] - (tt.my_org[2] - 24)) > 64 || (i == tt.near_ban && now < tt.near_ban_until))
+			continue;
+		cname = sv_string(prog, ed, prog->fieldoffsets.classname);
+		if (strncmp(cname, "weapon_", 7) && strncmp(cname, "item_", 5))
+			continue;
+		v = fight_item_value(prog, me, cname, health, armor);
+		if (v <= 0)
+			continue;
+		// the way there: the player's box fits, and safe ground at the item
+		VectorCopy(tt.my_org, q);
+		q[2] += -24 + 20;
+		VectorCopy(o, dir);
+		dir[2] = q[2];
+		tr = CL_TraceBox(q, mins, maxs, dir, MOVE_NOMONSTERS, NULL, SUPERCONTENTS_SOLID | SUPERCONTENTS_PLAYERCLIP, 0, 0,
+			collision_extendmovelength.value, true, false, NULL, false);
+		if (tr.startsolid || tr.fraction < 0.9f)
+			continue;
+		VectorCopy(o, q);
+		q[2] += 20;
+		if (!safe_ground(q))
+			continue;
+		if (seen_from(o, 0) > seen_now)
+			continue;
+		v /= 1 + d / 200;
+		if (i == tt.near_item)
+			v *= 1.3f;
+		if (v > bs)
+		{
+			bs = v;
+			best = i;
+			VectorCopy(o, bo);
+		}
+	}
+	if (best != tt.near_item)
+	{
+		tt.near_item = best;
+		tt.near_since = now;
+		if (best)
+		{
+			tt.detours++;
+			if (cl_touch_aim_debug.integer)
+				Con_Printf("touch tactics: detour for %s, %.0f units\n", sv_string(prog, PRVM_EDICT_NUM(best), prog->fieldoffsets.classname), VectorDistance(bo, tt.my_org));
+		}
+	}
+	VectorCopy(bo, tt.near_org);
+}
+
+// Blend a detour to the pickup close by into a fight's move; given up after
+// 1.5 s (and that pickup left for 10).
+static void detour(double now, vec3_t want)
+{
+	vec3_t to;
+	if (!cl_touch_practice_detour.integer || !tt.near_item)
+		return;
+	if (now - tt.near_since > 1.5)
+	{
+		tt.near_ban = tt.near_item;
+		tt.near_ban_until = now + 10;
+		tt.near_item = 0;
+		return;
+	}
+	VectorSubtract(tt.near_org, tt.my_org, to);
+	to[2] = 0;
+	VectorNormalize(to);
+	VectorMA(want, 1.2f, to, want);
+	want[2] = 0;
+	VectorNormalize(want);
+}
+
+// The best spot near the player to fight focus f from, wanting range r:
+// 16 standable points (two rings) scored by sight of the focus, cover from
+// the others, range, height, the pickup being gone for, and room round it.
+// Cached SPOT_CACHE.
+#define SPOT_CACHE 0.3
+static void find_spot(double now, const intel_t *f, float r)
+{
+	static const vec3_t mins = { -16, -16, 0 }, maxs = { 16, 16, 44 };
+	vec3_t start, p, eye;
+	float bs, sc;
+	int k, j;
+	tt.spot_next = now + SPOT_CACHE;
+	tt.have_spot = false;
+	VectorCopy(tt.my_org, start);
+	start[2] += -24 + 20;
+	// where the player stands counts too: moving must beat it
+	bs = -1e9f;
+	for (k = -1; k < 16; k++)
+	{
+		if (k < 0)
+			VectorCopy(start, p);
+		else
+		{
+			float a = (k & 7) * (float)(M_PI / 4) + (k >= 8 ? (float)(M_PI / 8) : 0), d = k < 8 ? 96 : 192;
+			vec3_t end;
+			trace_t tr;
+			VectorSet(end, start[0] + d * cos(a), start[1] + d * sin(a), start[2]);
+			tr = CL_TraceBox(start, mins, maxs, end, MOVE_NOMONSTERS, NULL, SUPERCONTENTS_SOLID | SUPERCONTENTS_PLAYERCLIP, 0, 0,
+				collision_extendmovelength.value, true, false, NULL, false);
+			if (tr.startsolid || tr.fraction < 0.95f)
+				continue;
+			VectorCopy(tr.endpos, p);
+			if (!safe_ground(p))
+				continue;
+		}
+		VectorCopy(p, eye);
+		eye[2] = p[2] - 20 + 24 + (tt.my_eye[2] - tt.my_org[2]);
+		sc = 0;
+		// sight of the focus: the fight goes on from there
+		sc += line_clear(eye, f->center) || line_clear(eye, f->eye) ? 2 : -2;
+		// the others' sight
+		sc -= 1.5f * seen_from(eye, tt.focus);
+		// range
+		sc -= fabs(VectorDistance(eye, f->center) - r) / max(r, 200.0f);
+		// height over the focus, a little
+		sc += 0.5f * bound(-1.0f, (p[2] - (f->org[2] - 4)) / 128, 1.0f);
+		// toward the pickup the detour goes for
+		if (tt.near_item)
+			sc -= 0.5f * VectorDistance(p, tt.near_org) / 400;
+		// a ledge or a corner: room round it
+		for (j = 0; j < 4; j++)
+		{
+			vec3_t q;
+			VectorSet(q, p[0] + 64 * cos(j * M_PI / 2), p[1] + 64 * sin(j * M_PI / 2), p[2]);
+			if (!safe_ground(q))
+				sc -= 0.75f;
+		}
+		if (k < 0)
+			sc += 0.3f; // staying costs nothing
+		if (sc > bs)
+		{
+			bs = sc;
+			VectorCopy(p, tt.spot);
+			tt.have_spot = k >= 0;
+		}
+	}
+}
+
 static void flat_norm(vec3_t v)
 {
 	float l;
@@ -873,6 +1266,291 @@ static qbool revive_target(vec3_t want)
 		VectorNormalize(want);
 	tt.mode = "revive";
 	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Routes over the bots' waypoint graph (local server)
+// ---------------------------------------------------------------------------
+// Xonotic's bots navigate by waypoint entities (classname "waypoint"), each
+// with up to 32 outgoing links (.wp00-.wp31) and their costs
+// (.wp00mincost-...). The graph is read once per map; a route is the
+// cheapest chain of links from the waypoint nearest the player (in clear
+// view) to the one nearest the goal (in clear view of it), and the move
+// heads for the next waypoint on it.
+#define WP_MAX 2048
+#define WP_LINKS 32
+static struct
+{
+	int n;
+	vec3_t org[WP_MAX];
+	short link[WP_MAX][WP_LINKS];
+	float cost[WP_MAX][WP_LINKS];
+	unsigned char nl[WP_MAX];
+	const void *defs;
+	int edicts;
+	double checked;
+	// the route being followed
+	short path[WP_MAX];
+	int plen, pnext;
+	vec3_t goal;
+	double planned, node_since;
+} wpg;
+
+static void wp_build(prvm_prog_t *prog)
+{
+	static short idx[MAX_EDICTS];
+	int ofs_link[WP_LINKS], ofs_cost[WP_LINKS], i, k, isf;
+	char name[16];
+	wpg.n = 0;
+	wpg.plen = 0;
+	for (k = 0; k < WP_LINKS; k++)
+	{
+		dpsnprintf(name, sizeof(name), "wp%02d", k);
+		ofs_link[k] = PRVM_ED_FindFieldOffset(prog, name);
+		dpsnprintf(name, sizeof(name), "wp%02dmincost", k);
+		ofs_cost[k] = field_ofs(prog, name, &isf);
+		if (ofs_link[k] < 0)
+			return;
+	}
+	for (i = 0; i < prog->num_edicts && i < MAX_EDICTS; i++)
+	{
+		prvm_edict_t *ed = PRVM_EDICT_NUM(i);
+		idx[i] = -1;
+		if (ed->free || wpg.n >= WP_MAX || strcmp(sv_string(prog, ed, prog->fieldoffsets.classname), "waypoint"))
+			continue;
+		idx[i] = (short)wpg.n;
+		VectorAdd(PRVM_serveredictvector(ed, absmin), PRVM_serveredictvector(ed, absmax), wpg.org[wpg.n]);
+		VectorScale(wpg.org[wpg.n], 0.5f, wpg.org[wpg.n]);
+		wpg.n++;
+	}
+	for (i = 0; i < prog->num_edicts && i < MAX_EDICTS; i++)
+	{
+		prvm_edict_t *ed;
+		int w = idx[i];
+		if (w < 0)
+			continue;
+		ed = PRVM_EDICT_NUM(i);
+		wpg.nl[w] = 0;
+		for (k = 0; k < WP_LINKS; k++)
+		{
+			int to = PRVM_EDICTFIELDVALUE(ed, ofs_link[k])->edict;
+			if (to <= 0 || to >= prog->num_edicts || to >= MAX_EDICTS || idx[to] < 0)
+				continue;
+			wpg.link[w][wpg.nl[w]] = idx[to];
+			wpg.cost[w][wpg.nl[w]] = ofs_cost[k] >= 0 && ed->fields.fp[ofs_cost[k]] > 0 ? ed->fields.fp[ofs_cost[k]]
+				: VectorDistance(wpg.org[w], wpg.org[idx[to]]) / 360; // seconds at run speed, as the bots count
+			wpg.nl[w]++;
+		}
+	}
+}
+
+// The graph for the map now loaded (rebuilt when the progs or edict count change).
+static void wp_check(prvm_prog_t *prog, double now)
+{
+	if (wpg.defs == (const void *)prog->fielddefs && wpg.edicts == prog->num_edicts && (wpg.n || now < wpg.checked))
+		return;
+	wpg.defs = prog->fielddefs;
+	wpg.edicts = prog->num_edicts;
+	wpg.checked = now + 5;
+	wp_build(prog);
+}
+
+// The waypoint nearest p that p sees (of the 8 nearest), -1 none.
+static int wp_near(const vec3_t p)
+{
+	int best[8], i, k, n = 0;
+	float bd[8];
+	for (i = 0; i < wpg.n; i++)
+	{
+		float d = VectorDistance(p, wpg.org[i]);
+		if (n < 8 || d < bd[n - 1])
+		{
+			k = n < 8 ? n++ : 7;
+			while (k > 0 && bd[k - 1] > d)
+			{
+				bd[k] = bd[k - 1];
+				best[k] = best[k - 1];
+				k--;
+			}
+			bd[k] = d;
+			best[k] = i;
+		}
+	}
+	for (k = 0; k < n; k++)
+		if (line_clear(p, wpg.org[best[k]]))
+			return best[k];
+	return -1;
+}
+
+// Cheapest route from waypoint a to b (Dijkstra, binary heap) into wpg.path.
+static qbool wp_route(int a, int b)
+{
+	static float dist[WP_MAX];
+	static short prev[WP_MAX], heap[WP_MAX * 4];
+	static unsigned char done[WP_MAX];
+	int hn = 0, i, u, n;
+	for (i = 0; i < wpg.n; i++)
+	{
+		dist[i] = 1e30f;
+		prev[i] = -1;
+		done[i] = 0;
+	}
+	dist[a] = 0;
+	heap[hn++] = (short)a;
+	while (hn)
+	{
+		// pop the nearest
+		int c = 0, j;
+		u = heap[0];
+		heap[0] = heap[--hn];
+		for (;;)
+		{
+			int l = 2 * c + 1, r = l + 1, m = c;
+			if (l < hn && dist[heap[l]] < dist[heap[m]]) m = l;
+			if (r < hn && dist[heap[r]] < dist[heap[m]]) m = r;
+			if (m == c) break;
+			j = heap[c]; heap[c] = heap[m]; heap[m] = (short)j; c = m;
+		}
+		if (done[u])
+			continue;
+		done[u] = 1;
+		if (u == b)
+			break;
+		for (i = 0; i < wpg.nl[u]; i++)
+		{
+			int v = wpg.link[u][i];
+			float nd = dist[u] + wpg.cost[u][i];
+			if (nd < dist[v] && hn < WP_MAX * 4)
+			{
+				dist[v] = nd;
+				prev[v] = (short)u;
+				// push
+				c = hn;
+				heap[hn++] = (short)v;
+				while (c > 0 && dist[heap[(c - 1) / 2]] > dist[heap[c]])
+				{
+					j = heap[c]; heap[c] = heap[(c - 1) / 2]; heap[(c - 1) / 2] = (short)j; c = (c - 1) / 2;
+				}
+			}
+		}
+	}
+	if (!done[b])
+		return false;
+	for (n = 0, u = b; u >= 0 && n < WP_MAX; u = prev[u])
+		n++;
+	wpg.plen = n;
+	for (u = b; u >= 0 && n > 0; u = prev[u])
+		wpg.path[--n] = (short)u;
+	wpg.pnext = 0;
+	return true;
+}
+
+// Toward goal along the waypoint route (replanned every second, when the
+// goal moves, or when a waypoint is not reached in 4 s); straight when the
+// goal is in clear view or there is no route. False with no way at all.
+static qbool route_to(double now, const vec3_t goal, vec3_t want)
+{
+	vec3_t eye;
+	VectorCopy(goal, eye);
+	eye[2] += 16;
+	if (!wpg.n || line_clear(tt.my_eye, eye))
+	{
+		VectorSubtract(goal, tt.my_org, want);
+		flat_norm(want);
+		return true;
+	}
+	if (now - wpg.planned > 1 || VectorDistance(goal, wpg.goal) > 200 || now - wpg.node_since > 4 || wpg.pnext >= wpg.plen)
+	{
+		int a = wp_near(tt.my_eye), b = wp_near(eye);
+		wpg.plen = 0;
+		wpg.planned = now;
+		wpg.node_since = now;
+		VectorCopy(goal, wpg.goal);
+		if (a < 0 || b < 0 || !wp_route(a, b))
+		{
+			VectorSubtract(goal, tt.my_org, want);
+			flat_norm(want);
+			return true;
+		}
+	}
+	// at the next waypoint, or the one after it in clear view: on
+	while (wpg.pnext < wpg.plen)
+	{
+		const float *w = wpg.org[wpg.path[wpg.pnext]];
+		float dxy = sqrt((w[0] - tt.my_org[0]) * (w[0] - tt.my_org[0]) + (w[1] - tt.my_org[1]) * (w[1] - tt.my_org[1]));
+		qbool reached = dxy < 48 && fabs(w[2] - tt.my_org[2]) < 72;
+		qbool skip = wpg.pnext + 1 < wpg.plen && VectorDistance(wpg.org[wpg.path[wpg.pnext + 1]], tt.my_org) < 500
+			&& line_clear(tt.my_eye, wpg.org[wpg.path[wpg.pnext + 1]]) && fabs(wpg.org[wpg.path[wpg.pnext + 1]][2] - tt.my_org[2]) < 72;
+		if (!reached && !skip)
+			break;
+		wpg.pnext++;
+		wpg.node_since = now;
+	}
+	if (wpg.pnext >= wpg.plen)
+		VectorSubtract(goal, tt.my_org, want);
+	else
+		VectorSubtract(wpg.org[wpg.path[wpg.pnext]], tt.my_org, want);
+	flat_norm(want);
+	return true;
+}
+
+// Toward p (flat), or held still within `there` units.
+static void go_to(const vec3_t p, float there, vec3_t want)
+{
+	VectorSubtract(p, tt.my_org, want);
+	want[2] = 0;
+	if (VectorLength(want) < there)
+		VectorClear(want);
+	else
+		route_to(host.realtime, p, want);
+}
+
+// CTF: carry the enemy flag home, return the player's own, fetch the enemy's.
+static qbool objective(double now, const intel_t *f, vec3_t want, qbool *cover)
+{
+	const flag_t *mf, *ef;
+	if (!cl_touch_practice_objectives.integer || tt.my_flag < 0 || tt.enemy_flag < 0)
+		return false;
+	mf = &tt.flags[tt.my_flag];
+	ef = &tt.flags[tt.enemy_flag];
+	if (ef->carrier == tt.me)
+	{
+		// carrying: home, out of sight, health on the way. The player's own
+		// flag must be home to score: near the base, wait for it (or fight
+		// the one carrying it, once in sight)
+		if (mf->status != FLAG_AT_BASE && VectorDistance(tt.my_org, mf->base) < 300)
+		{
+			if (mf->carrier && tt.e[mf->carrier].seen)
+				return false;
+			if (mf->status == FLAG_DROPPED && VectorDistance(tt.my_org, mf->pos) < 1500)
+				go_to(mf->pos, 0, want);
+			else
+				go_to(mf->base, 64, want);
+		}
+		else
+			go_to(mf->base, 0, want);
+		*cover = true;
+		tt.cover_skip = 0;
+		detour(now, want);
+		tt.mode = "capture";
+		return true;
+	}
+	if (mf->status == FLAG_DROPPED && VectorDistance(tt.my_org, mf->pos) < 2500
+		&& !(f && f->seen && VectorDistance(tt.my_org, mf->pos) > 600))
+	{
+		go_to(mf->pos, 0, want);
+		tt.mode = "return";
+		return true;
+	}
+	if ((ef->status == FLAG_AT_BASE || ef->status == FLAG_DROPPED)
+		&& (!f || !f->seen || VectorDistance(tt.my_org, ef->pos) < 600))
+	{
+		go_to(ef->pos, 0, want);
+		detour(now, want);
+		tt.mode = "steal";
+		return true;
+	}
+	return false;
 }
 
 static qbool plan(double now, qbool pilot, qbool dodge, vec3_t want, qbool *cover)
@@ -924,12 +1602,15 @@ static qbool plan(double now, qbool pilot, qbool dodge, vec3_t want, qbool *cove
 			flat_norm(to);
 			VectorMA(want, 0.4f * bound(-1.0f, (f->dist - r) / max(r, 200.0f), 1.0f), to, want);
 		}
+		detour(now, want);
 		tt.mode = "dodge";
 		return true;
 	}
 	tt.dodge_from = 0;
 	if (!pilot)
 		return false;
+	if (objective(now, f, want, cover))
+		return true;
 	if (!f)
 	{
 		if (revive_target(want))
@@ -969,6 +1650,27 @@ static qbool plan(double now, qbool pilot, qbool dodge, vec3_t want, qbool *cove
 			}
 		}
 		*cover = true;
+		// team games: back toward the nearest mate rather than off alone
+		if (tt.team_game && cl_touch_practice_objectives.integer)
+		{
+			int m, bm = 0;
+			float bd = 1e9f;
+			for (m = 1; m <= tt.maxn; m++)
+				if (tt.e[m].live && !tt.e[m].enemy && !tt.e[m].frozen && tt.e[m].dist < bd)
+				{
+					bd = tt.e[m].dist;
+					bm = m;
+				}
+			if (bm && bd > 300)
+			{
+				vec3_t to;
+				VectorSubtract(tt.e[bm].org, tt.my_org, to);
+				flat_norm(to);
+				VectorMA(want, 0.8f, to, want);
+				flat_norm(want);
+			}
+		}
+		detour(now, want);
 		tt.mode = "cover";
 		return true;
 	}
@@ -1019,7 +1721,21 @@ static qbool plan(double now, qbool pilot, qbool dodge, vec3_t want, qbool *cove
 		VectorSet(perp, -to[1] * tt.strafe_sign, to[0] * tt.strafe_sign, 0);
 		VectorScale(to, radial, want);
 		VectorMA(want, 0.9f, perp, want);
+		// toward the best spot to fight from (map shape), then the strafe
+		if (cl_touch_practice_position.integer)
+		{
+			if (now >= tt.spot_next)
+				find_spot(now, f, r);
+			if (tt.have_spot && VectorDistance(tt.spot, tt.my_org) > 40)
+			{
+				vec3_t sp;
+				VectorSubtract(tt.spot, tt.my_org, sp);
+				flat_norm(sp);
+				VectorMA(want, 1.2f, sp, want);
+			}
+		}
 		flat_norm(want);
+		detour(now, want);
 		tt.mode = mode;
 		// the others in sight: fight from where they cannot see
 		*cover = cl_touch_practice_exposure.integer && tt.num_seen >= 2;
@@ -1065,6 +1781,14 @@ static void steer(double now)
 	}
 	if (pilot)
 		item_progress(now);
+	if (pilot && cl_touch_practice_detour.integer && now >= tt.near_next)
+	{
+		if (tt.focus && tt.e[tt.focus].seen)
+			pick_near(now);
+		else
+			tt.near_item = 0;
+		tt.near_next = now + 0.3;
+	}
 	if (!idle || TouchHook_InUse() || TouchHook_Rescuing()
 		|| !plan(now, pilot, cl_touch_practice_aimdodge.integer != 0, want, &cover))
 	{
@@ -1126,6 +1850,45 @@ static void steer(double now)
 	tt.mode_said = tt.mode;
 }
 
+// Pickup magnet (cl_touch_practice_magnet, offline only, behind the gate
+// like the rest): a pickup within the radius and in clear view is touched by
+// the player as the server's own touch would (SV_LinkEdict_TouchAreaGrid_Call).
+// Only the player's own edict; bots never.
+static void magnet(void)
+{
+	prvm_prog_t *prog = SVVM_prog;
+	prvm_edict_t *me = PRVM_EDICT_NUM(tt.me);
+	float rad = bound(0.0f, cl_touch_practice_magnet_radius.value, 512.0f);
+	int i;
+	if (!sv.active || PRVM_serveredictfloat(me, health) <= 0 || rad <= 0)
+		return;
+	for (i = svs.maxclients + 1; i < prog->num_edicts; i++)
+	{
+		prvm_edict_t *ed = PRVM_EDICT_NUM(i);
+		const char *cname;
+		vec3_t o;
+		int old_self, old_other;
+		if (ed->free || PRVM_serveredictfloat(ed, solid) != SOLID_TRIGGER || !PRVM_serveredictfunction(ed, touch))
+			continue;
+		VectorCopy(PRVM_serveredictvector(ed, origin), o);
+		if (VectorDistance(o, tt.my_org) > rad)
+			continue;
+		cname = sv_string(prog, ed, prog->fieldoffsets.classname);
+		if (strncmp(cname, "weapon_", 7) && strncmp(cname, "item_", 5))
+			continue;
+		o[2] += 16;
+		if (!line_clear(tt.my_eye, o))
+			continue;
+		old_self = PRVM_serverglobaledict(self);
+		old_other = PRVM_serverglobaledict(other);
+		SV_LinkEdict_TouchAreaGrid_Call(ed, me);
+		PRVM_serverglobaledict(self) = old_self;
+		PRVM_serverglobaledict(other) = old_other;
+		if (ed->free || PRVM_serveredictfloat(ed, solid) != SOLID_TRIGGER)
+			tt.magnet_pickups++;
+	}
+}
+
 void TouchTactics_Frame(void)
 {
 	double now = host.realtime;
@@ -1154,6 +1917,8 @@ void TouchTactics_Frame(void)
 		return;
 	}
 	steer(now);
+	if (cl_touch_practice_magnet.integer)
+		magnet();
 }
 
 int TouchTactics_Buttons(void)
@@ -1207,11 +1972,20 @@ void TouchTactics_Draw(void)
 static void TouchTactics_Status_f(cmd_state_t *cmd)
 {
 	int g = gate(), n;
-	Con_Printf("touch tactics: gate %s; intel %d, aim dodge %d, pilot %d; mode %s; dodges %d, unstuck %d, pickups fetched %d\n",
+	Con_Printf("touch tactics: gate %s; intel %d, aim dodge %d, pilot %d; mode %s; dodges %d, unstuck %d, pickups fetched %d, fight detours %d, magnet pickups %d\n",
 		gate_why(g), cl_touch_practice_intel.integer, cl_touch_practice_aimdodge.integer, cl_touch_practice_pilot.integer,
-		tt.mode ? tt.mode : "idle", tt.dodges, tt.stucks, tt.pickups_tried);
+		tt.mode ? tt.mode : "idle", tt.dodges, tt.stucks, tt.pickups_tried, tt.detours, tt.magnet_pickups);
 	if (!tt.open)
 		return;
+	if (tt.num_flags)
+		Con_Printf("  waypoints %d; route at %d of %d\n", wpg.n, wpg.pnext, wpg.plen);
+	for (n = 0; n < tt.num_flags; n++)
+	{
+		char vabuf[32];
+		Con_Printf("  flag team %.0f%s: %s%s, base %.0f %.0f %.0f\n", tt.flags[n].team, n == tt.my_flag ? " (ours)" : "",
+			tt.flags[n].status == FLAG_AT_BASE ? "home" : tt.flags[n].status == FLAG_DROPPED ? "dropped" : tt.flags[n].status == FLAG_CARRIED ? "carried" : "passing",
+			tt.flags[n].carrier ? va(vabuf, sizeof(vabuf), " by %d", tt.flags[n].carrier) : "", tt.flags[n].base[0], tt.flags[n].base[1], tt.flags[n].base[2]);
+	}
 	Con_Printf("  me %d: %.0f to kill, weapon %s\n", tt.me, tt.my_eff, tt.e[tt.me].weapon);
 	for (n = 1; n <= tt.maxn; n++)
 	{
@@ -1257,6 +2031,11 @@ void TouchTactics_Init(void)
 	Cvar_RegisterVariable(&cl_touch_practice_exact);
 	Cvar_RegisterVariable(&cl_touch_practice_exposure);
 	Cvar_RegisterVariable(&cl_touch_practice_threat);
+	Cvar_RegisterVariable(&cl_touch_practice_detour);
+	Cvar_RegisterVariable(&cl_touch_practice_objectives);
+	Cvar_RegisterVariable(&cl_touch_practice_position);
+	Cvar_RegisterVariable(&cl_touch_practice_magnet);
+	Cvar_RegisterVariable(&cl_touch_practice_magnet_radius);
 	Cmd_AddCommand(CF_CLIENT, "touch_tactics_status", TouchTactics_Status_f, "Offline tactics: the gate, the modes, and every player's health, armour, weapon and aim");
 	tt.gate_said = -1;
 }
