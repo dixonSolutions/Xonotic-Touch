@@ -69,3 +69,12 @@ CLASS(XonoticMobileDynamicsTab, XonoticTab)
 	ATTRIB(XonoticMobileDynamicsTab, name, string, "mobiledynamics");
 ENDCLASS(XonoticMobileDynamicsTab)
 entity makeXonoticMobileDynamicsTab();
+
+CLASS(XonoticMobileLoserTab, XonoticTab)
+	METHOD(XonoticMobileLoserTab, fill, void(entity));
+	ATTRIB(XonoticMobileLoserTab, intendedWidth, float, 0.9);
+	ATTRIB(XonoticMobileLoserTab, rows, float, 14);
+	ATTRIB(XonoticMobileLoserTab, columns, float, 6);
+	ATTRIB(XonoticMobileLoserTab, name, string, "mobileloser");
+ENDCLASS(XonoticMobileLoserTab)
+entity makeXonoticMobileLoserTab();

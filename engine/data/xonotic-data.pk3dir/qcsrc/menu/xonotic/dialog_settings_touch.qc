@@ -65,6 +65,7 @@ void XonoticTouchSettingsTab_fill(entity me)
 		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Auto-shoot"), makeXonoticMobileAutoShootTab()));
 		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Tactics"),    makeXonoticMobileTacticsTab()));
 		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Dynamics"),   makeXonoticMobileDynamicsTab()));
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Loser"),      makeXonoticMobileLoserTab()));
 	me.gotoRC(me, 1.5, 0);
 		me.TD(me, me.rows - 1.5, me.columns, mc);
 }
@@ -543,13 +544,13 @@ void XonoticMobileTacticsTab_fill(entity me)
 			setDependent(e, "cl_touch_aimassist", 1, 1);
 	me.TR(me);
 		me.TD(me, 1, 2, e = makeXonoticCheckBox_T(0, "cl_touch_practice_seethrough", _("See through walls"),
-			_("Offline practice: mark enemies behind walls, aim where they will come out, and reach them with splash and rockets. Only in a match against bots on this device with nobody else connected")));
+			_("Mobile aim assist: mark enemies behind walls, aim where they will come out, and reach them with splash and rockets. Works in every match on this device")));
 		me.TD(me, 1, 2, e = makeXonoticCheckBox_T(0, "cl_touch_practice_360", _("Full 360 targets"),
-			_("Offline practice: with Targets set to Full 360, enemies all around you can be the target. Only in a match against bots on this device")));
+			_("Mobile aim assist: with Targets set to Full 360, enemies all around you can be the target. Works in every match on this device")));
 		me.TD(me, 1, 2, e = makeXonoticCheckBox_T(0, "cl_touch_practice_instant", _("Instant turn"),
-			_("Offline practice: the aim moves onto the target at once. Only in a match against bots on this device")));
+			_("Mobile aim assist: the aim moves onto the target at once. Works in every match on this device")));
 	me.TR(me);
-		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("These three work only in offline matches against bots, never online.")));
+		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("These three are part of the touch aim assist and work in every match on this device.")));
 }
 
 entity makeXonoticMobileDynamicsTab()
@@ -611,4 +612,24 @@ void XonoticMobileDynamicsTab_fill(entity me)
 		me.TD(me, 1, 1.5, e = makeXonoticTextLabel(0, _("Render scale:")));
 		me.TD(me, 1, 4.5, e = makeXonoticSlider_T(0.4, 1, 0.05, "r_viewscale", _("Fixed resolution scale for the 3D view (1 = full). The controls and text stay sharp. Lower is faster")));
 
+}
+
+entity makeXonoticMobileLoserTab()
+{
+	entity me = NEW(XonoticMobileLoserTab);
+	me.configureDialog(me);
+	return me;
+}
+
+void XonoticMobileLoserTab_fill(entity me)
+{
+	entity e;
+
+	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("(Development) Loser mode")));
+	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticTextLabel(0, _(\"Enables all mobile auto-shoot, aim assist, ESP and wallhack helpers on a desktop machine. Off by default. For development and testing only.\")));
+	me.TR(me);
+		me.TD(me, 1, 3, e = makeXonoticCheckBox_T(0, "cl_touch_loser", _("Loser mode (desktop)"),
+			_("Development: run the touch aim assist, auto-shoot and see-through-wall helpers without a touch screen")));
 }

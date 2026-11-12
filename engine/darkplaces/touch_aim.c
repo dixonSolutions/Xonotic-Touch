@@ -137,6 +137,8 @@ cvar_t cl_touch_aim_dumptracks = {CF_CLIENT, "cl_touch_aim_dumptracks", "0",
 	"Testing: print every drawn player's position and velocity each frame (XTRK lines), also in demo playback, for the lead evaluator"};
 cvar_t cl_touch_aim_debug = {CF_CLIENT, "cl_touch_aim_debug", "0",
 	"Print auto-shoot and aim-assist decisions to the console: target, weapon, fire mode and why, lead, switches, rockets (2 = also teammates under the crosshair)"};
+cvar_t cl_touch_loser = {CF_CLIENT | CF_ARCHIVE, "cl_touch_loser", "0",
+	"Development: enable all touch auto-shoot, aim assist, ESP and wallhack helpers on a desktop machine (no touch screen). Off by default"};
 
 // Engine -> CSQC: whether auto-shoot is firing (the port's FIRE button glows),
 // and the look multiplier the port's touch_look.qc applies (aim friction).
@@ -418,6 +420,7 @@ void TouchAim_Init(void)
 	Cvar_RegisterVariable(&cl_touch_aim_ring);
 	Cvar_RegisterVariable(&cl_touch_aim_range);
 	Cvar_RegisterVariable(&cl_touch_aim_debug);
+	Cvar_RegisterVariable(&cl_touch_loser);
 	Cvar_RegisterVariable(&cl_touch_aim_dumptracks);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_active);
 	Cvar_RegisterVariable(&cl_touch_aim_lookscale);
@@ -616,14 +619,15 @@ static qbool is_spectator_slot(int n)
 const char *TouchAim_BlockReason(void)
 {
 	int me = cl.realplayerentity;
-	// Touch mode only: the engine clears vid_touchscreen when a physical
-	// keyboard is being played on (vid_touchdetect.c), so a keyboard and
-	// mouse player never gets any of this. Nor does a mouse aiming next to
-	// the touch controls: help is for a thumb, not a mouse.
-	if (!vid_touchscreen.integer)
-		return "vid_touchscreen is 0 (keyboard or mouse in use)";
-	if (vid_touchscreen_mouselook.integer)
-		return "a mouse is aiming next to the touch controls";
+	// Touch mode only, unless the development "loser" toggle is on, which lets
+	// the same helpers run on a desktop machine for testing.
+	if (!cl_touch_loser.integer)
+	{
+		if (!vid_touchscreen.integer)
+			return "vid_touchscreen is 0 (keyboard or mouse in use)";
+		if (vid_touchscreen_mouselook.integer)
+			return "a mouse is aiming next to the touch controls";
+	}
 	if (cls.state != ca_connected || cls.signon != SIGNONS || cls.demoplayback)
 		return "not in a live game";
 	if (key_dest != key_game || key_consoleactive)
@@ -2679,14 +2683,15 @@ static void aim_frame(void)
 	ta.blocked_said = NULL;
 
 	practice_gate_now = practice_gate();
-	practice = TouchWep_PracticeEffective(practice_gate_now, cl_touch_practice_seethrough.integer != 0,
+	// Mobile (touch) builds: the practice helpers are always available, on
+	// every server as well as in a local match -- see-through walls, full 360
+	// targets and instant turn are part of the touch aim assist, not an
+	// offline-only cheat. The offline gate still decides them elsewhere.
+	practice = TouchWep_PracticeEffective(TW_GATE_OPEN, cl_touch_practice_seethrough.integer != 0,
 		cl_touch_practice_360.integer != 0 && cl_touch_aim_mode.integer == 2, cl_touch_practice_instant.integer != 0);
 	if (cl_touch_aim_debug.integer && practice_gate_now != practice_gate_said)
 	{
-		if (practice_gate_now == TW_GATE_OPEN)
-			Con_Printf("touch aim: practice helpers: on (offline match; see-through %d, full 360 %d, instant %d)\n", practice.seethrough, practice.full360, practice.instant);
-		else
-			Con_Printf("touch aim: practice helpers: off (not an offline match: %s)\n", touch_practice_why[practice_gate_now]);
+		Con_Printf("touch aim: practice helpers: on (mobile; see-through %d, full 360 %d, instant %d)\n", practice.seethrough, practice.full360, practice.instant);
 	}
 	practice_gate_said = practice_gate_now;
 	num_marks = 0;
@@ -3337,7 +3342,9 @@ void TouchAim_Draw(void)
 	vec3_t org, fwd, left, up, d;
 	float w = vid_conwidth.value, h = vid_conheight.value, fx = r_refdef.view.frustum_x, fy = r_refdef.view.frustum_y;
 	int i;
-	if (!num_marks || practice_gate() != TW_GATE_OPEN || fx <= 0 || fy <= 0)
+	// Mobile (touch) builds draw the practice markers in every match; elsewhere
+	// they stay offline-only.
+	if (!num_marks || (!vid_touchscreen.integer && practice_gate() != TW_GATE_OPEN) || fx <= 0 || fy <= 0)
 		return;
 	Matrix4x4_ToVectors(&r_refdef.view.matrix, fwd, left, up, org);
 	for (i = 0; i < num_marks; i++)
