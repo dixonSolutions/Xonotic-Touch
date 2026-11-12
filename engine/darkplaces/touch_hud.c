@@ -1564,6 +1564,13 @@ static void loading_pill(float *cx, float *cy, float *hx, float *hy)
 	widget_half(cv("touch_pause_size", 0.060f), cv("touch_pause_aspect", 2.9f), hx, hy);
 }
 
+// Back to the menu after a cancelled join. Once a server answers, the engine
+// hands the keys to the game (netconn.c) without telling the menu QC, which
+// still thinks it is open: `togglemenu 1` alone is then ignored, the menu
+// hides itself on its next frame for not having the keys, and only the menu
+// background is left. Closing it first puts the menu QC in step either way.
+#define LOADING_MENU_BACK "togglemenu 0\ntogglemenu 1\n"
+
 static void loading_cancel(void)
 {
 	Con_Printf("Touch: join cancelled from the loading screen\n");
@@ -1581,7 +1588,7 @@ static void loading_cancel(void)
 	}
 	// _touch_cancel_join: the connect a local game's `map` starts after its
 	// server is up, when the tap came while that server was loading
-	Cbuf_AddText(cmd_local, "\ndisconnect\n_touch_cancel_join\ntogglemenu 1\n");
+	Cbuf_AddText(cmd_local, "\ndisconnect\n_touch_cancel_join\n" LOADING_MENU_BACK);
 }
 
 // The start of an item loaded (a model, a sound, a precache step), CANCEL
@@ -1630,7 +1637,7 @@ void TouchHUD_LoadingAbortPoint(void)
 	cls.connect_trying = false;
 	loading_localgame = false;
 	CL_Disconnect();
-	Cbuf_AddText(cmd_local, "togglemenu 1\n");
+	Cbuf_AddText(cmd_local, LOADING_MENU_BACK);
 	Host_AbortCurrentFrame();
 }
 
