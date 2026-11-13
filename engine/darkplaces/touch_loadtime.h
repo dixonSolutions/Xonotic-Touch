@@ -32,6 +32,7 @@ typedef enum touch_lt_phase_e
 	TLT_TEXUPLOAD,     // R_UploadFullTexture
 	TLT_SHADER,        // GLSL compile and link
 	TLT_FILEREAD,      // FS_LoadFile (open, read, inflate)
+	TLT_CVARLINK,      // Cvar_Link (new cvar into the sorted list)
 	TLT_COUNT
 }
 touch_lt_phase_t;

@@ -30,6 +30,7 @@ as they arrive. Neither applies in the menu or in the game.
 #include "touch_loadtime.h"
 #include "libcurl.h"
 #include "touch_loadfs.h"
+#include "touch_loadcvar.h"
 #include "image.h"
 #ifdef __linux__
 #include <unistd.h>
@@ -65,6 +66,7 @@ static const char *tlt_names[TLT_COUNT] =
 	"texture upload",
 	"GLSL compile+link",
 	"file read (FS_LoadFile)",
+	"cvar list insert",
 };
 
 static const char *tlc_names[TLC_COUNT] =
@@ -443,6 +445,7 @@ double TouchLoadTime_SleepTime(double sleeptime)
 void TouchLoadTime_Init(void)
 {
 	TouchLoadFS_Init();
+	TouchCvar_Init();
 	Cvar_RegisterVariable(&touch_loadtime);
 	Cvar_RegisterVariable(&touch_load_restless);
 	Cvar_RegisterVariable(&touch_load_lazysbar);
