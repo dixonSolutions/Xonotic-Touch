@@ -56,6 +56,7 @@ when the player ticks "remember".
 #include "mdfour.h"
 #include "touch_lan.h"
 #include "touch_lan_logic.h"
+#include "touch_net.h"
 
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 #define TOUCHLAN_SOCKETS 1
@@ -849,6 +850,7 @@ static void TouchLAN_Forget_f(cmd_state_t *cmd)
 void TouchLAN_Init(void)
 {
 	cvar_t *v;
+	TouchNet_Init(); // joins over real networks: touch_net.c
 	Cvar_RegisterVariable(&sv_touch_lan_password);
 	Cvar_RegisterVariable(&net_slist_lan_only);
 	Cvar_RegisterVariable(&net_slist_lan_ports);

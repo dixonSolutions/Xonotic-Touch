@@ -28,6 +28,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "hmac.h"
 #include "mdfour.h"
 #include "touch_lan.h" // Touch: LAN games
+#include "touch_net.h" // Touch: windowed reliable channel, fast signon
 #include <time.h>
 
 #define QWMASTER_PORT 27000
@@ -753,6 +754,7 @@ int NetConn_Read(lhnetsocket_t *mysocket, void *data, int maxlength, lhnetaddres
 		for (i = 0;i < cl_numsockets;i++)
 			if (cl_sockets[i] == mysocket && (rand() % 100) < net_fakeloss_receive.integer)
 				return 0;
+	TouchNet_TracePacket(mysocket, data, length, peeraddress, 0); // Touch: touch_net_trace
 	if (developer_networking.integer)
 	{
 		char addressstring[128], addressstring2[128];
@@ -781,6 +783,7 @@ int NetConn_Write(lhnetsocket_t *mysocket, const void *data, int length, const l
 	if (mysocket->address.addresstype == LHNETADDRESSTYPE_LOOP && netconn_mutex)
 		Thread_LockMutex(netconn_mutex);
 	ret = LHNET_Write(mysocket, data, length, peeraddress);
+	TouchNet_TracePacket(mysocket, data, length, peeraddress, 1); // Touch: touch_net_trace
 	if (mysocket->address.addresstype == LHNETADDRESSTYPE_LOOP && netconn_mutex)
 		Thread_UnlockMutex(netconn_mutex);
 	if (developer_networking.integer)
@@ -944,6 +947,7 @@ int NetConn_SendUnreliableMessage(netconn_t *conn, sizebuf_t *data, protocolvers
 		const void *sendme;
 		size_t sendmelen;
 
+		if (TouchNet_SendReliable(conn, quakesignon_suppressreliables, rate, burstsize, &totallen) < 0) return -1; // Touch: windowed reliable channel
 		// if a reliable message fragment has been lost, send it again
 		if (conn->sendMessageLength && (host.realtime - conn->lastSendTime) > 1.0)
 		{
@@ -1290,6 +1294,7 @@ void NetConn_ClearFlood(lhnetaddress_t *peeraddress, server_floodaddress_t *floo
 void NetConn_Close(netconn_t *conn)
 {
 	netconn_t *c;
+	TouchNet_Close(conn); // Touch: windowed reliable channel
 	// remove connection from list
 
 	// allow the client to reconnect immediately
@@ -1513,6 +1518,7 @@ static int NetConn_ReceivedMessage(netconn_t *conn, const unsigned char *data, s
 			conn->packetsReceived++;
 			data += 8;
 			length -= 8;
+			if (TouchNet_Handles(conn, flags)) return TouchNet_Received(conn, flags, sequence, data, length, originallength, newtimeout); // Touch: windowed reliable channel
 			if (flags & NETFLAG_UNRELIABLE)
 			{
 				if (sequence >= conn->nq.unreliableReceiveSequence)
@@ -2098,6 +2104,7 @@ static int NetConn_ClientParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 		memcpy(stringbuf, data, length);
 		stringbuf[length] = 0;
 		string = stringbuf;
+		length = TouchNet_ClientConnectionless(string, length); // Touch: "accept\\rwin\\N" is an accept with a window
 
 		if (developer_networking.integer)
 		{
@@ -2202,6 +2209,7 @@ static int NetConn_ClientParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 			memcpy(senddata, "\377\377\377\377", 4);
 			dpsnprintf(senddata+4, sizeof(senddata)-4, "connect\\protocol\\darkplaces 3\\protocols\\%s%s\\challenge\\%s", protocolnames, cls.connect_userinfo, string + 10);
 			TouchLAN_AppendConnect(senddata + 4, sizeof(senddata) - 4, string + 10, peeraddress); // Touch: join password proof
+			TouchNet_AppendConnect(senddata + 4, sizeof(senddata) - 4); // Touch: offer a reliable window
 			NetConn_WriteString(mysocket, senddata, peeraddress);
 			return true;
 		}
@@ -2213,6 +2221,7 @@ static int NetConn_ClientParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 				return true;
 			}
 			NetConn_ConnectionEstablished(mysocket, peeraddress, PROTOCOL_DARKPLACES3);
+			TouchNet_Established(cls.netcon); // Touch: the window the accept gave
 			return true;
 		}
 		if (length > 7 && !memcmp(string, "reject ", 7) && cls.connect_trying)
@@ -2564,6 +2573,7 @@ static int NetConn_ClientParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 	ret = 0;
 	if (fromserver && length >= (int)NET_HEADERSIZE && (ret = NetConn_ReceivedMessage(cls.netcon, data, length, cls.protocol, net_messagetimeout.value)) == 2)
 		CL_ParseServerMessage();
+	TouchNet_ClientAfterParse(ret); // Touch: messages a filled gap completed; the signon answer at once
 	return ret;
 }
 
@@ -3472,6 +3482,7 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 							Con_Printf("Datagram_ParseConnectionless: sending duplicate accept to %s.\n", addressstring2);
 						if(crypto && crypto->authenticated)
 							Crypto_FinishInstance(&client->netconnection->crypto, crypto);
+						if (!TouchNet_ServerAccept(client->netconnection, mysocket, peeraddress, string)) // Touch: the same window again
 						NetConn_WriteString(mysocket, "\377\377\377\377accept", peeraddress);
 					}
 					return true;
@@ -3494,6 +3505,7 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 					// allocated connection
 					if (developer_extra.integer)
 						Con_Printf("Datagram_ParseConnectionless: sending \"accept\" to %s.\n", conn->address);
+					if (!TouchNet_ServerAccept(conn, mysocket, peeraddress, string)) // Touch: "accept\\rwin\\N" to a client that offered a window
 					NetConn_WriteString(mysocket, "\377\377\377\377accept", peeraddress);
 					// now set up the client
 					if(crypto && crypto->authenticated)
@@ -3911,6 +3923,7 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 		if ((ret = NetConn_ReceivedMessage(host_client->netconnection, data, length, sv.protocol, host_client->begun ? net_messagetimeout.value : net_connecttimeout.value)) == 2)
 		{
 			SV_ReadClientMessage();
+			TouchNet_ServerAfterRead(); // Touch: messages a filled gap completed; the signon answer at once
 			return ret;
 		}
 	}
