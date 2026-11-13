@@ -1,0 +1,135 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>store test</title>
+<!-- The data store (web/store.js) in a real browser, without the engine:
+     tests/web-cache/browser.sh drives it (Chromium over CDP, Firefox over
+     WebDriver BiDi) and restarts the browser between steps. Serve the
+     repository root. Every function resolves to a plain object. -->
+<script src="../../web/store.js"></script>
+<script src="../../web/lazyfs.js"></script>
+<script>
+(() => {
+  const CHUNK = 8 << 20; // two 4 MiB pieces
+  const bytesOf = (seed, n) => {
+    const b = new Uint8Array(n);
+    let x = (seed * 2654435761) >>> 0 || 1;
+    for (let i = 0; i < n; i++) { x ^= x << 13; x ^= x >>> 17; x ^= x << 5; b[i] = x & 0xff; }
+    return b;
+  };
+  // Three chunks per set: two whole ones and a short one.
+  const sizes = [CHUNK, CHUNK, 3 * 1048576 + 17];
+  const setOf = async (set) => {
+    const out = [];
+    for (let i = 0; i < sizes.length; i++) {
+      const bytes = bytesOf(set * 100 + i + 1, sizes[i]);
+      out.push({ h: await XTStore.sha256(bytes), size: sizes[i], index: i, file: { name: `set${set}` }, bytes });
+    }
+    return out;
+  };
+  // A data host inside the page: Range requests, a stream in 256 KiB steps,
+  // and a stall at a byte offset (as a connection that dies there).
+  const host = (chunks, stallAt) => {
+    const log = [];
+    const fetchImpl = async (url, opts = {}) => {
+      const c = chunks.find((x) => url.includes(x.h));
+      const range = opts.headers && opts.headers.Range;
+      const start = range ? Number(/bytes=(\d+)-/.exec(range)[1]) : 0;
+      log.push({ h: c.h, start });
+      let off = start;
+      const stream = new ReadableStream({
+        async pull(ctl) {
+          if (stallAt && c === chunks[0] && off >= stallAt) {
+            await new Promise((res, rej) => opts.signal.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError')), { once: true }));
+          }
+          if (off >= c.size) { ctl.close(); return; }
+          const n = Math.min(262144, c.size - off);
+          ctl.enqueue(c.bytes.slice(off, off + n));
+          off += n;
+        },
+      });
+      return new Response(stream, { status: range ? 206 : 200 });
+    };
+    return { log, fetchImpl };
+  };
+  const open = (writer) => XTStore.Store.open({ chunk: CHUNK, writer: writer || 'auto', memoryOk: false });
+  const info = async (s) => ({
+    kind: s.kind, writer: s.be.writer, why: s.why,
+    persisted: await navigator.storage.persisted(),
+    estimate: await navigator.storage.estimate().then((e) => ({ usage: e.usage, quota: e.quota })),
+    ua: navigator.userAgent,
+  });
+
+  window.storeTest = {
+    /** Download set `set` (1, 2…) with this writer; the first chunk is cut off once and resumed. */
+    async write(set, writer) {
+      const s = await open(writer);
+      s.pieceAfterMs = 0;
+      const chunks = await setOf(set);
+      const urlFor = (c) => `https://data.invalid/blobs/${c.h}.bin`;
+      // 1. A download that dies 5 MiB into the first chunk: one piece kept.
+      const cut = host(chunks, 5 << 20);
+      const ac = new AbortController();
+      const first = s.download(chunks, { urlFor, signal: ac.signal, onBytes() {}, concurrency: 1, fetchImpl: cut.fetchImpl }).catch((e) => e.name);
+      const t0 = Date.now();
+      while ((await s.resumable(chunks[0])) < XTStore.PIECE && Date.now() - t0 < 20000) await new Promise((r) => setTimeout(r, 20));
+      ac.abort();
+      const aborted = await first;
+      const resumable = await s.resumable(chunks[0]);
+      // 2. Carry on: a Range request for the rest, then the others.
+      const rest = host(chunks, 0);
+      await s.download(await s.missing([{ chunks: chunks.map((c) => c.h), size: sizes.reduce((a, b) => a + b, 0), name: 'set' }]), {
+        urlFor, signal: new AbortController().signal, onBytes() {}, concurrency: 2, fetchImpl: rest.fetchImpl });
+      const names = (await s.be.list()).sort();
+      return Object.assign(await info(s), {
+        aborted, resumable,
+        resumedFrom: (rest.log.find((l) => l.h === chunks[0].h) || {}).start,
+        stored: chunks.every((c) => names.includes('c-' + c.h)),
+        piecesLeft: names.filter((n) => n.startsWith('p-')).length,
+      });
+    },
+    /** After a restart: is set `set` all there, with the right bytes, and readable in place? */
+    async check(set) {
+      const s = await open();
+      const chunks = await setOf(set);
+      const f = { name: `set${set}`, size: sizes.reduce((a, b) => a + b, 0), chunks: chunks.map((c) => c.h) };
+      const missing = (await s.missing([f])).map((c) => c.index);
+      const v = await s.verify([f]);
+      let lazy = null;
+      if (!missing.includes(0)) lazy = await XTLazyFS.probe(await s.be.blob('c-' + chunks[0].h));
+      return Object.assign(await info(s), { missing, bad: v.bad, checked: v.checked, lazy });
+    },
+    /** Remove chunk i of the set, as an eviction of that one file would. */
+    async evict(set, i) {
+      const s = await open();
+      const c = (await setOf(set))[i];
+      await s.be.remove('c-' + c.h);
+      return { removed: !(await s.has(c)) };
+    },
+    /** Damage chunk i on disk (same size, other bytes). */
+    async corrupt(set, i) {
+      const s = await open();
+      const c = (await setOf(set))[i];
+      const b = c.bytes.slice();
+      b[1000] ^= 0xff;
+      await s.be.write('c-' + c.h, b);
+      return { sameSize: await s.has(c) };
+    },
+    /** Fetch what is missing of the set; returns which chunks were requested. */
+    async repair(set) {
+      const s = await open();
+      const chunks = await setOf(set);
+      const f = { name: `set${set}`, size: sizes.reduce((a, b) => a + b, 0), chunks: chunks.map((c) => c.h) };
+      const h = host(chunks, 0);
+      const missing = await s.missing([f]);
+      await s.download(missing, { urlFor: (c) => `https://data.invalid/blobs/${c.h}.bin`, signal: new AbortController().signal, onBytes() {}, fetchImpl: h.fetchImpl });
+      return { fetched: h.log.map((l) => chunks.findIndex((c) => c.h === l.h)).sort(), left: (await s.missing([f])).length };
+    },
+    /** Ask for persistent storage (the switch does this in the page) and report the answer. */
+    async persist() {
+      const before = await navigator.storage.persisted();
+      const granted = await Promise.race([navigator.storage.persist(), new Promise((r) => setTimeout(() => r('no answer (a prompt is open)'), 3000))]);
+      return { before, granted, after: await navigator.storage.persisted() };
+    },
+  };
+})();
+</script>

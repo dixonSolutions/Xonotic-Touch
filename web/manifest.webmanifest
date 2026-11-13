@@ -10,6 +10,10 @@
   "background_color": "#0b0f14",
   "theme_color": "#0b0f14",
   "categories": ["games"],
+  "related_applications": [
+    { "platform": "play", "id": "io.github.dixonsolutions.xonotictouch" }
+  ],
+  "prefer_related_applications": false,
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }

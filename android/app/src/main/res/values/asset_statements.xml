@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The web sites this app belongs to (Digital Asset Links, app to web):
+     read by Chrome for navigator.getInstalledRelatedApps() on those sites.
+     See docs/WEB.md, "An existing install". -->
+<resources>
+    <string name="asset_statements" translatable="false">[{\"relation\": [\"delegate_permission/common.handle_all_urls\"], \"target\": {\"namespace\": \"web\", \"site\": \"https://godnotic.vercel.app\"}}, {\"relation\": [\"delegate_permission/common.handle_all_urls\"], \"target\": {\"namespace\": \"web\", \"site\": \"https://dixonsolutions.github.io\"}}]</string>
+</resources>

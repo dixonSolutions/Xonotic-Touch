@@ -27,6 +27,7 @@ on:
       - 'tests/web-cache/**'
       - 'scripts/build-web.sh'
       - 'scripts/stage-web-data.sh'
+      - 'scripts/split-web-maps.py'
       - 'scripts/stage-slim-data.sh'
       - 'scripts/vercel-build.sh'
       - 'scripts/test-web-cache*'
@@ -38,6 +39,7 @@ on:
       - 'tests/web-cache/**'
       - 'scripts/build-web.sh'
       - 'scripts/stage-web-data.sh'
+      - 'scripts/split-web-maps.py'
       - 'scripts/stage-slim-data.sh'
       - 'scripts/vercel-build.sh'
       - 'scripts/test-web-cache*'
@@ -183,7 +185,7 @@ jobs:
           (cd build/web && tar cf - --exclude=./serve.py .) | (cd site/web && tar xf -)
           # Link it from the landing page.
           if [ -f site/index.html ] && ! grep -q 'href="web/"' site/index.html; then
-            sed -i 's|<ul>|<ul>\n  <li><strong>Browser</strong>: <a href="web/">play in your browser</a> (WebAssembly; downloads about 1 GB of game data once)</li>|' site/index.html
+            sed -i 's|<ul>|<ul>\n  <li><strong>Browser</strong>: <a href="web/">play in your browser</a> (WebAssembly; one download of 0.4-1.1 GB with every map and the music, kept in the browser)</li>|' site/index.html
           fi
       - name: Upload Pages artifact
         if: steps.pages.outputs.ready == 'true'

@@ -1,8 +1,9 @@
 #!/bin/bash
 # Vercel's build of the browser version, run by Vercel's Git integration on
 # every push to main (vercel.json). One build makes the whole site: engine,
-# QuakeC, page, and the game data: the pinned Godnotic data release (stock
-# Xonotic pk3s), content-addressed by scripts/stage-web-data.sh.
+# QuakeC, page, and the game data: the pinned Godnotic data releases (stock
+# Xonotic pk3s, and the slim ASTC set), split per map and content-addressed
+# by scripts/stage-web-data.sh.
 #
 #   scripts/vercel-build.sh --ignore    Vercel's "ignored build step": exit 0
 #                                       (skip) for anything but main and
@@ -20,6 +21,20 @@ EMSDK_VERSION="${EMSDK_VERSION:-7.0.0}"   # the version the web build was tested
 EMSDK="${EMSDK:-$ROOT/.vercel/cache/emsdk}"
 AUTOBUILD="https://github.com/dixonSolutions/Godnotic-data/releases/download/data-20261107"
 DATA_ARCHIVE="Godnotic-data-20261107.zip"
+# The slim phone set (ASTC, zstd, Opus): the "astc" profile, for browsers on
+# GPUs with WEBGL_compressed_texture_astc. Pinned by hash, and the build
+# fails when the asset cannot be fetched or is not the pinned one: a deploy
+# without the profile would move every ASTC browser to the 1 GB set, and a
+# changed asset would make every visitor download it again. "data-slim" is a
+# tag that moves; this pins the immutable copy (data-slim-<date>-<n>).
+# Move the pin on purpose when a new set is published.
+SLIM_URL="${XT_SLIM_DATA_ARCHIVE:-https://github.com/dixonSolutions/Godnotic-data/releases/download/data-slim-20261107-1/Godnotic-data.zip}"
+SLIM_SHA256="${XT_SLIM_DATA_SHA256:-4940b5a49c13a928d447b18c3cf430d0879dbbaf3bc27750ece001877d21dec0}"
+# A prebuilt "web" repack of the stock set (zstd entries, re-encoded JPEGs,
+# DXT kept: repack-phone-assets.py --profile slim --textures keep), for the
+# "web" profile. Empty: the web profile is the stock pk3s as they are.
+WEB_URL="${XT_WEB_DATA_ARCHIVE:-}"
+WEB_SHA256="${XT_WEB_DATA_SHA256:-}"
 
 # The QuakeC sources use #elifdef, which "cc -E" (GCC 11 on Amazon Linux
 # 2023) rejects; GCC 12+ takes it. Prints a directory to put first in PATH
@@ -65,7 +80,7 @@ case "${1:-}" in
     ;;
 --install)
     need=()
-    for tool in gcc g++ make zip unzip python3 git xz bzip2 tar curl which; do
+    for tool in gcc g++ make zip unzip python3 git xz bzip2 tar curl which zstd; do
         command -v "$tool" >/dev/null 2>&1 || need+=("$tool")
     done
     if [ "${#need[@]}" -gt 0 ]; then
@@ -114,7 +129,7 @@ PATH="$ROOT/.vercel/bin:$PATH"
 [ -z "$ccdir" ] || PATH="$ccdir:$PATH"
 PYTHON="$EMSDK_PYTHON"
 export EMSDK EMSDK_PYTHON PYTHON PATH
-QCCFLAGS_WATERMARK="web-${VERCEL_GIT_COMMIT_SHA:0:7}" EMSDK="$EMSDK" bash "$ROOT/scripts/build-web.sh"
+XT_WEB_DEPS="$ROOT/.vercel/cache/web-deps" QCCFLAGS_WATERMARK="web-${VERCEL_GIT_COMMIT_SHA:0:7}" EMSDK="$EMSDK" bash "$ROOT/scripts/build-web.sh"
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/xt-vercel.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
@@ -124,6 +139,31 @@ curl -sfL --retry 3 --retry-delay 5 -o "$work/Xonotic-latest.zip" \
 mkdir -p "$work/stock"
 unzip -q -j -o "$work/Xonotic-latest.zip" 'Xonotic/data/*.pk3' -d "$work/stock"
 rm -f "$work/Xonotic-latest.zip"
-bash "$ROOT/scripts/stage-web-data.sh" --stock "$work/stock"
+stage_args=(--stock "$work/stock")
+fetch_set() { # URL SHA256 NAME -> the archive's path; the build fails without it
+    if ! curl -sfL --retry 3 --retry-delay 5 -o "$work/$3.zip" "$1"; then
+        echo "vercel-build: could not fetch $1 (the $3 profile); not deploying without it" >&2
+        return 1
+    fi
+    if [ -z "$2" ]; then
+        echo "vercel-build: no sha256 pinned for $1 (the $3 profile)" >&2
+        return 1
+    fi
+    if ! echo "$2  $work/$3.zip" | sha256sum -c --quiet - >/dev/null 2>&1; then
+        echo "vercel-build: $1 is not the pinned build: expected sha256 $2, got $(sha256sum "$work/$3.zip" | cut -d' ' -f1)" >&2
+        echo "vercel-build: move the pin in scripts/vercel-build.sh on purpose if the data was meant to change" >&2
+        return 1
+    fi
+    echo "$work/$3.zip"
+}
+echo "Fetching the slim (ASTC) data…"
+slim="$(fetch_set "$SLIM_URL" "$SLIM_SHA256" astc)"
+stage_args+=(--astc "$slim")
+if [ -n "$WEB_URL" ]; then
+    echo "Fetching the web repack…"
+    webset="$(fetch_set "$WEB_URL" "$WEB_SHA256" web)"
+    stage_args+=(--web "$webset")
+fi
+PYTHON="$EMSDK_PYTHON" bash "$ROOT/scripts/stage-web-data.sh" "${stage_args[@]}"
 rm -f "$ROOT/build/web/serve.py"
 du -sh "$ROOT/build/web"

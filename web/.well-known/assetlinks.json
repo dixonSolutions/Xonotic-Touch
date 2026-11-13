@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.github.dixonsolutions.xonotictouch",
+      "sha256_cert_fingerprints": [
+        "DB:CE:85:DC:DE:04:16:1C:E5:77:08:6B:B2:2E:03:82:AC:20:3B:D2:0E:47:45:84:C1:2D:DC:06:B0:31:5A:5B"
+      ]
+    }
+  }
+]

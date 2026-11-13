@@ -14,8 +14,8 @@
 //                     path never deletes what another path (or an older
 //                     tab) still needs
 //
-// Where: the origin private file system (OPFS) where it is writable, else the
-// Cache API (keyed by name, never by the data host, so moving the data to
+// Where: the origin private file system (OPFS) where it is writable (from the
+// page, or from a worker where only that can write), else the Cache API (keyed by name, never by the data host, so moving the data to
 // another host keeps everything). Both live under "xt-data-v1", the name the
 // older layout used: pages from before this layout kept whole files there
 // ("<rev>-<path>" in OPFS, "<data url>?rev=&part=" in the Cache API), and
@@ -29,6 +29,7 @@
   const PIECE = 4 * 1024 * 1024;
   const KEY_BASE = 'https://xt-store.invalid/';
   const REF_MAX_AGE = 60 * 24 * 3600 * 1000;
+  const REF_SUPERSEDED = 2 * 24 * 3600 * 1000;
   const LEGACY = /^([0-9a-f]{16})-(.+)$/;
 
   const hex = (buf) => Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
@@ -40,29 +41,132 @@
   // ------------------------------------------------------------ backends
   // A flat name -> bytes store: list, size (-1: absent), blob, write, remove.
 
-  async function opfsBackend() {
+  // Browsers whose OPFS has no createWritable() on the main thread (Safari
+  // before 26) can still write it from a worker, with
+  // createSyncAccessHandle(). The worker is made from this text, so the page
+  // needs no extra file. It writes in place (truncate, write, flush): a
+  // write cut short leaves a file of the wrong size, which the store treats
+  // as absent (has() compares sizes) and downloads again.
+  const WORKER_SOURCE = `
+    let dirp = null;
+    onmessage = async (e) => {
+      const { id, dir, name, bytes } = e.data;
+      try {
+        dirp = dirp || navigator.storage.getDirectory().then((r) => r.getDirectoryHandle(dir, { create: true }));
+        const fh = await (await dirp).getFileHandle(name, { create: true });
+        const h = await fh.createSyncAccessHandle();
+        try {
+          h.truncate(0);
+          let off = 0;
+          while (off < bytes.byteLength) {
+            const n = h.write(bytes.subarray(off), { at: off });
+            if (!n) throw new Error('short write');
+            off += n;
+          }
+          h.flush();
+        } finally {
+          h.close();
+        }
+        postMessage({ id });
+      } catch (err) {
+        postMessage({ id, error: { name: err && err.name || 'Error', message: err && err.message || String(err) } });
+      }
+    };`;
+
+  function workerWriter() {
+    let worker = null;
+    let next = 0;
+    const waiting = new Map();
+    const start = () => {
+      const url = global.URL.createObjectURL(new global.Blob([WORKER_SOURCE], { type: 'text/javascript' }));
+      worker = new global.Worker(url);
+      worker.onmessage = (e) => {
+        const w = waiting.get(e.data.id);
+        if (!w) return;
+        waiting.delete(e.data.id);
+        if (e.data.error) {
+          const err = new Error(e.data.error.message);
+          err.name = e.data.error.name;
+          w.reject(err);
+        } else w.resolve();
+      };
+      worker.onerror = (e) => {
+        for (const w of waiting.values()) w.reject(new Error('storage worker failed: ' + (e && e.message || 'error')));
+        waiting.clear();
+        worker = null;
+      };
+    };
+    return (name, bytes) => new Promise((resolve, reject) => {
+      if (!worker) start();
+      const id = ++next;
+      waiting.set(id, { resolve, reject });
+      // A copy: the caller reuses its buffer for the next chunk.
+      const copy = bytes.slice();
+      worker.postMessage({ id, dir: NAME, name, bytes: copy }, [copy.buffer]);
+    });
+  }
+
+  /**
+   * The origin private file system. writer: 'auto' writes with
+   * createWritable() on the main thread where it exists (Chrome, Edge,
+   * Firefox, Safari 26+) and from a worker with createSyncAccessHandle()
+   * otherwise (Safari 15.2-18); 'worker' forces the latter (tests).
+   */
+  async function opfsBackend(why = [], writer = 'auto') {
     const nav = global.navigator;
-    if (!nav.storage || !nav.storage.getDirectory) return null;
+    if (!nav.storage || !nav.storage.getDirectory) { why.push('OPFS: not offered'); return null; }
     const FH = global.FileSystemFileHandle;
-    if (!FH || !('createWritable' in FH.prototype)) return null; // Safari before 26
+    const mainWrites = !!(FH && 'createWritable' in FH.prototype);
+    // createSyncAccessHandle() only exists inside workers, so it cannot be
+    // looked for here: the store's test write (open()) finds out.
+    const workerWrites = !!(FH && global.Worker && global.URL && global.URL.createObjectURL && global.Blob);
+    const useWorker = writer === 'worker' ? workerWrites : !mainWrites && workerWrites;
+    if (!mainWrites && !useWorker) { why.push('OPFS: no way to write files here'); return null; }
     let dir;
     try {
       dir = await (await nav.storage.getDirectory()).getDirectoryHandle(NAME, { create: true });
     } catch (e) {
-      return null; // Firefox private windows
+      why.push('OPFS: ' + (e && (e.name + ': ' + e.message) || e)); // Firefox private windows: SecurityError
+      return null;
     }
+    const files = new Map();
+    const viaWorker = useWorker ? workerWriter() : null;
     return {
       kind: 'opfs',
+      writer: useWorker ? 'worker' : 'main',
       async list() {
         const names = [];
         for await (const [name, h] of dir.entries()) if (h.kind === 'file') names.push(name);
         return names;
       },
       async size(name) {
-        try { return (await (await dir.getFileHandle(name)).getFile()).size; } catch (e) { return -1; }
+        // Not there is -1. Any other failure (the file is locked by a write
+        // in another tab, the disk hiccuped) is tried again before the
+        // chunk is taken as absent: then it is fetched again and written
+        // over, never deleted, and the Storage panel shows the error.
+        for (let attempt = 0; ; attempt++) {
+          try {
+            // Chunks never change once written: keep the File (a snapshot
+            // that reads from disk) for the mount that follows the check.
+            const f = await (await dir.getFileHandle(name)).getFile();
+            if (name.startsWith('c-')) files.set(name, f);
+            return f.size;
+          } catch (e) {
+            if (e && (e.name === 'NotFoundError' || e.name === 'TypeMismatchError')) return -1;
+            if (attempt < 2) { await sleep(40 * (attempt + 1)); continue; }
+            this.lastError = `${name.slice(0, 14)}…: ${e && e.name}: ${e && e.message}`;
+            return -1;
+          }
+        }
       },
-      async blob(name) { return (await dir.getFileHandle(name)).getFile(); },
+      async blob(name) {
+        const f = files.get(name);
+        if (f) return f;
+        return (await dir.getFileHandle(name)).getFile();
+      },
       async write(name, bytes) {
+        files.delete(name);
+        if (viaWorker) return viaWorker(name, bytes);
         // createWritable() writes a swap file that replaces the entry on
         // close(): a reader never sees half a chunk.
         const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
@@ -74,7 +178,7 @@
           throw e;
         }
       },
-      async remove(name) { try { await dir.removeEntry(name); } catch (e) { /* gone */ } },
+      async remove(name) { files.delete(name); try { await dir.removeEntry(name); } catch (e) { /* gone */ } },
     };
   }
 
@@ -106,6 +210,38 @@
     };
   }
 
+  /**
+   * Nothing persistent works (Firefox and Safari private windows, storage
+   * blocked for the site): keep the chunks in memory for this visit only, so
+   * the game still runs, and say so.
+   */
+  function memoryBackend() {
+    const m = new Map();
+    return {
+      kind: 'memory',
+      async list() { return [...m.keys()]; },
+      async size(name) { return m.has(name) ? m.get(name).size : -1; },
+      async blob(name) { if (!m.has(name)) throw new Error(`${name} is missing`); return m.get(name); },
+      async write(name, bytes) { m.set(name, new Blob([bytes])); },
+      async remove(name) { m.delete(name); },
+    };
+  }
+
+  // A tiny write and read back: getDirectory() and caches.open() succeed in
+  // some places where writing then fails (private windows, a full disk).
+  async function writable(be) {
+    const name = 'probe-' + Math.random().toString(36).slice(2);
+    try {
+      await be.write(name, new Uint8Array([1, 2, 3]));
+      const ok = (await be.size(name)) === 3;
+      await be.remove(name);
+      return ok ? null : 'a test write read back wrong';
+    } catch (e) {
+      try { await be.remove(name); } catch (e2) { /* gone */ }
+      return (e && (e.name + ': ' + e.message)) || String(e);
+    }
+  }
+
   // ---------------------------------------------------------------- store
 
   /** Chunk list of a manifest file: [{h, size, index, file}]. */
@@ -121,14 +257,35 @@
       this.chunk = chunk;
     }
 
-    /** OPFS where writable, else the Cache API. preferCache: test the fallback. */
-    static async open({ preferCache = false, chunk = 32 * 1024 * 1024 } = {}) {
-      const opfs = preferCache ? null : await opfsBackend();
+    /**
+     * OPFS where writable, else the Cache API, else memory (this visit only).
+     * preferCache: test the fallback. probe: check with a test write (done
+     * when nothing is stored yet, that is before a first download).
+     * store.why lists why a better backend was not used.
+     */
+    static async open({ preferCache = false, chunk = 32 * 1024 * 1024, probe = 'auto', memoryOk = true, writer = 'auto' } = {}) {
+      const why = [];
+      let opfs = null;
+      if (!preferCache) {
+        try { opfs = await opfsBackend(why, writer); } catch (e) { why.push('OPFS: ' + (e && e.message || e)); }
+      }
       let cache = null;
-      try { cache = await cacheBackend(); } catch (e) { /* no Cache API */ }
-      const be = opfs || cache;
-      if (!be) throw new Error('This browser offers no storage for the game data (private window?).');
-      return new Store(be, opfs ? cache : null, chunk);
+      try { cache = await cacheBackend(); } catch (e) { why.push('Cache API: ' + (e && (e.name + ': ' + e.message) || e)); }
+      if (!cache && !global.caches) why.push('Cache API: not offered');
+      for (const be of [opfs, cache]) {
+        if (!be) continue;
+        if (probe === true || (probe === 'auto' && !(await be.list()).some((n) => n.startsWith('c-')))) {
+          const err = await writable(be);
+          if (err) { why.push(`${be.kind === 'opfs' ? 'OPFS' : 'Cache API'}: ${err}`); continue; }
+        }
+        const s = new Store(be, be === opfs ? cache : null, chunk);
+        s.why = why;
+        return s;
+      }
+      if (!memoryOk) throw new Error('This browser offers no storage for the game data (private window?).');
+      const s = new Store(memoryBackend(), null, chunk);
+      s.why = why;
+      return s;
     }
 
     chunks(f) { return chunksOf(f, this.chunk); }
@@ -137,16 +294,18 @@
 
     /** Chunks of these files not stored yet (existence and size only: fast). */
     async missing(files) {
-      const out = [];
+      const list = [];
       const seen = new Set();
       for (const f of files) {
         for (const c of this.chunks(f)) {
           if (seen.has(c.h)) continue;
           seen.add(c.h);
-          if (!(await this.has(c))) out.push(c);
+          list.push(c);
         }
       }
-      return out;
+      // All at once: a warm start checks 15-50 chunks.
+      const here = await Promise.all(list.map((c) => this.has(c)));
+      return list.filter((c, i) => !here[i]);
     }
 
     /** Bytes of this chunk already downloaded in pieces (resumable). */
@@ -170,8 +329,10 @@
      * onBytes(c, n): n bytes of this chunk are in hand (it can go down when
      * bytes had to be dropped).
      */
-    async fetchChunk(c, url, signal, onBytes, fetchImpl = global.fetch) {
-      const buf = new Uint8Array(c.size);
+    async fetchChunk(c, url, signal, onBytes, fetchImpl = global.fetch, scratch = null) {
+      // scratch: a buffer to reuse (one per download worker), so a long
+      // download does not leave a 32 MiB buffer per chunk for the GC.
+      const buf = scratch && scratch.byteLength >= c.size ? scratch.subarray(0, c.size) : new Uint8Array(c.size);
       let have = await this.resumable(c);
       for (let k = 0; k * PIECE < have; k++) {
         buf.set(new Uint8Array(await (await this.be.blob(`p-${c.h}-${k}`)).arrayBuffer()), k * PIECE);
@@ -251,11 +412,13 @@
     async download(list, { urlFor, signal, onBytes, concurrency = 2, fetchImpl }) {
       const queue = list.slice();
       let failure = null;
+      const size = list.reduce((n, c) => Math.max(n, c.size), 0);
       const worker = async () => {
+        const scratch = new Uint8Array(size);
         while (queue.length && !failure) {
           const c = queue.shift();
           try {
-            await this.fetchChunk(c, urlFor(c), signal, onBytes, fetchImpl);
+            await this.fetchChunk(c, urlFor(c), signal, onBytes, fetchImpl, scratch);
           } catch (e) {
             failure = failure || e;
           }
@@ -269,9 +432,15 @@
     async read(f) {
       const parts = [];
       for (const c of this.chunks(f)) {
-        const b = await this.be.blob('c-' + c.h).catch(() => null);
-        if (!b || b.size !== c.size) {
-          await this.be.remove('c-' + c.h);
+        let b;
+        try {
+          b = await this.be.blob('c-' + c.h);
+        } catch (e) {
+          // Not readable right now is not proof of damage: keep it.
+          throw new Error(`${f.name} could not be read from the browser's storage (${e && e.name}: ${e && e.message}). Reload to try again.`);
+        }
+        if (b.size !== c.size) {
+          await this.be.remove('c-' + c.h); // the wrong size can never be right
           throw new Error(`${f.name} is incomplete in the browser's storage. Reload to download the missing part again.`);
         }
         parts.push(b);
@@ -311,9 +480,15 @@
       try { return JSON.parse(await (await this.be.blob(`m-${id}.json`)).text()); } catch (e) { return null; }
     }
 
+    /**
+     * Which manifests a page path started with. One record per path and set
+     * of manifests: a tab still running an older release (whose files are
+     * read in place) keeps its chunks while its record is younger than
+     * REF_SUPERSEDED, even after another tab started a newer one.
+     */
     async ref(page, ids) {
-      await this.be.write('r-' + page.replace(/[^A-Za-z0-9]/g, '_'),
-        new TextEncoder().encode(JSON.stringify({ page, ids, t: Date.now() })));
+      const key = page.replace(/[^A-Za-z0-9]/g, '_') + '-' + ids.join('_').replace(/[^A-Za-z0-9_]/g, '').slice(0, 64);
+      await this.be.write('r-' + key, new TextEncoder().encode(JSON.stringify({ page, ids, t: Date.now() })));
     }
 
     // ------------------------------------------------------------- adopting
@@ -389,7 +564,7 @@
     /**
      * Delete what no live page path needs. Call only after a start that had
      * every chunk it needed. Every path that started within REF_MAX_AGE keeps
-     * all chunks of its manifests (music too, chosen or not); a manifest this
+     * all chunks of its manifests; a manifest this
      * store cannot read stops the prune altogether.
      */
     async prune(page, ids) {
@@ -399,11 +574,20 @@
       const keepChunks = new Set();
       const keepRevs = new Set();
       const now = Date.now();
+      const refs = [];
       for (const n of names) {
         if (!n.startsWith('r-')) continue;
         let r;
-        try { r = JSON.parse(await (await this.be.blob(n)).text()); } catch (e) { continue; }
-        if (!r || now - r.t > REF_MAX_AGE) { await this.be.remove(n); continue; }
+        try { r = JSON.parse(await (await this.be.blob(n)).text()); } catch (e) { return { removed: 0, kept: 'unreadable record ' + n }; }
+        if (r) refs.push([n, r]);
+      }
+      // The newest record of each path lives REF_MAX_AGE; older ones of the
+      // same path (an older release in another tab) REF_SUPERSEDED.
+      const newest = new Map();
+      for (const [, r] of refs) newest.set(r.page, Math.max(newest.get(r.page) || 0, r.t));
+      for (const [n, r] of refs) {
+        const limit = r.t === newest.get(r.page) ? REF_MAX_AGE : REF_SUPERSEDED;
+        if (now - r.t > limit) { await this.be.remove(n); continue; }
         for (const id of r.ids) live.add(id);
       }
       for (const id of live) {
@@ -434,6 +618,13 @@
         }
       }
       return { removed };
+    }
+
+    /** Is anything of ours stored here (this layout or an older one)? */
+    async anything() {
+      if ((await this.be.list()).some((n) => n.startsWith('c-') || n.startsWith('p-') || LEGACY.test(n))) return true;
+      const oldCache = this.kind === 'cache' ? this.be.cache : this.other && this.other.cache;
+      try { return !!(oldCache && (await oldCache.keys()).length); } catch (e) { return false; }
     }
 
     /** Bytes stored for these files (whole chunks only). */

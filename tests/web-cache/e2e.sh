@@ -3,6 +3,13 @@
 #   tests/web-cache/e2e.sh PROFILE_DIR URL LABEL [e2e.mjs options...]
 # CHROME: the Chrome binary (default: Playwright's Chromium in ~/.cache).
 set -euo pipefail
+# Browsers run headless, and must never reach the user's screen: refuse to
+# run with a desktop session in the environment. Run it as
+#   env -u WAYLAND_DISPLAY -u DISPLAY -u XAUTHORITY tests/web-cache/e2e.sh ...
+if [ -n "${WAYLAND_DISPLAY:-}" ] || [ "${DISPLAY:-}" = ":0" ] || [ "${DISPLAY:-}" = ":1" ]; then
+    echo "e2e.sh: WAYLAND_DISPLAY/DISPLAY point at a desktop session; unset them (env -u WAYLAND_DISPLAY -u DISPLAY -u XAUTHORITY ...)" >&2
+    exit 2
+fi
 here="$(cd "$(dirname "$0")" && pwd)"
 profile="$1" url="$2" label="$3"
 shift 3
