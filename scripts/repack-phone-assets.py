@@ -75,10 +75,18 @@ PROFILES = {
     # running game never opens (map and model sources, QuakeC line tables, the
     # benchmark demo) is left out.
     "slim": {"world_blocks": (10, 10), "model_blocks": (8, 6), "norm_blocks": (6, 6),
-             "max_size": 512, "music_rate": "64k",
+             "max_size": 512, "music_rate": "64k", "sfx": "opus", "bsp_zstd_level": 22,
              "jpeg_quality": 86, "lightmap_quality": 90,
-             "drop": ["maps/*.map", "models/*.map", "*.ase", "*.lno", "demos/*.dem"]},
+             "drop": ["maps/*.map", "models/*.map", "*.ase", "*.lno", "demos/*.dem", "*.mp3"]},
 }
+# The set for GPUs with ASTC, by what it is (the app's "slim" set).
+PROFILES["astc"] = PROFILES["slim"]
+# The same set for GPUs without ASTC (desktop NVIDIA/AMD: the web build and
+# desktop Linux pick it by GPU): everything above that does not depend on
+# ASTC -- Opus sound effects and music, re-encoded JPEGs, zstd entries, the
+# files a running game never opens left out -- with the official DXT
+# textures kept as they are.
+PROFILES["dxt"] = dict(PROFILES["slim"], textures="keep")
 
 
 def log(*a):
@@ -237,6 +245,380 @@ def to_opus(name, data, music_rate, sfx_rate):
             log("  %s: kept as Vorbis (%s)" % (name, e))
             return None
     return out if 0 < len(out) < len(data) else None
+
+
+# --------------------------------------------------------- sound effects
+#
+# --sfx opus: every Vorbis sound effect is tried as Opus at a ladder of
+# bitrates and the smallest one that stays measurably as close to the source
+# as Opus at a generous rate does is kept; a sound none passes, or where Opus
+# is not a tenth smaller, stays Vorbis. The engine decodes Opus at 48 kHz
+# (touch_assets_opus.c), so the file is made from the PCM libvorbisfile (the
+# engine's own Vorbis decoder) gives, resampled to 48 kHz with soxr, and its
+# Ogg stream is patched so it decodes to exactly round(n * 48000 / rate)
+# samples: ffmpeg's own Vorbis-in, Opus-out path came out up to 674 samples
+# short or 1411 long. LOOP_* comments are rescaled to 48 kHz samples and the
+# OpusHead input rate set to 48000 so the engine's scaling is 1. A sound that
+# loops (a LOOP_START comment, or a looped target_speaker in a map) is encoded
+# with 100 ms of its own end before it and of its start after it, which the
+# pre-skip and end trim drop: the codec sees the loop as continuous, so the
+# seam costs no more than the inside does.
+
+SFX_MONO = (32, 40, 48, 56, 64)         # kbit/s tried for mono, smallest first
+SFX_STEREO = (48, 56, 64, 72, 80)
+SFX_REF = {1: 96, 2: 128}               # the yardstick: Opus at a generous rate
+SFX_DUALMONO_DB = -30.0                 # side channel this far under mid: mono
+# How much further than the yardstick a rung may be from the source:
+SFX_MAX_BAND = 0.45   # mean |dB| over 25 critical bands, active frames
+SFX_MAX_ENV = 0.35    # mean |dB| of the 2 ms energy envelope
+SFX_MAX_LOUD = 0.25   # dB of total energy above 100 Hz
+SFX_MAX_PRE = 1.5     # dB more energy than the source before the first onset
+SFX_MAX_SEAM = 3.0    # dB: error at a loop's ends over the error inside
+
+_vorbisfile = None
+
+
+def _vf():
+    """libvorbisfile through ctypes (VORBISFILE=path to choose one)."""
+    global _vorbisfile
+    if _vorbisfile is None:
+        import ctypes as C
+        import ctypes.util
+        lib = C.CDLL(os.environ.get("VORBISFILE") or ctypes.util.find_library("vorbisfile") or "libvorbisfile.so.3")
+        lib.ov_fopen.argtypes = [C.c_char_p, C.c_void_p]
+        lib.ov_read.argtypes = [C.c_void_p, C.c_void_p, C.c_int, C.c_int, C.c_int, C.c_int, C.c_void_p]
+        lib.ov_read.restype = C.c_long
+        lib.ov_info.restype = C.c_void_p
+        lib.ov_info.argtypes = [C.c_void_p, C.c_int]
+        lib.ov_comment.restype = C.c_void_p
+        lib.ov_comment.argtypes = [C.c_void_p, C.c_int]
+        lib.ov_clear.argtypes = [C.c_void_p]
+        _vorbisfile = lib
+    return _vorbisfile
+
+
+def decode_vorbis(data):
+    """(int16 PCM [n, channels], rate, comments) as the engine decodes it."""
+    import ctypes as C
+
+    class Info(C.Structure):
+        _fields_ = [("version", C.c_int), ("channels", C.c_int), ("rate", C.c_long)]
+
+    class Comment(C.Structure):
+        _fields_ = [("user_comments", C.POINTER(C.c_char_p)), ("comment_lengths", C.POINTER(C.c_int)),
+                    ("comments", C.c_int), ("vendor", C.c_char_p)]
+
+    lib = _vf()
+    with tempfile.NamedTemporaryFile(suffix=".ogg") as t:
+        t.write(data)
+        t.flush()
+        vf = C.create_string_buffer(8192)  # OggVorbis_File is ~1 KB
+        if lib.ov_fopen(t.name.encode(), vf) != 0:
+            raise ValueError("not Ogg Vorbis")
+        try:
+            info = Info.from_address(lib.ov_info(vf, -1))
+            channels, rate = info.channels, info.rate
+            vc = Comment.from_address(lib.ov_comment(vf, -1))
+            tags = [vc.user_comments[i].decode("utf-8", "replace") for i in range(vc.comments)]
+            buf, bs, out = C.create_string_buffer(65536), C.c_int(0), []
+            while True:
+                n = lib.ov_read(vf, buf, 65536, 0, 2, 1, C.byref(bs))
+                if n < 0:
+                    raise ValueError("Vorbis decode error %d" % n)
+                if n == 0:
+                    break
+                out.append(buf.raw[:n])
+        finally:
+            lib.ov_clear(vf)
+    if channels not in (1, 2):
+        raise ValueError("%d channels" % channels)
+    return np.frombuffer(b"".join(out), np.int16).reshape(-1, channels), rate, tags
+
+
+def to_48k(pcm, rate):
+    """float32 [m, ch] at 48 kHz with m == round(n * 48000 / rate)."""
+    n, ch = pcm.shape
+    m = int(round(n * 48000 / rate))
+    if rate == 48000:
+        return pcm.astype(np.float32) / 32768.0
+    raw = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-threads", "1", "-f", "s16le", "-ar", str(rate),
+                          "-ac", str(ch), "-i", "-", "-af", "aresample=48000:resampler=soxr:precision=28",
+                          "-f", "f32le", "-"], input=pcm.tobytes(), capture_output=True, check=True).stdout
+    y = np.frombuffer(raw, np.float32).reshape(-1, ch)
+    if len(y) >= m:
+        return y[:m].copy()
+    return np.concatenate([y, np.zeros((m - len(y), ch), np.float32)])
+
+
+def _crc_table():
+    t = []
+    for i in range(256):
+        r = i << 24
+        for _ in range(8):
+            r = ((r << 1) ^ 0x04C11DB7) if r & 0x80000000 else (r << 1)
+        t.append(r & 0xFFFFFFFF)
+    return t
+
+
+_OGG_CRC = _crc_table()
+
+
+def _ogg_seal(page):
+    """Fill in an Ogg page's CRC."""
+    page[22:26] = b"\0\0\0\0"
+    c = 0
+    for b in page:
+        c = ((c << 8) & 0xFFFFFFFF) ^ _OGG_CRC[((c >> 24) & 0xFF) ^ b]
+    page[22:26] = struct.pack("<I", c)
+
+
+def ogg_pages(data):
+    pages, i = [], 0
+    while i < len(data):
+        if data[i:i + 4] != b"OggS" or i + 27 > len(data):
+            raise ValueError("bad Ogg page at %d" % i)
+        nseg = data[i + 26]
+        size = 27 + nseg + sum(data[i + 27:i + 27 + nseg])
+        pages.append(bytearray(data[i:i + size]))
+        i += size
+    return pages
+
+
+def _ogg_page(header_type, granule, serial, seq, packet):
+    lacing = [255] * (len(packet) // 255) + [len(packet) % 255]
+    if len(lacing) > 255:
+        raise ValueError("comment header too long")
+    p = bytearray(b"OggS" + struct.pack("<BBqIII", 0, header_type, granule, serial, seq, 0)
+                  + bytes([len(lacing)]) + bytes(lacing) + packet)
+    _ogg_seal(p)
+    return p
+
+
+def patch_opus(data, extra_preskip, length, tags):
+    """Raise the pre-skip by extra_preskip, end the stream so exactly `length`
+    samples decode, set the input rate to 48000, and write `tags` as the
+    comment header."""
+    pages = ogg_pages(data)
+    head = bytearray(pages[0][27 + pages[0][26]:])
+    if head[:8] != b"OpusHead":
+        raise ValueError("not Opus")
+    pre = struct.unpack_from("<H", head, 10)[0] + extra_preskip
+    if pre > 65535:
+        raise ValueError("pre-skip")
+    struct.pack_into("<H", head, 10, pre)
+    struct.pack_into("<I", head, 12, 48000)
+    serial = struct.unpack_from("<I", pages[0], 14)[0]
+    k = 1  # header pages carry granule 0
+    while k < len(pages) and struct.unpack_from("<q", pages[k], 6)[0] == 0 and not pages[k][5] & 4:
+        k += 1
+    vendor = b"Godnotic"
+    comment = [b"OpusTags", struct.pack("<I", len(vendor)), vendor, struct.pack("<I", len(tags))]
+    for t in tags:
+        b = t.encode("utf-8")
+        comment += [struct.pack("<I", len(b)), b]
+    out = [_ogg_page(2, 0, serial, 0, bytes(head)), _ogg_page(0, 0, serial, 1, b"".join(comment))]
+    end = pre + length
+    audio = pages[k:]
+    if not audio or struct.unpack_from("<q", audio[-1], 6)[0] < end:
+        raise ValueError("stream shorter than wanted")
+    for j, p in enumerate(audio):
+        struct.pack_into("<I", p, 18, 2 + j)
+        if struct.unpack_from("<q", p, 6)[0] >= end:
+            # the page the end falls in becomes the last: its granule
+            # position trims whatever decodes beyond the end
+            struct.pack_into("<q", p, 6, end)
+            p[5] |= 4
+            _ogg_seal(p)
+            out.append(p)
+            break
+        _ogg_seal(p)
+        out.append(p)
+    return b"".join(bytes(p) for p in out)
+
+
+def encode_opus(pcm48, kbps, loop, tags):
+    """Ogg Opus of float32 [m, ch] 48 kHz PCM that decodes to exactly m samples."""
+    m, ch = pcm48.shape
+    pad = min(m, 4800) if loop else 0
+    x = np.concatenate([pcm48[m - pad:], pcm48, pcm48[:pad]]) if pad else pcm48
+    r = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-threads", "1", "-f", "f32le", "-ar", "48000",
+                        "-ac", str(ch), "-i", "-", "-c:a", "libopus", "-b:a", "%dk" % kbps, "-vbr", "on",
+                        "-compression_level", "10", "-application", "audio", "-f", "ogg", "-"],
+                       input=x.astype(np.float32).tobytes(), capture_output=True, check=True).stdout
+    return patch_opus(r, pad, m, tags)
+
+
+def decode_opus(data, ch):
+    """float32 [m, ch] through libopus, the decoder the engine uses."""
+    with tempfile.NamedTemporaryFile(suffix=".opus") as t:
+        t.write(data)
+        t.flush()
+        raw = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-threads", "1", "-c:a", "libopus", "-i", t.name,
+                              "-f", "f32le", "-ac", str(ch), "-ar", "48000", "-"],
+                             capture_output=True, check=True).stdout
+    return np.frombuffer(raw, np.float32).reshape(-1, ch)
+
+
+_BAND_EDGES = [0, 100, 200, 300, 400, 510, 630, 770, 920, 1080, 1270, 1480, 1720, 2000, 2320, 2700, 3150,
+               3700, 4400, 5300, 6400, 7700, 9500, 12000, 15500, 20000]
+
+
+def _bands(x):
+    m = x.mean(1)
+    n, hop = 1024, 256
+    if len(m) < n:
+        m = np.pad(m, (0, n - len(m)))
+    frames = np.lib.stride_tricks.sliding_window_view(m, n)[::hop] * np.hanning(n)
+    power = np.abs(np.fft.rfft(frames, axis=1)) ** 2
+    f = np.fft.rfftfreq(n, 1 / 48000)
+    return np.stack([power[:, (f >= a) & (f < b)].sum(1) for a, b in zip(_BAND_EDGES[:-1], _BAND_EDGES[1:])], 1)
+
+
+def _envelope(x, w=96):
+    e = (x ** 2).mean(1)
+    k = len(e) // w
+    if k == 0:
+        return np.array([10 * np.log10(e.mean() + 1e-12)])
+    return 10 * np.log10(e[:k * w].reshape(k, w).mean(1) + 1e-12)
+
+
+def sound_distance(ref, got, loop):
+    """How far a decoded sound is from its source, in the measures SFX_MAX_* bound."""
+    n = min(len(ref), len(got))
+    r, t = ref[:n], got[:n]
+    br, bt = _bands(r), _bands(t)
+    out = {"loud": 10 * np.log10((bt[:, 1:].sum() + 1e-12) / (br[:, 1:].sum() + 1e-12))}
+    total = br.sum(1)
+    active = total > total.max() * 1e-4 if total.max() > 0 else total > 0
+    dr, dt = 10 * np.log10(br + 1e-10), 10 * np.log10(bt + 1e-10)
+    mask = (dr > dr.max(1, keepdims=True) - 50) & active[:, None]
+    out["band"] = float(np.abs(dr - dt)[mask].mean()) if mask.any() else 0.0
+    er, et = _envelope(r), _envelope(t)
+    emask = er > er.max() - 40
+    out["env"] = float(np.abs(er - et)[emask].mean()) if emask.any() else 0.0
+    peak = np.abs(r).max()
+    onset = int(np.argmax(np.abs(r).max(1) > peak * 0.1)) if peak > 0 else 0
+    out["pre"] = None
+    if onset > 480:
+        a, b = float((r[:onset] ** 2).sum()), float((t[:onset] ** 2).sum())
+        out["pre"] = 10 * np.log10((b + 1e-12) / (a + 1e-12))
+    out["seam"] = None
+    e = 480
+    if loop and n > 4 * e:
+        err = ((t - r) ** 2).mean(1)
+        out["seam"] = float(10 * np.log10((err[:e].mean() + err[-e:].mean()) / 2 + 1e-12)
+                            - 10 * np.log10(err[e:-e].mean() + 1e-12))
+    out["lendiff"] = len(got) - len(ref)
+    return out
+
+
+def whole_loop(tags, n):
+    """Whether LOOP_* comments loop the whole file (start 0, end at the end)."""
+    t = {}
+    for c in tags:
+        k, _, v = c.partition("=")
+        try:
+            t[k.upper()] = int(v)
+        except ValueError:
+            pass
+    if t.get("LOOP_START") != 0:
+        return False
+    end = t.get("LOOP_END", t.get("LOOP_LENGTH", n))
+    return end >= n
+
+
+def opus_tags(tags, rate):
+    """The comments the engine reads, LOOP_* counted in 48 kHz samples."""
+    keep = []
+    for t in tags:
+        k, _, v = t.partition("=")
+        if k.upper() in ("LOOP_START", "LOOP_END", "LOOP_LENGTH"):
+            try:
+                keep.append("%s=%d" % (k, round(int(v) * 48000 / rate)))
+            except ValueError:
+                pass
+        elif k.upper().startswith("REPLAYGAIN_"):
+            keep.append(t)
+    return keep
+
+
+def music_to_opus(name, data, kbps):
+    """A music track as exact-length Opus (streamed, so no ladder): the old
+    ffmpeg path kept LOOP_* in source samples but wrote a 48000 input rate,
+    which moved the loop points of every 44.1 kHz track (nanite: its last
+    15 s never played)."""
+    pcm, rate, tags = decode_vorbis(data)
+    ref = to_48k(pcm, rate)
+    opus = encode_opus(ref, kbps, whole_loop(tags, len(pcm)), opus_tags(tags, rate))
+    got = decode_opus(opus, ref.shape[1])
+    if len(got) != len(ref):
+        raise ValueError("decodes to %+d samples" % (len(got) - len(ref)))
+    return opus if len(opus) < len(data) else None
+
+
+def sfx_to_opus(name, data, loops):
+    """(Opus bytes or None to keep the Vorbis file, report dict)."""
+    pcm, rate, tags = decode_vorbis(data)
+    ref = to_48k(pcm, rate)
+    ch = ref.shape[1]
+    if ch == 2:
+        mid, side = ref.mean(1), (ref[:, 0] - ref[:, 1]) / 2
+        if 10 * np.log10(((side ** 2).mean() + 1e-12) / ((mid ** 2).mean() + 1e-12)) < SFX_DUALMONO_DB:
+            ref, ch = ref.mean(1, keepdims=True), 1  # the engine plays L == R stereo exactly like mono
+    loop = whole_loop(tags, len(pcm)) or name.lower() in loops
+    keep = opus_tags(tags, rate)
+    report = {"name": name, "rate": rate, "channels": pcm.shape[1], "out_channels": ch, "loop": loop,
+              "vorbis": len(data), "kbps": None, "opus": None}
+
+    def attempt(kbps):
+        opus = encode_opus(ref, kbps, loop, keep)
+        got = decode_opus(opus, ch)
+        d = sound_distance(ref, got, loop)
+        if d["lendiff"]:
+            raise ValueError("decodes to %+d samples" % d["lendiff"])
+        return opus, d
+
+    _, yard = attempt(SFX_REF[ch])
+    for kbps in (SFX_MONO if ch == 1 else SFX_STEREO):
+        opus, d = attempt(kbps)
+        if len(opus) > 0.9 * len(data):
+            break  # higher rates are only bigger
+        if (d["band"] - yard["band"] > SFX_MAX_BAND or d["env"] - yard["env"] > SFX_MAX_ENV
+                or abs(d["loud"] - yard["loud"]) > SFX_MAX_LOUD
+                or (d["pre"] is not None and yard["pre"] is not None and d["pre"] - yard["pre"] > SFX_MAX_PRE)
+                or (d["seam"] is not None and d["seam"] > SFX_MAX_SEAM)):
+            continue
+        report.update(kbps=kbps, opus=len(opus), band=round(d["band"] - yard["band"], 2),
+                      env=round(d["env"] - yard["env"], 2), loud=round(d["loud"] - yard["loud"], 2))
+        return opus, report
+    return None, report
+
+
+def looped_speakers(packs):
+    """Sounds that maps in these packs play as looped target_speakers (the
+    engine loops them from the start, whatever the file says)."""
+    import re
+    loops = set()
+    for pack in packs:
+        with zipfile.ZipFile(pack) as z:
+            for name in z.namelist():
+                if not (name.startswith("maps/") and name.endswith(".bsp")):
+                    continue
+                d = z.read(name)
+                if d[:4] != b"IBSP" or len(d) < 16:
+                    continue
+                off, ln = struct.unpack_from("<ii", d, 8)
+                for blk in re.findall(r"\{[^{}]*\}", d[off:off + ln].decode("latin1")):
+                    kv = dict(re.findall(r'"([^"]+)"\s+"([^"]*)"', blk))
+                    try:
+                        flags = int(float(kv.get("spawnflags", "0") or 0))
+                    except ValueError:
+                        flags = 0
+                    if kv.get("classname") == "target_speaker" and flags & 3 and kv.get("noise"):
+                        s = kv["noise"].lower()
+                        s = s if s.startswith("sound/") else "sound/" + s
+                        loops.add(s.rsplit(".", 1)[0] + ".ogg")
+    return loops
 
 
 # -------------------------------------------------------------------- jpeg
@@ -432,6 +814,7 @@ def repack(args, pack, textures, stats):
     converted = set()  # dds names that became ktx
     lock = threading.Lock()
     t0 = time.time()
+    sfx_reports = stats.setdefault("_sfx", [])
 
     def convert(info, data):
         name = info.filename
@@ -442,7 +825,17 @@ def repack(args, pack, textures, stats):
                 ktx = textures.encode(name, data)
                 if ktx is not None:
                     newname, newdata, kind = name[:-3] + "ktx", ktx, "textures"
-            elif ext == "ogg" and (args.audio == "all" or (args.audio == "music" and is_music(name))):
+            elif ext == "ogg" and not is_music(name) and getattr(args, "sfx", "keep") == "opus":
+                opus, report = sfx_to_opus(name, data, getattr(args, "loops", set()))
+                with lock:
+                    sfx_reports.append(report)
+                if opus is not None:
+                    newname, newdata, kind = name, opus, "audio"
+            elif ext == "ogg" and is_music(name) and args.audio in ("music", "all"):
+                opus = music_to_opus(name, data, int(args.music_rate.rstrip("kK")))
+                if opus is not None:
+                    newname, newdata, kind = name, opus, "audio"
+            elif ext == "ogg" and args.audio == "all":
                 opus = to_opus(name, data, args.music_rate, args.sfx_rate)
                 if opus is not None:
                     newname, newdata, kind = name, opus, "audio"
@@ -456,6 +849,8 @@ def repack(args, pack, textures, stats):
             err = getattr(e, "stderr", b"") or b""
             log("  %s: kept (%s %s)" % (name, e, err.decode(errors="replace").strip()[:200]))
         level = args.zstd_level if len(newdata) <= 32 << 20 else min(args.zstd_level, 15)
+        if newname.endswith(".bsp") and getattr(args, "bsp_zstd_level", 0):
+            level = args.bsp_zstd_level
         method, payload = pack_entry(newname, newdata, level)
         if kind is None:
             kind = "zstd" if method == ZIP_ZSTD else "stored"
@@ -621,7 +1016,11 @@ def main():
     ap.add_argument("--preset", default="-medium", help="astcenc quality preset (-medium)")
     ap.add_argument("--zstd-level", type=int, default=19)
     ap.add_argument("--music-rate", default="96k")
-    ap.add_argument("--sfx-rate", default="64k")
+    ap.add_argument("--sfx-rate", default="64k", help="bitrate of sound effects for --audio all")
+    ap.add_argument("--sfx", choices=("keep", "opus"), default="keep",
+                    help="opus: each Vorbis sound effect becomes Opus at the lowest bitrate that measures as close "
+                         "to the source as Opus at a generous rate, or stays Vorbis (slim: opus)")
+    ap.add_argument("--bsp-zstd-level", type=int, default=0, help="zstd level for maps/*.bsp (0: --zstd-level)")
     ap.add_argument("--jpeg-quality", type=int, default=0,
                     help="re-encode JPEGs saved at a higher quality than this (0: leave them; slim: 86)")
     ap.add_argument("--lightmap-quality", type=int, default=0,
@@ -649,6 +1048,10 @@ def main():
         textures = TextureEncoder(astcenc, args.preset, {"world": args.world_blocks, "model": args.model_blocks,
                                                           "norm": args.norm_blocks, "gfx": args.gfx_blocks}, args.max_size)
     os.makedirs(args.outdir, exist_ok=True)
+    args.loops = set()
+    if args.sfx == "opus":
+        _vf()  # fail early without libvorbisfile
+        args.loops = looped_speakers(args.packs)
 
     records, stats = [], {}
     for pack in args.packs:
@@ -659,6 +1062,13 @@ def main():
         meta = dict(m.split("=", 1) for m in args.meta if "=" in m)
         json.dump({"format": 1, "meta": meta, "packs": records}, f, indent=1)
         f.write("\n")
+    sfx = stats.pop("_sfx", [])
+    if sfx:
+        with open(os.path.join(args.outdir, "phone-sfx.tsv"), "w") as f:
+            cols = ("name", "rate", "channels", "out_channels", "loop", "vorbis", "kbps", "opus", "band", "env", "loud")
+            f.write("\t".join(cols) + "\n")
+            for r in sorted(sfx, key=lambda r: r["name"]):
+                f.write("\t".join("" if r.get(c) is None else str(r.get(c)) for c in cols) + "\n")
     with open(os.path.join(args.outdir, "phone-sizes.md"), "w") as f:
         f.write("| pack | official | phone | textures | audio | jpeg | zstd | stored | retained | dropped |\n")
         f.write("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n")
