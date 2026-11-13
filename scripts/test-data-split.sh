@@ -253,8 +253,9 @@ SPLIT=$(realpath "$1"); PHONE=$(realpath "$2")
 static_checks "$SPLIT" "$PHONE"
 [ -n "${ENGINE:-}" ] || exit 0
 
-W=$(mktemp -d "${TMPDIR:-/tmp}/data-split.XXXXXX")
-trap 'rm -rf "$W"' EXIT
+W=${WORKDIR:-$(mktemp -d "${TMPDIR:-/tmp}/data-split.XXXXXX")}
+mkdir -p "$W"
+[ -n "${WORKDIR:-}" ] || trap 'rm -rf "$W"' EXIT
 make_base "$W/full" $(phone_packs "$PHONE" "$W/packs")
 "$PY" -I - "$SPLIT" > "$W/plan" <<'EOF'
 import json, os, sys
@@ -265,6 +266,7 @@ for mp, rec in sorted(m["maps"].items()):
 EOF
 export -f engine_run; export ENGINE SECONDS_PER_MAP
 maps_of "$PHONE" > "$W/maps"
+cp "$W/maps" "$W/maps.keep"
 while read -r m packs; do
 	make_base "$W/b-$m" $packs
 	"$PY" -I -c 'import sys, zipfile; [print(n) for p in sys.argv[1:] for n in zipfile.ZipFile(p).namelist()]' $packs > "$W/names-$m"
@@ -279,10 +281,14 @@ while read -r m gt; do
 	# everything the whole set's match opened must be in this map's packs (names
 	# only: which pack holds an entry differs by construction); a run opening
 	# a little more or less on its own is noise, a name the packs lack is not
-	missing=$(comm -23 <(cut -f2 "$full.tsv" | LC_ALL=C sort -u) <(LC_ALL=C sort -u "$W/names-$m") | head -5)
+	# music is fetched after the first map and never blocks a match: not counted
+	comm -23 <(cut -f2 "$full.tsv" | grep -v '^sound/cdtracks/' | LC_ALL=C sort -u) <(LC_ALL=C sort -u "$W/names-$m") \
+		> "$W/missing-$m"
 	pat='not found|couldn.t load|Missing|could not load|failed to load|missing'
-	extra=$(comm -13 <(grep -aiE "$pat" "$full.log" | sed 's/[0-9.]\+//g' | LC_ALL=C sort -u) \
-		<(grep -aiE "$pat" "$part.log" | sed 's/[0-9.]\+//g' | LC_ALL=C sort -u) | head -5)
+	comm -13 <(grep -aiE "$pat" "$full.log" | grep -v 'BGM track' | sed 's/[0-9.]\+//g' | LC_ALL=C sort -u) \
+		<(grep -aiE "$pat" "$part.log" | grep -v 'BGM track' | sed 's/[0-9.]\+//g' | LC_ALL=C sort -u) > "$W/extra-$m"
+	missing=$(head -5 "$W/missing-$m"); extra=$(head -5 "$W/extra-$m")
+	[ -z "${REPORT:-}" ] || { sed "s/^/$m missing /" "$W/missing-$m"; sed "s/^/$m console /" "$W/extra-$m"; } >> "$REPORT"
 	opened=$(cut -f2 "$part.tsv" | sort -u | wc -l)
 	if [ ! -s "$full.tsv" ] || [ ! -s "$part.tsv" ]; then
 		echo "FAIL $m: no trace (engine did not run?)"; fail=1
@@ -291,5 +297,5 @@ while read -r m gt; do
 	else
 		echo "ok $m: $opened entries, same files and console as the whole set"
 	fi
-done < "$W/maps"
+done < "$W/maps.keep"
 exit $fail

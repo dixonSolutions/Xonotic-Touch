@@ -243,16 +243,16 @@ The download is cut so a client can play after a small part of it:
 
 | pack | astc | dxt | what |
 | --- | ---: | ---: | --- |
-| core | 57.9 MB | 195.7 MB | what the menu and any match opened (all but ~0.5 MB is opened by every match: the QuakeC precaches every registered model and sound), every mapinfo, level shot and shader script, fonts, xoncompat |
-| map-stormkeep + its shared packs | 9.6 MB | 26 MB | the first map |
+| core | 63.3 MB | 203.3 MB | what the menu and any match opened (all but ~0.5 MB is opened by every match: the QuakeC precaches every registered model and sound), all 2D pictures of the menu and HUD skins in use (`--skins luma`; drawn on demand, so a trace misses rare ones), every mapinfo, level shot and shader script, fonts, xoncompat |
+| map-stormkeep + its shared packs | 10.3 MB | 24.6 MB | the first map |
 | 30 other maps | 0.7-15.5 MB own | | bsp, lightmaps, waypoints, what only that map opened |
 | shared-N | ~40 packs | | files several maps opened, grouped by which maps use them |
 | music | 46.9 MB | 46.9 MB | the music pack, whole; fetched right after the first map |
 | detail | 7.5 MB | 7.5 MB | player LOD meshes (the QuakeC uses them only if they exist) |
-| extras | 89.8 MB | 271 MB | what no traced run opened: stock texture sets no stock map uses (community maps do), other HUD/menu skins, overkill models, the official progs (the apps ship their own) |
+| extras | 83.7 MB | 265 MB | what no traced run opened: stock texture sets no stock map uses (community maps do), other HUD/menu skins, overkill models, the official progs (the apps ship their own) |
 
-First play (core + stormkeep and its shared packs) is 67.5 MB of 370 MB for
-astc, about 220 MB of 843 MB for dxt. No entry is in two packs and the union
+First play (core + stormkeep and its shared packs) is 73.6 MB of 370 MB for
+astc, 227.9 MB of 843 MB for dxt. No entry is in two packs and the union
 is the unsplit set (the one name two official packs share,
 `scripts/shaderlist.txt`, keeps the copy the engine used).
 

@@ -137,6 +137,26 @@ def usage_from_traces(paths):
     return ["%s\t%s\t%s\n" % (k[0], k[1], ",".join(sorted(v))) for k, v in sorted(users.items())]
 
 
+def ui_picture(name, skins, entries):
+    """2D pictures the menu and HUD load when first drawn (touch_load_lazypics),
+    so a short trace misses the ones a rare dialog or panel shows: all of
+    gfx/ goes to the core except the menu and HUD skins not in use. The HUD
+    falls back to gfx/hud/default/ for a picture its skin lacks, so those
+    fallbacks come too."""
+    if not name.startswith("gfx/"):
+        return False
+    parts = name.split("/")
+    if len(parts) > 3 and parts[1] in ("menu", "hud"):
+        skin = parts[2]
+        if skin in skins:
+            return True
+        if parts[1] == "hud" and skin == "default":
+            rest = "/".join(parts[3:])
+            return not any(("data", "gfx/hud/%s/%s" % (s, rest)) in entries for s in skins)
+        return False
+    return True
+
+
 def read_usage(path):
     """{(role, key): set of users}"""
     usage = collections.defaultdict(set)
@@ -268,6 +288,7 @@ def main():
     ap.add_argument("--shared-budget", type=int, default=0,
                     help="merge shared groups while a merge makes maps fetch fewer unneeded bytes than this "
                          "(default: 3%% of the bytes maps share, about 1 MB for the ASTC set)")
+    ap.add_argument("--skins", default="luma", help="menu and HUD skins in use, comma-separated (default %(default)s)")
     ap.add_argument("--archive", action="store_true", help="also write Godnotic-data-split.zip (stored entries)")
     ap.add_argument("--archive-name", default="Godnotic-data-split.zip")
     ap.add_argument("--set-id", default="", help="manifest set id (default: <date>-<sha of the inputs>)")
@@ -277,6 +298,7 @@ def main():
     with open(os.path.join(args.phonedir, "phone-manifest.json")) as f:
         phone = json.load(f)
     usage = read_usage(args.usage)
+    skins = {x.strip() for x in args.skins.split(",") if x.strip()}
 
     # every entry of every input pack: (role, name) -> (pack path, info)
     # The engine mounts pk3s in name order, a later one shadowing an earlier
@@ -330,7 +352,7 @@ def main():
         elif role == "data":
             if any(re.match(p, name) for p in DETAIL) and "menu" not in users:
                 where[k] = "detail"
-            elif users:
+            elif users or ui_picture(name, skins, entries):
                 where[k] = "core"
             else:
                 where[k] = "extras"
