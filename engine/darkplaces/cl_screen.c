@@ -2019,6 +2019,7 @@ void SCR_PushLoadingScreen (const char *msg, float len_in_parent)
 
 	if (scr_loading)
 		CL_UpdateScreen();
+	{ extern void TouchFE_Loading(const char *, float); TouchFE_Loading(s->msg, s->absolute_loading_amount_min); } // Touch: native loading screen progress and Cancel
 	TouchHUD_LoadingAbortPoint(); // Touch: CANCEL tapped, the join stops before this item loads
 }
 
@@ -2369,6 +2370,7 @@ void CL_UpdateScreen(void)
 		VID_Finish();
 		return;
 	}
+	{ extern qbool TouchFE_SkipDraw(void); if (TouchFE_SkipDraw()) return; } // Touch: nothing to draw behind an opaque native screen
 
 	if (scr_loading)
 	{

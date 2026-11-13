@@ -19,6 +19,7 @@ are touch_rescue.h's.
 #include "touch_turn.h"
 #include "touch_pause.h"
 #include "touch_nade.h"
+#include "touch_frontend.h"
 #include "touch_tactics.h"
 
 extern cvar_t vid_touchscreen;
@@ -777,6 +778,7 @@ void TouchHook_Init(void)
 	TouchTactics_Init();
 	TouchPause_Init();
 	TouchNade_Init();
+	TouchFE_Init(); // native front-end bridge (touch_frontend.c)
 	Cvar_RegisterVariable(&cl_touch_hook_rescue);
 	Cvar_RegisterVariable(&cl_touch_hook_rescue_turn);
 	Cvar_RegisterVariable(&cl_touch_hook_rescue_range);
