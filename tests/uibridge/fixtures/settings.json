@@ -1,0 +1,430 @@
+{
+ "name": "settings",
+ "description": "Settings root: twelve sections including Mods, and Advanced.",
+ "generated": "seed",
+ "snapshot": {
+  "uib": 1,
+  "t": "snapshot",
+  "id": 2,
+  "rev": 1,
+  "root": "app",
+  "nodes": [
+   {
+    "id": "app",
+    "type": "app",
+    "props": {
+     "title": "Godnotic",
+     "stack": [
+      "home",
+      "settings"
+     ],
+     "modal": [],
+     "canBack": true,
+     "context": "menu"
+    },
+    "children": [
+     "home",
+     "settings"
+    ]
+   },
+   {
+    "id": "home",
+    "type": "screen",
+    "props": {
+     "title": "Godnotic",
+     "kind": "home",
+     "background": "asset:background",
+     "actions": [
+      {
+       "id": "quit",
+       "label": "Quit",
+       "icon": "quit",
+       "style": "secondary",
+       "confirm": {
+        "title": "Quit Godnotic?",
+        "ok": "Quit"
+       }
+      }
+     ]
+    },
+    "children": [
+     "home/banner",
+     "home/hero",
+     "home/tiles"
+    ]
+   },
+   {
+    "id": "home/banner",
+    "type": "image",
+    "props": {
+     "ref": "asset:banner",
+     "aspect": "21:9",
+     "fit": "contain",
+     "alt": "Godnotic"
+    },
+    "children": []
+   },
+   {
+    "id": "home/hero",
+    "type": "hero",
+    "props": {
+     "title": "Play",
+     "subtitle": "Continue: Stormkeep · Deathmatch · 4 bots",
+     "image": "pk3:maps/stormkeep",
+     "aspect": "16:9",
+     "featured": true,
+     "meta": [
+      {
+       "icon": "map",
+       "text": "Stormkeep"
+      },
+      {
+       "icon": "mode",
+       "text": "Deathmatch"
+      },
+      {
+       "icon": "bot",
+       "text": "4 bots"
+      }
+     ],
+     "primary": {
+      "id": "play",
+      "label": "Play",
+      "icon": "play",
+      "style": "primary"
+     },
+     "actions": [
+      {
+       "id": "quick",
+       "label": "Quick match",
+       "icon": "players"
+      },
+      {
+       "id": "sp",
+       "label": "Choose…",
+       "icon": "map"
+      }
+     ]
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles",
+    "type": "grid",
+    "props": {
+     "minItem": 200
+    },
+    "children": [
+     "home/tiles/sp",
+     "home/tiles/mp",
+     "home/tiles/settings",
+     "home/tiles/credits"
+    ]
+   },
+   {
+    "id": "home/tiles/sp",
+    "type": "card",
+    "props": {
+     "title": "Singleplayer",
+     "subtitle": "Bots, your rules",
+     "icon": "singleplayer",
+     "image": "pk3:gfx/menu/luma/gametype_dm",
+     "aspect": "16:9",
+     "primary": {
+      "id": "sp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/mp",
+    "type": "card",
+    "props": {
+     "title": "Multiplayer",
+     "subtitle": "Find a game or join by address",
+     "icon": "multiplayer",
+     "image": "pk3:gfx/menu/luma/gametype_ctf",
+     "aspect": "16:9",
+     "primary": {
+      "id": "mp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/settings",
+    "type": "card",
+    "props": {
+     "title": "Settings",
+     "subtitle": "Video, controls, Mods",
+     "icon": "settings",
+     "primary": {
+      "id": "settings",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/credits",
+    "type": "card",
+    "props": {
+     "title": "Credits",
+     "subtitle": "The people behind Xonotic and Godnotic",
+     "icon": "credits",
+     "primary": {
+      "id": "credits",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings",
+    "type": "screen",
+    "props": {
+     "title": "Settings",
+     "kind": "page"
+    },
+    "children": [
+     "settings/sections",
+     "settings/advanced"
+    ]
+   },
+   {
+    "id": "settings/sections",
+    "type": "grid",
+    "props": {
+     "minItem": 240
+    },
+    "children": [
+     "settings/sections/video",
+     "settings/sections/audio",
+     "settings/sections/game",
+     "settings/sections/input",
+     "settings/sections/touch",
+     "settings/sections/esp",
+     "settings/sections/player",
+     "settings/sections/privacy",
+     "settings/sections/updates",
+     "settings/sections/data",
+     "settings/sections/menu",
+     "settings/sections/mods"
+    ]
+   },
+   {
+    "id": "settings/sections/video",
+    "type": "card",
+    "props": {
+     "title": "Video",
+     "subtitle": "Quality, field of view, frame rate",
+     "icon": "video",
+     "density": "compact",
+     "primary": {
+      "id": "settings.video",
+      "label": "Video",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/audio",
+    "type": "card",
+    "props": {
+     "title": "Audio",
+     "subtitle": "Volume, music, voice",
+     "icon": "audio",
+     "density": "compact",
+     "primary": {
+      "id": "settings.audio",
+      "label": "Audio",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/game",
+    "type": "card",
+    "props": {
+     "title": "Game",
+     "subtitle": "Crosshair, HUD, messages",
+     "icon": "game",
+     "density": "compact",
+     "primary": {
+      "id": "settings.game",
+      "label": "Game",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/input",
+    "type": "card",
+    "props": {
+     "title": "Input",
+     "subtitle": "Mouse, keyboard and gamepad",
+     "icon": "input",
+     "density": "compact",
+     "primary": {
+      "id": "settings.input",
+      "label": "Input",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/touch",
+    "type": "card",
+    "props": {
+     "title": "Touch controls",
+     "subtitle": "Presets, HUD, aim assist, auto-shoot, tactics",
+     "icon": "touch",
+     "density": "compact",
+     "primary": {
+      "id": "settings.touch",
+      "label": "Touch controls",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/esp",
+    "type": "card",
+    "props": {
+     "title": "ESP",
+     "subtitle": "Offline matches only",
+     "icon": "esp",
+     "density": "compact",
+     "primary": {
+      "id": "settings.esp",
+      "label": "ESP",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/player",
+    "type": "card",
+    "props": {
+     "title": "Player",
+     "subtitle": "Name, model, colours",
+     "icon": "player",
+     "density": "compact",
+     "primary": {
+      "id": "settings.player",
+      "label": "Player",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/privacy",
+    "type": "card",
+    "props": {
+     "title": "Privacy",
+     "subtitle": "Statistics and identity",
+     "icon": "privacy",
+     "density": "compact",
+     "primary": {
+      "id": "settings.privacy",
+      "label": "Privacy",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/updates",
+    "type": "card",
+    "props": {
+     "title": "Updates",
+     "subtitle": "Channel and checks",
+     "icon": "update",
+     "density": "compact",
+     "primary": {
+      "id": "settings.updates",
+      "label": "Updates",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/data",
+    "type": "card",
+    "props": {
+     "title": "Data",
+     "subtitle": "Game data, downloads, cache",
+     "icon": "data",
+     "density": "compact",
+     "primary": {
+      "id": "settings.data",
+      "label": "Data",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/menu",
+    "type": "card",
+    "props": {
+     "title": "Menu",
+     "subtitle": "Size and layout",
+     "icon": "menu",
+     "density": "compact",
+     "primary": {
+      "id": "settings.menu",
+      "label": "Menu",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/mods",
+    "type": "card",
+    "props": {
+     "title": "Mods",
+     "subtitle": "Client and server mods, pages from mods",
+     "icon": "mods",
+     "density": "compact",
+     "primary": {
+      "id": "settings.mods",
+      "label": "Mods",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings/advanced",
+    "type": "button",
+    "props": {
+     "label": "Advanced settings",
+     "action": {
+      "id": "settings.advanced",
+      "label": "Advanced settings",
+      "icon": "more",
+      "style": "link"
+     },
+     "help": "Every option, in the classic settings dialogs"
+    },
+    "children": []
+   }
+  ]
+ }
+}
