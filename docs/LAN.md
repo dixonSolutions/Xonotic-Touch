@@ -28,7 +28,19 @@ so both start the same game.
 **Start hosting** starts a listen server in the game itself: you play on it as
 well. The screen then shows the port, every address others can use (one per
 network interface, e.g. `Join at: 192.168.1.23:26000 10.42.0.1:26000`) and who
-is in. **Stop hosting** (or leaving the match) ends the game for everyone.
+is in. Only interfaces others on the local network can reach are listed, Wi-Fi,
+Ethernet and hotspot ones first (`wlan*`, `swlan*` when the phone is the
+hotspot, `eth*`, ...); mobile data (`rmnet*`, `ccmni*`, ...), point-to-point
+links and VPN tunnels are left out, and the LAN search sends no broadcast on
+them either. **Stop hosting** (or leaving the match) ends the game for
+everyone. On Android a game hosted from this screen keeps running while the
+app is in the background; a bot match started from Create or Singleplayer
+pauses ([ANDROID.md](ANDROID.md)).
+
+The LAN filter on the Join screen (`net_slist_lan_only 1`) asks no master
+server: no master address is resolved and nothing is sent to one (checked by
+logging every `sendto`/`connect`/`getaddrinfo` of a search), and `net_slist`
+then prints "Searching the local network for games".
 
 What the Host screen sets, and why:
 
@@ -154,8 +166,10 @@ random UDP port. Nothing needs TCP.
 ## Tests
 
 `scripts/test-lan-logic.sh` (in CI, `.github/workflows/tests.yml`) checks the
-pure parts: directed broadcast addresses, LAN address ranges, the lock key in
-the server's status, the password reject markers and port lists.
+pure parts: directed broadcast addresses, LAN address ranges, which network
+interfaces are listed, whether a game keeps running in the Android
+background, the lock key in the server's status, the password reject markers
+and port lists.
 
 `scripts/test-lan.sh` runs the real engine end to end and needs game data, so it
 is not in CI:

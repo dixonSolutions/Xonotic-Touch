@@ -171,10 +171,13 @@ end a match, a join or a download:
   loading screen while the join runs, or to the game once it is done.
 * **First-launch data download**: carries on; when it finishes while away, a
   notification says the game is ready and the next return starts it.
-* **Local game**: paused while away (the engine waits for the return, using
-  no CPU) and running again on return.
-* **Hosting a LAN game** (or any game with more than one player slot): keeps
-  running, like a connection, so the players on it are not timed out. The
+* **Local game** (a bot match from Create or Singleplayer, whatever its
+  number of player slots): paused while away (the engine waits for the
+  return, using no CPU) and running again on return.
+* **Hosting a LAN game** (started from the Host screen), or a local game
+  another player has joined: keeps running, like a connection, so the players
+  on it are not timed out (`TouchLAN_KeepRunningInBackground` in
+  `touch_lan_logic.h`, checked by `scripts/test-lan-logic.sh`). The
   engine writes `hosting` to `touch_netstate`; the foreground service keeps
   the process, and `LanLocks` holds a Wi-Fi multicast lock and a low-latency
   Wi-Fi lock until hosting stops ([LAN.md](LAN.md)). In the main menu with nothing going
@@ -570,6 +573,25 @@ which takes the data with it. See **Signing** below.
   flame and flash came out as half-opaque boxes, and solid textures washed
   out. `gl_textures.c` now decodes DXT1/3/5 texel by texel, at the same size
   as before (two mip levels below full, or the picmip level if smaller).
+  The DXT textures the phone packs keep (ASTC was bigger only because KTX
+  entries are stored without zstd) are still decoded that way: on stormkeep
+  132 of them, 22 ms of decoding and 19 MB uploaded; at full size
+  (`r_texture_dds_swdecode_reduce 0`) they would take about 300 MB.
+  `r_texture_astc_stats` prints both counts.
+- **What a game loaded late is loaded under the next loading screen**
+  (`touch_preload`, `engine/darkplaces/touch_preload.h`). Lazy loading
+  (`mod_lazyload`, `snd_lazyload`) took the stormkeep load on the Tab Active5
+  from 11.4 s to 3.7 s but left the frame where the bots join at 240-270 ms
+  (their player models, LODs and first weapons load through `setmodel`).
+  Every model, HUD picture, sound and GLSL permutation loaded on first use in
+  a game is written to `<userdir>/data/touch_preload/<map>.txt` and loaded
+  before the first frame of the next game on that map (a built-in list on a
+  map's first game): the load then takes 4.6-5.0 s and no frame in the first
+  10 s goes over about 65 ms except the bots' arrival (server code and the
+  first draw of their models, as with lazy loading off). `touch_preload 0`
+  turns it off, `touch_preload_budget` caps it (ms), `touch_preload_keep`
+  says after how many games an unused entry goes, `developer_loading 1`
+  prints each late load.
 - **The particle atlas is sized from the texture that was made**, not from
   `image_width`, which the DDS loader never sets.
 - **`touch_perf_version 5`** puts `cl_particles` back on and `r_buffermegs_*`
