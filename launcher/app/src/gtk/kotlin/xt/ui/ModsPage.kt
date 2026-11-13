@@ -7,13 +7,43 @@ import gtk.*
 import kotlinx.cinterop.*
 import xt.core.*
 
-/** Lists the folders in [dir] as the engine's Lua mod manager sees them. Runs on an I/O thread. */
+/**
+ * Lists the folders in [dir] as the engine's Lua mod manager sees them, with
+ * their permission state from <userdir>/luastate/<mods|plugins>/grants/.
+ * Runs on an I/O thread.
+ */
 fun scanMods(dir: String): List<ModEntry> {
     val enabled = Sys.readText("$dir/enabled.txt")?.let { Mods.parseEnabled(it) } ?: emptySet()
+    val realm = dir.trimEnd('/').substringAfterLast('/')
+    val grants = dir.trimEnd('/').substringBeforeLast('/') + "/luastate/$realm/grants"
     return Sys.list(dir).filter { Mods.isModName(it) && Sys.isDir("$dir/$it") }.map { name ->
         val info = Sys.readText("$dir/$name/mod.txt", 16384)?.let { Mods.parseInfo(it) }
-        Mods.entry(name, info, enabled, Sys.exists("$dir/$name/init.lua"))
+        val g = if (Sys.exists("$grants/$name.txt")) Sys.readText("$grants/$name.txt", 256) else null
+        Mods.entry(name, info, enabled, Sys.exists("$dir/$name/init.lua"), g, withPermissions = true)
     }
+}
+
+/**
+ * "Install from a file": the path of a .zip (or a mod folder) goes to the game,
+ * which shows what it asks for in its Mods tab before installing anything
+ * (docs/PLUGIN_STANDARD.md). The launcher never unpacks or enables a mod itself.
+ */
+fun installGroup(ctx: Ctx, userDir: String): Widget {
+    var path = ""
+    var plugin = false
+    val g = group("Install from a file",
+        "A mod's .zip (or folder). The game checks it and shows what it asks for; it installs switched off, with no permissions.")
+    g.add(entryRow("Path to the .zip", "") { path = it.trim() })
+    g.add(switchRow("It is a server plugin", "Off: a client mod", false) { plugin = it })
+    val go = actionRow("Review it in the game", "Start the game: Settings, Mobile, Mods shows the review", "system-software-install-symbolic")
+    go.suffix(button("Send", null, "suggested-action") {
+        val text = Mods.installRequest(plugin, path)
+        val dir = "$userDir/luastate/incoming"
+        val ok = path.isNotEmpty() && text != null && Sys.exists(path) && run { Sys.mkdirs(dir); Sys.writeText("$dir/request.txt", text) }
+        ctx.toast(if (ok) "Start the game to review ${path.substringAfterLast('/')}" else "No such file, or the path has quotes or semicolons")
+    })
+    g.add(go)
+    return g
 }
 
 /**
@@ -83,9 +113,11 @@ fun modsPage(ctx: Ctx): Widget {
         "Lua mods that run in your game: HUD, sounds, helpers. A new mod starts off.",
         "No mods yet. Put a mod folder with an init.lua here:")
     val intro = label(
-        "Mods run in a sandbox: no files, no network, only the cvars and commands the game allows. " +
+        "Mods run in a sandbox: no files, no network, only the cvars and commands the game allows, " +
+            "and only the permissions you grant (in the game: Settings, Mobile, Mods). " +
             "Server plugins are on the Host page.", "dim-label", wrap = true, xalign = 0f)
     gtk_label_set_justify(intro.cast(), GtkJustification.GTK_JUSTIFY_LEFT)
-    val content = vbox(18, intro, client.group).margins(24, 16, 32, 16)
+    val install = installGroup(ctx, ctx.paths.modsDir.substringBeforeLast('/'))
+    val content = vbox(18, intro, client.group, install).margins(24, 16, 32, 16)
     return scrolled(clamp(content, 720))
 }

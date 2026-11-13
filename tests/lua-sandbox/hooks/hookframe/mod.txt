@@ -1,0 +1,3 @@
+api: 2
+realm: server
+permissions: hooks

@@ -1018,16 +1018,37 @@ qbool TLua_Has(tlua_mod_t *m, unsigned permission)
 	return tlua_has(m, permission);
 }
 
+// the requested scopes not granted yet, comma separated ("" when none)
+static void tlua_missing(tlua_mod_t *m, char *out, size_t outsize)
+{
+	int i;
+	out[0] = 0;
+	for (i = 0; tlua_permissions[i].name; i++)
+		if ((m->requested & tlua_permissions[i].bit) && !(m->granted & tlua_permissions[i].bit))
+		{
+			if (out[0])
+				dp_strlcat(out, ", ", outsize);
+			dp_strlcat(out, tlua_permissions[i].name, outsize);
+		}
+}
+
 void TLua_Require(lua_State *L, unsigned permission)
 {
 	tlua_mod_t *m = TLua_Self(L);
+	char missing[256];
+	const char *name = "?";
 	int i;
 	if (tlua_has(m, permission))
 		return;
 	for (i = 0; tlua_permissions[i].name; i++)
 		if (tlua_permissions[i].bit == permission)
-			luaL_error(L, "permission denied: %s", tlua_permissions[i].name);
-	luaL_error(L, "permission denied");
+			name = tlua_permissions[i].name;
+	// name every scope still missing, so one grant step fixes all of them
+	tlua_missing(m, missing, sizeof(missing));
+	if (!(m->requested & permission))
+		luaL_error(L, "permission denied: %s (not requested in mod.txt)", name);
+	luaL_error(L, "permission denied: %s; not granted yet: %s (grant them in Mods, or %s%s_permission %s grant all)",
+		name, missing, m->realm->cmdprefix, m->realm == &tlua_server ? "plugin" : "mod", m->name);
 }
 
 static int tlua_on(lua_State *L)
@@ -1351,6 +1372,24 @@ static int tlua_load_saved(lua_State *L)
 	return 1;
 }
 
+// xt.setting(name): the value of one of the settings its mod.txt declares
+// (the cvar <prefix><mod>_<name>); its own, so no permission is needed
+static int tlua_setting(lua_State *L)
+{
+	tlua_mod_t *m = TLua_Self(L);
+	const char *name = luaL_checkstring(L, 1);
+	char cv[96];
+	int i;
+	for (i = 0; i < m->numsettings; i++)
+		if (!strcmp(m->settings[i].name, name))
+			break;
+	if (i == m->numsettings)
+		return luaL_error(L, "xt.setting: '%s' is not declared in mod.txt (setting.%s: ...)", name, name);
+	dpsnprintf(cv, sizeof(cv), "%s%s_%s", m->realm->cmdprefix, m->name, name);
+	lua_pushstring(L, Cvar_VariableString(&cvars_all, cv, ~0));
+	return 1;
+}
+
 static int tlua_realtime(lua_State *L)
 {
 	TLua_Require(L, TLUA_PERM_STATE);
@@ -1589,6 +1628,7 @@ static void tlua_openxt(lua_State *L, tlua_mod_t *m)
 	TLua_SetField(L, "realtime", tlua_realtime);
 	TLua_SetField(L, "save", tlua_save);
 	TLua_SetField(L, "load", tlua_load_saved);
+	TLua_SetField(L, "setting", tlua_setting);
 	TLua_SetField(L, "after", tlua_after);
 	TLua_SetField(L, "every", tlua_every);
 	TLua_SetField(L, "cancel", tlua_cancel);
@@ -2370,8 +2410,14 @@ static void tlua_settings_cvars(tlua_mod_t *m)
 		cvar_t *v;
 		dpsnprintf(name, sizeof(name), "%s%s_%s", m->realm->cmdprefix, m->name, st->name);
 		v = Cvar_FindVar(&cvars_all, name, ~0);
-		if (v && !(v->flags & CF_ALLOCATED))
-			continue; // an engine cvar: never touched
+		if (v)
+		{
+			// the player's value (from config.cfg, or set before the mod was
+			// seen) stays; Cvar_Get would put the default back
+			if (v->flags & CF_ALLOCATED)
+				v->flags |= CF_ARCHIVE;
+			continue;
+		}
 		if (Cmd_Exists(cmd_local, name))
 			continue;
 		dpsnprintf(desc, sizeof(desc), "setting of Lua %s %s: %s", m->realm->kind, m->name, st->label);
@@ -2458,10 +2504,16 @@ static const char *tlua_statename(const tlua_mod_t *m)
 
 static void tlua_detail_add(char *buf, size_t size, const char *key, const char *value)
 {
-	char clean[1024];
+	char clean[1024], *p;
 	dp_strlcat(buf, key, size);
 	dp_strlcat(buf, "\t", size);
-	dp_strlcat(buf, TLua_CleanText(value, clean, sizeof(clean), false), size);
+	// fields of a perm, setting or command line are tab separated: keep the
+	// tabs, every other control character goes
+	dp_strlcpy(clean, value, sizeof(clean));
+	for (p = clean; *p; p++)
+		if (*p != '\t' && ((unsigned char)*p < 32 || *p == 127))
+			*p = ' ';
+	dp_strlcat(buf, clean, size);
 	dp_strlcat(buf, "\n", size);
 }
 
@@ -2834,7 +2886,15 @@ static void tlua_enable_f(cmd_state_t *cmd)
 		tlua_start(m);
 	tlua_updatestatus(r);
 	TLua_Log(m, "turned on");
-	TLua_Say("Lua %s %s: %s", r->kind, m->name, tlua_statename(m));
+	{
+		char missing[256];
+		tlua_missing(m, missing, sizeof(missing));
+		if (missing[0])
+			TLua_Say("Lua %s %s: %s; it asks for permissions not granted: %s (%s_permission %s grant all)", r->kind, m->name, tlua_statename(m), missing,
+				r == &tlua_server ? "sv_lua_plugin" : "lua_mod", m->name);
+		else
+			TLua_Say("Lua %s %s: %s", r->kind, m->name, tlua_statename(m));
+	}
 }
 
 static void tlua_disable_f(cmd_state_t *cmd)
@@ -3005,26 +3065,55 @@ static void tlua_permission_f(cmd_state_t *cmd)
 		return;
 	}
 	action = Cmd_Argv(cmd, 2); name = Cmd_Argv(cmd, 3);
-	for (i = 0; tlua_permissions[i].name; i++) if (!strcmp(name, tlua_permissions[i].name)) break;
-	if (!tlua_permissions[i].name || (strcmp(action, "grant") && strcmp(action, "revoke")))
+	if (strcmp(action, "grant") && strcmp(action, "revoke"))
 	{
-		Con_Printf("unknown action or permission\n"); return;
+		TLua_Say("unknown action %s (grant or revoke)", action); return;
 	}
-	if (!strcmp(action, "grant") && (!(m->requested & tlua_permissions[i].bit) || m->manifest_error))
+	// one scope, a comma separated list, or "all" (everything it requests)
+	mask = 0;
+	if (!strcmp(name, "all"))
+		mask = m->requested;
+	else
 	{
-		TLua_Say("permission %s is not requested by %s, or its manifest is invalid", name, m->name); return;
+		char list[256], *tok;
+		dp_strlcpy(list, name, sizeof(list));
+		for (tok = strtok(list, ","); tok; tok = strtok(NULL, ","))
+		{
+			for (i = 0; tlua_permissions[i].name; i++) if (!strcmp(tok, tlua_permissions[i].name)) break;
+			if (!tlua_permissions[i].name)
+			{
+				TLua_Say("unknown permission %s", tok); return;
+			}
+			if (!strcmp(action, "grant") && (!(m->requested & tlua_permissions[i].bit) || m->manifest_error))
+			{
+				TLua_Say("permission %s is not requested by %s, or its manifest is invalid", tok, m->name); return;
+			}
+			mask |= tlua_permissions[i].bit;
+		}
 	}
-	mask = !strcmp(action, "grant") ? m->granted | tlua_permissions[i].bit : m->granted & ~tlua_permissions[i].bit;
+	if (m->manifest_error && !strcmp(action, "grant"))
+	{
+		TLua_Say("%s: its manifest is invalid, nothing can be granted", m->name); return;
+	}
+	mask = !strcmp(action, "grant") ? m->granted | mask : m->granted & ~mask;
 	tlua_grantpath(m, dir, sizeof(dir), file, sizeof(file));
 	dpsnprintf(text, sizeof(text), "%s %x\n", m->scoped ? "v1" : "legacy", mask);
 	if (!tlua_writestate(dir, file, text, true)) { TLua_Say("could not save permissions"); return; }
 	m->granted = mask;
-	tlua_updatestatus(r);
 	if (r == &tlua_server)
 		TLua_Hooks_Changed();
 	TLua_Log(m, "%s %s", !strcmp(action, "grant") ? "granted" : "revoked", name);
-	TLua_Say("Lua %s %s: %s %s%s", r->kind, m->name, action, name,
-		!strcmp(action, "grant") && m->state == TLUA_ERROR ? " (reload it to retry)" : "");
+	// a grant is what a mod stopped by "permission denied" waited for: start it again
+	if (!strcmp(action, "grant") && m->enabled && m->state == TLUA_ERROR && r->loaded && r->enable->integer)
+	{
+		tlua_stop(m);
+		m->error[0] = 0;
+		tlua_start(m);
+		TLua_Say("Lua %s %s: granted %s, restarted: %s", r->kind, m->name, name, tlua_statename(m));
+	}
+	else
+		TLua_Say("Lua %s %s: %s %s", r->kind, m->name, action, name);
+	tlua_updatestatus(r);
 }
 
 // ---------------------------------------------------------------------------
@@ -3087,6 +3176,34 @@ static void tlua_shutdown_hook(void)
 		tlua_sv_shutdown_next();
 }
 
+// Registers a Lua cvar the first time the Lua code runs, which is after the
+// config (and a command line "set") may already have created it as a plain
+// allocated cvar. Cvar_RegisterVariable's "replace an allocated cvar" path
+// leaves the hash table pointing at the freed one (DarkPlaces notes it is
+// unused, since engine cvars register before the config), which crashed the
+// next lookup. So: keep the value, delete the allocated cvar the way "unset"
+// does, register, and put the value back.
+void TLua_RegisterCvar(cvar_t *var);
+void TLua_RegisterCvar(cvar_t *var)
+{
+	cvar_t *old = Cvar_FindVar(&cvars_all, var->name, ~0);
+	char saved[1024], line[256];
+	qbool had = old && (old->flags & CF_ALLOCATED);
+	if (had)
+	{
+		dp_strlcpy(saved, old->string, sizeof(saved));
+		dpsnprintf(line, sizeof(line), "unset %s", var->name);
+		Cmd_ExecuteString(cmd_local, line, strlen(line), src_local, false);
+		if (Cvar_FindVar(&cvars_all, var->name, ~0))
+			had = false; // could not be removed (an autocvar): leave it alone
+	}
+	if (!had && old)
+		return;
+	Cvar_RegisterVariable(var);
+	if (had)
+		Cvar_SetQuick(var, saved);
+}
+
 void TLua_InitOnce(void)
 {
 	static qbool done;
@@ -3094,17 +3211,17 @@ void TLua_InitOnce(void)
 		return;
 	done = true;
 	tlua_inited = true;
-	Cvar_RegisterVariable(&sv_lua_status);
-	Cvar_RegisterVariable(&lua_select);
-	Cvar_RegisterVariable(&lua_detail);
-	Cvar_RegisterVariable(&lua_last);
-	Cvar_RegisterVariable(&lua_memory_mb);
-	Cvar_RegisterVariable(&lua_instructions);
-	Cvar_RegisterVariable(&lua_time_ms);
-	Cvar_RegisterVariable(&cl_lua_enable);
-	Cvar_RegisterVariable(&sv_lua_enable);
-	Cvar_RegisterVariable(&cl_lua_status);
-	Cvar_RegisterVariable(&cl_lua_permissions);
+	TLua_RegisterCvar(&sv_lua_status);
+	TLua_RegisterCvar(&lua_select);
+	TLua_RegisterCvar(&lua_detail);
+	TLua_RegisterCvar(&lua_last);
+	TLua_RegisterCvar(&lua_memory_mb);
+	TLua_RegisterCvar(&lua_instructions);
+	TLua_RegisterCvar(&lua_time_ms);
+	TLua_RegisterCvar(&cl_lua_enable);
+	TLua_RegisterCvar(&sv_lua_enable);
+	TLua_RegisterCvar(&cl_lua_status);
+	TLua_RegisterCvar(&cl_lua_permissions);
 	TLua_Guard(&lua_memory_mb);
 	TLua_Guard(&lua_instructions);
 	TLua_Guard(&lua_time_ms);

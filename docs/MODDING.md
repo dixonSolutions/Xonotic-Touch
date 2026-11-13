@@ -10,6 +10,11 @@ Godnotic runs **Lua 5.4** scripts in a sandbox:
   local match or a dedicated server) and react to the game: connects, spawns, deaths,
   damage, chat, item pickups, `cmd` commands, map changes, match end.
 
+**[PLUGIN_STANDARD.md](PLUGIN_STANDARD.md)** is the standard: package format, manifest,
+API levels, lifecycle (install → review → enable → update → uninstall), permission
+scopes, hooks, long-running work and the stability promise. This page is the API
+reference; [LUA_HOOKS.md](LUA_HOOKS.md) lists the 172 game hooks plugins can use.
+
 The userdir is `~/.xonotic` on Linux (inside the Flatpak: `~/.var/app/<id>/.xonotic`),
 the app's files folder on Android. A mod is a folder with an `init.lua`.
 
@@ -26,6 +31,7 @@ their includes and one QC include:
 | `engine/darkplaces/keys.c` | `TouchLua_KeyEvent(...)` | each game key (not Escape): mods may take it |
 | `engine/darkplaces/sv_main.c` | `TouchLua_SV_InstallBuiltins(prog);` | gives the server VM the `touch_lua_event` builtin (#1740) |
 | `engine/darkplaces/csprogs.c` | `TouchLua_ServerText();` | in `CL_VM_Parse_StuffCmd`: a server put text in the command buffer, so the manager refuses changes until it has run |
+| `engine/darkplaces/libcurl.c` | `if (TouchLua_CurlProtocols(...)) ...` | a mod download (and its redirects) may only use HTTPS |
 | `qcsrc/server/progs.inc` | `#include <server/touch_lua.qc>` | the Touch mutator that reports game events |
 
 Cvars and console commands are registered from Touch code on first use, and the build
@@ -53,7 +59,12 @@ The same state from the console:
 | `lua_mod_enable <name>` | `sv_lua_plugin_enable <name>` | turn on (kept in `mods/enabled.txt` / `plugins/enabled.txt`) |
 | `lua_mod_disable <name>` | `sv_lua_plugin_disable <name>` | turn off |
 | `lua_mod_reload [name]` | `sv_lua_plugin_reload [name]` | restart one or all, clearing errors |
-| `lua_mod_info <name>` | `sv_lua_plugin_info <name>` | folder, memory, error, events, commands |
+| `lua_mod_info <name>` | `sv_lua_plugin_info <name>` | folder, memory, error, events, hooks, commands, settings, permissions with reasons |
+| `lua_mod_log <name> [n]` | `sv_lua_plugin_log <name> [n]` | its recent `print` output, errors and manager notes |
+| `lua_mod_install <zip/folder/https-url>` | `sv_lua_plugin_install ...` | check a package and show its review; `lua_install_confirm` / `lua_install_cancel` / `lua_install_status` |
+| `lua_mod_update <name> [src]` | `sv_lua_plugin_update ...` | fetch again (recorded source, or `update:`) and review |
+| `lua_mod_uninstall <name> [keepdata]` | `sv_lua_plugin_uninstall ...` | remove folder, grants and source record |
+| `lua` / `lua_help` | `sv_lua_hooks [all]` | every manager command with one line of help / the hooks, subscribers and their cost |
 
 `cl_lua_enable` / `sv_lua_enable` are the master switches. `enabled.txt` stays next to
 the mod folders (the launcher reads and writes it too); the engine replaces it through a
@@ -130,6 +141,11 @@ Scopes never expand the client/server API or its existing allowlists. For exampl
 `exec` cannot run arbitrary console commands, and client `players` does not reveal
 other players' positions. Server plugins already have more information than client
 mods because they run on the host.
+
+API 2 adds `hooks` (watch the game's mutator hooks, server) and `hooks_write` (change
+their outputs, cancel them); see PLUGIN_STANDARD.md. A call without its scope names
+every scope still missing. Grant several at once with a comma list or `all`;
+granting what a stopped mod was missing restarts it.
 
 Inspect and change grants from the local console:
 
@@ -277,7 +293,11 @@ a bot match.
 | `xt.save(key, text)` / `xt.load(key)` | text up to 64 KB in `<mod>/data/<key>.txt` (up to 64 keys; never through a symlink or a hard link) |
 | `xt.realtime()` | seconds since the game started |
 | `xt.modname`, `xt.realm`, `xt.apiversion` | `"hello"`, `"client"`/`"server"`, `"1"` |
-| `print(...)` | to the console as `[mod] ...` (64 lines per call) |
+| `print(...)` | to the console as `[mod] ...` (64 lines per call), and the mod's output log |
+| `xt.setting(name)` | the value of a setting its `mod.txt` declares (API 2; no permission) |
+| `xt.after(s, fn)`, `xt.every(s, fn)`, `xt.cancel(id)` | timers (API 2; `every` 0 = each frame, `fn` returning false stops it) |
+| `xt.spawn(fn)`, `xt.sleep(s)` | a coroutine the engine resumes; `xt.sleep` pauses it (API 2). The way to do continuous work: PLUGIN_STANDARD.md §7 |
+| `xt.apimax` | the newest API level this engine runs (2) |
 
 Both realms also have an `unload` event, run when the mod is turned off and when the
 engine quits.
@@ -312,6 +332,8 @@ Calls:
 | `xt.ingame()`, `xt.islocal()`, `xt.map()`, `xt.time()` | match state, local server, map, game time |
 | `xt.me()` | `{health, armor, weapon, alive, name, frags, color}` (yourself only) |
 | `xt.players()` | scoreboard: `{ {name, frags, color, slot, me}, ... }` |
+| `xt.reserved()` | rectangles of the touch HUD and game HUD (`{name, x, y, w, h}`), with `display` |
+| `xt.freespot(w, h [, side])` | `x, y` for a panel clear of those, with `display` |
 
 `xt.draw.*` only works inside `hud` and `draw`.
 
@@ -378,6 +400,9 @@ Players are numbers `1..maxplayers`; `0` means the world or not a player.
 | `xt.player(id)` | `{id, name, bot, frags, spectator, team, health, armor, alive, origin = {x, y, z}}` |
 | `xt.tell(id, text)` / `xt.centerprint(id, text)` / `xt.broadcast(text)` | messages (10 a second per player, 5 broadcasts a second, for all plugins together) |
 | `xt.map()`, `xt.time()`, `xt.maxplayers()` | |
+| `xt.hook(name, fn)` | subscribe to a game hook (`hooks`; outputs and cancel with `hooks_write`), [LUA_HOOKS.md](LUA_HOOKS.md) |
+| `xt.entity(n)` | `{id, classname, netname, player, owner, health, team, origin}` of a hook's entity number (`hooks`) |
+| `xt.hooknames()` | every hook name (`hooks`) |
 
 Settable cvars: `g_balance_*`, `g_start_weapon_*`, `g_pickup_*`, the mutator switches
 (`g_instagib`, `g_nix`, `g_grappling_hook`, `g_vampire`, `g_midair`, `g_jetpack`,
@@ -397,9 +422,14 @@ Servers with `sv_threaded 1` run no plugins.
 
 ## Engine side
 
-`engine/darkplaces/touch_lua.c` (sandbox, limits, manager, common API),
+`engine/darkplaces/touch_lua.c` (sandbox, limits, manager, common API, timers),
+`touch_lua_pkg.c` (packages: zip reader, bounded inflater, sha256, install, update,
+uninstall, downloads), `touch_lua_hooks.c` with the generated `touch_lua_hooks_gen.h`
+(the hook bridge; builtins #1741-#1752),
 `touch_lua_cl.c` (client realm), `touch_lua_sv.c` (server realm, builtin #1740),
 `touch_lua_lib.h` (`xt.ui`), `touch_lua_vm.c` (Lua compiled as one unit, with the
 time-limit hooks for `lstrlib.c` and `ltablib.c` and the reset after an aborted frame)
 and `touch_lua54/` (Lua 5.4.8 from lua.org, MIT, unmodified). The game side is
-`qcsrc/server/touch_lua.qc`.
+`qcsrc/server/touch_lua.qc` and the generated `qcsrc/server/touch_lua_hooks.qc`.
+`scripts/test-lua-packages.sh` tests packages, the archive attacks, updates,
+uninstall, server text and the hook bridge in a bot match.

@@ -1,21 +1,36 @@
 #pragma once
 
-// Settings -> Mobile -> Mods: the Lua client mods in <userdir>/mods
-// (docs/MODDING.md). The list is the engine's read-only _cl_lua_mods cvar, one
-// line per mod: name<TAB>state<TAB>title<TAB>error<TAB>description; the engine
-// rescans the folder every two seconds while the menu is open. Every action is
-// a console command the engine checks itself (lua_mod_enable / _disable /
-// _reload / _info), so nothing here can do more than the console can.
+// Settings -> Mobile -> Mods: the manager for Lua client mods (<userdir>/mods)
+// and server plugins (<userdir>/plugins), docs/PLUGIN_STANDARD.md.
 //
-// On Android, "Import mod" asks the platform layer (ModImport.java) to pick a
-// .zip and unpack it into the mods folder, through the same file handshake the
-// updater uses (touch_update_util.qh): the menu writes
-// touch/mod-import-request.txt, ModImport writes touch/mod-import-status.txt.
-// The button only shows where that status file exists.
+// One tab with five views: the list (client mods or server plugins), a mod's
+// details (permissions with the author's reasons and a switch each, settings,
+// recent output, events/hooks/commands), Install (a link or a file), the
+// review shown before anything is installed, and the confirmation before an
+// uninstall. Rows are finger-sized; everything works with a mouse too.
+//
+// The tab never changes anything itself: every action is the console command
+// the engine checks (lua_mod_enable, lua_mod_permission, lua_mod_install,
+// lua_install_confirm, lua_mod_uninstall and the sv_lua_plugin_* twins), so a
+// change made in the console shows up here and the other way round. What it
+// shows comes from read-only cvars the engine keeps current:
+//   _cl_lua_mods / _sv_lua_plugins  name<TAB>state<TAB>title<TAB>error<TAB>description per line
+//   _lua_detail                     the mod _lua_select names ("mod x" / "plugin x"): key<TAB>value lines
+//   _lua_install                    the pending install: state, manifest, permissions
+//   _lua_last                       the manager's last message
+//
+// Android: "Pick a file" asks the platform layer (ModImport.java) through the
+// file handshake of touch_update_util.qh: the menu writes
+// touch/mod-import-request.txt; ModImport copies the picked .zip to
+// <userdir>/luastate/incoming/ and writes "picked <time> <path>" to
+// touch/mod-import-status.txt; the menu then runs lua_mod_install on it, so the
+// engine checks and reviews it like any other package. The button only shows
+// where that status file exists.
 
 #include "tab.qh"
 #include "textlabel.qh"
 #include "touchbutton.qh"
+#include "inputbox.qh"
 
 CLASS(GodnoticModsTab, XonoticTab)
 	METHOD(GodnoticModsTab, fill, void(entity));
@@ -26,8 +41,8 @@ CLASS(GodnoticModsTab, XonoticTab)
 ENDCLASS(GodnoticModsTab)
 entity makeGodnoticModsTab();
 
-// A finger-sized button whose text and action follow one mod slot of the
-// current page (or a page / list action).
+// A finger-sized button whose text and action follow one slot of the
+// current view (or a page / bar action).
 CLASS(GodnoticModsButton, GodnoticButton)
 	METHOD(GodnoticModsButton, draw, void(entity));
 	ATTRIB(GodnoticModsButton, modSlot, int, 0);
@@ -43,6 +58,13 @@ CLASS(GodnoticModsLabel, XonoticTextLabel)
 	ATTRIB(GodnoticModsLabel, allowColors, bool, true);
 	ATTRIB(GodnoticModsLabel, allowCut, bool, true);
 ENDCLASS(GodnoticModsLabel)
+
+// The link / path field of the Install view (hidden in the other views)
+CLASS(GodnoticModsInput, XonoticInputBox)
+	METHOD(GodnoticModsInput, draw, void(entity));
+	METHOD(GodnoticModsInput, mousePress, bool(entity, vector));
+	METHOD(GodnoticModsInput, keyDown, float(entity, float, float, float));
+ENDCLASS(GodnoticModsInput)
 
 const string TOUCH_MODS_IMPORT_REQUEST_FILE = "touch/mod-import-request.txt";
 const string TOUCH_MODS_IMPORT_STATUS_FILE = "touch/mod-import-status.txt";

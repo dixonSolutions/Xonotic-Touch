@@ -75,6 +75,7 @@ static cvar_t lua_install_insecure_localhost = {CF_CLIENT | CF_SERVER, "lua_inst
 static cvar_t lua_install_state = {CF_CLIENT | CF_SERVER | CF_READONLY, "_lua_install", "", "the pending Lua install for the Mods dialog: key<TAB>value lines"};
 
 void TLua_Guard(struct cvar_s *var);
+void TLua_RegisterCvar(struct cvar_s *var);
 
 // ---------------------------------------------------------------------------
 // SHA-256 (FIPS 180-4)
@@ -1015,7 +1016,7 @@ static void tlua_pkg_review(const char *stem)
 		p->oldscoped = old->scoped;
 	}
 	p->state = TLUA_PKG_REVIEW;
-	dpsnprintf(p->message, sizeof(p->message), "%s %s: review the permissions, then install (it stays off; nothing is granted)", p->update ? "Update" : "Install", m->name);
+	dpsnprintf(p->message, sizeof(p->message), p->update ? "Update %s: review the permissions, then update (it stays on or off; new permissions stay ungranted)" : "Install %s: review the permissions, then install (it stays off; nothing is granted)", m->name);
 }
 
 static void tlua_pkg_print(void)
@@ -1055,7 +1056,7 @@ static void tlua_pkg_print(void)
 	if (added)
 		Con_Printf("  ^3this update asks for new permissions; they stay ungranted until you grant them^7\n");
 	Con_Printf("  ^2lua_install_confirm^7 installs it (it stays %s), ^1lua_install_cancel^7 drops it\n", p->update ? "on or off as it is" : "off");
-	dpsnprintf(p->message, sizeof(p->message), "%s %s: review the permissions, then install (it stays off; nothing is granted)", p->update ? "Update" : "Install", m->name);
+	dpsnprintf(p->message, sizeof(p->message), p->update ? "Update %s: review the permissions, then update (it stays on or off; new permissions stay ungranted)" : "Install %s: review the permissions, then install (it stays off; nothing is granted)", m->name);
 }
 
 // the package bytes (an archive) arrived: check, unpack in memory, review
@@ -1686,13 +1687,44 @@ static void tlua_update_f(cmd_state_t *cmd)
 		tlua_pkg_fail("that package is %s, not %s", tlua_pkg.info.name, m->name);
 }
 
+// The launcher (or anything outside the game) asks for an install by leaving
+// <userdir>/luastate/incoming/request.txt: "mod <path>" or "plugin <path>". It
+// is read once, at the first frame, removed, and goes through the same review;
+// the Mods tab opens on it. Only the user's own files can put it there.
+static void tlua_pkg_request(void)
+{
+	char path[1024], buf[1100], *p;
+	tlua_realm_t *r;
+	dpsnprintf(path, sizeof(path), "%sluastate/incoming/request.txt", fs_userdir);
+	if (TLua_ReadState(path, buf, sizeof(buf)) <= 0)
+		return;
+	remove(path);
+	buf[strcspn(buf, "\r\n")] = 0;
+	if (!strncmp(buf, "mod ", 4))
+		r = &tlua_client, p = buf + 4;
+	else if (!strncmp(buf, "plugin ", 7))
+		r = &tlua_server, p = buf + 7;
+	else
+		return;
+	Con_Printf("Lua: install requested from outside the game: %s\n", p);
+	tlua_pkg_begin(r, p, NULL);
+	if (cls.state != ca_dedicated)
+		Cbuf_AddText(cmd_local, "\ntogglemenu 1\nmenu_cmd directmenu touchmods\n");
+}
+
 void TLua_Pkg_Frame(void)
 {
 	static unsigned lastframe;
 	static double lastpub;
+	static qbool asked;
 	if (lastframe == host.framecount)
 		return;
 	lastframe = host.framecount;
+	if (!asked)
+	{
+		asked = true;
+		tlua_pkg_request();
+	}
 	if (tlua_pkg.state == TLUA_PKG_DOWNLOADING && host.realtime - lastpub > 0.5)
 	{
 		lastpub = host.realtime;
@@ -1703,8 +1735,8 @@ void TLua_Pkg_Frame(void)
 
 void TLua_Pkg_Setup(void)
 {
-	Cvar_RegisterVariable(&lua_install_insecure_localhost);
-	Cvar_RegisterVariable(&lua_install_state);
+	TLua_RegisterCvar(&lua_install_insecure_localhost);
+	TLua_RegisterCvar(&lua_install_state);
 	TLua_Guard(&lua_install_insecure_localhost);
 	Cmd_AddCommand(CF_CLIENT, "lua_mod_install", tlua_install_f, "review a Lua client mod package (.zip, folder or https:// URL[#sha256=...]) before installing it");
 	Cmd_AddCommand(CF_CLIENT, "lua_mod_update", tlua_update_f, "fetch a Lua client mod again from where it came from (or a given file or URL) and review it");

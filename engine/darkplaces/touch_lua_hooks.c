@@ -51,6 +51,7 @@ static cvar_t lua_hook_ms = {CF_SERVER | CF_ARCHIVE, "lua_hook_ms", "5", "time l
 static cvar_t lua_hook_frame_ms = {CF_SERVER | CF_ARCHIVE, "lua_hook_frame_ms", "25", "time a Lua plugin may spend in hook calls per frame, in milliseconds (1-200); past it the plugin is stopped"};
 
 void TLua_Guard(struct cvar_s *var);
+void TLua_RegisterCvar(struct cvar_s *var);
 
 static char tlua_key_hooks; // registry: hook name -> { handlers }
 
@@ -643,8 +644,8 @@ static void tlua_hooks_reset_f(cmd_state_t *cmd)
 
 void TLua_Hooks_Setup(void)
 {
-	Cvar_RegisterVariable(&lua_hook_ms);
-	Cvar_RegisterVariable(&lua_hook_frame_ms);
+	TLua_RegisterCvar(&lua_hook_ms);
+	TLua_RegisterCvar(&lua_hook_frame_ms);
 	TLua_Guard(&lua_hook_ms);
 	TLua_Guard(&lua_hook_frame_ms);
 	Cmd_AddCommand(CF_SERVER, "sv_lua_hooks", tlua_hooks_f, "list the game's mutator hooks Lua plugins subscribe to, with call counts and cost (all: every hook)");
