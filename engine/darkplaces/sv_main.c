@@ -1270,6 +1270,7 @@ static void SV_Download_f(cmd_state_t *cmd)
 
 		Con_DPrintf("Downloading %s to %s\n", host_client->download_name, host_client->name);
 
+		if(host_client->download_deflate) TouchLoad_EnsureCSQCDeflated(); // Touch: compressed on first request
 		if(host_client->download_deflate && svs.csqc_progdata_deflated)
 			host_client->download_file = FS_FileFromData(svs.csqc_progdata_deflated, svs.csqc_progsize_deflated, true);
 		else
@@ -1744,6 +1745,7 @@ static void SV_Prepare_CSQC(void)
 		dp_strlcpy(sv.csqc_progname, csqc_progname.string, sizeof(sv.csqc_progname));
 		Con_DPrintf("server detected csqc progs file \"%s\" with size %i and crc %i\n", sv.csqc_progname, sv.csqc_progsize, sv.csqc_progcrc);
 
+		if (TouchLoad_DeferCSQCDeflate()) return; // Touch: compressed when a client first asks for it
 		Con_DPrint("Compressing csprogs.dat\n");
 		//unsigned char *FS_Deflate(const unsigned char *data, size_t size, size_t *deflated_size, int level, mempool_t *mempool);
 		TouchLoadTime_Begin(TLT_DEFLATE); // Touch: load-time phases

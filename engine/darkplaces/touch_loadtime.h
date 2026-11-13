@@ -93,6 +93,12 @@ extern void (*touch_model_loadsome)(void);
 qbool TouchLoad_SbarDefer(void (*start)(void));
 void TouchLoad_SbarEnsure(void);
 
+// SV_Prepare_CSQC deflated csprogs.dat (4 MB) at every map start for a
+// client that might download it with deflate. touch_load_lazydeflate 1:
+// it is deflated when a client first asks for it.
+qbool TouchLoad_DeferCSQCDeflate(void);
+void TouchLoad_EnsureCSQCDeflated(void);
+
 // The menu precaches every picture of its skin at start (107 on the phone
 // packs, each one or two JPEG decodes). touch_load_lazypics 1: a menu
 // precache_pic of a file that exists only remembers the name and flags; the

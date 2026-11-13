@@ -42,6 +42,7 @@ static cvar_t touch_load_restless = {CF_CLIENT, "touch_load_restless", "0", "do 
 
 static cvar_t touch_load_lazysbar = {CF_CLIENT, "touch_load_lazysbar", "1", "Xonotic: cache the engine status bar's Quake pictures when the engine HUD is first drawn instead of at every renderer start (Godnotic); 0 = at renderer start"};
 static cvar_t touch_load_lazypics = {CF_CLIENT, "touch_load_lazypics", "1", "the menu's precache_pic only notes a picture that exists; it loads when first drawn (Godnotic); 0 = load at precache"};
+static cvar_t touch_load_lazydeflate = {CF_SERVER, "touch_load_lazydeflate", "1", "deflate csprogs.dat when a client first downloads it instead of at every map start (Godnotic)"};
 static cvar_t touch_loadtime_menu = {CF_CLIENT | CF_READONLY, "_touch_loadtime_menu", "0", "1 once the main menu has drawn its first frame (for scripts that wait for it)"};
 static cvar_t touch_loadtime_game = {CF_CLIENT | CF_READONLY, "_touch_loadtime_game", "0", "counts loads that reached their first game frame (for scripts that wait for one)"};
 
@@ -420,6 +421,22 @@ qbool TouchModel_CSQCPrecache(prvm_prog_t *prog, model_t *m)
 	return true;
 }
 
+qbool TouchLoad_DeferCSQCDeflate(void)
+{
+	return touch_load_lazydeflate.integer != 0;
+}
+
+void TouchLoad_EnsureCSQCDeflated(void)
+{
+	size_t deflated_size = 0;
+	if (!svs.csqc_progdata || svs.csqc_progdata_deflated || sv.csqc_progsize <= 0)
+		return;
+	TouchLoadTime_Begin(TLT_DEFLATE);
+	svs.csqc_progdata_deflated = FS_Deflate(svs.csqc_progdata, sv.csqc_progsize, &deflated_size, -1, sv_mempool);
+	TouchLoadTime_End(TLT_DEFLATE);
+	svs.csqc_progsize_deflated = (int)deflated_size;
+}
+
 float TouchLoadTime_MaxFPS(float maxfps)
 {
 	// no frame limiter: CL_Frame then runs every host frame on the real
@@ -489,6 +506,7 @@ void TouchLoadTime_Init(void)
 	Cvar_RegisterVariable(&touch_load_restless);
 	Cvar_RegisterVariable(&touch_load_lazysbar);
 	Cvar_RegisterVariable(&touch_load_lazypics);
+	Cvar_RegisterVariable(&touch_load_lazydeflate);
 	Cvar_RegisterVariable(&touch_loadtime_menu);
 	Cvar_RegisterVariable(&touch_loadtime_game);
 	Cmd_AddCommand(CF_CLIENT | CF_SERVER, "touch_loadtime_start", TouchLoadTime_Start_f, "start timing a load now (put it before map or connect); touch_loadtime 1 prints the result at the first game frame");
