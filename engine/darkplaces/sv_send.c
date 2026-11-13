@@ -20,6 +20,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "sv_demo.h"
+#include "touch_net.h" // Touch: datagram size on small-MTU paths
 
 extern cvar_t sv_airaccel_qw_stretchfactor;
 extern cvar_t sv_qcstats;
@@ -1512,6 +1513,7 @@ static void SV_SendClientDatagram (client_t *client)
 		// never limit frequency in singleplayer
 		clientrate = 1000000000;
 	}
+	TouchNet_ClampDatagram(host_client->netconnection, &maxsize, &maxsize2); // Touch: no IP fragments on a small-MTU path such as a VPN (touch_net.c)
 
 	// while downloading, limit entity updates to half the packet
 	// (any leftover space will be used for downloading)

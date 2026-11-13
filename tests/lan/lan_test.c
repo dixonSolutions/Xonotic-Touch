@@ -88,20 +88,68 @@ static void test_ports(void)
 
 static void test_interfaces(void)
 {
-	const int up = TOUCHLAN_IF_UP;
-	CHECK(TouchLAN_InterfaceRank("wlan0", up) == 2, "Wi-Fi");
-	CHECK(TouchLAN_InterfaceRank("swlan0", up) == 2, "Samsung hotspot");
-	CHECK(TouchLAN_InterfaceRank("ap0", up) == 2 && TouchLAN_InterfaceRank("softap0", up) == 2, "hotspot");
-	CHECK(TouchLAN_InterfaceRank("eth0", up) == 2 && TouchLAN_InterfaceRank("enp3s0", up) == 2 && TouchLAN_InterfaceRank("wlp2s0", up) == 2, "desktop names");
-	CHECK(TouchLAN_InterfaceRank("rndis0", up) == 2 && TouchLAN_InterfaceRank("bt-pan", up) == 2, "tethering");
+	const int up = TOUCHLAN_IF_UP | TOUCHLAN_IF_BROADCAST, p2p = TOUCHLAN_IF_UP | TOUCHLAN_IF_POINTOPOINT;
+	char label[64];
+	CHECK(TouchLAN_InterfaceRank("wlan0", up) == 4, "Wi-Fi");
+	CHECK(TouchLAN_InterfaceRank("swlan0", up) == 4, "Samsung hotspot");
+	CHECK(TouchLAN_InterfaceRank("ap0", up) == 4 && TouchLAN_InterfaceRank("softap0", up) == 4, "hotspot");
+	CHECK(TouchLAN_InterfaceRank("eth0", up) == 4 && TouchLAN_InterfaceRank("enp3s0", up) == 4 && TouchLAN_InterfaceRank("wlp2s0", up) == 4, "desktop names");
+	CHECK(TouchLAN_InterfaceRank("rndis0", up) == 4 && TouchLAN_InterfaceRank("bt-pan", up) == 4, "tethering");
 	CHECK(TouchLAN_InterfaceRank("rmnet0", up) == 0 && TouchLAN_InterfaceRank("rmnet_data1", up) == 0, "Qualcomm/Exynos modem");
 	CHECK(TouchLAN_InterfaceRank("ccmni0", up) == 0, "MediaTek modem");
 	CHECK(TouchLAN_InterfaceRank("v4-rmnet_data0", up) == 0 && TouchLAN_InterfaceRank("clat4", up) == 0, "464XLAT");
-	CHECK(TouchLAN_InterfaceRank("tun0", up) == 0, "VPN");
-	CHECK(TouchLAN_InterfaceRank("wlan0", up | TOUCHLAN_IF_POINTOPOINT) == 0, "point-to-point");
+	CHECK(TouchLAN_InterfaceRank("rmnet0", p2p) == 0, "a point-to-point modem stays hidden");
 	CHECK(TouchLAN_InterfaceRank("lo", up | TOUCHLAN_IF_LOOPBACK) == 0, "loopback");
 	CHECK(TouchLAN_InterfaceRank("wlan0", 0) == 0, "down");
+	CHECK(TouchLAN_InterfaceRank("sit0", up) == 0 && TouchLAN_InterfaceRank("gre0", up) == 0, "non-VPN tunnels");
 	CHECK(TouchLAN_InterfaceRank("br0", up) == 1 && TouchLAN_InterfaceRank("docker0", up) == 1, "other: listed last");
+	// VPNs are listed, after the LAN; which ones get broadcast
+	CHECK(TouchLAN_InterfaceKind("tailscale0", p2p) == TOUCHLAN_KIND_VPN_L3, "Tailscale: routed");
+	CHECK(TouchLAN_InterfaceKind("tun0", p2p) == TOUCHLAN_KIND_VPN_L3, "Android VPN app tun0: routed");
+	CHECK(TouchLAN_InterfaceKind("wg0", TOUCHLAN_IF_UP) == TOUCHLAN_KIND_VPN_L3, "WireGuard: routed");
+	CHECK(TouchLAN_InterfaceKind("nebula1", up) == TOUCHLAN_KIND_VPN_L3, "Nebula by name");
+	CHECK(TouchLAN_InterfaceKind("wlan0", p2p) == TOUCHLAN_KIND_VPN_L3, "any point-to-point link: unicast");
+	CHECK(TouchLAN_InterfaceKind("ztabcdef12", up) == TOUCHLAN_KIND_VPN_L2, "ZeroTier: broadcast");
+	CHECK(TouchLAN_InterfaceKind("tap0", up) == TOUCHLAN_KIND_VPN_L2 && TouchLAN_InterfaceKind("ham0", up) == TOUCHLAN_KIND_VPN_L2, "tap, Hamachi: broadcast");
+	CHECK(TouchLAN_InterfaceKind("zt0", TOUCHLAN_IF_UP) == TOUCHLAN_KIND_VPN_L3, "no broadcast flag: unicast");
+	CHECK(TouchLAN_InterfaceRank("tailscale0", p2p) == 2 && TouchLAN_InterfaceRank("zt0", up) == 3, "VPN ranks");
+	TouchLAN_InterfaceLabel("wlan0", TOUCHLAN_KIND_LOCAL, label, sizeof(label));
+	CHECK(!strcmp(label, "Wi-Fi"), "label Wi-Fi");
+	TouchLAN_InterfaceLabel("swlan0", TOUCHLAN_KIND_LOCAL, label, sizeof(label));
+	CHECK(!strcmp(label, "Hotspot"), "label hotspot");
+	TouchLAN_InterfaceLabel("enp3s0", TOUCHLAN_KIND_LOCAL, label, sizeof(label));
+	CHECK(!strcmp(label, "Ethernet"), "label Ethernet");
+	TouchLAN_InterfaceLabel("tailscale0", TOUCHLAN_KIND_VPN_L3, label, sizeof(label));
+	CHECK(!strcmp(label, "VPN (tailscale0)"), "label VPN");
+}
+
+static void test_sweep(void)
+{
+	uint32_t first;
+	int count;
+	CHECK(TouchLAN_SweepHosts(ip(10, 66, 0, 7), 0xffffff00u, &first, &count) == 254 && first == ip(10, 66, 0, 1), "/24: 254 hosts");
+	CHECK(TouchLAN_SweepHosts(ip(10, 66, 4, 7), 0xfffffc00u, &first, &count) == 1022 && first == ip(10, 66, 4, 1), "/22: 1022 hosts");
+	CHECK(TouchLAN_SweepHosts(ip(10, 66, 0, 7), 0xfffff800u, &first, &count) == 0, "/21: too big");
+	CHECK(TouchLAN_SweepHosts(ip(100, 115, 126, 72), 0xffffffffu, &first, &count) == 0, "Tailscale /32: none");
+	CHECK(TouchLAN_SweepHosts(ip(10, 0, 0, 1), 0xfffffffeu, &first, &count) == 0, "/31: none");
+	CHECK(TouchLAN_SweepHosts(ip(10, 0, 0, 1), 0xff00ff00u, &first, &count) == 0, "not a prefix");
+}
+
+static void test_join_string(void)
+{
+	char out[128];
+	CHECK(TouchLAN_ParseJoin("godnotic://join/100.101.102.103:26000", out, sizeof(out)) && !strcmp(out, "100.101.102.103:26000"), "link");
+	CHECK(TouchLAN_ParseJoin("  GODNOTIC://JOIN/10.0.0.2:26001/ ", out, sizeof(out)) && !strcmp(out, "10.0.0.2:26001"), "link, any case, slash, spaces");
+	CHECK(TouchLAN_ParseJoin("192.168.1.20", out, sizeof(out)) && !strcmp(out, "192.168.1.20"), "plain address");
+	CHECK(TouchLAN_ParseJoin("[fd7a:115c:a1e0::ff28:7e49]:26000", out, sizeof(out)) && !strcmp(out, "[fd7a:115c:a1e0::ff28:7e49]:26000"), "IPv6");
+	CHECK(TouchLAN_ParseJoin("host.tailnet.ts.net:26000", out, sizeof(out)), "a name");
+	CHECK(!TouchLAN_ParseJoin("10.0.0.2; quit", out, sizeof(out)), "no commands");
+	CHECK(!TouchLAN_ParseJoin("\"x\"", out, sizeof(out)) && !TouchLAN_ParseJoin("", out, sizeof(out)), "junk");
+	CHECK(TouchLAN_IsLanIPv4(ip(25, 1, 2, 3)) && TouchLAN_IsLanIPv4(ip(26, 1, 2, 3)), "Hamachi, Radmin");
+	{
+		const unsigned char ts[16] = {0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0}, ll[16] = {0xfe, 0x80}, g[16] = {0x2a, 0x01};
+		CHECK(TouchLAN_UsableIPv6(ts) && TouchLAN_UsableIPv6(g) && !TouchLAN_UsableIPv6(ll), "IPv6 kinds");
+	}
 }
 
 static void test_background(void)
@@ -118,6 +166,8 @@ static void test_background(void)
 int main(void)
 {
 	test_interfaces();
+	test_sweep();
+	test_join_string();
 	test_background();
 	test_broadcast();
 	test_lan_address();

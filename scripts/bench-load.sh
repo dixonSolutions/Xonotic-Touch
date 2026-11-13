@@ -13,7 +13,9 @@
 #   join:NAME[:MS]    a dedicated server runs NAME; a second process connects
 #                     to 127.0.0.1 from its main menu; MS adds that much
 #                     one-way delay to loopback (tc netem in a user+network
-#                     namespace, so RTT = 2*MS). LOSS=<percent> adds loss.
+#                     namespace, so RTT = 2*MS). LOSS=<percent> adds loss,
+#                     NETEM="reorder 25% 50% duplicate 2%" any other netem
+#                     options (docs/NETWORK.md).
 #
 # Environment:
 #   BASEDIR   game data dir holding data/ (required)
@@ -21,6 +23,8 @@
 #   LIBS      extra LD_LIBRARY_PATH (e.g. a dir with libjpeg.so.62)
 #   W, H      window size (default 1280x720, offscreen SDL)
 #   MENU_IDLE seconds spent in the menu before the load starts (default 1)
+#   SV_ENGINE dedicated server binary for join: (default: ENGINE -dedicated)
+#   SV_EXTRA  extra +args for that server (e.g. "+set net_reliable_window 0")
 #
 # Cold runs evict the pk3s, the engine and its data dir from the page cache
 # with posix_fadvise(DONTNEED) (no root needed); warm runs read them once
@@ -156,12 +160,14 @@ run_join() { # map delay_ms run
 	# shellcheck disable=SC2016
 	unshare -rn bash -c '
 		ip link set lo up
-		if [ "$1" != 0 ] || [ -n "${LOSS:-}" ]; then
-			tc qdisc add dev lo root netem delay "${1}ms" ${LOSS:+loss ${LOSS}%}
+		if [ "$1" != 0 ] || [ -n "${LOSS:-}" ] || [ -n "${NETEM:-}" ]; then
+			# shellcheck disable=SC2086
+			tc qdisc add dev lo root netem delay "${1}ms" ${LOSS:+loss ${LOSS}%} ${NETEM:-}
 		fi
 		shift
 		sv=$1; slog=$2; cl=$3; log=$4; map=$5; port=$6; shift 6
-		"$sv" -dedicated -xonotic -basedir "$BASEDIR" -userdir "$SVU" +set port "$port" +set sv_public 0 +map "$map" > "$slog" 2>&1 &
+		# shellcheck disable=SC2086
+		"$sv" -dedicated -xonotic -basedir "$BASEDIR" -userdir "$SVU" +set port "$port" +set sv_public 0 ${SV_EXTRA:-} +map "$map" > "$slog" 2>&1 &
 		svpid=$!
 		# the server takes a few seconds to load its map; the client only
 		# connects once at its menu, and retries until the server answers
@@ -169,7 +175,7 @@ run_join() { # map delay_ms run
 		sleep 1
 		timeout 180 "$cl" "$@" > "$log" 2>&1 || true
 		kill $svpid 2>/dev/null; wait $svpid 2>/dev/null || true
-	' bash "$ms" "$ENGINE" "$slog" "$ENGINE" "$log" "$map" "$port" $(engine_args "$u") +exec bench-job.cfg
+	' bash "$ms" "${SV_ENGINE:-$ENGINE}" "$slog" "$ENGINE" "$log" "$map" "$port" $(engine_args "$u") +exec bench-job.cfg
 	echo "$log"
 }
 

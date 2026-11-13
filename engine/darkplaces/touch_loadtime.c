@@ -31,6 +31,7 @@ as they arrive. Neither applies in the menu or in the game.
 #include "libcurl.h"
 #include "touch_loadfs.h"
 #include "touch_loadcvar.h"
+#include "touch_net.h"
 #include "image.h"
 #ifdef __linux__
 #include <unistd.h>
@@ -315,6 +316,10 @@ void TouchLoadTime_Frame(void)
 
 qbool TouchLoadTime_Restless(void)
 {
+	// net_signon_fast: the signon runs without the frame limiter, and
+	// TouchNet_Sleep waits for the server's packets instead of spinning
+	if (TouchNet_FastSignon())
+		return true;
 	if (!touch_load_restless.integer || cls.state == ca_dedicated)
 		return false;
 	if (cls.demoplayback || cls.timedemo)
@@ -363,6 +368,13 @@ static int TL_FindLazyPic(const char *name)
 	return -1;
 }
 
+#ifndef CONFIG_MENU
+// a dedicated server build has no menu VM: nothing to defer
+qbool TouchLoad_LazyPrecachePic(prvm_prog_t *prog, const char *name, unsigned int flags)
+{
+	return false;
+}
+#else
 qbool TouchLoad_LazyPrecachePic(prvm_prog_t *prog, const char *name, unsigned int flags)
 {
 	static const char *const forms[] = {"dds/%s.dds", "dds/%s.ktx", "%s.tga", "%s.png", "%s.jpg", "%s.pcx"};
@@ -394,6 +406,7 @@ qbool TouchLoad_LazyPrecachePic(prvm_prog_t *prog, const char *name, unsigned in
 	tl_numlazypics++;
 	return true;
 }
+#endif
 
 unsigned int TouchLoad_PicFlags(const char *path, unsigned int flags)
 {
@@ -508,7 +521,10 @@ double TouchLoadTime_SleepTime(double sleeptime)
 		else
 			sleeptime = 0.001;
 	}
-	return sleeptime;
+	// the frame's work, then a signon on either side: wake up for the peer's
+	// packets
+	TouchNet_Frame(Sys_DirtyTime() - host.dirtytime);
+	return TouchNet_Sleep(sleeptime);
 }
 
 void TouchLoadTime_Init(void)

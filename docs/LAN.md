@@ -28,11 +28,10 @@ so both start the same game.
 **Start hosting** starts a listen server in the game itself: you play on it as
 well. The screen then shows the port, every address others can use (one per
 network interface, e.g. `Join at: 192.168.1.23:26000 10.42.0.1:26000`) and who
-is in. Only interfaces others on the local network can reach are listed, Wi-Fi,
+is in. Only interfaces others can reach are listed, Wi-Fi,
 Ethernet and hotspot ones first (`wlan*`, `swlan*` when the phone is the
-hotspot, `eth*`, ...); mobile data (`rmnet*`, `ccmni*`, ...), point-to-point
-links and VPN tunnels are left out, and the LAN search sends no broadcast on
-them either. **Stop hosting** (or leaving the match) ends the game for
+hotspot, `eth*`, ...), then VPN ones (see "Playing over a VPN"); mobile data
+(`rmnet*`, `ccmni*`, ...) is left out, and the LAN search sends nothing there. **Stop hosting** (or leaving the match) ends the game for
 everyone. On Android a game hosted from this screen keeps running while the
 app is in the background; a bot match started from Create or Singleplayer
 pauses ([ANDROID.md](ANDROID.md)).
@@ -131,6 +130,129 @@ valuable:
   it with `crypto_aeslevel` 2 or 3, encrypts the connection, the join proof
   included. Without it nothing is encrypted.
 
+## Playing over a VPN
+
+Overlay and mesh VPNs (Tailscale or Headscale, ZeroTier, WireGuard,
+Hamachi or Radmin-style, OpenVPN tap or tun, Nebula, NetBird) let friends
+play a "LAN" game across the internet. Godnotic treats every VPN interface as
+a first-class network: the Host screen lists its address, and the LAN search
+asks the games behind it. Different players may use different VPNs, or
+several at once: each address is just another way in.
+
+**Which interfaces are which** (`TouchLAN_InterfaceKind`, touch_lan_logic.h):
+
+| kind | interfaces | the LAN search |
+|---|---|---|
+| LAN | `wlan*` `wl*` `eth*` `en*`, hotspot `ap*` `swlan*` `softap*`, tethering `rndis*` `usb*` `ncm*` `bt-pan` `bnep*` | broadcast to the subnet (as before) |
+| Ethernet-like VPN | ZeroTier `zt*`, OpenVPN `tap*`, Hamachi `ham*`, n2n `edge*`, `vpn*` with broadcast | broadcast: these carry it |
+| routed VPN | Tailscale `tailscale*`, WireGuard `wg*`, `tun*`/`utun*` (also every Android VPN app), Nebula `nebula*`, NetBird `wt*`, IPsec, NordLynx, Mullvad; and **any point-to-point or non-broadcast interface** | unicast probes: the subnet is swept when it is small, otherwise known peers are asked |
+| hidden | cellular `rmnet*` `ccmni*` `clat*` `v4-*` `pdp*` `wwan*` `ppp*`, `sit` `gre` `dummy` and other non-VPN tunnels, loopback | nothing; never listed |
+
+**The Host screen** shows every LAN and VPN address, LAN first:
+`touch_lan_status` prints them labelled, and the engine keeps them in cvars
+for the UIs:
+
+```
+Join at: 192.168.1.20:26000 100.101.102.103:26000 [fd7a:115c:a1e0::ff28:7e49]:26000
+  Wi-Fi 192.168.1.20:26000
+  VPN (tailscale0) 100.101.102.103:26000
+  VPN (tailscale0) [fd7a:115c:a1e0::ff28:7e49]:26000
+Join link: godnotic://join/192.168.1.20:26000
+```
+
+IPv6 is listed for VPN interfaces only and only when the address is unique
+local (`fc00::/7`: Tailscale's `fd7a:115c:a1e0::/48`, ZeroTier's RFC 4193 and
+6plane) or global: the engine's address strings drop a link-local address's
+scope, so `fe80::` could not be joined.
+
+**Finding a game behind a VPN.** On each LAN search (Join screen with LAN
+ticked, or `net_slist`), in addition to the broadcasts above:
+
+1. **Remembered hosts**: every game this device joined on a LAN or VPN address
+   (private, CGNAT 100.64/10, Hamachi 25/8, Radmin 26/8, IPv6 unique local),
+   and every address added with `lan_addhost`, is asked directly: the exact
+   `address:port` remembered, or ports 26000-26004 when it has no port. Up to
+   32, newest first, kept in `data/touch_lan_hosts.txt`.
+2. **Subnet sweep** of each routed VPN interface whose prefix is /22 to /30
+   (a WireGuard /24, say): a `getinfo` to every host address on each LAN port,
+   `net_slist_lan_sweeps` passes (2), at most `net_slist_lan_sweeprate` (2000)
+   packets a second. A /24 is 254 x 5 = 1270 packets, 0.64 s a pass; a /22
+   is 5110 packets, 2.6 s a pass; each packet is 46 bytes of UDP payload. A
+   /31, a /32 (Tailscale gives each node one in 100.64.0.0/10) or anything
+   bigger than /22 is not swept.
+3. **The VPN's own peer list**, when it can be read without asking anyone:
+   Tailscale's LocalAPI on desktop Linux (`GET /localapi/v0/status` on
+   `/run/tailscale/tailscaled.sock`, which tailscaled lets the desktop user
+   read; read only, no credentials). Every peer's Tailscale IPv4 address gets
+   a `getinfo` on ports 26000-26004. Not available in the Flatpak sandbox
+   (the socket is not mounted) or on Android (no such socket for apps);
+   ZeroTier's local API needs its root-only auth token, so it is not used
+   (ZeroTier carries broadcast anyway). `net_slist_lan_tailscale 0` turns it
+   off.
+
+**Sharing a game without discovery.** The host screen's join link
+(`touch_lan_join_link`, `godnotic://join/ADDRESS:PORT`) or any of its
+`address:port`s can be sent to a friend, who pastes it into **Join by
+address** or runs `lan_join <link>`. Joining remembers the host.
+
+**Engine commands and cvars for the UIs** (QuakeC menu, Android native UI,
+launcher):
+
+| name | what |
+|---|---|
+| `touch_lan_addresses` | hosting: the join addresses, space separated (as before; VPN and IPv6 ones added) |
+| `touch_lan_address_labels` | hosting: `label\|address` pairs separated by `;`, e.g. `Wi-Fi\|192.168.1.20:26000;VPN (tailscale0)\|100.101.102.103:26000` |
+| `touch_lan_join_link` | hosting: `godnotic://join/ADDRESS:PORT` of the first address (a QR code of it is up to the UI) |
+| `lan_join <link or address>` | connect from a join string |
+| `lan_addhost <link or address>` | remember a host to ask on every LAN search |
+| `lan_forgethost [address]` | stop asking one, or all |
+| `lan_hosts`, `touch_lan_hosts` | the remembered hosts (cvar: space separated, newest first) |
+| `net_slist_lan_sweeps`, `net_slist_lan_sweeprate`, `net_slist_lan_tailscale` | the probing above |
+
+A launcher that queries LAN games itself matches the engine by sending the
+same `\377\377\377\377getinfo <challenge>` (DarkPlaces' server list query) to:
+the directed broadcast of every LAN and Ethernet-like VPN interface on ports
+26000-26004 (three times, 0.35 s apart); every remembered host (the lines of
+`data/touch_lan_hosts.txt`, `address:port`, or ports 26000-26004 when a line
+has no port); every host of each routed VPN interface whose prefix is /22 to
+/30, on ports 26000-26004, at most 2000 packets a second, two passes; and,
+where it can read it, every Tailscale peer's IPv4 on ports 26000-26004. A
+reply is `\377\377\377\377infoResponse\n\\key\\value...` from the server's
+address and port.
+
+**Firewalls and VPN rules.** The VPN must let UDP 26000-26004 through between
+the players' nodes: Tailscale ACLs need an accept rule for those ports (the
+default "allow all" policy has it); ZeroTier flow rules must not drop UDP or
+broadcast (the default rules allow both); a WireGuard peer's `AllowedIPs`
+must cover the other player's VPN address. The host's own firewall must let
+UDP 26000 in on the VPN interface too (`firewall-cmd --zone=trusted
+--add-interface=tailscale0`, or open the port).
+
+**MTU.** Overlays have small MTUs (Tailscale 1280, WireGuard often 1420).
+The server asks the system for the route MTU to each client (`IP_MTU` on a
+connected UDP socket, every 10 s) and keeps that client's datagrams inside
+it, headers included, so nothing is an IP fragment (`net_mtu` sets the MTU by
+hand; 0 is automatic). Reliable fragments are at most 1060 bytes on the wire
+and the connect and query packets are smaller still, so every packet fits
+1280. Relayed VPN paths add 100-300 ms of round trip; the join's windowed
+reliable channel ([NETWORK.md](NETWORK.md)) keeps the join fast there.
+
+**Mixed cases.** A host on Wi-Fi and a VPN serves both at once (it listens on
+every interface; a LAN friend joins its Wi-Fi address, a VPN friend its VPN
+address). A client with two VPNs up finds a game behind either. A client whose
+VPN is up while the host is only on the plain LAN finds it by the Wi-Fi
+broadcast as before. The join password is bound to the challenge the server
+sent to the address the client connects from, so it works the same on every
+path.
+
+**Android.** A VPN app's interface is a `tun*` the engine sees in its
+interface list without extra permissions, and sending to it needs none. When
+the VPN routes everything (no "allow LAN" or split tunnel), the subnet
+broadcasts for the real Wi-Fi LAN may be routed into the VPN instead of the
+Wi-Fi by Android's per-app routing; most VPN apps have an option to exclude
+the local network, and the remembered hosts and join links still work. This
+was not tried on a device.
+
 ## Ports and firewalls
 
 The host listens on **UDP 26000** (or the port you chose); the search goes out
@@ -153,7 +275,8 @@ random UDP port. Nothing needs TCP.
   client isolation? Try **Address** with the host screen's `Join at:` address:
   if that times out too, the network is blocking device-to-device traffic.
 - **Found, but joining times out.** A firewall that lets broadcasts out but not
-  the game in, or a VPN on one device: turn the VPN off.
+  the game in. On a VPN: the VPN's own rules (Tailscale ACLs, ZeroTier flow
+  rules) or the host's firewall on the VPN interface; see "Playing over a VPN".
 - **"Port 26000 is in use".** Another copy of the game, a dedicated server or
   another app has it. Take the offered next port; the search covers 26000-26004.
 - **The other player is missing the map.** Host one of the stock maps, which
@@ -190,6 +313,26 @@ search alone (no address typed, no master server asked); the game's status
 carries the lock key; joining with no password and with a wrong one is refused
 with the right reason; joining with the right one connects; the password is in
 no log; and the host lists the joined player.
+
+Then two VPN-like links are added between the same namespaces: `tailscale0`,
+a routed /32 on each side with a peer route and a 1280 MTU (Tailscale's
+setup), and `wg0`, a /24 with a 1420 MTU (WireGuard's). The host lists both
+addresses, labelled; a LAN search finds the game behind `wg0` by the unicast
+sweep and behind `tailscale0` as a remembered host (`lan_addhost`); a client
+joins over `tailscale0` with the password; a capture on that link shows the
+largest UDP payload and that no packet was an IP fragment; and a new search
+finds the VPN game again without being told (it was remembered on join).
+
+What that proves and what not: the interface kinds, labels, sweep,
+remembered hosts, join link, the password over a VPN address and the MTU
+clamp, on routed links that carry no broadcast as an L3 overlay. Not tried
+with real VPN software: Tailscale's or WireGuard's own encapsulation and
+relays, ZeroTier's L2 broadcast (an Ethernet-like link behaves like the LAN
+link above), Hamachi or Radmin, a VPN app's `tun` on Android, and Android's
+per-app routing when a VPN carries all traffic. This machine's tailscaled
+answers the LocalAPI status request for the desktop user (checked by hand,
+read only: 11 "TailscaleIPs" entries); the engine's probing of real
+Tailscale peers was not run, and no game behind a real VPN peer was joined.
 
 What that proves: the engine's discovery, password and port handling across a
 real (virtual) Ethernet link between two network stacks, including the
