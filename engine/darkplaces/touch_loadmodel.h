@@ -18,6 +18,8 @@
 // World and brush models (*.bsp, *N submodels), a missing file, a reload of
 // a loaded model and the experimental server thread keep loading at once.
 
+#include "touch_warm.h"
+
 static cvar_t mod_lazyload = {CF_CLIENT | CF_SERVER, "mod_lazyload", "1", "precached models load when first used, or in the background during the game (Godnotic); 0 = all at precache"};
 static cvar_t mod_lazyload_budget = {CF_CLIENT | CF_SERVER, "mod_lazyload_budget", "8", "milliseconds per frame spent loading precached models not used yet while a menu or dialog is open in the game (0 = only on first use)"};
 static cvar_t mod_lazyload_maxsize = {CF_CLIENT | CF_SERVER, "mod_lazyload_maxsize", "1536", "models whose file is bigger than this many KiB are not loaded in the background, only on first use (one load cannot be split across frames)"};
@@ -131,6 +133,28 @@ qbool TouchModel_PreloadName(const char *name)
 		}
 	}
 	return false;
+}
+
+// touch_warm.c: load a model while the menu is idle, before the game that
+// will use it; its first use in that game keeps it on the preload list as a
+// replayed one's does. 1 loaded now, 0 already loaded, -1 no such file.
+int TouchModel_WarmName(const char *name)
+{
+	model_t *mod;
+	int i;
+	if (!FS_FileExists(name))
+		return -1;
+	mod = Mod_FindName(name, NULL);
+	if (mod->loaded)
+		return 0;
+	if ((i = TouchModel_Find(mod)) >= 0)
+		TouchModel_Remove(i);
+	Mod_LoadModel(mod, false, false);
+	if (!mod->loaded)
+		return -1;
+	if (touchmod_numpreloaded < TOUCHMOD_MAX)
+		touchmod_preloaded[touchmod_numpreloaded++] = mod;
+	return 1;
 }
 
 // Mod_PurgeUnused frees this model.

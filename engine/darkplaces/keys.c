@@ -27,6 +27,7 @@
 #include "touch_hud.h" // Touch
 #include "touch_vote.h" // Touch
 #include "touch_lua.h" // Touch: Lua mods and plugins
+#include "touch_warm.h" // Touch: menu-idle warm-up
 
 cvar_t con_closeontoggleconsole = {CF_CLIENT | CF_ARCHIVE, "con_closeontoggleconsole","1", "allows toggleconsole binds to close the console as well; when set to 2, this even works when not at the start of the line in console input; when set to 3, this works even if the toggleconsole key is the color tag"};
 
@@ -1846,6 +1847,7 @@ Key_Event (int key, int ascii, qbool down)
 
 	if (key < 0 || key >= MAX_KEYS)
 		return;
+	TouchWarm_Input(); // Touch: input pauses the menu-idle warm-up
 
 	if(events_blocked)
 	{
