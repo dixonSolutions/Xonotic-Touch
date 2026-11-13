@@ -189,8 +189,11 @@ def main():
     layer.paste(scaled, (LAYER_BANNER_LEFT, LAYER_BANNER_TOP), scaled)
     layer_png = os.path.join(branding, "godnotic-menu-layer.png")
     layer.save(layer_png, optimize=True)
-    tga = os.path.join(ROOT, "touch/gfx/menu/luma/touch_background_l2.tga")
-    subprocess.run(["magick", layer_png, "-compress", "RLE", tga], check=True)
+    # branding/game-gfx is copied over touch/gfx when a package is staged, so it
+    # has to carry the same layer or its copy wins.
+    for dest in ("touch/gfx/menu/luma/touch_background_l2.tga",
+                 "branding/game-gfx/menu/luma/touch_background_l2.tga"):
+        subprocess.run(["magick", layer_png, "-compress", "RLE", os.path.join(ROOT, dest)], check=True)
     print("branding written")
 
 

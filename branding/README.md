@@ -13,8 +13,9 @@ python3 scripts/gen-branding.py
   `touch/gfx/xonotic_logo.png`): GODNOTIC set in Xolonium, the game's own typeface,
   with the same emblem as the first O. No subtitle and no version.
 - **Menu layer** (`godnotic-menu-layer.png`,
-  `touch/gfx/menu/luma/touch_background_l2.tga`): the banner in the upper left of an
+  `touch/gfx/menu/luma/touch_background_l2.tga` and its copy under `branding/game-gfx/`): the banner in the upper left of an
   otherwise transparent 2560x2048 sheet, drawn over the menu background.
 
 The emblem is by the Xonotic Community, dual-licensed LGPL 2.1 or later and CC-BY 3.0.
-Xolonium is by Severin Meyer, SIL Open Font License 1.1.
+Xolonium is by Severin Meyer; the copy bundled here is the edition made for Xonotic,
+GPL 2.0 or later with a font exception (`engine/data/font-xolonium.pk3dir/fonts/README.txt`).
