@@ -167,6 +167,10 @@ mkdir -p "$OUT"
 rm -rf "$OUT/a"
 mkdir -p "$OUT/a"
 install -m 644 "$ROOT/web/manifest.webmanifest" "$ROOT/web/serve.py" "$OUT/"
+# Digital Asset Links: lets Android open the installed Godnotic app for this
+# site's links (docs/WEB.md, "An existing install"). Only works on a host
+# that serves it from its root (Vercel; not a GitHub Pages project path).
+install -D -m 644 "$ROOT/web/.well-known/assetlinks.json" "$OUT/.well-known/assetlinks.json"
 for icon in "$ROOT"/web/icon-*.png; do
     [ -f "$icon" ] && install -m 644 "$icon" "$OUT/"
 done
