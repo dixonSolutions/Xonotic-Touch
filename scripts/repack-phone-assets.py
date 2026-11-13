@@ -60,6 +60,18 @@ ASTC_BLOCKS = [(4, 4), (5, 4), (5, 5), (6, 5), (6, 6), (8, 5), (8, 6), (8, 8),
                (10, 5), (10, 6), (10, 8), (10, 10), (12, 10), (12, 12)]
 GL_ASTC_FIRST = 0x93B0  # GL_COMPRESSED_RGBA_ASTC_4x4_KHR
 
+# --profile presets. Anything set explicitly on the command line still wins:
+# these are only the defaults of that profile.
+PROFILES = {
+    # The desktop-sized phone set, i.e. the option defaults below.
+    "full": {},
+    # The set the app downloads: coarser blocks and half-size world textures.
+    # A phone screen is small and held at arm's length, which is what buys the
+    # bytes back; 2D graphics, the part read at 1:1, keep their size.
+    "slim": {"world_blocks": (10, 10), "model_blocks": (8, 6), "norm_blocks": (6, 6),
+             "max_size": 512, "music_rate": "64k"},
+}
+
 
 def log(*a):
     print(*a, file=sys.stderr, flush=True)
@@ -363,9 +375,13 @@ def repack(args, pack, textures, stats):
             # A faster decoder does not justify making the default download
             # larger. Keep both the original name and data if a conversion
             # loses; symlink rewriting below follows only accepted KTX files.
+            # --allow-growth is about a *converted* entry (a KTX or Opus file
+            # that came out bigger than its source), never about storing an
+            # already-compressed (Ogg, JPG) entry uncompressed for nothing.
             old_size = info.compress_size + 2 * len(info.filename.encode("utf-8"))
             new_size = len(payload) + 2 * len(name.encode("utf-8"))
-            if original is not None and new_size > old_size and not args.allow_growth:
+            if (original is not None and new_size > old_size
+                    and (not args.allow_growth or kind not in ("textures", "audio"))):
                 result = (info.filename, data, info.compress_type, original, "retained")
             return info, result
 
@@ -406,6 +422,7 @@ def repack(args, pack, textures, stats):
         "file": outname, "size": os.path.getsize(outpath), "sha256": sha256_of(outpath),
         "install_as": base, "source": {"file": base, "size": os.path.getsize(pack), "sha256": sha256_of(pack)},
         "textures": "astc-mixed" if textures else "dds", "audio": args.audio,
+        "profile": getattr(args, "profile", "custom"),
         "size_policy": "allow-growth" if args.allow_growth else "retain-smaller-original",
     }
     stats[base] = kinds
@@ -437,6 +454,12 @@ def blocks(s):
     return b
 
 
+def _profile_of():
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--profile", choices=tuple(PROFILES), default="full")
+    return pre.parse_known_args()[0].profile
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("packs", nargs="+")
@@ -448,12 +471,17 @@ def main():
     ap.add_argument("--audio", choices=("music", "all", "keep"), default="music",
                     help="what becomes Opus: music (streamed, so no load time cost; default), all sounds "
                          "(sound effects are decoded at map load, which Opus makes slower), or nothing")
-    ap.add_argument("--world-blocks", type=blocks, default=(8, 8), help="ASTC blocks of world textures (8x8)")
-    ap.add_argument("--model-blocks", type=blocks, default=(6, 6), help="... of dds/models/ (6x6)")
-    ap.add_argument("--norm-blocks", type=blocks, default=(5, 5), help="... of normal maps (5x5)")
-    ap.add_argument("--gfx-blocks", type=blocks, default=(4, 4), help="... of the 2D graphics, dds/gfx/ (4x4)")
+    ap.add_argument("--world-blocks", type=blocks, default=(8, 8),
+                    help="ASTC blocks of world textures (default %(default)s)")
+    ap.add_argument("--model-blocks", type=blocks, default=(6, 6),
+                    help="... of dds/models/ (default %(default)s)")
+    ap.add_argument("--norm-blocks", type=blocks, default=(5, 5),
+                    help="... of normal maps (default %(default)s)")
+    ap.add_argument("--gfx-blocks", type=blocks, default=(4, 4),
+                    help="... of the 2D graphics, dds/gfx/ (default %(default)s)")
     ap.add_argument("--max-size", type=int, default=1024,
-                    help="world and model textures bigger than this start a mip level down (1024; 0: no limit)")
+                    help="world and model textures bigger than this start a mip level down "
+                         "(default %(default)s; 0: no limit)")
     ap.add_argument("--preset", default="-medium", help="astcenc quality preset (-medium)")
     ap.add_argument("--zstd-level", type=int, default=19)
     ap.add_argument("--music-rate", default="96k")
@@ -461,6 +489,11 @@ def main():
     ap.add_argument("--meta", action="append", default=[], metavar="KEY=VALUE",
                     help="extra field for the manifest's meta object (repeatable)")
     ap.add_argument("--limit", type=int, default=0, help="only the first N entries of each pack (tests)")
+    # The preset has to be read before the rest, so its values become their defaults.
+    profile = _profile_of()
+    ap.add_argument("--profile", choices=tuple(PROFILES), default=profile,
+                    help="quality/size preset: full (option defaults) or slim (phones; the app downloads this)")
+    ap.set_defaults(**PROFILES[profile])
     args = ap.parse_args()
 
     if not shutil.which("ffmpeg") and (args.textures == "astc" or args.audio != "keep"):

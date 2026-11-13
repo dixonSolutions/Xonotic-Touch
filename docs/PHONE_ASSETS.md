@@ -68,6 +68,26 @@ like any block format without rate-distortion tuning, hardly compresses.
 `--world-blocks 10x10` or `--max-size 512` shrink them at a cost in
 sharpness. A full repack takes 11 minutes on 16 threads.
 
+`--profile slim` is what the app downloads, from the same source build
+(`xonotic-20261107-*`), without nexcompat:
+
+| pack | official | slim | of which textures |
+| --- | ---: | ---: | --- |
+| data | 312.2 MB | 132.3 MB | 201.2 -> 25.7 MB |
+| maps | 618.4 MB | 325.2 MB | 380.3 -> 94.9 MB |
+| music | 110.7 MB | 47.1 MB | (Opus 64 kbit/s) |
+| xoncompat, fonts | 5.3 MB | 3.7 MB | |
+| **total** | **1046 MB** | **508 MB** | |
+
+The streamed archive measures the same 508 MB (its entries are stored), where
+the previous download was the 1.17 GB autobuild archive: about 57 % less to
+fetch and store. Textures are what is left; `--world-blocks 12x12` or
+`--max-size 256` would cut further, at a clearly visible cost.
+
+The tables above were measured on this source build and the machine that built
+the release; a repack on the 24-core workstation took about 12 minutes with
+`-j 8`.
+
 Map load (client side: the Stormkeep benchmark demo, wall time minus engine
 start and playback), desktop GLES2 build on Mesa Intel UHD 770, 1280x720,
 `r_texture_dds_swdecode 2` to take the phone path for DDS:
@@ -99,19 +119,47 @@ Not measured yet: a real phone. The desktop Mesa driver has no S3TC-less
 mode and emulates ASTC; the BlissOS VM passes GL through to the same host
 GPU. The numbers that matter are the Mali/Adreno load time and memory.
 
+## Profiles
+
+`--profile full` (the default) is the desktop-sized set above. `--profile slim`
+is what the app downloads:
+
+| option | full | slim |
+| --- | --- | --- |
+| `--world-blocks` | 8x8 | 10x10 |
+| `--model-blocks` | 6x6 | 8x6 |
+| `--norm-blocks` | 5x5 | 6x6 |
+| `--gfx-blocks` | 4x4 | 4x4 |
+| `--max-size` | 1024 | 512 |
+| `--music-rate` | 96k | 64k |
+
+Any flag still overrides its preset value. 2D graphics, which the HUD draws at
+1:1, keep 4x4 blocks and their size in both profiles; the sacrifices are in
+the world, model and normal-map textures a small screen shows at arm's length.
+
 ## Building and publishing
 
-    scripts/repack-phone-assets.py -o out data/*.pk3     # python 3.14, numpy, ffmpeg, astcenc
-    scripts/test-phone-assets.sh                         # small self-check, run by tests.yml
+    scripts/repack-phone-assets.py --profile slim -o out data/*.pk3   # 3.14, numpy, ffmpeg, astcenc
+    scripts/pack-phone-archive.py -o Godnotic-data.zip out/*-phone.pk3
+    scripts/test-phone-assets.sh                                     # self-checks, run by tests.yml
+    scripts/test-phone-archive.sh
 
-`phone-assets.yml` runs weekly (only when the autobuild archive's ETag
-changed) and on demand. It takes `Xonotic-latest.zip` from the autobuild
-server -- the archive the app installs -- repacks every pk3, and uploads to
-the `phone-assets` release (prerelease, never "latest"):
+`phone-assets.yml` runs on demand (it is manual; upstream changes never publish
+new Godnotic data automatically). It takes `Xonotic-latest.zip` from the
+autobuild server -- the archive the app installs -- repacks every pk3 except
+nexcompat with `--profile slim`, and uploads to the stable `data-slim` release
+(prerelease, never "latest"):
 
-- `<pack>-phone.pk3` for each pack in the archive,
+- `Godnotic-data.zip`: the archive the app streams, entries stored under
+  `Xonotic/data/` with the official pack names,
+- `Godnotic-data.zip.sha256`,
 - `phone-manifest.json`,
 - `phone-sizes.md`.
+
+The tag stays `data-slim` and its assets are replaced, so
+`android/app/src/main/assets/godnotic-data-url.txt` never changes. A new
+archive has a new ETag and length, which is how `PackFetch` notices and drops
+the parts of the old one.
 
 `phone-manifest.json`:
 
@@ -119,21 +167,21 @@ the `phone-assets` release (prerelease, never "latest"):
 {
  "format": 1,
  "meta": {"source_url": "...Xonotic-latest.zip", "source_etag": "...", "built_from": "<sha>",
-          "base_url": "https://github.com/dixonSolutions/xonotic-touch/releases/download/phone-assets/"},
+          "base_url": "https://github.com/dixonSolutions/Godnotic/releases/download/data-slim/"},
  "packs": [
   {"file": "xonotic-20261107-data-phone.pk3", "size": 251424941, "sha256": "...",
    "install_as": "xonotic-20261107-data.pk3",
    "source": {"file": "xonotic-20261107-data.pk3", "size": 320746799, "sha256": "..."},
-   "textures": "astc", "audio": "music"}
+   "textures": "astc", "audio": "music", "profile": "slim"}
  ]
 }
 ```
 
-A client installs each `file` from `base_url` under its `install_as` name, in
-place of the official pack: the engine loads whatever pk3 has that name, and
-the existing "is `xonotic-*-data.pk3` there" checks keep working. The set
-replaces the whole download; mixing a phone data pack with an official maps
-pack works too, it is just bigger.
+The Android app installs each archive entry under the name it carries: the
+engine loads whatever pk3 has that name, and the existing "is
+`xonotic-*-data.pk3` there" checks keep working. The set replaces the whole
+download; mixing a phone data pack with an official maps pack works too, it is
+just bigger.
 
 **Only a GPU with ASTC can use the set**: it carries no DDS files, so without
 `GL_KHR_texture_compression_astc_ldr` world and model textures would be
@@ -144,9 +192,10 @@ builds load it at run time if the system has it.
 
 ## Left to do
 
-- Measure on the Galaxy Tab (load time, memory, fps) and tune the block
-  sizes.
-- The app does not fetch the set yet: see the TODO in docs/ANDROID.md.
+- Measure the slim set on the Galaxy Tab (load time, memory, fps) and tune the
+  block sizes against how it actually looks.
+- An old install that already downloaded the official packs keeps them:
+  `PackFetch` matches them by role, and the names are the same.
 
 ## Godnotic size policy
 

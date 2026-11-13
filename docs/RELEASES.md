@@ -188,6 +188,12 @@ On first launch, `fetch-assets-runtime.sh` tries:
 1. **Git sparse clone** from GitLab when `git` is available
 2. **Xonotic autobuild ZIPs** via `curl`
 
+Android does not use either: `android/app/src/main/assets/godnotic-data-url.txt`
+pins the slim archive in the `data-slim` release
+(`https://github.com/dixonSolutions/Godnotic/releases/download/data-slim/Godnotic-data.zip`,
+about 508 MB; see [PHONE_ASSETS.md](PHONE_ASSETS.md)), and the app falls back to
+the autobuild when that archive cannot be planned.
+
 | Variable | Purpose |
 |----------|---------|
 | `XONOTIC_SKIP_ASSET_FETCH=1` | Skip download (dev/testing) |

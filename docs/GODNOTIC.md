@@ -13,6 +13,7 @@ lower bounds. Warm cache checks can be very short; a first 1 GB download cannot.
 | `dixonSolutions/Godnotic` | Packaging, native frontends, web loader, release/update channels | Android, Flatpak, Ubuntu Touch, Pages, Vercel |
 | `dixonSolutions/Godnotic-darkplaces` | Godnotic engine, renderer hooks, Lua sandbox | Main repository via a pinned component revision |
 | `dixonSolutions/Godnotic-data` | Game code, configs, reproducible pack tools and manifests | Main repository and runtime content downloads |
+| `dixonSolutions/Godnotic` release `data-slim` | The slim pk3 archive the app streams | Android, through `godnotic-data-url.txt` |
 
 Imported upstream code keeps its license notices and source attribution. Stable
 Android/Flatpak/OpenStore identifiers and AndySU keys are compatibility contracts,
@@ -91,6 +92,11 @@ Lossless zstd recompression can improve transfer and decode time without lowerin
 quality. ASTC, reduced mip sizes and Opus are separate quality/compatibility choices;
 the web and devices without ASTC or Opus support must retain compatible formats.
 Do not ship a phone pack as a universal pack without testing those decoders.
+
+`--profile slim` is the set phones download: 10x10 world textures at most 512 px,
+8x6 model and 6x6 normal-map blocks, 4x4 for the 2D graphics, 64 kbit/s Opus music,
+and no nexcompat pack. `--profile full` keeps the desktop-sized defaults. The size
+table in [PHONE_ASSETS.md](PHONE_ASSETS.md) records what the published set measures.
 
 ## Research references
 

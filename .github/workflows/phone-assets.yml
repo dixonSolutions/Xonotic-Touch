@@ -1,12 +1,20 @@
-name: Phone assets
+name: Slim assets
 
-# Builds the phone pack set (docs/PHONE_ASSETS.md) from the official data the
-# Android app installs, and publishes it to the "phone-assets" release:
-# <pack>-phone.pk3 for each official pack plus phone-manifest.json and
-# phone-sizes.md. The packs are too big for the repository and take ~30
-# minutes to make, so they are built here and never committed.
+# Builds the phone pack set (docs/PHONE_ASSETS.md) from the official data and
+# publishes it, as one archive, to the stable "data-slim" release:
+#
+#   Xonotic/data/<official pack name>.pk3   <- the phone pack, same name
+#   Godnotic-data.zip                       <- that archive, stored entries
+#   Godnotic-data.zip.sha256
+#   phone-manifest.json, phone-sizes.md
+#
+# The app streams each pk3 out of the archive over HTTP ranges, so the entry
+# name is the name it installs under (PackFetch). Packing is
+# scripts/pack-phone-archive.py; `--profile slim` is the size/quality preset
+# the app downloads.
 #
 # Manual only: upstream changes never publish new Godnotic data automatically.
+
 on:
   workflow_dispatch:
     inputs:
@@ -19,11 +27,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: phone-assets
+  group: data-slim
   cancel-in-progress: false
 
 env:
-  TAG: phone-assets
+  TAG: data-slim
+  ARCHIVE: Godnotic-data.zip
   SOURCE_URL: https://beta.xonotic.org/autobuild/Xonotic-latest.zip
   # the public autobuild login GameData.java and fetch-assets-posix.sh use
   SOURCE_AUTH: 'xonotic:g-23'
@@ -84,24 +93,41 @@ jobs:
       - name: Repack
         if: steps.source.outputs.build == 'true'
         run: |
-          python scripts/repack-phone-assets.py -o "$RUNNER_TEMP/out" \
+          # nexcompat is 125 MB of Nexuiz map textures; the browser build leaves
+          # it out for the same reason, and no phone map needs it.
+          packs=()
+          for pack in "$RUNNER_TEMP"/src/*.pk3; do
+            case "$pack" in
+              *nexcompat*) echo "leaving out $(basename "$pack")" ;;
+              *) packs+=("$pack") ;;
+            esac
+          done
+          python scripts/repack-phone-assets.py --profile slim -o "$RUNNER_TEMP/out" \
             --meta source_url="$SOURCE_URL" --meta source_etag="${{ steps.source.outputs.etag }}" \
             --meta built_from="$GITHUB_SHA" \
             --meta base_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/" \
-            "$RUNNER_TEMP"/src/*.pk3
+            "${packs[@]}"
           cat "$RUNNER_TEMP/out/phone-sizes.md" >> "$GITHUB_STEP_SUMMARY"
           ls -l "$RUNNER_TEMP/out"
+
+      - name: One archive to stream
+        if: steps.source.outputs.build == 'true'
+        run: |
+          python scripts/pack-phone-archive.py -o "$RUNNER_TEMP/out/$ARCHIVE" \
+            "$RUNNER_TEMP"/out/*-phone.pk3
+          (cd "$RUNNER_TEMP/out" && sha256sum "$ARCHIVE" > "$ARCHIVE.sha256")
+          cat "$RUNNER_TEMP/out/$ARCHIVE.sha256" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish
         if: steps.source.outputs.build == 'true'
         run: |
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --prerelease --latest=false --title "Phone assets" \
-              --notes "ASTC/zstd repack of the official Xonotic data for phones, made by .github/workflows/phone-assets.yml. See docs/PHONE_ASSETS.md."
+            gh release create "$TAG" --prerelease --latest=false --title "Godnotic slim data" \
+              --notes "ASTC/zstd/Opus repack of the official Xonotic data, streamed by the Godnotic app. Made by .github/workflows/phone-assets.yml; see docs/PHONE_ASSETS.md."
           fi
-          # the manifest after its packs, so a reader never sees it first; then
-          # the packs of an older autobuild, which it no longer names, go
-          gh release upload "$TAG" "$RUNNER_TEMP"/out/*.pk3 "$RUNNER_TEMP/out/phone-sizes.md" --clobber
+          # the manifest after its archive, so a reader never sees it first
+          gh release upload "$TAG" "$RUNNER_TEMP/out/$ARCHIVE" "$RUNNER_TEMP/out/$ARCHIVE.sha256" \
+            "$RUNNER_TEMP/out/phone-sizes.md" --clobber
           gh release upload "$TAG" "$RUNNER_TEMP/out/phone-manifest.json" --clobber
           new=$(cd "$RUNNER_TEMP/out" && ls)
           for old in $(gh release view "$TAG" --json assets --jq '.assets[].name'); do
