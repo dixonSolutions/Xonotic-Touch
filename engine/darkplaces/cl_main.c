@@ -20,6 +20,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // cl_main.c  -- client main loop
 
 #include "quakedef.h"
+#include "touch_nativefe.h" // Touch: native front end
 #include "cl_collision.h"
 #include "cl_video.h"
 #include "image.h"
@@ -2828,6 +2829,7 @@ double CL_Frame (double time)
 		R_TimeReport("---");
 		Collision_Cache_NewFrame();
 		R_TimeReport("photoncache");
+		TouchNativeFE_Frame(); // Touch: native front end ends the session when the match is left
 #ifdef CONFIG_VIDEO_CAPTURE
 		// decide the simulation time
 		if (cls.capturevideo.active)
@@ -3008,6 +3010,7 @@ void CL_Init (void)
 		Render_Init();
 		S_Init();
 		Key_Init();
+		TouchNativeFE_Init(); // Touch: native front end (the desktop app)
 		V_Init();
 
 		cls.levelmempool = Mem_AllocPool("client (per-level memory)", 0, NULL);

@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# The Godnotic loader: one Rust core, a native UI per platform.
+#   crates/core     no UI toolkit: UI-bridge client, renderer trait, sessions, pack downloader, paths, platform
+#   crates/gtk      the Linux app (GTK 4 / libadwaita), a renderer for the core
+#   crates/android  the JNI surface the Android app's Kotlin UI drives (stub)
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/gtk", "crates/android"]
+default-members = ["crates/core", "crates/gtk"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+rust-version = "1.87"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

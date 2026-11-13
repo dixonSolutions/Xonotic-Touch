@@ -5,6 +5,8 @@ Godnotic: the console button (see touch_shellbtn.h).
 #include "quakedef.h"
 #include "touch_shellbtn.h"
 #include "touch_ui.h"
+#include "touch_hud.h"
+#include "touch_hudmode.h"
 
 extern cvar_t vid_conwidth;
 extern cvar_t vid_conheight;
@@ -158,7 +160,9 @@ static void place(void)
 		float hdr = TouchUI_SheetHeaderHeight(H);
 		by = max(by, hdr + margin);
 	}
-	else if (cl.intermission)
+	// The published HUD mode, not a guess of our own: the map vote that follows
+	// the scoreboard is a match end too, and cl.intermission alone missed it.
+	else if (cl.intermission || TouchMode_IsMatchEnd(TouchHudMode_Current()->mode))
 	{
 		// End of the match (scoreboard, map vote): the touch HUD and its MENU
 		// pill are gone, so beside where MENU was the button floated alone

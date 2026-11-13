@@ -1,0 +1,35 @@
+# Home -> Multiplayer -> a server -> back -> Create -> back -> back -> Settings -> Mods
+# Run: loader/scripts/drive.sh tests/navigate.script <outdir>
+wait 1200
+count OUT/toplevels.txt
+snapshot OUT/nav-01-home.png
+click home/tiles/mp
+wait 1200
+snapshot OUT/nav-02-servers.png
+click mp/bar/filters/lan
+wait 600
+snapshot OUT/nav-03-servers-lan-ticked.png
+scroll mp/servers 30
+wait 500
+snapshot OUT/nav-04-servers-scrolled.png
+row mp/servers 2
+wait 1200
+snapshot OUT/nav-05-server-detail.png
+count OUT/toplevels.txt
+back
+wait 1000
+click mp/join/create:create
+wait 1200
+snapshot OUT/nav-06-create-lan.png
+back
+wait 900
+back
+wait 900
+snapshot OUT/nav-07-back-home.png
+click home/tiles/settings
+wait 1200
+click settings/sections/mods
+wait 1200
+snapshot OUT/nav-08-settings-mods.png
+count OUT/toplevels.txt
+quit

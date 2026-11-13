@@ -1,0 +1,28 @@
+[package]
+name = "godnotic-loader-core"
+description = "Godnotic loader core: UI-bridge client, sessions, pack downloader"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "godnotic_core"
+
+[features]
+default = []
+# The pack downloader's HTTP over ureq + rustls (desktop). Android can pass its own HttpClient instead.
+http-ureq = ["dep:ureq"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+miniz_oxide = "0.8"
+ureq = { version = "3", optional = true, default-features = false, features = ["rustls", "platform-verifier"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[[test]]
+name = "fetch"
+required-features = ["http-ureq"]

@@ -1,0 +1,19 @@
+# The session path from the GUI: join a passworded LAN game with no password,
+# with the wrong one, then the right one; the window hides while the engine
+# runs and shows again with the result each time.
+wait 800
+count OUT/toplevels.txt
+join 127.0.0.1:26555
+wait 1500
+waitvisible 60000
+snapshot OUT/s1-needs-password.png
+join 127.0.0.1:26555 wrongpw
+wait 1500
+waitvisible 60000
+join 127.0.0.1:26555 s3cretpw
+wait 3000
+count OUT/toplevels.txt
+waitvisible 90000
+snapshot OUT/s3-back-after-match.png
+count OUT/toplevels.txt
+quit

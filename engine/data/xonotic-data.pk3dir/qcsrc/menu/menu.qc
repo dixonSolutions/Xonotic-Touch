@@ -3,6 +3,7 @@
 #include "xonotic/dialog_touch_gamemenu.qh" // Touch
 #include "xonotic/touch_menu_scale.qh" // Touch
 #include "xonotic/touch_menu_sheet.qh" // Touch
+#include "xonotic/touch_uib_render.qh" // Touch: UI bridge renderer
 
 #include "item.qh"
 
@@ -297,6 +298,7 @@ void m_keyup(float key, float ascii)
 {
 	if (!menuInitialized) return;
 	if (!Menu_Active) return;
+	if (TouchUIB_KeyUp(key, ascii)) return; // Touch: UI bridge renderer
 	draw_reset_cropped();
 	main.keyUp(main, key, ascii, menuShiftState);
 	if (key >= K_MOUSE1 && key <= K_MOUSE3)
@@ -321,6 +323,7 @@ void m_keydown(float key, float ascii)
 {
 	if (!menuInitialized) return;
 	if (!Menu_Active) return;
+	if (TouchUIB_KeyDown(key, ascii)) return; // Touch: UI bridge renderer
 	if (TouchSheet_wheel(key)) return; // Touch: the mouse wheel scrolls a tall sheet
 
 	if (menuMouseMode && key >= K_MOUSE1 && key <= K_MOUSE3)
@@ -978,6 +981,7 @@ void m_draw(float width, float height)
 	}
 
 	draw_reset_cropped();
+	if (TouchUIB_Draw(menuAlpha)) { postMenuDraw(); frametime = 0; IL_ENDFRAME(); return; } // Touch: UI bridge renderer
 
 	if (!(gamestatus & (GAME_CONNECTED | GAME_ISSERVER)))
 	{

@@ -49,6 +49,8 @@ vector Touch_Customize_GetWidgetPos(int wid)
 			return autocvar_touch_turn_x * eX + autocvar_touch_turn_y * eY + autocvar_touch_turn_size * eZ;
 		case TOUCH_WIDGET_HOPLOCK:
 			return autocvar_touch_hoplock_x * eX + autocvar_touch_hoplock_y * eY + autocvar_touch_hoplock_size * eZ;
+		case TOUCH_WIDGET_TOSPEC:
+			return cvar("touch_tospec_x") * eX + cvar("touch_tospec_y") * eY + cvar("touch_tospec_size") * eZ;
 		default:
 			return autocvar_touch_dodge_x * eX + autocvar_touch_dodge_y * eY + autocvar_touch_dodge_size * eZ;
 	}
@@ -82,6 +84,8 @@ void Touch_Customize_SetWidgetPos(int wid, float nx, float ny)
 			cvar_set("touch_turn_x", ftos(nx)); cvar_set("touch_turn_y", ftos(ny)); break;
 		case TOUCH_WIDGET_HOPLOCK:
 			cvar_set("touch_hoplock_x", ftos(nx)); cvar_set("touch_hoplock_y", ftos(ny)); break;
+		case TOUCH_WIDGET_TOSPEC:
+			cvar_set("touch_tospec_x", ftos(nx)); cvar_set("touch_tospec_y", ftos(ny)); break;
 		default:
 			cvar_set("touch_dodge_x", ftos(nx)); cvar_set("touch_dodge_y", ftos(ny)); break;
 	}
@@ -104,6 +108,7 @@ string Touch_Customize_WidgetLabel(int wid)
 		case TOUCH_WIDGET_HOOK: return TOUCH_LABEL_HOOK;
 		case TOUCH_WIDGET_TURN: return TOUCH_LABEL_TURN;
 		case TOUCH_WIDGET_HOPLOCK: return TOUCH_LABEL_HOPLOCK;
+		case TOUCH_WIDGET_TOSPEC: return "SPECTATE";
 		default: return TOUCH_LABEL_DODGE;
 	}
 }
@@ -136,6 +141,8 @@ bool Touch_Customize_WidgetEnabled(int wid)
 		case TOUCH_WIDGET_TURN: return boolean(autocvar_touch_turn_visible);
 		// The keep-jumping chip exists only in its own hop mode.
 		case TOUCH_WIDGET_HOPLOCK: return Touch_HopLockShown();
+		// "Move to spectators" once switched on (touch_tospec_visible 1).
+		case TOUCH_WIDGET_TOSPEC: return boolean(cvar("touch_tospec_visible"));
 		default: return boolean(autocvar_touch_dodge_visible);
 	}
 }

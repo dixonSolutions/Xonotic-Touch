@@ -63,6 +63,23 @@ entity TouchGameMenu_SubButton(string label, string dialogname)
 	return e;
 }
 
+// Move to spectators: straight away, or, when the engine says it would forfeit
+// the round or the objective carried (_touch_act_spectate 3), a second tap
+// within 3 s.
+.float touch_spec_armed;
+void TouchGameMenu_Spectate(entity btn, entity me)
+{
+	if (cvar("_touch_act_spectate") == 3 && time >= btn.touch_spec_armed)
+	{
+		btn.touch_spec_armed = time + 3;
+		btn.setText(btn, _("Tap again: you forfeit"));
+		return;
+	}
+	btn.touch_spec_armed = 0;
+	btn.setText(btn, _("Move to spectators"));
+	localcmd("\ntouch_action spectate confirm\n");
+}
+
 void GodnoticGameMenuDialog_fill(entity me)
 {
 	entity e;
@@ -75,20 +92,31 @@ void GodnoticGameMenuDialog_fill(entity me)
 	me.TR(me);
 	me.TR(me);
 	me.TR(me);
-		me.TD(me, 1.5, 1, e = makeGodnoticCommandButton(_("Join"), '0 0 0', "join", COMMANDBUTTON_CLOSE));
-		me.TD(me, 1.5, 1, e = makeGodnoticCommandButton(_("Spectate"), '0 0 0', "spec", COMMANDBUTTON_CLOSE));
+		// Join and Move to spectators follow the engine's action list
+		// (touch_hudmode.c, _touch_act_*: 0 hidden, 1 enabled, 2 waiting,
+		// 3 asks first), the same list the native pause menus show.
+		me.TD(me, 1.5, 1, e = makeGodnoticCommandButton(_("Join"), '0 0 0', "touch_action join", COMMANDBUTTON_CLOSE));
+			setDependent(e, "_touch_act_join", 1, 1);
+		me.TD(me, 1.5, 1, e = makeGodnoticButton(_("Move to spectators"), '0 0 0'));
+			e.onClick = TouchGameMenu_Spectate;
+			e.onClickEntity = e;
+			setDependent(e, "_touch_act_spectate", 1, 3);
 	me.TR(me);
 	me.TR(me);
 		me.TD(me, 1.5, 1, e = TouchGameMenu_SubButton(_("Settings"), "settings"));
 		me.TD(me, 1.5, 1, e = TouchGameMenu_SubButton(_("Mobile settings"), "touchsettings"));
 	me.TR(me);
 	me.TR(me);
+		me.TD(me, 1.5, 1, e = makeGodnoticCommandButton(_("Change team"), '0 0 0', "touch_action team", COMMANDBUTTON_CLOSE));
+			setDependent(e, "_touch_act_team", 1, 1);
 		me.TD(me, 1.5, 1, e = TouchGameMenu_SubButton(_("Servers"), "servers"));
+	me.TR(me);
+	me.TR(me);
 		me.TD(me, 1.5, 1, e = makeGodnoticCommandButton(_("Quick menu"), '0 0 0', "quickmenu", COMMANDBUTTON_CLOSE));
-	me.TR(me);
-	me.TR(me);
 		me.TD(me, 1.5, 1, e = TouchGameMenu_SubButton(_("Profile"), "profile"));
-		me.TD(me, 1.5, 1, e = makeGodnoticCommandButton(_("Quit"), '1 0 0', "menu_showquitdialog", 0));
+	me.TR(me);
+	me.TR(me);
+		me.TD(me, 1.5, 2, e = makeGodnoticCommandButton(_("Quit"), '1 0 0', "menu_showquitdialog", 0));
 	me.TR(me);
 	me.TR(me);
 		// Hosting on the LAN (Multiplayer > Create, LAN box): where others

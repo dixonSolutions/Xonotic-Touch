@@ -1,0 +1,430 @@
+{
+ "name": "settings-menu",
+ "description": "Settings > menu.",
+ "generated": "engine",
+ "caps": {
+  "nodes": [],
+  "hints": [],
+  "width": 1280,
+  "height": 720,
+  "dpi": 96,
+  "widthClass": "expanded",
+  "heightClass": "medium",
+  "input": [
+   "mouse",
+   "keyboard"
+  ],
+  "locale": "en",
+  "reducedMotion": false,
+  "powerSave": false,
+  "thermal": "nominal",
+  "insets": {
+   "top": 0,
+   "right": 0,
+   "bottom": 0,
+   "left": 0
+  }
+ },
+ "snapshot": {
+  "uib": 1,
+  "t": "snapshot",
+  "id": 2,
+  "rev": 31,
+  "root": "app",
+  "nodes": [
+   {
+    "id": "app",
+    "type": "app",
+    "props": {
+     "title": "Godnotic",
+     "stack": [
+      "home",
+      "settings"
+     ],
+     "modal": [],
+     "canBack": true,
+     "context": "menu"
+    },
+    "children": [
+     "home",
+     "settings"
+    ]
+   },
+   {
+    "id": "home",
+    "type": "screen",
+    "props": {
+     "title": "Godnotic",
+     "kind": "home",
+     "background": "asset:background",
+     "actions": [
+      {
+       "id": "quit",
+       "label": "Quit",
+       "icon": "quit",
+       "style": "secondary",
+       "confirm": {
+        "title": "Quit Godnotic?",
+        "ok": "Quit",
+        "destructive": false
+       }
+      }
+     ]
+    },
+    "children": [
+     "home/banner",
+     "home/hero",
+     "home/tiles"
+    ]
+   },
+   {
+    "id": "home/banner",
+    "type": "image",
+    "props": {
+     "ref": "asset:banner",
+     "aspect": "21:9",
+     "fit": "contain",
+     "alt": "Godnotic"
+    },
+    "children": []
+   },
+   {
+    "id": "home/hero",
+    "type": "hero",
+    "props": {
+     "title": "Play",
+     "subtitle": "Continue: Stormkeep · Deathmatch · 4 bots",
+     "image": "pk3:maps/stormkeep",
+     "aspect": "16:9",
+     "featured": true,
+     "meta": [
+      {
+       "icon": "map",
+       "text": "Stormkeep"
+      },
+      {
+       "icon": "mode",
+       "text": "Deathmatch"
+      },
+      {
+       "icon": "bot",
+       "text": "4 bots"
+      }
+     ],
+     "primary": {
+      "id": "play",
+      "label": "Play",
+      "icon": "play",
+      "style": "primary"
+     },
+     "actions": [
+      {
+       "id": "sp",
+       "label": "Choose…",
+       "icon": "map"
+      }
+     ]
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles",
+    "type": "grid",
+    "props": {
+     "minItem": 200
+    },
+    "children": [
+     "home/tiles/sp",
+     "home/tiles/mp",
+     "home/tiles/settings",
+     "home/tiles/credits"
+    ]
+   },
+   {
+    "id": "home/tiles/sp",
+    "type": "card",
+    "props": {
+     "title": "Singleplayer",
+     "subtitle": "Bots, your rules",
+     "icon": "singleplayer",
+     "image": "pk3:gfx/menu/luma/gametype_dm",
+     "aspect": "16:9",
+     "primary": {
+      "id": "sp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/mp",
+    "type": "card",
+    "props": {
+     "title": "Multiplayer",
+     "subtitle": "Find a game or join by address",
+     "icon": "multiplayer",
+     "image": "pk3:gfx/menu/luma/gametype_ctf",
+     "aspect": "16:9",
+     "primary": {
+      "id": "mp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/settings",
+    "type": "card",
+    "props": {
+     "title": "Settings",
+     "subtitle": "Video, controls, Mods",
+     "icon": "settings",
+     "primary": {
+      "id": "settings",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/credits",
+    "type": "card",
+    "props": {
+     "title": "Credits",
+     "subtitle": "The people behind Xonotic and Godnotic",
+     "icon": "credits",
+     "primary": {
+      "id": "credits",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings",
+    "type": "screen",
+    "props": {
+     "title": "Settings",
+     "kind": "page"
+    },
+    "children": [
+     "settings/split",
+     "settings/advanced"
+    ]
+   },
+   {
+    "id": "settings/split",
+    "type": "split",
+    "props": {
+     "style": "vertical-tabs",
+     "bind": "vm:settings.section",
+     "value": "menu",
+     "detailOpen": true
+    },
+    "children": [
+     "settings/split/video",
+     "settings/split/audio",
+     "settings/split/game",
+     "settings/split/input",
+     "settings/split/touch",
+     "settings/split/esp",
+     "settings/split/player",
+     "settings/split/privacy",
+     "settings/split/updates",
+     "settings/split/data",
+     "settings/split/menu",
+     "settings/split/mods"
+    ]
+   },
+   {
+    "id": "settings/split/video",
+    "type": "pane",
+    "props": {
+     "key": "video",
+     "label": "Video",
+     "icon": "video",
+     "subtitle": "Resolution, effects, field of view"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/audio",
+    "type": "pane",
+    "props": {
+     "key": "audio",
+     "label": "Audio",
+     "icon": "audio",
+     "subtitle": "Volume, music, hit sounds"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/game",
+    "type": "pane",
+    "props": {
+     "key": "game",
+     "label": "Game",
+     "icon": "game",
+     "subtitle": "Crosshair, weapons, content"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/input",
+    "type": "pane",
+    "props": {
+     "key": "input",
+     "label": "Input",
+     "icon": "input",
+     "subtitle": "Mouse, keyboard and keys"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/touch",
+    "type": "pane",
+    "props": {
+     "key": "touch",
+     "label": "Controls",
+     "icon": "touch",
+     "subtitle": "Presets, HUD, aim assist, auto-shoot, tactics"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/esp",
+    "type": "pane",
+    "props": {
+     "key": "esp",
+     "label": "ESP",
+     "icon": "esp",
+     "subtitle": "Offline matches only"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/player",
+    "type": "pane",
+    "props": {
+     "key": "player",
+     "label": "Player",
+     "icon": "player",
+     "subtitle": "Name and colours"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/privacy",
+    "type": "pane",
+    "props": {
+     "key": "privacy",
+     "label": "Privacy",
+     "icon": "privacy",
+     "subtitle": "Statistics and identity"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/updates",
+    "type": "pane",
+    "props": {
+     "key": "updates",
+     "label": "Updates",
+     "icon": "update",
+     "subtitle": "What is new"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/data",
+    "type": "pane",
+    "props": {
+     "key": "data",
+     "label": "Data",
+     "icon": "data",
+     "subtitle": "Game data and downloads"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/menu",
+    "type": "pane",
+    "props": {
+     "key": "menu",
+     "label": "Menu",
+     "icon": "menu",
+     "subtitle": "Size and layout"
+    },
+    "children": [
+     "settings/split/menu/size",
+     "settings/split/menu/uib",
+     "settings/split/menu/quitdialog"
+    ]
+   },
+   {
+    "id": "settings/split/menu/size",
+    "type": "slider",
+    "props": {
+     "label": "Menu size",
+     "bind": "cvar:menu_touch_size",
+     "min": 0.699999988,
+     "max": 1.5,
+     "step": 0.0500000007,
+     "format": "x",
+     "help": "Applies the next time the menu opens",
+     "value": 1
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/menu/uib",
+    "type": "switch",
+    "props": {
+     "label": "New menu",
+     "bind": "cvar:menu_touch_uib",
+     "help": "The card menu described once and drawn here, on the web and natively",
+     "value": false
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/menu/quitdialog",
+    "type": "switch",
+    "props": {
+     "label": "Ask before quitting",
+     "bind": "cvar:menu_showquitdialog"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/mods",
+    "type": "pane",
+    "props": {
+     "key": "mods",
+     "label": "Mods",
+     "icon": "mods",
+     "subtitle": "Client and server mods, pages from mods"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/advanced",
+    "type": "button",
+    "props": {
+     "label": "Advanced settings",
+     "action": {
+      "id": "settings.advanced",
+      "label": "Advanced settings",
+      "icon": "more"
+     },
+     "style": "link"
+    },
+    "children": []
+   }
+  ]
+ }
+}

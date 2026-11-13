@@ -1,0 +1,207 @@
+{
+ "name": "home",
+ "description": "Home: banner, hero Play card, Singleplayer, Multiplayer, Settings, Credits; Quit.",
+ "generated": "engine",
+ "caps": {
+  "nodes": [],
+  "hints": [],
+  "width": 1280,
+  "height": 720,
+  "dpi": 96,
+  "widthClass": "expanded",
+  "heightClass": "medium",
+  "input": [
+   "mouse",
+   "keyboard"
+  ],
+  "locale": "en",
+  "reducedMotion": false,
+  "powerSave": false,
+  "thermal": "nominal",
+  "insets": {
+   "top": 0,
+   "right": 0,
+   "bottom": 0,
+   "left": 0
+  }
+ },
+ "snapshot": {
+  "uib": 1,
+  "t": "snapshot",
+  "id": 2,
+  "rev": 1,
+  "root": "app",
+  "nodes": [
+   {
+    "id": "app",
+    "type": "app",
+    "props": {
+     "title": "Godnotic",
+     "stack": [
+      "home"
+     ],
+     "modal": [],
+     "canBack": false,
+     "context": "menu"
+    },
+    "children": [
+     "home"
+    ]
+   },
+   {
+    "id": "home",
+    "type": "screen",
+    "props": {
+     "title": "Godnotic",
+     "kind": "home",
+     "background": "asset:background",
+     "actions": [
+      {
+       "id": "quit",
+       "label": "Quit",
+       "icon": "quit",
+       "style": "secondary",
+       "confirm": {
+        "title": "Quit Godnotic?",
+        "ok": "Quit",
+        "destructive": false
+       }
+      }
+     ]
+    },
+    "children": [
+     "home/banner",
+     "home/hero",
+     "home/tiles"
+    ]
+   },
+   {
+    "id": "home/banner",
+    "type": "image",
+    "props": {
+     "ref": "asset:banner",
+     "aspect": "21:9",
+     "fit": "contain",
+     "alt": "Godnotic"
+    },
+    "children": []
+   },
+   {
+    "id": "home/hero",
+    "type": "hero",
+    "props": {
+     "title": "Play",
+     "subtitle": "Continue: Stormkeep · Deathmatch · 4 bots",
+     "image": "pk3:maps/stormkeep",
+     "aspect": "16:9",
+     "featured": true,
+     "meta": [
+      {
+       "icon": "map",
+       "text": "Stormkeep"
+      },
+      {
+       "icon": "mode",
+       "text": "Deathmatch"
+      },
+      {
+       "icon": "bot",
+       "text": "4 bots"
+      }
+     ],
+     "primary": {
+      "id": "play",
+      "label": "Play",
+      "icon": "play",
+      "style": "primary"
+     },
+     "actions": [
+      {
+       "id": "sp",
+       "label": "Choose…",
+       "icon": "map"
+      }
+     ]
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles",
+    "type": "grid",
+    "props": {
+     "minItem": 200
+    },
+    "children": [
+     "home/tiles/sp",
+     "home/tiles/mp",
+     "home/tiles/settings",
+     "home/tiles/credits"
+    ]
+   },
+   {
+    "id": "home/tiles/sp",
+    "type": "card",
+    "props": {
+     "title": "Singleplayer",
+     "subtitle": "Bots, your rules",
+     "icon": "singleplayer",
+     "image": "pk3:gfx/menu/luma/gametype_dm",
+     "aspect": "16:9",
+     "primary": {
+      "id": "sp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/mp",
+    "type": "card",
+    "props": {
+     "title": "Multiplayer",
+     "subtitle": "Find a game or join by address",
+     "icon": "multiplayer",
+     "image": "pk3:gfx/menu/luma/gametype_ctf",
+     "aspect": "16:9",
+     "primary": {
+      "id": "mp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/settings",
+    "type": "card",
+    "props": {
+     "title": "Settings",
+     "subtitle": "Video, controls, Mods",
+     "icon": "settings",
+     "primary": {
+      "id": "settings",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/credits",
+    "type": "card",
+    "props": {
+     "title": "Credits",
+     "subtitle": "The people behind Xonotic and Godnotic",
+     "icon": "credits",
+     "primary": {
+      "id": "credits",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   }
+  ]
+ }
+}

@@ -1,0 +1,14 @@
+[package]
+name = "godnotic-loader-android"
+description = "Godnotic loader on Android: the JNI surface for the Kotlin UI (stub; filled on work/androidui)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "godnotic_android"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+godnotic-loader-core = { path = "../core" }

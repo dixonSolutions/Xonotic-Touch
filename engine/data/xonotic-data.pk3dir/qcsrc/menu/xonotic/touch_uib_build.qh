@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
+
+#include "touch_uib_api.qh"
+
+// Godnotic UI bridge: the builder. A screen is a function that emits its nodes:
+//
+//   if (UIB_Screen("home", _("Godnotic"))) {
+//       UIB_Open("hero", "hero"); uib_s("title", _("Play")); uib_j("primary", UIB_A("play", _("Play"), "play")); UIB_Close();
+//       UIB_Done();
+//   }
+//
+// It runs again whenever something it shows changes; the engine compares the new nodes
+// with the old ones and sends renderers only the differences (docs/UI_BRIDGE.md).
+// Every user-visible string goes through _().
+
+bool UIB_Screen(string id, string title);   // starts a build of a screen
+void UIB_Done();
+bool UIB_Open(string key, string type);
+void UIB_Close();
+
+// JSON pieces for props that are objects or arrays
+string UIB_A(string id, string label, string icon);                       // action
+string UIB_AS(string id, string label, string icon, string style);         // action with style
+string UIB_AC(string id, string label, string icon, string style, string title, string ok, bool destructive); // with confirm
+string UIB_ALink(string id, string label, string icon, string url);
+string UIB_AText(string id, string label, string icon, string kind, string text); // share / copy
+string UIB_Chip(string icon, string text);
+string UIB_Badge(string icon, string text, string tone);
+string UIB_Opt(string value, string label);
+string UIB_Attr(string label, string value, string icon);
+string UIB_Col(string key, string type, string label, string width, float priority, bool sortable, bool alignend);
+
+// Controls (value filled from the cvar by the engine for cvar: binds)
+void UIB_Switch(string key, string label, string bind, string help);
+void UIB_Check(string key, string label, string bind, string icon);
+void UIB_Slider(string key, string label, string bind, float lo, float hi, float step, string fmt, string help);
+void UIB_Stepper(string key, string label, string bind, float lo, float hi, float step, string unit);
+void UIB_Choice(string key, string label, string bind, string style, string optsjson, string help);
+void UIB_Button(string key, string label, string actionjson, string style);
+void UIB_Text(string key, string body, string style);
+void UIB_Section(string key, string title, bool sticky);   // opens: close with UIB_Close
+void UIB_Apply(string how);   // on the open control: video, sound, reconnect, restart
+
+// View-model values (vm: binds): kept in _uib_* cvars so they survive menu restarts
+string UIB_VM(string name);
+float UIB_VMf(string name);
+void UIB_VMSet(string name, string value);

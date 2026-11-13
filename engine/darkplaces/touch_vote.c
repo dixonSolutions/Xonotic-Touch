@@ -19,6 +19,8 @@ Both get the same chip and card here. Nothing is drawn while no vote is open.
 #include "csprogs.h"
 #include "touch_vote.h"
 #include "touch_vote_parse.h"
+#include "touch_hud.h"
+#include "touch_hudmode.h"
 
 extern cvar_t vid_conwidth;
 extern cvar_t vid_conheight;
@@ -372,7 +374,9 @@ static int shown_map_pick(void)
 }
 
 static qbool call_pending(void) { return call.active && !shown_choice(); }
-static qbool map_pending(void) { return mapv.active && !mapv.decided && shown_map_pick() < 0; }
+// The next-map vote is the game's own full screen, tapped directly (the CSQC
+// pointer): no chip or card over it unless asked for (touch_vote_mapcard 1).
+static qbool map_pending(void) { return mapv.active && !mapv.decided && shown_map_pick() < 0 && cv("touch_vote_mapcard", 0); }
 
 // ---------------------------------------------------------------------------
 // Card state
@@ -528,9 +532,11 @@ static void chip_place(float *cx, float *cy, float *r)
 {
 	float s = smin(), scale = max(0.01f, cv("touch_scale", 1.0f));
 	qbool flip = cv("touch_handedness", 0) != 0;
-	float mx = cv("touch_pause_x", 0.680f), chx_n = cv("touch_chat_x", 0.862f);
-	float chy = s * cv("touch_chat_size", 0.060f) * scale * 0.5f;
-	float chx = chy * max(1.0f, cv("touch_chat_aspect", 2.9f));
+	float mx = cv("touch_pause_x", 0.655f), chx_n = cv("touch_chat_x", 0.889f);
+	// as touch_hud.c widget_half: CHAT is never under 36 dp tall, the chip never under 44 dp across
+	float dpu = TouchDp_Density(cv("vid_touchscreen_ydpi", 0), (float)min(vid.mode.width, vid.mode.height)) * (vid.mode.height > 0 ? ui_h() / (float)vid.mode.height : 1.0f);
+	float chy = max(s * cv("touch_chat_size", 0.060f) * scale * 0.5f, TOUCHDP_PILL_HEIGHT * 0.5f * dpu);
+	float chx = chy * max(1.0f, cv("touch_chat_aspect", 2.4f));
 	float cxp, margin;
 	if (flip)
 	{
@@ -538,7 +544,7 @@ static void chip_place(float *cx, float *cy, float *r)
 		chx_n = 1 - chx_n;
 	}
 	cxp = chx_n * ui_w();
-	*r = max(0.024f * s, chy);
+	*r = max(max(0.024f * s, chy), TOUCHDP_MIN_TARGET * 0.5f * dpu);
 	*cy = cv("touch_chat_y", 0.088f) * ui_h();
 	margin = *r * 0.6f;
 	*cx = cxp + (chx_n >= mx ? 1 : -1) * (chx + margin + *r);
@@ -838,7 +844,9 @@ void TouchVote_Draw(void)
 	qbool show;
 	update_state();
 	chip.drawn = false;
-	if (!in_play() || !touch_device())
+	// The end-of-match scoreboard and the next-map vote own the screen: MENU
+	// and the console button only (touch_hudmode.h TouchMode_Controls).
+	if (!in_play() || !touch_device() || !(TouchMode_Controls(TouchHudMode_Current()->mode, 0) & TOUCHCTL_VOTECHIP))
 	{
 		card.drawn = false;
 		return;
@@ -915,6 +923,10 @@ qbool TouchVote_Finger(int type, int id, float nx, float ny)
 {
 	float px = nx * ui_w(), py = ny * ui_h();
 	int i, slot = -1;
+	// The join handle and the match-end MENU (touch_hud.c) come first: this is
+	// the one hook vid_sdl.c calls for every finger before the finger table.
+	if (TouchHUD_OverlayFinger(type, id, nx, ny))
+		return true;
 	for (i = 0; i < MAX_CLAIMED; i++)
 		if (claimed[i].id == id)
 			slot = i;

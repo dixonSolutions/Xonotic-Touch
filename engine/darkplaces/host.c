@@ -29,6 +29,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #if defined(__ANDROID__) && defined(ANDYSU_SWAP)
 #include "andysu_engine.h"
 #endif
+#include "touch_uib.h" // Touch: UI bridge
 
 /*
 
@@ -283,6 +284,7 @@ extern cvar_t r_texture_jpeg_fastpicmip;
 static void Host_InitLocal (void)
 {
 	TouchLoadTime_Init(); // Touch: load-time phases and restless loading
+	TouchUIB_Init(); // Touch: UI bridge
 	Cmd_AddCommand(CF_SHARED, "quit", Host_Quit_f, "quit the game");
 	Cmd_AddCommand(CF_SHARED, "version", Host_Version_f, "print engine version");
 	Cmd_AddCommand(CF_SHARED, "saveconfig", Host_SaveConfig_f, "save settings to config.cfg (or a specified filename) immediately (also automatic when quitting)");
@@ -603,6 +605,7 @@ void Host_Shutdown(void)
 {
 	if (Sys_CheckParm("-profilegameonly"))
 		Sys_AllowProfiling(false);
+	TouchUIB_Shutdown(); // Touch: UI bridge
 
 	if(cls.state != ca_dedicated)
 		CL_Shutdown();
@@ -679,6 +682,7 @@ double Host_Frame(double time)
 
 	// process console commands
 	Cbuf_Frame(host.cbuf);
+	TouchUIB_Frame(); // Touch: UI bridge
 
 	R_TimeReport("---");
 

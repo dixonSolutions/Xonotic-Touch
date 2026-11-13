@@ -40,6 +40,7 @@ OBJ_COMMON= \
 	touch_hook.o \
 	touch_turn.o \
 	touch_vote.o \
+	touch_hudmode.o \
 	touch_shellbtn.o \
 	touch_dodge.o \
 	touch_ledge.o \
@@ -64,6 +65,14 @@ OBJ_COMMON= \
 	touch_prvm.o \
 	vid_touchdetect.o \
 	touch_display.o \
+	touch_nativefe.o \
+	touch_uib.o \
+	touch_uib_store.o \
+	touch_uib_json.o \
+	touch_uib_src.o \
+	touch_uib_img.o \
+	touch_uib_stream.o \
+	touch_uib_mvm.o \
 	cl_video.o \
 	cl_video_libavw.o \
 	clvm_cmds.o \

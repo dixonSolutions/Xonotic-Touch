@@ -1,0 +1,202 @@
+{
+ "name": "pause-hosting",
+ "description": "Pause menu while hosting on LAN: compact card with labelled join addresses and lock state.",
+ "generated": "seed",
+ "snapshot": {
+  "uib": 1,
+  "t": "snapshot",
+  "id": 2,
+  "rev": 1,
+  "root": "app",
+  "nodes": [
+   {
+    "id": "app",
+    "type": "app",
+    "props": {
+     "title": "Godnotic",
+     "stack": [
+      "pause"
+     ],
+     "modal": [],
+     "canBack": false,
+     "context": "game"
+    },
+    "children": [
+     "pause"
+    ]
+   },
+   {
+    "id": "pause",
+    "type": "screen",
+    "props": {
+     "title": "Paused",
+     "kind": "game",
+     "presentation": "fullscreen"
+    },
+    "children": [
+     "pause/host",
+     "pause/match",
+     "pause/actions"
+    ]
+   },
+   {
+    "id": "pause/host",
+    "type": "card",
+    "props": {
+     "title": "Hosting on your network",
+     "subtitle": "Others join with one of these addresses",
+     "icon": "host",
+     "accent": "ember",
+     "density": "compact",
+     "badges": [
+      {
+       "icon": "lock",
+       "text": "Password set",
+       "tone": "warning"
+      }
+     ],
+     "meta": [
+      {
+       "icon": "wifi",
+       "text": "Wi-Fi 192.168.1.23:26000"
+      },
+      {
+       "icon": "vpn",
+       "text": "VPN 100.64.0.5:26000"
+      }
+     ],
+     "primary": {
+      "id": "host.share",
+      "label": "Share",
+      "icon": "share",
+      "kind": "share",
+      "text": "godnotic://join/192.168.1.23:26000"
+     },
+     "actions": [
+      {
+       "id": "host.copy",
+       "label": "Copy address",
+       "icon": "copy",
+       "kind": "copy",
+       "text": "192.168.1.23:26000"
+      }
+     ]
+    },
+    "children": []
+   },
+   {
+    "id": "pause/match",
+    "type": "card",
+    "props": {
+     "title": "Stormkeep",
+     "subtitle": "Deathmatch · 7:42 left · 3rd of 5",
+     "image": "pk3:maps/stormkeep",
+     "aspect": "21:9",
+     "meta": [
+      {
+       "icon": "trophy",
+       "text": "12 frags"
+      },
+      {
+       "icon": "players",
+       "text": "5 players"
+      }
+     ]
+    },
+    "children": []
+   },
+   {
+    "id": "pause/actions",
+    "type": "grid",
+    "props": {
+     "minItem": 200
+    },
+    "children": [
+     "pause/actions/resume",
+     "pause/actions/settings",
+     "pause/actions/team",
+     "pause/actions/spectate",
+     "pause/actions/disconnect"
+    ]
+   },
+   {
+    "id": "pause/actions/resume",
+    "type": "button",
+    "props": {
+     "label": "Resume",
+     "action": {
+      "id": "resume",
+      "label": "Resume",
+      "icon": "resume",
+      "style": "primary"
+     },
+     "style": "primary"
+    },
+    "children": []
+   },
+   {
+    "id": "pause/actions/settings",
+    "type": "button",
+    "props": {
+     "label": "Settings",
+     "action": {
+      "id": "settings",
+      "label": "Settings",
+      "icon": "settings"
+     },
+     "style": "secondary"
+    },
+    "children": []
+   },
+   {
+    "id": "pause/actions/team",
+    "type": "button",
+    "props": {
+     "label": "Change team",
+     "action": {
+      "id": "team",
+      "label": "Change team",
+      "icon": "players"
+     },
+     "style": "secondary",
+     "hidden": true
+    },
+    "children": []
+   },
+   {
+    "id": "pause/actions/spectate",
+    "type": "button",
+    "props": {
+     "label": "Spectate",
+     "action": {
+      "id": "spectate",
+      "label": "Spectate",
+      "icon": "esp"
+     },
+     "style": "secondary"
+    },
+    "children": []
+   },
+   {
+    "id": "pause/actions/disconnect",
+    "type": "button",
+    "props": {
+     "label": "Leave match",
+     "action": {
+      "id": "disconnect",
+      "label": "Leave match",
+      "icon": "disconnect",
+      "style": "destructive",
+      "confirm": {
+       "title": "Leave the match?",
+       "ok": "Leave",
+       "destructive": true
+      }
+     },
+     "style": "destructive"
+    },
+    "children": []
+   }
+  ]
+ }
+}

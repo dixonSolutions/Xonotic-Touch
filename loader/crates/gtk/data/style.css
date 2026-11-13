@@ -1,0 +1,66 @@
+/* Godnotic on top of libadwaita: the system's light/dark scheme and accent stay;
+ * this adds the brand palette (ember for the primary action, blue for focus),
+ * card shape and glow, and motion. */
+@define-color gn_ember #ff6a2b;
+@define-color gn_ember_dark #e04f12;
+@define-color gn_blue #3fa9f5;
+
+.gn-hero { border-radius: 20px; min-height: 220px; }
+.gn-hero-shade { background: linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.35) 55%, rgba(0,0,0,0.05)); border-radius: 20px; }
+.gn-hero .gn-hero-title { color: white; font-size: 34px; font-weight: 900; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }
+.gn-hero .gn-hero-sub { color: rgba(255,255,255,0.86); font-size: 15px; }
+.gn-hero .gn-chip { background: rgba(255,255,255,0.16); color: white; }
+.gn-hero-frame { border-radius: 20px; box-shadow: 0 8px 28px alpha(@gn_ember, 0.18); }
+
+button.gn-play, button.suggested-action.gn-play {
+  background: linear-gradient(180deg, #ff8a4a, @gn_ember);
+  color: #1d0a02; font-weight: 800; font-size: 16px;
+  min-height: 52px; min-width: 180px; border-radius: 999px; padding: 0 28px;
+  box-shadow: 0 4px 14px alpha(@gn_ember, 0.35);
+  transition: box-shadow 200ms ease, background 200ms ease;
+}
+button.gn-play:hover { box-shadow: 0 6px 22px alpha(@gn_ember, 0.55); }
+
+.gn-card { border-radius: 16px; padding: 0; transition: transform 160ms ease, box-shadow 160ms ease; }
+.gn-card:hover { box-shadow: 0 6px 22px alpha(@gn_blue, 0.22); }
+.gn-card .gn-card-pic { border-radius: 16px 16px 0 0; }
+.gn-card .gn-card-text { padding: 12px 14px 14px 14px; }
+.gn-card .gn-card-title { font-weight: 800; font-size: 16px; }
+.gn-card.gn-noimg .gn-card-icon { margin: 18px 14px 0 14px; color: @accent_color; }
+.gn-card.gn-selected { box-shadow: inset 0 0 0 3px @accent_bg_color; }
+
+.gn-chip { border-radius: 999px; padding: 3px 10px; font-size: 12px; background: alpha(currentColor, 0.08); }
+.gn-badge { border-radius: 6px; padding: 1px 7px; font-size: 11px; font-weight: 700; background: alpha(currentColor, 0.1); }
+.gn-badge.accent { background: alpha(@accent_bg_color, 0.25); }
+.gn-badge.positive { background: alpha(@success_color, 0.25); }
+.gn-badge.warning { background: alpha(@warning_color, 0.25); }
+.gn-badge.danger { background: alpha(@error_color, 0.25); }
+
+/* Placeholders: a soft pulse while a picture or a row is on its way. */
+@keyframes gn-shimmer { from { opacity: 0.35; } to { opacity: 0.8; } }
+.gn-placeholder { background: alpha(currentColor, 0.08); animation: gn-shimmer 900ms ease-in-out infinite alternate; }
+.gn-reduced .gn-placeholder { animation: none; opacity: 0.5; }
+
+/* The server list: dense data rows (the bridge's density hint), large action controls elsewhere. */
+columnview.gn-dense listview > row { min-height: 34px; }
+columnview.gn-dense listview > row > cell { padding: 2px 8px; }
+columnview.gn-dense { font-size: 14px; }
+.gn-ping-good { color: @success_color; }
+.gn-ping-ok { color: @warning_color; }
+.gn-ping-bad { color: @error_color; }
+.gn-dim { opacity: 0.55; }
+
+.gn-preview-pic { border-radius: 16px; }
+.gn-preview-title { font-size: 28px; font-weight: 900; }
+.gn-section-title { font-weight: 800; }
+.gn-actionbar { padding: 8px 12px; }
+.gn-toolbar { padding: 6px 12px; }
+.gn-filters checkbutton { min-height: 40px; }
+.gn-banner { margin: 6px 0 0 0; }
+.gn-from-mod { font-size: 12px; opacity: 0.75; }
+
+/* Narrow windows (phones): comfortable thumbs. */
+.gn-narrow button.gn-play { min-height: 56px; font-size: 17px; }
+.gn-narrow .gn-hero .gn-hero-title { font-size: 28px; }
+.gn-hero button.pill, .gn-hero button.pill:hover { background: rgba(255,255,255,0.18); color: white; }
+.gn-hero button.pill:hover { background: rgba(255,255,255,0.28); }

@@ -4,8 +4,8 @@ app-id: io.github.dixonSolutions.XonoticTouch
 runtime: org.gnome.Platform
 runtime-version: '48'
 sdk: org.gnome.Sdk
-# The launcher; "Play directly" in the desktop file still runs start.sh.
-command: xt-launcher
+# The app (loader/); "Play directly" in the desktop file still runs start.sh.
+command: godnotic-loader
 
 finish-args:
   - --share=network
@@ -55,22 +55,23 @@ modules:
           stable-only: true
           url-template: https://github.com/libxmp/libxmp/archive/libxmp-${version}.tar.gz
 
-  # The launcher (launcher/, Kotlin/Native + GTK 4/libadwaita). Kotlin/Native
-  # has no aarch64 host compiler, so both binaries are built outside this
-  # manifest by launcher/build.sh (in CI, the launcher job) and dropped in
-  # here. Run launcher/build.sh before a local flatpak-builder build.
-  - name: launcher
+  # The app (loader/, Rust + GTK 4/libadwaita): built outside this manifest by
+  # loader/build.sh inside the GNOME SDK (in CI, the Loader workflow on x86_64
+  # and aarch64 runners) and dropped in here, so the manifest stays offline.
+  # xt-launcher stays as a name for scripts and old desktop shortcuts.
+  - name: loader
     buildsystem: simple
     build-commands:
-      - install -Dm755 xt-launcher /app/bin/xt-launcher
+      - install -Dm755 godnotic-loader /app/bin/godnotic-loader
+      - ln -sf godnotic-loader /app/bin/xt-launcher
     sources:
       - type: file
-        path: ../launcher/dist/xt-launcher-x86_64
-        dest-filename: xt-launcher
+        path: ../loader/dist/godnotic-loader-x86_64
+        dest-filename: godnotic-loader
         only-arches: [x86_64]
       - type: file
-        path: ../launcher/dist/xt-launcher-aarch64
-        dest-filename: xt-launcher
+        path: ../loader/dist/godnotic-loader-aarch64
+        dest-filename: godnotic-loader
         only-arches: [aarch64]
 
   - name: godnotic
@@ -97,3 +98,4 @@ modules:
           - engine/gmqcc/gmqcc
           - engine/data/xonotic-data.pk3dir/qcsrc/.tmp
           - launcher
+          - loader

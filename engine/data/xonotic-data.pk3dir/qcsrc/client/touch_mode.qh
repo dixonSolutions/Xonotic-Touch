@@ -1,0 +1,73 @@
+#pragma once
+
+// The in-match HUD mode, as the engine publishes it (engine/darkplaces/
+// touch_hudmode.c, _touch_hud_* cvars). The engine decides it once per frame
+// for every consumer (both touch HUDs, the console button, the native front
+// ends); this side reads it instead of guessing again. The numbers mirror
+// engine/darkplaces/touch_hudmode.h, and scripts/test-touch-hudmode.sh checks
+// that they still do.
+
+const int TOUCHMODE_OFF = 0;
+const int TOUCHMODE_PLAYING = 1;
+const int TOUCHMODE_DEAD = 2;
+const int TOUCHMODE_OBSERVING = 3;
+const int TOUCHMODE_FOLLOWING = 4;
+const int TOUCHMODE_OUT = 5;
+const int TOUCHMODE_OUT_FREE = 6;
+const int TOUCHMODE_INTERMISSION = 7;
+const int TOUCHMODE_MAPVOTE = 8;
+
+const int TOUCHMODE_F_WARMUP = 1;
+const int TOUCHMODE_F_READY = 2;
+const int TOUCHMODE_F_TEAMS = 4;
+const int TOUCHMODE_F_ROUND = 8;
+const int TOUCHMODE_F_CARRY = 16;
+
+const int TOUCHCTL_MENU = 1;
+const int TOUCHCTL_CHAT = 2;
+const int TOUCHCTL_SCORE = 4;
+const int TOUCHCTL_MOVE = 8;
+const int TOUCHCTL_LOOK = 16;
+const int TOUCHCTL_FIRE = 32;
+const int TOUCHCTL_ALT = 64;
+const int TOUCHCTL_HOP = 128;
+const int TOUCHCTL_DUCK = 256;
+const int TOUCHCTL_WEAPONS = 512;
+const int TOUCHCTL_ZOOM = 1024;
+const int TOUCHCTL_HOOK = 2048;
+const int TOUCHCTL_NADE = 4096;
+const int TOUCHCTL_TURN = 8192;
+const int TOUCHCTL_RELOAD = 16384;
+const int TOUCHCTL_DODGE = 32768;
+const int TOUCHCTL_VITALS = 65536;
+const int TOUCHCTL_SPECBAR = 131072;
+const int TOUCHCTL_FLY = 262144;
+const int TOUCHCTL_JOIN = 524288;
+const int TOUCHCTL_TOSPEC = 1048576;
+const int TOUCHCTL_READY = 2097152;
+const int TOUCHCTL_VOTECHIP = 4194304;
+const int TOUCHCTL_RESPAWN = 8388608;
+
+// Sizes in dp (touch_hudmode.h TOUCHDP_*).
+const float TOUCHDP_SECONDARY = 46;
+const float TOUCHDP_MIN_TARGET = 44;
+const float TOUCHDP_PILL_HEIGHT = 36;
+
+int Touch_Mode(void);
+int Touch_ModeFlags(void);
+bool Touch_ModeHas(int ctl);
+string Touch_ModeTarget(void);
+// Console units per dp, as the engine's dp_units.
+float Touch_DpUnits(void);
+// What only this CSQC can read, handed to the engine (_touch_hint_*).
+void Touch_Mode_PublishHints(void);
+
+// Battle extras and the dead player's controls (both HUD copies the same:
+// engine touch_hud.c draw_play_extras).
+bool Touch_ToSpec_Hit(vector p);
+bool Touch_Ready_Hit(vector p);
+void Touch_Extra_OnUp(int role, vector down, vector up);
+void Touch_Extras_Draw(float alpha);
+void Touch_DrawRespawn(float alpha);
+// MENU, SCORE and CHAT fade back while playing and untouched (touch_chrome_idle).
+float Touch_ChromeAlpha(float alpha);

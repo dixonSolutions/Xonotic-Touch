@@ -12,6 +12,7 @@
 #include "touch_weapons.qh"
 #include "touch_scores.qh"
 #include "touch_spectate.qh"
+#include "touch_mode.qh"
 #include "view.qh"
 #include <common/weapons/all.qh>
 #include <common/mapvoting/_mod.qh>
@@ -401,6 +402,18 @@ int Touch_AssignRole(vector p)
 	if (pills && Touch_Scores_PillHit(p))
 		return TOUCH_ROLE_SCORES;
 
+	// Battle extras and the dead player's controls (touch_draw.qc).
+	if (!touch_desk && Touch_ToSpec_Hit(p))
+		return TOUCH_ROLE_TOSPEC;
+	if (!touch_desk && Touch_Ready_Hit(p))
+		return TOUCH_ROLE_READY;
+	if (!touch_desk && Touch_Mode() == TOUCHMODE_DEAD)
+	{
+		if (!Touch_InEdgeDeadzone(p) && Touch_HitRect(p, autocvar_touch_jump_x, autocvar_touch_jump_y, autocvar_touch_jump_size, autocvar_touch_jump_aspect * 1.25, 1.10))
+			return TOUCH_ROLE_RESPAWN;
+		return Touch_RoleOwned(TOUCH_ROLE_LOOK) ? TOUCH_ROLE_IGNORED : TOUCH_ROLE_LOOK;
+	}
+
 	// Spectating, the controls mean what the spectator code reads (touch_spectate.qc).
 	int spec_role = Touch_Spec_AssignRole(p);
 	if (spec_role != TOUCH_ROLE_NONE)
@@ -623,10 +636,12 @@ void Touch_PollFingers(void)
 		int role = touch_finger_role[i];
 		if (role == TOUCH_ROLE_CON || role == TOUCH_ROLE_PAUSE || role == TOUCH_ROLE_CHAT
 			|| role == TOUCH_ROLE_SCORES || role == TOUCH_ROLE_WEPSIZE
-			|| role == TOUCH_ROLE_HOPLOCK)
+			|| role == TOUCH_ROLE_HOPLOCK || role == TOUCH_ROLE_TOSPEC || role == TOUCH_ROLE_READY)
 		{
 			vector up = touch_finger_last_pos[i];
-			if (role == TOUCH_ROLE_HOPLOCK)
+			if (role == TOUCH_ROLE_TOSPEC || role == TOUCH_ROLE_READY)
+				Touch_Extra_OnUp(role, touch_finger_down_pos[i], up);
+			else if (role == TOUCH_ROLE_HOPLOCK)
 				Touch_HopLock_OnUp(up);
 			else if (role == TOUCH_ROLE_CON)
 				Touch_Console_OnUp(up);
@@ -790,6 +805,7 @@ void Touch_DeskFrame(void)
 void Touch_Frame(void)
 {
 	Touch_EnsureReady();
+	Touch_Mode_PublishHints();
 	touch_debug_fills = 0;
 	Touch_TickDebugCmds();
 
@@ -934,7 +950,7 @@ void Touch_Frame(void)
 		// spectator the way back to observing.
 		else if (role == TOUCH_ROLE_FIRE2)
 			fire2_down = true;
-		else if (role == TOUCH_ROLE_JUMP)
+		else if (role == TOUCH_ROLE_JUMP || role == TOUCH_ROLE_RESPAWN)
 			jump_down = true;
 		else if (role == TOUCH_ROLE_CROUCH)
 			crouch_down = true;
@@ -1369,6 +1385,9 @@ string Touch_DebugRoleName(int role)
 	if (role == TOUCH_ROLE_FIRE) return "FIRE";
 	if (role == TOUCH_ROLE_FIRE2) return "FIRE2";
 	if (role == TOUCH_ROLE_JUMP) return "HOP";
+	if (role == TOUCH_ROLE_TOSPEC) return "TOSPEC";
+	if (role == TOUCH_ROLE_READY) return "READY";
+	if (role == TOUCH_ROLE_RESPAWN) return "RESPAWN";
 	if (role == TOUCH_ROLE_CROUCH) return "CR";
 	if (role == TOUCH_ROLE_WEAPON) return "WEP";
 	if (role == TOUCH_ROLE_ZOOM) return "ZOOM";

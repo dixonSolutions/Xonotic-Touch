@@ -8,7 +8,7 @@ Related: [SCREEN.md](SCREEN.md) (resolution / DPI), [ARCHITECTURE.md](ARCHITECTU
 
 ## Contents
 
-1. [Design goals](#design-goals) · [Default layout](#default-arena-touch-standard-preset)
+1. [Design goals](#design-goals) · [Default layout](#default-arena-touch-standard-preset) · [HUD modes](#hud-modes) · [Menu actions](#menu-actions) · [HUD state](#hud-state-for-other-consumers)
 2. [Config layering](#config-layering) · [Cvar schema](#cvar-schema)
 3. [Presets](#preset-bundles-touchprofiles) · [Settings UI](#settings-ui-intent-groups)
 4. [Session flow](#session-flow-menus) · [In-game UX](#in-game-ux-beyond-overlay)
@@ -75,57 +75,182 @@ feed and the chat feed each get a band that touches neither.
 | Weapon strip (right edge) | Tap a weapon to switch to it; drag the grip under the strip to resize it — see [Weapon strip](#weapon-strip) | `impulse N` of the row |
 | WEP | Off by default (the strip switches); `touch_weapon_visible 1` brings the button back | cycle, wheel or 3-slot (`touch_weapon_mode`) |
 | Reload | Tap; hidden by default | `weapon_reload` |
-| **MENU** (top row) | Tap → Escape / GameMenu | Native Xonotic pause menu — see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md) |
-| **CONSOLE** (bottom-left) | Tap → `toggleconsole`, drag to reposition | Text sheet: layered keyboard (only with no keyboard attached), COMMANDS palette — see [TOUCH_CONSOLE_SPEC.md](TOUCH_CONSOLE_SPEC.md) |
-| **CHAT** (top-right) | Tap → modal chat sheet: backlog, field, on-screen QWERTY | `say` / `say_team`; also the `touch_chat [team]` command for a hardware key |
-| **SCORE** (bottom-left) | Tap → full scoreboard, tap again to clear; Escape also clears | `+showscores` / `-showscores`; also the `touch_scores` command |
+| **MENU** (top bar) | Tap → the game menu sheet (Resume, Join / Move to spectators, Change team, Settings, Leave — see [Menu actions](#menu-actions)) | Native Xonotic pause menu — see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md) |
+| Console button (top bar, left of MENU) | Tap → `toggleconsole` | `touch_shellbtn.c`. The CONSOLE pill that used to sit bottom-left is off (`touch_con_visible 0`; 1 brings it back, drag to reposition) — see [TOUCH_CONSOLE_SPEC.md](TOUCH_CONSOLE_SPEC.md) |
+| **SCORE** (top bar, between MENU and CHAT) | Tap → full scoreboard, tap again to clear; Escape also clears | `+showscores` / `-showscores`; also the `touch_scores` command |
+| **CHAT** (top bar, right) | Tap → modal chat sheet: backlog, field, on-screen QWERTY | `say` / `say_team`; also the `touch_chat [team]` command for a hardware key |
 | Mobile HUD | Health, armour and ammo as one group, top-left | Bars for the two that have a maximum; reserve rounds beside the clip for weapons that reload |
-| Respawn / join | Respawn: tap **HOP**. Join: hold **HOLD TO JOIN** while spectating | `+jump`; the prompts name the button, not a key — see below and [Spectating](#spectating) |
+| Respawn / join | Respawn: tap **RESPAWN** (HOP's place while dead). Join: **swipe up** from the handle at the bottom middle while spectating; with a free mouse pointer, click it | `+jump` (a team game: the stock team selection); the prompts name the control, not a key — see [HUD modes](#hud-modes) |
 | **i** (vote chip, top bar) | Right of CHAT, at the end of the top bar, while a vote waits for your answer, a red dot while it is new; tap → vote card — see [Votes](#votes) | `vote yes` / `vote no` / `vote abstain`, `impulse N` for the map vote |
 
 Prompts that would normally name a key name the on-screen control instead in a touch
-session: "You are dead, press **HOP** to respawn", "Press **JOIN** to join",
+session: "You are dead, press **HOP** to respawn", "Press **SWIPE UP** to join",
 "Press **FOLLOW** to spectate". Only controls that are actually visible get named, and
 commands with no touch control (gametype info) keep their key name.
 
-### Spectating
+### HUD modes
 
-Observing, following a player or out of the round, the play controls take the
-spectator meanings the server reads, and their labels say so. The same in a
-local match (the port's CSQC) and on any server (the engine HUD):
+The in-match controls change with what the player is doing. One layout model
+(the `touch_*` cvars, the layout editor, the presets) and one control set per
+mode, the same in a local match (the port's CSQC) and on any server (the engine
+HUD). The engine decides the mode once per frame and publishes it (see
+[HUD state](#hud-state-for-other-consumers)); both HUDs, the console button and
+the native front ends read it rather than guessing again.
 
-| State | Where FIRE is | Where ALT is | Where HOP is | Where DUCK is | Stick and drag | JOIN |
-|-------|---------------|--------------|--------------|---------------|----------------|------|
-| Observing (free-fly) | **FOLLOW** (`+attack`): follow a player | — | **UP** (`+moveup`) | **DOWN** (`+movedown`) | fly and turn the camera | held |
-| Following a player | **NEXT** (`+attack`) | **PREV** (`weapprev`) | **FREE** (`+attack2`): back to free-fly | — | drag turns; no stick | held |
-| Out of the round, following (Clan Arena and the like) | **NEXT** | **PREV** | — | — | drag turns | — |
-| Out of the round, free-flying | **FOLLOW** | — | **UP** | **DOWN** | fly | — |
+| Mode | On screen | Not there |
+|------|-----------|-----------|
+| **Playing** | Top bar (console button, MENU, SCORE, CHAT); move stick, look, FIRE, ALT, HOP + KEEP, DUCK, TURN, weapon strip, NADE, HOOK / ZOOM when the weapon has them, vitals; optional SPECTATE (`touch_tospec_visible 1`, placed in the layout editor); READY in warmup | — |
+| **Dead** (waiting to respawn) | Top bar; **RESPAWN** where HOP is (`+jump`), look; SPECTATE if placed; READY in warmup | stick, FIRE, ALT, DUCK, strip, vitals |
+| **Spectating, free-fly** | Top bar; move stick + **UP / DOWN** rocker beside it (`+moveup` / `+movedown`), look; the spectator bar **< FOLLOW >** bottom right; the **join handle** bottom middle | weapons, FIRE, ALT, HOP, DUCK, TURN, HOOK, NADE, CONSOLE pill |
+| **Following a player** | Top bar; the bar **< FREE >** with the player's name above it; their vitals (read only); the join handle | stick and rocker (the view is theirs), everything above |
+| **Out of the round** (Clan Arena and the like) | As following / free-fly, no join handle (the player is in the game; the join waits for the next round); the bar's middle reads WATCHING | as above |
+| **Intermission** (end-of-match scoreboard) | **MENU** alone, top-left corner (top-right left-handed); the console button | every other control, the vote chip |
+| **Next-map / gametype vote** | **MENU** alone, top-left; the console button. The vote cards are the game's own screen and take taps directly | every other control; the touch vote card over the vote (`touch_vote_mapcard 1` brings it back) |
 
-- **JOIN** is a separate pill at the bottom middle, **HOLD TO JOIN**: it fills
-  while held and sends the join (`+jump`, what the server reads as "press jump
-  to join", team selection included) after 0.45 s, so a thumb resting there or
-  a quick tap never joins. Nothing else sends `+jump` while spectating, which
-  is why UP is `+moveup`, not jump. If the server does not take the join
-  (joining locked, teams full, spectate-only), the player is still spectating
-  3 s later and the pill reads **LOCKED** for 15 s; holding it again retries.
-- A look-zone tap does not fire while spectating (it would follow or skip a
-  player), and auto-shoot never fires.
-- The weapon strip is not drawn: the weapons are the followed player's, the
-  stock weapons panel shows them, and a row tap would send an impulse to the
-  spectator code. Following someone, their health, armour and ammo show
-  read-only. ALT fire, ZOOM, HOOK, WEP and the hop latch are not drawn; TURN
-  stays. The followed player's name is in the stock "Spectating:" line.
-- The stock prompts name the buttons in a local match: "Press **JOIN** to
-  join", "Press **FOLLOW** to spectate", "Press **NEXT** or **PREV** for next or
-  previous player".
-- MENU, CHAT, SCORE, CONSOLE and the vote chip stay. The COMMANDS tab of the
-  console still lists the spectator actions too.
+A vote called in the match (yes / no) keeps its chip at the end of the top bar
+in every in-match mode.
 
-The state comes from the scoreboard: frags -666 is a spectator, -616 (0.8.6)
-or -669 (later builds) a player out of the round; following when the view is
-another player's. The table is `engine/darkplaces/touch_spectate.h`, checked
-by `scripts/test-touch-spectate.sh`; the port's CSQC follows it in
-`touch_spectate.qc` (from `spectatee_status` and the entity's spectator state).
+![Spectating, free-fly: stick and UP/DOWN rocker, the < FOLLOW > bar, the join handle](media/hud-spectating.jpg)
+![Following a player: < FREE >, the name over the bar, their vitals](media/hud-following.jpg)
+![Playing: the top bar holds the chrome, the bottom is the hands'](media/hud-playing.jpg)
+![Next-map vote: MENU alone in the corner, the vote cards untouched](media/hud-mapvote.jpg)
+
+#### The spectator bar
+
+| State | `<` | middle | `>` |
+|-------|-----|--------|-----|
+| Free-fly | follow (`+attack`) | **FOLLOW** (`+attack`) | follow (`+attack`) |
+| Following | previous player (`weapprev`) | **FREE**: back to free-fly (`+attack2`) | next player (`+attack`) |
+| Out of the round, watching | previous | WATCHING (nothing) | next |
+| Out of the round, free-fly | follow | **FOLLOW** | follow |
+
+The table is `engine/darkplaces/touch_spectate.h` (`TouchSpec_BarAction`),
+checked by `scripts/test-touch-spectate.sh`; the port's CSQC mirrors it in
+`touch_spectate.qc`. Nothing a spectator touches sends `+jump`: that is the
+join. A look-zone tap does not fire while spectating, and auto-shoot never
+fires. `touch_specbar_x`, `_y` and `_size` move and size the bar (46 dp tall at
+least).
+
+#### Joining: the swipe handle
+
+Joining from spectating is a swipe, and only a swipe. A slim **^ SWIPE UP TO
+JOIN** pill sits at the bottom middle and breathes gently (still with
+`touch_reduce_motion 1`). Put a thumb on it and swipe up: the pill follows the
+finger, fills, and on release past the threshold rises and fades as the join
+goes out; let go early and it springs back.
+
+| Parameter | Value | |
+|-----------|-------|---|
+| Start zone | the pill, or the bottom 16 % of the screen within 11 % of the width either side of the middle | a swipe that starts anywhere else is an ordinary look drag |
+| Distance | 14 % of the screen height, upwards | about 150 px (60 dp) on a 1080 px phone |
+| Direction | sideways movement at most 0.6 × the upward (about 31°) | a slanted swipe is cancelled |
+| Hand-over | a finger that goes sideways or down by 2.5 % of the height before it goes up was looking around: it becomes a look finger on the spot | the handle never steals the look |
+| Speed | 0.25 heights per second on average, 1.2 s at most | a slow drag is cancelled |
+| Decided | on release | |
+
+What it does: in a team game the stock team selection (Auto and the teams);
+otherwise `+jump` held for 0.25 s, which every server reads as "join". The
+handle shows the server's answer instead of failing silently: **JOINING...**
+while it waits, **IN QUEUE FOR A SLOT** when the server queued the player (the
+port's CSQC reads the queue; on other servers it shows as waiting), and
+**LOCKED - SWIPE TO RETRY** for 15 s when the player is still spectating 3 s
+later (joining locked, teams full, spectate-only). Warmup changes nothing for
+the join; READY is for players.
+
+With a mouse it is a button: **CLICK TO JOIN (JUMP)**, clickable while the
+pointer is free (the web page before pointer lock, a released mouse,
+`vid_mouse 0`). With the mouse grabbed for aiming a click is the stock fire
+(follow / next), and the jump key joins as it always has. The spectator bar is
+there at a desk too, quieter, clickable the same way (`touch_desk_specbar`).
+
+The recogniser is `TouchSwipe_*` in `engine/darkplaces/touch_hudmode.h`,
+tested over recorded traces (accepted, short, dragged back, slow, diagonal,
+sideways, downwards, looking first, outside the zone, a tap) by
+`scripts/test-touch-hudmode.sh`. The handle is the engine's
+(`touch_hud.c`, taking its fingers before the finger table from the one hook
+`vid_sdl.c` calls for every finger, `TouchVote_Finger`), so it is the same
+under the port's CSQC and a server's. `touch_join_handle 0` hides it.
+
+#### Move to spectators
+
+The MENU sheet's **Move to spectators** (and the optional SPECTATE pill on the
+HUD) runs the stock `spec`. It asks for a second tap within 3 s only when it
+would forfeit something: a round under way in a round-based mode, or a flag
+or ball carried (the port's CSQC tells the engine, `_touch_hint_round`,
+`_touch_hint_carry`; on other servers it never asks). With a keyboard the stock
+game menu keeps its **Spectate** button.
+
+#### Sizes
+
+One pill style and one circle style for every control. Primary actions (FIRE,
+the stick) 56 - 64 dp, secondary (the bar, the rocker, ALT, DUCK) 44 - 48 dp,
+pills drawn at least 36 dp tall with a target of 44 dp or more; no touch
+target is under 44 dp whatever `touch_scale` says (`TOUCHDP_*` in
+`touch_hudmode.h`). The dp comes from the reported dpi, or a guess from the
+screen's shorter side; on a desk with no touchscreen a dp is a pixel. The top
+bar (MENU, SCORE, CHAT) fades to 55 % after `touch_chrome_idle` (6) seconds
+untouched while playing and comes back on the next touch or mode change.
+
+#### What moved where
+
+| Before | Now |
+|--------|-----|
+| CONSOLE pill, bottom-left | the console button in the top bar (every mode); `touch_con_visible 1` restores the pill |
+| SCORE pill, bottom-left | the top bar, between MENU and CHAT |
+| the held join pill, bottom middle | the swipe handle (touch), a click on it (mouse, pointer free), MENU sheet **Join**, the jump key |
+| FOLLOW / NEXT on FIRE, PREV on ALT, FREE or UP on HOP, DOWN on DUCK | the spectator bar (`< FOLLOW >`, `< FREE >`) and the UP / DOWN rocker by the stick |
+| TURN while spectating | gone: a spectator turns with the look drag |
+| (none) | **Move to spectators**: MENU sheet; optional SPECTATE pill |
+| play controls at intermission on a server | none; MENU in the corner |
+| touch vote card over the next-map vote | none; the vote's own cards (`touch_vote_mapcard 1` restores it) |
+
+### Menu actions
+
+The in-match MENU sheet's actions, as one small list with state. The touch
+game menu (`dialog_touch_gamemenu.qc`) builds its Join / Move to spectators /
+Change team buttons from it, and a native pause menu (Android, the libadwaita
+front end, the UI bridge's `pause` screen when its store exists) should show
+the same list.
+
+| Id | Label | Shown | Command |
+|----|-------|-------|---------|
+| `resume` | Resume | in a match | `togglemenu 0` |
+| `join` | Join | spectating (free-fly or following); disabled while a join is pending or queued | `touch_action join`: team selection in a team game, else `+jump` |
+| `spectate` | Move to spectators | playing, dead, out of the round; **confirm** when it would forfeit the round or an objective | `touch_action spectate confirm` → `spec` |
+| `team` | Change team | team games, not at match end | `menu_showteamselect` |
+| `settings` | Settings | in a match | `menu_cmd settings` |
+| `leave` | Leave | in a match | `disconnect; g_campaign 0; menu_cmd sync; menu_cmd directmenu Welcome RESET` |
+
+Read: `_touch_hud_actions` (`"resume spectate:confirm team settings leave"`:
+hidden ones left out, `:disabled`, `:confirm`), or one cvar per action,
+`_touch_act_<id>`: 0 hidden, 1 enabled, 2 disabled, 3 enabled with a confirm.
+Run: `touch_action <id> [confirm]`; an action that asks for a confirm only
+prints without `confirm`, so a front end shows its own "are you sure" and then
+sends it. The table and its tests: `TouchAct_*` in `touch_hudmode.h`,
+`scripts/test-touch-hudmode.sh`.
+
+### HUD state, for other consumers
+
+Published by the engine (`touch_hudmode.c`) every frame it changes, read-only:
+
+| Cvar | Values |
+|------|--------|
+| `_touch_hud_mode` | `off`, `playing`, `dead`, `spectating`, `following`, `out`, `out_free`, `intermission`, `mapvote` |
+| `_touch_hud_target` | the followed player's name, `""` when not following |
+| `_touch_hud_flags` | bits: 1 warmup, 2 warmup waits for this player's ready, 4 team game, 8 a round under way, 16 carrying an objective |
+| `_touch_hud_join` | `none`, `open`, `pending`, `queued`, `locked` |
+| `_touch_hud_controls` | the mode's control set, `TOUCHCTL_*` bits (`touch_hudmode.h`) |
+| `_touch_hud_actions`, `_touch_act_<id>` | the menu actions above |
+
+The mode comes from the client state (the scoreboard's spectator frags, the
+view entity, health, `cl.intermission`) and the loaded CSQC's own globals
+(`intermission`, `mv_active`, `warmup_stage`, `ready_waiting_for_me`,
+`teamplay`), which the port's game code and a stock server's name the same.
+`touch_shellbtn.c` should place the console button from `_touch_hud_mode`
+too (the intermission case: `intermission` / `mapvote` → the corner); that
+file is being edited on `work/menu4`, so the change is left to that branch:
+in `place()`, test `TouchHudMode_Current()->mode` with `TouchMode_IsMatchEnd`
+instead of `cl.intermission`.
 
 ### Weapon strip
 
@@ -468,7 +593,7 @@ CSQC mirrors the value in `_touch_fire2_state` for tests and debugging.
 
 Unlimited ammo keeps every ammo-based secondary ready. Observing, dead or
 spectating, ALT fire is not there; following a player, ALT's place is **PREV**
-([Spectating](#spectating)).
+([Spectating](#hud-modes)).
 
 **ZOOM** is contextual the same way (`touch_zoom_visible 2`, the default): it
 fades in while the weapon in hand has a scope — Vortex, Rifle, Vaporizer and

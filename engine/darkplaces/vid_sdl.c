@@ -1779,6 +1779,7 @@ void Sys_SDL_HandleEvents(void)
 #endif
 			if (TouchShell_Mouse(event.type == SDL_MOUSEBUTTONDOWN, event.button.button, event.button.which == SDL_TOUCH_MOUSEID, event.button.x, event.button.y)) // Touch: console button
 				break;
+			if (TouchHUD_JoinMouse(event.type == SDL_MOUSEBUTTONDOWN, event.button.button, event.button.which == SDL_TOUCH_MOUSEID, event.button.x, event.button.y, !vid_usingmouse)) break; // Touch: join handle click
 			if (event.type == SDL_MOUSEBUTTONDOWN && event.button.which != SDL_TOUCH_MOUSEID)
 			{
 				qbool was_confirmed = VID_TouchMouseConfirmed();
