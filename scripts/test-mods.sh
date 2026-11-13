@@ -260,6 +260,7 @@ if [ -z "${ONLY:-}" ] || [ "${ONLY:-}" = install ]; then
 	has "$LOG1" "probe_cl: hud hooks.*events.*kill=[1-9]"; check "probe: client game events arrive" $?
 	has "$LOG1" "probe_cl: entities players=[1-9][0-9]* .* offline=true"; check "probe: xt.entities lists the players offline" $?
 	has "$LOG1" "Lua mods, the last second"; check "lua_mod_top prints per-mod cost" $?
+	! has "$LOG1" "the UI bridge refused page"; check "every mod page is accepted by the UI bridge's store" $?
 fi
 
 # 2. a second start: what was kept, then uninstall everything

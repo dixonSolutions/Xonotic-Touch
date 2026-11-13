@@ -320,8 +320,6 @@ static void tlua_uib_node(char *out, size_t size, const char *mod, int row)
 		tlua_jn_prop(out, size, "step", tlua_jn_get(row, "step"), &first);
 		tlua_jn_prop(out, size, "placeholder", tlua_jn_get(row, "placeholder"), &first);
 		tlua_jn_prop(out, size, "maxLength", tlua_jn_get(row, "maxlen"), &first);
-		if (tlua_jn_is(type, "field"))
-			dp_strlcat(out, ",\"kind\":\"text\"", size);
 		if (tlua_jn_is(type, "button"))
 		{
 			dpsnprintf(buf, sizeof(buf), ",\"action\":{\"id\":\"%s\"}", idout);
@@ -424,7 +422,7 @@ static void tlua_uib_set(const char *id, const char *json)
 			dp_strlcat(page, "]", sizeof(page));
 		dp_strlcat(page, out[1] ? "]}" : "}", sizeof(page)); // out has no closing bracket
 		if (TouchUIB_ModSetPage(mod, key, page, strlen(page), err, sizeof(err)) < 0)
-			Con_DPrintf("Lua: the UI bridge refused page %s: %s\n", id, err);
+			Con_Printf(CON_WARN "Lua: the UI bridge refused page %s: %s\n", id, err);
 	}
 }
 
@@ -456,16 +454,24 @@ static void tlua_uib_event(const char *mod_id, const char *ev_json, size_t len, 
 		else if (n >= 0 && (tlua_jn[n].type == 's' || tlua_jn[n].type == 'n'))
 			dp_strlcpy(value, tlua_jn[n].s + (tlua_jn[n].type == 's' && tlua_jn[n].s[0] == '#' ? 1 : 0), min(sizeof(value), (size_t)tlua_jn[n].len + 1 - (tlua_jn[n].s[0] == '#' ? 1 : 0)));
 	}
-	// node: "mods/<mod>/<page key>/<row>" (or relative): the page key and the row
+	// node: "mods.page.<mod>.<page key>/<row>[/<row>...]": the page key and the last row
 	slash = strrchr(node, '/');
 	if (!slash)
 		return;
 	dp_strlcpy(row, slash + 1, sizeof(row));
 	{
-		char head[160], *k;
-		dp_strlcpy(head, node, min(sizeof(head), (size_t)(slash - node) + 1));
-		k = strrchr(head, '/');
-		k = k ? k + 1 : head;
+		char prefix[96], k[96];
+		const char *q;
+		size_t kl;
+		dpsnprintf(prefix, sizeof(prefix), "mods.page.%s.", mod_id);
+		if (strncmp(node, prefix, strlen(prefix)))
+			return;
+		q = node + strlen(prefix);
+		kl = strcspn(q, "/");
+		if (kl >= sizeof(k))
+			return;
+		memcpy(k, q, kl);
+		k[kl] = 0;
 		if (!strncmp(k, "server-", 7))
 			dpsnprintf(page, sizeof(page), "server.%s.%s", mod_id, k + 7);
 		else
