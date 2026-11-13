@@ -1,0 +1,9 @@
+id: item_placer
+title: Item and teleporter placer
+version: 1.0
+author: Godnotic
+description: !drop puts a mega health in front of you; !mark and !portal make a teleporter between two marks.
+api: 3
+realm: server
+permissions: gamerules
+reason.gamerules: spawns items and teleports players

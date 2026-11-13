@@ -1,0 +1,9 @@
+id: chat_vote
+title: Chat commands and a vote
+version: 1.0
+author: Godnotic
+description: !time, !help and !shuffle (a vote to shuffle the teams), also as cmd commands.
+api: 3
+realm: server
+permissions: gamerules
+reason.gamerules: starts votes

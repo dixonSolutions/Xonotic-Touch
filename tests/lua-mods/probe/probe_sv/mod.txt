@@ -1,0 +1,5 @@
+id: probe_sv
+title: API probe (server, test fixture)
+api: 3
+realm: server
+permissions: gamerules, engine_full
