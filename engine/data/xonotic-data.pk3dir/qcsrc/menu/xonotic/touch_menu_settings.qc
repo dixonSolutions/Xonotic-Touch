@@ -29,7 +29,8 @@ void GodnoticMenuSizePreview_draw(entity me)
 	float want = (autocvar_menu_touch_size < 0) ? 0 : TouchMenuScale_size();
 	if (me.size.x <= 0 || me.size.y <= 0)
 		return;
-	float row = touch_menu_on ? TouchMenuScale_dpToUnits(TOUCH_MENU_ROW_DP) : SKINFONTSIZE_NORMAL * SKINHEIGHT_NORMAL;
+	// Today's rows are TOUCH_MENU_ROW_DP at the size the menu was built with.
+	float row = touch_menu_on ? TouchMenuScale_dpToUnits(TOUCH_MENU_ROW_DP * now) : SKINFONTSIZE_NORMAL * SKINHEIGHT_NORMAL;
 	// Two samples, today's and the new size, side by side.
 	for (int i = 0; i < 2; ++i)
 	{
@@ -79,6 +80,6 @@ void GodnoticMenuSizeTab_fill(entity me)
 	me.TR(me);
 		me.TD(me, 1, 3, e = makeXonoticCheckBoxEx(-1, 1, "menu_touch_size", _("Use desktop layout")));
 			e.tooltip = _("The stock Xonotic menu, sized for a mouse. Apply to switch");
-		me.TD(me, 1, 3, e = makeXonoticTextLabel(0, sprintf(_("Screen: %d dpi, rows %d dp"), rint(TouchMenuScale_dpi()), TOUCH_MENU_ROW_DP)));
+		me.TD(me, 1, 3, e = makeXonoticTextLabel(0, strzone(sprintf(_("Screen: %d dpi, rows %d dp"), rint(TouchMenuScale_dpi()), TOUCH_MENU_ROW_DP)))); // kept: a label holds on to its text
 			e.allowCut = true;
 }
