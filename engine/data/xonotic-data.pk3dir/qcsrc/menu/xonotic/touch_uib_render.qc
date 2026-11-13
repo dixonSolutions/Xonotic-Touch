@@ -1109,7 +1109,7 @@ void RB_Layout()
 	entity tt = RB_Item("title", sc, 1, eX * D(canback ? 66 : 24), eX * (W * 0.55) + eY * hdr);
 	if (tt) strcpy(tt.rb_t1, uib_get(sc, "title"));
 	int na = stof(uib_get(sc, "actions.#"));
-	float ax = W - D(12) - D(56);  // the engine's console button sits in the top right corner
+	float ax = W - D(12) - D(rb_touch ? 84 : 56);  // the engine's console button sits in the top right corner
 	for (int i = na - 1; i >= 0; --i)
 	{
 		float bw = RB_ButtonW(uib_get(sc, sprintf("actions.%d.label", i)), uib_get(sc, sprintf("actions.%d.icon", i)));
@@ -1347,6 +1347,7 @@ bool RB_ImageReady(string path)
 		return false;
 	--rb_imgbudget;
 	precache_pic(path, PRECACHE_PIC_MIPMAP);
+	if (cvar("_uib_r_debug") >= 3) print(sprintf("uibr load %s %v\n", path, drawgetimagesize(path)));
 	string s = strcat(rb_loaded, path, " ");
 	if (strlen(s) > 6000)
 		s = strcat(" ", path, " ");
@@ -1371,7 +1372,7 @@ void RB_Image(string ref, vector o, vector s, float a, bool contain)
 {
 	// small boxes draw a cached thumbnail (cheap to load again); big ones the full picture
 	string path;
-	if (s.x * s.y < 640 * 400 && substring(ref, 0, 4) == "pk3:")
+	if (s.x < D(420) && s.y < D(260) && substring(ref, 0, 4) == "pk3:")
 	{
 		string key = strcat(ref, "@thumb");
 		if (strstrofs(rb_loaded, strcat(" ", key, "=", ""), 0) >= 0)
@@ -1382,7 +1383,9 @@ void RB_Image(string ref, vector o, vector s, float a, bool contain)
 		else if (rb_imgbudget > 0 && fabs(rg_vel[0]) <= D(900))
 		{
 			path = uib_thumb(ref, 384, 216);
-			strcpy(rb_loaded, strcat(rb_loaded, key, "=", path, " "));
+			if (cvar("_uib_r_debug") >= 3) print(sprintf("uibr thumb %s -> %s\n", ref, path));
+			string nl = strcat(((rb_loaded == "") ? " " : rb_loaded), key, "=", path, " ");   // strcpy frees its target first: build the new value before
+			strcpy(rb_loaded, nl);
 		}
 		else
 		{
@@ -2674,11 +2677,11 @@ bool TouchUIB_KeyDown(float key, float ascii)
 			case K_ENTER: case K_KP_ENTER: RB_EndEdit(true); return true;
 			case K_ESCAPE: RB_EndEdit(false); return true;
 			case K_BACKSPACE:
-				if (strlen(rb_edit_text)) strcpy(rb_edit_text, substring(rb_edit_text, 0, strlen(rb_edit_text) - 1));
+				if (strlen(rb_edit_text)) { string shorter = substring(rb_edit_text, 0, strlen(rb_edit_text) - 1); strcpy(rb_edit_text, shorter); }
 				break;
 			default:
 				if (ascii >= 32 && strlen(rb_edit_text) < 120)
-					strcpy(rb_edit_text, strcat(rb_edit_text, chr2str(ascii)));
+					{ string longer = strcat(rb_edit_text, chr2str(ascii)); strcpy(rb_edit_text, longer); }
 				else
 					return true;
 				break;
