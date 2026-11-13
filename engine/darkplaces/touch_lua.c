@@ -412,6 +412,9 @@ static int tlua_require(lua_State *L)
 	char rel[256], chunk[320];
 	const char *src;
 	size_t len, i;
+	// Only the name: the loaded table is addressed below as stack index 2, and
+	// a second argument (pcall(require, "x", 1)) used to sit there instead.
+	lua_settop(L, 1);
 	if (!tlua_validname(name, true) || strlen(name) > 120)
 		return luaL_error(L, "require: bad module name '%s' (letters, digits, _ and dots only)", name);
 	lua_rawgetp(L, LUA_REGISTRYINDEX, &tlua_key_loaded);

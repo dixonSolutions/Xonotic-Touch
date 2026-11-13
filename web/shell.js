@@ -925,6 +925,10 @@
           }
           return fail(e.message || String(e));
         }
+        // What the download just stored is no longer missing. Without this the
+        // dialog came back after every successful download and the game never
+        // started.
+        missing = await missingFiles(files, selected());
       }
     }
 

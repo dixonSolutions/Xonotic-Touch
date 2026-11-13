@@ -163,8 +163,10 @@ final class PackFetch {
      * whose pk3s are wanted ("Xonotic/data/"); deeper entries are ignored.
      */
     static Plan plan(String url, String auth, String folder) throws IOException {
-        HttpURLConnection c = open(url, auth, "bytes=-65557", null);
-        byte[] tail;
+        // The size first, then the tail by explicit offsets. A suffix range
+        // ("bytes=-65557") would do both in one request, but GitHub's release
+        // storage answers it with 501, and that is where the data lives.
+        HttpURLConnection c = open(url, auth, "bytes=0-0", null);
         long length;
         String etag;
         try {
@@ -174,13 +176,15 @@ final class PackFetch {
             }
             length = totalOf(c.getHeaderField("Content-Range"));
             etag = c.getHeaderField("ETag");
-            tail = readAll(c.getInputStream(), 70_000);
         } finally {
             c.disconnect();
         }
         if (length <= 0) {
             throw new IOException("No size from " + url);
         }
+        // End-of-central-directory record: 22 bytes plus a comment of at most 65535.
+        long tailStart = Math.max(0, length - 65557);
+        byte[] tail = fetchRange(url, auth, etag, tailStart, length - 1);
         int eocd = -1;
         for (int p = tail.length - 22; p >= 0; p--) {
             if (le32(tail, p) == 0x06054b50L) {
@@ -196,7 +200,6 @@ final class PackFetch {
         if (cdSize == 0xFFFFFFFFL || cdOffset == 0xFFFFFFFFL) {
             throw new IOException("zip64 archives are not supported");
         }
-        long tailStart = length - tail.length;
         byte[] cd;
         if (cdOffset >= tailStart) {
             int from = (int) (cdOffset - tailStart);
@@ -953,7 +956,9 @@ final class PackFetch {
     private static HttpURLConnection open(String url, String auth, String range, String ifRange)
             throws IOException {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-        c.setRequestProperty("Authorization", auth);
+        if (auth != null) {
+            c.setRequestProperty("Authorization", auth);
+        }
         c.setRequestProperty("Accept-Encoding", "identity");
         c.setRequestProperty("Range", range);
         if (ifRange != null) {
