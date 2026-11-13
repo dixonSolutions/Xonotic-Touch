@@ -229,6 +229,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         val r = ViewRenderer(activity, this, this)
         renderer = r
         val c = UibClient(r) { msg -> NativeBridge.enqueue(FeArgs.command("ui", msg)) }
+        c.ignoreRows = testRows
         client = c
         attached = true
         NativeBridge.frontendBeat()
@@ -318,8 +319,18 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     override fun submit(node: String, value: Any?) { client?.event("submit", mapOf("node" to node, "value" to value)) }
     override fun row(list: String, key: String, kind: String) { client?.event("row", mapOf("node" to list, "row" to key, "kind" to kind)) }
     override fun window(list: String, source: String, offset: Int, limit: Int, sort: String, desc: Boolean, filter: String) {
+        if (testRows) {
+            // test builds: 2,000 servers / 200 maps generated here, to measure flings (dumpsys gfxinfo)
+            val total = if (source.startsWith("maps")) 200 else 2000
+            val rows = (offset until minOf(offset + limit, total)).map { TestRows.make(source, it) }
+            main.post { renderer?.listRows(source, offset, total, rows) }
+            return
+        }
         client?.window(source, offset, limit, sort, desc, filter)
     }
+
+    /** `<basedir>/fe-test-rows`: lists get generated rows instead of the engine's (tests only). */
+    private val testRows = baseDir != null && File(baseDir, "fe-test-rows").isFile
     override fun image(ref: String, w: Int, h: Int) {
         when {
             ref == "asset:banner" -> renderer?.imageReady(ref, bannerFile())
@@ -652,5 +663,20 @@ class StopgapActions(private val activity: Activity, private val client: UibClie
     fun back(): Boolean {
         if (current == "pause") { NativeBridge.enqueue(FeArgs.command("menu", "resume")); return true }
         return current == "home" // Home: Back does nothing (Quit is on screen)
+    }
+}
+
+/** Deterministic rows for the fling measurements (fe-test-rows). */
+object TestRows {
+    private val maps = listOf("stormkeep", "afterslime", "atelier", "boil", "bromine", "catharsis", "courtfun", "dance", "drain", "erbium", "finalrage", "fuse", "glowplant", "implosion", "oilrig", "silentsiege", "solarium", "techassault", "vorix", "warfare")
+    private val modes = listOf("dm", "tdm", "ctf", "ca", "ft", "duel", "kh", "race")
+    fun make(source: String, i: Int): Map<String, Any?> {
+        val m = maps[i % maps.size]
+        return if (source.startsWith("maps")) mapOf("key" to "$m-$i", "image" to "pk3:maps/$m",
+            "cells" to mapOf("name" to m, "title" to m.replaceFirstChar { it.uppercase() } + " " + (i / maps.size + 1), "author" to "test", "modes" to "dm tdm ctf"))
+        else mapOf("key" to "10.${i / 250}.${i % 250}.7:26000",
+            "cells" to mapOf("name" to "Server ${i + 1}", "map" to m, "mode" to modes[i % modes.size], "players" to i % 17, "max" to 16 + (i % 3) * 8,
+                "bots" to 0, "ping" to 20 + (i * 37) % 260, "lock" to (i % 9 == 0), "fav" to false, "address" to "10.${i / 250}.${i % 250}.7:26000",
+                "section" to if (i < 12) "Favourites and LAN" else "Internet"))
     }
 }

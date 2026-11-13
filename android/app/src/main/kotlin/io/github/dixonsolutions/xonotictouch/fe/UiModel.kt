@@ -77,6 +77,8 @@ class UibClient(private val renderer: UiRenderer, private val send: (String) -> 
     private var nextId = 1L
     /** Called after every snapshot or diff that applied (the platform reads things off the store). */
     var onChanged: ((UibStore) -> Unit)? = null
+    /** Rows come from elsewhere (test builds generate them): the engine's rows and source notices are not applied. */
+    var ignoreRows = false
 
     private fun msg(t: String, body: Map<String, Any?>): String =
         Json.write(linkedMapOf<String, Any?>("uib" to 1, "t" to t, "id" to nextId++) + body)
@@ -108,8 +110,8 @@ class UibClient(private val renderer: UiRenderer, private val send: (String) -> 
                 applyChanges(changed, deleted)
                 onChanged?.invoke(store)
             }
-            "rows" -> renderer.listRows(m.str("source"), m.int("offset"), m.int("total"), m["rows"].list().map { it.obj() })
-            "source" -> renderer.listRows(m.str("source"), 0, m.int("total"), emptyList())
+            "rows" -> if (!ignoreRows) renderer.listRows(m.str("source"), m.int("offset"), m.int("total"), m["rows"].list().map { it.obj() })
+            "source" -> if (!ignoreRows) renderer.listRows(m.str("source"), 0, m.int("total"), emptyList())
             "image" -> renderer.imageReady(m.str("ref"), m.str("path"))
             "error" -> if (m.str("code") == "not_found") m.str("ref").takeIf { it.isNotEmpty() }?.let { renderer.imageReady(it, "") }
             "hello", "ack", "pong", "bye" -> {}
