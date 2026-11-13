@@ -1374,6 +1374,47 @@ static void UIB_ModPage_f(cmd_state_t *cmd)
 	Con_Printf("uib_modpage: %s%s\n", r ? "refused: " : "ok", r ? err : "");
 }
 
+// uib_testrows <source> <count> servers|maps [seed]: synthetic rows for stress tests
+static void UIB_TestRows_f(cmd_state_t *cmd)
+{
+	static const char *maps[] = {"afterslime", "atelier", "boil", "bromine", "darkzone", "erbium", "finalrage", "fuse",
+		"glowplant", "implosion", "opium", "runningman", "silentsiege", "solarium", "stormkeep", "trident", "warfare", "xoylent"};
+	static const char *modes[] = {"dm", "tdm", "ctf", "ca", "duel", "ft", "kh", "lms"};
+	if (Cmd_Argc(cmd) < 4)
+	{
+		Con_Printf("usage: uib_testrows <source> <count> servers|maps [seed]\n");
+		return;
+	}
+	int n = atoi(Cmd_Argv(cmd, 2));
+	int maprows = !strcmp(Cmd_Argv(cmd, 3), "maps");
+	unsigned seed = (unsigned)atoi(Cmd_Argv(cmd, 4)) * 2654435761u + 1;
+	UIBSrc_StaticBegin(Cmd_Argv(cmd, 1));
+	for (int i = 0; i < n && i < 65536; i++)
+	{
+		char key[64], cells[512], img[64];
+		const char *m = maps[i % (int)(sizeof(maps) / sizeof(*maps))];
+		seed = seed * 1103515245u + 12345u;
+		dpsnprintf(img, sizeof(img), "pk3:maps/%s", m);
+		if (maprows)
+		{
+			dpsnprintf(key, sizeof(key), "%s_%d", m, i);
+			dpsnprintf(cells, sizeof(cells), "{\"name\":\"%s\",\"title\":\"%s %d\",\"author\":\"Test author %d\"}", key, m, i, i % 37);
+		}
+		else
+		{
+			int ping = 5 + (int)((seed >> 8) % 400);
+			dpsnprintf(key, sizeof(key), "203.0.%d.%d:%d", (i / 250) % 250, i % 250, 26000 + i % 5);
+			dpsnprintf(cells, sizeof(cells), "{\"name\":\"Test server %05d\",\"map\":\"%s\",\"mode\":\"%s\",\"players\":%d,\"max\":16,"
+				"\"bots\":0,\"ping\":%d,\"lock\":%s,\"fav\":false,\"address\":\"%s\",\"net\":\"internet\"}",
+				i, m, modes[i % 8], (int)(seed >> 20) % 17, ping, (i % 9) ? "false" : "true", key);
+		}
+		UIBSrc_StaticRow(key, cells, img);
+	}
+	UIBSrc_StaticEnd();
+	uib.touched = 1;
+	Con_Printf("uib_testrows: %d rows in %s\n", n, Cmd_Argv(cmd, 1));
+}
+
 void TouchUIB_Init(void)
 {
 	Cvar_RegisterVariable(&menu_touch_uib);
@@ -1383,6 +1424,7 @@ void TouchUIB_Init(void)
 	Cmd_AddCommand(CF_CLIENT, "uib_send", UIB_Send_f, "UI bridge: deliver a renderer message (JSON) on the console loopback and print the replies");
 	Cmd_AddCommand(CF_CLIENT, "uib_event", UIB_Event_f, "UI bridge: deliver an event, e.g. uib_event {\"ev\":\"action\",\"node\":\"home/hero\",\"action\":\"play\"}");
 	Cmd_AddCommand(CF_CLIENT, "uib_stats", UIB_Stats_f, "UI bridge: node count, rev, snapshot size, renderers");
+	Cmd_AddCommand(CF_CLIENT, "uib_testrows", UIB_TestRows_f, "UI bridge: synthetic rows for stress tests (uib_testrows <source> <count> servers|maps [seed])");
 	Cmd_AddCommand(CF_CLIENT, "uib_modpage", UIB_ModPage_f, "UI bridge: register a mod page (uib_modpage <mod> <page> <json>) or remove it (-)");
 	uib.mutex = Thread_CreateMutex();
 	uib.loopback = -1;

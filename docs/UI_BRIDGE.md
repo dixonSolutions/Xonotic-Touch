@@ -762,7 +762,9 @@ Console commands (tests, debugging):
 | `uib_dump [file]` | writes the current snapshot (to the console or `data/<file>`) |
 | `uib_event <json>` | delivers an `ev` message as if a renderer sent it |
 | `uib_send <json>` | delivers any renderer message on a loopback client and prints the replies |
-| `uib_stats` | node count, rev, snapshot size, last diff size, clients |
+| `uib_stats` | node count, rev, snapshot size, clients |
+| `uib_modpage <mod> <page> <json>` / `- ` | register or remove a mod page (as the Lua API does) |
+| `uib_testrows <source> <n> servers\|maps [seed]` | synthetic rows for stress tests |
 
 ## 10a. Writing a client
 
@@ -799,28 +801,144 @@ For the Rust core (and anyone else):
 
 ## 11. QuakeC side
 
-- `touch_uib_api.qh`: the builtins (store writes, reads for the QuakeC renderer).
-- `touch_uib_build.qc`: the builder (`UIB_Screen`, `UIB_Begin`/`UIB_End`, `UIB_Card`,
-  `UIB_Switch` ...). A screen is a function that describes its nodes; it is called again
-  when anything it reads changes, and the engine keeps only the differences.
-- `touch_uib_screens*.qc`: the screens (Home, Play, Multiplayer, Settings, pause,
-  loading, Credits, dialogs).
-- `touch_uib_render.qc`: the QuakeC renderer (web, and the fallback everywhere).
-- `menu_touch_uib 0/1`: 1 draws the menu from these descriptions with the QuakeC
-  renderer; 0 keeps the current touch menu. A native renderer attached hides both.
+| File | Holds |
+| --- | --- |
+| `touch_uib_api.qh` | the builtins #1180..#1222 (`uib_begin`, `uib_node`, `uib_s`/`uib_f`/`uib_b`/`uib_j`/`uib_push`, `uib_nav`, `uib_window` ...). Guard: `UIB_EngineHasBridge()` (cvar `uib_version`) |
+| `touch_uib_build.qc` | builder helpers: `UIB_Screen`, `UIB_Open`/`UIB_Close`, `UIB_A` (actions), `UIB_Switch`, `UIB_Slider`, `UIB_Choice` ...; view-model values (`vm:` binds) kept in `_uib_*` cvars |
+| `touch_uib_screens.qc` | Home, Create (with LAN, Port, Password), map preview, Servers, server detail, password dialog, pause (hosting card), loading, Credits, quit dialog; navigation; `UIB_Event`, the menu's answer to every renderer event |
+| `touch_uib_settings.qc` | Settings (split, vertical tabs, horizontal sub-tabs) and Mods (lists, detail with permissions, install from link) |
+| `touch_uib_render.qc` | the QuakeC renderer (web, and the fallback everywhere) |
+
+A screen is a function that emits its nodes; it runs again after any event that may
+change it (`UIB_RebuildAll`), and the store compares node by node, so a rebuild that
+changes one value sends a diff of one node. Rebuilding a 253-node screen with one
+changed value costs about 1.8 ms in the store (test build with sanitizers) and sends a
+163-byte diff.
+
+Cvars: `menu_touch_uib` (0/1, archived): draw the menu from the descriptions with the
+QuakeC renderer. `uib_debug` (1 logs messages, 2 their text). `_uib_r_debug` (renderer
+state in `_uib_r_state`; 2 prints it twice a second; 3 every frame with its cost).
+Test hooks: `_uib_debug_open <screen>` opens a modal, `_uib_debug_toast <text>` shows a
+toast, `_uib_debug_servers` / `_uib_debug_maps` point the Servers list / map picker at
+a synthetic source made by `uib_testrows <source> <n> servers|maps`.
+
+### 11.1 The QuakeC renderer
+
+- **Look**: deep navy (`#090f21`) surfaces, electric-blue outlines (`#2e8cff`), ember
+  accents (`#ff7a2e`) for primary actions, selection and focus, bold Xolonium (font
+  slot `FONT_USER+3`) for headings and buttons, rounded cards from `gfx/touch/rrect`
+  (9-slice), map previews as card images, a hero card with a readable gradient band.
+- **Layout** runs only when the store's rev, the screen or the window size changed;
+  each frame draws the items in view. Grids reflow from `minItem`; tables drop
+  columns by `priority` on narrow widths; Settings becomes one column below 600 dp.
+- **Sticky**: header (back, title, actions; kept clear of the engine's console
+  button), toolbar, action bar, the detail pane's sub-tab strip, table column headers,
+  section headers with `sticky`.
+- **Virtual lists**: a table or card grid asks `uib_window` for the rows near the view
+  (120 at a time, re-asked only when the range, the query or the source rev changes),
+  draws placeholders for rows not yet there, keeps the first visible row's key and
+  index and shifts the scroll when rows are inserted above it. Images: at most one new
+  picture per frame and none while a fling is fast; small boxes draw a cached
+  thumbnail (`uib_thumb`, PNG in `<gamedir>/uib-cache/`).
+- **Input**: a press is a tap until it moves `TOUCH_SHEET_SLOP_DP`; a vertical drag
+  scrolls the region under it (never activates), a sideways drag on a slider moves it,
+  on a carousel or tab strip scrolls it; release flings with friction; a press while a
+  fling is fast only stops it. Mouse wheel, PgUp/PgDn, arrows/Tab move a focus ring,
+  Enter/Space activate, Escape is back. Text fields take keys (and ask for the screen
+  keyboard on touch); private fields show bullets.
+- Links, copy/share and file actions show the text in a dialog (the menu VM cannot
+  open a browser, the clipboard or a file picker).
+
+Not reused from the touch menu: its gesture layer (`touch_menu_sheet.qh`) and virtual
+grid (`touch_menu_vgrid.qh`) are bound to the stock menu item tree (they scroll menu
+items and dialogs); the renderer draws without menu items, so it implements the same
+rules (same slop constant, tap/drag/fling semantics) on its own items.
+
+### 11.2 Hooks in upstream files
+
+Every line marked `// Touch:`:
+
+| File | Line |
+| --- | --- |
+| `engine/darkplaces/host.c` | `#include "touch_uib.h"`; `TouchUIB_Init();` in `Host_InitLocal`; `TouchUIB_Frame();` after `Cbuf_Frame`; `TouchUIB_Shutdown();` first in `Host_Shutdown` |
+| `engine/darkplaces/mvm_cmds.c` | `#include "touch_uib_mvm.h"`; `#include "touch_uib_mvm.inc"` before the last entry of `vm_m_builtins` (designated indices from #1180, so builtins upstream adds below never shift ours) |
+| `engine/darkplaces/makefile.inc` | the seven `touch_uib*.o` in `OBJ_COMMON` (Android's CMake reads this list) |
+| `qcsrc/menu/menu.qc` | `#include "xonotic/touch_uib_render.qh"`; in `m_draw` after `draw_reset_cropped()`: `if (TouchUIB_Draw(menuAlpha)) {...}`; in `m_keydown` and `m_keyup` after `if (!Menu_Active) return;` |
+| `qcsrc/menu/xonotic/_mod.inc`, `_mod.qh` | the `touch_uib_*` includes |
 
 ## 12. Measurements
 
-Filled in from the engine as it lands (backend start time, snapshot and diff sizes).
+Desktop, offscreen SDL, shared machine at load 30-46 on 24 cores (so times are upper
+bounds), full game data:
+
+| What | Measured |
+| --- | --- |
+| Back-end start: engine spawned with `-uibridge` to first `hello` + Home snapshot | 1.3-1.9 s on a lightly loaded run, 2.6-4.5 s under load (the engine reaches its menu in about 0.5 s on an idle desktop; the rest is Host_Init with the full packs) |
+| Home snapshot | 2.1 KB; the largest screen (Create) 12 KB |
+| Diffs during a screen walk | median 1.3 KB, max 7 KB (a screen push) |
+| A value change | one node in the diff (fov: about 0.2 KB) |
+| QuakeC renderer, Servers with 2,000 synthetic rows, four flings | median 3-6 ms of draw per frame, p95 8-13 ms, max 31-57 ms (the max is a window fetch) |
+| QuakeC renderer, 200-card map grid, four flings, thumbnails cached | median 1.2 ms, p95 2.8 ms, max 16 ms; first visit (thumbnails made) max 54 ms |
+| Idle menu (nothing changing) | the renderer draws every frame the menu is shown (about 1-2 ms); with no renderer attached and `menu_touch_uib 0` nothing is described and `TouchUIB_Frame` returns at once |
+
+## 12a. Embedding the engine (for the Linux app)
+
+The owner wants one window managed by the Rust core. What the engine side offers now
+and what an embedding needs:
+
+- **In process**: everything in section 10 works in any process that links the engine;
+  `TouchUIB_Open/Post/Take/NotifyFd/SetNotify/Close` are thread-safe, so the Rust core
+  can run the engine on its own thread and talk to it like the Android core does.
+- **Running as a library**: the engine's `main` is in `sys_sdl.c` (`Sys_Main` ->
+  `Host_Main`). An embedding needs an entry point that runs `Host_Init` and then one
+  `Host_Frame` per call, so the host's main loop drives frames. That belongs in a
+  Touch-owned file of the Linux agent (for example `touch_nativefe.c`): `int
+  Godnotic_EngineInit(int argc, char **argv)`, `double Godnotic_EngineFrame(void)`
+  (returns the time until the next frame is wanted), `void Godnotic_EngineShutdown(void)`.
+- **A host-supplied GL surface**: today `vid_sdl.c` creates its own SDL window and GL
+  context. Rendering into a GtkGLArea needs `VID_Init`/`VID_Mode` to accept an existing
+  context (SDL can wrap a foreign window with `SDL_CreateWindowFrom` on X11; on Wayland
+  the reliable path is to make the GtkGLArea's context current and skip SDL video
+  entirely, giving the engine the size and a swap callback). That is a change to
+  `vid_sdl.c` (upstream, owned by the Android lock), so it is not made here.
+- **No window until told to present**: back-end mode today creates the SDL window and
+  hides it immediately (`touch_uib_stream.c`, `SDL_HideWindow` while `app.context` is
+  `menu`/`loading`, shown for `game`), so it can flash for a frame at start. A true
+  windowless start needs `vid_sdl.c` to create the window with `SDL_WINDOW_HIDDEN`
+  when `-uibridge` is given; one hook line there would do it.
+- **Fallback**: the stream transport (`-uibridge fd:N`) with the engine a hidden child
+  process; it quits when the app closes its end.
+
+## 12b. Mod pages from Lua
+
+The Lua API calls `TouchUIB_ModSetPage(mod, page, json, len, err, errlen)` with a page
+(`{"title", "nodes": [...]}`, ids relative to the page), `TouchUIB_ModSetValue` to
+update a bound value, `TouchUIB_ModRemove`, and registers `TouchUIB_ModSetEventHandler`
+to get the events of its nodes (already checked: the node exists, carries the mod's
+origin, the action is on it, values are of the bind's type). Pages appear in Settings >
+Mods > Pages from mods and open as `mods.page.<mod>.<page>`. For testing without Lua:
+`uib_modpage <mod> <page> <json>`.
 
 ## 13. Fixtures
 
-`tests/uibridge/fixtures/`:
+`tests/uibridge/fixtures/`, each validating against `docs/ui-bridge.schema.json`:
 
-- `<screen>.json`: a snapshot sequence file for one screen (`{"snapshot": ..., "rows": {...}}`).
-- `seq-*.json`: a snapshot followed by diffs (`{"snapshot": ..., "steps": [{"delay": s, "msg": diff}], "rows": {...}}`).
-- `rows` maps a source name to the full row array; the replay script windows and sorts it.
+- `<screen>.json`: `{"name", "description", "generated", "caps", "snapshot", "rows"}`;
+  `rows` maps every list source on the screen to its rows (first 200).
+- `seq-*.json`: a snapshot and `steps` (`{"delay", "msg", "note"}`, diffs or `source`
+  notices) to play in order.
 
-Every fixture validates against `docs/ui-bridge.schema.json`. Fixtures marked
-`"generated": "seed"` were written by hand before the engine produced them; `scripts/test-uibridge.sh --check` regenerates the
-others from the engine and fails on drift (ignoring `session`, `id`, pings and timestamps).
+`"generated": "engine"` fixtures are written by `scripts/uib-fixtures.py`, which drives a
+headless engine over the stream transport as a renderer and walks the screens (Home,
+Singleplayer and its LAN form, map preview, Servers with and without LAN, every Settings
+section, Mods pages, a mod page, Credits, a navigation and a setting sequence).
+`"generated": "seed"` fixtures are hand-made (`tests/uibridge/seed_fixtures.py`) for
+what needs a live server or a match: server detail, the password prompt, pause (also
+while hosting), a download in progress, a dialog, a toast, the server list filling in.
+
+`scripts/test-uibridge.sh` checks the schema is current, validates every fixture, runs
+the store's property test (random rebuilds; applying all diffs to the first snapshot
+equals the last snapshot) and the fixture player; with `--engine` and a basedir it also
+runs `tests/uibridge/engine_test.py` (transport, round trips, images, hostile mod pages,
+reconnect, zero cost) and `scripts/uib-fixtures.py --check`, which fails on drift
+(ignoring session, message ids, engine version, pings, revs).

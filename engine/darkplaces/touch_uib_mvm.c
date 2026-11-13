@@ -445,3 +445,12 @@ void VM_uib_loadinfo(prvm_prog_t *prog)
 		progress, speed, file, nd);
 	PRVM_G_INT(OFS_RETURN) = PRVM_SetTempString(prog, out, strlen(out));
 }
+
+// string uib_thumb(string ref, float w, float h): a cached thumbnail's path for drawpic
+int UIBImg_Thumb(const char *ref, int w, int h, char *out, size_t outsize);
+void VM_uib_thumb(prvm_prog_t *prog)
+{
+	char out[160];
+	UIBImg_Thumb(PRVM_G_STRING(OFS_PARM0), (int)PRVM_G_FLOAT(OFS_PARM1), (int)PRVM_G_FLOAT(OFS_PARM2), out, sizeof(out));
+	PRVM_G_INT(OFS_RETURN) = PRVM_SetTempString(prog, out, strlen(out));
+}

@@ -291,7 +291,8 @@ void UIB_BuildCreate()
 	UIB_Section("maps", _("Map"), true);
 		uib_s("subtitle", _("Tap a map to see it"));
 		UIB_Open("list", "list");
-			uib_s("source", strcat("maps:", mode));
+			string msrc = cvar_string("_uib_debug_maps");      // stress tests: a synthetic source
+			uib_s("source", (msrc != "") ? msrc : strcat("maps:", mode));
 			uib_s("display", "cards");
 			uib_s("rowHeight", "card");
 			uib_f("minItem", 220);
@@ -544,7 +545,8 @@ void UIB_BuildServers()
 		UIB_Close();
 	UIB_Close();
 	UIB_Open("servers", "list");
-		uib_s("source", "servers");
+		string src = cvar_string("_uib_debug_servers");   // stress tests: a synthetic source
+		uib_s("source", (src != "") ? src : "servers");
 		uib_push("columns", UIB_Col("lock", "lock", "", "xs", 2, false, false));
 		uib_push("columns", UIB_Col("name", "text", _("Server"), "fill", 1, true, false));
 		uib_push("columns", UIB_Col("map", "map", _("Map"), "m", 2, true, false));
@@ -917,6 +919,8 @@ void UIB_Init()
 	registercvar("_uib_server_name", "", 0);
 	registercvar("_uib_debug_open", "", 0);
 	registercvar("_uib_debug_toast", "", 0);
+	registercvar("_uib_debug_servers", "", 0);
+	registercvar("_uib_debug_maps", "", 0);
 	UIB_RecentRows();
 	strcpy(uibn_context, "");
 	UIB_Context();

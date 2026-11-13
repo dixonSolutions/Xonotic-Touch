@@ -214,5 +214,6 @@ const char *UIB_LastCaps(void);
 void UIB_Touched(void);
 size_t UIBMod_List(char *out, size_t size);
 uibnode_t *UIBS_FirstNode(void);
+int UIBImg_Thumb(const char *ref, int w, int h, char *out, size_t outsize);
 
 #endif

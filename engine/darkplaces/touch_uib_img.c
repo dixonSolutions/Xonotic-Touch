@@ -296,4 +296,48 @@ void UIBImg_Frame(void)
 	nreq -= done;
 }
 
+// A thumbnail no larger than w x h as a VFS path ("uib-cache/..."), made now if needed:
+// the QuakeC renderer draws these instead of decoding full-size previews while scrolling.
+int UIBImg_Thumb(const char *ref, int w, int h, char *out, size_t outsize)
+{
+	char path[256], rel[128];
+	out[0] = 0;
+	if (!UIBImg_Resolve(ref, path, sizeof(path)))
+		return 0;
+	w = w < 16 ? 16 : w > 1024 ? 1024 : w;
+	h = h < 16 ? 16 : h > 1024 ? 1024 : h;
+	dpsnprintf(rel, sizeof(rel), "uib-cache/%08x_%dx%d.png", hashref(ref), w, h);
+	if (!FS_FileExists(rel))
+	{
+		unsigned char *bgra = loadimagepixelsbgra(path, false, false, false, NULL);
+		if (!bgra)
+			return 0;
+		int iw = image_width, ih = image_height;
+		double sc = fmin(fmin((double)w / iw, (double)h / ih), 1.0);
+		int tw = (int)(iw * sc + 0.5), th = (int)(ih * sc + 0.5);
+		if (tw < 1) tw = 1;
+		if (th < 1) th = 1;
+		unsigned char *px = (unsigned char *)Mem_Alloc(tempmempool, (size_t)tw * th * 4);
+		Image_Resample32(bgra, iw, ih, 1, px, tw, th, 1, 1);
+		Mem_Free(bgra);
+		unsigned char *rgba = (unsigned char *)malloc((size_t)tw * th * 4);
+		for (size_t i = 0; i < (size_t)tw * th; i++)
+		{
+			rgba[i * 4 + 0] = px[i * 4 + 2];
+			rgba[i * 4 + 1] = px[i * 4 + 1];
+			rgba[i * 4 + 2] = px[i * 4 + 0];
+			rgba[i * 4 + 3] = px[i * 4 + 3];
+		}
+		Mem_Free(px);
+		uibbuf_t png = {0};
+		png_encode(&png, rgba, tw, th);
+		free(rgba);
+		FS_WriteFile(rel, png.p, png.n);
+		UIBB_Free(&png);
+	}
+	dp_strlcpy(out, rel, outsize);
+	out[strlen(out) - 4] = 0;   // without .png: the loader finds it
+	return 1;
+}
+
 void UIBImg_Init(void) {}

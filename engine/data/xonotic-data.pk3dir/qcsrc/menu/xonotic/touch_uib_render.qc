@@ -73,6 +73,7 @@ string lc_q[RB_LISTS];
 string lc_sort[RB_LISTS];
 string lc_cols[RB_LISTS];
 string lc_anchor[RB_LISTS];
+float lc_anchor_i[RB_LISTS];
 float lc_buf[RB_LISTS];
 float lc_first[RB_LISTS];
 float lc_cnt[RB_LISTS];
@@ -84,6 +85,7 @@ float lc_cardw[RB_LISTS];
 float lc_cardh[RB_LISTS];
 float lc_percol[RB_LISTS];
 int lc_n;
+string rb_colkey[24];
 // table column scratch
 float rt_xs[16];
 float rt_ws[16];
@@ -1285,15 +1287,14 @@ void RB_ListFetch(int k, float first, float want)
 	float start = max(0, first - 24);
 	int got = uib_window(lc_src[k], start, 120, sort, desc, filter);
 	lc_total[k] = uib_wtotal();
-	int nk = tokenize_console(cols);
+	int nk = min(24, tokenize_console(cols));
+	for (int j = 0; j < nk; ++j)
+		strcpy(rb_colkey[j], argv(j));
 	for (int i = 0; i < got; ++i)
 	{
 		string row = strcat(uib_wkey(i), "\t", uib_wimage(i));
 		for (int j = 0; j < nk; ++j)
-		{
-			tokenize_console(cols);
-			row = strcat(row, "\t", strreplace("\t", " ", uib_wcell(i, argv(j))));
-		}
+			row = strcat(row, "\t", uib_wcell(i, rb_colkey[j]));
 		bufstr_set(lc_buf[k], i, row);
 	}
 	// keep the first visible row where it was when the rows above it changed
@@ -1304,7 +1305,7 @@ void RB_ListFetch(int k, float first, float want)
 			tokenizebyseparator(bufstr_get(lc_buf[k], i), "\t");
 			if (argv(0) == lc_anchor[k])
 			{
-				float moved = (start + i) - first;
+				float moved = (start + i) - lc_anchor_i[k];
 				if (moved != 0)
 					rg_scroll[0] = bound(0, rg_scroll[0] + moved * lc_rowh[k], rg_max[0] + fabs(moved) * lc_rowh[k]);
 				break;
@@ -1342,7 +1343,7 @@ bool RB_ImageReady(string path)
 	if (path == "") return false;
 	if (strstrofs(rb_loaded, strcat(" ", path, " "), 0) >= 0)
 		return true;
-	if (rb_imgbudget <= 0)
+	if (rb_imgbudget <= 0 || fabs(rg_vel[0]) > D(900))
 		return false;
 	--rb_imgbudget;
 	precache_pic(path, PRECACHE_PIC_MIPMAP);
@@ -1368,7 +1369,29 @@ void RB_Shimmer(vector o, vector s, float a)
 
 void RB_Image(string ref, vector o, vector s, float a, bool contain)
 {
-	string path = uib_imgpath(ref);
+	// small boxes draw a cached thumbnail (cheap to load again); big ones the full picture
+	string path;
+	if (s.x * s.y < 640 * 400 && substring(ref, 0, 4) == "pk3:")
+	{
+		string key = strcat(ref, "@thumb");
+		if (strstrofs(rb_loaded, strcat(" ", key, "=", ""), 0) >= 0)
+		{
+			int k = strstrofs(rb_loaded, strcat(" ", key, "="), 0) + strlen(key) + 2;
+			path = substring(rb_loaded, k, strstrofs(rb_loaded, " ", k) - k);
+		}
+		else if (rb_imgbudget > 0 && fabs(rg_vel[0]) <= D(900))
+		{
+			path = uib_thumb(ref, 384, 216);
+			strcpy(rb_loaded, strcat(rb_loaded, key, "=", path, " "));
+		}
+		else
+		{
+			RB_Shimmer(o, s, a);
+			return;
+		}
+	}
+	else
+		path = uib_imgpath(ref);
 	if (!RB_ImageReady(path))
 	{
 		RB_Shimmer(o, s, a);
@@ -1463,6 +1486,7 @@ void RB_DrawTable(entity e, vector p)
 	float first = max(0, floor((top - (p.y + head)) / rowh));
 	float last = min(lc_total[k], ceil((bot - (p.y + head)) / rowh) + 1);
 	RB_ListFetch(k, first, last - first + 1);
+	p = RB_ItemPos(e);   // the fetch may have moved the scroll to keep the anchor row in place
 	last = min(lc_total[k], last);
 	int nc = min(16, stof(uib_get(id, "columns.#")));
 	float fixed = 0, fills = 0;
@@ -1518,6 +1542,7 @@ void RB_DrawTable(entity e, vector p)
 		{
 			tokenizebyseparator(row, "\t");
 			firstkey = argv(0);
+			lc_anchor_i[k] = r;
 		}
 		for (int i = 0; i < nc; ++i)
 		{
@@ -2320,6 +2345,7 @@ void RB_Press(vector m)
 	rb_press_region = RB_RegionAt(m);
 	rb_press_item = RB_HitItem(m);
 	rb_press_hs = (rb_press_item >= 0) ? rb_item[rb_press_item].rb_hs : -1;
+	if (cvar("_uib_r_debug") >= 3) print(sprintf("uibr press %v item %d vel %d\n", m, rb_press_item, rg_vel[0]));
 	// a press that stops a fling only stops it: it never activates what it lands on
 	rb_press_stopper = 0;
 	for (int r = 0; r < RB_REGIONS; ++r)
@@ -2378,6 +2404,7 @@ void RB_Drag(vector m)
 
 void RB_Release(vector m)
 {
+	if (cvar("_uib_r_debug") >= 3) print(sprintf("uibr release %v dragging %d stopper %d vel %d\n", m, rb_dragging, rb_press_stopper, rg_vel[0]));
 	if (!rb_pressed) return;
 	rb_pressed = 0;
 	if (rb_slider_item >= 0)
@@ -2457,6 +2484,20 @@ void RB_EnsureVisible(int i)
 
 // ======================================================================== frame
 
+// test instrumentation (_uib_r_debug 1): state and cost of the renderer, in _uib_r_state
+float rb_dbg_frames, rb_dbg_cost, rb_dbg_worst, rb_dbg_t0, rb_dbg_layouts;
+string RB_DebugState()
+{
+	string k = "";
+	for (int i = 0; i < lc_n; ++i) if (lc_anchor[i] != "") { k = lc_anchor[i]; break; }
+	vector hdr = rg_o[1];
+	// the engine's sprintf takes at most 7 values after the format: three calls
+	string a = sprintf("top=%s scroll=%d max=%d vel=%d anchor=%s hdr_y=%d", rb_top, rg_scroll[0], rg_max[0], rg_vel[0], k, hdr.y);
+	string b = sprintf(" bar_y=%d bar_h=%d strip_y=%d items=%d layouts=%d frames=%d", rg_o[3].y, rg_s[3].y, rg_o[2].y, rb_n, rb_dbg_layouts, rb_dbg_frames);
+	string c = sprintf(" avg_ms=%.3f worst_ms=%.3f pressed=%d", (rb_dbg_frames ? 1000 * rb_dbg_cost / rb_dbg_frames : 0), 1000 * rb_dbg_worst, rb_pressed);
+	return strcat(a, b, c);
+}
+
 bool TouchUIB_Draw(float alpha)
 {
 	if (!UIB_EngineHasBridge())
@@ -2474,6 +2515,7 @@ bool TouchUIB_Draw(float alpha)
 	}
 	if (alpha <= 0)
 		return true;
+	float rb_t_start = uib_gettime(2);  // GETTIME_REALTIME: real time now, not the frame start
 	float dt = bound(0, time - rb_prev_t, 0.1);
 	rb_prev_t = time;
 	rb_a = alpha;
@@ -2482,7 +2524,7 @@ bool TouchUIB_Draw(float alpha)
 	rb_U = 1 / max(0.05, TouchMenuScale_conToDp(1));
 	if (rb_touch) rb_U *= TouchMenuScale_size();
 	rb_reduced = cvar("menu_uib_reducedmotion");
-	rb_imgbudget = 2;
+	rb_imgbudget = 1;
 	drawfont = FONT_USER;
 	int ns = stof(uib_get("app", "stack.#"));
 	int nm = stof(uib_get("app", "modal.#"));
@@ -2507,6 +2549,7 @@ bool TouchUIB_Draw(float alpha)
 	if ((rev != rb_laid_rev || rb_scr != rb_laid_scr || top != rb_laid_top || rb_n == 0) && !rb_pressed)
 	{
 		RB_Layout();
+		++rb_dbg_layouts;
 		rb_laid_rev = rev;
 		rb_laid_scr = rb_scr;
 		strcpy(rb_laid_top, top);
@@ -2566,6 +2609,20 @@ bool TouchUIB_Draw(float alpha)
 		RB_RRect(rb_mouse - eX * D(3) - eY * D(3), eX * D(6) + eY * D(6), D(3), RB_BG, alpha);
 	}
 	drawresetcliparea();
+	if (cvar("_uib_r_debug"))
+	{
+		float c = uib_gettime(2) - rb_t_start;
+		++rb_dbg_frames;
+		rb_dbg_cost += c;
+		rb_dbg_worst = max(rb_dbg_worst, c);
+		cvar_set("_uib_r_state", RB_DebugState());
+		if (cvar("_uib_r_debug") >= 3) print(sprintf("uibr cost %.3f\n", 1000 * c));
+		if (cvar("_uib_r_debug") >= 3 || (cvar("_uib_r_debug") >= 2 && time > rb_dbg_t0 + 0.5))
+		{
+			rb_dbg_t0 = time;
+			print("uibr ", RB_DebugState(), "\n");
+		}
+	}
 	return true;
 }
 

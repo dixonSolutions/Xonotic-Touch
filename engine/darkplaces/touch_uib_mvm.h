@@ -48,4 +48,5 @@ void VM_uib_event(struct prvm_prog_s *prog);
 void VM_uib_qv(struct prvm_prog_s *prog);
 void VM_uib_parent(struct prvm_prog_s *prog);
 void VM_uib_loadinfo(struct prvm_prog_s *prog);
+void VM_uib_thumb(struct prvm_prog_s *prog);
 #endif
