@@ -13,6 +13,7 @@
 #include "touch_scores.qh"
 #include "touch_weapons.qh"
 #include "touch_spectate.qh"
+#include "touch_mode.qh"
 
 // Pressed and latched visuals cannot be reached from a screenshot harness: a
 // virtual uinput touchscreen is not routed to the game window, so the only way
@@ -178,15 +179,27 @@ void Touch_DrawOverlay(float overlayAlpha)
 	// pills do anything while editing, so they would only collide with it.
 	if (!Touch_CustomizeActive())
 	{
-		Touch_Pause_DrawPill(overlayAlpha);
-		Touch_Chat_DrawPill(overlayAlpha);
-		Touch_Console_Draw(overlayAlpha);
-		Touch_Scores_DrawPill(overlayAlpha);
+		// The top bar: MENU, SCORE, CHAT (fading back while playing and
+		// untouched). CONSOLE is off by default (touch_con_visible): the
+		// console button is the console's.
+		float chrome = Touch_ChromeAlpha(overlayAlpha);
+		Touch_Pause_DrawPill(chrome);
+		Touch_Chat_DrawPill(chrome);
+		Touch_Console_Draw(chrome);
+		Touch_Scores_DrawPill(chrome);
 	}
 
 	// Spectating: the spectator controls instead of the play ones.
 	if (!Touch_CustomizeActive() && Touch_Spec_DrawOverlay(overlayAlpha))
 		return;
+
+	// Dead: RESPAWN where HOP is, the extras, nothing to fight with.
+	if (!Touch_CustomizeActive() && Touch_Mode() == TOUCHMODE_DEAD)
+	{
+		Touch_DrawRespawn(overlayAlpha);
+		Touch_Extras_Draw(overlayAlpha);
+		return;
+	}
 
 	if (autocvar_touch_move_visible || autocvar_touch_debug)
 		Touch_DrawMoveStick(overlayAlpha);
@@ -230,6 +243,8 @@ void Touch_DrawOverlay(float overlayAlpha)
 		Touch_DrawCircleWidget(autocvar_touch_dodge_x, autocvar_touch_dodge_y,
 			autocvar_touch_dodge_size, TOUCH_LABEL_DODGE, false, overlayAlpha, TOUCH_C_ACCENT);
 
+	if (!Touch_CustomizeActive())
+		Touch_Extras_Draw(overlayAlpha);
 	Touch_DrawWeaponWheel(overlayAlpha);
 	Touch_DrawAimLock(overlayAlpha);
 	// Probes are level 2 exactly: they are opaque blocks over the controls, so at

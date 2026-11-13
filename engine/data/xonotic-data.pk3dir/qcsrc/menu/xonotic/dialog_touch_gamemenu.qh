@@ -11,7 +11,7 @@ CLASS(GodnoticGameMenuDialog, XonoticRootDialog)
 	ATTRIB(GodnoticGameMenuDialog, title, string, _("Game menu"));
 	ATTRIB(GodnoticGameMenuDialog, color, vector, SKINCOLOR_DIALOG_QUIT);
 	ATTRIB(GodnoticGameMenuDialog, intendedWidth, float, 0.56);
-	ATTRIB(GodnoticGameMenuDialog, rows, float, 16);
+	ATTRIB(GodnoticGameMenuDialog, rows, float, 18);
 	ATTRIB(GodnoticGameMenuDialog, columns, float, 2);
 	ATTRIB(GodnoticGameMenuDialog, name, string, "TouchGameMenu");
 	ATTRIB(GodnoticGameMenuDialog, requiresConnection, bool, true);
