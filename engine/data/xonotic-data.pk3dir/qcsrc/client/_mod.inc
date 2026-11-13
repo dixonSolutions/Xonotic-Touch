@@ -16,6 +16,7 @@
 #include <client/touch_keyboard.qc>
 #include <client/touch_layout.qc>
 #include <client/touch_look.qc>
+#include <client/touch_mode.qc>
 #include <client/touch_pause.qc>
 #include <client/touch_pointer.qc>
 #include <client/touch_scores.qc>

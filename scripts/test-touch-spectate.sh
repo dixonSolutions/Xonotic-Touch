@@ -1,7 +1,7 @@
 #!/bin/bash
 # Checks what the touch controls do while spectating
-# (engine/darkplaces/touch_spectate.h): the buttons' spectator meanings, and the
-# held JOIN with its refusal lock. No engine build, no display.
+# (engine/darkplaces/touch_spectate.h): the spectator bar, that nothing a
+# spectator touches sends +jump, and the join refusal lock. No engine build, no display.
 # See docs/CONTROLS.md (spectating).
 set -euo pipefail
 

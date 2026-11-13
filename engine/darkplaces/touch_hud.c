@@ -24,6 +24,7 @@ applies to both.
 #include "touch_ui.h"
 #include "touch_altfire.h"
 #include "touch_spectate.h"
+#include "touch_hudmode.h"
 
 extern cvar_t vid_touchscreen;
 extern cvar_t vid_conwidth;
@@ -107,10 +108,26 @@ static void widget_center(float nx, float ny, float *cx, float *cy)
 	*cx = mirror_x(nx) * ui_w();
 	*cy = ny * ui_h();
 }
-static float widget_radius(float nsize) { return screen_min() * nsize * 0.5f * widget_scale(); }
+// UI units per density-independent pixel (touch_hudmode.h TouchDp_Density):
+// sizes never go under the dp floors, whatever touch_scale and the screen.
+static float dp_units(void)
+{
+	float px_short = (float)min(vid.mode.width, vid.mode.height);
+	float units_per_px = vid.mode.height > 0 ? ui_h() / (float)vid.mode.height : 1.0f;
+	// a desk with no touchscreen: a mouse needs no finger-sized targets
+	if (!vid_touchscreen.integer && !VID_SDL_HasTouchDevices() && !vid_touchscreen_detected.integer)
+		return units_per_px;
+	return TouchDp_Density(cv("vid_touchscreen_ydpi", 0), px_short) * units_per_px;
+}
+static float widget_radius(float nsize)
+{
+	// a circle is a touch target: never under 44 dp across
+	return max(screen_min() * nsize * 0.5f * widget_scale(), TOUCHDP_MIN_TARGET * 0.5f * dp_units());
+}
 static void widget_half(float nsize, float aspect, float *hx, float *hy)
 {
-	float short_axis = screen_min() * nsize * widget_scale();
+	// a pill is drawn 36 dp tall at least; hit_rect grows its target to 44 dp
+	float short_axis = max(screen_min() * nsize * widget_scale(), TOUCHDP_PILL_HEIGHT * dp_units());
 	float long_axis = short_axis * max(1.0f, aspect);
 	*hx = long_axis * 0.5f;
 	*hy = short_axis * 0.5f;
@@ -129,6 +146,8 @@ static qbool hit_rect(float px, float py, float nx, float ny, float nsize, float
 	widget_center(nx, ny, &cx, &cy);
 	widget_half(nsize, aspect, &hx, &hy);
 	hx *= max(1.0f, grab); hy *= max(1.0f, grab);
+	hy = max(hy, TOUCHDP_MIN_TARGET * 0.5f * dp_units());
+	hx = max(hx, hy);
 	return px >= cx - hx && px <= cx + hx && py >= cy - hy && py <= cy + hy
 		&& px >= 0 && py >= 0 && px <= ui_w() && py <= ui_h();
 }
@@ -527,6 +546,7 @@ static void TouchHUD_CancelJoin_f(cmd_state_t *cmd);
 
 void TouchHUD_Init(void)
 {
+	TouchHudMode_Init();
 	Cvar_RegisterVariable(&touch_viewmodel_restored);
 	Cvar_RegisterVariable(&cl_touch_weplist_scale);
 	Cmd_AddCommand(CF_CLIENT, "_touch_cancel_join", TouchHUD_CancelJoin_f, "stop a connect attempt (CANCEL on the loading screen)");
@@ -611,7 +631,7 @@ static qbool touch_device(void)
 static qbool desk_active(void)
 {
 	return !vid_touchscreen.integer && !cl_touch_csqc_active && touch_device()
-		&& in_play() && !cl.csqc_wantsmousemove;
+		&& in_play() && !cl.csqc_wantsmousemove && !TouchMode_IsMatchEnd(TouchHudMode_Current()->mode);
 }
 
 static qbool desk_pills(void)
@@ -625,7 +645,8 @@ qbool TouchHUD_Active(void)
 		return false;
 	// The CSQC's pointer UI takes the fingers (TouchHUD_CursorFrame), as the
 	// port's own HUD steps aside for it.
-	return in_play() && !cl.csqc_wantsmousemove;
+	// Match end (scoreboard, next-map vote): no controls, only MENU (draw_endmenu).
+	return in_play() && !cl.csqc_wantsmousemove && !TouchMode_IsMatchEnd(TouchHudMode_Current()->mode);
 }
 
 // ---------------------------------------------------------------------------
@@ -1186,13 +1207,13 @@ static qbool weapon_button_shown(void)
 // The chrome pills under a point, or ROLE_NONE.
 static int pill_at(float px, float py)
 {
-	if (cv("touch_con_visible", 1) && hit_rect(px, py, cv("touch_con_x", 0.090f), cv("touch_con_y", 0.948f), cv("touch_con_size", 0.060f), cv("touch_con_aspect", 2.9f), 1.20f))
+	if (cv("touch_con_visible", 0) && hit_rect(px, py, cv("touch_con_x", 0.090f), cv("touch_con_y", 0.948f), cv("touch_con_size", 0.060f), cv("touch_con_aspect", 2.9f), 1.20f))
 		return ROLE_CON;
-	if (cv("touch_pause_visible", 1) && hit_rect(px, py, cv("touch_pause_x", 0.680f), cv("touch_pause_y", 0.088f), cv("touch_pause_size", 0.060f), cv("touch_pause_aspect", 2.9f), 1.20f))
+	if (cv("touch_pause_visible", 1) && hit_rect(px, py, cv("touch_pause_x", 0.655f), cv("touch_pause_y", 0.088f), cv("touch_pause_size", 0.060f), cv("touch_pause_aspect", 2.4f), 1.20f))
 		return ROLE_PAUSE;
-	if (cv("touch_chat_visible", 1) && hit_rect(px, py, cv("touch_chat_x", 0.862f), cv("touch_chat_y", 0.088f), cv("touch_chat_size", 0.060f), cv("touch_chat_aspect", 2.9f), 1.20f))
+	if (cv("touch_chat_visible", 1) && hit_rect(px, py, cv("touch_chat_x", 0.889f), cv("touch_chat_y", 0.088f), cv("touch_chat_size", 0.060f), cv("touch_chat_aspect", 2.4f), 1.20f))
 		return ROLE_CHAT;
-	if (cv("touch_scores_visible", 1) && hit_rect(px, py, cv("touch_scores_x", 0.272f), cv("touch_scores_y", 0.948f), cv("touch_scores_size", 0.060f), cv("touch_scores_aspect", 2.9f), 1.20f))
+	if (cv("touch_scores_visible", 1) && hit_rect(px, py, cv("touch_scores_x", 0.772f), cv("touch_scores_y", 0.088f), cv("touch_scores_size", 0.060f), cv("touch_scores_aspect", 2.4f), 1.20f))
 		return ROLE_SCORES;
 	return ROLE_NONE;
 }
@@ -1228,6 +1249,15 @@ static qbool hoplock_hit(float px, float py)
 static qbool spec_hud(void);
 static int assign_spec_role(float px, float py);
 static void spec_frame(qbool *fire, qbool *fire2, qbool *jump);
+static qbool hud_has(int ctl);
+static int hud_mode(void);
+static qbool tospec_shown(void);
+static qbool tospec_hit(float px, float py);
+static qbool ready_hit(float px, float py);
+static void extra_release(finger_t *f);
+#define ROLE_TOSPEC  306
+#define ROLE_READY   307
+#define ROLE_RESPAWN 308
 
 static int assign_role(float px, float py)
 {
@@ -1239,6 +1269,17 @@ static int assign_role(float px, float py)
 	role = pill_at(px, py);
 	if (role != ROLE_NONE)
 		return role;
+	if (tospec_shown() && tospec_hit(px, py))
+		return ROLE_TOSPEC;
+	if (ready_hit(px, py))
+		return ROLE_READY;
+	if (hud_mode() == TOUCHMODE_DEAD)
+	{
+		// Waiting to respawn: RESPAWN (HOP's place, a little wider) and the look.
+		if (!in_edge_deadzone(px, py) && hit_rect(px, py, cv("touch_jump_x", 0.855f), cv("touch_jump_y", 0.885f), cv("touch_jump_size", 0.072f), cv("touch_jump_aspect", 2.6f) * 1.25f, 1.10f))
+			return ROLE_RESPAWN;
+		return role_owned(ROLE_LOOK) ? ROLE_IGNORED : ROLE_LOOK;
+	}
 	// The strip's grip, its NADE row, then its rows: tap a row to switch
 	// (Touch_Weapons_Hit).
 	if (grip_hit(px, py))
@@ -1741,9 +1782,12 @@ static int cursor_pill_at(float px, float py)
 {
 	if (!cursor_pills_shown())
 		return ROLE_NONE;
-	if (cv("touch_pause_visible", 1) && hit_rect(px, py, cv("touch_pause_x", 0.680f), cv("touch_pause_y", 0.088f), cv("touch_pause_size", 0.060f), cv("touch_pause_aspect", 2.9f), 1.20f))
+	// match end: MENU is in the corner (draw_endmenu), and takes its finger first
+	if (TouchMode_IsMatchEnd(TouchHudMode_Current()->mode))
+		return ROLE_NONE;
+	if (cv("touch_pause_visible", 1) && hit_rect(px, py, cv("touch_pause_x", 0.655f), cv("touch_pause_y", 0.088f), cv("touch_pause_size", 0.060f), cv("touch_pause_aspect", 2.4f), 1.20f))
 		return ROLE_PAUSE;
-	if (cv("touch_chat_visible", 1) && hit_rect(px, py, cv("touch_chat_x", 0.862f), cv("touch_chat_y", 0.088f), cv("touch_chat_size", 0.060f), cv("touch_chat_aspect", 2.9f), 1.20f))
+	if (cv("touch_chat_visible", 1) && hit_rect(px, py, cv("touch_chat_x", 0.889f), cv("touch_chat_y", 0.088f), cv("touch_chat_size", 0.060f), cv("touch_chat_aspect", 2.4f), 1.20f))
 		return ROLE_CHAT;
 	return ROLE_NONE;
 }
@@ -2002,6 +2046,8 @@ void TouchHUD_Frame(void)
 		// released
 		if (f->role == ROLE_CON || f->role == ROLE_CHAT || f->role == ROLE_PAUSE)
 			pill_release(f);
+		else if (f->role == ROLE_TOSPEC || f->role == ROLE_READY)
+			extra_release(f);
 		else if (f->role == ROLE_HOPLOCK)
 		{
 			// a tap: lands on the chip and lifts on it; a finger that slid off
@@ -2090,6 +2136,7 @@ void TouchHUD_Frame(void)
 			zoom_down = true;
 			break;
 		case ROLE_JUMP:
+		case ROLE_RESPAWN:
 			jump_down = true;
 			break;
 		case ROLE_CROUCH:
@@ -2402,44 +2449,44 @@ static void draw_pill(const char *xk, float dx, const char *yk, float dy, const 
 // The weapon strip with the touch controls off: play at a desk keeps its
 // weapons in view (strip_drawn). Not while a touch CSQC is running, since it
 // draws the strip itself. On a touchscreen the pills stay too (desk_active).
+static void draw_chrome(float a);
 static void draw_strip_only(void)
 {
 	float a = bound(0.1f, cv("touch_opacity", 0.90f), 1.0f);
 	shapes_probe();
 	if (desk_active() && desk_pills())
-	{
-		float pa = a * DESK_ALPHA;
-		if (cv("touch_pause_visible", 1))
-			draw_pill("touch_pause_x", 0.680f, "touch_pause_y", 0.088f, "touch_pause_size", 0.060f, "touch_pause_aspect", 2.9f, "MENU", role_owned(ROLE_PAUSE), pa);
-		if (cv("touch_chat_visible", 1))
-			draw_pill("touch_chat_x", 0.862f, "touch_chat_y", 0.088f, "touch_chat_size", 0.060f, "touch_chat_aspect", 2.9f, "CHAT", role_owned(ROLE_CHAT), pa);
-		if (cv("touch_con_visible", 1))
-			draw_pill("touch_con_x", 0.090f, "touch_con_y", 0.948f, "touch_con_size", 0.060f, "touch_con_aspect", 2.9f, "CONSOLE", role_owned(ROLE_CON), pa);
-		if (cv("touch_scores_visible", 1))
-			draw_pill("touch_scores_x", 0.272f, "touch_scores_y", 0.948f, "touch_scores_size", 0.060f, "touch_scores_aspect", 2.9f, "SCORE", key_scores, pa);
-	}
+		draw_chrome(a * DESK_ALPHA);
 	draw_weapon_strip(a);
 }
 
 // ---------------------------------------------------------------------------
-// Spectating (touch_spectate.h). Observing, following a player or out of the
-// round, the play controls take the spectator meanings the server's
-// spectator code reads, and say so: FOLLOW / NEXT and PREV where FIRE and ALT
-// are, FREE (back to free-fly) or UP where HOP is, DOWN where DUCK is, and a
-// held JOIN in the bottom middle. The stick and the look drag fly the camera
-// while observing. Weapons, ALT fire, ZOOM, HOOK and the hop latch are not
-// drawn: a spectator has none of them, and their keys mean something else.
+// HUD modes (touch_hudmode.h, worked out in touch_hudmode.c): each mode has
+// its own control set. Spectating is stripped to what a spectator uses: the
+// move stick, look and the UP / DOWN rocker while free-flying, and one bar,
+// previous | follow or free | next (touch_spectate.h). Joining is the swipe
+// handle at the bottom middle, under any CSQC (below). At the end of the
+// match (scoreboard, next-map vote) only MENU stays, in the top-left corner;
+// the console button keeps the other.
 // ---------------------------------------------------------------------------
 #define ROLE_SPEC_ATTACK 300   // FOLLOW / NEXT: +attack while held
 #define ROLE_SPEC_PREV   301   // weapprev on the press
 #define ROLE_SPEC_FREE   302   // +attack2 while held
 #define ROLE_SPEC_UP     303   // +moveup while held
 #define ROLE_SPEC_DOWN   304   // +movedown while held
-#define ROLE_SPEC_JOIN   305   // held: +jump once it has been held long enough
+// ROLE_TOSPEC 306 ("move to spectators", on release), ROLE_READY 307
+// ("ready", on release) and ROLE_RESPAWN 308 (+jump while held, dead) are
+// defined above assign_role.
 
-static touchspec_join_t spec_join;
 static qbool key_moveup, key_movedown;
 static int spec_last_state;
+static double tospec_armed_until;   // the confirm tap's window
+static double chrome_touch_time;    // last finger on the chrome, for the idle fade
+static int chrome_mode_seen = -1;
+
+static int hud_mode(void) { return TouchHudMode_Current()->mode; }
+static int hud_flags(void) { return TouchHudMode_Current()->flags; }
+static qbool hud_has(int ctl) { return (TouchMode_Controls(hud_mode(), hud_flags()) & ctl) != 0; }
+static qbool reduce_motion(void) { return cv("touch_reduce_motion", 0) != 0; }
 
 static qbool spec_hud(void)
 {
@@ -2450,30 +2497,38 @@ static void spec_release(void)
 {
 	set_key("moveup", &key_moveup, false);
 	set_key("movedown", &key_movedown, false);
-	spec_join.hold_start = 0;
 }
 
-static void spec_join_pill(float *cx, float *cy, float *hx, float *hy)
+// The spectator bar: three parts side by side, bottom right under the right
+// thumb (mirrored left-handed). Secondary size, a 48 dp row.
+static void spec_bar_part(int part, float *cx, float *cy, float *hx, float *hy)
 {
-	widget_center(cv("touch_spec_join_x", 0.500f), cv("touch_spec_join_y", 0.885f), cx, cy);
-	widget_half(cv("touch_jump_size", 0.072f), 2.8f, hx, hy);
-}
-
-static qbool spec_slot_hit(int slot, float px, float py)
-{
-	switch (slot)
+	float u = dp_units(), bx, by, w;
+	widget_center(cv("touch_specbar_x", 0.815f), cv("touch_specbar_y", 0.885f), &bx, &by);
+	*hy = max(TOUCHDP_SECONDARY * 0.5f * u, screen_min() * cv("touch_specbar_size", 0.085f) * 0.5f * widget_scale());
+	w = *hy * 2;   // the arrows are square
+	if (part == TOUCHSPEC_BAR_MAIN)
 	{
-	case TOUCHSPEC_SLOT_FIRE:
-		return hit_circle(px, py, cv("touch_fire_x", 0.855f), cv("touch_fire_y", 0.680f), cv("touch_fire_size", 0.140f), 1.15f);
-	case TOUCHSPEC_SLOT_ALT:
-		return hit_circle(px, py, cv("touch_fire2_x", 0.770f), cv("touch_fire2_y", 0.755f), cv("touch_fire2_size", 0.100f), 1.15f);
-	case TOUCHSPEC_SLOT_HOP:
-		return hit_rect(px, py, cv("touch_jump_x", 0.855f), cv("touch_jump_y", 0.885f), cv("touch_jump_size", 0.072f), cv("touch_jump_aspect", 2.6f), 1.10f);
-	case TOUCHSPEC_SLOT_DUCK:
-		return hit_circle(px, py, cv("touch_crouch_x", 0.700f), cv("touch_crouch_y", 0.885f), cv("touch_crouch_size", 0.066f), 1.10f);
-	default:
-		return false;
+		*hx = *hy * 2.2f;
+		*cx = bx;
 	}
+	else
+	{
+		*hx = w * 0.5f;
+		*cx = bx + (part == TOUCHSPEC_BAR_PREV ? -1 : 1) * (*hy * 2.2f + *hy * 0.25f + *hx);
+	}
+	*cy = by;
+}
+
+// The fly rocker: UP over DOWN, beside the stick on its inner side.
+static void spec_fly_part(qbool up, float *cx, float *cy, float *r)
+{
+	float u = dp_units(), mx, my, mr;
+	widget_center(cv("touch_move_x", 0.170f), cv("touch_move_y", 0.680f), &mx, &my);
+	mr = widget_radius(cv("touch_move_size", 0.229f));
+	*r = TOUCHDP_MIN_TARGET * 0.5f * u;
+	*cx = mx + (cv("touch_handedness", 0) ? -1 : 1) * (mr + *r * 1.6f);
+	*cy = my + (up ? -1 : 1) * (*r * 1.15f);
 }
 
 static int spec_action_role(int action)
@@ -2492,38 +2547,43 @@ static int spec_action_role(int action)
 
 static int assign_spec_role(float px, float py)
 {
-	int state = TouchUI_SpectatorState(), slot, role = pill_at(px, py);
-	float cx, cy, hx, hy;
+	int state = TouchUI_SpectatorState(), part, role = pill_at(px, py);
+	float cx, cy, hx, hy, r;
 	if (role != ROLE_NONE)
 		return role;
 	if (in_edge_deadzone(px, py))
 		return ROLE_IGNORED;
-	if (TouchSpec_JoinShown(state))
+	for (part = 0; part < TOUCHSPEC_BAR_PARTS; part++)
 	{
-		spec_join_pill(&cx, &cy, &hx, &hy);
-		if (fabs(px - cx) <= hx * 1.1f && fabs(py - cy) <= hy * 1.2f)
-			return role_owned(ROLE_SPEC_JOIN) ? ROLE_IGNORED : ROLE_SPEC_JOIN;
+		int action = TouchSpec_BarAction(state, part);
+		spec_bar_part(part, &cx, &cy, &hx, &hy);
+		if (fabs(px - cx) <= hx + hy * 0.12f && fabs(py - cy) <= hy * 1.15f)
+			return action != TOUCHSPEC_ACT_NONE ? spec_action_role(action) : ROLE_IGNORED;
 	}
-	for (slot = 0; slot < TOUCHSPEC_SLOTS; slot++)
+	if (TouchSpec_StickShown(state))
 	{
-		int action = TouchSpec_SlotAction(state, slot);
-		if (action != TOUCHSPEC_ACT_NONE && spec_slot_hit(slot, px, py))
-			return spec_action_role(action);
+		int up;
+		for (up = 0; up < 2; up++)
+		{
+			spec_fly_part(up, &cx, &cy, &r);
+			if ((px - cx) * (px - cx) + (py - cy) * (py - cy) <= r * r * 1.1f)
+				return up ? ROLE_SPEC_UP : ROLE_SPEC_DOWN;
+		}
+		if (in_move_zone(px, py)
+			|| (cv("touch_move_visible", 1) && hit_circle(px, py, cv("touch_move_x", 0.170f), cv("touch_move_y", 0.680f), cv("touch_move_size", 0.229f), 1.0f)))
+			return role_owned(ROLE_MOVE) ? ROLE_IGNORED : ROLE_MOVE;
 	}
-	if (TouchTurn_ButtonShown() && hit_circle(px, py, cv("touch_turn_x", 0.300f), cv("touch_turn_y", 0.840f), cv("touch_turn_size", 0.085f), 1.10f))
-		return ROLE_TURN;
-	if (TouchSpec_StickShown(state) && (in_move_zone(px, py)
-		|| (cv("touch_move_visible", 1) && hit_circle(px, py, cv("touch_move_x", 0.170f), cv("touch_move_y", 0.680f), cv("touch_move_size", 0.229f), 1.0f))))
-		return role_owned(ROLE_MOVE) ? ROLE_IGNORED : ROLE_MOVE;
 	return role_owned(ROLE_LOOK) ? ROLE_IGNORED : ROLE_LOOK;
 }
 
 // The spectator roles' outputs for this frame, folded into TouchHUD_Frame's
-// own: +attack (fire), +attack2 (fire2) and +jump (jump) go out with the rest.
+// own: +attack (fire) and +attack2 (fire2) go out with the rest. Nothing a
+// spectator touches sends +jump: that is the join, the swipe's alone.
 static void spec_frame(qbool *fire, qbool *fire2, qbool *jump)
 {
 	int state = TouchUI_SpectatorState(), j;
-	qbool up = false, down = false, join_held = false;
+	qbool up = false, down = false;
+	(void)jump;
 	if (state != spec_last_state)
 	{
 		Con_DPrintf("Touch HUD: spectator state %d -> %d (view %d of %d, frags %d)\n", spec_last_state, state, cl.viewentity, cl.realplayerentity,
@@ -2541,7 +2601,6 @@ static void spec_frame(qbool *fire, qbool *fire2, qbool *jump)
 		case ROLE_SPEC_FREE: *fire2 = true; break;
 		case ROLE_SPEC_UP: up = true; break;
 		case ROLE_SPEC_DOWN: down = true; break;
-		case ROLE_SPEC_JOIN: join_held = true; break;
 		case ROLE_SPEC_PREV:
 			if (!f->fired)
 			{
@@ -2554,50 +2613,569 @@ static void spec_frame(qbool *fire, qbool *fire2, qbool *jump)
 	}
 	set_key("moveup", &key_moveup, up && TouchSpec_StickShown(state));
 	set_key("movedown", &key_movedown, down && TouchSpec_StickShown(state));
-	if (TouchSpec_JoinFrame(&spec_join, state, join_held, host.realtime) && state != TOUCHSPEC_NONE)
-		*jump = true;
 }
 
-static const char *spec_label(int state, int slot)
+static void draw_spec_bar(int state, float a)
 {
-	return TouchSpec_ActionLabel(TouchSpec_SlotAction(state, slot));
+	int part;
+	float cx, cy, hx, hy;
+	const char *target = TouchHudMode_Target();
+	for (part = 0; part < TOUCHSPEC_BAR_PARTS; part++)
+	{
+		int action = TouchSpec_BarAction(state, part);
+		const char *label = TouchSpec_BarLabel(state, part);
+		qbool held = false;
+		if (!label[0])
+			continue;
+		spec_bar_part(part, &cx, &cy, &hx, &hy);
+		if (action == TOUCHSPEC_ACT_PREV)
+			held = role_owned(ROLE_SPEC_PREV);
+		else if (action == TOUCHSPEC_ACT_FREE)
+			held = role_owned(ROLE_SPEC_FREE);
+		else if (action != TOUCHSPEC_ACT_NONE)
+			held = role_owned(ROLE_SPEC_ATTACK) && key_attack;
+		widget_capsule(cx, cy, hx, hy, label, held, false, action == TOUCHSPEC_ACT_NONE ? a * 0.6f : a, C_ACCENT);
+	}
+	// who is being watched, over the bar
+	if (target[0])
+	{
+		char line[96];
+		float fs;
+		spec_bar_part(TOUCHSPEC_BAR_MAIN, &cx, &cy, &hx, &hy);
+		dpsnprintf(line, sizeof(line), "%s", target);
+		fs = bound(FONT_MIN, hy * 0.62f, FONT_MAX);
+		{
+			float w = DrawQ_TextWidth(line, 0, fs, fs, false, FONT_CHAT);
+			float x = bound(4.0f, cx - w * 0.5f, ui_w() - w - 4);
+			DrawQ_RoundedBox(x + w * 0.5f, cy - hy * 1.75f, w * 0.5f + fs * 0.6f, fs * 0.75f, fs * 0.75f, 0, C_SURFACE[0], C_SURFACE[1], C_SURFACE[2], a * A_CHROME_FILL * 0.8f, 0);
+			DrawQ_String(x, cy - hy * 1.75f - fs * 0.5f, line, 0, fs, fs, 1, 1, 1, a * A_INK, 0, NULL, false, FONT_CHAT);
+		}
+	}
 }
 
 static void draw_spec_hud(float a)
 {
 	int state = TouchUI_SpectatorState();
-	float cx, cy, hx, hy;
-	const char *label;
-	if (TouchSpec_StickShown(state) && cv("touch_move_visible", 1))
-		draw_move_stick(a);
-	if ((label = spec_label(state, TOUCHSPEC_SLOT_FIRE))[0])
-		draw_circle_widget("touch_fire_x", 0.855f, "touch_fire_y", 0.680f, "touch_fire_size", 0.140f, label, key_attack, a, C_ACCENT);
-	if ((label = spec_label(state, TOUCHSPEC_SLOT_ALT))[0])
-		draw_circle_widget("touch_fire2_x", 0.770f, "touch_fire2_y", 0.755f, "touch_fire2_size", 0.100f, label, role_owned(ROLE_SPEC_PREV), a, C_ACCENT);
-	if ((label = spec_label(state, TOUCHSPEC_SLOT_HOP))[0])
+	if (TouchSpec_StickShown(state))
 	{
-		widget_center(cv("touch_jump_x", 0.855f), cv("touch_jump_y", 0.885f), &cx, &cy);
-		widget_half(cv("touch_jump_size", 0.072f), cv("touch_jump_aspect", 2.6f), &hx, &hy);
-		widget_capsule(cx, cy, hx, hy, label, role_owned(ROLE_SPEC_FREE) || role_owned(ROLE_SPEC_UP), false, a, C_ACCENT);
+		float cx, cy, r;
+		if (cv("touch_move_visible", 1))
+			draw_move_stick(a);
+		spec_fly_part(true, &cx, &cy, &r);
+		widget_button(cx, cy, r, "UP", key_moveup, a * 0.9f, C_ACCENT);
+		spec_fly_part(false, &cx, &cy, &r);
+		widget_button(cx, cy, r, "DOWN", key_movedown, a * 0.9f, C_ACCENT);
 	}
-	if ((label = spec_label(state, TOUCHSPEC_SLOT_DUCK))[0])
-		draw_circle_widget("touch_crouch_x", 0.700f, "touch_crouch_y", 0.885f, "touch_crouch_size", 0.066f, label, key_movedown, a, C_ACCENT);
-	if (TouchTurn_ButtonShown())
-		draw_circle_widget("touch_turn_x", 0.300f, "touch_turn_y", 0.840f, "touch_turn_size", 0.085f, "TURN", TouchTurn_Spinning() || role_owned(ROLE_TURN), a, C_ACCENT);
-	if (TouchSpec_JoinShown(state))
-	{
-		// JOIN fills from the left while held; LOCKED after a join the
-		// server did not take.
-		qbool locked = TouchSpec_JoinLocked(&spec_join, host.realtime);
-		float p = TouchSpec_JoinProgress(&spec_join, host.realtime);
-		spec_join_pill(&cx, &cy, &hx, &hy);
-		widget_capsule(cx, cy, hx, hy, locked ? "LOCKED" : "HOLD TO JOIN", false, false, locked ? a * 0.45f : a, C_SUCCESS);
-		if (p > 0)
-			DrawQ_RoundedBox(cx - hx + hx * p, cy, hx * p, hy, min(hy, hx * p), 0, C_SUCCESS[0], C_SUCCESS[1], C_SUCCESS[2], a * 0.55f, 0);
-	}
+	draw_spec_bar(state, a);
 	// following someone: their health, armour and ammo, read only
 	if ((state == TOUCHSPEC_FOLLOWING || state == TOUCHSPEC_OUT) && cl.stats[STAT_HEALTH] > 0)
 		draw_vitals(a);
+}
+
+// ---------------------------------------------------------------------------
+// The join handle: the only way to join from spectating. A slim "^ SWIPE UP
+// TO JOIN" pill at the bottom middle that breathes; a swipe up from it
+// (touch_hudmode.h TouchSwipe_*) follows the finger, completes with a short
+// rise or springs back. With a mouse it is a button: a click on it (with the
+// pointer free) joins. The stock keys (jump) still work.
+//
+// It takes its fingers before the finger table (from TouchVote_Finger, which
+// vid_sdl.c calls first for every finger), so it works the same under the
+// port's CSQC and a server's. A finger that sets off sideways or down was
+// looking around: it goes into the finger table there and then, as a new
+// touch, and turns the view like any other.
+// ---------------------------------------------------------------------------
+extern float multitouch[TOUCHHUD_ENGINE_FINGERS][3];
+static struct
+{
+	int id;                 // finger on the handle, 0 none
+	touchswipe_t swipe;
+	double end_time;        // when the last swipe ended
+	int end_state;          // how (TOUCHSWIPE_*)
+	float end_progress;     // where the handle was then
+	qbool mouse_held;
+	qbool drawn;
+	float cx, cy, hx, hy;   // last drawn rest place
+} handle;
+
+static qbool handle_shown(void)
+{
+	if (!hud_has(TOUCHCTL_JOIN) || !in_play() || cl.csqc_wantsmousemove)
+		return false;
+	// the CSQC's chat sheet and layout editor are modal
+	if (cv("_touch_owns_screen", 0))
+		return false;
+	return cv("touch_join_handle", 1) != 0;
+}
+
+static void handle_place(void)
+{
+	float u = dp_units();
+	// a desk's dp is a pixel: keep it readable there
+	handle.hy = max(TOUCHDP_PILL_HEIGHT * 0.5f * u, screen_min() * 0.022f);
+	handle.hx = handle.hy * 4.6f;
+	handle.cx = ui_w() * 0.5f;
+	handle.cy = ui_h() - handle.hy - 10 * u;
+}
+
+static qbool handle_hit(float px, float py)
+{
+	float grow = TOUCHDP_MIN_TARGET * 0.5f * dp_units();
+	return fabs(px - handle.cx) <= handle.hx + grow * 0.3f && fabs(py - handle.cy) <= max(handle.hy, grow) + grow * 0.3f;
+}
+
+static const char *handle_label(qbool touch)
+{
+	const touchmode_t *m = TouchHudMode_Current();
+	switch (m->join)
+	{
+	case TOUCHJOIN_PENDING: return "JOINING...";
+	case TOUCHJOIN_QUEUED: return "IN QUEUE FOR A SLOT";
+	case TOUCHJOIN_LOCKED: return touch ? "LOCKED - SWIPE TO RETRY" : "LOCKED - CLICK TO RETRY";
+	default: break;
+	}
+	if (!touch)
+		return (m->flags & TOUCHMODE_F_TEAMS) ? "CLICK TO JOIN A TEAM  (JUMP)" : "CLICK TO JOIN  (JUMP)";
+	return (m->flags & TOUCHMODE_F_TEAMS) ? "SWIPE UP TO JOIN A TEAM" : "SWIPE UP TO JOIN";
+}
+
+// The chevron, as two strokes (left to right: DrawQ_Line winds by direction).
+static void draw_chevron(float cx, float cy, float s, float lw, float a)
+{
+	// Each stroke both ways: the UI mesh culls one winding, and which one a
+	// rising or falling stroke gets depends on the backend.
+	DrawQ_Line(lw, cx - s, cy + s * 0.5f, cx, cy - s * 0.5f, 1, 1, 1, a, 0);
+	DrawQ_Line(lw, cx, cy - s * 0.5f, cx - s, cy + s * 0.5f, 1, 1, 1, a, 0);
+	DrawQ_Line(lw, cx, cy - s * 0.5f, cx + s, cy + s * 0.5f, 1, 1, 1, a, 0);
+	DrawQ_Line(lw, cx + s, cy + s * 0.5f, cx, cy - s * 0.5f, 1, 1, 1, a, 0);
+}
+
+static void draw_join_handle(void)
+{
+	double now = host.realtime;
+	float a = bound(0.3f, cv("touch_opacity", 0.90f), 1.0f);
+	float u = dp_units(), lift = 0, fill = 0, breathe = 0, fs, w, x;
+	const touchmode_t *m = TouchHudMode_Current();
+	qbool touch = vid_touchscreen.integer != 0;
+	qbool dim = m->join == TOUCHJOIN_PENDING || m->join == TOUCHJOIN_QUEUED;
+	const float *tint = m->join == TOUCHJOIN_LOCKED ? C_WARNING : C_SUCCESS;
+	const char *label;
+	handle.drawn = false;
+	if (!handle_shown())
+		return;
+	handle_place();
+	handle.drawn = true;
+	label = handle_label(touch);
+	if (handle.id && handle.swipe.state == TOUCHSWIPE_TRACKING)
+	{
+		// follows the finger, up to a little past the threshold
+		float p = TouchSwipe_Progress(&handle.swipe, ui_h());
+		lift = min(p, 1.25f) * ui_h() * TOUCHSWIPE_DIST;
+		fill = min(p, 1.0f);
+	}
+	else if (handle.end_time && now - handle.end_time < 0.30)
+	{
+		float t = (float)((now - handle.end_time) / 0.30);
+		float start = min(handle.end_progress, 1.25f) * ui_h() * TOUCHSWIPE_DIST;
+		if (reduce_motion())
+			t = 1;
+		if (handle.end_state == TOUCHSWIPE_ACCEPT)
+		{
+			// completes: rises on and fades
+			lift = start + t * ui_h() * 0.06f;
+			a *= 1 - t;
+			fill = 1;
+		}
+		else
+			lift = start * (1 - t) * (1 - t);   // springs back
+	}
+	else if (!reduce_motion() && !dim)
+		breathe = 0.5f + 0.5f * (float)sin(now * (2 * M_PI / 2.4));
+	if (a <= 0.01f)
+		return;
+	{
+		float cx = handle.cx, cy = handle.cy - lift, hx = handle.hx, hy = handle.hy;
+		float bob = breathe * 2.5f * u;
+		float body = a * (0.55f + 0.20f * breathe) * (dim ? 0.6f : 1);
+		shape_capsule_shadow(cx, cy + elevation(hy), hx + hy * 0.1f, hy + hy * 0.1f, a * A_SHADOW * 0.8f);
+		shape_capsule(cx, cy, hx, hy, C_SURFACE, body * A_CHROME_FILL);
+		if (fill > 0)
+			DrawQ_RoundedBox(cx, cy, hx * fill, hy, min(hy, hx * fill), 0, tint[0], tint[1], tint[2], a * 0.55f, 0);
+		widget_capsule_rim(cx, cy, hx, hy, tint, a * (0.55f + 0.35f * breathe));
+		fs = bound(FONT_MIN, hy * 0.62f, FONT_MAX);
+		w = label_width(fs, label);
+		if (w > hx * 2 - hy * 2.4f)
+		{
+			fs *= (hx * 2 - hy * 2.4f) / w;
+			w = label_width(fs, label);
+		}
+		x = cx - (w + hy * 1.1f) * 0.5f;
+		if (touch && m->join != TOUCHJOIN_PENDING && m->join != TOUCHJOIN_QUEUED)
+			draw_chevron(x + hy * 0.35f, cy - bob, hy * 0.38f, max(1.5f, u * 2), a * A_INK);
+		DrawQ_String(x + hy * 1.1f, cy - fs * 0.5f, label, 0, fs, fs, 1, 1, 1, a * A_INK * (dim ? 0.8f : 1), 0, NULL, false, FONT_CHAT);
+	}
+}
+
+static void handle_finish(int state)
+{
+	handle.end_time = host.realtime;
+	handle.end_state = state;
+	handle.end_progress = TouchSwipe_Progress(&handle.swipe, ui_h());
+	if (cl_touch_aim_debug.integer || developer.integer)
+		Con_Printf("Touch HUD: join swipe %s (up %.0f%% of the threshold, %.0f ms)\n", TouchSwipe_Name(state),
+			handle.end_progress * 100, (handle.swipe.t - handle.swipe.t0) * 1000);
+	if (state == TOUCHSWIPE_ACCEPT)
+		TouchHudMode_RequestJoin();
+}
+
+// A finger handed over to the look: into the finger table as a new touch.
+static void handle_to_table(int id, float nx, float ny)
+{
+	int i;
+	for (i = 0; i < TOUCHHUD_ENGINE_FINGERS - 1; i++)
+		if (!multitouch[i][0])
+		{
+			multitouch[i][0] = id;
+			multitouch[i][1] = nx;
+			multitouch[i][2] = ny;
+			return;
+		}
+}
+
+// type 0 down, 1 move, 2 up; id = finger id + 1. True: the finger is the
+// handle's (the caller leaves it out of the finger table).
+qbool TouchHUD_JoinFinger(int type, int id, float nx, float ny)
+{
+	float px = nx * ui_w(), py = ny * ui_h();
+	double now = host.realtime;
+	if (type == 0)
+	{
+		if (handle.id || !handle.drawn || !handle_shown())
+			return false;
+		// The start zone: the handle and the strip of the bottom edge around
+		// it (touch_hudmode.h TOUCHSWIPE_ZONE_*), never the look area above.
+		if (!handle_hit(px, py) && !TouchSwipe_InZone(px, py, ui_w(), ui_h()))
+			return false;
+		if (TouchHudMode_Current()->join == TOUCHJOIN_PENDING || TouchHudMode_Current()->join == TOUCHJOIN_QUEUED)
+			return false;
+		handle.id = id;
+		TouchSwipe_Begin(&handle.swipe, px, py, now);
+		return true;
+	}
+	if (id != handle.id)
+		return false;
+	if (type == 1)
+	{
+		if (TouchSwipe_Move(&handle.swipe, px, py, now, ui_h()) == TOUCHSWIPE_LOOK)
+		{
+			handle_finish(TOUCHSWIPE_LOOK);
+			handle.id = 0;
+			handle_to_table(id, nx, ny);
+		}
+		return true;
+	}
+	handle_finish(TouchSwipe_End(&handle.swipe, px, py, now, ui_h()));
+	handle.id = 0;
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// At a desk (keyboard and mouse, controls off) the spectator bar stays as a
+// quieter strip, clickable while the pointer is free (no grab: the web page
+// before pointer lock, a released mouse). With the mouse grabbed the stock
+// keys and buttons do the same: fire follows / next, weapprev previous,
+// secondary fire free-fly.
+// ---------------------------------------------------------------------------
+static qbool desk_specbar_shown(void)
+{
+	return !vid_touchscreen.integer && in_play() && !cl.csqc_wantsmousemove && hud_has(TOUCHCTL_SPECBAR)
+		&& !cv("_touch_owns_screen", 0) && cv("touch_desk_specbar", 1) != 0;
+}
+
+static void draw_desk_specbar(void)
+{
+	float a;
+	if (!desk_specbar_shown())
+		return;
+	shapes_probe();
+	a = bound(0.3f, cv("touch_opacity", 0.90f), 1.0f) * DESK_ALPHA;
+	draw_spec_bar(TouchUI_SpectatorState(), a);
+}
+
+static void desk_specbar_click(float px, float py)
+{
+	int part, state = TouchUI_SpectatorState();
+	float cx, cy, hx, hy;
+	for (part = 0; part < TOUCHSPEC_BAR_PARTS; part++)
+	{
+		spec_bar_part(part, &cx, &cy, &hx, &hy);
+		if (fabs(px - cx) > hx || fabs(py - cy) > hy)
+			continue;
+		Con_DPrintf("Touch HUD: spectator bar click, part %d, action %d\n", part, TouchSpec_BarAction(state, part));
+		switch (TouchSpec_BarAction(state, part))
+		{
+		case TOUCHSPEC_ACT_FOLLOW:
+		case TOUCHSPEC_ACT_NEXT: Cbuf_AddText(cmd_local, "+attack 50003\nwait\nwait\n-attack 50003\n"); break;
+		case TOUCHSPEC_ACT_PREV: Cbuf_AddText(cmd_local, "weapprev\n"); break;
+		case TOUCHSPEC_ACT_FREE: Cbuf_AddText(cmd_local, "+attack2 50003\nwait\nwait\n-attack2 50003\n"); break;
+		default: break;
+		}
+		return;
+	}
+}
+
+static qbool desk_specbar_hit(float px, float py)
+{
+	int part;
+	float cx, cy, hx, hy;
+	if (!desk_specbar_shown())
+		return false;
+	for (part = 0; part < TOUCHSPEC_BAR_PARTS; part++)
+	{
+		spec_bar_part(part, &cx, &cy, &hx, &hy);
+		if (fabs(px - cx) <= hx && fabs(py - cy) <= hy)
+			return true;
+	}
+	return false;
+}
+
+static qbool desk_bar_held;
+
+// A real mouse's left button (not SDL's made-up one): a click on the handle
+// joins, while the pointer is free to point (no grab: the web page before
+// pointer lock, a windowed game with the mouse released). True: eaten.
+qbool TouchHUD_JoinMouse(qbool down, int button, qbool synthetic, float wx, float wy, qbool pointer_free)
+{
+	float px, py;
+	if (button != 1 || synthetic || vid.mode.width <= 0 || vid.mode.height <= 0)
+		return false;
+	px = wx / (float)vid.mode.width * ui_w();
+	py = wy / (float)vid.mode.height * ui_h();
+	if (down)
+	{
+		if (pointer_free && desk_specbar_hit(px, py))
+		{
+			desk_bar_held = true;
+			return true;
+		}
+		if (!pointer_free || !handle.drawn || !handle_shown() || !handle_hit(px, py))
+			return false;
+		handle.mouse_held = true;
+		return true;
+	}
+	if (desk_bar_held)
+	{
+		desk_bar_held = false;
+		desk_specbar_click(px, py);
+		return true;
+	}
+	if (!handle.mouse_held)
+		return false;
+	handle.mouse_held = false;
+	if (handle_hit(px, py) && handle_shown())
+	{
+		handle.swipe.y0 = handle.swipe.y = py;
+		handle.swipe.t0 = handle.swipe.t = host.realtime;
+		handle_finish(TOUCHSWIPE_ACCEPT);
+	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Match end (scoreboard, next-map vote): no controls but MENU, in the top-
+// left corner (top-right left-handed: the console button keeps the right).
+// Its finger is taken before the finger table and the CSQC pointer, so the
+// vote cards under the rest of the screen stay the game's own.
+// ---------------------------------------------------------------------------
+static struct { int id; float x0, y0; qbool drawn; float cx, cy, hx, hy; } endmenu;
+
+static qbool endmenu_shown(void)
+{
+	return TouchMode_IsMatchEnd(hud_mode()) && in_play() && touch_device()
+		&& (vid_touchscreen.integer || cv("touch_desk_pills", 1)) && cv("touch_pause_visible", 1);
+}
+
+static void endmenu_place(void)
+{
+	float u = dp_units();
+	float in_l = 0, in_t = 0, in_r = 0, in_b = 0, dens = 0;
+	float px2con = vid.mode.width > 0 ? ui_w() / (float)vid.mode.width : 1.0f;
+	const char *insets = Cvar_VariableString(&cvars_all, "_touch_safe_insets", ~0);
+	if (insets && insets[0])
+		sscanf(insets, "%f %f %f %f %f", &in_l, &in_t, &in_r, &in_b, &dens);
+	endmenu.hy = TOUCHDP_PILL_HEIGHT * 0.5f * u;
+	endmenu.hx = endmenu.hy * 2.4f;
+	endmenu.cy = in_t * px2con + 8 * u + endmenu.hy + (TOUCHDP_MIN_TARGET * 0.5f * u - endmenu.hy);
+	if (cv("touch_handedness", 0))
+		endmenu.cx = ui_w() - in_r * px2con - 8 * u - endmenu.hx - (48 + 16) * u;
+	else
+		endmenu.cx = in_l * px2con + 8 * u + endmenu.hx;
+}
+
+static qbool endmenu_hit(float px, float py)
+{
+	float grow = TOUCHDP_MIN_TARGET * 0.5f * dp_units();
+	return fabs(px - endmenu.cx) <= endmenu.hx + grow * 0.2f && fabs(py - endmenu.cy) <= max(endmenu.hy, grow) + grow * 0.2f;
+}
+
+static void open_menu(void)
+{
+	TouchHUD_ReleaseAll();
+	if (Cvar_VariableValue(&cvars_all, "menu_gamemenu", ~0) && !cls.demoplayback
+		&& Cvar_VariableValue(&cvars_all, "_menu_gamemenu_dialog_available", ~0))
+		Cbuf_AddText(cmd_local, "\nmenu_showgamemenudialog\n");
+	else
+		Cbuf_AddText(cmd_local, "\ntogglemenu 1\n");
+}
+
+static void draw_endmenu(void)
+{
+	float a = bound(0.3f, cv("touch_opacity", 0.90f), 1.0f);
+	endmenu.drawn = false;
+	if (!endmenu_shown())
+		return;
+	shapes_probe();
+	endmenu_place();
+	endmenu.drawn = true;
+	widget_chrome_pill(endmenu.cx, endmenu.cy, endmenu.hx, endmenu.hy, "MENU", endmenu.id != 0, a, C_ACCENT);
+}
+
+static qbool endmenu_finger(int type, int id, float nx, float ny)
+{
+	float px = nx * ui_w(), py = ny * ui_h();
+	if (type == 0)
+	{
+		if (endmenu.id || !endmenu.drawn || !endmenu_shown() || !endmenu_hit(px, py))
+			return false;
+		endmenu.id = id;
+		endmenu.x0 = px;
+		endmenu.y0 = py;
+		return true;
+	}
+	if (id != endmenu.id)
+		return false;
+	if (type == 2)
+	{
+		endmenu.id = 0;
+		if (endmenu_hit(px, py))
+			open_menu();
+	}
+	return true;
+}
+
+// Every finger, from TouchVote_Finger before the finger table.
+qbool TouchHUD_OverlayFinger(int type, int id, float nx, float ny)
+{
+	if (endmenu_finger(type, id, nx, ny))
+		return true;
+	return TouchHUD_JoinFinger(type, id, nx, ny);
+}
+
+// ---------------------------------------------------------------------------
+// Play extras: MOVE TO SPECTATORS (touch_tospec_*, placed in the layout
+// editor, off by default: the MENU sheet has it too), READY in warmup, and
+// RESPAWN in HOP's place while dead.
+// ---------------------------------------------------------------------------
+static qbool tospec_shown(void)
+{
+	return hud_has(TOUCHCTL_TOSPEC) && cv("touch_tospec_visible", 0);
+}
+
+static qbool tospec_hit(float px, float py)
+{
+	return hit_rect(px, py, cv("touch_tospec_x", 0.075f), cv("touch_tospec_y", 0.290f), cv("touch_tospec_size", 0.060f), cv("touch_tospec_aspect", 2.4f), 1.15f);
+}
+
+static void ready_place(float *cx, float *cy, float *hx, float *hy)
+{
+	float u = dp_units();
+	*hy = TOUCHDP_PILL_HEIGHT * 0.5f * u;
+	*hx = *hy * 2.6f;
+	*cx = ui_w() * 0.5f;
+	*cy = ui_h() - *hy - 10 * u;
+}
+
+static qbool ready_hit(float px, float py)
+{
+	float cx, cy, hx, hy, grow = TOUCHDP_MIN_TARGET * 0.5f * dp_units();
+	ready_place(&cx, &cy, &hx, &hy);
+	return hud_has(TOUCHCTL_READY) && fabs(px - cx) <= hx + grow * 0.2f && fabs(py - cy) <= max(hy, grow) + grow * 0.2f;
+}
+
+// On release, a tap: MOVE TO SPECTATORS asks for a second tap when it would
+// forfeit the round or the objective carried (touch_hudmode.h).
+static void extra_release(finger_t *f)
+{
+	if (fabs(f->last_x - f->down_x) > 24 || fabs(f->last_y - f->down_y) > 24)
+		return;
+	if (f->role == ROLE_READY && ready_hit(f->last_x, f->last_y))
+		Cbuf_AddText(cmd_local, "ready\n");
+	else if (f->role == ROLE_TOSPEC && tospec_hit(f->last_x, f->last_y))
+	{
+		const touchmode_t *m = TouchHudMode_Current();
+		if (TouchAct_State(m, TOUCHACT_SPECTATE) == TOUCHACT_CONFIRM && host.realtime >= tospec_armed_until)
+		{
+			tospec_armed_until = host.realtime + 3.0;
+			return;
+		}
+		tospec_armed_until = 0;
+		Cbuf_AddText(cmd_local, "touch_action spectate confirm\n");
+	}
+}
+
+static void draw_play_extras(float a)
+{
+	float cx, cy, hx, hy;
+	if (tospec_shown())
+	{
+		qbool armed = host.realtime < tospec_armed_until;
+		widget_center(cv("touch_tospec_x", 0.075f), cv("touch_tospec_y", 0.290f), &cx, &cy);
+		widget_half(cv("touch_tospec_size", 0.060f), cv("touch_tospec_aspect", 2.4f), &hx, &hy);
+		widget_chrome_pill(cx, cy, hx, hy, armed ? "SURE?" : "SPECTATE", role_owned(ROLE_TOSPEC) || armed, a, armed ? C_WARNING : C_ACCENT);
+	}
+	if (hud_has(TOUCHCTL_READY))
+	{
+		ready_place(&cx, &cy, &hx, &hy);
+		widget_capsule(cx, cy, hx, hy, "READY", role_owned(ROLE_READY), false, a, C_SUCCESS);
+	}
+}
+
+// The chrome (MENU, SCORE, CHAT) fades back while playing and untouched,
+// so it does not sit bright over the fight; any finger on it, or a change of
+// mode, brings it back.
+static float chrome_alpha(float a)
+{
+	double idle;
+	float t;
+	if (hud_mode() != chrome_mode_seen)
+	{
+		chrome_mode_seen = hud_mode();
+		chrome_touch_time = host.realtime;
+	}
+	if (role_owned(ROLE_PAUSE) || role_owned(ROLE_CHAT) || role_owned(ROLE_SCORES))
+		chrome_touch_time = host.realtime;
+	if (hud_mode() != TOUCHMODE_PLAYING || cv("touch_chrome_idle", 6) <= 0)
+		return a;
+	idle = host.realtime - chrome_touch_time - cv("touch_chrome_idle", 6);
+	if (idle <= 0)
+		return a;
+	t = reduce_motion() ? 1 : (float)bound(0.0, idle / 0.4, 1.0);
+	return a * (1 - 0.45f * t);
+}
+
+static void draw_chrome(float a)
+{
+	float ca = chrome_alpha(a);
+	if (cv("touch_pause_visible", 1))
+		draw_pill("touch_pause_x", 0.655f, "touch_pause_y", 0.088f, "touch_pause_size", 0.060f, "touch_pause_aspect", 2.4f, "MENU", role_owned(ROLE_PAUSE), ca);
+	if (cv("touch_scores_visible", 1))
+		draw_pill("touch_scores_x", 0.772f, "touch_scores_y", 0.088f, "touch_scores_size", 0.060f, "touch_scores_aspect", 2.4f, "SCORE", key_scores, ca);
+	if (cv("touch_chat_visible", 1))
+		draw_pill("touch_chat_x", 0.889f, "touch_chat_y", 0.088f, "touch_chat_size", 0.060f, "touch_chat_aspect", 2.4f, "CHAT", role_owned(ROLE_CHAT), ca);
+	// The CONSOLE pill is off by default: the console button (touch_shellbtn.c)
+	// is the console's. touch_con_visible 1 brings it back.
+	if (cv("touch_con_visible", 0))
+		draw_pill("touch_con_x", 0.090f, "touch_con_y", 0.948f, "touch_con_size", 0.060f, "touch_con_aspect", 2.9f, "CONSOLE", role_owned(ROLE_CON), ca);
 }
 
 void TouchHUD_Draw(void)
@@ -2605,7 +3183,12 @@ void TouchHUD_Draw(void)
 	float a;
 	float cx, cy, hx, hy;
 	frames_drawn++;
+	TouchHudMode_Update();
 	TouchDodge_DrawCue(); // over the port's CSQC HUD too
+	draw_endmenu();
+	draw_join_handle();
+	if (TouchMode_IsMatchEnd(hud_mode()))
+		return;
 	if (cursor_wanted())
 	{
 		if (!cursor_pills_shown())
@@ -2615,30 +3198,33 @@ void TouchHUD_Draw(void)
 		if (!vid_touchscreen.integer)
 			a *= DESK_ALPHA;
 		if (cv("touch_pause_visible", 1))
-			draw_pill("touch_pause_x", 0.680f, "touch_pause_y", 0.088f, "touch_pause_size", 0.060f, "touch_pause_aspect", 2.9f, "MENU", cursor_pill_src && cursor_pill.role == ROLE_PAUSE, a);
+			draw_pill("touch_pause_x", 0.655f, "touch_pause_y", 0.088f, "touch_pause_size", 0.060f, "touch_pause_aspect", 2.4f, "MENU", cursor_pill_src && cursor_pill.role == ROLE_PAUSE, a);
 		if (cv("touch_chat_visible", 1))
-			draw_pill("touch_chat_x", 0.862f, "touch_chat_y", 0.088f, "touch_chat_size", 0.060f, "touch_chat_aspect", 2.9f, "CHAT", cursor_pill_src && cursor_pill.role == ROLE_CHAT, a);
+			draw_pill("touch_chat_x", 0.889f, "touch_chat_y", 0.088f, "touch_chat_size", 0.060f, "touch_chat_aspect", 2.4f, "CHAT", cursor_pill_src && cursor_pill.role == ROLE_CHAT, a);
 		return;
 	}
 	if (!TouchHUD_Active())
 	{
 		draw_strip_only();
+		draw_desk_specbar();
 		return;
 	}
 	shapes_probe();
 	a = bound(0.1f, cv("touch_opacity", 0.90f), 1.0f);
 
-	if (cv("touch_pause_visible", 1))
-		draw_pill("touch_pause_x", 0.680f, "touch_pause_y", 0.088f, "touch_pause_size", 0.060f, "touch_pause_aspect", 2.9f, "MENU", role_owned(ROLE_PAUSE), a);
-	if (cv("touch_chat_visible", 1))
-		draw_pill("touch_chat_x", 0.862f, "touch_chat_y", 0.088f, "touch_chat_size", 0.060f, "touch_chat_aspect", 2.9f, "CHAT", role_owned(ROLE_CHAT), a);
-	if (cv("touch_con_visible", 1))
-		draw_pill("touch_con_x", 0.090f, "touch_con_y", 0.948f, "touch_con_size", 0.060f, "touch_con_aspect", 2.9f, "CONSOLE", role_owned(ROLE_CON), a);
-	if (cv("touch_scores_visible", 1))
-		draw_pill("touch_scores_x", 0.272f, "touch_scores_y", 0.948f, "touch_scores_size", 0.060f, "touch_scores_aspect", 2.9f, "SCORE", key_scores, a);
+	draw_chrome(a);
 	if (spec_hud())
 	{
 		draw_spec_hud(a);
+		return;
+	}
+	if (hud_mode() == TOUCHMODE_DEAD)
+	{
+		// Waiting to respawn: RESPAWN where HOP is, the extras, nothing to fight with.
+		widget_center(cv("touch_jump_x", 0.855f), cv("touch_jump_y", 0.885f), &cx, &cy);
+		widget_half(cv("touch_jump_size", 0.072f), cv("touch_jump_aspect", 2.6f), &hx, &hy);
+		widget_capsule(cx, cy, hx * 1.25f, hy, "RESPAWN", key_jump, false, a, C_SUCCESS);
+		draw_play_extras(a);
 		return;
 	}
 
@@ -2694,6 +3280,7 @@ void TouchHUD_Draw(void)
 		draw_vitals(a);
 		draw_weapon_strip(a);
 	}
+	draw_play_extras(a);
 }
 
 // ---------------------------------------------------------------------------

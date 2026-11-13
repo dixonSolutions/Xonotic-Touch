@@ -93,7 +93,7 @@ the old WEP glass button is off by default (Hick's Law; RELOAD / DODGE stay hidd
 | JUMP (space) | `0.860` | `0.860` | `0.110` | `2.6` | `1` | capsule/bar |
 | CR (crouch) | `0.700` | `0.860` | `0.100` | — | `1` | circle |
 | WEP   | `0.540` | `0.860` | `0.100` | — | `1` | circle |
-| CONSOLE | `0.500` | `0.050` | `0.058` | `4.2` | `1` | pill/bar |
+| CONSOLE | `0.090` | `0.948` | `0.060` | `2.9` | `0` (layout 7: the console button has it) | pill/bar |
 | ZOOM  | `0.860` | `0.480` | `0.100` | — | `2` (contextual: scoped weapon) | circle |
 | RELOAD| `0.720` | `0.480` | `0.100` | — | `0` | circle |
 | DODGE | `0.165` | `0.480` | `0.100` | — | `0` | circle |
@@ -112,8 +112,43 @@ end) and inside the screen across. A finger on the grip resizes:
 `u = u_grab + 2 × (y − y_grab) / (26n + 12)`. Both HUDs implement this geometry
 ([CONTROLS.md — Weapon strip](CONTROLS.md#weapon-strip)).
 
-`touch_desk_pills` (`1`) keeps MENU, CHAT, SCORE and CONSOLE on screen, dimmed and
-tappable, while the controls are off on a touchscreen with a keyboard attached.
+`touch_desk_pills` (`1`) keeps MENU, SCORE and CHAT (and CONSOLE when it is on) on
+screen, dimmed and tappable, while the controls are off on a touchscreen with a
+keyboard attached.
+
+### 3.5 Layout 7: the top bar, modes and dp floors
+
+Layout schema 7 (`TOUCH_LAYOUT_VERSION`) puts all the chrome on one row at
+`y 0.088`, one pitch apart: the console button (engine `touch_shellbtn.c`), MENU
+`x 0.655`, SCORE `x 0.772`, CHAT `x 0.889`, aspect `2.4`; the vote chip ends the
+row. The bottom of the screen is the hands'. A saved layout 6 is migrated in
+place (`Touch_MigrateLayout`): CONSOLE off, and MENU / SCORE / CHAT moved only if
+they were still at the old defaults; everything else the player set stays.
+
+| Widget | `_x` | `_y` | `_size` | `_aspect` | `_visible` | Shape |
+|---|---|---|---|---|---|---|
+| MENU | `0.655` | `0.088` | `0.060` | `2.4` | `1` | pill |
+| SCORE | `0.772` | `0.088` | `0.060` | `2.4` | `1` | pill |
+| CHAT | `0.889` | `0.088` | `0.060` | `2.4` | `1` | pill |
+| Spectator bar (`touch_specbar_*`) | `0.815` | `0.885` | `0.085` | `<` `2:1 middle` `>` | spectating | three capsules |
+| SPECTATE (`touch_tospec_*`) | `0.075` | `0.290` | `0.060` | `2.4` | `0` (layout editor places it when on) | pill |
+| Join handle | `0.5` | bottom edge − 10 dp | 36 dp tall | 4.6 | spectating, `touch_join_handle 1` | pill, engine-drawn |
+| READY | `0.5` | bottom edge − 10 dp | 36 dp tall | 2.6 | warmup, ready wanted | pill |
+
+Which of these a frame draws is the mode's control set
+(`TouchMode_Controls`, `engine/darkplaces/touch_hudmode.h`), published as
+`_touch_hud_controls` — see [CONTROLS.md, HUD modes](CONTROLS.md#hud-modes). At
+intermission and on the next-map vote no control is drawn or takes a finger
+except MENU, which moves to the top-left corner (both HUDs: the engine draws it
+for the port's CSQC as well).
+
+Every size has a dp floor (`TOUCHDP_*`): circles at least 44 dp across, pills
+drawn at least 36 dp tall, every hit target at least 44 dp tall
+(`widget_radius` / `widget_half` / `hit_rect` in `touch_hud.c`,
+`Touch_WidgetRadius` / `Touch_WidgetHalfExtents` / `Touch_HitRectPx` in
+`touch_layout.qc`). dp = `vid_touchscreen_ydpi / 160`, or `short side / 420`
+when no dpi is reported (a 1080 px phone ≈ 2.6), 1 on a desk with no
+touchscreen.
 
 > **Draw space:** layout maths use `vid_conwidth` × `vid_conheight` (`Touch_UISize`), not `VF_SIZE`.
 > On Wayland, VF can be 1440×960 while con stays 960×640; 2D clips to con — VF-based layout hid FIRE/JUMP.
@@ -213,9 +248,13 @@ Per frame:
 ### 4.2 Priority order (first match wins)
 
 ```
-   (the engine's vote chip and open vote card take their fingers before this table: touch_vote.c)
-1  CON handle rect      (grab 1.20)   → ROLE_CON        // before edge deadzone
+   (the engine's vote chip and open vote card, the join handle while spectating and, at match
+    end, the corner MENU take their fingers before this table: touch_vote.c, touch_hud.c)
+1  CON handle rect      (grab 1.20)   → ROLE_CON        // before edge deadzone; off by default
    MENU / CHAT / SCORE pills (grab 1.20) → ROLE_PAUSE / CHAT / SCORES
+   SPECTATE pill, READY  → ROLE_TOSPEC / ROLE_READY     // a tap, on release
+   dead: RESPAWN (HOP's rect, 1.25 wide) → ROLE_RESPAWN, everything else → ROLE_LOOK
+   spectating: the bar parts, the UP / DOWN rocker, the stick (free-fly), else look
    weapon strip grip    → ROLE_WEPSIZE                  // before the rows, which are inflated
    weapon strip rows    (inflated 12%) → ROLE_WEAPON    // only rows drawn last frame
    (controls off, keyboard attached: everything below → ROLE_IGNORED)

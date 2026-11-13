@@ -76,4 +76,22 @@ int TouchHUD_ActiveWeapon(void);            // index actually in hand (a switch 
 int TouchHUD_HeldClip(void);                // rounds loaded, -1 = no clip
 int TouchHUD_AltFireState(void);            // TOUCH_ALTFIRE_* (touch_altfire.h)
 
+
+// HUD modes (touch_hudmode.c, touch_hudmode.h): worked out and published
+// (_touch_hud_*) once per drawn frame, from TouchHUD_Draw.
+struct touchmode_s;
+void TouchHudMode_Init(void);
+void TouchHudMode_Update(void);
+const struct touchmode_s *TouchHudMode_Current(void);
+const char *TouchHudMode_Target(void);   // the followed player's name, "" if none
+void TouchHudMode_RequestJoin(void);      // the join swipe / handle click
+void TouchHudMode_Reset(void);
+// The overlay controls that take a finger before the finger table, under
+// any CSQC: the join handle and, at match end, MENU. type 0 down, 1 move,
+// 2 up; id = finger id + 1. True: the finger is theirs (TouchVote_Finger).
+qbool TouchHUD_OverlayFinger(int type, int id, float nx, float ny);
+qbool TouchHUD_JoinFinger(int type, int id, float nx, float ny);
+// A real mouse button on the join handle while the pointer is free: true when eaten.
+qbool TouchHUD_JoinMouse(qbool down, int button, qbool synthetic, float wx, float wy, qbool pointer_free);
+
 #endif

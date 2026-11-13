@@ -148,44 +148,65 @@ void Touch_DefineCvars(void)
 	Touch_RegisterCvar("touch_con_y", "0.948");
 	Touch_RegisterCvar("touch_con_size", "0.060");
 	Touch_RegisterCvar("touch_con_aspect", "2.9");
-	Touch_RegisterCvar("touch_con_visible", "1");
+	// Off: the console button (engine touch_shellbtn.c) is the console's, in
+	// every mode; a second CONSOLE pill in the bottom-left was a duplicate.
+	Touch_RegisterCvar("touch_con_visible", "0");
 	Touch_RegisterCvar("touch_con_hold_ms", "350");
 	Touch_RegisterCvar("touch_con_tap_slop_px", "10");
 	Touch_RegisterCvar("touch_con_snap", "0.005");
 	Touch_RegisterCvar("touch_con_margin_px", "4");
 	Touch_RegisterCvar("touch_con_lock", "0");
-	// SCORE next to CONSOLE, and the pair states the rule for both corners: the
-	// top-right holds what a player reaches for mid-match, the bottom-left holds
-	// what is worth a deliberate reach. The three-line score readout in the corner
-	// already covers the glance; this pill is for the whole board — everyone's
-	// frags, pings and team totals — which is a thing you stop to read.
-	// 0.182 from CONSOLE — the same centre-to-centre pitch as MENU → CHAT, so both
-	// corners share one rhythm. At 0.220 the pair was packed to a 0.02 gap while
-	// the top pair sat at 0.073, which read as two different kinds of spacing for
-	// one kind of control.
-	Touch_RegisterCvar("touch_scores_x", "0.272");
-	Touch_RegisterCvar("touch_scores_y", "0.948");
+	// SCORE is for the whole board (everyone's frags, pings and team totals),
+	// a thing you stop to read; the corner readout covers the glance.
+	// Layout 7: the top bar holds all the chrome, MENU | SCORE | CHAT on one
+	// row and one pitch (0.117), so the bottom of the screen is the hands'.
+	// The pills are drawn 36 dp tall at least, with a 44 dp target.
+	Touch_RegisterCvar("touch_scores_x", "0.772");
+	Touch_RegisterCvar("touch_scores_y", "0.088");
 	Touch_RegisterCvar("touch_scores_size", "0.060");
-	Touch_RegisterCvar("touch_scores_aspect", "2.9");
+	Touch_RegisterCvar("touch_scores_aspect", "2.4");
 	Touch_RegisterCvar("touch_scores_visible", "1");
 	// MENU and CHAT are a pair: same size and shape because they are the same
 	// kind of thing (Law of Similarity), adjacent because they belong together
 	// (Law of Proximity), and 0.060 puts them at 11 mm tall — the old 0.040 was
 	// 7.3 mm, under the 9 mm minimum, on controls at the far edge of thumb reach
 	// where Fitts argues for the opposite.
-	Touch_RegisterCvar("touch_pause_x", "0.680");
+	Touch_RegisterCvar("touch_pause_x", "0.655");
 	Touch_RegisterCvar("touch_pause_y", "0.088");
 	Touch_RegisterCvar("touch_pause_size", "0.060");
-	Touch_RegisterCvar("touch_pause_aspect", "2.9");
+	Touch_RegisterCvar("touch_pause_aspect", "2.4");
 	Touch_RegisterCvar("touch_pause_visible", "1");
 	Touch_RegisterCvar("touch_pause_slop_px", "10");
 	// Outermost, because it is the one that matters in a match and the edge is
 	// the easiest target to hit without looking.
-	Touch_RegisterCvar("touch_chat_x", "0.862");
+	Touch_RegisterCvar("touch_chat_x", "0.889");
 	Touch_RegisterCvar("touch_chat_y", "0.088");
 	Touch_RegisterCvar("touch_chat_size", "0.060");
-	Touch_RegisterCvar("touch_chat_aspect", "2.9");
+	Touch_RegisterCvar("touch_chat_aspect", "2.4");
 	Touch_RegisterCvar("touch_chat_visible", "1");
+	// The spectator bar (previous | follow or free | next), bottom right under
+	// the right thumb; 46 dp tall at least (touch_spectate.qc, touch_hud.c).
+	Touch_RegisterCvar("touch_specbar_x", "0.815");
+	Touch_RegisterCvar("touch_specbar_y", "0.885");
+	Touch_RegisterCvar("touch_specbar_size", "0.085");
+	// "Move to spectators" as a HUD control: off, the MENU sheet has it; the
+	// layout editor places it once it is on.
+	Touch_RegisterCvar("touch_tospec_x", "0.075");
+	Touch_RegisterCvar("touch_tospec_y", "0.290");
+	Touch_RegisterCvar("touch_tospec_size", "0.060");
+	Touch_RegisterCvar("touch_tospec_aspect", "2.4");
+	Touch_RegisterCvar("touch_tospec_visible", "0");
+	// The join swipe handle while spectating (engine touch_hud.c): 0 hides it,
+	// leaving the MENU sheet's Join and the jump key.
+	Touch_RegisterCvar("touch_join_handle", "1");
+	// With a keyboard and mouse: the spectator bar as a quiet strip,
+	// clickable while the pointer is free (engine touch_hud.c).
+	Touch_RegisterCvar("touch_desk_specbar", "1");
+	// The top bar fades back after this many seconds untouched while playing
+	// (0: never).
+	Touch_RegisterCvar("touch_chrome_idle", "6");
+	// No breathing, follow-through or fades: everything snaps.
+	Touch_RegisterCvar("touch_reduce_motion", "0");
 	// With a keyboard attached the play controls go, but MENU, CHAT, SCORE and
 	// CONSOLE stay on a touchscreen, dimmed, for a finger (Touch_DeskActive).
 	// The engine's HUD reads the same cvar on servers.
@@ -350,6 +371,35 @@ void Touch_MigrateLayout(void)
 	float saved = cvar("touch_layout_version");
 	if (saved >= TOUCH_LAYOUT_VERSION)
 		return;
+	if (saved == 6)
+	{
+		// 6 -> 7 moved only the chrome: the CONSOLE pill went (the console
+		// button has it), SCORE joined MENU and CHAT in the top bar. The rest
+		// of a saved layout is the player's and stays; a chrome pill they
+		// moved themselves stays where they put it.
+		print("Touch: layout 6 -> 7: CONSOLE pill off, SCORE in the top bar.\n");
+		Touch_SaveLayoutFile("touch.layout.bak");
+		cvar_set("touch_con_visible", "0");
+		if (fabs(cvar("touch_scores_x") - 0.272) < 0.002 && fabs(cvar("touch_scores_y") - 0.948) < 0.002)
+		{
+			cvar_set("touch_scores_x", "0.772");
+			cvar_set("touch_scores_y", "0.088");
+			cvar_set("touch_scores_aspect", "2.4");
+		}
+		if (fabs(cvar("touch_pause_x") - 0.680) < 0.002 && fabs(cvar("touch_pause_y") - 0.088) < 0.002)
+		{
+			cvar_set("touch_pause_x", "0.655");
+			cvar_set("touch_pause_aspect", "2.4");
+		}
+		if (fabs(cvar("touch_chat_x") - 0.862) < 0.002 && fabs(cvar("touch_chat_y") - 0.088) < 0.002)
+		{
+			cvar_set("touch_chat_x", "0.889");
+			cvar_set("touch_chat_aspect", "2.4");
+		}
+		cvar_set("touch_layout_version", ftos(TOUCH_LAYOUT_VERSION));
+		localcmd("touch_save\n");
+		return;
+	}
 
 	print("Touch: layout file is schema ", ftos(saved), ", this build wants ",
 		ftos(TOUCH_LAYOUT_VERSION), " — backing it up and taking the new defaults.\n");

@@ -1,4 +1,5 @@
 #include "touch_layout.qh"
+#include "touch_mode.qh"
 
 // Touch UI lives in *console* draw space (vid_conwidth × vid_conheight).
 // VF_SIZE can be the Wayland surface (e.g. 1440×960) while 2D is clipped to
@@ -81,14 +82,17 @@ vector Touch_WidgetCenter(float nx, float ny, float nsize)
 	return mx * ui.x * eX + ny * ui.y * eY;
 }
 
+// Sizes never go under the dp floors (engine touch_hud.c the same): a circle
+// is a touch target, 44 dp across at least; a pill is drawn 36 dp tall at
+// least and Touch_HitRectPx grows its target to 44 dp.
 float Touch_WidgetRadius(float nsize)
 {
-	return Touch_ScreenMin() * nsize * 0.5 * Touch_WidgetScale();
+	return max(Touch_ScreenMin() * nsize * 0.5 * Touch_WidgetScale(), TOUCHDP_MIN_TARGET * 0.5 * Touch_DpUnits());
 }
 
 vector Touch_WidgetHalfExtents(float nsize, float aspect)
 {
-	float short_axis = Touch_ScreenMin() * nsize * Touch_WidgetScale();
+	float short_axis = max(Touch_ScreenMin() * nsize * Touch_WidgetScale(), TOUCHDP_PILL_HEIGHT * Touch_DpUnits());
 	float long_axis = short_axis * max(1.0, aspect);
 	return (long_axis * 0.5) * eX + (short_axis * 0.5) * eY;
 }
@@ -110,6 +114,8 @@ bool Touch_HitRectPx(vector p, vector centre, vector half, float grab)
 {
 	vector ui = Touch_UISize();
 	vector h = half * max(1.0, grab);
+	h.y = max(h.y, TOUCHDP_MIN_TARGET * 0.5 * Touch_DpUnits());
+	h.x = max(h.x, h.y);
 	return p.x >= centre.x - h.x && p.x <= centre.x + h.x
 		&& p.y >= centre.y - h.y && p.y <= centre.y + h.y
 		&& p.x >= 0 && p.y >= 0 && p.x <= ui.x && p.y <= ui.y;
