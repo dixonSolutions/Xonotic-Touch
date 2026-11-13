@@ -60,6 +60,7 @@ OBJ_COMMON= \
 	touch_loadfs.o \
 	touch_loadcvar.o \
 	touch_warm.o \
+	touch_crc.o \
 	vid_touchdetect.o \
 	touch_display.o \
 	cl_video.o \

@@ -42,6 +42,7 @@ the next game.
 
 #include "quakedef.h"
 #include "touch_warm.h"
+#include "touch_crc.h"
 #include "touch_loadtime.h"
 #if defined(__has_include)
 # if __has_include(<SDL.h>) && !defined(DEDICATED_SERVER)
@@ -387,6 +388,8 @@ void TouchWarm_Init(void)
 	Cvar_RegisterVariable(&touch_device_powersave);
 	Cmd_AddCommand(CF_CLIENT, "touch_warm_drop", TouchWarm_Drop_f, "free the models and sounds no game uses and stop touch_warm until the next game (low memory)");
 	Cmd_AddCommand(CF_CLIENT, "touch_warm_status", TouchWarm_Status_f, "what touch_warm prepared");
+	// load-time switches with no init hook of their own in an upstream file
+	TouchCRC_Init();
 #ifdef TOUCH_WARM_SDL
 	SDL_AddEventWatch(TW_EventWatch, NULL);
 #endif
