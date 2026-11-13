@@ -62,6 +62,10 @@ engine:
 | private | a private window: plays, storage "memory" where the browser offers nothing |
 | mobile | a phone (mobile UA, touch, small screen): plays |
 
+`OUT` (default `/tmp/xt-matrix`) on the same filesystem as the build lets
+the extra roots be hard links (otherwise they are 1.5 GB copies each); they
+and the browser profiles are removed at exit.
+
 Results: a table on stdout, `$OUT/results.tsv`, and each visit's JSON in
 `$OUT/<scenario>-<engine>.json` (`matrix.mjs` prints what the page showed,
 the store it used, the reason it gave for downloading, blob requests and

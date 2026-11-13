@@ -424,7 +424,43 @@ engine so it downloads and compiles while storage is checked. `a/` is served
 immutable, `index.html` no-cache: a deploy that changes nothing the page
 loads costs one revalidation.
 
-%%MEASURE%%
+Measured 2026-11-14 in headless Chromium 1248 (Playwright) on an Intel
+RPL-S iGPU through ANGLE/EGL, against `web/serve.py` (vercel.json's
+headers), network throttled with CDP, "before" being main before maps on
+demand (the full 1.06-1.08 GB set copied into memory) and "after" this
+layout with the ASTC set this GPU gets. The host was busy with other builds
+(load average 20-33 on 24 cores), so times vary by up to half; before and
+after runs were interleaved.
+
+| | before | after |
+|---|---|---|
+| Downloaded before playing | 1.076 GB | 405 MB (ASTC set; 1.07 GB stock DXT, 878 MB web slim) |
+| First visit, 20 Mbit/s: to the menu / a bot match | 442 s / 462 s | 176 s / 183 s |
+| First visit, 5 Mbit/s: to the menu | about 29 min (1.076 GB at 625 KB/s) | about 11 min (405 MB) |
+| First visit, local: to the menu | 13-54 s | 5-12 s |
+| Warm start: mount phase | 1.0-1.6 s (copying 1.08 GB) | 0.04-0.3 s |
+| Warm start: navigation to the engine's first frame | 5.7-6.8 s (to the menu) | 2.2-2.3 s |
+| Warm start at 4x CPU throttling (to the menu) | 19-25 s | 4.7 s |
+| JS heap incl. ArrayBuffers at the menu | 1079 MB | 30-45 MB, 160-220 MB for 15 s while read-ahead holds the core |
+| Same, a minute into a match, after GC | 1079 MB | 17-20 MB |
+| Renderer process private memory in a match | 1.84-1.90 GB | 0.89-1.02 GB |
+| Chromium limited to 2 GB (cgroup), warm start and two bot matches | killed | plays |
+| Chromium limited to 1.5 GB | killed | killed |
+| Map load, warm (stormkeep, then boil) | 15.8 s, 3.2 s | 4-6 s, 2-4 s |
+| Production in Firefox (desktop), first visit | 1.06 GB downloaded, then stuck at 100 % (persist() prompt) | starts by itself |
+
+What a warm start spends now (Chromium, warm, unthrottled): the page and
+its config 0.2-0.6 s (the engine's 5 MB wasm compiles meanwhile, from the
+HTTP cache), the storage check 15-30 ms (parallel existence and size, no
+hashing, no network), the mount 40-300 ms (one `getFile()` per chunk,
+kept from the check), the read-ahead of the blocks earlier starts read
+(about 94 MB on the ASTC set) 170-360 ms, then the engine's own start
+(configs, menu QuakeC, fonts, textures, sound) 1.2-1.7 s. In copy mode
+(`?lazy=0`) the first frame comes 0.8 s sooner and the 156 MB core stays
+in memory. Before the read-ahead list recorded every block read (cache hits
+and map packs too), a warm start made 55-87 synchronous reads and was
+slower than the old copy (26 s at 4x CPU); it now makes none.
+
 
 ### The slim data set on the web
 
@@ -618,6 +654,21 @@ demand, each new player downloaded about 1 GB. Vercel's Hobby plan includes
 use. Pro, or another host for the stock data (any static host that sends
 `Access-Control-Allow-Origin: *`), raises that; point the Pages shell at it
 with the repository variable `XT_WEB_DATA_URL`.
+
+**Data releases the build consumes** (`Godnotic-data`; the build never
+creates them):
+
+| Asset | Used as | How it is built |
+|---|---|---|
+| `data-20261107/Godnotic-data-20261107.zip` | the stock set: `web` today, and `full` | the upstream pk3s |
+| `data-slim/Godnotic-data.zip` (sha256 pinned in `scripts/vercel-build.sh`) | `astc` | `repack-phone-assets.py --profile slim` (ASTC) |
+| a web slim set, e.g. `data-web-20261107/Godnotic-data-web.zip` with its `.sha256` | `web`, once `XT_WEB_DATA_ARCHIVE`/`XT_WEB_DATA_SHA256` (or the defaults in `scripts/vercel-build.sh`) name it | `python3.14 scripts/repack-phone-assets.py --profile slim --textures keep -j $(nproc) -o out Xonotic/data/{font-unifont,font-xolonium}-20261107.pk3 Xonotic/data/xonotic-20261107-{data,maps,music,xoncompat}.pk3`, then each `out/<name>-phone.pk3` zipped as `Xonotic/data/<name>.pk3` (the layout of the other archives); 878 MB measured |
+
+The zip must keep the stock file names under `Xonotic/data/`: the stager
+finds the data and maps pk3 by `xonotic-*-data.pk3` / `xonotic-*-maps.pk3`
+and splits the maps pk3 itself. Publishing the slim set under an immutable
+tag (`data-slim-<date>`) instead of the moving `data-slim` would make
+builds reproducible; the pin warns when the asset changes.
 
 **GitHub Pages** (shell). `.github/workflows/web.yml` runs after every
 successful "Build and publish" run (each push to `main`), or by hand from the

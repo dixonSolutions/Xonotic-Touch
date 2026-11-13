@@ -2,7 +2,7 @@
 # The web loader's storage, download and start-up path, scenario by
 # scenario, in every browser engine this host can run. See README.md here.
 #
-#   tests/web-cache/matrix.sh [--engines chromium,firefox] [--only NAME,...] [BUILD_DIR]
+#   tests/web-cache/matrix.sh [--engines chromium,firefox] [BUILD_DIR]
 #
 # BUILD_DIR is a built and staged page (scripts/build-web.sh,
 # scripts/stage-web-data.sh), default build/web. Prints a table (scenario x
@@ -21,12 +21,10 @@ fi
 here="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$here/../.." && pwd)"
 ENGINES="chromium,firefox"
-ONLY=""
 BUILD=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --engines) ENGINES="$2"; shift 2 ;;
-        --only) ONLY="$2"; shift 2 ;;
         *) BUILD="$1"; shift ;;
     esac
 done
@@ -36,16 +34,18 @@ CHROME="${CHROME:-$(ls -d "$HOME"/.cache/ms-playwright/chromium-*/chrome-linux64
 FIREFOX="${FIREFOX:-}"   # empty: the org.mozilla.firefox Flatpak
 SPORT=8791 EPORT=8792 XDISP=:79
 rm -rf "$OUT"; mkdir -p "$OUT/roots"
+# The roots are copies of the build (about 1.5 GB each with data): removed at exit.
 
-want() { [ -z "$ONLY" ] || [[ ",$ONLY," == *",$1,"* ]]; }
 
 # ---- deploys: the same data with a new page, one changed small file, and
 # a GitHub Pages-style shell on another origin.
 B="$OUT/roots/b"; C="$OUT/roots/c"; E="$OUT/roots/e"
 mkdir -p "$B" "$C" "$E"
-cp -a "$BUILD"/. "$B"/
+cp -al "$BUILD"/. "$B"/ 2>/dev/null || cp -a "$BUILD"/. "$B"/
+rm -f "$B/index.html"; cp "$BUILD/index.html" "$B/index.html"
 sed -i 's/"build":"\([^"]*\)"/"build":"\1-redeploy"/' "$B/index.html"
-cp -a "$BUILD"/. "$C"/
+cp -al "$BUILD"/. "$C"/ 2>/dev/null || cp -a "$BUILD"/. "$C"/
+rm -f "$C/index.html"; cp "$BUILD/index.html" "$C/index.html"
 python3 -I - "$C" <<'PY'
 # One small own file changed (as a game-code push changes zz-progs.pk3):
 # a new blob, its manifest entry, a new manifest id in the page.
@@ -79,7 +79,7 @@ SPID=$!
 python3 "$here/matrix_server.py" "$E" --port $EPORT >"$OUT/server-e.log" 2>&1 &
 EPID=$!
 XPID=""
-cleanup() { kill $SPID $EPID $XPID 2>/dev/null; stop_browser; }
+cleanup() { kill $SPID $EPID $XPID 2>/dev/null; stop_browser; rm -rf "$OUT/roots" "$OUT"/p-*; }
 trap cleanup EXIT
 for _ in $(seq 50); do curl -sf "http://127.0.0.1:$SPORT/__stats" >/dev/null && curl -sf "http://127.0.0.1:$EPORT/__stats" >/dev/null && break; sleep 0.2; done
 ctl() { curl -sf "http://127.0.0.1:$SPORT/__ctl?$1" >/dev/null; }
@@ -157,6 +157,7 @@ visit() { # NAME ENGINE [matrix.mjs args...] -> $OUT/NAME-ENGINE.json, returns i
         > "$OUT/$name-$engine.json" 2>>"$OUT/$name-$engine.err"
 }
 field() { python3 -c "import json,sys; d=json.loads(open(sys.argv[1]).read().strip().splitlines()[-1]); print(d.get(sys.argv[2], ''))" "$1" "$2" 2>/dev/null; }
+num() { local v; v="$(field "$1" "$2")"; [[ "$v" =~ ^[0-9]+$ ]] && echo "$v" || echo 0; }
 RESULTS="$OUT/results.tsv"
 : > "$RESULTS"
 record() { # NAME ENGINE PASS NOTE (the last visit's JSON gives requests and MB)
@@ -189,7 +190,7 @@ for E_ in "${engines[@]}"; do
     f="$OUT/deploy-same-$E_.json"; started "$f" && [ "$(field "$f" blobRequests)" = 0 ] && record deploy-same "$E_" pass "new page, same data" || record deploy-same "$E_" FAIL "$(field "$f" error)"
     ctl "root=$C"
     visit deploy-code "$E_" --url "$URL"
-    f="$OUT/deploy-code-$E_.json"; started "$f" && [ "$(field "$f" blobRequests)" -le 2 ] && record deploy-code "$E_" pass "one changed file fetched, no question" || record deploy-code "$E_" FAIL "$(field "$f" error) shown=$(field "$f" shown)"
+    f="$OUT/deploy-code-$E_.json"; started "$f" && [ "$(num "$f" blobRequests)" -le 2 ] && record deploy-code "$E_" pass "one changed file fetched, no question" || record deploy-code "$E_" FAIL "$(field "$f" error) shown=$(field "$f" shown)"
     ctl "root=$BUILD"
     # 6: killed while the engine starts, then a normal start
     visit kill-start "$E_" --url "$URL" --kill-at-start
@@ -224,11 +225,11 @@ for E_ in "${engines[@]}"; do
     sum=0
     for frac in 15 40 70; do
         visit "kill-$frac" "$E_" --url "$URL" --click --kill-at $(( TOTAL_MB * 1000000 * frac / 100 / 3 ))
-        sum=$(( sum + $(field "$OUT/kill-$frac-$E_.json" blobBytes || echo 0) ))
+        sum=$(( sum + $(num "$OUT/kill-$frac-$E_.json" blobBytes) ))
         stop_browser KILL; start_browser "$E_" "$P/kills"
     done
     visit resume "$E_" --url "$URL" --click
-    f="$OUT/resume-$E_.json"; sum=$(( sum + $(field "$f" blobBytes) ))
+    f="$OUT/resume-$E_.json"; sum=$(( sum + $(num "$f" blobBytes) ))
     started "$f" && record resume "$E_" pass "3 kills; $(( sum / 1000000 )) MB fetched in all for $TOTAL_MB MB; $(field "$f" reason | cut -c1-50)" || record resume "$E_" FAIL "$(field "$f" error)"
     stop_browser
     # 14: two tabs at once

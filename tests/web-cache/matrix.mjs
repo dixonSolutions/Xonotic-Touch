@@ -96,7 +96,14 @@ function firefox() {
         } catch (e) { await sleep(200); }
       }
       ws.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.id && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } };
-      const s = await send('session.new', { capabilities: {} });
+      // A session the last visit could not end still counts for a few
+      // seconds: wait for it to go.
+      let s;
+      for (let k = 0; k < 20; k++) {
+        s = await send('session.new', { capabilities: {} });
+        if (!s.error) break;
+        await sleep(1000);
+      }
       if (s.error) throw new Error(JSON.stringify(s));
     },
     async tab(newTab) {
@@ -154,6 +161,7 @@ async function visit(page, out) {
   out.error = 'timeout';
 }
 
+process.on('unhandledRejection', (e) => { console.log(JSON.stringify({ engine, url, error: 'driver: ' + (e && e.message || e) })); process.exit(1); });
 const drv = engine === 'firefox' ? firefox() : chromium();
 await drv.open();
 await fetch(server + '/__ctl?reset=1');
