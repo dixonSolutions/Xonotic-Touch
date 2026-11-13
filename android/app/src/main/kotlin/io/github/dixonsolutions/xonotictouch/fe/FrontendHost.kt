@@ -156,7 +156,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     private fun checkStuck() {
         val top = screens.lastOrNull() ?: return
         val kind = client?.store?.node(top)?.str("kind") ?: ""
-        val stuck = app.str("state") == "menu" && kind == "loading" && root.visibility == View.VISIBLE
+        val stuck = app.str("state") == "menu" && kind == "loading" && root.visibility == View.VISIBLE && dialogLayer.visibility != View.VISIBLE
         val now = SystemClock.elapsedRealtime()
         if (!stuck) { stuckSince = 0; return }
         if (stuckSince == 0L) { stuckSince = now; return }
