@@ -126,6 +126,7 @@ static void VM_CL_setmodel (prvm_prog_t *prog)
 		}
 	}
 
+	TouchModel_Ensure(mod); // Touch: its size is needed now
 	if( mod ) {
 		// TODO: check if this breaks needed consistency and maybe add a cvar for it too?? [1/10/2008 Black]
 		// LadyHavoc: erm you broke it by commenting this out - setmodel must do setsize or else the qc can't find out the model size, and ssqc does this by necessity, consistency.
@@ -434,7 +435,10 @@ static void VM_CL_precache_model (prvm_prog_t *prog)
 		}
 	}
 	PRVM_G_FLOAT(OFS_RETURN) = 0;
+	TouchModel_PrecacheScope(1); // Touch: registered, loads when first used
 	m = Mod_ForName(name, false, false, name[0] == '*' ? cl.model_name[1] : NULL);
+	TouchModel_PrecacheScope(0); // Touch:
+	if (TouchModel_CSQCPrecache(prog, m)) return; // Touch: a registered model takes its slot
 	if(m && m->loaded)
 	{
 		for (i = 0;i < MAX_MODELS;i++)
@@ -1325,6 +1329,7 @@ void VM_precache_pic(prvm_prog_t *prog)
 			flags |= CACHEPICFLAG_MIPMAP;
 	}
 
+	if (TouchLoad_LazyPrecachePic(prog, s, flags)) return; // Touch: the menu's pics load when first drawn
 	if( !Draw_IsPicLoaded(Draw_CachePic_Flags(s, flags | CACHEPICFLAG_QUIET)) )
 		PRVM_G_INT(OFS_RETURN) = OFS_NULL;
 }

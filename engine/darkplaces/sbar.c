@@ -154,6 +154,7 @@ static void sbar_start(void)
 	char vabuf[1024];
 	int i;
 
+	if (TouchLoad_SbarDefer(sbar_start)) return; // Touch: Xonotic draws its HUD in CSQC; the Quake pics load when the engine HUD is first drawn
 	if (gamemode == GAME_DELUXEQUAKE || gamemode == GAME_BLOODOMNICIDE)
 	{
 	}
@@ -1376,6 +1377,7 @@ void Sbar_Draw (void)
 
 	if(cl.csqc_vidvars.drawenginesbar)	//[515]: csqc drawsbar
 	{
+		TouchLoad_SbarEnsure(); // Touch: the deferred sbar_start
 		if (sb_showscores)
 			Sbar_DrawScoreboard ();
 		else if (cl.intermission == 1)
@@ -1867,6 +1869,7 @@ void Sbar_DeathmatchOverlay (void)
 {
 	int i, y, xmin, xmax, ymin, ymax;
 	char vabuf[1024];
+	TouchLoad_SbarEnsure(); // Touch: the deferred sbar_start
 
 	// request new ping times every two second
 	if (cl.last_ping_request < host.realtime - 2 && cls.netcon)

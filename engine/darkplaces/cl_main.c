@@ -2821,6 +2821,7 @@ double CL_Frame (double time)
 	// Run at full speed when querying servers, compared to waking up early to parse
 	// this is simpler and gives pings more representative of what can be expected when playing.
 	maxfps = (vid_activewindow || serverlist_querystage ? cl_maxfps : cl_maxidlefps).value;
+	maxfps = TouchLoadTime_MaxFPS(maxfps); // Touch: no frame limiter while a game loads
 
 	if (cls.state != ca_dedicated && (cl_timer > 0 || host.restless || maxfps <= 0))
 	{

@@ -102,6 +102,7 @@ cachepic_t *Draw_CachePic_Flags(const char *path, unsigned int cachepicflags)
 	else if (!strncmp(path, "gfx/hud/", 8) && vid.support.npot_mipmap)
 		cachepicflags |= CACHEPICFLAG_MIPMAP | CACHEPICFLAG_LINEAR;
 
+	cachepicflags = TouchLoad_PicFlags(path, cachepicflags); // Touch: flags of a lazily precached pic
 	texflags = TEXF_ALPHA;
 	if (!(cachepicflags & CACHEPICFLAG_NOCLAMP))
 		texflags |= TEXF_CLAMP;
@@ -347,6 +348,7 @@ void LoadFont(qbool override, const char *name, dp_font_t *fnt, float scale, flo
 	char widthfile[MAX_QPATH];
 	char *widthbuf;
 	fs_offset_t widthbufsize;
+	TOUCH_LT_SCOPE(TLT_FONT); // Touch: load-time phases
 
 	if(override || !fnt->texpath[0])
 	{

@@ -703,8 +703,10 @@ static void S_Restart_f(cmd_state_t *cmd)
 S_Init
 ================
 */
+#include "touch_loadsnd.h" // Touch: sounds decoded on first play (snd_lazyload)
 void S_Init(void)
 {
+	TouchSnd_Init(); // Touch: snd_lazyload
 	Cvar_RegisterVariable(&volume);
 	Cvar_RegisterVariable(&bgmvolume);
 	Cvar_RegisterVariable(&mastervolume);
@@ -950,6 +952,7 @@ void S_FreeSfx (sfx_t *sfx, qbool force)
 
 	if (developer_loading.integer)
 		Con_Printf ("unloading sound %s\n", sfx->name);
+	TouchOgg_Forget(sfx); // Touch: its decode on a worker thread must not outlive it
 
 	// Remove it from the list of known sfx
 	if (sfx == known_sfx)
@@ -1070,6 +1073,7 @@ sfx_t *S_PrecacheSound (const char *name, qbool complain, qbool levelsound)
 	else
 		sfx->flags |= SFXFLAG_MENUSOUND;
 
+	if (TouchSnd_Defer(sfx)) return sfx; // Touch: decoded on first play
 	if (!nosound.integer && snd_precache.integer)
 		S_LoadSound(sfx, complain);
 
@@ -1094,6 +1098,7 @@ float S_SoundLength(const char *name)
 	sfx = S_FindName(name);
 	if (sfx == NULL)
 		return -1;
+	TouchSnd_Ensure(sfx); // Touch: its length is known once decoded
 	return sfx->total_length / (float) S_GetSoundRate();
 }
 
@@ -1104,6 +1109,7 @@ S_IsSoundPrecached
 */
 qbool S_IsSoundPrecached (const sfx_t *sfx)
 {
+	if (TouchSnd_Deferred(sfx)) return true; // Touch: precached, decoded on first play
 	return (sfx != NULL && sfx->fetcher != NULL) || (sfx == &changevolume_sfx);
 }
 
@@ -1598,6 +1604,7 @@ int S_StartSound_StartPosition_Flags (int entnum, int entchannel, sfx_t *sfx, ve
 		return -1;
 	}
 
+	TouchSnd_Ensure(sfx); // Touch: first play decodes it
 	if (sfx->fetcher == NULL)
 		return -1;
 
@@ -1812,6 +1819,7 @@ void S_StaticSound (sfx_t *sfx, vec3_t origin, float fvol, float attenuation)
 
 	if (snd_renderbuffer == NULL || sfx == NULL || nosound.integer)
 		return;
+	TouchSnd_Ensure(sfx); // Touch: first play decodes it
 	if (!sfx->fetcher)
 	{
 		Con_Printf ("S_StaticSound: \"%s\" hasn't been precached\n", sfx->name);

@@ -1039,6 +1039,7 @@ unsigned char *loadimagepixelsbgra (const char *filename, qbool complain, qbool 
 	unsigned char *f, *data = NULL, *data2 = NULL;
 	char basename[MAX_QPATH], name[MAX_QPATH], name2[MAX_QPATH], path[MAX_QPATH], afterpath[MAX_QPATH], *c;
 	char vabuf[1024];
+	TOUCH_LT_SCOPE(TLT_IMAGE); // Touch: load-time phases
 	//if (developer_memorydebug.integer)
 	//	Mem_CheckSentinelsGlobal();
 	if (developer_texturelogging.integer)

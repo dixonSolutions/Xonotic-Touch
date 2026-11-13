@@ -21,6 +21,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // cvar.c -- dynamic variable tracking
 
 #include "quakedef.h"
+#include "touch_loadcvar.h" // Touch: cvar list index
 
 const char *cvar_dummy_description = "custom cvar";
 static const char *cvar_null_string = "";
@@ -580,6 +581,8 @@ static void Cvar_Link(cvar_t *variable, cvar_state_t *cvars)
 	cvar_t *current, *next;
 	cvar_hash_t *hash;
 	unsigned hashindex;
+	TOUCH_LT_SCOPE(TLT_CVARLINK); // Touch: load-time phases
+	if (TouchCvar_Link(variable, cvars)) goto touch_linked; // Touch: binary search instead of the walk
 	/*
 	 * Link the variable in
 	 * alphanumerical order
@@ -592,6 +595,7 @@ static void Cvar_Link(cvar_t *variable, cvar_state_t *cvars)
 		cvars->vars = variable;
 	variable->next = next;
 
+touch_linked: // Touch: TouchCvar_Link linked it
 	// link to head of list in this hash table index
 	hash = (cvar_hash_t *)Z_Malloc(sizeof(cvar_hash_t));
 	hashindex = CRC_Block((const unsigned char *)variable->name, strlen(variable->name)) % CVAR_HASHSIZE;
@@ -645,6 +649,7 @@ void Cvar_RegisterVariable (cvar_t *variable)
 			memcpy(variable->globaldefindex, cvar->globaldefindex, sizeof(variable->globaldefindex));
 			memcpy(variable->globaldefindex_stringno, cvar->globaldefindex_stringno, sizeof(variable->globaldefindex_stringno));
 			// replace cvar with this one...
+			TouchCvar_ListChanged(); // Touch: the cvar index is stale
 			variable->next = cvar->next;
 			if (cvars->vars == cvar)
 			{
@@ -810,6 +815,7 @@ static qbool Cvar_Delete(cvar_state_t *cvars, const char *name, const char *call
 		return false;
 	}
 
+	TouchCvar_ListChanged(); // Touch: the cvar index is stale
 	if(cvar == cvars->vars)
 		cvars->vars = cvar->next;
 	else

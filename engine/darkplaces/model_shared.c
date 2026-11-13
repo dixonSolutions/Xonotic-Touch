@@ -175,8 +175,10 @@ static void Mod_Print_f(cmd_state_t *cmd);
 static void Mod_Precache_f(cmd_state_t *cmd);
 static void Mod_Decompile_f(cmd_state_t *cmd);
 static void Mod_GenerateLightmaps_f(cmd_state_t *cmd);
+#include "touch_loadmodel.h" // Touch: models load when first used (mod_lazyload)
 void Mod_Init (void)
 {
+	TouchModel_Init(); // Touch: mod_lazyload
 	mod_mempool = Mem_AllocPool("modelinfo", 0, NULL);
 	Mem_ExpandableArray_NewArray(&models, mod_mempool, sizeof(model_t), 16);
 
@@ -409,6 +411,7 @@ model_t *Mod_LoadModel(model_t *mod, qbool crash, qbool checkdisk)
 	void *buf;
 	fs_offset_t filesize = 0;
 	char vabuf[1024];
+	TOUCH_LT_SCOPE(TLT_MODEL); // Touch: load-time phases
 
 	mod->used = true;
 
@@ -580,6 +583,7 @@ void Mod_PurgeUnused(void)
 	{
 		if ((mod = (model_t*) Mem_ExpandableArray_RecordAtIndex(&models, i)) && mod->name[0] && !mod->used)
 		{
+			TouchModel_Purged(mod); // Touch: no longer waiting to load
 			Mod_UnloadModel(mod);
 			Mem_ExpandableArray_FreeRecord(&models, mod);
 		}
@@ -646,6 +650,7 @@ model_t *Mod_ForName(const char *name, qbool crash, qbool checkdisk, const char 
 		CL_StartVideo();
 
 	model = Mod_FindName(name, parentname);
+	if (TouchModel_Defer(model, checkdisk)) return model; // Touch: registered, loads when first used
 	if (!model->loaded || checkdisk)
 		Mod_LoadModel(model, crash, checkdisk);
 	return model;
@@ -1478,6 +1483,7 @@ void Mod_LoadQ3Shaders(void)
 	unsigned long custsurfaceflags[256]; 
 	int numcustsurfaceflags;
 	qbool dpshaderkill;
+	TOUCH_LT_SCOPE(TLT_Q3SHADER); // Touch: load-time phases
 
 	Mod_FreeQ3Shaders();
 

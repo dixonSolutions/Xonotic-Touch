@@ -417,6 +417,11 @@ static unsigned int fs_dirnames_generation = 1;
 #else
 # define FS_DIRNAMES_CHANGED() ((void)0)
 #endif
+#include "touch_loadfs.h" // Touch: cached loose-directory listings
+#ifndef __EMSCRIPTEN__
+#undef FS_DIRNAMES_CHANGED
+#define FS_DIRNAMES_CHANGED() TouchLoadFS_Changed() // Touch: the engine wrote a file, listings are stale
+#endif
 
 
 #include "touch_assets_fs.h" // Touch: zstd pk3 entries
@@ -2768,6 +2773,8 @@ static searchpath_t *FS_FindFile (const char *name, int *index, const char **can
 	searchpath_t *search;
 	pack_t *pak;
 
+	TouchLoadTime_Count(TLC_FS_LOOKUP); // Touch: load-time counters
+
 	// search through the path, one element at a time
 	for (search = fs_searchpaths;search;search = search->next)
 	{
@@ -2830,6 +2837,8 @@ static searchpath_t *FS_FindFile (const char *name, int *index, const char **can
 			if (!search->pack && !FS_DirMayHave(search, name))
 				continue;
 #endif
+			if (!TouchLoadFS_MayHave(search->filename, name)) continue; // Touch: cached directory listings, no stat() for a sure miss
+			TouchLoadTime_Count(TLC_FS_DIRSTAT); // Touch: load-time counters
 			dpsnprintf(netpath, sizeof(netpath), "%s%s", search->filename, name);
 			if (FS_SysFileExists (netpath))
 			{
@@ -2845,6 +2854,7 @@ static searchpath_t *FS_FindFile (const char *name, int *index, const char **can
 		}
 	}
 
+	TouchLoadTime_Count(TLC_FS_MISS); // Touch: load-time counters
 	if (!quiet && developer_extra.integer)
 		Con_DPrintf("FS_FindFile: can't find %s\n", name);
 
@@ -3661,6 +3671,7 @@ static unsigned char *FS_LoadAndCloseQFile (qfile_t *file, const char *path, mem
 		buf[filesize] = '\0';
 		FS_Read (file, buf, filesize);
 		FS_Close (file);
+		TouchLoadTime_AddBytes(filesize); // Touch: load-time counters
 		if (developer_loadfile.integer)
 			Con_Printf("loaded file \"%s\" (%u bytes)\n", path, (unsigned int)filesize);
 	}
@@ -3681,6 +3692,7 @@ Always appends a 0 byte.
 */
 unsigned char *FS_LoadFile (const char *path, mempool_t *pool, qbool quiet, fs_offset_t *filesizepointer)
 {
+	TOUCH_LT_SCOPE(TLT_FILEREAD); // Touch: load-time phases
 	qfile_t *file = FS_OpenVirtualFile(path, quiet);
 	return FS_LoadAndCloseQFile(file, path, pool, quiet, filesizepointer);
 }

@@ -596,6 +596,7 @@ OGG_LoadVorbisFile
 Load an Ogg Vorbis file into memory
 ====================
 */
+#include "touch_loadogg.h" // Touch: big sounds decoded on worker threads (snd_lazyload_async)
 qbool OGG_LoadVorbisFile(const char *filename, sfx_t *sfx)
 {
 	unsigned char *data;

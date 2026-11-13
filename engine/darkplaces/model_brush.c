@@ -5545,6 +5545,7 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 	qbool external;
 	unsigned char *inpixels[10000]; // max count q3map2 can output (it uses 4 digits)
 	char vabuf[1024];
+	TOUCH_LT_SCOPE(TLT_LIGHTMAP); // Touch: load-time phases
 
 	// defaults for q3bsp
 	size = 128;

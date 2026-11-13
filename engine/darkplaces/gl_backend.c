@@ -1711,6 +1711,7 @@ unsigned int GL_Backend_CompileProgram(int vertexstrings_count, const char **ver
 	GLint programlinked;
 	GLuint programobject = 0;
 	char linklog[MAX_INPUTLINE];
+	TOUCH_LT_SCOPE(TLT_SHADER); // Touch: load-time phases
 	CHECKGLERROR
 
 	programobject = qglCreateProgram();CHECKGLERROR

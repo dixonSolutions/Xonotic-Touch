@@ -2468,6 +2468,7 @@ void CL_UpdateScreen(void)
 	SCR_CaptureVideo();
 #endif
 
+	TouchLoadTime_Frame(); // Touch: first menu and game frames
 	qglFlush(); // ensure that the commands are submitted to the GPU before we do other things
 	VID_Finish();
 }

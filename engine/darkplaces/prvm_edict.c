@@ -2061,6 +2061,7 @@ void PRVM_Prog_Load(prvm_prog_t *prog, const char *filename, unsigned char *data
 	int structtype = 0;
 	int max_safe_edicts;
 	bool gaddress_warned = false;
+	TOUCH_LT_SCOPE(TLT_PROGS); // Touch: load-time phases
 
 	if (prog->loaded)
 		prog->error_cmd("%s: there is already a %s program loaded!", __func__, prog->name);

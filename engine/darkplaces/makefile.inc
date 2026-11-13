@@ -54,6 +54,9 @@ OBJ_COMMON= \
 	touch_lua_sv.o \
 	touch_lua_vm.o \
 	touch_assets_zstd.o \
+	touch_loadtime.o \
+	touch_loadfs.o \
+	touch_loadcvar.o \
 	vid_touchdetect.o \
 	touch_display.o \
 	cl_video.o \

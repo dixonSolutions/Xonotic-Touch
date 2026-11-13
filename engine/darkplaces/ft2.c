@@ -440,12 +440,14 @@ void font_newmap(void)
 {
 }
 
+#include "touch_loadfont.h" // Touch: font sizes and kerning on first use
 void Font_Init(void)
 {
 	Cvar_RegisterVariable(&r_font_nonpoweroftwo);
 	Cvar_RegisterVariable(&r_font_disable_freetype);
 	Cvar_RegisterVariable(&r_font_size_snapping);
 	Cvar_RegisterVariable(&r_font_kerning);
+	TouchFont_Init(); // Touch: r_font_lazysizes, r_font_lazykerning
 	Cvar_RegisterVariable(&r_font_diskcache);
 	Cvar_RegisterVariable(&r_font_compress);
 	Cvar_RegisterVariable(&developer_font);
@@ -608,6 +610,7 @@ qbool Font_LoadFont(const char *name, dp_font_t *dpfnt)
 	count = 0;
 	for (s = 0; s < MAX_FONT_SIZES && dpfnt->req_sizes[s] >= 0; ++s)
 	{
+		if (count && TouchFont_DeferSize(ft2, Font_VirtualToRealSize(dpfnt->req_sizes[s]))) continue; // Touch: rendered when first drawn
 		if (Font_LoadSize(ft2, Font_VirtualToRealSize(dpfnt->req_sizes[s]), false))
 			++count;
 	}
@@ -967,6 +970,7 @@ static qbool Font_LoadSize(ft2_font_t *font, float size, qbool check_only)
 	fmap->sfx = temp.sfx;
 	fmap->sfy = temp.sfy;
 
+	if (TouchFont_LazyKerning(font)) return true; // Touch: kerning per pair when drawn
 	// load the default kerning vector:
 	if (font->has_kerning)
 	{
@@ -1005,6 +1009,7 @@ int Font_IndexForSize(ft2_font_t *font, float _fsize, float *outw, float *outh)
 	int m;
 	float fsize_x, fsize_y;
 	ft2_font_map_t **maps = font->font_maps;
+	TouchFont_EnsureSize(font, _fsize, outw, outh); // Touch: render a deferred size before it is chosen
 
 	fsize_x = fsize_y = _fsize * vid.mode.height / vid_conheight.value;
 	if(outw && *outw)
@@ -1092,6 +1097,7 @@ qbool Font_GetKerningForMap(ft2_font_t *font, int map_index, float w, float h, U
 	fmap = font->font_maps[map_index];
 	if (!fmap)
 		return false;
+	if (left < 256 && right < 256) return TouchFont_Kerning(font, fmap, left, right, outx, outy); // Touch: looked up per pair
 	if (left < 256 && right < 256)
 	{
 		//Con_Printf("%g : %f, %f, %f :: %f\n", (w / (float)fmap->size), w, fmap->size, fmap->intSize, Font_VirtualToRealSize(w));
@@ -1184,6 +1190,7 @@ static void UnloadMapChain(ft2_font_map_t *map)
 void Font_UnloadFont(ft2_font_t *font)
 {
 	int i;
+	TouchFont_Forget(font); // Touch: its deferred sizes
 
 	// unload fallbacks
 	if(font->next)

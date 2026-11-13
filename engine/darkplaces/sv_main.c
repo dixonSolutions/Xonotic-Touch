@@ -1270,6 +1270,7 @@ static void SV_Download_f(cmd_state_t *cmd)
 
 		Con_DPrintf("Downloading %s to %s\n", host_client->download_name, host_client->name);
 
+		if(host_client->download_deflate) TouchLoad_EnsureCSQCDeflated(); // Touch: compressed on first request
 		if(host_client->download_deflate && svs.csqc_progdata_deflated)
 			host_client->download_file = FS_FileFromData(svs.csqc_progdata_deflated, svs.csqc_progsize_deflated, true);
 		else
@@ -1439,7 +1440,9 @@ int SV_ModelIndex(const char *s, int precachemode)
 				if (sv.state == ss_loading)
 				{
 					// running from SV_SpawnServer which is launched from the client console command interpreter
+					TouchModel_PrecacheScope(1); // Touch: registered, loads when first used
 					sv.models[i] = Mod_ForName (sv.model_precache[i], true, false, s[0] == '*' ? sv.worldname : NULL);
+					TouchModel_PrecacheScope(0); // Touch:
 				}
 				else
 				{
@@ -1610,6 +1613,7 @@ int SV_ParticleEffectIndex(const char *name)
 
 model_t *SV_GetModelByIndex(int modelindex)
 {
+	if (modelindex > 0 && modelindex < MAX_MODELS) TouchModel_Ensure(sv.models[modelindex]); // Touch: a lazily precached model loads here
 	return (modelindex > 0 && modelindex < MAX_MODELS) ? sv.models[modelindex] : NULL;
 }
 
@@ -1620,6 +1624,7 @@ model_t *SV_GetModelFromEdict(prvm_edict_t *ed)
 	if (!ed || ed->free)
 		return NULL;
 	modelindex = (int)PRVM_serveredictfloat(ed, modelindex);
+	if (modelindex > 0 && modelindex < MAX_MODELS) TouchModel_Ensure(sv.models[modelindex]); // Touch: a lazily precached model loads here
 	return (modelindex > 0 && modelindex < MAX_MODELS) ? sv.models[modelindex] : NULL;
 }
 
@@ -1740,9 +1745,12 @@ static void SV_Prepare_CSQC(void)
 		dp_strlcpy(sv.csqc_progname, csqc_progname.string, sizeof(sv.csqc_progname));
 		Con_DPrintf("server detected csqc progs file \"%s\" with size %i and crc %i\n", sv.csqc_progname, sv.csqc_progsize, sv.csqc_progcrc);
 
+		if (TouchLoad_DeferCSQCDeflate()) return; // Touch: compressed when a client first asks for it
 		Con_DPrint("Compressing csprogs.dat\n");
 		//unsigned char *FS_Deflate(const unsigned char *data, size_t size, size_t *deflated_size, int level, mempool_t *mempool);
+		TouchLoadTime_Begin(TLT_DEFLATE); // Touch: load-time phases
 		svs.csqc_progdata_deflated = FS_Deflate(svs.csqc_progdata, progsize, &deflated_size, -1, sv_mempool);
+		TouchLoadTime_End(TLT_DEFLATE); // Touch: load-time phases
 		svs.csqc_progsize_deflated = (int)deflated_size;
 		if(svs.csqc_progdata_deflated)
 		{
@@ -1822,6 +1830,7 @@ void SV_SpawnServer (const char *map)
 	char modelname[sizeof(sv.worldname)];
 	const char *canonicalname;
 	char vabuf[1024];
+	TOUCH_LT_SCOPE(TLT_SPAWN); // Touch: load-time phases
 
 	Con_Printf("SpawnServer: %s\n", map);
 

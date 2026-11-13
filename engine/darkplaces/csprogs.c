@@ -1001,6 +1001,7 @@ void CL_VM_Init (void)
 	int csprogsdatacrc, requiredcrc;
 	int requiredsize;
 	char vabuf[1024];
+	TOUCH_LT_SCOPE(TLT_CSQC); // Touch: load-time phases
 
 	// reset csqc_progcrc after reading it, so that changing servers doesn't
 	// expect csqc on the next server

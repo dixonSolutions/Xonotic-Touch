@@ -28,6 +28,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "snd_xmp.h"
 #endif
 #include "sound.h"
+#include "touch_loadtime.h" // Touch: load-time phases
 
 void SCR_PushLoadingScreen (const char *, float);
 void SCR_PopLoadingScreen (qbool);
@@ -88,6 +89,7 @@ qbool S_LoadSound (sfx_t *sfx, qbool complain)
 {
 	char namebuffer[MAX_QPATH + 16];
 	size_t len;
+	TOUCH_LT_SCOPE(TLT_SOUND); // Touch: load-time phases
 
 	// See if already loaded
 	if (sfx->fetcher != NULL)
