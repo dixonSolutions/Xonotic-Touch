@@ -39,6 +39,41 @@ SERVER TRANSITIONS
 ===============================================================================
 */
 
+#ifdef __EMSCRIPTEN__
+/*
+A browser shows the canvas only after the engine's frame returns, and a map
+load runs inside one frame: 15 s on a desktop the first time, a minute on a
+phone. Whatever was on screen when the command ran (the menu, with the button
+just pressed) stays there for all of it, and the press looks ignored.
+
+So the first time through, put up the loading screen and run the same command
+again two frames later: the main loop runs on a timer, not on the browser's
+paint, and two frames make sure a paint of the loading screen falls between.
+The entry pushed here keeps the plaque up until then (an empty loading stack
+ends it).
+*/
+static qbool sv_mapload_deferred;
+
+static qbool SV_DeferMapLoad(cmd_state_t *cmd)
+{
+	char vabuf[MAX_INPUTLINE];
+
+	if (!host_isclient.integer)
+		return false;
+	if (sv_mapload_deferred)
+	{
+		sv_mapload_deferred = false;
+		SCR_PopLoadingScreen(false);
+		return false;
+	}
+	sv_mapload_deferred = true;
+	SCR_PushLoadingScreen("", 1);
+	SCR_BeginLoadingPlaque(false);
+	Cbuf_InsertText(cmd, va(vabuf, sizeof(vabuf), "wait\nwait\n%s \"%s\"\n", Cmd_Argv(cmd, 0), Cmd_Argv(cmd, 1)));
+	return true;
+}
+#endif
+
 /*
 ======================
 SV_Map_f
@@ -55,6 +90,11 @@ static void SV_Map_f(cmd_state_t *cmd)
 		Con_Print("map <levelname> : start a new game (kicks off all players)\n");
 		return;
 	}
+
+#ifdef __EMSCRIPTEN__
+	if (SV_DeferMapLoad(cmd))
+		return;
+#endif
 
 	// GAME_DELUXEQUAKE - clear warpmark (used by QC)
 	if (gamemode == GAME_DELUXEQUAKE)
