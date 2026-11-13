@@ -222,7 +222,7 @@ class ViewRenderer(
 
     private fun actionButton(node: String, a: Map<String, Any?>, primaryDefault: Boolean = false): TextView {
         val style = a.str("style")
-        val b = Kit.button(ctx, Icons.label(a.str("icon"), a.str("label")), style == "primary" || (style.isEmpty() && primaryDefault)) { invoke(node, a) }
+        val b = Kit.button(ctx, a.str("label"), style == "primary" || (style.isEmpty() && primaryDefault), a.str("icon")) { invoke(node, a) }
         if (style == "destructive") b.setTextColor(Theme.BAD)
         b.isEnabled = !a.containsKey("enabled") || a.bool("enabled")
         b.contentDescription = a.str("label")
@@ -242,6 +242,7 @@ class ViewRenderer(
         back.minimumWidth = dp(56f)
         back.contentDescription = "Back"
         val titleV = Kit.text(ctx, "", Theme.SP_HEADLINE, Theme.TEXT, bold = true, lines = 1)
+        titleV.typeface = Theme.display
         val sub = Kit.text(ctx, "", Theme.SP_CAPTION, Theme.TEXT_MUTED, lines = 1)
         val titles = Kit.column(ctx)
         titles.addView(titleV)
@@ -302,7 +303,8 @@ class ViewRenderer(
             back.visibility = if (host.canBack() && !kindHome) View.VISIBLE else View.GONE
             if (p["header"].obj().bool("compact")) titleV.textSize = Theme.SP_TITLE
             trailing.removeAllViews()
-            for (a in p["actions"].list()) trailing.addView(actionButton(id, a.obj()))
+            // header actions are quiet (Quit must not compete with Play)
+            for (a in p["actions"].list()) { val m = a.obj(); trailing.addView(Kit.quiet(ctx, m.str("label"), m.str("icon")) { invoke(id, m) }) }
             // the screen's primary action sits in the bottom bar when there is no actionbar node
             bottom.findViewWithTag<View>("primary")?.let { bottom.removeView(it) }
             val prim = p["primary"].obj()
@@ -358,6 +360,7 @@ class ViewRenderer(
         val box = Kit.column(ctx, 8f)
         val head = Kit.row(ctx, 12f)
         val titleV = Kit.text(ctx, "", Theme.SP_TITLE, Theme.BLUE, bold = true)
+        titleV.typeface = Theme.display
         val link = Kit.text(ctx, "", Theme.SP_BODY, Theme.EMBER, bold = true)
         link.minHeight = dp(Kit.MIN_TARGET_DP)
         link.gravity = Gravity.CENTER_VERTICAL
@@ -436,59 +439,69 @@ class ViewRenderer(
         return def
     }
 
+    /** A map or server picture (shown as a photo) rather than artwork that stands for a section. */
+    private fun isPhoto(ref: String) = ref.startsWith("pk3:maps/") || ref.startsWith("/") || ref.startsWith("mod:")
+
     private fun card(id: String, props: Map<String, Any?>, hero: Boolean): Entry {
-        val c = Kit.card(ctx, clickable = true, radiusDp = if (hero) 24f else 16f)
+        if (hero) return heroCard(id, props)
+        val c = Kit.card(ctx, clickable = true, radiusDp = 16f)
+        // photo cards: the picture on top; section cards: an icon slot beside the text
+        val col = Kit.column(ctx)
         val img = RoundImage(ctx, 0f)
-        val texts = Kit.column(ctx, 6f)
-        val pad = dp(if (hero) 28f else 14f)
-        texts.setPadding(pad, dp(if (hero) 18f else 10f), pad, pad)
-        val titleV = Kit.text(ctx, "", if (hero) Theme.SP_DISPLAY else Theme.SP_TITLE, Theme.TEXT, bold = true, lines = 2)
-        val subtitle = Kit.text(ctx, "", if (hero) Theme.SP_TITLE else Theme.SP_CAPTION, Theme.TEXT_MUTED, lines = 2)
-        val meta = FlowGrid(ctx, 0, dp(10f), wrap = true)
-        val badges = FlowGrid(ctx, 0, dp(6f), wrap = true)
-        val actions = FlowGrid(ctx, 0, dp(10f), wrap = true)
-        texts.addView(badges); texts.addView(titleV); texts.addView(subtitle); texts.addView(meta); texts.addView(actions)
         val bar = ProgressBar(ctx, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 1000; progressTintList = android.content.res.ColorStateList.valueOf(Theme.EMBER); visibility = View.GONE
         }
-        if (hero) {
-            val stack = FrameLayout(ctx)
-            stack.addView(img, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            val fade = View(ctx)
-            fade.background = android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0xF2050B18.toInt(), 0xB3050B18.toInt(), 0x00050B18))
-            stack.addView(fade, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            stack.addView(texts, FrameLayout.LayoutParams((ctx.resources.displayMetrics.widthPixels * 0.45f).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.START or Gravity.CENTER_VERTICAL))
-            c.addView(stack)
-        } else {
-            val col = Kit.column(ctx)
-            col.addView(img, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            col.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(4f)))
-            col.addView(texts)
-            c.addView(col)
-        }
-        val e = Entry(id, if (hero) "hero" else "card", c, null, props)
+        val row = Kit.row(ctx, 14f)
+        row.setPadding(dp(16f), dp(14f), dp(16f), dp(14f))
+        row.minimumHeight = dp(88f)
+        val slot = FrameLayout(ctx)
+        slot.background = Theme.rounded(0xFF0F2350.toInt(), dp(14f).toFloat(), max(1, dp(1f)), 0xFF2B4A86.toInt())
+        val slotIcon = View(ctx)
+        slot.addView(slotIcon, FrameLayout.LayoutParams(dp(32f), dp(32f), Gravity.CENTER))
+        val texts = Kit.column(ctx, 4f)
+        val titleV = Kit.text(ctx, "", Theme.SP_TITLE - 1f, Theme.TEXT, bold = true, lines = 1)
+        titleV.typeface = Theme.display
+        if (android.os.Build.VERSION.SDK_INT >= 26) { titleV.ellipsize = null; titleV.setAutoSizeTextTypeUniformWithConfiguration(13, 19, 1, android.util.TypedValue.COMPLEX_UNIT_SP) }
+        val subtitle = Kit.text(ctx, "", Theme.SP_CAPTION + 1f, Theme.TEXT_MUTED, lines = 1)
+        val badges = FlowGrid(ctx, 0, dp(6f), wrap = true)
+        val meta = FlowGrid(ctx, 0, dp(12f), wrap = true)
+        val actions = FlowGrid(ctx, 0, dp(10f), wrap = true)
+        texts.addView(badges); texts.addView(titleV); texts.addView(subtitle); texts.addView(meta); texts.addView(actions)
+        row.addView(slot, LinearLayout.LayoutParams(dp(52f), dp(52f)))
+        row.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val chevron = View(ctx)
+        chevron.background = Icons.drawable("chevron", dp(24f), Theme.TEXT_DIM)
+        row.addView(chevron, LinearLayout.LayoutParams(dp(24f), dp(24f)))
+        col.addView(img, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        col.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(4f)))
+        col.addView(row)
+        c.addView(col)
+        val e = Entry(id, "card", c, null, props)
         c.setOnClickListener { invoke(id, e.props["primary"].obj()) }
         e.bind = { x ->
             val p = x.props
-            titleV.text = Icons.label(if (hero) "" else p.str("icon"), title(p))
+            val ref = p.str("image")
+            val photo = ref.isNotEmpty() && isPhoto(ref)
+            titleV.text = title(p)
             subtitle.text = p.str("subtitle")
             subtitle.visibility = if (subtitle.text.isEmpty()) View.GONE else View.VISIBLE
             badges.removeAllViews()
             for (b in p["badges"].list()) badges.addView(badge(b.obj()))
             badges.visibility = if (badges.childCount == 0) View.GONE else View.VISIBLE
             meta.removeAllViews()
-            for (m in p["meta"].list()) meta.addView(Kit.text(ctx, Icons.label(m.obj().str("icon"), m.obj().str("text")), Theme.SP_CAPTION, Theme.TEXT, bold = true))
+            for (m in p["meta"].list()) meta.addView(Kit.text(ctx, m.obj().str("text"), Theme.SP_CAPTION, Theme.TEXT, bold = true).also { Kit.icon(it, m.obj().str("icon"), Theme.BLUE, 16f) })
             meta.visibility = if (meta.childCount == 0) View.GONE else View.VISIBLE
             actions.removeAllViews()
-            val prim = p["primary"].obj()
-            if (hero && prim.isNotEmpty()) actions.addView(actionButton(id, prim, true).apply { minimumWidth = dp(180f) })
             for (a in p["actions"].list()) actions.addView(actionButton(id, a.obj()))
             actions.visibility = if (actions.childCount == 0) View.GONE else View.VISIBLE
-            img.aspect = aspect(p, if (hero) 21f / 9f else 16f / 9f)
-            if (hero) img.aspect = maxOf(img.aspect, 21f / 9f) // a wide hero: Home must fit on a landscape phone
-            val ref = p.str("image")
-            if (ref.isEmpty()) { if (hero) img.none() else img.visibility = View.GONE } else { img.visibility = View.VISIBLE; picture(img, ref) }
+            // the icon slot: the bridge's icon as a vector; artwork only when there is no icon
+            val icon = Icons.drawable(p.str("icon"), dp(32f), Theme.BLUE)
+            slotIcon.background = icon
+            slot.visibility = if (!photo && (icon != null)) View.VISIBLE else View.GONE
+            chevron.visibility = if (photo || actions.childCount > 0 || nodes[x.parent ?: ""]?.type == "grid") View.GONE else View.VISIBLE
+            img.aspect = aspect(p, 16f / 9f)
+            img.maxHeight = (ctx.resources.displayMetrics.heightPixels * 0.22f).toInt()
+            if (photo) { img.visibility = View.VISIBLE; picture(img, ref) } else img.visibility = View.GONE
             val prog = p.num("progress", -1.0)
             bar.visibility = if (prog >= 0) View.VISIBLE else View.GONE
             if (prog >= 0) bar.progress = (prog * 1000).toInt()
@@ -499,13 +512,68 @@ class ViewRenderer(
         return e
     }
 
-    private fun badge(b: Map<String, Any?>): TextView = Kit.text(ctx, Icons.label(b.str("icon"), b.str("text")), Theme.SP_CAPTION, when (b.str("tone")) {
-        "positive" -> Theme.GOOD; "danger" -> Theme.BAD; "warning" -> Theme.WARN; "accent" -> Theme.EMBER; else -> Theme.TEXT
-    }, bold = true).apply {
+    /**
+     * The hero (Play): a fixed-height band, the map's picture at a sensible
+     * size on the right (centre-cropped, never stretched across the card) under
+     * a scrim that fades into the navy on the left, where the title, the facts
+     * and the buttons sit on one or two rows.
+     */
+    private fun heroCard(id: String, props: Map<String, Any?>): Entry {
+        val c = Kit.card(ctx, clickable = true, radiusDp = 24f)
+        val h = (ctx.resources.displayMetrics.heightPixels * 0.30f).toInt()
+        val picW = h * 16 / 9
+        val stack = FrameLayout(ctx)
+        val img = RoundImage(ctx, 0f)
+        stack.addView(img, FrameLayout.LayoutParams(picW, h, Gravity.END))
+        img.fadeInto = Theme.PANEL
+        val texts = Kit.column(ctx, 12f)
+        texts.gravity = Gravity.CENTER_VERTICAL
+        texts.setPadding(dp(28f), dp(16f), dp(16f), dp(16f))
+        val titleV = Kit.text(ctx, "", Theme.SP_DISPLAY, Theme.TEXT, bold = true, lines = 1)
+        titleV.typeface = Theme.display
+        val subtitle = Kit.text(ctx, "", Theme.SP_TITLE, Theme.TEXT_MUTED, lines = 1)
+        val meta = FlowGrid(ctx, 0, dp(18f), wrap = true)
+        val actions = FlowGrid(ctx, 0, dp(12f), wrap = true)
+        texts.addView(titleV); texts.addView(subtitle); texts.addView(meta); texts.addView(actions)
+        stack.addView(texts, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, h).apply { marginEnd = picW / 2 })
+        c.addView(stack, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, h))
+        val e = Entry(id, "hero", c, null, props)
+        c.setOnClickListener { invoke(id, e.props["primary"].obj()) }
+        e.bind = { x ->
+            val p = x.props
+            titleV.text = title(p)
+            meta.removeAllViews()
+            for (m in p["meta"].list()) meta.addView(Kit.text(ctx, m.obj().str("text"), Theme.SP_BODY, Theme.TEXT, bold = true).also { Kit.icon(it, m.obj().str("icon"), Theme.BLUE, 20f) })
+            meta.visibility = if (meta.childCount == 0) View.GONE else View.VISIBLE
+            // the facts or the subtitle, not both (they say the same)
+            subtitle.text = if (meta.childCount > 0) "" else p.str("subtitle")
+            subtitle.visibility = if (subtitle.text.isEmpty()) View.GONE else View.VISIBLE
+            actions.removeAllViews()
+            val prim = p["primary"].obj()
+            if (prim.isNotEmpty()) actions.addView(actionButton(id, prim, true).apply { minimumWidth = dp(200f) })
+            for (a in p["actions"].list()) actions.addView(actionButton(id, a.obj()))
+            val ref = p.str("image")
+            if (ref.isEmpty()) img.none() else picture(img, ref)
+            c.contentDescription = listOf(title(p), p.str("subtitle")).filter { it.isNotEmpty() }.joinToString(". ")
+        }
+        return e
+    }
+
+    private fun badge(b: Map<String, Any?>): TextView = Kit.text(ctx, b.str("text"), Theme.SP_CAPTION, toneColor(b.str("tone")), bold = true).apply {
+        Kit.icon(this, b.str("icon"), toneColor(b.str("tone")), 16f)
+        compoundDrawablePadding = dp(4f)
         val h = dp(8f)
         setPadding(h, dp(3f), h, dp(3f))
         background = Theme.rounded(0xFF13254D.toInt(), dp(10f).toFloat(), max(1, dp(1f)), 0xFF2B4A86.toInt())
     }
+
+    private fun screenKind(e: Entry): String {
+        var cur: Entry? = e
+        while (cur != null) { if (cur.type == "screen") return cur.props.str("kind"); cur = cur.parent?.let { nodes[it] } }
+        return ""
+    }
+
+    private fun toneColor(t: String) = when (t) { "positive" -> Theme.GOOD; "danger" -> Theme.BAD; "warning" -> Theme.WARN; "accent" -> Theme.EMBER; else -> Theme.TEXT }
 
     /** Asks for a picture once (through the host's bridge), fills every view waiting on it. */
     fun picture(img: RoundImage, ref: String) {
@@ -589,6 +657,10 @@ class ViewRenderer(
         e.bind = { x ->
             img.aspect = aspect(x.props, 16f / 9f)
             img.contain = x.props.str("fit") == "contain"
+            // a banner or picture never takes more than a fifth (contain) or two fifths of the screen's height
+            img.maxHeight = (ctx.resources.displayMetrics.heightPixels * if (img.contain) 0.2f else 0.4f).toInt()
+            // Home's banner is a compact header there: the cards must fit below it
+            if (img.contain && screenKind(x) == "home") img.maxHeight = (ctx.resources.displayMetrics.heightPixels * 0.11f).toInt()
             img.contentDescription = x.props.str("alt")
             val r = x.props.str("ref")
             if (r.isEmpty()) img.none() else picture(img, r)
@@ -614,7 +686,9 @@ class ViewRenderer(
         val e = Entry(id, "status", col, null, props)
         e.bind = { x ->
             val p = x.props
-            icon.text = Icons.glyph(p.str("icon")); icon.visibility = if (icon.text.isEmpty()) View.GONE else View.VISIBLE
+            val d = Icons.drawable(p.str("icon"), dp(56f), Theme.BLUE)
+            icon.setCompoundDrawablesRelative(null, d, null, null)
+            icon.visibility = if (d == null) View.GONE else View.VISIBLE
             titleV.text = title(p)
             body.text = p.str("body"); body.visibility = if (body.text.isEmpty()) View.GONE else View.VISIBLE
             val prog = p.num("progress", -1.0)
@@ -1207,24 +1281,3 @@ class FlowGrid(ctx: Context, private val minChild: Int, private val gap: Int, pr
     }
 }
 
-/** Semantic icon names (UI_BRIDGE.md 5.1) as glyphs the system font has; unknown names draw nothing. */
-object Icons {
-    private val map = mapOf(
-        "play" to "▶", "resume" to "▶", "pause" to "⏸", "singleplayer" to "👤", "multiplayer" to "👥", "settings" to "⚙",
-        "credits" to "ⓘ", "info" to "ⓘ", "quit" to "⏻", "back" to "‹", "close" to "✕", "search" to "🔍", "filter" to "☰",
-        "sort" to "⇅", "refresh" to "⟳", "lock" to "🔒", "star" to "☆", "star_filled" to "★", "wifi" to "📶", "vpn" to "🛡",
-        "lan" to "🖧", "internet" to "🌐", "host" to "📡", "server" to "🖥", "map" to "🗺", "mode" to "🎮", "game" to "🎮",
-        "bot" to "🤖", "player" to "👤", "players" to "👥", "ping" to "📶", "add" to "+", "remove" to "−", "edit" to "✎",
-        "delete" to "🗑", "download" to "⤓", "upload" to "⤒", "update" to "⤓", "warning" to "⚠", "error" to "⛔", "check" to "✓",
-        "link" to "🔗", "share" to "⇪", "copy" to "⧉", "mods" to "🧩", "video" to "🖵", "audio" to "🔊", "input" to "⌨",
-        "keyboard" to "⌨", "touch" to "☝", "esp" to "👁", "privacy" to "🛡", "data" to "💾", "menu" to "☰", "mouse" to "🖱",
-        "gamepad" to "🎮", "colour" to "🎨", "crosshair" to "⌖", "aim" to "⌖", "hud" to "▦", "timer" to "⏱", "trophy" to "🏆",
-        "flag" to "⚑", "chevron" to "›", "more" to "⋮", "folder" to "📁", "file" to "📄", "help" to "?", "disconnect" to "⎋",
-        "language" to "🌐",
-    )
-    fun glyph(name: String) = map[name] ?: ""
-    fun label(icon: String, text: String): String {
-        val g = glyph(icon)
-        return if (g.isEmpty() || icon == "chevron") text else if (text.isEmpty()) g else "$g  $text"
-    }
-}

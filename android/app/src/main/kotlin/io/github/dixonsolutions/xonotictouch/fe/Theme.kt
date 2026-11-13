@@ -48,6 +48,18 @@ object Theme {
     val regular: Typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
     val condensed: Typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
 
+    /**
+     * The game's display face for headings: Xolonium, which the game data
+     * unpacks to <basedir>/data/font-xolonium.pk3dir (FrontendHost loads it);
+     * the system bold until then.
+     */
+    @Volatile var display: Typeface = bold
+
+    fun loadDisplayFont(baseDir: java.io.File?) {
+        val f = java.io.File(baseDir ?: return, "data/font-xolonium.pk3dir/fonts/xolonium-bold.otf")
+        if (f.isFile) try { display = Typeface.createFromFile(f) } catch (e: RuntimeException) {}
+    }
+
     fun dp(ctx: Context, v: Float): Int =
         TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, ctx.resources.displayMetrics).toInt()
     fun dp(v: View, x: Float) = dp(v.context, x)

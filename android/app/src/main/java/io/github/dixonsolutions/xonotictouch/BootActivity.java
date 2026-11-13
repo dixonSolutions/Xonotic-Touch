@@ -129,12 +129,18 @@ public class BootActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            // The system splash goes at once, without its zoom-out: the banner
+            // screen underneath is already on the same black.
+            getSplashScreen().setOnExitAnimationListener(view -> view.remove());
+        }
         if (XonoticActivity.running) {
             // The launcher icon while the game runs in the background (the game
             // has a task of its own): back to it as it was. No update install and
             // no data preparation under a running engine, which would end the
             // player's match or join.
-            startActivity(new Intent(this, XonoticActivity.class));
+            startActivity(new Intent(this, XonoticActivity.class).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION));
+            overridePendingTransition(0, 0);
             finish();
             return;
         }
@@ -1050,17 +1056,43 @@ public class BootActivity extends Activity {
         }
     }
 
+    /** The banner has been on screen at least once (see launchEngine). */
+    private boolean bannerDrawn;
+
     private void launchEngine(GameData data) {
         // A screen that is already gone must not start a second engine.
         if (isFinishing() || isDestroyed()) {
             return;
         }
+        if (!bannerDrawn) {
+            // Hand over only once the banner is on screen: the game's window
+            // starts without a preview (Theme.XonoticGame), so this screen
+            // stays visible until the game draws the same banner over it.
+            View decor = getWindow().getDecorView();
+            decor.getViewTreeObserver().addOnPreDrawListener(new android.view.ViewTreeObserver.OnPreDrawListener() {
+                @Override
+                public boolean onPreDraw() {
+                    decor.getViewTreeObserver().removeOnPreDrawListener(this);
+                    bannerDrawn = true;
+                    decor.postOnAnimation(() -> launchEngine(data));
+                    return true;
+                }
+            });
+            decor.invalidate();
+            return;
+        }
         Intent intent = new Intent(this, XonoticActivity.class);
         intent.putExtra(XonoticActivity.EXTRA_BASEDIR, data.baseDir().getAbsolutePath());
+        if (getIntent() != null && getIntent().getData() != null) {
+            intent.setData(getIntent().getData()); // a godnotic://join link
+        }
+        // The same banner at the same place on both sides: no animation at
+        // all, so the hand-off is invisible (one screen from the icon to Home).
+        intent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
         startActivity(intent);
-        // The same banner on both sides: no slide, a short fade.
-        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+        overridePendingTransition(0, 0);
         finish();
+        overridePendingTransition(0, 0);
     }
 
     private void showFailure(Throwable cause) {

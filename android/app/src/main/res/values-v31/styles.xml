@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+: the system splash on the same black as everything after
+         it. BootActivity removes it without the default exit animation. -->
+    <style name="Theme.XonoticBoot" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowSplashScreenBackground">#000000</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#000000</item>
+    </style>
+
+    <!-- The game's window: no preview window of its own, so the boot screen's
+         banner stays on screen until the game draws the same banner. -->
+    <style name="Theme.XonoticGame" parent="Theme.XonoticBoot">
+        <item name="android:windowDisablePreview">true</item>
+    </style>
+</resources>

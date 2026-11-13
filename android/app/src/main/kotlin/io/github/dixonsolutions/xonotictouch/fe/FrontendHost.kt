@@ -20,8 +20,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.widget.FrameLayout
-import android.widget.ImageView
-import android.widget.LinearLayout
 import io.github.dixonsolutions.xonotictouch.BootSplash
 import io.github.dixonsolutions.xonotictouch.NativeBridge
 import java.io.File
@@ -35,8 +33,8 @@ import java.io.File
  * included; its text fields get Android's IME.
  *
  * Phases:
- *  1. Skeleton (banner and placeholder tiles) the moment the activity is
- *     created: no disk, no network, no engine needed.
+ *  1. Skeleton: the boot screen's banner, at the same place, the moment the
+ *     activity is created: no disk, no network, no engine needed.
  *  2. The engine's front-end bridge says hello (app topic): the host
  *     attaches (`fe attach 1`, a 1 Hz heartbeat while resumed) and the
  *     engine stops drawing and feeding the QuakeC menu (touch_frontend.c).
@@ -72,6 +70,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     private var drainPosted = false
     private val reported = HashMap<String, String>()
     private var shownAt = 0L
+    private var lastSig = ""
 
     init {
         root.setBackgroundColor(Theme.BG)
@@ -87,6 +86,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
 
     /** Puts the skeleton up at once; call from onCreate, after super.onCreate (SDL's layout exists). */
     fun install() {
+        Theme.loadDisplayFont(baseDir)
         val sk = skeleton()
         skeleton = sk
         screenLayer.addView(sk, match())
@@ -106,32 +106,16 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
 
     // ---------------------------------------------------------------- skeleton
 
+    /**
+     * Exactly the boot screen's picture (BootSplash.view, the same banner at
+     * the same place and size on the same black), so the hand-off from the
+     * boot activity is invisible: one screen from the icon tap until Home
+     * replaces it with a single fade.
+     */
     private fun skeleton(): View {
-        val frame = FrameLayout(activity)
-        frame.setBackgroundColor(Theme.BG)
-        val col = Kit.column(activity, 28f)
-        col.gravity = Gravity.CENTER_HORIZONTAL
-        val m = activity.resources.displayMetrics
-        val w = minOf((m.widthPixels * 0.5f).toInt(), Theme.dp(activity, 720f))
-        BootSplash.banner(activity, w)?.let { b ->
-            val img = ImageView(activity)
-            img.setImageBitmap(b)
-            img.adjustViewBounds = true
-            img.contentDescription = "Godnotic"
-            col.addView(img, LinearLayout.LayoutParams(w, ViewGroup.LayoutParams.WRAP_CONTENT))
-        }
-        val tiles = Kit.row(activity, 16f)
-        for (i in 0 until 4) {
-            val t = Kit.Shimmer(activity)
-            t.background = Theme.rounded(Theme.PANEL, Theme.dp(activity, 16f).toFloat())
-            t.clipToOutline = true
-            tiles.addView(t, LinearLayout.LayoutParams(Theme.dp(activity, 150f), Theme.dp(activity, 96f)))
-        }
-        tiles.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-        col.addView(tiles)
-        frame.addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
-        frame.contentDescription = "Godnotic is starting"
-        return frame
+        val v = BootSplash.view(activity, 0.62f, 900)
+        v.contentDescription = "Godnotic is starting"
+        return v
     }
 
     private fun liftSkeleton(why: String) {
@@ -210,6 +194,8 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
             attach()
         }
         val state = a.str("state")
+        val sig = "$state menu=${a.bool("menu")} owns=${a.bool("owns_menu")} adv=${a.bool("advanced")} console=${a.bool("console")}"
+        if (sig != lastSig) { lastSig = sig; Log.i(tag, "Native UI: engine $sig") }
         when {
             a.bool("advanced") || a.bool("console") -> { setVisible(false); showBackPill(a.bool("advanced")) }
             state == "menu" -> { showBackPill(false); stopgap?.show("home"); setVisible(true) }
@@ -394,7 +380,14 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
                 view.animate().alpha(1f).setDuration(110).withEndAction { screenLayer.removeView(old) }.start()
             }
         }
-        if (skeleton != null) liftSkeleton("first screen: $id")
+        if (skeleton != null) {
+            // the one deliberate transition: Home fades in over the banner
+            if (!Theme.reducedMotion(activity)) { view.alpha = 0f; view.animate().alpha(1f).setDuration(180).start() }
+            val sk = skeleton
+            skeleton = null
+            main.postDelayed({ screenLayer.removeView(sk) }, 200)
+            Log.i(tag, "Native UI: skeleton replaced by $id after ${SystemClock.elapsedRealtime() - started} ms")
+        }
         Log.i(tag, "Native UI: screen $id ($transition) ${SystemClock.elapsedRealtime() - started} ms after onCreate")
     }
 

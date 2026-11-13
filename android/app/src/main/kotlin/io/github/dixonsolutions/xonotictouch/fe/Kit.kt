@@ -56,10 +56,36 @@ object Kit {
         v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
     }
 
+    /** An icon from the set (Icons) before the text, tinted like it; nothing for an unknown name. */
+    fun icon(t: TextView, name: String, color: Int, sizeDp: Float = 22f) {
+        val d = if (name.isEmpty()) null else Icons.drawable(name, Theme.dp(t.context, sizeDp), color)
+        t.setCompoundDrawablesRelative(d, null, null, null)
+        t.compoundDrawablePadding = Theme.dp(t.context, 10f)
+    }
+
+    /** A quiet header action: no fill, muted text and icon, still a 48 dp target. */
+    fun quiet(ctx: Context, label: String, icon: String, onClick: (View) -> Unit): TextView = TextView(ctx).apply {
+        text = label
+        textSize = Theme.SP_BODY
+        typeface = Theme.bold
+        setTextColor(Theme.TEXT_MUTED)
+        gravity = Gravity.CENTER
+        minHeight = Theme.dp(ctx, MIN_TARGET_DP)
+        val h = Theme.dp(ctx, 14f)
+        setPadding(h, 0, h, 0)
+        background = Theme.surface(ctx, Color.TRANSPARENT, 24f, Color.TRANSPARENT)
+        isFocusable = true
+        isClickable = true
+        contentDescription = label
+        icon(this, icon, Theme.TEXT_MUTED, 20f)
+        setOnClickListener { haptic(it); onClick(it) }
+    }
+
     /** A pill button: primary in ember, the rest navy with a blue outline. */
-    fun button(ctx: Context, label: String, primary: Boolean = false, onClick: (View) -> Unit): TextView =
+    fun button(ctx: Context, label: String, primary: Boolean = false, iconName: String = "", onClick: (View) -> Unit): TextView =
         TextView(ctx).apply {
             text = label
+            if (iconName.isNotEmpty()) icon(this, iconName, if (primary) 0xFF1A0A00.toInt() else Theme.TEXT)
             textSize = Theme.SP_BODY
             typeface = Theme.bold
             setTextColor(if (primary) 0xFF1A0A00.toInt() else Theme.TEXT)
@@ -302,6 +328,11 @@ class RoundImage(ctx: Context, private val radiusDp: Float = 12f) : FrameLayout(
     var aspect = 16f / 9f
     /** fit "contain": the whole picture inside the box (the banner); else cover (crop). */
     var contain = false
+    /** A cap on the height (px) whatever the aspect: Home must fit a landscape screen. */
+    var maxHeight = 0
+    /** Fade the picture's start side into this colour (the hero's scrim); 0: none. */
+    var fadeInto = 0
+    private val fadePaint = Paint()
 
     init {
         setWillNotDraw(false)
@@ -320,8 +351,11 @@ class RoundImage(ctx: Context, private val radiusDp: Float = 12f) : FrameLayout(
 
     override fun onMeasure(w: Int, h: Int) {
         val width = MeasureSpec.getSize(w)
-        if (MeasureSpec.getMode(h) != MeasureSpec.EXACTLY && width > 0)
-            super.onMeasure(w, MeasureSpec.makeMeasureSpec((width / aspect).toInt(), MeasureSpec.EXACTLY))
+        if (MeasureSpec.getMode(h) != MeasureSpec.EXACTLY && width > 0) {
+            var hh = (width / aspect).toInt()
+            if (maxHeight > 0 && hh > maxHeight) hh = maxHeight
+            super.onMeasure(w, MeasureSpec.makeMeasureSpec(hh, MeasureSpec.EXACTLY))
+        }
         else super.onMeasure(w, h)
     }
 
@@ -337,6 +371,11 @@ class RoundImage(ctx: Context, private val radiusDp: Float = 12f) : FrameLayout(
             m.setScale(s, s)
             m.postTranslate((width - b.width * s) / 2, (height - b.height * s) / 2)
             c.drawBitmap(b, m, paint)
+        }
+        if (fadeInto != 0 && bitmap != null) {
+            val w = width * 0.55f
+            fadePaint.shader = LinearGradient(0f, 0f, w, 0f, intArrayOf(fadeInto, fadeInto and 0x00FFFFFF), null, Shader.TileMode.CLAMP)
+            c.drawRect(0f, 0f, w, height.toFloat(), fadePaint)
         }
         super.dispatchDraw(c)
         c.restore()
