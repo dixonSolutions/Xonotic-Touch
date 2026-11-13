@@ -31,22 +31,64 @@ static void GL_SetupTextureParameters(int flags, textype_t textype, int texturet
 
 static cvar_t r_texture_astc_load = {CF_CLIENT | CF_ARCHIVE, "r_texture_astc_load", "1", "load the ASTC version of a DDS texture (dds/foo.ktx, from the phone packs) when the GPU supports GL_KHR_texture_compression_astc_ldr; -noastc turns it off too"};
 static cvar_t r_texture_astc_log = {CF_CLIENT, "r_texture_astc_log", "0", "1: print each ASTC texture loaded and each one refused"};
+static cvar_t r_texture_dds_swdecode_reduce = {CF_CLIENT | CF_ARCHIVE, "r_texture_dds_swdecode_reduce", "2", "DXT textures decoded in software (a GPU without S3TC) are kept this many mip levels below full size (2 = a quarter of the width and height, the same memory as DXT1 at full size; 0 = full size, 8 times the memory of DXT1)"};
 
 // compressed textures report one byte per texel in r_texturestats, like DXT5
 static textypeinfo_t textype_touch_astc = {"astc", TEXTYPE_DXT5, 4, 1, 1.0f, TOUCH_KTX_ASTC_FIRST, 0, 0};
 
 static int touch_ktx_loaded, touch_ktx_refused;
 
+// DXT textures decoded in software (a GPU without S3TC): how many, how big
+// they were, what was uploaded, and the time the decode took
+static struct
+{
+	int count;
+	double seconds, begin;
+	long long fullpixels;  // texels of their full-size base level
+	long long uploaded;    // bytes of RGBA uploaded (whole mip chain)
+	long long dxtbytes;    // bytes of the DXT data at full size, whole chain
+	char largest[MAX_QPATH];
+	int largest_w, largest_h;
+}
+touch_swdds;
+
+static void Touch_DDS_SwDecodeBegin(void)
+{
+	touch_swdds.begin = Sys_DirtyTime();
+}
+
+static void Touch_DDS_SwDecodeEnd(const char *name, int fullw, int fullh, int bytesperblock, long long uploaded)
+{
+	long long full = (long long)fullw * fullh;
+	touch_swdds.count++;
+	touch_swdds.seconds += Sys_DirtyTime() - touch_swdds.begin;
+	touch_swdds.fullpixels += full;
+	touch_swdds.uploaded += uploaded;
+	touch_swdds.dxtbytes += (((long long)(fullw + 3) / 4) * ((fullh + 3) / 4) * bytesperblock) * 4 / 3;
+	if (full > (long long)touch_swdds.largest_w * touch_swdds.largest_h)
+	{
+		dp_strlcpy(touch_swdds.largest, name, sizeof(touch_swdds.largest));
+		touch_swdds.largest_w = fullw;
+		touch_swdds.largest_h = fullh;
+	}
+	if (r_texture_astc_log.integer)
+		Con_Printf("^3%s: DXT decoded in software, %dx%d -> %lld KB\n", name, fullw, fullh, uploaded / 1024);
+}
+
 static void Touch_KTX_Stats_f(cmd_state_t *cmd)
 {
 	Con_Printf("ASTC textures: %d loaded, %d refused; GPU support: %s\n", touch_ktx_loaded, touch_ktx_refused,
 		GL_ExtensionSupported("GL_KHR_texture_compression_astc_ldr") ? "yes" : "no");
+	Con_Printf("DXT textures decoded in software: %d, %.1f ms, %.1f MB of DXT (whole chains), %.1f MB RGBA uploaded at %d mip level(s) down; full size would be %.1f MB RGBA; largest %s (%dx%d)\n",
+		touch_swdds.count, touch_swdds.seconds * 1000.0, touch_swdds.dxtbytes / 1048576.0, touch_swdds.uploaded / 1048576.0,
+		r_texture_dds_swdecode_reduce.integer, touch_swdds.fullpixels * 4.0 * 4 / 3 / 1048576.0, touch_swdds.largest[0] ? touch_swdds.largest : "-", touch_swdds.largest_w, touch_swdds.largest_h);
 }
 
 static void Touch_KTX_Init(void)
 {
 	Cvar_RegisterVariable(&r_texture_astc_load);
 	Cvar_RegisterVariable(&r_texture_astc_log);
+	Cvar_RegisterVariable(&r_texture_dds_swdecode_reduce);
 	Cmd_AddCommand(CF_CLIENT, "r_texture_astc_stats", Touch_KTX_Stats_f, "how many ASTC (.ktx) textures were loaded");
 }
 

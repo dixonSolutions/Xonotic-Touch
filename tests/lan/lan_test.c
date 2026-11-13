@@ -86,8 +86,39 @@ static void test_ports(void)
 	CHECK(n == 0, "empty");
 }
 
+static void test_interfaces(void)
+{
+	const int up = TOUCHLAN_IF_UP;
+	CHECK(TouchLAN_InterfaceRank("wlan0", up) == 2, "Wi-Fi");
+	CHECK(TouchLAN_InterfaceRank("swlan0", up) == 2, "Samsung hotspot");
+	CHECK(TouchLAN_InterfaceRank("ap0", up) == 2 && TouchLAN_InterfaceRank("softap0", up) == 2, "hotspot");
+	CHECK(TouchLAN_InterfaceRank("eth0", up) == 2 && TouchLAN_InterfaceRank("enp3s0", up) == 2 && TouchLAN_InterfaceRank("wlp2s0", up) == 2, "desktop names");
+	CHECK(TouchLAN_InterfaceRank("rndis0", up) == 2 && TouchLAN_InterfaceRank("bt-pan", up) == 2, "tethering");
+	CHECK(TouchLAN_InterfaceRank("rmnet0", up) == 0 && TouchLAN_InterfaceRank("rmnet_data1", up) == 0, "Qualcomm/Exynos modem");
+	CHECK(TouchLAN_InterfaceRank("ccmni0", up) == 0, "MediaTek modem");
+	CHECK(TouchLAN_InterfaceRank("v4-rmnet_data0", up) == 0 && TouchLAN_InterfaceRank("clat4", up) == 0, "464XLAT");
+	CHECK(TouchLAN_InterfaceRank("tun0", up) == 0, "VPN");
+	CHECK(TouchLAN_InterfaceRank("wlan0", up | TOUCHLAN_IF_POINTOPOINT) == 0, "point-to-point");
+	CHECK(TouchLAN_InterfaceRank("lo", up | TOUCHLAN_IF_LOOPBACK) == 0, "loopback");
+	CHECK(TouchLAN_InterfaceRank("wlan0", 0) == 0, "down");
+	CHECK(TouchLAN_InterfaceRank("br0", up) == 1 && TouchLAN_InterfaceRank("docker0", up) == 1, "other: listed last");
+}
+
+static void test_background(void)
+{
+	// local game: (local_server, lan_hosting, other_humans, remote_busy)
+	CHECK(!TouchLAN_KeepRunningInBackground(1, 0, 0, 0), "bot match from Create pauses");
+	CHECK(!TouchLAN_KeepRunningInBackground(1, 0, 0, 1), "bot match pauses even while something downloads");
+	CHECK(TouchLAN_KeepRunningInBackground(1, 1, 0, 0), "Host screen game keeps running with nobody else in it");
+	CHECK(TouchLAN_KeepRunningInBackground(1, 0, 1, 0), "a Create game another human joined keeps running");
+	CHECK(TouchLAN_KeepRunningInBackground(0, 0, 0, 1), "connected, joining or downloading keeps going");
+	CHECK(!TouchLAN_KeepRunningInBackground(0, 0, 0, 0), "idle menu waits");
+}
+
 int main(void)
 {
+	test_interfaces();
+	test_background();
 	test_broadcast();
 	test_lan_address();
 	test_qcstatus();

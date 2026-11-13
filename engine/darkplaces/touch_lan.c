@@ -160,6 +160,8 @@ remembered_t;
 static remembered_t remembered[MAX_REMEMBERED];
 static int numremembered = -1; // -1: not read yet
 static qbool host_pw_ready; // past the config's own cvar sets (first frame)
+static qbool lan_host_armed;      // touch_lan_host_password_apply ran: the Host screen's map comes next
+static qbool lan_host_deliberate; // the running server was started from the Host screen
 
 // ---------------------------------------------------------------- helpers
 
@@ -318,9 +320,35 @@ static const char *password_for(const lhnetaddress_t *peer)
 }
 
 // Up, non-loopback IPv4 interfaces: address and directed broadcast (host order).
+#ifdef TOUCHLAN_SOCKETS
+// Keep the list in rank order: Wi-Fi, Ethernet and hotspot interfaces first.
+static void add_interface(uint32_t *addr, uint32_t *bcast, int *ranks, int *n, uint32_t a, uint32_t b, int rank)
+{
+	int at = *n;
+	while (at > 0 && ranks[at - 1] < rank)
+	{
+		addr[at] = addr[at - 1];
+		bcast[at] = bcast[at - 1];
+		ranks[at] = ranks[at - 1];
+		at--;
+	}
+	addr[at] = a;
+	bcast[at] = b;
+	ranks[at] = rank;
+	(*n)++;
+}
+#endif
+
+// The up IPv4 interfaces others on the local network can reach this device
+// on (TouchLAN_InterfaceRank): not loopback, point-to-point links, mobile
+// data or VPN tunnels. Wi-Fi, Ethernet and hotspot ones come first.
 static int lan_interfaces(uint32_t *addr, uint32_t *bcast, int max)
 {
+	// at most MAX_IFACES (the size of every caller's arrays)
 	int n = 0;
+#ifdef TOUCHLAN_SOCKETS
+	int ranks[MAX_IFACES], rank;
+#endif
 #if defined(TOUCHLAN_SOCKETS) && defined(__linux__)
 	// SIOCGIFCONF rather than getifaddrs: the latter is Android API 24+, and
 	// this needs no netlink socket (sandboxes and old Android are happy).
@@ -338,7 +366,7 @@ static int lan_interfaces(uint32_t *addr, uint32_t *bcast, int max)
 		return 0;
 	}
 	count = ifc.ifc_len / (int)sizeof(struct ifreq);
-	for (i = 0; i < count && n < max; i++)
+	for (i = 0; i < count && n < max && n < MAX_IFACES; i++)
 	{
 		struct ifreq r;
 		uint32_t a, m, b;
@@ -347,33 +375,35 @@ static int lan_interfaces(uint32_t *addr, uint32_t *bcast, int max)
 		a = ntohl(((struct sockaddr_in *)&reqs[i].ifr_addr)->sin_addr.s_addr);
 		memset(&r, 0, sizeof(r));
 		memcpy(r.ifr_name, reqs[i].ifr_name, sizeof(r.ifr_name));
-		if (ioctl(fd, SIOCGIFFLAGS, &r) < 0 || !(r.ifr_flags & IFF_UP) || (r.ifr_flags & IFF_LOOPBACK))
+		if (ioctl(fd, SIOCGIFFLAGS, &r) < 0)
+			continue;
+		rank = TouchLAN_InterfaceRank(reqs[i].ifr_name, ((r.ifr_flags & IFF_UP) ? TOUCHLAN_IF_UP : 0)
+			| ((r.ifr_flags & IFF_LOOPBACK) ? TOUCHLAN_IF_LOOPBACK : 0) | ((r.ifr_flags & IFF_POINTOPOINT) ? TOUCHLAN_IF_POINTOPOINT : 0));
+		if (!rank)
 			continue;
 		if (ioctl(fd, SIOCGIFNETMASK, &r) < 0)
 			continue;
 		m = ntohl(((struct sockaddr_in *)&r.ifr_netmask)->sin_addr.s_addr);
 		b = TouchLAN_DirectedBroadcast(a, m);
-		addr[n] = a;
-		bcast[n] = b;
-		n++;
+		add_interface(addr, bcast, ranks, &n, a, b, rank);
 	}
 	close(fd);
 #elif defined(TOUCHLAN_SOCKETS)
 	struct ifaddrs *list, *it;
 	if (getifaddrs(&list) < 0)
 		return 0;
-	for (it = list; it && n < max; it = it->ifa_next)
+	for (it = list; it && n < max && n < MAX_IFACES; it = it->ifa_next)
 	{
 		uint32_t a, m;
 		if (!it->ifa_addr || it->ifa_addr->sa_family != AF_INET || !it->ifa_netmask)
 			continue;
-		if (!(it->ifa_flags & IFF_UP) || (it->ifa_flags & IFF_LOOPBACK))
+		rank = TouchLAN_InterfaceRank(it->ifa_name, ((it->ifa_flags & IFF_UP) ? TOUCHLAN_IF_UP : 0)
+			| ((it->ifa_flags & IFF_LOOPBACK) ? TOUCHLAN_IF_LOOPBACK : 0) | ((it->ifa_flags & IFF_POINTOPOINT) ? TOUCHLAN_IF_POINTOPOINT : 0));
+		if (!rank)
 			continue;
 		a = ntohl(((struct sockaddr_in *)it->ifa_addr)->sin_addr.s_addr);
 		m = ntohl(((struct sockaddr_in *)it->ifa_netmask)->sin_addr.s_addr);
-		addr[n] = a;
-		bcast[n] = TouchLAN_DirectedBroadcast(a, m);
-		n++;
+		add_interface(addr, bcast, ranks, &n, a, TouchLAN_DirectedBroadcast(a, m), rank);
 	}
 	freeifaddrs(list);
 #else
@@ -762,6 +792,37 @@ static void TouchLAN_Status_f(cmd_state_t *cmd)
 static void TouchLAN_ApplyPassword_f(cmd_state_t *cmd)
 {
 	Cvar_SetQuick(&sv_touch_lan_password, touch_lan_host_password.string);
+	// the Host screen runs this right before its map command
+	lan_host_armed = true;
+}
+
+// NetConn_OpenServerPorts: a new server (a map command; a changelevel keeps
+// the old one). It is a LAN game the player hosts on purpose when the Host
+// screen started it; Create, Singleplayer or a console map is not.
+void TouchLAN_ServerPortsOpened(void)
+{
+	lan_host_deliberate = lan_host_armed;
+	lan_host_armed = false;
+}
+
+qbool TouchLAN_HostingOnPurpose(void)
+{
+	return lan_host_deliberate && sv.active && svs.maxclients > 1;
+}
+
+// Humans in the local game other than this device's player.
+int TouchLAN_OtherHumans(void)
+{
+	int i, n = 0;
+	if (!sv.active)
+		return 0;
+	for (i = 0; i < svs.maxclients; i++)
+	{
+		client_t *c = &svs.clients[i];
+		if (c->active && c->netconnection && LHNETADDRESS_GetAddressType(&c->netconnection->peeraddress) != LHNETADDRESSTYPE_LOOP)
+			n++;
+	}
+	return n;
 }
 
 // touch_lan_forget [address]: forget remembered join passwords.

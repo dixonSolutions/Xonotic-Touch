@@ -1043,6 +1043,7 @@ static void R_GLSL_CompilePermutation(r_glsl_permutation_t *p, unsigned int mode
 		return;
 	p->compiled = true;
 	p->program = 0;
+	TouchPreload_Shader(mode, permutation); // Touch: touch_preload records late compiles
 
 	permutationname[0] = 0;
 	sourcestring = ShaderModeInfo_GetShaderText(modeinfo, true, false);
@@ -10276,3 +10277,5 @@ void R_DrawCustomSurface_Texture(texture_t *texture, const matrix4x4_t *texmatri
 	rsurface.uselightmaptexture = false;
 	R_DrawModelTextureSurfaceList(1, &surfacelist, writedepth, prepass, ui);
 }
+
+#include "touch_glsl.h" // Touch: touch_preload compiles recorded permutations under the loading screen

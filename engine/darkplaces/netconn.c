@@ -1183,6 +1183,7 @@ void NetConn_OpenServerPorts(int opennetports)
 {
 	int port;
 	NetConn_CloseServerPorts();
+	TouchLAN_ServerPortsOpened(); // Touch: a new server; hosted from the LAN Host screen or not
 
 	SV_LockThreadMutex(); // FIXME recursive?
 	Crypto_LoadKeys(); // server sockets
@@ -4110,6 +4111,7 @@ void Net_Refresh_f(cmd_state_t *cmd)
 {
 	if (m_state != m_slist)
 	{
+		if (TouchLAN_LanOnly()) Con_Print("Searching the local network for games\n"); else // Touch: net_slist_lan_only asks no master server
 		Con_Print("Sending new requests to DP master servers\n");
 		ServerList_QueryList(false, true, false, true);
 		Con_Print("Listening for replies...\n");
@@ -4125,6 +4127,7 @@ void Net_Slist_f(cmd_state_t *cmd)
 	serverlist_sortflags = 0;
 	if (m_state != m_slist)
 	{
+		if (TouchLAN_LanOnly()) Con_Print("Searching the local network for games\n"); else // Touch: net_slist_lan_only asks no master server
 		Con_Print("Sending requests to DP master servers\n");
 		ServerList_QueryList(true, true, false, true);
 		Con_Print("Listening for replies...\n");

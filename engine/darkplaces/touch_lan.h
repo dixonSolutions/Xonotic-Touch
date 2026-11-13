@@ -36,6 +36,14 @@ void TouchLAN_Rejected(const char *reason, int length, const struct lhnetaddress
 // Server, on a connect request: true when it was refused for want of the
 // right password (the reject is sent here).
 qbool TouchLAN_RefuseJoin(struct lhnetsocket_s *sock, struct lhnetaddress_s *peer, const char *connect);
+// NetConn_OpenServerPorts: a new server starts (not a changelevel).
+void TouchLAN_ServerPortsOpened(void);
+// The running local game was started from the Host screen (a LAN game the
+// player hosts on purpose), and how many humans other than the local player
+// are in it: what keeps it running in the background on Android.
+qbool TouchLAN_HostingOnPurpose(void);
+int TouchLAN_OtherHumans(void);
+
 // Server, building a getinfo/getstatus reply: mark a password-protected game.
 void TouchLAN_StatusFlags(char *qcstatus, size_t size);
 

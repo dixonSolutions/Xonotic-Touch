@@ -164,6 +164,7 @@ cachepic_t *Draw_CachePic_Flags(const char *path, unsigned int cachepicflags)
 	cachepichash[hashkey] = pic;
 
 reload:
+	TouchPreload_PicBegin(); // Touch: touch_preload records pictures loaded in the game
 	if (pic->skinframe)
 		R_SkinFrame_PurgeSkinFrame(pic->skinframe);
 
@@ -192,6 +193,7 @@ reload:
 
 	// check for a low quality version of the pic and use its size if possible, to match the stock hud
 	Image_GetStockPicSize(pic->name, &pic->width, &pic->height);
+	TouchPreload_PicEnd(pic->name, cachepicflags); // Touch:
 
 	return pic;
 }

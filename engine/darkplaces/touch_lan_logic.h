@@ -119,4 +119,46 @@ static inline int TouchLAN_ParsePorts(const char *s, int *out, int max)
 	return n;
 }
 
+// Which network interfaces others on the local network can reach this device
+// on, for the Host screen's "Join at" list and the LAN search's broadcasts:
+// 0 none (loopback, point-to-point, a cellular modem's interface: rmnet* and
+// the like, whose addresses only the carrier sees, or a VPN tunnel),
+// 2 Wi-Fi, Ethernet or a hotspot this device runs (wlan*, swlan*, ap*, eth*,
+// en*, softap*, rndis*, the USB and Bluetooth tethering ones), 1 anything
+// else (listed after those). flags: TOUCHLAN_IF_* below.
+#define TOUCHLAN_IF_UP          1
+#define TOUCHLAN_IF_LOOPBACK    2
+#define TOUCHLAN_IF_POINTOPOINT 4
+static inline int TouchLAN_InterfaceRank(const char *name, int flags)
+{
+	static const char *const cellular[] = {"rmnet", "ccmni", "pdp", "seth_", "v4-", "clat", "wwan", "umts", "ppp", "tun", "ipsec", "dummy", "ifb", "sit", "ip6", "gre", "erspan", "vti", NULL};
+	static const char *const local[] = {"wlan", "swlan", "ap", "eth", "en", "wl", "softap", "rndis", "usb", "ncm", "bt-pan", "bnep", NULL};
+	int i;
+	if (!(flags & TOUCHLAN_IF_UP) || (flags & (TOUCHLAN_IF_LOOPBACK | TOUCHLAN_IF_POINTOPOINT)))
+		return 0;
+	if (!name)
+		return 1;
+	for (i = 0; cellular[i]; i++)
+		if (!strncmp(name, cellular[i], strlen(cellular[i])))
+			return 0;
+	for (i = 0; local[i]; i++)
+		if (!strncmp(name, local[i], strlen(local[i])))
+			return 2;
+	return 1;
+}
+
+// Whether a game keeps running while the Android app is in the background
+// (touch_android.c). A local game (this device runs the server) pauses unless
+// another human is in it or the player deliberately hosts it for the LAN
+// (started from the Host screen): a bot match from Create or Singleplayer
+// pauses even with more than one player slot. A connection to another
+// server, a join or a download keeps going, or the server would time the
+// player out.
+static inline int TouchLAN_KeepRunningInBackground(int local_server, int lan_hosting, int other_humans, int remote_busy)
+{
+	if (local_server)
+		return lan_hosting || other_humans > 0;
+	return remote_busy;
+}
+
 #endif
