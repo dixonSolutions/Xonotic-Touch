@@ -1,5 +1,6 @@
 package io.github.dixonsolutions.xonotictouch;
 
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.hardware.input.InputManager;
@@ -36,6 +37,7 @@ public final class XonoticActivity extends SDLActivity {
     private String baseDir;
     private Thread updateService;
     private AndySUBridge andysuBridge;
+    private ModImport modImport;
     /** Last release the check found, so Install and Skip know what they mean. */
     private volatile AppUpdater.Update lastSeenUpdate;
     /** When this process last asked the release feed (elapsedRealtime). Never,
@@ -91,7 +93,17 @@ public final class XonoticActivity extends SDLActivity {
         watchSoftKeyboard();
         watchInputDevices();
         startUpdateService();
+        modImport = new ModImport(this, new File(baseDir)); // Settings → Mobile → Mods → Import mod
+        modImport.start();
         watchNetState();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (modImport != null && modImport.onActivityResult(requestCode, resultCode, data)) {
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
     }
 
     @Override
@@ -101,6 +113,9 @@ public final class XonoticActivity extends SDLActivity {
             inputManager.unregisterInputDeviceListener(inputDeviceListener);
         }
         stopUpdateService();
+        if (modImport != null) {
+            modImport.stop();
+        }
         if (netStateWatch != null) {
             netStateWatch.interrupt();
         }

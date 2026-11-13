@@ -92,6 +92,7 @@
 #include <menu/xonotic/dialog_termsofservice.qh>
 #include <menu/xonotic/dialog_touch_asset_fetch.qh>
 #include <menu/xonotic/dialog_touch_gamemenu.qh>
+#include <menu/xonotic/dialog_touch_mods.qh> // Touch: Lua mods tab
 #include <menu/xonotic/dialog_uid2name.qh>
 #include <menu/xonotic/dialog_welcome.qh>
 #include <menu/xonotic/gametypelist.qh>

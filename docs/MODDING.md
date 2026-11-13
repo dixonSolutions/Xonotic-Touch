@@ -33,8 +33,18 @@ read). A feature written as a mod adds **no** upstream lines at all.
 
 ## Managing mods
 
-A new folder starts **off**. Turn mods on and off from the console (the Mods dialog will
-use the same state):
+A new folder starts **off**. Turn client mods on and off in **Settings → Mobile → Mods**:
+one row per mod with a large ON/OFF switch, its state (running, off, stopped by an
+error with the message), Reload and Info, plus Reload all and the master switch. The
+tab lists the folder again every two seconds while the menu is open.
+
+On **Android**, *Import mod* in that tab opens the system file picker for a `.zip` and
+unpacks it into the mods folder (`ModImport.java`): `init.lua` at the top of the zip or
+in its single top folder, which names the mod; every entry name is checked (no absolute
+paths, `..`, backslashes or drive letters), at most 256 files, 1 MB each, 8 MB in all.
+An update keeps the mod's `data/` folder. The imported mod starts off, like any other.
+
+The same state from the console:
 
 | Client | Server | |
 |---|---|---|
@@ -45,7 +55,8 @@ use the same state):
 | `lua_mod_info <name>` | `sv_lua_plugin_info <name>` | folder, memory, error, events, commands |
 
 `cl_lua_enable` / `sv_lua_enable` are the master switches. `_cl_lua_mods` (read-only)
-holds one line per client mod, `name<TAB>state<TAB>title<TAB>error`, for menu code.
+holds one line per client mod, `name<TAB>state<TAB>title<TAB>error<TAB>description`,
+which the Mods tab (`qcsrc/menu/xonotic/dialog_touch_mods.qc`) reads.
 
 A mod that raises an error or hits a limit is **stopped** and shows `error` with the
 message; the game goes on. Fix it and `lua_mod_reload <name>`.

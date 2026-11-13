@@ -39,7 +39,7 @@ static cvar_t lua_instructions = {CF_CLIENT | CF_SERVER | CF_ARCHIVE, "lua_instr
 static cvar_t lua_time_ms = {CF_CLIENT | CF_SERVER | CF_ARCHIVE, "lua_time_ms", "40", "time limit in milliseconds of each call into a Lua mod (1-250); loading gets 1 second"};
 static cvar_t cl_lua_enable = {CF_CLIENT | CF_ARCHIVE, "cl_lua_enable", "1", "run the enabled Lua client mods from <userdir>/mods (lua_mods lists them)"};
 static cvar_t sv_lua_enable = {CF_SERVER | CF_ARCHIVE, "sv_lua_enable", "1", "run the enabled Lua server plugins from <userdir>/plugins on servers this engine hosts (sv_lua_plugins lists them)"};
-static cvar_t cl_lua_status = {CF_CLIENT | CF_READONLY, "_cl_lua_mods", "", "client mods for the Mods dialog: one line per mod, name<TAB>state<TAB>title<TAB>error"};
+static cvar_t cl_lua_status = {CF_CLIENT | CF_READONLY, "_cl_lua_mods", "", "client mods for the Mods dialog: one line per mod, name<TAB>state<TAB>title<TAB>error<TAB>description"};
 
 tlua_mod_t *tlua_current;
 static double tlua_deadline;
@@ -1166,7 +1166,7 @@ static void tlua_updatestatus(tlua_realm_t *r)
 	{
 		tlua_mod_t *m = &r->mods[i];
 		char line[1024];
-		dpsnprintf(line, sizeof(line), "%s\t%s\t%s\t%s\n", m->name, tlua_statename(m), m->title[0] ? m->title : m->name, m->error);
+		dpsnprintf(line, sizeof(line), "%s\t%s\t%s\t%s\t%s\n", m->name, tlua_statename(m), m->title[0] ? m->title : m->name, m->error, m->description);
 		dp_strlcat(buf, line, sizeof(buf));
 	}
 	Cvar_SetQuick(r->status, buf);

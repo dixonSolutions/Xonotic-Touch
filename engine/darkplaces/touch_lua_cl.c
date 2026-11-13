@@ -414,12 +414,19 @@ static void tlua_result_consume(lua_State *L, tlua_mod_t *m, void *ud)
 
 static void tlua_cl_frame(void)
 {
-	static double lastrealtime;
+	static double lastrealtime, lastscan;
 	static qbool menuopen;
 	static char lastmap[MAX_QPATH];
 	tlua_args_t a;
 	qbool open;
 	const char *map;
+	open = key_dest == key_menu || key_dest == key_menu_grabbed;
+	if (open && host.realtime - lastscan > 2)
+	{
+		// the Mods dialog lists _cl_lua_mods: pick up folders added meanwhile
+		lastscan = host.realtime;
+		TLua_Rescan(&tlua_client);
+	}
 	if (!tlua_client.loaded)
 	{
 		if (tlua_client.enable->integer)
@@ -440,7 +447,6 @@ static void tlua_cl_frame(void)
 		a.s = lastmap;
 		TLua_Fire(&tlua_client, "map", tlua_push_s, NULL, &a);
 	}
-	open = key_dest == key_menu || key_dest == key_menu_grabbed;
 	if (open != menuopen)
 	{
 		menuopen = open;

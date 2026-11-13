@@ -1,4 +1,5 @@
 #include "dialog_settings_touch.qh"
+#include "dialog_touch_mods.qh"
 
 #include "touch_menu_layout.qh"
 #include "textlabel.qh"
@@ -66,6 +67,7 @@ void XonoticTouchSettingsTab_fill(entity me)
 		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Tactics"),    makeXonoticMobileTacticsTab()));
 		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Dynamics"),   makeXonoticMobileDynamicsTab()));
 		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Loser"),      makeXonoticMobileLoserTab()));
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Mods"),       makeXonoticTouchModsTab())); // Lua mods (dialog_touch_mods.qc)
 	me.gotoRC(me, 1.5, 0);
 		me.TD(me, me.rows - 1.5, me.columns, mc);
 }

@@ -1,0 +1,48 @@
+#pragma once
+
+// Settings -> Mobile -> Mods: the Lua client mods in <userdir>/mods
+// (docs/MODDING.md). The list is the engine's read-only _cl_lua_mods cvar, one
+// line per mod: name<TAB>state<TAB>title<TAB>error<TAB>description; the engine
+// rescans the folder every two seconds while the menu is open. Every action is
+// a console command the engine checks itself (lua_mod_enable / _disable /
+// _reload / _info), so nothing here can do more than the console can.
+//
+// On Android, "Import mod" asks the platform layer (ModImport.java) to pick a
+// .zip and unpack it into the mods folder, through the same file handshake the
+// updater uses (touch_update_util.qh): the menu writes
+// touch/mod-import-request.txt, ModImport writes touch/mod-import-status.txt.
+// The button only shows where that status file exists.
+
+#include "tab.qh"
+#include "textlabel.qh"
+#include "touchbutton.qh"
+
+CLASS(XonoticTouchModsTab, XonoticTab)
+	METHOD(XonoticTouchModsTab, fill, void(entity));
+	ATTRIB(XonoticTouchModsTab, intendedWidth, float, 0.9);
+	ATTRIB(XonoticTouchModsTab, rows, float, 14);
+	ATTRIB(XonoticTouchModsTab, columns, float, 6);
+	ATTRIB(XonoticTouchModsTab, name, string, "touchmods");
+ENDCLASS(XonoticTouchModsTab)
+entity makeXonoticTouchModsTab();
+
+// A finger-sized button whose text and action follow one mod slot of the
+// current page (or a page / list action).
+CLASS(XonoticTouchModsButton, XonoticTouchButton)
+	METHOD(XonoticTouchModsButton, draw, void(entity));
+	ATTRIB(XonoticTouchModsButton, modSlot, int, 0);
+	ATTRIB(XonoticTouchModsButton, modRole, int, 0);
+	ATTRIB(XonoticTouchModsButton, modText, string);
+ENDCLASS(XonoticTouchModsButton)
+
+CLASS(XonoticTouchModsLabel, XonoticTextLabel)
+	METHOD(XonoticTouchModsLabel, draw, void(entity));
+	ATTRIB(XonoticTouchModsLabel, modSlot, int, 0);
+	ATTRIB(XonoticTouchModsLabel, modRole, int, 0);
+	ATTRIB(XonoticTouchModsLabel, modText, string);
+	ATTRIB(XonoticTouchModsLabel, allowColors, bool, true);
+	ATTRIB(XonoticTouchModsLabel, allowCut, bool, true);
+ENDCLASS(XonoticTouchModsLabel)
+
+const string TOUCH_MODS_IMPORT_REQUEST_FILE = "touch/mod-import-request.txt";
+const string TOUCH_MODS_IMPORT_STATUS_FILE = "touch/mod-import-status.txt";
