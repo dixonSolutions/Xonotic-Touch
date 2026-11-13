@@ -1,0 +1,6 @@
+-- string.rep with an empty result used to loop n times in C (2^63 here)
+local a = string.rep("", math.maxinteger)
+local b = ("x"):rep(0)
+local c = string.rep("", math.maxinteger, "")
+local d = string.rep("ab", 3, "-")
+print("BOUNDS rep returned " .. #a .. " " .. #b .. " " .. #c .. " " .. d)

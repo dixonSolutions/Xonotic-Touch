@@ -2,3 +2,5 @@ title: HUD clock
 version: 1.0
 author: Godnotic
 description: Clock, frame rate and your health in a corner of the screen. lua_hud_clock_toggle hides it.
+api: 1
+permissions: events, display, commands, cvar_read, cvar_write, storage, players, state

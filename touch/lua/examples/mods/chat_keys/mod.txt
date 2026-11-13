@@ -2,3 +2,5 @@ title: Chat keys
 version: 1.0
 author: Godnotic
 description: F5 says "gg", F6 says "nice shot" (one line every two seconds at most).
+api: 1
+permissions: events, state, exec

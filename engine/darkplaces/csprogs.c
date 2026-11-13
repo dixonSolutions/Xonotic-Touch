@@ -25,6 +25,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "touch_hud.h"
 #include "touch_aim.h"
 #include "touch_vote.h"
+#include "touch_lua.h" // Touch: Lua mod manager (server text)
 #include "cl_collision.h"
 #include "snd_main.h"
 #include "clvm_cmds.h"
@@ -608,6 +609,7 @@ void CL_VM_Parse_StuffCmd(const char *msg, size_t msg_len)
 {
 	prvm_prog_t *prog = CLVM_prog;
 	int restorevm_tempstringsbuf_cursize;
+	TouchLua_ServerText(); // Touch: the mod manager refuses changes until this text has run
 
 	if(msg[0] == 'c')
 	if(msg[1] == 's')

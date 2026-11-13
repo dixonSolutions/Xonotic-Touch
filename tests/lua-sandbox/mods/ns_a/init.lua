@@ -1,0 +1,5 @@
+-- mod "ns_a" must not take what belongs to mod "ns_a_b" (lua_ns_a_b_*)
+local ok = pcall(xt.command, "b_c", function() print("NS FAIL ns_a ran ns_a_b's command") end)
+print("NS " .. (ok and "FAIL ns_a registered b_c" or "PASS ns_a refused b_c"))
+local ok2 = pcall(xt.setcvar, "lua_ns_a_b_d", "1")
+print("NS " .. (ok2 and "FAIL ns_a set ns_a_b's cvar" or "PASS ns_a refused ns_a_b's cvar"))

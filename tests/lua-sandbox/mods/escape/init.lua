@@ -72,6 +72,7 @@ check("value with newline refused", fails(xt.setcvar, "crosshair_size", "1\nquit
 check("allowlisted cvar writable", pcall(xt.setcvar, "crosshair_size", "0.6") and xt.cvar("crosshair_size") == "0.6")
 check("own cvar created", pcall(xt.setcvar, "lua_escape_test", "1") and xt.cvar("lua_escape_test") == "1")
 check("other mod's cvar refused", fails(xt.setcvar, "lua_othermod_test", "1"))
+check("own cvar name with _ refused (another mod's namespace)", fails(xt.setcvar, "lua_escape_a_b", "1"))
 
 -- console commands: allowlist, no separators
 check("quit refused", fails(xt.exec, "quit"))
@@ -88,6 +89,14 @@ check("rcon refused", fails(xt.exec, "rcon status"))
 check("lua_mod_enable refused", fails(xt.exec, "lua_mod_enable kill_loop"))
 check("cl_cmd refused", fails(xt.exec, "cl_cmd x"))
 check("echo allowed", pcall(xt.exec, "echo SANDBOX exec reached the console"))
+-- nothing that writes files, traps a touch-only player or loads files by name
+check("screenshot refused", fails(xt.exec, "screenshot lua.tga"))
+check("togglemenu refused", fails(xt.exec, "togglemenu"))
+check("messagemode refused", fails(xt.exec, "messagemode"))
+check("messagemode2 refused", fails(xt.exec, "messagemode2"))
+check("play refused", fails(xt.exec, "play misc/talk.wav"))
+check("impulse without a number refused", fails(xt.exec, "impulse lua_mod_enable"))
+check("impulse with two words refused", fails(xt.exec, "impulse 1 2"))
 
 -- the API offers no positions, entities, traces, aim or view angles
 local allowed = {on=1, command=1, cvar=1, setcvar=1, exec=1, realtime=1, modname=1, realm=1, apiversion=1,
@@ -99,6 +108,17 @@ check("xt has only the documented functions (" .. table.concat(extra, ",") .. ")
 check("no draw outside the hud event", fails(xt.draw.fill, 0, 0, 1, 1))
 check("unknown event refused", fails(xt.on, "think", function() end))
 check("command names checked", fails(xt.command, "a;b", function() end))
+check("command name with _ refused (another mod's namespace)", fails(xt.command, "a_b", function() end))
+
+-- library functions stay bounded in C, and still work
+check("gsub replacement over 1 MB refused", fails(string.gsub, "a", "a", string.rep("x", 1100000)))
+check("string.rep of nothing is empty", string.rep("", 1e9) == "" and string.rep("ab", 2, ",") == "ab,ab")
+check("table.concat works", table.concat({1, 2, 3}, ",") == "1,2,3")
+check("table.insert/remove work", (function() local t = {1, 3}; table.insert(t, 2, 2); local r = table.remove(t, 1); return r == 1 and t[1] == 2 and t[2] == 3 end)())
+check("table.sort works", (function() local t = {3, 1, 2}; table.sort(t); return t[1] == 1 and t[3] == 3 end)())
+check("table.move works", table.move({1, 2, 3}, 1, 3, 2, {})[4] == 3)
+check("table.unpack works", select("#", table.unpack({1, 2, 3})) == 3)
+check("print of 50000 values", pcall(function() local t = {}; for i = 1, 50000 do t[i] = "x" end; print(table.unpack(t)) end))
 
 -- persistence stays in the mod's own data folder
 check("save works", pcall(xt.save, "settings", "a=1") and xt.load("settings") == "a=1")

@@ -6,7 +6,7 @@ local shown = true
 local fps, frames, acc = 0, 0, 0
 
 if not xt.cvar("lua_hud_clock_corner") then
-  xt.setcvar("lua_hud_clock_corner", "1")   -- the mod's own cvar, saved in config.cfg
+  xt.setcvar("lua_hud_clock_corner", "1")   -- the mod's own cvar, saved in config.cfg (with storage)
 end
 
 xt.on("frame", function(dt)

@@ -20,11 +20,18 @@ realms, client mods (touch_lua_cl.c) and server plugins (touch_lua_sv.c).
 #define TLUA_PERM_MESSAGES  (1u << 9)
 #define TLUA_PERM_STATE     (1u << 10)
 #define TLUA_PERM_ALL       ((1u << 11) - 1)
+// A mod with no "api:" line in mod.txt (written before scopes existed) gets
+// these until the user grants more: what a HUD needs, nothing that changes
+// settings, runs commands, writes files or sends messages.
+#define TLUA_PERM_LEGACY_DEFAULT (TLUA_PERM_EVENTS | TLUA_PERM_COMMANDS | TLUA_PERM_CVAR_READ | TLUA_PERM_DISPLAY | TLUA_PERM_INPUT | TLUA_PERM_PLAYERS | TLUA_PERM_STATE)
 
 #define TLUA_MAX_MODS 32
 #define TLUA_NAME_LEN 32
 #define TLUA_MAX_FILE (1024 * 1024)      // init.lua, a required file, a load() chunk
 #define TLUA_MAX_PATTERN_SUBJECT (1024 * 1024)
+#define TLUA_SUFFIX_LEN 32               // the <name> of lua_<mod>_<name>
+#define TLUA_MAX_MODCMDS 16              // console commands per mod
+#define TLUA_MAX_MODCVARS 32             // own cvars per mod
 
 typedef enum tlua_state_e
 {
@@ -46,6 +53,7 @@ typedef struct tlua_mod_s
 	qbool enabled;                  // the user's choice (enabled.txt)
 	unsigned requested, granted;
 	qbool manifest_error, scoped;
+	qbool reserved;                 // the name clashes with the engine's (never started)
 	tlua_state_t state;
 	char error[512];
 	lua_State *L;
@@ -56,6 +64,7 @@ typedef struct tlua_mod_s
 	int prints;                     // print() lines left in the current call
 	unsigned eventmask;             // bit per realm event with a handler
 	int execs;                      // xt.exec calls left in the current call
+	int owncvars;                   // own cvars that exist (-1: not counted yet)
 	struct tlua_realm_s *realm;
 } tlua_mod_t;
 
@@ -63,7 +72,7 @@ typedef struct tlua_realm_s
 {
 	const char *kind;               // "mod" / "plugin"
 	const char *subdir;             // "mods" / "plugins"
-	const char *cmdprefix;          // console commands mods register: <prefix><mod>_<name>
+	const char *cmdprefix;          // commands and cvars of a mod: <prefix><mod>_<name>, <name> without '_'
 	unsigned cmdflags;              // CF_CLIENT / CF_SERVER
 	const char *const *events;      // NULL terminated
 	tlua_mod_t mods[TLUA_MAX_MODS];
@@ -81,8 +90,22 @@ extern tlua_realm_t tlua_client, tlua_server;
 // The mod whose code is running now (NULL between calls).
 extern tlua_mod_t *tlua_current;
 
-// touch_lua_vm.c asks this from the pattern matcher.
+// True while a call into a mod is under way, so an engine path that re-enters
+// the Lua code from inside it (a loading screen redraw, a key read during a
+// load) must leave it alone. A call left behind by Host_AbortCurrentFrame
+// (a longjmp through it, in an earlier host frame) is cleaned up here and the
+// answer is false.
+qbool TLua_Busy(void);
+
+// True when the command or cvar change being handled may have come from a
+// server: while connected to one this engine does not host (or playing a
+// demo), and until text such a server put in the command buffer has run.
+qbool TLua_FromServer(void);
+
+// touch_lua_vm.c asks this from the pattern matcher, and charges each element
+// the table library reads with TouchLua_WorkStep.
 int TouchLua_PatternAbort(void);
+int TouchLua_WorkStep(lua_State *L);
 
 // Realm management.
 void TLua_Rescan(tlua_realm_t *r);
@@ -106,6 +129,8 @@ const char *TLua_CleanText(const char *in, char *out, size_t outsize, qbool allo
 
 // Cvars and commands, on the first hook call.
 void TLua_InitOnce(void);
+// Start of each client frame (the server-text bookkeeping of TLua_FromServer).
+void TLua_FrameStart(void);
 
 // Realm setup (touch_lua_cl.c / touch_lua_sv.c).
 void TLua_CL_Setup(void);

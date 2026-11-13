@@ -1,4 +1,6 @@
 title: Underdog
 version: 1.0
 author: Godnotic
-description: The player with the fewest kills this map takes 25% less damage (lua_underdog_scale changes how much).
+description: The player with the fewest kills this map takes 25% less damage (sv_lua_underdog_scale changes how much).
+api: 1
+permissions: events, players, cvar_read, cvar_write
