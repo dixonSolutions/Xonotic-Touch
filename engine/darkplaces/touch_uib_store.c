@@ -40,6 +40,7 @@ static struct
 	char *stack_ids, *modal_ids, *context;
 	int canback;
 	char *busy;
+	char *reserved;
 	int navdirty;
 	// toasts
 	int toastseq;
@@ -586,6 +587,23 @@ void UIBS_SetBusy(const char *json, size_t len)
 	st.navdirty = 1;
 }
 
+// app.reserved: rects (dp) the engine draws over the UI (docs/UI_BRIDGE.md 4.12)
+void UIBS_SetReserved(const char *json, size_t len)
+{
+	if (!json || !len)
+	{
+		if (st.reserved) { free(st.reserved); st.reserved = NULL; st.navdirty = 1; }
+		return;
+	}
+	if (st.reserved && strlen(st.reserved) == len && !memcmp(st.reserved, json, len))
+		return;
+	free(st.reserved);
+	st.reserved = (char *)malloc(len + 1);
+	memcpy(st.reserved, json, len);
+	st.reserved[len] = 0;
+	st.navdirty = 1;
+}
+
 void UIBS_Toast(const char *text, const char *kind, const char *icon, float timeout, const char *actionjson)
 {
 	char id[32];
@@ -719,6 +737,7 @@ static void reconcile_app(void)
 	UIBS_SetProp(a, "canBack", st.canback ? "true" : "false", st.canback ? 4 : 5);
 	UIBS_SetProp(a, "context", ctx.p, ctx.n);
 	UIBS_SetProp(a, "busy", st.busy, st.busy ? strlen(st.busy) : 0);
+	UIBS_SetProp(a, "reserved", st.reserved, st.reserved ? strlen(st.reserved) : 0);
 	UIBB_Free(&s);
 	UIBB_Free(&m);
 	UIBB_Free(&ctx);
@@ -797,6 +816,7 @@ void UIBS_Reset(void)
 	free(st.stack_ids); st.stack_ids = NULL;
 	free(st.modal_ids); st.modal_ids = NULL;
 	free(st.busy); st.busy = NULL;
+	free(st.reserved); st.reserved = NULL;
 	st.navdirty = 1;
 	app_node();
 	(void)dupnull;
