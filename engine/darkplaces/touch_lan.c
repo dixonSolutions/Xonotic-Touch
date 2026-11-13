@@ -684,6 +684,7 @@ static int numanswered;
 static uint32_t found[MAX_ANSWERED];
 static int numfound;
 
+#ifdef TOUCHLAN_SOCKETS
 static void sweep_start(lhnetsocket_t *s, const lan_iface_t *e)
 {
 	uint32_t first;
@@ -810,6 +811,11 @@ static void sweep_frame(void)
 	}
 	sweep_close_time = host.realtime + 3;
 }
+#else
+// No BSD sockets here (web, Windows): the unicast sweep is left out.
+static void sweep_start(lhnetsocket_t *s, const lan_iface_t *e) {}
+static void sweep_frame(void) {}
+#endif
 
 // ---- remembered hosts: every game this device joined on a LAN or VPN
 // address, and the ones the player added; asked directly on every LAN search
