@@ -103,6 +103,10 @@ android {
 // ids, which point into whatever table the installed (AndySU) host has.
 def copyStringsAsset = tasks.register('copyStringsAsset', Copy) {
     from 'src/main/res/values/strings.xml'
+    // The boot screens' banner (BootSplash), an asset for the same reason;
+    // scripts/gen-branding.py writes it.
+    from "${rootDir}/../branding/godnotic-banner.png"
     into "$buildDir/generated/xt-strings/xt"
 }
 preBuild.dependsOn copyStringsAsset
+

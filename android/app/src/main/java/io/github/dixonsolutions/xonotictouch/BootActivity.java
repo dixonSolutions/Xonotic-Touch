@@ -56,7 +56,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * much space is free, and offers the music pack (off by default). A
  * launcher shortcut, "Download music", opens the same step later.
  */
-public final class BootActivity extends Activity {
+public class BootActivity extends Activity {
 
     private static final String TAG = "Godnotic";
 
@@ -86,6 +86,18 @@ public final class BootActivity extends Activity {
     private static volatile boolean musicRequested;
 
     private View root;
+    /** The banner alone, until the screen has something to say. */
+    private View splash;
+    private TextView explain;
+    private TextView percentText;
+    /** Notifications refused, and the like: what the player should know. */
+    private TextView hint;
+    private Button useMobile;
+    private Button waitWifi;
+    /** Waiting for an unmetered network to start an agreed download (Net.watchUnmetered). */
+    private static volatile Object networkWatch;
+    /** The player chose mobile data for this process's download. */
+    private static volatile boolean mobileThisRun;
     private TextView status;
     private TextView detail;
     private ProgressBar progress;
@@ -129,8 +141,33 @@ public final class BootActivity extends Activity {
         buildScreen();
         retry.setOnClickListener(v -> start());
         cancel.setOnClickListener(v -> cancelPreparation());
-        quit.setOnClickListener(v -> quitApp());
-        download.setOnClickListener(v -> startDownload(musicBox.isChecked()));
+        quit.setOnClickListener(v -> confirmQuit());
+        download.setOnClickListener(v -> startDownload(musicBox.isChecked(), false));
+        useMobile.setOnClickListener(v -> {
+            if (pendingPlan != null) {
+                startDownload(musicBox.isChecked(), true);
+            } else {
+                // Waiting for Wi-Fi: go ahead on this connection.
+                mobileThisRun = true;
+                saveConsent(this, consentMusic(this), true);
+                stopNetworkWatch();
+                useMobile.setVisibility(View.GONE);
+                waitWifi.setVisibility(View.GONE);
+                continueToGame(new GameData(this));
+            }
+        });
+        waitWifi.setOnClickListener(v -> {
+            PackFetch.Plan plan = pendingPlan;
+            if (plan == null) {
+                return;
+            }
+            // Agreed, but not on this connection: it starts by itself on Wi-Fi.
+            boolean music = musicBox.isChecked() || musicOnly;
+            saveConsent(this, music, false);
+            pendingPlan = null;
+            chosenMusic = music;
+            showWaitingForNetwork();
+        });
         later.setOnClickListener(v -> {
             pendingPlan = null;
             musicRequested = false;
@@ -163,37 +200,78 @@ public final class BootActivity extends Activity {
      * The screen is built here, not inflated: under AndySU the layout and its
      * ids would come from the installed host's resource table, which need not
      * be this build's (see HostRes).
+     *
+     * Until there is something to wait for or decide, only the banner on the
+     * game's dark background shows (BootSplash, the same picture
+     * XonoticActivity keeps over the engine until its first frame). Then a
+     * centred column at most 640 dp wide: the banner, a large title, one line
+     * saying what is downloaded and how big, the bar with its percentage, the
+     * transfer line (MB, speed, time left) and pill buttons.
      */
     private void buildScreen() {
         float dp = getResources().getDisplayMetrics().density;
         int screen = getResources().getDisplayMetrics().widthPixels;
+        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(BootSplash.BACKGROUND));
+
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(Gravity.CENTER_HORIZONTAL);
         int pad = Math.round(24 * dp);
         box.setPadding(pad, pad, pad, pad);
 
+        int width = Math.min(screen, Math.round(640 * dp));
+        android.graphics.Bitmap bannerBitmap = BootSplash.banner(this, width);
+        if (bannerBitmap != null) {
+            android.widget.ImageView banner = new android.widget.ImageView(this);
+            banner.setImageBitmap(bannerBitmap);
+            banner.setAdjustViewBounds(true);
+            banner.setContentDescription(HostRes.string(this, "app_name"));
+            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(
+                    Math.round(width * 0.78f), LinearLayout.LayoutParams.WRAP_CONTENT);
+            bp.bottomMargin = Math.round(8 * dp);
+            box.addView(banner, bp);
+        }
+
         status = new TextView(this);
         status.setTextColor(0xFFF2F4F8);
-        status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24);
+        status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 28);
+        status.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         status.setGravity(Gravity.CENTER);
         status.setText(HostRes.string(this, "boot_unpacking"));
-        box.addView(status, wrap(0));
+        box.addView(status, wrap(Math.round(8 * dp)));
 
-        detail = new TextView(this);
-        detail.setTextColor(0xFFB4BAC6);
-        detail.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
-        detail.setGravity(Gravity.CENTER);
-        detail.setText(HostRes.string(this, "boot_first_run"));
-        box.addView(detail, wrap(Math.round(10 * dp)));
+        explain = new TextView(this);
+        explain.setTextColor(0xFFB4BAC6);
+        explain.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+        explain.setGravity(Gravity.CENTER);
+        explain.setText(HostRes.string(this, "boot_explain_short"));
+        box.addView(explain, wrap(Math.round(8 * dp)));
 
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(100);
-        progress.setMinimumHeight(Math.round(12 * dp));
+        progress.setProgressTintList(android.content.res.ColorStateList.valueOf(ACCENT));
+        progress.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFF2A3342));
+        progress.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(ACCENT));
+        progress.setScaleY(1.6f);
         LinearLayout.LayoutParams bar = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, Math.round(16 * dp));
-        bar.topMargin = Math.round(20 * dp);
+        bar.topMargin = Math.round(28 * dp);
         box.addView(progress, bar);
+
+        percentText = new TextView(this);
+        percentText.setTextColor(0xFFF2F4F8);
+        percentText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 34);
+        percentText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        percentText.setGravity(Gravity.CENTER);
+        percentText.setVisibility(View.GONE);
+        box.addView(percentText, wrap(Math.round(12 * dp)));
+
+        detail = new TextView(this);
+        detail.setTextColor(0xFFB4BAC6);
+        detail.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        detail.setGravity(Gravity.CENTER);
+        detail.setText(HostRes.string(this, "boot_first_run"));
+        box.addView(detail, wrap(Math.round(6 * dp)));
 
         // The setup step, shown instead of the bar until the player says Download.
         choice = new LinearLayout(this);
@@ -202,18 +280,19 @@ public final class BootActivity extends Activity {
         choice.setVisibility(View.GONE);
         choiceText = new TextView(this);
         choiceText.setTextColor(0xFFF2F4F8);
-        choiceText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        choiceText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19);
         choiceText.setGravity(Gravity.CENTER);
-        choice.addView(choiceText, wrap(0));
+        choice.addView(choiceText, wrap(Math.round(16 * dp)));
         musicBox = new CheckBox(this);
         musicBox.setTextColor(0xFFF2F4F8);
         musicBox.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        musicBox.setButtonTintList(android.content.res.ColorStateList.valueOf(ACCENT));
         musicBox.setMinHeight(Math.round(56 * dp));
         musicBox.setPadding(Math.round(12 * dp), 0, Math.round(12 * dp), 0);
         choice.addView(musicBox, wrap(Math.round(12 * dp)));
         spaceText = new TextView(this);
         spaceText.setTextColor(0xFFB4BAC6);
-        spaceText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        spaceText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
         spaceText.setGravity(Gravity.CENTER);
         choice.addView(spaceText, wrap(Math.round(8 * dp)));
         box.addView(choice, new LinearLayout.LayoutParams(
@@ -222,30 +301,47 @@ public final class BootActivity extends Activity {
         LinearLayout buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
         buttons.setGravity(Gravity.CENTER);
-        box.addView(buttons, wrap(Math.round(20 * dp)));
-        download = button(buttons, "boot_download", 0);
-        recheck = button(buttons, "boot_check_again", Math.round(16 * dp));
-        retry = button(buttons, "boot_retry", 0);
-        cancel = button(buttons, "boot_cancel", 0);
-        later = button(buttons, "boot_not_now", Math.round(16 * dp));
-        quit = button(buttons, "boot_quit", Math.round(16 * dp));
+        box.addView(buttons, wrap(Math.round(28 * dp)));
+        download = button(buttons, "boot_download", 0, true);
+        useMobile = button(buttons, "boot_use_mobile", 0, true);
+        waitWifi = button(buttons, "boot_wait_wifi", Math.round(16 * dp), false);
+        recheck = button(buttons, "boot_check_again", Math.round(16 * dp), false);
+        retry = button(buttons, "boot_retry", 0, true);
+        cancel = button(buttons, "boot_cancel", 0, false);
+        later = button(buttons, "boot_not_now", Math.round(16 * dp), false);
+        quit = button(buttons, "boot_quit", Math.round(16 * dp), false);
+
+        hint = new TextView(this);
+        hint.setTextColor(0xFFFFC870);
+        hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        hint.setGravity(Gravity.CENTER);
+        hint.setVisibility(View.GONE);
+        box.addView(hint, wrap(Math.round(20 * dp)));
 
         // Comfortable on a phone held sideways: one column at most 640 dp wide,
         // scrolling when a short landscape screen cannot fit it.
-        int width = Math.min(screen, Math.round(640 * dp));
         LinearLayout centre = new LinearLayout(this);
         centre.setGravity(Gravity.CENTER);
         centre.addView(box, new LinearLayout.LayoutParams(width, LinearLayout.LayoutParams.WRAP_CONTENT));
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
+        scroll.setBackgroundColor(BootSplash.BACKGROUND);
         scroll.addView(centre, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         // Starts invisible: shown only when there is something to wait for
         // (unpacking, the setup step, the download, an update install, an error).
         scroll.setVisibility(View.INVISIBLE);
         root = scroll;
-        setContentView(scroll);
+        android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
+        splash = BootSplash.view(this, 0.62f, 900);
+        frame.addView(splash, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        frame.addView(scroll, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        setContentView(frame);
     }
+
+    private static final int ACCENT = 0xFF3584E4;
 
     private static LinearLayout.LayoutParams wrap(int top) {
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
@@ -254,19 +350,32 @@ public final class BootActivity extends Activity {
         return p;
     }
 
-    /** A button a thumb finds: 56 dp tall, 18 sp text, at least 140 dp wide. */
-    private Button button(LinearLayout row, String text, int start) {
+    /** A pill a thumb finds: 56 dp tall, 18 sp text, at least 160 dp wide; filled when primary. */
+    private Button button(LinearLayout row, String text, int start, boolean primary) {
         float dp = getResources().getDisplayMetrics().density;
         Button b = new Button(this);
         b.setText(HostRes.string(this, text));
+        b.setAllCaps(false);
         b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        b.setTextColor(0xFFFFFFFF);
+        b.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        android.graphics.drawable.GradientDrawable pill = new android.graphics.drawable.GradientDrawable();
+        pill.setCornerRadius(28 * dp);
+        pill.setColor(primary ? ACCENT : 0xFF273040);
+        if (!primary) {
+            pill.setStroke(Math.round(1 * dp), 0xFF3A4558);
+        }
+        b.setBackground(new android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(0x40FFFFFF), pill, null));
+        b.setStateListAnimator(null);
         b.setMinHeight(Math.round(56 * dp));
         b.setMinimumHeight(Math.round(56 * dp));
-        b.setMinWidth(Math.round(140 * dp));
-        b.setMinimumWidth(Math.round(140 * dp));
-        b.setPadding(Math.round(24 * dp), 0, Math.round(24 * dp), 0);
+        b.setMinWidth(Math.round(160 * dp));
+        b.setMinimumWidth(Math.round(160 * dp));
+        b.setPadding(Math.round(28 * dp), 0, Math.round(28 * dp), 0);
         b.setVisibility(View.GONE);
-        LinearLayout.LayoutParams p = wrap(0);
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, Math.round(56 * dp));
         p.setMarginStart(start);
         row.addView(b, p);
         return b;
@@ -459,9 +568,23 @@ public final class BootActivity extends Activity {
             return;
         }
         boolean music = musicRequested && !data.musicInstalled();
-        Boolean chosen = chosenMusic;
+        Boolean agreed = chosenMusic;
+        if (agreed == null && consentGiven(this) && data.assetsMissing()) {
+            // Agreed in an earlier run that was quit, killed or lost its
+            // connection: carry on without asking again.
+            agreed = consentMusic(this);
+            chosenMusic = agreed;
+            Log.i(TAG, "Resuming the game data download agreed to earlier");
+        }
+        final Boolean chosen = agreed;
         if (chosen != null && (data.assetsMissing() || music)) {
-            // Resume or Retry of a download the player already said yes to.
+            // Resume or Retry of a download the player already said yes to,
+            // on a connection they accepted for it.
+            if (!networkAllows(this)) {
+                preparing.set(false);
+                showWaitingForNetwork();
+                return;
+            }
             startService();
         } else if (data.assetsMissing() || music) {
             // The setup step comes up as soon as the file list is in.
@@ -536,6 +659,8 @@ public final class BootActivity extends Activity {
         }
         status.setText(HostRes.string(this, musicOnly ? "boot_setup_music_title" : "boot_setup_title"));
         detail.setText("");
+        detail.setVisibility(View.GONE);
+        percentText.setVisibility(View.GONE);
         progress.setVisibility(View.GONE);
         choice.setVisibility(View.VISIBLE);
         cancel.setVisibility(View.GONE);
@@ -556,7 +681,15 @@ public final class BootActivity extends Activity {
         if (need.resumed > 0) {
             text.append('\n').append(HostRes.string(this, "boot_setup_resumed", size(need.resumed)));
         }
+        Net.Kind net = Net.kind(this);
+        boolean metered = net != Net.Kind.UNMETERED && net != Net.Kind.OFFLINE;
+        if (net != Net.Kind.UNMETERED) {
+            text.append("\n\n").append(Net.describe(this, net));
+        }
         choiceText.setText(text);
+        // Shown with the progress; here the setup text says it, with the choice.
+        explain.setText(HostRes.string(this, "boot_explain", size(need.fetch + need.resumed)));
+        explain.setVisibility(View.GONE);
         long needed = need.disk + PackFetch.SLACK_BYTES;
         boolean fits = free >= needed;
         spaceText.setTextColor(fits ? 0xFFB4BAC6 : 0xFFFF8A80);
@@ -564,9 +697,18 @@ public final class BootActivity extends Activity {
                 ? HostRes.string(this, "boot_space_free", size(free), size(needed))
                 : HostRes.string(this, "boot_space_short", size(needed), size(free), size(needed - free)));
         download.setText(HostRes.string(this, need.resumed > 0 ? "boot_resume" : "boot_download"));
-        download.setVisibility(View.VISIBLE);
+        // On mobile data or a metered Wi-Fi the choice is explicit: this
+        // connection now, or start by itself on Wi-Fi.
+        download.setVisibility(metered ? View.GONE : View.VISIBLE);
         download.setEnabled(fits);
+        useMobile.setVisibility(metered ? View.VISIBLE : View.GONE);
+        useMobile.setEnabled(fits);
+        waitWifi.setVisibility(metered ? View.VISIBLE : View.GONE);
+        waitWifi.setEnabled(fits);
         recheck.setVisibility(fits ? View.GONE : View.VISIBLE);
+        if (metered) {
+            quit.setVisibility(View.GONE); // three buttons fit a phone held sideways; Back still quits
+        }
     }
 
     private String size(long bytes) {
@@ -574,7 +716,7 @@ public final class BootActivity extends Activity {
     }
 
     /** Download pressed: the planned packs, with or without music. */
-    private void startDownload(boolean music) {
+    private void startDownload(boolean music, boolean mobile) {
         PackFetch.Plan plan = pendingPlan;
         if (plan == null || !preparing.compareAndSet(false, true)) {
             return;
@@ -582,6 +724,14 @@ public final class BootActivity extends Activity {
         pendingPlan = null;
         boolean withMusic = music || musicOnly;
         chosenMusic = withMusic;
+        if (mobile) {
+            mobileThisRun = true;
+        }
+        // Remembered until the data is in, so a quit, a kill or a lost
+        // connection carries on next start without asking again.
+        saveConsent(this, withMusic, mobile || consentMobile(this));
+        useMobile.setVisibility(View.GONE);
+        waitWifi.setVisibility(View.GONE);
         choice.setVisibility(View.GONE);
         download.setVisibility(View.GONE);
         recheck.setVisibility(View.GONE);
@@ -622,8 +772,134 @@ public final class BootActivity extends Activity {
         running.interrupt();
     }
 
+    /**
+     * Quit while the download runs asks first: what is downloaded is kept,
+     * and the next start carries on by itself (the consent is remembered).
+     */
+    private void confirmQuit() {
+        Thread running = preparationThread;
+        if (running == null || !running.isAlive()) {
+            quitApp();
+            return;
+        }
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle(HostRes.string(this, "boot_quit_title"))
+                .setMessage(HostRes.string(this, "boot_quit_message"))
+                .setPositiveButton(HostRes.string(this, "boot_quit"), (d, w) -> quitApp())
+                .setNegativeButton(HostRes.string(this, "boot_keep_downloading"), null)
+                .show();
+    }
+
+    @Override
+    public void onBackPressed() {
+        Thread running = preparationThread;
+        if (running != null && running.isAlive()) {
+            confirmQuit();
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    // ------------------------------------------------------- consent, network
+
+    private static android.content.SharedPreferences consent(Context context) {
+        return context.getSharedPreferences("boot-download", Context.MODE_PRIVATE);
+    }
+
+    static void saveConsent(Context context, boolean music, boolean mobile) {
+        consent(context).edit().putBoolean("agreed", true).putBoolean("music", music)
+                .putBoolean("mobile", mobile).apply();
+    }
+
+    static boolean consentGiven(Context context) {
+        return consent(context).getBoolean("agreed", false);
+    }
+
+    static boolean consentMusic(Context context) {
+        return consent(context).getBoolean("music", false);
+    }
+
+    static boolean consentMobile(Context context) {
+        return consent(context).getBoolean("mobile", false);
+    }
+
+    static void clearConsent(Context context) {
+        if (context != null) {
+            consent(context).edit().clear().apply();
+        }
+    }
+
+    /** Unmetered, or the player accepted this connection for the download. */
+    private static boolean networkAllows(Context context) {
+        if (mobileThisRun || consentMobile(context)) {
+            return true;
+        }
+        Net.Kind kind = Net.kind(context);
+        // Offline goes ahead too: the download's own retries wait for a connection.
+        return kind == Net.Kind.UNMETERED || kind == Net.Kind.OFFLINE;
+    }
+
+    /** An agreed download waits for Wi-Fi; it starts by itself when one comes. */
+    private void showWaitingForNetwork() {
+        reveal();
+        choice.setVisibility(View.GONE);
+        download.setVisibility(View.GONE);
+        recheck.setVisibility(View.GONE);
+        retry.setVisibility(View.GONE);
+        later.setVisibility(View.GONE);
+        percentText.setVisibility(View.GONE);
+        progress.setVisibility(View.VISIBLE);
+        progress.setIndeterminate(true);
+        status.setText(HostRes.string(this, "boot_waiting_wifi"));
+        detail.setVisibility(View.VISIBLE);
+        detail.setText(Net.describe(this) + "\n" + HostRes.string(this, "boot_waiting_wifi_detail"));
+        useMobile.setVisibility(View.VISIBLE);
+        useMobile.setEnabled(true);
+        waitWifi.setVisibility(View.GONE);
+        quit.setVisibility(View.VISIBLE);
+        Log.i(TAG, "Game data download waits for an unmetered network (" + Net.kind(this) + ")");
+        if (networkWatch == null) {
+            networkWatch = Net.watchUnmetered(getApplicationContext(), () -> ui.post(() -> {
+                if (networkWatch == null) {
+                    return;
+                }
+                stopNetworkWatch();
+                BootActivity live = visibleScreen();
+                Log.i(TAG, "Unmetered network: starting the agreed download");
+                if (live != null) {
+                    live.continueToGame(new GameData(live));
+                }
+            }));
+        }
+    }
+
+    private void stopNetworkWatch() {
+        Object watch = networkWatch;
+        networkWatch = null;
+        Net.stopWatching(getApplicationContext(), watch);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 1) {
+            boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            Log.i(TAG, "Notifications " + (granted ? "allowed" : "refused") + " for the download");
+            showNotificationHint(!granted);
+        }
+    }
+
+    private void showNotificationHint(boolean show) {
+        if (hint == null) {
+            return;
+        }
+        hint.setText(HostRes.string(this, "boot_notifications_off"));
+        hint.setVisibility(show ? View.VISIBLE : View.GONE);
+    }
+
     private void quitApp() {
         quitting = true;
+        stopNetworkWatch();
         Thread running = preparationThread;
         if (running != null) {
             running.interrupt();
@@ -634,6 +910,7 @@ public final class BootActivity extends Activity {
 
     private static void prepared(GameData data) {
         preparationThread = null;
+        clearConsent(appContext);
         preparing.set(false);
         chosenMusic = null;
         musicRequested = false;
@@ -679,6 +956,9 @@ public final class BootActivity extends Activity {
         if (root != null) {
             root.setVisibility(View.VISIBLE);
         }
+        if (splash != null) {
+            splash.setVisibility(View.GONE);
+        }
         syncCancel();
     }
 
@@ -713,11 +993,20 @@ public final class BootActivity extends Activity {
             if (live != null) {
                 live.revealIfStillWorking();
                 live.applyProgress(text, note, percent);
+                // The download's notification follows along while the screen
+                // shows too (the service owns it), once a second.
+                long now = android.os.SystemClock.elapsedRealtime();
+                if (chosenMusic != null && now - lastNotified >= 1000) {
+                    lastNotified = now;
+                    notifyProgress(text, note, percent);
+                }
             } else {
                 notifyProgress(text, note, percent);
             }
         });
     }
+
+    private static long lastNotified;
 
     /** Cancel while a preparation runs and has not been cancelled yet. */
     private void syncCancel() {
@@ -732,7 +1021,9 @@ public final class BootActivity extends Activity {
             cancel.setText(HostRes.string(this, "boot_cancel"));
         }
         if (working) {
-            quit.setVisibility(View.GONE);
+            // Quit stays: it asks first (confirmQuit), and the next start
+            // carries on by itself.
+            quit.setVisibility(View.VISIBLE);
             retry.setVisibility(View.GONE);
         }
     }
@@ -744,13 +1035,18 @@ public final class BootActivity extends Activity {
             return;
         }
         progress.setVisibility(View.VISIBLE);
+        detail.setVisibility(View.VISIBLE);
+        explain.setVisibility(View.VISIBLE);
         status.setText(text);
         detail.setText(note);
         if (percent < 0) {
             progress.setIndeterminate(true);
+            percentText.setVisibility(View.GONE);
         } else {
             progress.setIndeterminate(false);
             progress.setProgress(percent);
+            percentText.setVisibility(View.VISIBLE);
+            percentText.setText(percent + "%");
         }
     }
 
@@ -762,6 +1058,8 @@ public final class BootActivity extends Activity {
         Intent intent = new Intent(this, XonoticActivity.class);
         intent.putExtra(XonoticActivity.EXTRA_BASEDIR, data.baseDir().getAbsolutePath());
         startActivity(intent);
+        // The same banner on both sides: no slide, a short fade.
+        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
         finish();
     }
 
@@ -803,7 +1101,14 @@ public final class BootActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 33
                 && checkSelfPermission("android.permission.POST_NOTIFICATIONS")
                         != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[] { "android.permission.POST_NOTIFICATIONS" }, 1);
+            if (shouldShowRequestPermissionRationale("android.permission.POST_NOTIFICATIONS")
+                    || !consent(this).getBoolean("asked-notifications", false)) {
+                consent(this).edit().putBoolean("asked-notifications", true).apply();
+                requestPermissions(new String[] { "android.permission.POST_NOTIFICATIONS" }, 1);
+            } else {
+                // Refused for good: Android will not ask again, so say what it costs.
+                showNotificationHint(true);
+            }
         }
     }
 
@@ -889,9 +1194,21 @@ public final class BootActivity extends Activity {
         return b;
     }
 
+    /**
+     * The app's launcher entry, as the icon starts it: GodnoticBootActivity on
+     * hosts that have it, BootActivity on older ones. Brings the running task
+     * to the front rather than stacking a second boot screen.
+     */
+    static Intent launcherIntent(Context context) {
+        Intent intent = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+        if (intent == null) {
+            intent = new Intent(context, BootActivity.class);
+        }
+        return intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+    }
+
     private static PendingIntent openBoot() {
-        Intent intent = new Intent(appContext, BootActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        Intent intent = launcherIntent(appContext);
         int flags = PendingIntent.FLAG_UPDATE_CURRENT
                 | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
         return PendingIntent.getActivity(appContext, 0, intent, flags);

@@ -83,3 +83,17 @@ void nativeui_publish_permissions(const char *s)
     snprintf(permissions, sizeof permissions, "%s", s ? s : "");
     pthread_mutex_unlock(&mutex);
 }
+
+/* The engine has put its first frame on screen (VID_Finish): the Android
+ * activity lifts the boot picture it kept over the SDL surface until then. */
+static volatile int presented;
+void nativeui_presented(void)
+{
+    presented = 1;
+}
+JNIEXPORT jboolean JNICALL Java_io_github_dixonsolutions_xonotictouch_NativeBridge_presented(JNIEnv *env, jobject self)
+{
+    (void)env;
+    (void)self;
+    return presented ? JNI_TRUE : JNI_FALSE;
+}

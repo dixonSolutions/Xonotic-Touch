@@ -15,9 +15,16 @@ import android.opengl.GLES20
 object GpuProbe {
     private const val ASTC = "GL_KHR_texture_compression_astc_ldr"
 
+    /** The GPU the probe saw ("Mali-G68"), once it has run. */
+    @Volatile @JvmStatic var renderer: String = "unknown"
+        private set
+
     /** True when ASTC textures can be used; false when not, or when the GPU could not be asked. */
+    @JvmStatic
     fun astc(): Boolean = try {
-        extensions().split(' ').contains(ASTC)
+        val yes = extensions().split(' ').contains(ASTC)
+        android.util.Log.i("Godnotic", "GPU probe: $renderer, ASTC ${if (yes) "supported" else "not supported"}")
+        yes
     } catch (e: RuntimeException) {
         android.util.Log.w("Godnotic", "GPU probe failed; assuming no ASTC", e)
         false
@@ -47,6 +54,7 @@ object GpuProbe {
         try {
             check(surface != EGL14.EGL_NO_SURFACE) { "no pbuffer" }
             check(EGL14.eglMakeCurrent(display, surface, surface, context)) { "eglMakeCurrent" }
+            renderer = GLES20.glGetString(GLES20.GL_RENDERER) ?: "unknown"
             return GLES20.glGetString(GLES20.GL_EXTENSIONS) ?: ""
         } finally {
             // The display itself stays initialised: SDL shares it later.

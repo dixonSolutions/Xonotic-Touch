@@ -13,6 +13,7 @@
 #include "touch_vote.h"
 #include "touch_aim.h" // Touch: offline practice markers
 #include "touch_lua.h" // Touch: Lua mods and plugins
+#include "touch_shellbtn.h" // Touch: console button
 #ifdef CONFIG_VIDEO_CAPTURE
 #include "cap_avi.h"
 #include "cap_ogg.h"
@@ -1873,6 +1874,7 @@ static void SCR_DrawScreen (void)
 	{
 		SCR_DrawBrand();
 		SCR_DrawTouchscreenOverlay();
+		TouchShell_Draw(); // Touch: console button, over the console sheet
 	}
 	if (r_timereport_active)
 		R_TimeReport("2d");

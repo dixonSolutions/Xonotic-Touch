@@ -69,8 +69,12 @@ final class EngineSwap {
             api.getMethod("setLiveSwapHandler", handlerClass).invoke(current, handler);
             host = current;
             Log.i(TAG, "Live engine swap handler registered with the AndySU host (API level " + level + ")");
+        } catch (ClassNotFoundException | NoClassDefFoundError t) {
+            // A build without an AndySU host (a sideloaded APK, the .perf test
+            // package): one line, not a stack trace on every start.
+            Log.i(TAG, "No AndySU host; live engine swaps are off");
         } catch (Throwable t) {
-            Log.w(TAG, "AndySU live swap not available", t);
+            Log.w(TAG, "AndySU live swap not available: " + t);
         }
     }
 
