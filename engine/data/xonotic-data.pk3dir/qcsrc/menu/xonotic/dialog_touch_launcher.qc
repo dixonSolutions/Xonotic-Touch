@@ -74,7 +74,21 @@ void GodnoticLauncherDialog_fill(entity me)
 	me.TR(me);
 		me.TD(me, 1, 2, e = TouchLauncher_TileOpen(_("Media"), '0 0 0', 0, me.mediaDialog));
 		me.TD(me, 1, 2, e = TouchLauncher_TileOpen(_("Credits"), '0 0 0', 0, me.creditsDialog));
-		me.TD(me, 1, 2, e = TouchLauncher_TileOpen(_("Quit"), '1 0.6 0.6', 0, me.quitDialog));
+		me.TD(me, 1, 2, e = me.quitTile = TouchLauncher_TileOpen(_("Quit"), '1 0.6 0.6', 0, me.quitDialog));
+}
+
+float GodnoticLauncherDialog_keyDown(entity me, float key, float ascii, float shift)
+{
+	// Back (Escape) with nothing open over the launcher: the Quit question,
+	// as the Quit tile asks it. Out of a match only; in one the menu's own
+	// Escape handling applies.
+	if (key == K_ESCAPE && me.quitDialog && me.quitTile && !(gamestatus & (GAME_CONNECTED | GAME_ISSERVER)))
+	{
+		m_play_click_sound(MENU_SOUND_OPEN);
+		DialogOpenButton_Click(me.quitTile, me.quitDialog);
+		return 1;
+	}
+	return SUPER(GodnoticLauncherDialog).keyDown(me, key, ascii, shift);
 }
 
 entity TouchLauncher_AddSheet(entity mainwindow, entity i)

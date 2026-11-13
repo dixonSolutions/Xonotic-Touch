@@ -38,3 +38,18 @@ void TouchSheet_preDraw();
 void TouchSheet_postDraw();
 // m_keydown: the mouse wheel over a tall sheet (not over a list) scrolls it.
 bool TouchSheet_wheel(float key);
+
+// Pinned chrome. While a sheet scrolls, its title bar (with the close
+// button) stays at the top of the screen and its action row (OK, Apply,
+// Join!, Start) at the bottom; only what is between them moves.
+//
+// The action row is found, not marked: in the dialog, or through each tab
+// controller at its bottom in the tab it shows, the lowest row, when every
+// control in it is a button (labels may sit beside them). The row above it
+// comes along when it also holds a button and nothing but buttons, labels
+// and text fields (Multiplayer's address, Info and Host LAN). A dialog or
+// tab that sets touch_sheet_nopin keeps its rows in the scroll.
+.float touch_sheet_nopin;
+// Container_draw (item/container.qc), after it entered child e of me: true
+// when e is pinned and is drawn later, over the scrolled content.
+bool TouchSheet_drawLater(entity me, entity e);

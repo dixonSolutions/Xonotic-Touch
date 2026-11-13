@@ -62,3 +62,22 @@ float TouchMenuScale_size();
 // XonoticListBox_resizeNotify: an item height (relative to the list) at least
 // TOUCH_MENU_LISTROW_DP tall.
 float TouchMenuScale_listItemHeight(float itemHeight, vector absSize);
+
+// Drawn sizes of the small controls on a touch device, in dp before
+// menu_touch_size. Their finger targets are the whole 48 dp row already;
+// these are what the eye has to find.
+const float TOUCH_MENU_BOX_DP = 30;     // checkbox and radio button (the picture has a margin: about 26 dp seen)
+const float TOUCH_MENU_THUMB_DP = 30;   // slider thumb
+const float TOUCH_MENU_TRACK_DP = 6;    // slider track
+const float TOUCH_MENU_SCROLLBAR_DP = 32;
+
+// Button_draw (item/button.qc), for a button that draws its picture as a
+// box beside its text (a checkbox, a radio button): on a touch device the
+// box TOUCH_MENU_BOX_DP square, with a filled backing when it is checked;
+// returns the box's size, and its origin in touch_menu_box_origin.
+vector touch_menu_box_origin;
+vector TouchMenuSkin_box(entity me, vector stockSize);
+// Slider_draw (item/slider.qc): on a touch device draws a thick track with
+// the chosen part filled and a round thumb, and returns true; the stock
+// pictures are then drawn invisible.
+bool TouchMenuSkin_slider(entity me);

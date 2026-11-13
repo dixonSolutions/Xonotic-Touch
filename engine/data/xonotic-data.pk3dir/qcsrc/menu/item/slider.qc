@@ -1,4 +1,5 @@
 #include "slider.qh"
+#include <menu/xonotic/touch_menu_scale.qh> // Touch
 
 #include "../anim/easing.qh"
 #include "../anim/animhost.qh"
@@ -258,6 +259,7 @@ string formatStringSpecial(string formatStr, float value, int decs)
 		me.focusable = !me.disabled;
 		save = draw_alpha;
 		if (me.disabled) draw_alpha *= me.disabledAlpha;
+		if (TouchMenuSkin_slider(me)) draw_alpha = 0; // Touch: a thick track and a round thumb drawn instead, touch_menu_scale.qc
 		draw_ButtonPicture('0 0 0', strcat(me.src, "_s"), eX * (1 - me.valueSpace) + eY, me.color2, 1);
 		if (me.valueMax > me.valueMin) // valid?
 		if (almost_in_bounds(me.valueMin, me.sliderValue, me.valueMax))

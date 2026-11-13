@@ -10,6 +10,7 @@
 #include "dialog_touch_asset_fetch.qh"
 #include "dialog_touch_gamemenu.qh"
 #include "dialog_touch_lan.qh" // Touch: LAN games
+#include "dialog_touch_mods.qh" // Touch: Mods manager
 #include "dialog_hudsetup_exit.qh"
 #include "dialog_hudpanel_notification.qh"
 #include "dialog_hudpanel_ammo.qh"
@@ -354,6 +355,7 @@ void MainWindow_configureMainWindow(entity me)
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z * SKINALPHA_DIALOG_SANDBOXTOOLS);
 
 	TouchLan_ConfigureDialogs(me); // Touch: LAN host screen and password prompt
+	TouchMods_ConfigureDialogs(me); // Touch: the Mods manager's sheet
 
 	MUTATOR_CALLHOOK(ConfigureDialogs, me);
 

@@ -1307,14 +1307,43 @@ static void tlua_pkg_begin(tlua_realm_t *r, const char *arg, const char *pinarg)
 // Writing it: <realm>/.install.tmp/, then renamed into place
 
 #ifndef _WIN32
+// whether the last tlua_rmtree with keepdata found a data/ worth keeping
+static qbool tlua_rmtree_kept;
+
+// is <fd>/<name> a real folder (not a symlink) with something in it
+static qbool tlua_dir_has_entries(int fd, const char *name)
+{
+	int dfd = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+	DIR *d;
+	struct dirent *ent;
+	qbool any = false;
+	if (dfd < 0)
+		return false;
+	if (!(d = fdopendir(dfd)))
+	{
+		close(dfd);
+		return false;
+	}
+	while ((ent = readdir(d)))
+		if (strcmp(ent->d_name, ".") && strcmp(ent->d_name, ".."))
+		{
+			any = true;
+			break;
+		}
+	closedir(d);
+	return any;
+}
+
 // removes a folder below parentfd without following any symlink in it;
-// keepdata keeps its top-level data/ (and so the folder itself)
+// keepdata keeps its top-level data/ (and so the folder itself) when there
+// is anything in it: a mod that never saved anything leaves no empty folder
 static qbool tlua_rmtree(int parentfd, const char *name, int depth, qbool keepdata)
 {
 	int fd;
 	DIR *d;
 	struct dirent *ent;
 	qbool ok = true;
+	qbool kept = false;
 	if (depth > 16)
 		return false;
 	fd = openat(parentfd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
@@ -1335,8 +1364,11 @@ static qbool tlua_rmtree(int parentfd, const char *name, int depth, qbool keepda
 		struct stat st;
 		if (!strcmp(ent->d_name, ".") || !strcmp(ent->d_name, ".."))
 			continue;
-		if (keepdata && depth == 0 && !strcmp(ent->d_name, "data"))
+		if (keepdata && depth == 0 && !strcmp(ent->d_name, "data") && tlua_dir_has_entries(dirfd(d), ent->d_name))
+		{
+			kept = true;
 			continue;
+		}
 		if (fstatat(dirfd(d), ent->d_name, &st, AT_SYMLINK_NOFOLLOW))
 		{
 			ok = false;
@@ -1348,7 +1380,9 @@ static qbool tlua_rmtree(int parentfd, const char *name, int depth, qbool keepda
 			ok = false;
 	}
 	closedir(d);
-	if (!keepdata && unlinkat(parentfd, name, AT_REMOVEDIR))
+	if (depth == 0)
+		tlua_rmtree_kept = kept;
+	if (!kept && unlinkat(parentfd, name, AT_REMOVEDIR))
 		ok = false;
 	return ok;
 }
@@ -1642,6 +1676,10 @@ static void tlua_uninstall_f(cmd_state_t *cmd)
 	TLua_Pkg_Forget(r, name);
 	TLua_Rescan(r);
 	TLua_Hooks_Changed();
+#ifndef _WIN32
+	if (keepdata && !tlua_rmtree_kept)
+		keepdata = false; // it had no saved data: nothing was kept, not even an empty folder
+#endif
 	TLua_Say("^2Lua:^7 uninstalled %s %s%s", r->kind, name, keepdata ? " (kept its data/ folder)" : " (its code, data, grants and source record are gone)");
 }
 
