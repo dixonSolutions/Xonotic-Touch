@@ -223,7 +223,10 @@ void TouchShell_Draw(void)
 static qbool hit(float vx, float vy)
 {
 	float grow = bs * 0.20f;
-	return drawn && vx >= bx - grow && vx <= bx + bs + grow && vy >= by - grow && vy <= by + bs + grow;
+	// In the menu nothing grows above the button: full-height dialogs
+	// (Multiplayer, Credits) have their close X just over it, in the corner.
+	float top = (key_dest == key_menu && !console_open()) ? by : by - grow;
+	return drawn && vx >= bx - grow && vx <= bx + bs + grow && vy >= top && vy <= by + bs + grow;
 }
 
 static void toggle(void)

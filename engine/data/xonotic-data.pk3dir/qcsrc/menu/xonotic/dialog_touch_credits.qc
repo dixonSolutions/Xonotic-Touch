@@ -134,9 +134,9 @@ void GodnoticCreditsDialog_fill(entity me)
 	me.TR(me);
 		me.TD(me, 3, me.columns, e = makeXonoticImage("/gfx/xonotic_logo", 3));
 	me.gotoRC(me, 3.2, 0);
-		me.TD(me, 1.5, 1, e = makeXonoticCommandButton_T(_("GitHub"), '0 0 0', strcat("openurl ", GODNOTIC_GITHUB_URL), 0,
+		me.TD(me, 1.5, 1, e = makeXonoticCommandButton_T(_("GitHub"), '0 0 0', strzone(strcat("openurl ", GODNOTIC_GITHUB_URL)), 0, // strzone: a temp string is gone by the tap
 			_("Open github.com/dixonSolutions/Godnotic in the browser")));
-		me.TD(me, 1.5, 1, e = makeXonoticCommandButton_T(_("Licence"), '0 0 0', strcat("openurl ", GODNOTIC_GITHUB_URL, "/blob/main/LICENSE"), 0,
+		me.TD(me, 1.5, 1, e = makeXonoticCommandButton_T(_("Licence"), '0 0 0', strzone(strcat("openurl ", GODNOTIC_GITHUB_URL, "/blob/main/LICENSE")), 0,
 			_("Open the GPL-3.0 licence text on GitHub")));
 		me.TD(me, 1.5, 1, e = makeXonoticButton_T(_("Terms of service"), '0 0 0',
 			_("Xonotic's terms of service, which govern XonStat (stats.xonotic.org)")));
