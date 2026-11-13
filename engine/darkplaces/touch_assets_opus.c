@@ -22,6 +22,12 @@
 #include "snd_wav.h"
 #include "touch_assets.h"
 
+// The web build links libopus and libopusfile statically (scripts/build-web.sh
+// builds them with emcc): WebAssembly has no dlopen.
+#if defined(__EMSCRIPTEN__) && defined(XT_WEB_OPUSFILE) && !defined(LINK_TO_LIBOPUSFILE)
+#define LINK_TO_LIBOPUSFILE
+#endif
+
 #ifdef LINK_TO_LIBOPUSFILE
 #include <opus/opusfile.h>
 #define qop_open_memory op_open_memory

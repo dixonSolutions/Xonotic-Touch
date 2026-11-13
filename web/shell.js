@@ -117,6 +117,7 @@
     const info = {
       renderer: String(renderer),
       s3tc: !!gl.getExtension('WEBGL_compressed_texture_s3tc'),
+      astc: !!gl.getExtension('WEBGL_compressed_texture_astc'),
       maxTexture: gl.getParameter(gl.MAX_TEXTURE_SIZE),
       software: /swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic/i.test(String(renderer)),
     };
@@ -332,7 +333,10 @@
       wakeLock();
     }
   });
-  window.addEventListener('pagehide', () => { if (state.started) saveNow(); });
+  window.addEventListener('pagehide', () => {
+    if (state.started) saveNow();
+    if (state.lazy) remember(XTLazyFS.takeTouched());
+  });
   // Save on the way out, but never ask "Leave site?": settings and layouts
   // are already in IndexedDB, and the prompt fired on every reload.
   window.addEventListener('beforeunload', () => { if (state.started) saveNow(); });
@@ -381,30 +385,33 @@
   // ------------------------------------------------------------- data
 
   // Where the game data lives: ?data=URL, else the page's build config
-  // (XT_WEB_DATA_URL in scripts/build-web.sh), else ./data/. The manifest is
-  // the one the page was built with (scripts/stage-web-data.sh), named by its
-  // own hash, so a warm start reads it from storage and asks the network
-  // nothing. A page without one (served from web/, or the release zip) asks
-  // data/manifest.json which one is current.
+  // (XT_WEB_DATA_URL in scripts/build-web.sh), else ./data/. The profiles
+  // and their manifests are the ones the page was built with
+  // (scripts/stage-web-data.sh), manifests named by their own hash, so a
+  // warm start reads them from storage and asks the network nothing. A page
+  // without them (served from web/, or the release zip) asks
+  // data/profiles.json, then data/manifest.json.
   const dataBase = new URL(params.get('data') || CONFIG.dataUrl || 'data/', location.href);
   const SMALL_UPDATE = 50e6;
   const manifestId = (p) => (/([0-9a-f]{8,64})\.json$/.exec(p || '') || [])[1];
 
-  // A no-cache pointer ({manifest: "m/<id>.json"}). Offline, the last one
-  // seen will do.
+  // A no-cache pointer file (profiles.json, stock.json, manifest.json).
+  // Offline, the last one seen will do.
   async function pointer(base, name) {
     const url = new URL(name, base);
-    const remember = 'pointer:' + url.href;
+    const remember = 'pointer-json:' + url.href;
     try {
       const res = await fetch(url, { cache: 'no-cache' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const j = await res.json();
-      if (!j.manifest) throw new Error('the data there is from an older release');
-      store.set(remember, j.manifest);
-      return j.manifest;
+      if (!j.manifest && !j.profiles) throw new Error('the data there is from an older release');
+      store.set(remember, JSON.stringify(j));
+      return j;
     } catch (e) {
-      const last = store.get(remember, '');
-      if (last) return last;
+      try { const last = JSON.parse(store.get(remember, '') || 'null'); if (last) return last; } catch (e2) { /* none */ }
+      // Pages before profiles remembered just the manifest name.
+      const old = store.get('pointer:' + url.href, '');
+      if (old) return { manifest: old };
       throw new Error(`The game data is not available right now (${url.host}: ${e.message}). Try again later.`);
     }
   }
@@ -432,36 +439,118 @@
     return { id, m: JSON.parse(text) };
   }
 
-  // A shell copy of the page (GitHub Pages) carries only this fork's own
-  // files and names a "stock" host for the stock Xonotic pk3s, the way the
-  // apps carry the game code and download the rest on first launch. That
-  // host's stock.json says which stock manifest is current, so it can move
-  // to newer data without the shell being republished.
-  async function loadManifest() {
-    const path = params.get('manifest') || CONFIG.manifest || await pointer(dataBase, 'manifest.json');
-    const main = await getManifest(dataBase, path);
+  // Profiles: one data set per kind of browser (docs/WEB.md, "Profiles"):
+  //   web    DXT textures, every GPU (desktops have S3TC)
+  //   astc   the slim phone set, for GPUs with WEBGL_compressed_texture_astc
+  //   full   the stock pk3s whole, as pages before maps on demand stored
+  //          them: kept while every chunk of it is in this browser, so a
+  //          returning visitor downloads nothing ("keep")
+  // Returns {default, profiles: {name: {manifest, gpu?, keep?}}}.
+  async function listProfiles() {
+    if (params.get('manifest')) return { default: 'web', profiles: { web: { manifest: params.get('manifest') } } };
+    if (CONFIG.profiles && CONFIG.profiles.profiles && !params.get('data')) return CONFIG.profiles;
+    if (CONFIG.manifest && !params.get('data')) return { default: 'web', profiles: { web: { manifest: CONFIG.manifest } } };
+    let j;
+    try { j = await pointer(dataBase, 'profiles.json'); } catch (e) { j = await pointer(dataBase, 'manifest.json'); }
+    return j.profiles ? j : { default: 'web', profiles: { web: { manifest: j.manifest } } };
+  }
+
+  /**
+   * One profile's files. A shell copy of the page (GitHub Pages) carries only
+   * this fork's own files and names a "stock" host for the stock pk3s, the
+   * way the apps carry the game code and download the rest on first launch;
+   * that host's stock.json lists its profiles' stock manifests, so it can
+   * move to newer data without the shell being republished.
+   */
+  async function loadProfile(name, spec) {
+    const main = await getManifest(dataBase, spec.manifest);
     const ids = [main.id];
     const files = main.m.files.map((f) => Object.assign({}, f, { base: dataBase.href }));
+    let defaultMap = main.m.defaultMap || '';
     if (main.m.stock) {
       const stockBase = new URL(params.get('stock') || main.m.stock, dataBase);
-      const stock = await getManifest(stockBase, await pointer(stockBase, 'stock.json'));
+      const j = await pointer(stockBase, 'stock.json');
+      const sp = (j.profiles && j.profiles[name]) || { manifest: j.manifest };
+      const stock = await getManifest(stockBase, sp.manifest);
       ids.push(stock.id);
+      defaultMap = defaultMap || stock.m.defaultMap || '';
       const have = new Set(files.map((f) => f.name));
       for (const f of stock.m.files) if (!have.has(f.name)) files.push(Object.assign({}, f, { base: stockBase.href }));
     }
     if (main.m.chunk) data.chunk = main.m.chunk;
-    return { ids, files };
+    return { name, ids, files, defaultMap, keep: !!spec.keep };
+  }
+
+  // The stock host's profiles, for a shell (its own config lists only its
+  // own manifest): the same names, each with the shell's own files.
+  async function shellProfiles(list) {
+    // The manifest this browser has used (stored: no request), else the default.
+    const first = list.profiles[store.get('profile', '')] || list.profiles[list.default] || Object.values(list.profiles)[0];
+    const main = await getManifest(dataBase, first.manifest);
+    if (!main.m.stock) return list;
+    const stockBase = new URL(params.get('stock') || main.m.stock, dataBase);
+    const j = await pointer(stockBase, 'stock.json');
+    if (!j.profiles) return list;
+    const out = { default: j.default || 'web', profiles: {} };
+    for (const [n, sp] of Object.entries(j.profiles)) out.profiles[n] = Object.assign({}, sp, { manifest: first.manifest });
+    return out;
+  }
+
+  const PROFILE_LABEL = {
+    web: 'Standard (for every graphics chip)',
+    astc: 'Light (ASTC textures, Opus music: phones, tablets, Apple)',
+    full: 'Full download (as stored before maps on demand)',
+  };
+
+  /**
+   * Which profile this browser uses: ?profile=, the one chosen before (while
+   * it is still offered and, for a "keep" profile, still whole), a returning
+   * visitor's full set when every chunk of it is here (older layouts adopted
+   * first), else by GPU.
+   */
+  async function chooseProfile(list, gpu) {
+    const offered = list.profiles;
+    const forced = params.get('profile');
+    if (forced && offered[forced]) return forced;
+    // A "keep" profile stays while none of its unhosted chunks is missing
+    // (its hosted ones, new game code say, download as usual).
+    const keepWhole = async (name) => {
+      const p = await loadProfile(name, offered[name]);
+      const need = p.files.filter((f) => f.group === 'core');
+      const lacking = async () => (await data.missing(need)).some((c) => c.file.hosted === false);
+      if (!(await lacking())) return true;
+      // Older layouts (whole files, Cache API parts): adopt, then look again.
+      try {
+        if (await data.adopt(need, (n, total) => status('Moving downloaded data to the new storage layout…', `${mbPair(n, total)} checked`))) {
+          return !(await lacking());
+        }
+      } catch (e) { console.warn('Adopting older downloads failed:', e); }
+      return false;
+    };
+    const saved = store.get('profile', '');
+    if (saved && offered[saved]) {
+      if (!offered[saved].keep || await keepWhole(saved)) return saved;
+    }
+    for (const [name, spec] of Object.entries(offered)) {
+      if (spec.keep && (await data.anything()) && await keepWhole(name)) return name;
+    }
+    if (offered.astc && gpu && gpu.astc) return 'astc';
+    return offered[list.default] ? list.default : Object.keys(offered)[0];
   }
 
   const blobUrl = (c) => new URL(`blobs/${c.h}.bin`, c.file.base || dataBase).href;
   const sum = (list) => list.reduce((n, c) => n + c.size, 0);
   const fmtTime = (s) => s > 5400 ? `${Math.round(s / 3600)} h` : s > 90 ? `${Math.round(s / 60)} min` : `${Math.max(1, Math.round(s))} s`;
+  const hosted = (list) => list.filter((c) => c.file.hosted !== false);
 
   // Download the given chunks with the progress panel: percent, "x / y MB ·
   // speed · time left", Pause / Resume and Cancel. Pause and Cancel keep
   // what has arrived (whole chunks, and 4 MiB pieces of the rest). Resolves
-  // when all are stored; rejects with AbortError on Cancel.
-  function runDownload(list, label) {
+  // when all are stored; rejects with AbortError on Cancel. ui: the element
+  // ids (the start-up panel, or the in-game map panel).
+  const MAIN_UI = { panel: 'xt-progress', percent: 'xt-percent', fill: 'xt-bar-fill', bar: 'xt-bar', detail: 'xt-progress-detail',
+    live: 'xt-progress-live', label: 'xt-progress-label', pause: 'xt-dl-pause', cancel: 'xt-dl-cancel' };
+  function runDownload(list, label, ui = MAIN_UI) {
     const total = sum(list);
     const got = new Map();
     let paused = false;
@@ -471,6 +560,7 @@
     const samples = [];
     let lastPaint = 0;
     let lastSaid = -1;
+    const el = (k) => ui[k] && $(ui[k]);
     const bytes = () => { let n = 0; for (const v of got.values()) n += v; return n; };
     const paint = (force) => {
       const now = performance.now();
@@ -482,48 +572,56 @@
       const [t0, b0] = samples[0];
       const rate = now - t0 > 500 ? Math.max(0, all - b0) / ((now - t0) / 1000) : 0;
       const pct = total ? Math.min(100, 100 * all / total) : 100;
-      $('xt-percent').textContent = Math.floor(pct) + '%';
-      $('xt-bar-fill').style.width = pct.toFixed(1) + '%';
-      $('xt-bar').setAttribute('aria-valuenow', pct.toFixed(0));
-      $('xt-bar').setAttribute('aria-valuetext', `${Math.floor(pct)}%, ${mbPair(all, total)}`);
+      if (el('percent')) el('percent').textContent = Math.floor(pct) + '%';
+      el('fill').style.width = pct.toFixed(1) + '%';
+      el('bar').setAttribute('aria-valuenow', pct.toFixed(0));
+      el('bar').setAttribute('aria-valuetext', `${Math.floor(pct)}%, ${mbPair(all, total)}`);
       if (paused) {
-        $('xt-progress-detail').textContent = `Stopped at ${mbPair(all, total)}. Resume carries on from there.`;
+        el('detail').textContent = `Stopped at ${mbPair(all, total)}. Resume carries on from there.`;
       } else {
-        $('xt-progress-detail').textContent = `${mbPair(all, total)}` +
+        el('detail').textContent = `${mbPair(all, total)}` +
           (rate > 0 ? ` · ${(rate / 1e6).toFixed(1)} MB/s · ${fmtTime((total - all) / rate)} left` : '');
       }
       // Screen readers: every 10%, not every repaint.
       const step = Math.floor(pct / 10);
-      if (step !== lastSaid) { lastSaid = step; $('xt-progress-live').textContent = `${step * 10}% downloaded`; }
+      if (step !== lastSaid && el('live')) { lastSaid = step; el('live').textContent = `${step * 10}% downloaded`; }
     };
     const setPaused = (on) => {
       paused = on;
-      $('xt-progress').classList.toggle('xt-paused', on);
-      $('xt-progress-label').textContent = on ? 'Paused' : label;
-      $('xt-dl-pause').textContent = on ? 'Resume' : 'Pause';
+      el('panel').classList.toggle('xt-paused', on);
+      el('label').textContent = on ? 'Paused' : label;
+      if (el('pause')) el('pause').textContent = on ? 'Resume' : 'Pause';
       paint(true);
     };
-    $('xt-dl-pause').onclick = () => {
-      if (!paused) { setPaused(true); if (controller) controller.abort(); } else { setPaused(false); if (wake) wake(); }
-    };
-    $('xt-dl-cancel').onclick = () => {
+    if (el('pause')) {
+      el('pause').onclick = () => {
+        if (!paused) { setPaused(true); if (controller) controller.abort(); } else { setPaused(false); if (wake) wake(); }
+      };
+    }
+    el('cancel').onclick = () => {
       cancelled = true;
-      $('xt-dl-cancel').textContent = 'Cancelling…';
+      el('cancel').textContent = 'Cancelling…';
       if (controller) controller.abort();
       if (wake) wake();
     };
-    state.downloading = true;
-    $('xt-verify').disabled = true;
-    $('xt-dl-cancel').textContent = 'Cancel';
+    const main = ui === MAIN_UI;
+    if (main) {
+      state.downloading = true;
+      $('xt-verify').disabled = true;
+      show('xt-progress');
+    } else {
+      el('panel').hidden = false;
+    }
+    el('cancel').textContent = 'Cancel';
     setPaused(false);
-    show('xt-progress');
-    $('xt-dl-pause').focus({ preventScroll: true });
+    if (el('pause')) el('pause').focus({ preventScroll: true });
     return (async () => {
       try {
         let todo = list;
         for (;;) {
           controller = new AbortController();
-          state.downloadController = controller;
+          if (main) state.downloadController = controller;
+          else state.mapController = controller;
           try {
             await data.download(todo, {
               urlFor: blobUrl,
@@ -545,9 +643,14 @@
           }
         }
       } finally {
-        state.downloading = false;
-        state.downloadController = null;
-        $('xt-verify').disabled = false;
+        if (main) {
+          state.downloading = false;
+          state.downloadController = null;
+          $('xt-verify').disabled = false;
+        } else {
+          state.mapController = null;
+          el('panel').hidden = true;
+        }
       }
     })();
   }
@@ -566,24 +669,286 @@
     }
   }
 
-  // Into the engine's in-memory filesystem. This is the slow part of a
-  // warm start: every pk3 is read from storage into the JS heap (docs/WEB.md,
-  // "Start-up time"). canOwn: MEMFS keeps this buffer as the file.
-  async function mountData(files) {
+  // ------------------------------------------------- mounting the data
+  //
+  // Lazy (docs/WEB.md, "Memory"): every stored file becomes a file whose
+  // reads come from the browser's storage (web/lazyfs.js): nothing is
+  // copied at start-up, and a map's pack costs nothing until the engine
+  // reads it. Where the browser cannot do that (probe), the old way: the
+  // files are copied into the JS heap, and only the core, the music and the
+  // one map being played are mounted.
+  const mounts = new Map(); // engine path -> manifest file
+  const enginePaths = new Set(); // mounted paths the engine has scanned (fs_rescan)
+  const pathOf = (f) => `${BASEDIR}/${f.path}`;
+
+  async function chunkBlobs(f) {
+    const blobs = [];
+    for (const c of data.chunks(f)) {
+      const b = await data.be.blob('c-' + c.h).catch(() => null);
+      if (!b || b.size !== c.size) {
+        await data.be.remove('c-' + c.h);
+        throw new Error(`${f.name} is incomplete in the browser's storage. Reload to download the missing part again.`);
+      }
+      blobs.push(b);
+    }
+    return blobs;
+  }
+
+  async function mount(f) {
+    const path = pathOf(f);
+    if (mounts.has(path)) return;
     const FS = Module.FS;
-    const total = files.reduce((n, f) => n + f.size, 0);
-    let done = 0;
+    if (state.lazy) {
+      XTLazyFS.create(FS, path, f.size, await chunkBlobs(f), data.chunk);
+    } else {
+      const buf = await data.read(f);
+      mkdirs(FS, path);
+      FS.writeFile(path, buf, { canOwn: true });
+    }
+    mounts.set(path, f);
+  }
+
+  function unmount(f) {
+    const path = pathOf(f);
+    if (!mounts.has(path)) return;
+    if (state.lazy) XTLazyFS.remove(Module.FS, path);
+    else try { Module.FS.unlink(path); } catch (e) { /* gone */ }
+    mounts.delete(path);
+    enginePaths.delete(path);
+  }
+
+  async function mountData(files) {
     let i = 0;
     for (const f of files) {
       i++;
-      status('Loading game data…', `${mbPair(done, total)} · file ${i} of ${files.length}`);
-      const buf = await data.read(f);
-      const path = `${BASEDIR}/${f.path}`;
-      mkdirs(FS, path);
-      FS.writeFile(path, buf, { canOwn: true });
-      done += f.size;
+      if (!state.lazy) status('Loading game data…', `file ${i} of ${files.length}`);
+      await mount(f);
+      enginePaths.add(pathOf(f));
     }
   }
+
+  async function decideLazy() {
+    if (params.get('lazy') === '0' || typeof XTLazyFS === 'undefined') return false;
+    const f = state.files.find((x) => x.group === 'core' && x.size >= 1024);
+    if (!f) return false;
+    try {
+      const b = await data.be.blob('c-' + f.chunks[0]);
+      return await XTLazyFS.probe(b);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ---------------------------------------------- maps on demand
+  //
+  // The engine asks before every "map" or "changelevel" (sys_wasm.c,
+  // js_NeedMap). 1: go ahead. 0: the page fetches and mounts the map's pack
+  // with a progress panel, then runs "fs_rescan" and the same command again.
+  const maps = {
+    byName: new Map(), // map name -> manifest file of its pack
+    pending: null, // {name, line}: the command waiting for its pack
+    current: '',
+    bgOn: false,
+    bgPaused: false,
+    bgController: null,
+    bgDone: false,
+  };
+  const normMap = (s) => String(s || '').toLowerCase().replace(/^maps\//, '').replace(/\.bsp$/, '');
+
+  function needMap(raw, line) {
+    const name = normMap(raw);
+    const f = maps.byName.get(name);
+    const here = !f || (enginePaths.has(pathOf(f)) && !state.rescanPending);
+    if (here && (!state.lazy || maps.warmed === line)) {
+      maps.warmed = '';
+      maps.current = name;
+      startBackground();
+      settleLater();
+      return 1;
+    }
+    const first = !maps.pending;
+    maps.pending = { name, line, f };
+    if (first) fetchMap().catch((e) => { maps.pending = null; toast(e.message || String(e), 8000); });
+    return 0;
+  }
+
+  async function fetchMap() {
+    while (maps.pending) {
+      const { name, line, f } = maps.pending;
+      const missing = f ? hosted(await data.missing([f])) : [];
+      if (missing.length) {
+        pauseBackground(true);
+        $('xt-map-title').textContent = `Downloading ${name}`;
+        if (document.pointerLockElement) document.exitPointerLock();
+        try {
+          await runDownload(missing, `Downloading the map ${name}…`, MAP_UI);
+        } catch (e) {
+          if (maps.pending && maps.pending.name !== name) continue; // another map was asked for meanwhile
+          maps.pending = null;
+          pauseBackground(false);
+          if (e && e.name === 'AbortError') { toast(`${name}: download cancelled.`); return; }
+          throw new Error(`Could not download the map ${name}: ${e.message || e}`);
+        }
+        pauseBackground(false);
+      }
+      if (maps.pending && maps.pending.name !== name) continue;
+      if (f && !state.lazy) {
+        // In memory: one map pack at a time.
+        for (const g of maps.byName.values()) if (g !== f) unmount(g);
+      }
+      if (f) await mount(f);
+      await warm(f);
+      if (maps.pending && maps.pending.name !== name) continue;
+      maps.pending = null;
+      maps.warmed = line;
+      if (f && (!enginePaths.has(pathOf(f)) || state.rescanPending)) rescanAnd(line);
+      else Module.ccall('xt_web_command', null, ['string'], [line]);
+      return;
+    }
+  }
+
+  // ---------------------------------------------- warming the read cache
+  //
+  // Lazy reads are synchronous and cost about 10 ms per MiB; reading the
+  // same bytes ahead of time, asynchronously, costs a tenth of that. So the
+  // page remembers which 1 MiB blocks the engine read during start-up and map
+  // loads (per profile, in localStorage), reads those and the map's own pack
+  // into the cache before the engine starts or loads a map, and shrinks the
+  // cache again once the load is over.
+  // How much may be read ahead: phones get less.
+  const lowMemory = (navigator.deviceMemory && navigator.deviceMemory <= 4) || touchOnly;
+  const AHEAD_MAX = (lowMemory ? 160 : 384) * 1048576;
+  const IDLE_CACHE = 16 * 1048576;
+  const hotKey = () => 'hot:' + state.profile;
+  function hotList() { try { return JSON.parse(store.get(hotKey(), '{}')) || {}; } catch (e) { return {}; } }
+  function remember(touched) {
+    const hot = hotList();
+    for (const [p, ks] of Object.entries(touched)) {
+      const f = mounts.get(p);
+      if (!f || f.group === 'map') continue; // a map's pack is read whole before its load
+      hot[p] = [...new Set([...(hot[p] || []), ...ks])].sort((a, b) => a - b);
+    }
+    for (const p of Object.keys(hot)) if (!mounts.has(p)) delete hot[p]; // files of older releases
+    store.set(hotKey(), JSON.stringify(hot));
+  }
+  // Read ahead, most wanted first: the blocks earlier loads read, the map's
+  // own pack, then the rest of the core files, up to AHEAD_MAX.
+  async function warm(mapFile) {
+    if (!state.lazy) return;
+    remember(XTLazyFS.takeTouched()); // what the last load read
+    const order = [];
+    const all = (path, size) => { for (let k = 0; k * XTLazyFS.BLOCK < size; k++) order.push([path, k]); };
+    for (const [p, ks] of Object.entries(hotList())) for (const k of ks) order.push([p, k]);
+    const known = order.length;
+    if (mapFile) all(pathOf(mapFile), mapFile.size);
+    const withMap = order.length;
+    for (const [p, f] of mounts) if (f.group === 'core') all(p, f.size);
+    // Once earlier loads have shown what gets read, that and a margin will
+    // do; before that, as much of the core as the budget allows.
+    const max = known ? Math.min(AHEAD_MAX, (withMap + 32) * XTLazyFS.BLOCK) : AHEAD_MAX;
+    try { await XTLazyFS.prefetch(order, max); } catch (e) { console.warn('Read-ahead failed:', e); }
+  }
+  let settleTimer = 0;
+  function settleLater() {
+    if (!state.lazy) return;
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => { remember(XTLazyFS.takeTouched()); XTLazyFS.trim(IDLE_CACHE); }, 15000);
+  }
+
+  // Let the engine see every mounted file, then run `line`.
+  function rescanAnd(line) {
+    for (const p of mounts.keys()) enginePaths.add(p);
+    state.rescanPending = false;
+    Module.ccall('xt_web_command', null, ['string'], [`fs_rescan\n${line || ''}`]);
+  }
+
+  // ---------------------------------------------- background download
+  //
+  // After the first match starts, the rest (every other map, the textures
+  // no map uses, and the music if wanted) downloads one chunk at a time, if
+  // "Download all maps" is on. It stops for a map the player asks for, and
+  // for Pause (Settings, or "web_maps pause" in the console). In lazy mode
+  // what arrives is mounted at once and seen by the engine at the next map
+  // change.
+  const wantMusic = () => store.get('music', navigator.connection && navigator.connection.saveData ? '0' : '1') === '1';
+  const bgDefault = () => {
+    const c = navigator.connection;
+    return c && (c.saveData || c.type === 'cellular') ? '0' : '1';
+  };
+  const wantAllMaps = () => (params.get('allmaps') || store.get('allmaps', bgDefault())) === '1';
+  const backgroundFiles = () => (state.files || []).filter((f) => f.hosted !== false &&
+    (f.group === 'map' || f.group === 'extra' || (f.group === 'music' && wantMusic())));
+
+  function startBackground(force) {
+    if (!state.started || maps.bgOn || maps.bgDone) return;
+    if (!force && !wantAllMaps()) return;
+    maps.bgOn = true;
+    maps.bgPaused = false;
+    backgroundLoop().catch((e) => { console.warn('Background download stopped:', e); maps.bgOn = false; });
+  }
+
+  async function backgroundLoop() {
+    const files = backgroundFiles();
+    for (const f of files) {
+      while (maps.bgPaused || maps.pending) {
+        if (!maps.bgOn) return;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      if (!maps.bgOn) return;
+      const missing = hosted(await data.missing([f]));
+      if (missing.length) {
+        maps.bgController = new AbortController();
+        try {
+          await data.download(missing, { urlFor: blobUrl, signal: maps.bgController.signal, onBytes() {}, concurrency: 1 });
+        } catch (e) {
+          if (e && e.name === 'AbortError') { files.push(f); continue; } // paused: this file again later
+          throw e;
+        } finally {
+          maps.bgController = null;
+        }
+      }
+      if (state.lazy && (f.group !== 'music' || wantMusic())) {
+        await mount(f);
+        state.rescanPending = true;
+      }
+    }
+    maps.bgOn = false;
+    maps.bgDone = true;
+    if (state.started) toast('Every map is downloaded.');
+    refreshDataPanel();
+  }
+
+  function pauseBackground(on) {
+    maps.bgPaused = on;
+    if (on && maps.bgController) maps.bgController.abort();
+  }
+
+  async function backgroundStatus() {
+    const files = backgroundFiles();
+    const missing = hosted(await data.missing(files));
+    const total = files.reduce((n, f) => n + f.size, 0);
+    return { total, left: sum(missing), running: maps.bgOn && !maps.bgPaused, paused: maps.bgOn && maps.bgPaused };
+  }
+
+  async function refreshDataPanel() {
+    if (!data || !state.files) return;
+    const s = await backgroundStatus();
+    $('xt-allmaps').checked = wantAllMaps();
+    $('xt-allmaps-text').textContent = s.left
+      ? `${mb(s.left)} of other maps${wantMusic() ? ' and music' : ''} not downloaded yet` + (s.running ? ' (downloading now).' : s.paused ? ' (paused).' : '.')
+      : 'Every map is downloaded.';
+    $('xt-allmaps-now').hidden = !s.left;
+    $('xt-allmaps-now').textContent = s.running ? 'Pause' : 'Download all maps now';
+  }
+
+  // The engine's console command "web_maps pause|resume|status" (sys_wasm.c).
+  function mapsCommand(arg) {
+    if (arg === 'pause') { pauseBackground(true); return 'background map download paused'; }
+    if (arg === 'resume') { if (maps.bgOn) pauseBackground(false); else startBackground(true); return 'background map download on'; }
+    backgroundStatus().then((s) => toast(`Maps: ${mb(s.total - s.left)} of ${mb(s.total)} downloaded` + (s.running ? ', downloading.' : s.paused ? ', paused.' : '.')));
+    return '';
+  }
+  const MAP_UI = { panel: 'xt-map', fill: 'xt-map-fill', bar: 'xt-map-bar', detail: 'xt-map-detail', label: 'xt-map-label', cancel: 'xt-map-cancel' };
 
   function mountUserdir() {
     const FS = Module.FS;
@@ -682,7 +1047,7 @@
     // at end of file.
     stdin: () => null,
     xt: {
-      renderSize, setFullscreen, mouseGrab, screenKeyboard, quit,
+      renderSize, setFullscreen, mouseGrab, screenKeyboard, quit, needMap, mapsCommand,
       syncFS: () => syncFS(false),
       fatal(title, text) {
         state.aborted = true;
@@ -700,12 +1065,14 @@
     },
     print(text) {
       if (LOGSINK) sink(text);
+      state.logLines = (state.logLines || 0) + 1;
       logTail.push(text);
       if (logTail.length > 200) logTail.shift();
       if (DEBUG) console.log(text);
     },
     printErr(text) {
       if (LOGSINK) sink('[err] ' + text);
+      state.logLines = (state.logLines || 0) + 1;
       logTail.push(text);
       if (logTail.length > 200) logTail.shift();
       console.warn(text);
@@ -795,6 +1162,7 @@
     state.started = true;
     checkRotate();
     wakeLock();
+    await state.warming;
     try {
       Module.callMain(engineArgs(fullscreen));
     } catch (e) {
@@ -804,6 +1172,9 @@
         return;
       }
     }
+    // Normally done by the engine's startup command buffer (sys_wasm.c).
+    try { Module._xt_web_hook_maps(); } catch (e) { /* older engine */ }
+    settleLater();
     refit();
     resumeAudio();
     setInterval(autosave, 250);
@@ -822,12 +1193,14 @@
     if (!gpu) return fail('This browser has no WebGL 2, which the game needs to draw. Update the browser, or turn on hardware acceleration in its settings.');
     if (!window.isSecureContext && !('caches' in window)) return fail('This page needs a secure connection (https or localhost) to store the game data.');
     if (!window.crypto || !crypto.subtle) return fail('This page needs a secure connection (https or localhost) to check the game data.');
+    state.gpu = gpu;
 
     // The engine downloads and compiles while storage is checked (the page
     // preloads it from <head>).
     loadEngine();
 
-    const diag = [`GPU: ${gpu.renderer || 'unknown'}`, gpu.s3tc ? 'compressed textures: yes' : 'compressed textures: no (decoded in software)'];
+    const diag = [`GPU: ${gpu.renderer || 'unknown'}`, gpu.s3tc ? 'compressed textures: S3TC' : 'compressed textures: no S3TC (decoded in software)'];
+    if (gpu.astc) diag.push('ASTC');
     if (navigator.gpu) diag.push('WebGPU present (the engine draws with WebGL 2)');
     if (CONFIG.build) diag.push(`build ${CONFIG.build}`);
     $('xt-diag').textContent = diag.join(' · ');
@@ -840,20 +1213,35 @@
       return fail(e.message || String(e));
     }
     state.store = data.kind;
-    let manifest;
-    try { manifest = await loadManifest(); } catch (e) { return fail(e.message); }
-    const files = manifest.files;
+    let profile;
+    try {
+      let list = await listProfiles();
+      list = await shellProfiles(list);
+      state.profiles = list;
+      const name = await chooseProfile(list, gpu);
+      profile = await loadProfile(name, list.profiles[name]);
+    } catch (e) { return fail(e.message || String(e)); }
+    const files = profile.files;
     state.files = files;
+    state.profile = profile.name;
+    for (const f of files) if (f.group === 'map' && f.map) maps.byName.set(normMap(f.map), f);
     mark('manifest');
 
+    // Set after the first complete start of this profile: until then a
+    // download is the install (however much of it already arrived),
+    // afterwards an update.
+    const startedKey = profile.name === 'web' ? 'started' : 'started-' + profile.name;
+    const hadStart = store.get(startedKey, '') === '1' || (profile.name === 'full' && store.get('started', '') === '1');
     const music = files.filter((f) => f.group === 'music');
-    const wantMusic = () => store.get('music', navigator.connection && navigator.connection.saveData ? '0' : '1') === '1';
-    const selected = () => files.filter((f) => f.group !== 'music' || wantMusic());
+    const defaultMap = files.find((f) => f.group === 'map' && f.map === profile.defaultMap);
+    // What has to be here before the menu: the core, and on a first visit
+    // one map. Older layouts (no groups beyond core/music) keep their music
+    // in the first download, as before.
+    const split = files.some((f) => f.group === 'map');
+    const selected = () => files.filter((f) => f.hosted !== false && (f.group === 'core' ||
+      (f === defaultMap && !hadStart) || (!split && f.group === 'music' && wantMusic())));
 
     let missing = await data.missing(selected());
-    // Set after the first complete start: until then a download is the
-    // install (however much of it already arrived), afterwards an update.
-    const hadStart = store.get('started', '') === '1';
     let adopted = 0;
     // Downloads made by earlier versions of this page: turn them into chunks
     // once (each checked against its hash) instead of downloading again.
@@ -868,9 +1256,9 @@
     mark('checked');
 
     if (missing.length) {
-      const allMissing = await data.missing(files);
-      const chunkCount = new Set(files.flatMap((f) => f.chunks)).size;
-      const firstInstall = allMissing.length === chunkCount;
+      const allMissing = await data.missing(files.filter((f) => f.group === 'core'));
+      const coreChunks = new Set(files.filter((f) => f.group === 'core').flatMap((f) => f.chunks)).size;
+      const firstInstall = allMissing.length === coreChunks;
       // A small update (new game code, a config): fetch it and go on. The
       // question is for first installs and big downloads.
       if (!firstInstall && sum(missing) <= SMALL_UPDATE && !params.has('ask')) {
@@ -884,9 +1272,12 @@
       if (missing.length) {
         const musicSize = music.reduce((n, f) => n + f.size, 0);
         const musicMissing = (await data.missing(music)).length > 0;
+        const later = files.filter((f) => f.group === 'map' && f !== defaultMap).reduce((n, f) => n + f.size, 0);
         $('xt-dl-music').checked = wantMusic();
-        $('xt-dl-music-size').textContent = mb(musicSize);
+        $('xt-dl-music-size').textContent = mb(musicSize) + (split ? ', in the background' : '');
         $('xt-dl-music-row').hidden = !music.length || !musicMissing;
+        $('xt-dl-later').hidden = !split;
+        $('xt-dl-later').textContent = `The other maps (${mb(later)}) download when you pick them, or in the background while you play.`;
         const refresh = async () => {
           missing = await data.missing(selected());
           let partial = 0;
@@ -929,15 +1320,27 @@
     mark('engine-ready');
     try {
       await mountUserdir();
-      await mountData(selected());
+      state.lazy = await decideLazy();
+      // Lazy: everything stored costs nothing until read. In memory: the
+      // core and the music; maps when they are played.
+      const complete = [];
+      for (const f of files) {
+        if (f.hosted === false && f.group !== 'core') continue;
+        if (!state.lazy && f.group !== 'core' && f.group !== 'music') continue;
+        if (f.group === 'music' && !wantMusic()) continue;
+        if (!(await data.missing([f])).length) complete.push(f);
+      }
+      await mountData(complete);
     } catch (e) {
       return fail(e.message || String(e));
     }
     mark('mounted');
-    store.set('started', 1);
+    state.warming = warm(null).then(() => mark('warmed'));
+    store.set(startedKey, 1);
+    store.set('profile', profile.name);
     // Every file this start needs was there: drop what no page path that
     // started recently still lists (older releases' chunks, old layouts).
-    data.prune(location.pathname, manifest.ids).then((r) => { state.pruned = r; }).catch(() => {});
+    data.prune(location.pathname, profile.ids).then((r) => { state.pruned = r; }).catch(() => {});
 
     $('xt-opt-fullscreen').checked = store.get('fullscreen', '1') === '1';
     const fsSupported = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
@@ -948,11 +1351,40 @@
     $('xt-ready-hint').textContent = hints.join(' ');
     show('xt-ready');
     showStorage().catch(() => {});
+    showProfiles();
+    refreshDataPanel().catch(() => {});
     $('xt-play').disabled = false;
     $('xt-play').focus({ preventScroll: true });
     $('xt-play').onclick = play;
     mark('ready');
     if (params.has('autoplay')) play();
+  }
+
+  // Settings: which data set, and the background download.
+  function showProfiles() {
+    const list = state.profiles;
+    const sel = $('xt-opt-profile');
+    const names = Object.keys((list && list.profiles) || {});
+    $('xt-opt-profile-row').hidden = names.length < 2;
+    sel.textContent = '';
+    for (const n of names) {
+      if (list.profiles[n].gpu === 'astc' && !(state.gpu && state.gpu.astc) && n !== state.profile) continue;
+      if (list.profiles[n].keep && n !== state.profile) continue; // only for those who have it
+      const o = document.createElement('option');
+      o.value = n;
+      o.textContent = PROFILE_LABEL[n] || n;
+      sel.appendChild(o);
+    }
+    sel.value = state.profile;
+    sel.onchange = () => {
+      if (sel.value === state.profile) return;
+      if (state.profile === 'full' && !confirm('Switch to the data set made for the browser? It downloads again (the core data now, maps when you play them), and frees the full set afterwards.')) {
+        sel.value = state.profile;
+        return;
+      }
+      store.set('profile', sel.value);
+      location.reload();
+    };
   }
 
   // Settings
@@ -983,11 +1415,37 @@
     location.reload();
   };
 
+  $('xt-allmaps').onchange = (e) => {
+    store.set('allmaps', e.target.checked ? 1 : 0);
+    if (!e.target.checked) pauseBackground(true);
+    else if (maps.bgOn) pauseBackground(false);
+    else startBackground();
+    refreshDataPanel();
+  };
+  $('xt-allmaps-now').onclick = async () => {
+    if (maps.bgOn && !maps.bgPaused) { pauseBackground(true); refreshDataPanel(); return; }
+    if (state.started) { if (maps.bgOn) pauseBackground(false); else startBackground(true); refreshDataPanel(); return; }
+    // Before Play: with the progress panel.
+    const list = hosted(await data.missing(backgroundFiles()));
+    try {
+      await runDownload(list, 'Downloading every map…');
+      if (state.lazy) for (const f of backgroundFiles()) if (!(await data.missing([f])).length) { await mount(f); enginePaths.add(pathOf(f)); }
+    } catch (e) {
+      if (!(e && e.name === 'AbortError')) toast(e.message || String(e), 8000);
+    }
+    show('xt-ready');
+    refreshDataPanel();
+  };
+
   // For the dev console and automated tests: xt.command('map stormkeep')
   window.xt = {
     command: (text) => Module.ccall('xt_web_command', null, ['string'], [text]),
     log: () => logTail.slice(),
     state,
+    maps,
+    mounts,
+    lazyStats: () => typeof XTLazyFS !== 'undefined' ? Object.assign({ cacheBytes: XTLazyFS.cacheBytes }, XTLazyFS.stats) : null,
+    backgroundStatus,
   };
 
   main().catch((e) => fail(e && e.message || String(e)));

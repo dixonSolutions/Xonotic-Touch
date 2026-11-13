@@ -94,7 +94,7 @@ const opfsNames = (prof) => [...(prof.root.dirs.get('xt-data-v1') || new FakeDir
 /** Files -> manifest (format 3) and blobs, served with Range support. */
 function makeHost(fileList, { chunk = CHUNK } = {}) {
   const blobs = new Map();
-  const files = fileList.map(({ name, path, bytes, group = 'core', stock = false }) => {
+  const files = fileList.map(({ name, path, bytes, group = 'core', stock = false, map, hosted = true }) => {
     const chunks = [];
     for (let off = 0; off < bytes.length; off += chunk) {
       const piece = bytes.subarray(off, off + chunk);
@@ -104,6 +104,8 @@ function makeHost(fileList, { chunk = CHUNK } = {}) {
     }
     const f = { name, path: path || 'data/' + name, size: bytes.length, sha256: sha(bytes), rev: sha(bytes).slice(0, 16), group, chunks };
     if (stock) f.stock = true;
+    if (map) f.map = map;
+    if (!hosted) { f.hosted = false; for (const h of chunks) blobs.delete(h); }
     return f;
   });
   const text = JSON.stringify({ format: 3, chunk, files });
@@ -114,11 +116,13 @@ function makeHost(fileList, { chunk = CHUNK } = {}) {
     ignoreRange: false,
     corrupt: new Set(), // chunk hashes served damaged
     hold: null, // (hash, offset) -> true: stall the stream there until aborted
+    extra: new Map(), // more manifests: path -> text (profiles)
     fetch: async (input, opts = {}) => {
       const url = new URL(String(input));
       host.log.push({ path: url.pathname, range: opts.headers && opts.headers.Range });
       if (url.pathname.endsWith('/manifest.json')) return new Response(JSON.stringify({ format: 2, manifest: host.path, files: [] }));
       if (url.pathname.endsWith(`/${host.path}`)) return new Response(host.text);
+      for (const [p, t] of host.extra) if (url.pathname.endsWith('/' + p)) return new Response(t);
       const m = /\/blobs\/([0-9a-f]{64})\.bin$/.exec(url.pathname);
       if (!m || !blobs.has(m[1])) return new Response('missing', { status: 404 });
       let body = blobs.get(m[1]);
@@ -152,6 +156,38 @@ function makeHost(fileList, { chunk = CHUNK } = {}) {
   return host;
 }
 
+/**
+ * Several profiles on one host (format 4): {name: {files, keep, gpu, defaultMap}}.
+ * Blobs are shared (same bytes, same chunk); unhosted files' blobs are not
+ * served. Returns the host of the first profile, with host.profiles (the
+ * page's config) and host.byProfile (name -> {id, files}).
+ */
+function makeProfiles(spec, { chunk = CHUNK } = {}) {
+  const hosts = {};
+  for (const [name, p] of Object.entries(spec)) hosts[name] = makeHost(p.files, { chunk });
+  const names = Object.keys(spec);
+  const host = hosts[names[0]];
+  const config = { default: names[0], profiles: {} };
+  host.byProfile = {};
+  for (const name of names) {
+    const h = hosts[name];
+    const doc = { format: 4, chunk, profile: name, files: h.files };
+    if (spec[name].defaultMap) doc.defaultMap = spec[name].defaultMap;
+    const text = JSON.stringify(doc);
+    const id = sha(Buffer.from(text)).slice(0, 20);
+    host.extra.set(`m/${id}.json`, text);
+    for (const [k, v] of h.blobs) host.blobs.set(k, v);
+    config.profiles[name] = { manifest: `m/${id}.json` };
+    if (spec[name].keep) config.profiles[name].keep = true;
+    if (spec[name].gpu) config.profiles[name].gpu = spec[name].gpu;
+    host.byProfile[name] = { id, files: h.files };
+  }
+  // Unhosted files of any profile are not served, whichever profile shares them.
+  for (const h of Object.values(hosts)) for (const f of h.files) if (f.hosted === false) for (const c of f.chunks) host.blobs.delete(c);
+  host.profiles = config;
+  return host;
+}
+
 // -------------------------------------------------------------- page loader
 
 class Element extends EventTarget {
@@ -180,13 +216,16 @@ Canvas.prototype.getContext = () => ({ RENDERER: 1, MAX_TEXTURE_SIZE: 2, getPara
  * Load web/store.js and web/shell.js the way the page does, in a fresh
  * context sharing `prof` (storage) with earlier loads: a reload.
  */
-function loadPage(prof, host, { search = '', engine = true, persist = false } = {}) {
+function loadPage(prof, host, { search = '', engine = true, persist = false, astc = false } = {}) {
   const elements = new Map();
   const element = (id) => {
     if (!elements.has(id)) elements.set(id, id === 'canvas' ? new Canvas(id) : new Element(id));
     return elements.get(id);
   };
-  element('xt-config').textContent = JSON.stringify({ engine: 'a/godnotic.js', wasm: 'a/godnotic.wasm', manifest: host.path, dataUrl: '' });
+  const config = { engine: 'a/godnotic.js', wasm: 'a/godnotic.wasm', manifest: host.path, dataUrl: '' };
+  if (host.profiles) config.profiles = host.profiles;
+  element('xt-config').textContent = JSON.stringify(config);
+  const commands = [];
   const shown = [];
   const statuses = [];
   const mounted = new Map();
@@ -213,10 +252,15 @@ function loadPage(prof, host, { search = '', engine = true, persist = false } = 
     location: { href: 'https://game.example/web/' + search, pathname: '/web/', search, reload() {} },
     screen: {},
     isSecureContext: true,
-    HTMLCanvasElement: Canvas,
+    HTMLCanvasElement: class extends Canvas {
+      getContext() {
+        return { RENDERER: 1, MAX_TEXTURE_SIZE: 2, getParameter: (p) => (p === 1 ? 'Test GPU' : 8192),
+          getExtension: (n) => (n === 'WEBGL_compressed_texture_astc' && astc ? {} : null) };
+      }
+    },
     document: {
       getElementById: element,
-      createElement: (name) => (name === 'canvas' ? new Canvas() : new Element()),
+      createElement: (name) => (name === 'canvas' ? new context.HTMLCanvasElement() : new Element()),
       addEventListener() {},
       documentElement: {},
       body: { appendChild() {} },
@@ -237,7 +281,7 @@ function loadPage(prof, host, { search = '', engine = true, persist = false } = 
     .replace('function status(text, detail) {', 'function status(text, detail) { globalThis.__status.push(text);')
     .replace('function fail(text) {', 'function fail(text) { globalThis.__status.push("FAIL " + text);')
     // engine: false loads the scripts for their functions only: no main().
-    .replace(startPoint, '  globalThis.__page = { main, state, cancelDownload };\n' + (engine ? startPoint : ''));
+    .replace(startPoint, '  globalThis.__page = { main, state, cancelDownload, maps, needMap, mapsCommand, backgroundStatus };\n' + (engine ? startPoint : ''));
   context.__shown = shown;
   context.__status = statuses;
   vm.runInContext(storeSource, context, { filename: 'web/store.js' });
@@ -248,11 +292,13 @@ function loadPage(prof, host, { search = '', engine = true, persist = false } = 
     context.Module.FS = {
       mkdir() {}, mount() {}, syncfs: (_, cb) => cb(null),
       writeFile: (p, b) => mounted.set(p, b),
+      unlink: (p) => mounted.delete(p),
     };
     context.Module.IDBFS = {};
+    context.Module.ccall = (name, ret, types, args) => { if (name === 'xt_web_command') commands.push(args[0]); };
     setTimeout(() => context.Module.onRuntimeInitialized(), 0);
   }
-  return { context, element, shown, statuses, mounted, page: context.__page };
+  return { context, element, shown, statuses, mounted, commands, page: context.__page };
 }
 
 const until = async (cond, what, ms = 20000) => {
@@ -514,6 +560,207 @@ await test('a cancelled start keeps what arrived and never prunes', async () => 
   assert.equal(p.page.state.pruned, undefined, 'no prune');
   assert.ok(opfsNames(prof).includes('c-' + maps.chunks[0]), 'finished chunk kept');
   assert.equal(p.element('xt-dl-resumed').hidden, false, 'the dialog says what is already downloaded');
+});
+
+
+// ------------------------------------------------- maps on demand, profiles
+
+// A split data set: core files, one pack per map, an extra pack, music.
+const splitFiles = (seed = 0) => [
+  { name: 'zz-progs.pk3', bytes: fill(3000, 1) },
+  { name: 'xonotic-data.pk3', bytes: fill(CHUNK + 100, 21 + seed), stock: true },
+  { name: 'maps-0core.pk3', bytes: fill(5000, 22 + seed), stock: true },
+  { name: 'maps-stormkeep.pk3', bytes: fill(4000, 23 + seed), stock: true, group: 'map', map: 'stormkeep' },
+  { name: 'maps-dance.pk3', bytes: fill(CHUNK + 7, 24 + seed), stock: true, group: 'map', map: 'dance' },
+  { name: 'maps-boil.pk3', bytes: fill(6000, 25 + seed), stock: true, group: 'map', map: 'boil' },
+  { name: 'maps-0extra.pk3', bytes: fill(7000, 26 + seed), stock: true, group: 'extra' },
+  { name: 'music.pk3', bytes: fill(8000, 27 + seed), stock: true, group: 'music' },
+];
+const fileOf = (host, name) => host.files.find((f) => f.name === name);
+const fetchedNames = (host) => blobFetches(host).map((l) => {
+  const h = l.path.split('/').pop().slice(0, 64);
+  for (const fs of Object.values(host.byProfile || { x: { files: host.files } })) for (const f of fs.files) if (f.chunks.includes(h)) return f.name;
+  return h;
+});
+const firstVisit = async (p) => {
+  await until(() => p.shown.includes('xt-download'), 'download dialog');
+  p.element('xt-dl-go').onclick();
+  await ready(p, 'ready');
+};
+
+await test('maps on demand: a first visit downloads the core and one map; others come when asked for', async () => {
+  const prof = profile();
+  const host = makeProfiles({ web: { files: splitFiles(), defaultMap: 'stormkeep' } });
+  const p = loadPage(prof, host, { search: '?allmaps=0' });
+  await until(() => p.shown.includes('xt-download'), 'dialog');
+  const core = ['zz-progs.pk3', 'xonotic-data.pk3', 'maps-0core.pk3', 'maps-stormkeep.pk3'];
+  const want = core.reduce((n, x) => n + fileOf(host, x).size, 0);
+  assert.equal(p.element('xt-dl-size').textContent, `${Math.round(want / 1e6)} MB`, 'asks for the core and the default map only');
+  assert.equal(p.element('xt-dl-later').hidden, false, 'says the other maps come later');
+  p.element('xt-dl-go').onclick();
+  await ready(p, 'ready');
+  assert.deepEqual([...new Set(fetchedNames(host))].sort(), core.slice().sort(), 'downloaded: core and stormkeep');
+  assert.ok(!p.mounted.has('/game/data/maps-stormkeep.pk3'), 'in memory: map packs mount when played');
+  assert.ok(p.mounted.has('/game/data/maps-0core.pk3'));
+  // The engine asks for stormkeep: stored, so mounted, rescanned, run again.
+  assert.equal(p.context.Module.xt.needMap('stormkeep', 'map "stormkeep"'), 0);
+  await until(() => p.commands.length === 1, 'command again');
+  assert.equal(p.commands[0], 'fs_rescan\nmap "stormkeep"');
+  assert.ok(p.mounted.has('/game/data/maps-stormkeep.pk3'));
+  assert.equal(p.context.Module.xt.needMap('maps/stormkeep.bsp', 'map "stormkeep"'), 1, 'then it goes ahead');
+  // dance is not here: fetched with the map panel, then run.
+  host.log.length = 0;
+  assert.equal(p.context.Module.xt.needMap('dance', 'changelevel "dance"'), 0);
+  await until(() => p.commands.length === 2, 'dance command');
+  assert.equal(p.commands[1], 'fs_rescan\nchangelevel "dance"');
+  assert.deepEqual([...new Set(fetchedNames(host))], ['maps-dance.pk3'], 'only the dance pack downloaded');
+  assert.equal(p.element('xt-map').hidden, true, 'map panel gone');
+  assert.ok(p.mounted.has('/game/data/maps-dance.pk3'));
+  assert.ok(!p.mounted.has('/game/data/maps-stormkeep.pk3'), 'in memory: one map pack at a time');
+  assert.equal(p.context.Module.xt.needMap('custommap', 'map "custommap"'), 1, 'a map with no pack goes ahead');
+  // A reload knows dance is stored: no download, just a mount.
+  host.log.length = 0;
+  const q = loadPage(prof, host, { search: '?allmaps=0' });
+  await ready(q, 'warm');
+  assert.equal(q.context.Module.xt.needMap('dance', 'map "dance"'), 0);
+  await until(() => q.commands.length === 1, 'warm dance');
+  assert.equal(blobFetches(host).length, 0, 'no data requests');
+});
+
+await test('a cancelled map download runs nothing and keeps what arrived', async () => {
+  const prof = profile();
+  const host = makeProfiles({ web: { files: splitFiles(), defaultMap: 'stormkeep' } });
+  const p = loadPage(prof, host, { search: '?allmaps=0' });
+  await firstVisit(p);
+  const dance = fileOf(host, 'maps-dance.pk3');
+  host.hold = (h) => h === dance.chunks[1];
+  assert.equal(p.context.Module.xt.needMap('dance', 'map "dance"'), 0);
+  await until(() => opfsNames(prof).includes('c-' + dance.chunks[0]), 'first chunk stored');
+  assert.equal(p.element('xt-map').hidden, false, 'map panel shown');
+  p.element('xt-map-cancel').onclick();
+  await until(() => p.element('xt-map').hidden, 'panel closed');
+  assert.equal(p.commands.length, 0, 'the map command is not run');
+  assert.ok(opfsNames(prof).includes('c-' + dance.chunks[0]), 'finished chunk kept');
+});
+
+await test('background download: after the first match, the rest arrives; pause and resume', async () => {
+  const prof = profile();
+  const host = makeProfiles({ web: { files: splitFiles(), defaultMap: 'stormkeep' } });
+  const p = loadPage(prof, host, { search: '?allmaps=1' });
+  await firstVisit(p);
+  assert.ok(!host.log.some((l) => fetchedNames(host).includes('maps-dance.pk3')), 'nothing in the background before playing');
+  const dance = fileOf(host, 'maps-dance.pk3');
+  let stall = true;
+  host.hold = (h, off) => stall && h === dance.chunks[0] && off >= 1;
+  p.page.state.started = true; // Play
+  assert.equal(p.context.Module.xt.needMap('stormkeep', 'map "stormkeep"'), 0);
+  await until(() => p.commands.length === 1, 'stormkeep runs');
+  assert.equal(p.context.Module.xt.needMap('stormkeep', 'map "stormkeep"'), 1); // the match starts: background on
+  await until(() => p.page.maps.bgOn && p.page.maps.bgController, 'background running');
+  assert.match(p.context.Module.xt.mapsCommand('pause'), /paused/);
+  assert.equal(p.page.maps.bgPaused, true);
+  stall = false;
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(!opfsNames(prof).includes('c-' + dance.chunks[0]), 'paused: nothing more');
+  p.context.Module.xt.mapsCommand('resume');
+  await until(() => p.page.maps.bgDone, 'background done');
+  const s = await p.page.backgroundStatus();
+  assert.equal(s.left, 0, 'every map, the extra pack and the music stored');
+  const names = new Set(fetchedNames(host));
+  for (const n of ['maps-dance.pk3', 'maps-boil.pk3', 'maps-0extra.pk3', 'music.pk3']) assert.ok(names.has(n), n + ' downloaded');
+});
+
+await test('a map asked for during the background download goes first', async () => {
+  const prof = profile();
+  const host = makeProfiles({ web: { files: splitFiles(), defaultMap: 'stormkeep' } });
+  const p = loadPage(prof, host, { search: '?allmaps=1' });
+  await firstVisit(p);
+  const dance = fileOf(host, 'maps-dance.pk3');
+  let stall = true;
+  host.hold = (h, off) => stall && h === dance.chunks[0] && off >= 1;
+  p.page.state.started = true;
+  p.context.Module.xt.needMap('stormkeep', 'map "stormkeep"');
+  await until(() => p.commands.length === 1, 'stormkeep');
+  p.context.Module.xt.needMap('stormkeep', 'map "stormkeep"');
+  await until(() => p.page.maps.bgController, 'background on dance');
+  host.log.length = 0;
+  p.context.Module.xt.needMap('boil', 'map "boil"');
+  await until(() => p.commands.length === 2, 'boil runs while dance is still stalled');
+  assert.equal(p.commands[1], 'fs_rescan\nmap "boil"');
+  assert.equal(p.page.maps.bgPaused, false, 'background resumes after');
+  stall = false;
+  await until(() => p.page.maps.bgDone, 'background done');
+});
+
+await test('profile by GPU: ASTC gets the slim set, others the standard one; the choice is kept', async () => {
+  const spec = { web: { files: splitFiles(0), defaultMap: 'stormkeep' }, astc: { files: splitFiles(100), defaultMap: 'stormkeep', gpu: 'astc' } };
+  const host = makeProfiles(spec);
+  const prof = profile();
+  const p = loadPage(prof, host, { astc: true });
+  await firstVisit(p);
+  assert.equal(p.page.state.profile, 'astc');
+  assert.ok(fetchedNames(host).every((n) => host.byProfile.astc.files.some((f) => f.name === n)), 'astc files');
+  assert.equal(sha(p.mounted.get('/game/data/xonotic-data.pk3')), host.byProfile.astc.files[1].sha256, 'the astc data pk3 mounted');
+  const prof2 = profile();
+  const q = loadPage(prof2, host, { astc: false });
+  await firstVisit(q);
+  assert.equal(q.page.state.profile, 'web');
+  host.log.length = 0;
+  const r = loadPage(prof, host, { astc: true });
+  await ready(r, 'warm');
+  assert.equal(r.page.state.profile, 'astc', 'kept');
+  assert.equal(host.log.length, 0, 'warm start: zero requests ' + JSON.stringify(host.log));
+});
+
+await test('no forced migration: a visitor holding the full stock set keeps it and downloads nothing big', async () => {
+  // The old layout: the stock maps pk3 whole (format 3), which the new host
+  // no longer serves ("hosted": false in the full profile).
+  const stockMaps = fill(CHUNK + 999, 31);
+  const old = makeHost([
+    { name: 'zz-progs.pk3', bytes: fill(3000, 1) },
+    { name: 'xonotic-data.pk3', bytes: fill(CHUNK + 100, 21), stock: true },
+    { name: 'xonotic-maps.pk3', bytes: stockMaps, stock: true },
+  ]);
+  const prof = profile();
+  const p = loadPage(prof, old);
+  await firstVisit(p);
+  prof.local.delete('xt.profile'); // pages before profiles kept no choice
+  const files = splitFiles();
+  files[0].bytes = fill(3000, 99); // a new release: new game code
+  const host = makeProfiles({
+    web: { files, defaultMap: 'stormkeep' },
+    full: { files: [files[0], files[1], { name: 'xonotic-maps.pk3', bytes: stockMaps, stock: true, hosted: false }], keep: true },
+  });
+  host.log.length = 0;
+  const q = loadPage(prof, host);
+  await ready(q, 'ready');
+  assert.equal(q.page.state.profile, 'full', 'kept the full set');
+  assert.ok(!q.shown.includes('xt-download'), 'no question');
+  assert.deepEqual(fetchedNames(host), ['zz-progs.pk3'], 'only the new game code ' + JSON.stringify(fetchedNames(host)));
+  assert.ok(q.mounted.has('/game/data/xonotic-maps.pk3'), 'the stock maps pk3 mounted');
+  // A first-time visitor never gets the full set (it is not hosted).
+  const r = loadPage(profile(), host);
+  await firstVisit(r);
+  assert.equal(r.page.state.profile, 'web');
+});
+
+await test('a full set missing its unhosted part falls back to the standard profile', async () => {
+  const stockMaps = fill(CHUNK + 999, 32);
+  const files = splitFiles();
+  const host = makeProfiles({
+    web: { files, defaultMap: 'stormkeep' },
+    full: { files: [files[0], files[1], { name: 'xonotic-maps.pk3', bytes: stockMaps, stock: true, hosted: false }], keep: true },
+  });
+  const prof = profile();
+  // Some data from an interrupted older download: the data pk3 only.
+  const s = await store(loadPage(prof, host, { engine: false }).context);
+  await dl(s, s.chunks(fileOf(host, 'xonotic-data.pk3')), host);
+  host.log.length = 0;
+  const p = loadPage(prof, host);
+  await ready(p, 'ready'); // the rest is under 50 MB here: fetched without asking
+  assert.equal(p.page.state.profile, 'web');
+  assert.ok(!fetchedNames(host).includes('xonotic-data.pk3'), 'the data pk3 it had is reused');
+  assert.ok(!host.log.some((l) => /404/.test(l.path)), 'never asks for unhosted data');
 });
 
 console.log(`web cache: ${passed} tests passed`);

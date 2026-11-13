@@ -170,8 +170,10 @@
      * onBytes(c, n): n bytes of this chunk are in hand (it can go down when
      * bytes had to be dropped).
      */
-    async fetchChunk(c, url, signal, onBytes, fetchImpl = global.fetch) {
-      const buf = new Uint8Array(c.size);
+    async fetchChunk(c, url, signal, onBytes, fetchImpl = global.fetch, scratch = null) {
+      // scratch: a buffer to reuse (one per download worker), so a long
+      // download does not leave a 32 MiB buffer per chunk for the GC.
+      const buf = scratch && scratch.byteLength >= c.size ? scratch.subarray(0, c.size) : new Uint8Array(c.size);
       let have = await this.resumable(c);
       for (let k = 0; k * PIECE < have; k++) {
         buf.set(new Uint8Array(await (await this.be.blob(`p-${c.h}-${k}`)).arrayBuffer()), k * PIECE);
@@ -251,11 +253,13 @@
     async download(list, { urlFor, signal, onBytes, concurrency = 2, fetchImpl }) {
       const queue = list.slice();
       let failure = null;
+      const size = list.reduce((n, c) => Math.max(n, c.size), 0);
       const worker = async () => {
+        const scratch = new Uint8Array(size);
         while (queue.length && !failure) {
           const c = queue.shift();
           try {
-            await this.fetchChunk(c, urlFor(c), signal, onBytes, fetchImpl);
+            await this.fetchChunk(c, urlFor(c), signal, onBytes, fetchImpl, scratch);
           } catch (e) {
             failure = failure || e;
           }
@@ -434,6 +438,13 @@
         }
       }
       return { removed };
+    }
+
+    /** Is anything of ours stored here (this layout or an older one)? */
+    async anything() {
+      if ((await this.be.list()).some((n) => n.startsWith('c-') || n.startsWith('p-') || LEGACY.test(n))) return true;
+      const oldCache = this.kind === 'cache' ? this.be.cache : this.other && this.other.cache;
+      try { return !!(oldCache && (await oldCache.keys()).length); } catch (e) { return false; }
     }
 
     /** Bytes stored for these files (whole chunks only). */

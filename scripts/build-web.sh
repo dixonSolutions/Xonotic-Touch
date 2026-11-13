@@ -59,13 +59,56 @@ if [ "$ENGINE_ONLY" != "1" ]; then
         QCCFLAGS_WATERMARK="${QCCFLAGS_WATERMARK:-web}" ../menu.dat
 fi
 
+# ---- Opus (the slim data's music and sounds) ------------------------------
+# libopus + libopusfile, built with emcc once and linked statically: the
+# engine's Opus loader (touch_assets_opus.c) loads libopusfile with dlopen
+# elsewhere, which WebAssembly does not have. Kept in XT_WEB_DEPS between
+# builds (Vercel: .vercel/cache).
+OPUS_VERSION=1.5.2
+OPUS_SHA256=65c1d2f78b9f2fb20082c38cbe47c951ad5839345876e46941612ee87f9a7ce1
+OPUSFILE_VERSION=0.12
+OPUSFILE_SHA256=118d8601c12dd6a44f52423e68ca9083cc9f2bfe72da7a8c1acb22a80ae3550b
+DEPS="${XT_WEB_DEPS:-$ROOT/build/web-deps}"
+OPUS_PREFIX="$DEPS/opus-$OPUS_VERSION-opusfile-$OPUSFILE_VERSION"
+web_fetch() { # URL SHA256 DIR: download and unpack a pinned source tarball
+    local tgz="$3.tar.gz"
+    curl -sfL --retry 3 -o "$tgz" "$1"
+    echo "$2  $tgz" | sha256sum -c --quiet - || { echo "build-web: $1 does not match its pinned hash" >&2; exit 1; }
+    mkdir -p "$3"
+    tar -xzf "$tgz" -C "$3" --strip-components=1
+    rm -f "$tgz"
+}
+if [ ! -f "$OPUS_PREFIX/lib/libopusfile.a" ]; then
+    echo "Building libopus $OPUS_VERSION and opusfile $OPUSFILE_VERSION with emcc…"
+    rm -rf "$OPUS_PREFIX" "$DEPS/src-opus" "$DEPS/src-opusfile"
+    mkdir -p "$DEPS" "$OPUS_PREFIX/lib" "$OPUS_PREFIX/include/opus"
+    web_fetch "https://github.com/xiph/opus/releases/download/v$OPUS_VERSION/opus-$OPUS_VERSION.tar.gz" "$OPUS_SHA256" "$DEPS/src-opus"
+    web_fetch "https://github.com/xiph/opusfile/releases/download/v$OPUSFILE_VERSION/opusfile-$OPUSFILE_VERSION.tar.gz" "$OPUSFILE_SHA256" "$DEPS/src-opusfile"
+    (cd "$DEPS/src-opus" && emconfigure ./configure -q --prefix="$OPUS_PREFIX" --host=wasm32-unknown-emscripten \
+        --disable-shared --enable-static --disable-doc --disable-extra-programs --disable-asm --disable-rtcd \
+        --disable-intrinsics --disable-stack-protector --disable-hardening --disable-dred --disable-deep-plc \
+        CFLAGS="-O2" >/dev/null && emmake make -s -j"$(nproc)" install >/dev/null)
+    # opusfile: four sources and no HTTP, so no configure (it wants pkg-config).
+    of="$DEPS/src-opusfile"
+    for s in info internal opusfile stream; do
+        emcc -O2 -sUSE_OGG=1 -DOP_DISABLE_HTTP -DOP_HAVE_LRINTF -I"$of/include" -I"$OPUS_PREFIX/include/opus" \
+            -c "$of/src/$s.c" -o "$of/$s.o"
+    done
+    emar rcs "$OPUS_PREFIX/lib/libopusfile.a" "$of"/info.o "$of"/internal.o "$of"/opusfile.o "$of"/stream.o
+    cp "$of/include/opusfile.h" "$OPUS_PREFIX/include/opus/"
+    rm -rf "$DEPS/src-opus" "$DEPS/src-opusfile"
+fi
+# Headers for touch_assets_opus.c (XT_WEB_OPUSFILE: linked, not dlopen'ed).
+export EMCC_CFLAGS="${EMCC_CFLAGS:-} -DXT_WEB_OPUSFILE -I$OPUS_PREFIX/include -I$OPUS_PREFIX/include/opus"
+
 # ---- Engine -------------------------------------------------------------
 # Link flags. Notes:
 # - WebGL 2 only; the GLES2 renderer runs on it. FULL_ES3 emulates the
 #   client-side vertex arrays the renderer still uses in places.
 # - GL_ENABLE_GET_PROC_ADDRESS: SDL_GL_GetProcAddress resolves GL entry points.
-# - Memory grows on demand up to 4 GB; pk3 data lives in the JS heap (MEMFS),
-#   not in wasm memory, so the wasm heap only holds what the engine loads.
+# - Memory grows on demand up to 4 GB; pk3 data stays in the browser's
+#   storage and is read on demand by the page (web/lazyfs.js), or copied into
+#   the JS heap (MEMFS) where that cannot work, never into wasm memory.
 # - The page (web/shell.html + web/shell.js) starts the engine itself after
 #   the data is in place, hence INVOKE_RUN=0.
 LDFLAGS_WEB=(
@@ -80,6 +123,7 @@ LDFLAGS_WEB=(
     -sINVOKE_RUN=0 -sEXIT_RUNTIME=0
     -sFORCE_FILESYSTEM=1 -lidbfs.js
     "-sEXPORTED_RUNTIME_METHODS=callMain,FS,IDBFS,ccall,UTF8ToString,stringToNewUTF8"
+    "$OPUS_PREFIX/lib/libopusfile.a" "$OPUS_PREFIX/lib/libopus.a"
 )
 if [ "$DEBUG" = "1" ]; then
     LDFLAGS_WEB+=(-sASSERTIONS=1 -g2)
@@ -95,7 +139,7 @@ fi
 cd "$ROOT/engine/darkplaces"
 # CFLAGS changes (debug vs release) need a clean object dir.
 stamp="build-obj/release/godnotic.js/.web-flags"
-want="debug=$DEBUG"
+want="debug=$DEBUG opus=$OPUS_VERSION/$OPUSFILE_VERSION"
 if [ -f "$stamp" ] && [ "$(cat "$stamp")" != "$want" ]; then
     rm -rf build-obj/release/godnotic.js
 fi
@@ -127,7 +171,7 @@ for icon in "$ROOT"/web/icon-*.png; do
     [ -f "$icon" ] && install -m 644 "$icon" "$OUT/"
 done
 rm -f "$OUT/config.js" "$OUT/build.json" "$OUT/godnotic.js" "$OUT/godnotic.wasm" \
-    "$OUT/shell.js" "$OUT/shell.css" "$OUT/store.js" "$OUT/godnotic-banner.png"
+    "$OUT/shell.js" "$OUT/shell.css" "$OUT/store.js" "$OUT/lazyfs.js" "$OUT/godnotic-banner.png"
 rev="${VERCEL_GIT_COMMIT_SHA:-${GITHUB_SHA:-$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo local)}}"
 XT_BUILD_ID="$(date -u +%Y%m%d%H%M%S)-${rev:0:7}" XT_WEB_DATA_URL="${XT_WEB_DATA_URL:-}" \
 python3 -I - "$ROOT/web" "$PWD" "$OUT" <<'PY'
@@ -146,18 +190,21 @@ names = {
     'godnotic.js': hashed(os.path.join(engine, 'godnotic.js'), 'godnotic.js'),
     'godnotic.wasm': hashed(os.path.join(engine, 'godnotic.wasm'), 'godnotic.wasm'),
 }
-for f in ('shell.js', 'shell.css', 'store.js', 'godnotic-banner.png'):
+for f in ('shell.js', 'shell.css', 'store.js', 'lazyfs.js', 'godnotic-banner.png'):
     names[f] = hashed(os.path.join(web, f), f)
 
 html = open(os.path.join(web, 'index.html'), encoding='utf-8').read()
-for plain in ('shell.js', 'shell.css', 'store.js', 'godnotic-banner.png'):
+for plain in ('shell.js', 'shell.css', 'store.js', 'lazyfs.js', 'godnotic-banner.png'):
     html, n = re.subn(r'((?:src|href)=")' + re.escape(plain) + '"', r'\g<1>' + names[plain] + '"', html)
     assert n == 1, plain
 cfg = {'engine': names['godnotic.js'], 'wasm': names['godnotic.wasm'], 'manifest': '',
        'dataUrl': os.environ.get('XT_WEB_DATA_URL', ''), 'build': os.environ['XT_BUILD_ID']}
 env = os.path.join(out, 'data', 'web-data.env')
 if os.path.exists(env):
-    cfg['manifest'] = open(env).read().strip().split('=', 1)[1]
+    vals = dict(l.split('=', 1) for l in open(env).read().splitlines() if '=' in l)
+    cfg['manifest'] = vals.get('XT_DATA_MANIFEST', '')
+    if 'XT_DATA_PROFILES' in vals:
+        cfg['profiles'] = json.loads(vals['XT_DATA_PROFILES'])
 pat = re.compile(r'(<script id="xt-config" type="application/json">)(.*?)(</script>)', re.S)
 m = pat.search(html)
 html = html[:m.start(2)] + json.dumps(cfg, separators=(',', ':')) + html[m.end(2):]
