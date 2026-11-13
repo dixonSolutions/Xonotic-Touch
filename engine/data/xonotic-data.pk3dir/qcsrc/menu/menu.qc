@@ -2,6 +2,7 @@
 #include "xonotic/touch_update_util.qh"
 #include "xonotic/dialog_touch_gamemenu.qh" // Touch
 #include "xonotic/touch_menu_scale.qh" // Touch
+#include "xonotic/touch_menu_sheet.qh" // Touch
 
 #include "item.qh"
 
@@ -304,7 +305,7 @@ void m_keyup(float key, float ascii)
 		if (menuMouseMode)
 			menu_sync_absolute_mousepos();
 		--mouseButtonsPressed;
-		if (!mouseButtonsPressed) main.mouseRelease(main, menuMousePos);
+		if (!mouseButtonsPressed) TouchSheet_mouseRelease(menuMousePos); // Touch: tap or drag-scroll, touch_menu_sheet.qc
 		if (mouseButtonsPressed < 0)
 		{
 			mouseButtonsPressed = 0;
@@ -320,6 +321,7 @@ void m_keydown(float key, float ascii)
 {
 	if (!menuInitialized) return;
 	if (!Menu_Active) return;
+	if (TouchSheet_wheel(key)) return; // Touch: the mouse wheel scrolls a tall sheet
 
 	if (menuMouseMode && key >= K_MOUSE1 && key <= K_MOUSE3)
 	{
@@ -349,7 +351,7 @@ void m_keydown(float key, float ascii)
 			// attached too -- and for a mouse it is the same spot anyway.
 			if (menuMouseMode)
 				menu_sync_absolute_mousepos();
-			main.mousePress(main, menuMousePos);
+			TouchSheet_mousePress(menuMousePos); // Touch: tap or drag-scroll, touch_menu_sheet.qc
 		}
 		if (!main.keyDown(main, key, ascii, menuShiftState))
 		{
@@ -697,6 +699,7 @@ void m_tooltip(vector pos)
 	static string prev_tooltip;
 	entity it;
 	menu_tooltips = cvar("menu_tooltips");
+	if (touch_menu_on && !cvar("menu_touch_tooltips")) menu_tooltips = 0; // Touch: a finger leaves the pointer on what it tapped
 	if (!menu_tooltips)
 	{
 		// don't return immediately, fade out the active tooltip first
@@ -1029,7 +1032,7 @@ void m_draw(float width, float height)
 		if (newMouse != menuMousePos)
 		{
 			menuMousePos = newMouse;
-			if (mouseButtonsPressed) main.mouseDrag(main, menuMousePos);
+			if (mouseButtonsPressed) TouchSheet_mouseDrag(menuMousePos); // Touch: tap or drag-scroll, touch_menu_sheet.qc
 			else main.mouseMove(main, menuMousePos);
 		}
 	}
@@ -1048,7 +1051,9 @@ void m_draw(float width, float height)
 			else main.mouseMove(main, menuMousePos);
 		}
 	}
+	TouchSheet_preDraw(); // Touch: sheets scroll, scrim behind them
 	main.draw(main);
+	TouchSheet_postDraw(); // Touch: scroll bar
 
 	m_tooltip(menuMousePos);
 

@@ -2,6 +2,17 @@
 
 #include "touchbutton.qh"
 #include "leavematchbutton.qh"
+#include "touch_menu_scale.qh"
+
+void GodnoticGameMenuDialog_configureDialog(entity me)
+{
+	// Its buttons span 1.5 and 2 rows, sized for the stock rows. With the
+	// touch layer's 48 dp rows (touch_menu_scale.qc) a 30 dp row keeps the
+	// 1.5-row buttons at 49 dp and the whole menu on a phone's screen.
+	if (touch_menu_on)
+		me.rowHeight = TouchMenuScale_dpToUnits(30 * TouchMenuScale_size());
+	SUPER(GodnoticGameMenuDialog).configureDialog(me);
+}
 
 // Set while a dialog opened from TouchGameMenu is up.
 bool touch_gamemenu_return;

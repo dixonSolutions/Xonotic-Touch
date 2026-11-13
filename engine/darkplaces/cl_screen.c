@@ -791,6 +791,7 @@ static void SCR_SetUpToDrawConsole (void)
 		scr_con_current = vid_conheight.integer * scr_conheight.value;
 	else
 		scr_con_current = 0; // none visible
+	scr_con_current = TouchUI_ConsoleHeight(scr_con_current); // Touch: above the on-screen keys
 }
 
 /*

@@ -129,6 +129,10 @@ struct cachepic_s *TouchUI_ConbackPic(struct cachepic_s *stock, unsigned int fla
 extern struct cvar_s touch_conback_picture;
 /* Top of the chat sheet's keys from the last layout, or -1 when none show. */
 float TouchUI_ChatKeysTop(void);
+/* SCR_SetUpToDrawConsole: the console height, stopped above the touch keys. */
+float TouchUI_ConsoleHeight(float con_h);
+/* Height of the console / chat sheet's header row, sheet units. */
+float TouchUI_SheetHeaderHeight(float h);
 
 /* Current interactive state */
 touchui_tab_t TouchUI_GetTab(void);

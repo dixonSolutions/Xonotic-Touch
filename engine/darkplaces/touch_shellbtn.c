@@ -4,6 +4,7 @@ Godnotic: the console button (see touch_shellbtn.h).
 
 #include "quakedef.h"
 #include "touch_shellbtn.h"
+#include "touch_ui.h"
 
 extern cvar_t vid_conwidth;
 extern cvar_t vid_conheight;
@@ -150,10 +151,11 @@ static void place(void)
 	by = in_t * px2con + margin;
 	(void)in_b;
 
-	if (console_open() && vid_touchscreen.integer)
+	if ((console_open() || key_dest == key_message) && vid_touchscreen.integer)
 	{
-		// Under the touch console sheet's header (TouchUI_LayoutSheet).
-		float hdr = bound(36.0f, H * 0.10f, 64.0f);
+		// Under the touch console or chat sheet's header (TouchUI_LayoutSheet),
+		// not over its KEYBOARD button.
+		float hdr = TouchUI_SheetHeaderHeight(H);
 		by = max(by, hdr + margin);
 	}
 	else if (in_match() && vid_touchscreen.integer && cv("touch_pause_visible", 1))
