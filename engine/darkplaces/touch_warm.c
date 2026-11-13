@@ -43,6 +43,7 @@ the next game.
 #include "quakedef.h"
 #include "touch_warm.h"
 #include "touch_crc.h"
+#include "touch_prvm.h"
 #include "touch_loadtime.h"
 #if defined(__has_include)
 # if __has_include(<SDL.h>) && !defined(DEDICATED_SERVER)
@@ -390,6 +391,7 @@ void TouchWarm_Init(void)
 	Cmd_AddCommand(CF_CLIENT, "touch_warm_status", TouchWarm_Status_f, "what touch_warm prepared");
 	// load-time switches with no init hook of their own in an upstream file
 	TouchCRC_Init();
+	TouchPRVM_Init();
 #ifdef TOUCH_WARM_SDL
 	SDL_AddEventWatch(TW_EventWatch, NULL);
 #endif
