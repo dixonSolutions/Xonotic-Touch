@@ -110,9 +110,9 @@ xonotic_ensure_menu_theme_track() {
     partial="${dest}.partial"
     mkdir -p "$dest_dir"
 
-    echo "xonotic-touch: fetching menu theme (${XONOTIC_MENU_THEME_TRACK})..." >&2
+    echo "godnotic: fetching menu theme (${XONOTIC_MENU_THEME_TRACK})..." >&2
     if ! command -v curl >/dev/null 2>&1; then
-        echo "xonotic-touch: curl missing — cannot fetch menu theme early" >&2
+        echo "godnotic: curl missing — cannot fetch menu theme early" >&2
         return 1
     fi
 
@@ -125,7 +125,7 @@ xonotic_ensure_menu_theme_track() {
         -o "$partial" "$XONOTIC_MENU_THEME_URL"; then
         mv -f "$partial" "$dest"
         xonotic_mark_music_ready "$data_dir"
-        echo "xonotic-touch: menu theme ready at $dest" >&2
+        echo "godnotic: menu theme ready at $dest" >&2
         return 0
     fi
     rm -f "$partial" 2>/dev/null || true
@@ -412,11 +412,11 @@ xonotic_wait_download_pid() {
 
     have="$(xonotic_file_size "$zip_path")"
     if [ "$expected" -gt 0 ] 2>/dev/null && [ "$have" -lt "$expected" ]; then
-        echo "xonotic-touch: download incomplete for $(basename "$zip_path") ($have / $expected bytes)" >&2
+        echo "godnotic: download incomplete for $(basename "$zip_path") ($have / $expected bytes)" >&2
         return 1
     fi
     if [ "$have" -le 0 ] 2>/dev/null; then
-        echo "xonotic-touch: download produced empty file: $zip_path" >&2
+        echo "godnotic: download produced empty file: $zip_path" >&2
         return 1
     fi
     return 0
@@ -581,9 +581,9 @@ xonotic_fetch_autobuild_assets() {
                 jobs=$((jobs + 1))
                 have="$(xonotic_file_size "$path")"
                 if [ "$have" -gt 0 ] 2>/dev/null; then
-                    echo "xonotic-touch: resuming $name at $((have / 1048576)) MB (pid $pid)" >&2
+                    echo "godnotic: resuming $name at $((have / 1048576)) MB (pid $pid)" >&2
                 else
-                    echo "xonotic-touch: download started: $name (pid $pid)" >&2
+                    echo "godnotic: download started: $name (pid $pid)" >&2
                 fi
             fi
             next=$((next + 1))
@@ -692,7 +692,7 @@ xonotic_fetch_game_assets() {
     # are opt-in — they hang for a long time on "Preparing download..." when
     # gitlab is slow/unreachable inside Flatpak.
     xonotic_progress_write running 5 "Starting download..."
-    echo "xonotic-touch: downloading game assets (first launch may take several minutes)..."
+    echo "godnotic: downloading game assets (first launch may take several minutes)..."
     # Theme before the big zips so the open-menu track is available ASAP.
     xonotic_ensure_menu_theme_track "$data_dir" || true
     if xonotic_fetch_autobuild_assets "$data_dir" && xonotic_assets_are_ready "$data_dir"; then

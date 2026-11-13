@@ -17,7 +17,7 @@ never in a git worktree (CLAUDE.md). Use a scratch clone of `origin/main`:
 # from the shared checkout; SCRATCH is your scratch directory
 git clone --shared --no-checkout "$(git rev-parse --show-toplevel)" "$SCRATCH/sync"
 cd "$SCRATCH/sync"
-git remote set-url origin https://github.com/dixonSolutions/xonotic-touch
+git remote set-url origin https://github.com/dixonSolutions/Godnotic
 git fetch origin main upstream/vendor:upstream/vendor
 git checkout -B upstream-sync origin/main
 ```

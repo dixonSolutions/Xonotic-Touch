@@ -140,5 +140,5 @@ int CL_VM_GetViewEntity(void);
 
 #endif
 
-// Xonotic Touch: whether the bundled Touch CSQC is the running client program.
+// Godnotic: whether the bundled Touch CSQC is the running client program.
 extern qbool cl_touch_csqc_active;

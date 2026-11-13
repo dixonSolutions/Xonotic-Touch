@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: offline tactics. Everything here runs only while the offline
+Godnotic: offline tactics. Everything here runs only while the offline
 practice gate is open (touch_weapons.h TouchWep_PracticeGate): this process
 runs the server, this client is connected to it over the loopback, no other
 human is connected, and no demo plays. The gate is checked every frame; with

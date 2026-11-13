@@ -17,32 +17,32 @@
 #include "textlabel.qh"
 #include "touchbutton.qh"
 
-CLASS(XonoticTouchModsTab, XonoticTab)
-	METHOD(XonoticTouchModsTab, fill, void(entity));
-	ATTRIB(XonoticTouchModsTab, intendedWidth, float, 0.9);
-	ATTRIB(XonoticTouchModsTab, rows, float, 14);
-	ATTRIB(XonoticTouchModsTab, columns, float, 6);
-	ATTRIB(XonoticTouchModsTab, name, string, "touchmods");
-ENDCLASS(XonoticTouchModsTab)
-entity makeXonoticTouchModsTab();
+CLASS(GodnoticModsTab, XonoticTab)
+	METHOD(GodnoticModsTab, fill, void(entity));
+	ATTRIB(GodnoticModsTab, intendedWidth, float, 0.9);
+	ATTRIB(GodnoticModsTab, rows, float, 14);
+	ATTRIB(GodnoticModsTab, columns, float, 6);
+	ATTRIB(GodnoticModsTab, name, string, "touchmods");
+ENDCLASS(GodnoticModsTab)
+entity makeGodnoticModsTab();
 
 // A finger-sized button whose text and action follow one mod slot of the
 // current page (or a page / list action).
-CLASS(XonoticTouchModsButton, XonoticTouchButton)
-	METHOD(XonoticTouchModsButton, draw, void(entity));
-	ATTRIB(XonoticTouchModsButton, modSlot, int, 0);
-	ATTRIB(XonoticTouchModsButton, modRole, int, 0);
-	ATTRIB(XonoticTouchModsButton, modText, string);
-ENDCLASS(XonoticTouchModsButton)
+CLASS(GodnoticModsButton, GodnoticButton)
+	METHOD(GodnoticModsButton, draw, void(entity));
+	ATTRIB(GodnoticModsButton, modSlot, int, 0);
+	ATTRIB(GodnoticModsButton, modRole, int, 0);
+	ATTRIB(GodnoticModsButton, modText, string);
+ENDCLASS(GodnoticModsButton)
 
-CLASS(XonoticTouchModsLabel, XonoticTextLabel)
-	METHOD(XonoticTouchModsLabel, draw, void(entity));
-	ATTRIB(XonoticTouchModsLabel, modSlot, int, 0);
-	ATTRIB(XonoticTouchModsLabel, modRole, int, 0);
-	ATTRIB(XonoticTouchModsLabel, modText, string);
-	ATTRIB(XonoticTouchModsLabel, allowColors, bool, true);
-	ATTRIB(XonoticTouchModsLabel, allowCut, bool, true);
-ENDCLASS(XonoticTouchModsLabel)
+CLASS(GodnoticModsLabel, XonoticTextLabel)
+	METHOD(GodnoticModsLabel, draw, void(entity));
+	ATTRIB(GodnoticModsLabel, modSlot, int, 0);
+	ATTRIB(GodnoticModsLabel, modRole, int, 0);
+	ATTRIB(GodnoticModsLabel, modText, string);
+	ATTRIB(GodnoticModsLabel, allowColors, bool, true);
+	ATTRIB(GodnoticModsLabel, allowCut, bool, true);
+ENDCLASS(GodnoticModsLabel)
 
 const string TOUCH_MODS_IMPORT_REQUEST_FILE = "touch/mod-import-request.txt";
 const string TOUCH_MODS_IMPORT_STATUS_FILE = "touch/mod-import-status.txt";

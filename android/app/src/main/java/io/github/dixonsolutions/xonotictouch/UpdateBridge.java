@@ -30,7 +30,7 @@ import java.util.List;
  */
 final class UpdateBridge {
 
-    private static final String TAG = "XonoticTouch";
+    private static final String TAG = "Godnotic";
 
     /** Bump only alongside the menu's TOUCH_UPDATE_FORMAT. */
     private static final int FORMAT = 1;

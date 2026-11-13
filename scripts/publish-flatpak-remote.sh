@@ -110,13 +110,13 @@ cat > "$SITE_DIR/index.html" <<EOF
 <h1>Godnotic Flatpak remote</h1>
 <p>${VERSION_NOTE}OSTree history is retained (last ${PRUNE_DEPTH} commits per ref) so older builds remain available for rollback.</p>
 <pre>
-flatpak remote-add --user --if-not-exists xonotic-touch \\
+flatpak remote-add --user --if-not-exists godnotic \\
   ${FLATPAK_REMOTE_URL}
-flatpak install --user xonotic-touch io.github.dixonSolutions.XonoticTouch
+flatpak install --user godnotic io.github.dixonSolutions.XonoticTouch
 flatpak update --user io.github.dixonSolutions.XonoticTouch
 
 # Inspect / roll back to an older commit:
-flatpak remote-info --log xonotic-touch io.github.dixonSolutions.XonoticTouch
+flatpak remote-info --log godnotic io.github.dixonSolutions.XonoticTouch
 </pre>
 </body>
 </html>

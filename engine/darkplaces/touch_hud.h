@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: engine-side copy of the Touch HUD.
+Godnotic: engine-side copy of the Touch HUD.
 
 The on-screen controls normally live in the port's CSQC (touch_*.qc). On a
 public server the client has to run that server's own CSQC, so the HUD would

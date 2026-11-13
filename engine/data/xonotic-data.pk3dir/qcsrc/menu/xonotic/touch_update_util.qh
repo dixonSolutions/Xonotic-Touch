@@ -73,8 +73,8 @@ const string TOUCH_UPDATE_AUTO_CVAR = "touch_update_auto";
 /** What changed in each release, newest first: a version line, then "- " lines,
  *  then a blank line. Built by scripts/release-changelog.sh and published on
  *  every release; kept under the 16 KiB a uri_get reply is cut at. */
-const string TOUCH_UPDATE_CHANGELOG_URL = "https://dixonsolutions.github.io/Xonotic-Touch/changelog.txt";
-const string TOUCH_UPDATE_RELEASES_URL = "https://github.com/dixonSolutions/Xonotic-Touch/releases";
+const string TOUCH_UPDATE_CHANGELOG_URL = "https://dixonsolutions.github.io/Godnotic/changelog.txt";
+const string TOUCH_UPDATE_RELEASES_URL = "https://github.com/dixonSolutions/Godnotic/releases";
 
 /** Ask for What's new. listener, when not NULL, gets its .changelogBox set to
  *  the text (or to why there is none) when the reply arrives. */
@@ -112,7 +112,7 @@ bool TouchUpdate_request(string token);
 bool TouchUpdate_canSelfInstall();
 /** True when a newer build is known to exist. */
 bool TouchUpdate_isBehind();
-/** "Xonotic Touch 1.2.49", or a plain fallback before any status is published. */
+/** "Godnotic 1.2.49", or a plain fallback before any status is published. */
 string TouchUpdate_versionLine();
 /** "4 versions behind", "Up to date", "Checking…" — one short line for chrome. */
 string TouchUpdate_shortStatus();

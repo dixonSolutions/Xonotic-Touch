@@ -58,7 +58,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class BootActivity extends Activity {
 
-    private static final String TAG = "XonoticTouch";
+    private static final String TAG = "Godnotic";
 
     private static final String CHANNEL_PROGRESS = "downloads";
     private static final String CHANNEL_DONE = "downloads-done";

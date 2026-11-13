@@ -791,9 +791,9 @@
 
   function loadEngine() {
     const s = document.createElement('script');
-    s.src = 'xonotic-touch.js?v=' + encodeURIComponent(state.buildId);
+    s.src = 'godnotic.js?v=' + encodeURIComponent(state.buildId);
     s.async = true;
-    s.onerror = () => fail('Could not load the game engine (xonotic-touch.js).');
+    s.onerror = () => fail('Could not load the game engine (godnotic.js).');
     document.body.appendChild(s);
   }
 

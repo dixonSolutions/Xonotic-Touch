@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: the Lua sandbox and the mod manager (see touch_lua.h).
+Godnotic: the Lua sandbox and the mod manager (see touch_lua.h).
 
 What a mod can reach is exactly what this file and the two realm files put in
 its lua_State; everything else in Lua's libraries is either not compiled in

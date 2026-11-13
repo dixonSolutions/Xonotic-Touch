@@ -982,7 +982,7 @@ qbool MakeDownloadPacket(const char *filename, unsigned char *data, size_t len, 
 }
 
 extern cvar_t csqc_usedemoprogs;
-// Xonotic Touch: true while the bundled Touch CSQC (the one with the on-screen
+// Godnotic: true while the bundled Touch CSQC (the one with the on-screen
 // stick, weapon strip and console pill) is the client program. False when a
 // server's own CSQC was taken instead; the engine then draws its fallback
 // overlay (vid_sdl.c, IN_Move_TouchScreen_Xonotic).
@@ -990,7 +990,7 @@ qbool cl_touch_csqc_active = false;
 
 void CL_VM_Init (void)
 {
-	// Xonotic Touch: whether this connection runs the bundled touch CSQC.
+	// Godnotic: whether this connection runs the bundled touch CSQC.
 	qbool csqc_keep_local = false;
 	prvm_prog_t *prog = CLVM_prog;
 	const char* csprogsfn = NULL;
@@ -1012,7 +1012,7 @@ void CL_VM_Init (void)
 		return;
 
 	// see if the requested csprogs.dat file matches the requested crc
-	// Xonotic Touch: cl_csqc_download 0 skips dlcache so stock server CSQC
+	// Godnotic: cl_csqc_download 0 skips dlcache so stock server CSQC
 	// cannot replace the local Touch HUD / Console. cl_csqc_download 2 keeps
 	// the local Touch CSQC only when it is byte-for-byte the build the server
 	// runs (same CRC and size); any other server gets its own CSQC, because a
@@ -1055,7 +1055,7 @@ void CL_VM_Init (void)
 		csprogsfn = csqc_progname.string;
 		csprogsdata = FS_LoadFile(csprogsfn, tempmempool, true, &csprogsdatasize);
 	}
-	// Xonotic Touch: servers name their CSQC by version
+	// Godnotic: servers name their CSQC by version
 	// (csprogs-xonotic-v0.8.6-NNNN-gHASH.dat). With downloads off that exact
 	// file never exists on this side, and the old behaviour was to give up:
 	// "server requires CSQC, but ... wasn't found" on every public server.
@@ -1087,7 +1087,7 @@ void CL_VM_Init (void)
 			}
 			else if (csqc_keep_local)
 			{
-				// Xonotic Touch: keep local CSQC (touch HUD) on stock servers.
+				// Godnotic: keep local CSQC (touch HUD) on stock servers.
 				Con_Printf(CON_WARN "Warning: Using local %s (CRC/size %i/%i; server wants %i/%i) because cl_csqc_download is 0\n", csqc_progname.string, csprogsdatacrc, (int)csprogsdatasize, requiredcrc, requiredsize);
 			}
 			else

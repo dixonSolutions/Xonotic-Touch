@@ -137,8 +137,10 @@ class GodnoticBootActivity : Activity() {
     private fun archiveUrl(): String {
         val debug = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
         val override = if (debug) intent.getStringExtra("godnotic_data_url") else null
-        return override ?: assets.open("godnotic-data-url.txt").bufferedReader().use { it.readText().trim() }
+        return override ?: assetLine(if (GpuProbe.astc()) "godnotic-data-url.txt" else "godnotic-data-full-url.txt")
     }
+
+    private fun assetLine(name: String) = assets.open(name).bufferedReader().use { it.readText().trim() }
 
     private fun prepare() {
         plan = null
@@ -152,10 +154,9 @@ class GodnoticBootActivity : Activity() {
             val found = try {
                 PackFetch.plan(archiveUrl(), null, "Xonotic/data/")
             } catch (e: java.io.IOException) {
-                // A pinned archive that is not published yet, or a mirror that
-                // refuses range requests, must not block setup: the autobuild
-                // carries the same pk3s and is the source Linux downloads from.
-                android.util.Log.w("Godnotic", "Pinned data archive unusable; using the autobuild", e)
+                // The slim archive being unreachable must not block setup:
+                // the full set in the same repository has every pk3 too.
+                android.util.Log.w("Godnotic", "Slim data archive unusable; using the full set", e)
                 data.planDownload()
             }
             post(id) { plan = found; status.text = "Download game data"; updateChoice() }

@@ -73,7 +73,7 @@ void XonoticToSDialog_fill(entity me)
 	if (autocvar__termsofservice_accepted > 0)
 		subtitle = _("Terms of Service have been updated. Please read them before continuing:");
 	else if (cvar("vid_touchscreen"))
-		subtitle = _("Welcome to Xonotic Touch! Please read the following Terms of Service:");
+		subtitle = _("Welcome to Godnotic! Please read the following Terms of Service:");
 	else
 		subtitle = _("Welcome to Xonotic! Please read the following Terms of Service:");
 

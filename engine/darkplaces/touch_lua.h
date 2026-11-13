@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: Lua 5.4 client mods and server plugins in a sandbox.
+Godnotic: Lua 5.4 client mods and server plugins in a sandbox.
 
 Client mods live in <userdir>/mods/<name>/init.lua and server plugins in
 <userdir>/plugins/<name>/init.lua, on the real filesystem only: nothing is ever

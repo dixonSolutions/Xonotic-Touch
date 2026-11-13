@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: offline tactics. Only in a match against bots on this
+Godnotic: offline tactics. Only in a match against bots on this
 machine (TouchWep_PracticeGate: this process runs the server, this client is
 on it over the loopback, no other human is connected, no demo). See
 touch_tactics.c.

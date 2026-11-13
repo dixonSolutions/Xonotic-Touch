@@ -59,7 +59,7 @@ import java.util.zip.Inflater;
  */
 final class PackFetch {
 
-    private static final String TAG = "XonoticTouch";
+    private static final String TAG = "Godnotic";
 
     /** Parallel connections: 8 keep a fast link full; on a slow one they cost nothing over 4. */
     static final int CONNECTIONS = 8;
@@ -515,7 +515,7 @@ final class PackFetch {
             long start = dataStart();
             long chunkStart = i * CHUNK;
             long size = state.sizeOf(i);
-            byte[] buf = new byte[128 * 1024];
+            byte[] buf = new byte[256 * 1024];
             int failures = 0;
             while (state.pos(i) < size) {
                 checkStopped();

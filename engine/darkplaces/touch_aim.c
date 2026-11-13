@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: auto-shoot and aim helpers (see touch_aim.h).
+Godnotic: auto-shoot and aim helpers (see touch_aim.h).
 
 Where the other players are: Xonotic networks players as CSQC entities
 (CSQCModel), so the engine's own cl.entities[1..maxclients] are empty and the

@@ -29,7 +29,7 @@ import java.util.Map;
  */
 public final class HostRes {
 
-    private static final String TAG = "XonoticTouch";
+    private static final String TAG = "Godnotic";
     /** Written by the copyStringsAsset task in build.gradle. */
     static final String ASSET = "xt/strings.xml";
 

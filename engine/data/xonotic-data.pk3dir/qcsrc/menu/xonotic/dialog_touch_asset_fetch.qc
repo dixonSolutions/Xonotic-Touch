@@ -159,7 +159,7 @@ void TouchAssetFetch_updateWidgets(entity me, bool isError, bool isDiscover, boo
 		me.progressBar.setProgress(me.progressBar, 1);
 		if (me.percentLabel)
 			me.percentLabel.setText(me.percentLabel, "100%");
-		me.statusLabel.setText(me.statusLabel, _("Game data ready — restarting Xonotic Touch"));
+		me.statusLabel.setText(me.statusLabel, _("Game data ready — restarting Godnotic"));
 		me.hintLabel.setText(me.hintLabel, _("Setup is complete."));
 		TouchAssetFetch_syncPrimaryButton(me, false, true);
 		return;
@@ -175,7 +175,7 @@ void TouchAssetFetch_updateWidgets(entity me, bool isError, bool isDiscover, boo
 		me.statusLabel.setText(me.statusLabel, (message != "") ? message : _("Download failed."));
 		if (me.relaunchFailed)
 			me.hintLabel.setText(me.hintLabel,
-				_("Close and reopen Xonotic Touch to try the download again."));
+				_("Close and reopen Godnotic to try the download again."));
 		else
 			me.hintLabel.setText(me.hintLabel,
 				_("Check your connection and free space, then tap Try again."));
@@ -231,7 +231,7 @@ void TouchAssetFetch_updateWidgets(entity me, bool isError, bool isDiscover, boo
 	TouchAssetFetch_syncPrimaryButton(me, false, false);
 }
 
-void XonoticTouchAssetFetchDialog_draw(entity me)
+void GodnoticAssetFetchDialog_draw(entity me)
 {
 	TouchStartup_readProgress(me);
 
@@ -255,18 +255,18 @@ void XonoticTouchAssetFetchDialog_draw(entity me)
 	TouchAssetFetch_updateWidgets(me, isError, isDiscover, isDone);
 
 	TouchAssetFetch_drawScrim(me);
-	SUPER(XonoticTouchAssetFetchDialog).draw(me);
+	SUPER(GodnoticAssetFetchDialog).draw(me);
 
 	if (me.completedTime && time >= me.completedTime)
 		TouchAssetFetch_finish(me);
 }
 
-bool XonoticTouchAssetFetchDialog_shouldShow()
+bool GodnoticAssetFetchDialog_shouldShow()
 {
 	return TouchStartup_assetFetchDialog_shouldShow();
 }
 
-void XonoticTouchAssetFetchDialog_fill(entity me)
+void GodnoticAssetFetchDialog_fill(entity me)
 {
 	entity e;
 
@@ -290,7 +290,7 @@ void XonoticTouchAssetFetchDialog_fill(entity me)
 	me.TR(me);
 	me.TR(me);
 		me.TD(me, 2, me.columns, e = makeXonoticTextLabel(0.5,
-			_("Xonotic Touch downloads maps, textures and music once. Partials resume if interrupted — nothing already installed is fetched again.")));
+			_("Godnotic downloads maps, textures and music once. Partials resume if interrupted — nothing already installed is fetched again.")));
 		e.allowWrap = true;
 		e.allowWrap_spacing = 0.5;
 	me.TR(me);

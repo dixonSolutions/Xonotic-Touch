@@ -1,7 +1,6 @@
 package io.github.dixonsolutions.xonotictouch;
 
 import android.content.Context;
-import android.util.Base64;
 import android.util.Log;
 
 import java.io.File;
@@ -30,7 +29,7 @@ import java.util.zip.ZipInputStream;
  */
 final class GameData {
 
-    private static final String TAG = "XonoticTouch";
+    private static final String TAG = "Godnotic";
 
     /** Bundled payload staged into the APK by scripts/android-stage-assets.sh. */
     private static final String BUNDLE_ASSET = "xonotic-slim-data.zip";
@@ -38,16 +37,18 @@ final class GameData {
     /** "crc size name" per file of the last unpack (installBundle). */
     private static final String BUNDLE_MANIFEST = ".bundle-manifest";
 
-    private static final String AUTOBUILD = "https://beta.xonotic.org/autobuild";
-    private static final String AUTOBUILD_LOGIN = "xonotic:g-23";
+    /**
+     * The pinned full data set in Godnotic's own data repository. Not a moving
+     * upstream build: the packs change only when a new data release is made.
+     */
+    private static final String FULL_DATA =
+            "https://github.com/dixonSolutions/Godnotic-data/releases/download/data-20261107";
 
     /**
-     * One archive covers everything. Xonotic-latest.zip ships the data, maps,
-     * music, nexcompat and font pk3s together; the -mappingsupport and -high
-     * builds duplicate them, which is 1.6 GB of download for no new files.
+     * One archive covers everything: the data, maps, music and font pk3s.
      * PackFetch takes the pk3s out of it without storing the archive.
      */
-    private static final String ASSET_ARCHIVE = "Xonotic-latest.zip";
+    private static final String ASSET_ARCHIVE = "Godnotic-data-20261107.zip";
     /** The folder in the archive whose pk3s make up the game data. */
     private static final String ARCHIVE_DATA = "Xonotic/data/";
 
@@ -378,7 +379,7 @@ final class GameData {
         if (old.exists() && !old.delete()) {
             Log.w(TAG, "Could not remove " + old);
         }
-        return PackFetch.plan(AUTOBUILD + "/" + ASSET_ARCHIVE, autobuildAuthHeader(), ARCHIVE_DATA);
+        return PackFetch.plan(FULL_DATA + "/" + ASSET_ARCHIVE, null, ARCHIVE_DATA);
     }
 
     /** Fetches the planned pk3s (music when asked) into the data dir. Interrupt to stop. */
@@ -416,17 +417,6 @@ final class GameData {
     /** Whole megabytes, for the progress line. */
     static String megabytes(long bytes) {
         return String.valueOf(bytes >> 20);
-    }
-
-    /**
-     * The autobuild mirror sits behind a shared HTTP login that Xonotic
-     * publishes alongside the download link; scripts/fetch-assets-posix.sh sends
-     * the same one. android.util.Base64, not java.util, because the latter only
-     * arrived in API 26 and this app supports 21.
-     */
-    private static String autobuildAuthHeader() {
-        byte[] login = AUTOBUILD_LOGIN.getBytes(StandardCharsets.UTF_8);
-        return "Basic " + Base64.encodeToString(login, Base64.NO_WRAP);
     }
 
     // ------------------------------------------------------------- utilities

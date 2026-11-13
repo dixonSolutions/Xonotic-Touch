@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: auto dodge. When an enemy projectile the player can see is
+Godnotic: auto dodge. When an enemy projectile the player can see is
 about to hit, the move steps aside for them; the view, auto-shoot and the aim
 pull carry on untouched.
 

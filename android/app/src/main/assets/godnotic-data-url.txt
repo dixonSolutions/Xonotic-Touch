@@ -1,1 +1,1 @@
-https://github.com/dixonSolutions/Godnotic/releases/download/data-slim/Godnotic-data.zip
+https://github.com/dixonSolutions/Godnotic-data/releases/download/data-slim/Godnotic-data.zip

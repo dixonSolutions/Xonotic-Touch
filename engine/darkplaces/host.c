@@ -504,7 +504,7 @@ void Host_Init (void)
 	// here comes the not so critical stuff
 
 	Host_AddConfigText(cmd_local);
-	// Xonotic Touch: queued behind every startup config, including the
+	// Godnotic: queued behind every startup config, including the
 	// launcher's +exec config.cfg and touch/startup.cfg (see touch_hud.c).
 	if (cls.state != ca_dedicated)
 		Cbuf_AddText(cmd_local, "_touch_restore_viewmodel\n");

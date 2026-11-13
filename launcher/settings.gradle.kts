@@ -8,5 +8,5 @@ pluginManagement {
 dependencyResolutionManagement {
     repositories { mavenCentral() }
 }
-rootProject.name = "xonotic-touch-launcher"
+rootProject.name = "godnotic-launcher"
 include(":core", ":app")

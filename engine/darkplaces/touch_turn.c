@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: the quick-turn button (see touch_turn.h).
+Godnotic: the quick-turn button (see touch_turn.h).
 
 Always the same way round, to the right (clockwise seen from above): the turn
 is for "what is behind me", which a half turn reaches either way, and a turn

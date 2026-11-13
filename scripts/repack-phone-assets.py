@@ -30,6 +30,7 @@ else astcenc-avx2, astcenc-sse4.1, astcenc-sse2 or astcenc on PATH).
 """
 
 import argparse
+import fnmatch
 import concurrent.futures
 import hashlib
 import json
@@ -68,8 +69,14 @@ PROFILES = {
     # The set the app downloads: coarser blocks and half-size world textures.
     # A phone screen is small and held at arm's length, which is what buys the
     # bytes back; 2D graphics, the part read at 1:1, keep their size.
+    # JPEGs: the official lightmaps are saved at quality ~99 and are a third of
+    # the maps pack; at 90 they are a quarter of that and look the same. What a
+    # running game never opens (map and model sources, QuakeC line tables, the
+    # benchmark demo) is left out.
     "slim": {"world_blocks": (10, 10), "model_blocks": (8, 6), "norm_blocks": (6, 6),
-             "max_size": 512, "music_rate": "64k"},
+             "max_size": 512, "music_rate": "64k",
+             "jpeg_quality": 86, "lightmap_quality": 90,
+             "drop": ["maps/*.map", "models/*.map", "*.ase", "*.lno", "demos/*.dem"]},
 }
 
 
@@ -231,6 +238,65 @@ def to_opus(name, data, music_rate, sfx_rate):
     return out if 0 < len(out) < len(data) else None
 
 
+# -------------------------------------------------------------------- jpeg
+
+def is_lightmap(name):
+    return name.startswith("maps/") and "/lm_" in name
+
+
+def recompress_jpeg(name, data, quality):
+    """The same picture as a smaller baseline JPEG, or None to keep the entry.
+
+    Baseline with optimised Huffman tables, which every libjpeg reads. Only a
+    saving of a tenth or more is worth a generation of loss. Greyscale stays
+    greyscale (the *_alpha.jpg masks); CMYK and anything Pillow cannot read is
+    left alone.
+    """
+    if not quality or data[:2] != b"\xff\xd8":
+        return None
+    try:
+        from PIL import Image
+        import io
+        im = Image.open(io.BytesIO(data))
+        im.load()
+        if im.mode not in ("RGB", "L"):
+            return None
+        table = im.quantization.get(0) if im.quantization else None
+        out = io.BytesIO()
+        im.save(out, "JPEG", quality=quality, optimize=True, progressive=False)
+    except Exception as e:  # a broken picture is the engine's to report, not ours
+        log("  %s: kept (%s)" % (name, e))
+        return None
+    # Already at or below the target: re-encoding would only add loss.
+    if table and sum(table) / len(table) >= _QTABLE_MEAN.get(quality, 0):
+        return None
+    out = out.getvalue()
+    return out if len(out) <= len(data) * 0.9 else None
+
+
+def _qtable_means():
+    """Mean of libjpeg's luminance table at each quality, to tell how hard a
+    file was compressed already."""
+    base = [16, 11, 10, 16, 24, 40, 51, 61, 12, 12, 14, 19, 26, 58, 60, 55, 14, 13, 16, 24, 40, 57, 69, 56,
+            14, 17, 22, 29, 51, 87, 80, 62, 18, 22, 37, 56, 68, 109, 103, 77, 24, 35, 55, 64, 81, 104, 113, 92,
+            49, 64, 78, 87, 103, 121, 120, 101, 72, 92, 95, 98, 112, 100, 103, 99]
+    means = {}
+    for q in range(1, 101):
+        scale = 5000 // q if q < 50 else 200 - q * 2
+        means[q] = sum(min(255, max(1, (b * scale + 50) // 100)) for b in base) / 64
+    return means
+
+
+_QTABLE_MEAN = _qtable_means()
+
+
+def dropped(name, patterns):
+    """A pattern with a slash is matched against the whole entry name (and *
+    crosses directories); one without, against the file name."""
+    base = name.rsplit("/", 1)[-1]
+    return any(fnmatch.fnmatchcase(name if "/" in p else base, p) for p in patterns)
+
+
 # --------------------------------------------------------------------- zip
 
 def pack_entry(name, data, level):
@@ -320,7 +386,7 @@ def repack(args, pack, textures, stats):
     outname = stem + "-phone.pk3"
     outpath = os.path.join(args.outdir, outname)
     zout = ZipWriter(outpath + ".part")
-    kinds = {k: [0, 0, 0] for k in ("textures", "audio", "zstd", "stored", "retained")}
+    kinds = {k: [0, 0, 0] for k in ("textures", "audio", "jpeg", "zstd", "stored", "retained", "dropped")}
     seen = set()
     converted = set()  # dds names that became ktx
     lock = threading.Lock()
@@ -339,6 +405,11 @@ def repack(args, pack, textures, stats):
                 opus = to_opus(name, data, args.music_rate, args.sfx_rate)
                 if opus is not None:
                     newname, newdata, kind = name, opus, "audio"
+            elif ext in ("jpg", "jpeg"):
+                quality = getattr(args, "lightmap_quality", 0) if is_lightmap(name) else getattr(args, "jpeg_quality", 0)
+                jpeg = recompress_jpeg(name, data, quality)
+                if jpeg is not None:
+                    newname, newdata, kind = name, jpeg, "jpeg"
         except (subprocess.CalledProcessError, OSError, ValueError) as e:
             err = getattr(e, "stderr", b"") or b""
             log("  %s: kept (%s %s)" % (name, e, err.decode(errors="replace").strip()[:200]))
@@ -363,6 +434,14 @@ def repack(args, pack, textures, stats):
         infos = [i for i in zin.infolist() if not i.is_dir()]
         if args.limit:
             infos = infos[:args.limit]
+        drop = getattr(args, "drop", None) or []
+        if drop:
+            for i in infos:
+                if dropped(i.filename, drop):
+                    k = kinds["dropped"]
+                    k[0] += 1
+                    k[1] += i.compress_size
+            infos = [i for i in infos if not dropped(i.filename, drop)]
         links = [i for i in infos if is_symlink(i)]
         files = [i for i in infos if not is_symlink(i)]
 
@@ -486,6 +565,13 @@ def main():
     ap.add_argument("--zstd-level", type=int, default=19)
     ap.add_argument("--music-rate", default="96k")
     ap.add_argument("--sfx-rate", default="64k")
+    ap.add_argument("--jpeg-quality", type=int, default=0,
+                    help="re-encode JPEGs saved at a higher quality than this (0: leave them; slim: 86)")
+    ap.add_argument("--lightmap-quality", type=int, default=0,
+                    help="... for the maps' lightmaps, maps/*/lm_*.jpg (0: leave them; slim: 90)")
+    ap.add_argument("--drop", action="append", default=[], metavar="GLOB",
+                    help="leave out entries matching this glob (a pattern without / matches the file name; "
+                         "repeatable)")
     ap.add_argument("--meta", action="append", default=[], metavar="KEY=VALUE",
                     help="extra field for the manifest's meta object (repeatable)")
     ap.add_argument("--limit", type=int, default=0, help="only the first N entries of each pack (tests)")
@@ -517,14 +603,15 @@ def main():
         json.dump({"format": 1, "meta": meta, "packs": records}, f, indent=1)
         f.write("\n")
     with open(os.path.join(args.outdir, "phone-sizes.md"), "w") as f:
-        f.write("| pack | official | phone | textures | audio | zstd | stored | retained |\n")
-        f.write("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n")
+        f.write("| pack | official | phone | textures | audio | jpeg | zstd | stored | retained | dropped |\n")
+        f.write("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n")
         for r in records:
             k = stats[r["install_as"]]
             cell = lambda n: "%.1f -> %.1f" % (k[n][1] / 1e6, k[n][2] / 1e6) if k[n][0] else "-"
-            f.write("| %s | %.1f MB | %.1f MB | %s | %s | %s | %s | %s |\n" % (
+            f.write("| %s | %.1f MB | %.1f MB | %s | %s | %s | %s | %s | %s | %s |\n" % (
                 r["install_as"], r["source"]["size"] / 1e6, r["size"] / 1e6,
-                cell("textures"), cell("audio"), cell("zstd"), cell("stored"), cell("retained")))
+                cell("textures"), cell("audio"), cell("jpeg"), cell("zstd"), cell("stored"), cell("retained"),
+                cell("dropped")))
 
 
 if __name__ == "__main__":

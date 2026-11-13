@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: the server realm of the Lua sandbox (touch_lua.c): plugins from
+Godnotic: the server realm of the Lua sandbox (touch_lua.c): plugins from
 <userdir>/plugins on a server this engine hosts (a local match or a dedicated
 server), driven by the game's own events.
 

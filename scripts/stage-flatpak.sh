@@ -26,7 +26,7 @@ install -m 755 "$ROOT/scripts/fetch-assets-posix.sh" "$DEST/share/xonotic/fetch-
 install -m 755 "$ROOT/scripts/sync-bundle-data.sh" "$DEST/share/xonotic/sync-bundle-data.sh"
 install -m 644 "$ROOT/scripts/lib/asset-fetch.sh" "$DEST/share/xonotic/asset-fetch.sh"
 install -m 644 "$ROOT/scripts/lib/asset-discover.sh" "$DEST/share/xonotic/asset-discover.sh"
-install -m 755 "$ROOT/scripts/xonotic-touch-fetchd.sh" "$DEST/share/xonotic/xonotic-touch-fetchd.sh"
+install -m 755 "$ROOT/scripts/godnotic-fetchd.sh" "$DEST/share/xonotic/godnotic-fetchd.sh"
 # Read back by packaging/start.sh into update-status.txt, so the menu shows the
 # installed build rather than stock Xonotic's git tag. PACKAGE_VERSION is what
 # CI stamps the metainfo with; a local build without it simply has no version to

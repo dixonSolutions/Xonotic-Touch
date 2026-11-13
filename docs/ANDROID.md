@@ -604,15 +604,15 @@ keytool -genkeypair -v -keystore release.keystore -alias xonotictouch \
 ## The phone pack set
 
 `scripts/repack-phone-assets.py`, `scripts/pack-phone-archive.py` and
-`.github/workflows/phone-assets.yml` publish an ASTC/zstd/Opus repack of the
-autobuild data to the stable `data-slim` release
+Godnotic-data's `slim-data.yml` publish an ASTC/zstd/Opus repack of the
+pinned full data to that repository's stable `data-slim` release
 ([PHONE_ASSETS.md](PHONE_ASSETS.md)): faster map loads, sharper textures on
 GPUs without S3TC, and a much smaller download.
 
 `android/app/src/main/assets/godnotic-data-url.txt` pins the archive:
 
 ```
-https://github.com/dixonSolutions/Godnotic/releases/download/data-slim/Godnotic-data.zip
+https://github.com/dixonSolutions/Godnotic-data/releases/download/data-slim/Godnotic-data.zip
 ```
 
 Its entries are `Xonotic/data/<official pack name>.pk3` -- the phone pack under

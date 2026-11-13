@@ -116,7 +116,7 @@ void XonoticUpdatesSettingsTab_fill(entity me)
 		me.TD(me, 1, me.columns, me.autoBox = makeXonoticCheckBox_T(0, TOUCH_UPDATE_AUTO_CVAR,
 			_("Update automatically"),
 			live ? _("Download and apply updates in the background, while you play. A failed update rolls back on its own.")
-				: _("Download new builds in the background on Wi-Fi. A downloaded update installs the next time you start Xonotic Touch, or now with Install now. Android may still ask you to confirm.")));
+				: _("Download new builds in the background on Wi-Fi. A downloaded update installs the next time you start Godnotic, or now with Install now. Android may still ask you to confirm.")));
 	if (!live)
 	{
 	me.TR(me);
@@ -129,7 +129,7 @@ void XonoticUpdatesSettingsTab_fill(entity me)
 			me.downloadButton.onClick = TouchUpdates_Download_Click;
 			me.downloadButton.onClickEntity = me;
 		me.TD(me, 1, 1.5, me.installButton = makeXonoticButton_T(_("Install now"), '0 0 0',
-			_("Install the new build now. Xonotic Touch closes and comes back as the new version; settings, binds and maps are kept")));
+			_("Install the new build now. Godnotic closes and comes back as the new version; settings, binds and maps are kept")));
 			me.installButton.onClick = TouchUpdates_Install_Click;
 			me.installButton.onClickEntity = me;
 		me.TD(me, 1, 1.5, me.skipButton = makeXonoticButton_T(_("Skip version"), '0 0 0',
@@ -230,7 +230,7 @@ void XonoticUpdatesSettingsTab_draw(entity me)
 
 	if (me.requestFailed)
 		me.messageLabel.setText(me.messageLabel,
-			_("Could not reach the updater. Restart Xonotic Touch and try again."));
+			_("Could not reach the updater. Restart Godnotic and try again."));
 	else if (managed)
 		me.messageLabel.setText(me.messageLabel, behind
 			? _("Update the way you installed it: flatpak update, or the OpenStore on Ubuntu Touch.")
@@ -239,10 +239,10 @@ void XonoticUpdatesSettingsTab_draw(entity me)
 		// Worth spelling out: the installer flashing open and shut is what this
 		// looks like from the player's side, and it reads as a bug.
 		me.messageLabel.setText(me.messageLabel,
-			_("Permission needed: allow Xonotic Touch to install unknown apps in Android's settings, then press Install now."));
+			_("Permission needed: allow Godnotic to install unknown apps in Android's settings, then press Install now."));
 	else if (ready)
 		me.messageLabel.setText(me.messageLabel,
-			_("The update is downloaded. It installs the next time you start Xonotic Touch, or now with Install now."));
+			_("The update is downloaded. It installs the next time you start Godnotic, or now with Install now."));
 	else
 		me.messageLabel.setText(me.messageLabel, TouchUpdate_message());
 
@@ -299,7 +299,7 @@ void XonoticUpdatesSettingsTab_draw(entity me)
 	else
 	{
 		// AppUpdater stands down on a live build: its version and status lines would be stale.
-		me.versionLabel.setText(me.versionLabel, strcat(_("Xonotic Touch"), " ", TouchAndySU_installed()));
+		me.versionLabel.setText(me.versionLabel, strcat(_("Godnotic"), " ", TouchAndySU_installed()));
 		me.messageLabel.setText(me.messageLabel, "");
 	}
 	me.autoBox.disabled = managed;

@@ -1,15 +1,15 @@
 #include "touchbutton.qh"
 
-entity makeXonoticTouchButton(string theText, vector theColor)
+entity makeGodnoticButton(string theText, vector theColor)
 {
-	entity me = NEW(XonoticTouchButton);
+	entity me = NEW(GodnoticButton);
 	me.configureXonoticButton(me, theText, theColor, string_null);
 	return me;
 }
 
-entity makeXonoticTouchCommandButton(string theText, vector theColor, string theCommand, int theFlags)
+entity makeGodnoticCommandButton(string theText, vector theColor, string theCommand, int theFlags)
 {
-	entity me = NEW(XonoticTouchCommandButton);
+	entity me = NEW(GodnoticCommandButton);
 	me.configureXonoticCommandButton(me, theText, theColor, theCommand, theFlags, string_null);
 	return me;
 }

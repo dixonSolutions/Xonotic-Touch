@@ -62,7 +62,7 @@ jobs:
           printf '%s\n' "$ANDYSU_SIGNING_CERT" > "$RUNNER_TEMP/cert.json"
           trap 'rm -f "$RUNNER_TEMP/key" "$RUNNER_TEMP/cert.json"' EXIT
           ANDYSU_CLI="$RUNNER_TEMP/andysu" ANDYSU_KEY_FILE="$RUNNER_TEMP/key" ANDYSU_CERT_FILE="$RUNNER_TEMP/cert.json" \
-            sh "$RUNNER_TEMP/resign-channel.sh" "$site" "$CHANNEL" keys/xonotic-touch-public.pem
+            sh "$RUNNER_TEMP/resign-channel.sh" "$site" "$CHANNEL" keys/godnotic-public.pem
           if [ "$before" != "$(sha256sum "$site/$CHANNEL/update.json")" ]; then
             gh release upload "channel-$CHANNEL" --repo "$GITHUB_REPOSITORY" --clobber \
               "$site/$CHANNEL/update.json" "$site/$CHANNEL/update.json.sig"

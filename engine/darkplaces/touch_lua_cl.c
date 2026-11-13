@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: the client realm of the Lua sandbox (touch_lua.c): mods from
+Godnotic: the client realm of the Lua sandbox (touch_lua.c): mods from
 <userdir>/mods that draw over the HUD, see keys, add console commands.
 
 What a client mod can learn about the match is limited to what the scoreboard

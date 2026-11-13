@@ -17,7 +17,7 @@ concurrency:
 
 env:
   FLATPAK_APP_ID: io.github.dixonSolutions.XonoticTouch
-  FLATPAK_REMOTE_NAME: xonotic-touch
+  FLATPAK_REMOTE_NAME: godnotic
   FLATPAK_REMOTE_URL: https://dixonSolutions.github.io/Godnotic/flatpak
   # Must match OpenStore app id exactly (createRevisionFromClick rejects mismatches).
   # Click package ids require a namespace: appname.developer
@@ -313,9 +313,9 @@ jobs:
             echo
             echo "### Flatpak (Linux)"
             echo '```bash'
-            echo "flatpak remote-add --user --if-not-exists xonotic-touch \\"
+            echo "flatpak remote-add --user --if-not-exists godnotic \\"
             echo "  https://dixonSolutions.github.io/Godnotic/flatpak"
-            echo "flatpak install --user xonotic-touch io.github.dixonSolutions.XonoticTouch"
+            echo "flatpak install --user godnotic io.github.dixonSolutions.XonoticTouch"
             echo '```'
             echo
             echo "### Ubuntu Touch (.click)"

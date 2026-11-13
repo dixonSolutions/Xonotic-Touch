@@ -413,11 +413,11 @@ void UpdateNotification_URI_Get_Callback(float id, float status, string data)
 		}
 	}
 
-	// Xonotic Touch has its own releases, and its g_xonoticversion is a name
+	// Godnotic has its own releases, and its g_xonoticversion is a name
 	// rather than a number: compared with Xonotic's, it asked every player to
 	// "update" to stock Xonotic. Settings -> Updates, and the line drawn by
 	// TouchUpdate_drawBanner, cover it instead.
-	if(un_version != "" && !startsWith(cvar_string("g_xonoticversion"), "Xonotic Touch")
+	if(un_version != "" && !startsWith(cvar_string("g_xonoticversion"), "Godnotic")
 		&& vercmp(cvar_string("g_xonoticversion"), un_version) < 0)
 	{
 		// update needed
@@ -631,7 +631,7 @@ void updateCompression()
 		cvar_set("r_texture_dds_load", "1");
 		if(!can_dds)
 		{
-			// Xonotic Touch: the release packs carry every world, model and
+			// Godnotic: the release packs carry every world, model and
 			// particle texture as DDS only -- there are no uncompressed
 			// originals to fall back to (3207 of 3211 map textures, 1205 in the
 			// data pack). So on a GPU without S3TC (Mali, Adreno) the textures

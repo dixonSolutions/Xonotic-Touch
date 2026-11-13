@@ -1,4 +1,4 @@
-// Xonotic Touch: game events for Lua server plugins (engine/darkplaces/touch_lua_sv.c,
+// Godnotic: game events for Lua server plugins (engine/darkplaces/touch_lua_sv.c,
 // docs/MODDING.md). Each hook hands one event to the engine, which runs the plugins'
 // handlers and returns their verdict. Only the Touch engine has the builtin, so
 // nothing is called unless it registered the sv_lua_enable cvar itself.

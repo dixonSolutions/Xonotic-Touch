@@ -4,8 +4,8 @@ Ubuntu Touch runs click apps inside AppArmor confinement (`aa-exec`), which is f
 stricter than Flatpak or a desktop session. This document is the contract every
 script in the launch path must honour.
 
-Reported by [issue #18](https://github.com/dixonSolutions/Xonotic-Touch/issues/18)
-(Xiaomi Redmi Note 9 Pro, UT 24.04-1.4) and [issue #19](https://github.com/dixonSolutions/Xonotic-Touch/issues/19)
+Reported by [issue #18](https://github.com/dixonSolutions/Godnotic/issues/18)
+(Xiaomi Redmi Note 9 Pro, UT 24.04-1.4) and [issue #19](https://github.com/dixonSolutions/Godnotic/issues/19)
 (immediate exit after load when the instance lock path is not AppArmor-writable):
 
 ```
@@ -23,7 +23,7 @@ collapsed to `/` and the launcher aborted before the engine ever started.
 | Host binaries outside the click tree are not exec'able (`dirname`, `mkdir`, `tar`, `curl`, `flock`, ...) | Every runtime tool must ship inside the package; optional host tools must be probed before use |
 | Files inside the click tree are exec'able | `bin/busybox` and its applet symlinks work |
 | The click manifest only accepts `policy_groups`, not custom AppArmor rules | We cannot whitelist host binaries; bundling is the only fix |
-| Writable paths are only under `XDG_*/<APP_PKGNAME>` | Game data lives in `$XDG_DATA_HOME/<APP_PKGNAME>` (e.g. `~/.local/share/xonotictouch.dixonsolutions/`). Writing to `~/.local/share/xonotic-touch/` is denied (`mknod` / Permission denied) and aborts launch if the instance lock is treated as fatal — see [issue #19](https://github.com/dixonSolutions/Xonotic-Touch/issues/19) |
+| Writable paths are only under `XDG_*/<APP_PKGNAME>` | Game data lives in `$XDG_DATA_HOME/<APP_PKGNAME>` (e.g. `~/.local/share/xonotictouch.dixonsolutions/`). Writing to `~/.local/share/xonotic-touch/` is denied (`mknod` / Permission denied) and aborts launch if the instance lock is treated as fatal — see [issue #19](https://github.com/dixonSolutions/Godnotic/issues/19) |
 | `/bin/sh` (dash) runs the desktop hook's `Exec=bin/start.sh` | The launcher must be POSIX until it re-execs into bash |
 | `$0` is relative; `APP_DIR` points at the install root | Resolve the app root from both, never from `pwd`/`dirname` |
 | `APP_ID` is `<pkgname>_<appname>_<version>` | Derive `APP_PKGNAME` as `${APP_ID%%_*}` for the writable data dir |

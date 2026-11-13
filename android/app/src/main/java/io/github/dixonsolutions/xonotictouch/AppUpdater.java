@@ -52,10 +52,10 @@ import java.nio.charset.StandardCharsets;
  */
 final class AppUpdater {
 
-    private static final String TAG = "XonoticTouch";
+    private static final String TAG = "Godnotic";
 
     /** Only release assets of this repo are ever downloaded or installed. */
-    private static final String REPO = "dixonSolutions/Xonotic-Touch";
+    private static final String REPO = "dixonSolutions/Godnotic";
 
     private static final String RELEASES_URL =
         "https://api.github.com/repos/" + REPO + "/releases/latest";
@@ -407,7 +407,7 @@ final class AppUpdater {
             connection.setConnectTimeout(30_000);
             connection.setReadTimeout(60_000);
             connection.setInstanceFollowRedirects(true);
-            connection.setRequestProperty("User-Agent", "XonoticTouch");
+            connection.setRequestProperty("User-Agent", "Godnotic");
             if (have > 0) {
                 connection.setRequestProperty("Range", "bytes=" + have + "-");
             }
@@ -745,7 +745,7 @@ final class AppUpdater {
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         try {
             connection.setRequestProperty("Accept", "application/vnd.github+json");
-            connection.setRequestProperty("User-Agent", "XonoticTouch");
+            connection.setRequestProperty("User-Agent", "Godnotic");
             connection.setConnectTimeout(10_000);
             connection.setReadTimeout(15_000);
             int code = connection.getResponseCode();

@@ -150,7 +150,7 @@ void HUD_Checkpoints(bool should_draw)
 		--i;
 	}
 
-	// Xonotic Touch: with no split stored, every one of the 256 slots is
+	// Godnotic: with no split stored, every one of the 256 slots is
 	// empty, and walking them through the array accessor cost thousands of
 	// QuakeC statements a frame in every game mode, race or not.
 	if (autocvar__hud_configure || racetimer_have_stored_splits)

@@ -4,15 +4,15 @@
 
 // Settings -> Mobile: one page of sub-tabs. The page itself keeps the old
 // "touchsettings" name so `menu_cmd touchsettings` still lands here.
-CLASS(XonoticTouchSettingsTab, XonoticTab)
-	METHOD(XonoticTouchSettingsTab, fill, void(entity));
-	ATTRIB(XonoticTouchSettingsTab, intendedWidth, float, 0.9);
+CLASS(GodnoticSettingsTab, XonoticTab)
+	METHOD(GodnoticSettingsTab, fill, void(entity));
+	ATTRIB(GodnoticSettingsTab, intendedWidth, float, 0.9);
 	// Must equal Settings TabController height (settings.rows - 3.5 = 15.5).
-	ATTRIB(XonoticTouchSettingsTab, rows, float, 15.5);
-	ATTRIB(XonoticTouchSettingsTab, columns, float, 6);
-	ATTRIB(XonoticTouchSettingsTab, name, string, "touchsettings");
-ENDCLASS(XonoticTouchSettingsTab)
-entity makeXonoticTouchSettingsTab();
+	ATTRIB(GodnoticSettingsTab, rows, float, 15.5);
+	ATTRIB(GodnoticSettingsTab, columns, float, 6);
+	ATTRIB(GodnoticSettingsTab, name, string, "touchsettings");
+ENDCLASS(GodnoticSettingsTab)
+entity makeGodnoticSettingsTab();
 
 // The sub-tabs. Their height must equal the Mobile page's sub TabController
 // (page rows - 1.5 = 14).

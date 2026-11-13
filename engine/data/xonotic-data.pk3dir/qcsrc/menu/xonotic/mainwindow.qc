@@ -150,7 +150,7 @@ void MainWindow_configureMainWindow(entity me)
 	i.configureDialog(i);
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
 
-	me.assetFetchDialog = i = NEW(XonoticTouchAssetFetchDialog);
+	me.assetFetchDialog = i = NEW(GodnoticAssetFetchDialog);
 	i.configureDialog(i);
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
 
@@ -329,7 +329,7 @@ void MainWindow_configureMainWindow(entity me)
 	i.configureDialog(i);
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
 
-	i = NEW(XonoticTouchGameMenuDialog); // Touch: finger-sized game menu
+	i = NEW(GodnoticGameMenuDialog); // Touch: finger-sized game menu
 	i.configureDialog(i); // Touch
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z); // Touch
 

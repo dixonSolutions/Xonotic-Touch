@@ -2327,6 +2327,9 @@ static qbool VID_OpenURL_Allowed(const char *url)
 		"https://github.com/dixonSolutions/Xonotic-Touch",
 		"https://dixonsolutions.github.io/Xonotic-Touch",
 		"https://dixonSolutions.github.io/Xonotic-Touch",
+		"https://github.com/dixonSolutions/Godnotic",
+		"https://dixonsolutions.github.io/Godnotic",
+		"https://dixonSolutions.github.io/Godnotic",
 	};
 	size_t i;
 	const char *c;
@@ -2351,7 +2354,7 @@ static void VID_OpenURL_f(cmd_state_t *cmd)
 	const char *url = Cmd_Argv(cmd, 1);
 	if (Cmd_Argc(cmd) != 2 || !VID_OpenURL_Allowed(url))
 	{
-		Con_Printf("openurl: only the Xonotic Touch GitHub and Pages addresses can be opened\n");
+		Con_Printf("openurl: only the Godnotic GitHub and Pages addresses can be opened\n");
 		return;
 	}
 #if SDL_VERSION_ATLEAST(2, 0, 14)
@@ -2383,7 +2386,7 @@ void VID_Init (void)
 {
 	SDL_version version;
 
-	Cmd_AddCommand(CF_CLIENT, "openurl", VID_OpenURL_f, "open one of the Xonotic Touch project pages (GitHub releases, changelog) in the system browser");
+	Cmd_AddCommand(CF_CLIENT, "openurl", VID_OpenURL_f, "open one of the Godnotic project pages (GitHub releases, changelog) in the system browser");
 
 #ifndef __IPHONEOS__
 #ifdef MACOSX

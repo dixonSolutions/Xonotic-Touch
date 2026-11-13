@@ -21,7 +21,7 @@ void Touch_SaveLayoutFile(string path)
 		return;
 	}
 
-	fputs(fh, "// Xonotic Touch layout — saved by touch_save (seta for archive)\n");
+	fputs(fh, "// Godnotic layout — saved by touch_save (seta for archive)\n");
 	Touch_WriteAllCvars(fh);
 	fclose(fh);
 }

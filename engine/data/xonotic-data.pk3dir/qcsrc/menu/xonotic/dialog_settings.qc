@@ -26,7 +26,7 @@ void XonoticSettingsDialog_fill(entity me)
 		me.TD(me, 1, 1.5, mc.makeTabButton(mc, _("Misc"),   makeXonoticMiscSettingsTab()));
 	// XONOTIC_UT_TOUCH_SETTINGS_TAB
 	me.TR(me);
-		me.TD(me, 1, 1.5, mc.makeTabButton(mc, _("Mobile"), makeXonoticTouchSettingsTab()));
+		me.TD(me, 1, 1.5, mc.makeTabButton(mc, _("Mobile"), makeGodnoticSettingsTab()));
 		me.TD(me, 1, 1.5, mc.makeTabButton(mc, _("Updates"), makeXonoticUpdatesSettingsTab()));
 	me.gotoRC(me, 3.5, 0);
 		me.TD(me, me.rows - 3.5, me.columns, mc);

@@ -28,7 +28,7 @@ import java.util.concurrent.TimeUnit;
  * teardown and the new engine's start), both called from native threads.
  */
 final class EngineSwap {
-    private static final String TAG = "XonoticTouch";
+    private static final String TAG = "Godnotic";
     private static final int EV_STARTED = 1;
     private static final int EV_FAILED = 2;
     private static final int EV_HEALTHY = 3;

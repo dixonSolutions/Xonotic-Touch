@@ -19,23 +19,23 @@ Each push to `main` creates a **new immutable version** `1.2.<run_number>` (tag 
 
 | | |
 |---|---|
-| **Remote URL** | `https://dixonSolutions.github.io/Xonotic-Touch/flatpak` |
-| **Remote name** | `xonotic-touch` |
+| **Remote URL** | `https://dixonSolutions.github.io/Godnotic/flatpak` |
+| **Remote name** | `godnotic` |
 | **App ID** | `io.github.dixonSolutions.XonoticTouch` |
 | **Architectures** | `x86_64` (desktop/laptop), `aarch64` (ARM tablets/phones) |
 
 ```bash
-flatpak remote-add --user --if-not-exists xonotic-touch \
-  https://dixonSolutions.github.io/Xonotic-Touch/flatpak
+flatpak remote-add --user --if-not-exists godnotic \
+  https://dixonSolutions.github.io/Godnotic/flatpak
 
-flatpak install --user xonotic-touch io.github.dixonSolutions.XonoticTouch
+flatpak install --user godnotic io.github.dixonSolutions.XonoticTouch
 flatpak update --user io.github.dixonSolutions.XonoticTouch
 ```
 
 List older commits (rollback):
 
 ```bash
-flatpak remote-info --log xonotic-touch io.github.dixonSolutions.XonoticTouch
+flatpak remote-info --log godnotic io.github.dixonSolutions.XonoticTouch
 # then install/update to a specific commit hash if needed
 ```
 
@@ -74,19 +74,19 @@ There is no OSTree/apt remote for `.click` like Flatpak — instead each `main` 
 
 | | |
 |---|---|
-| **Index** | `https://dixonSolutions.github.io/Xonotic-Touch/click/` |
-| **Always-latest arm64** | `https://dixonSolutions.github.io/Xonotic-Touch/click/latest-arm64.click` |
-| **Always-latest armhf** | `https://dixonSolutions.github.io/Xonotic-Touch/click/latest-armhf.click` |
-| **Machine-readable** | `https://dixonSolutions.github.io/Xonotic-Touch/click/latest.json` |
+| **Index** | `https://dixonSolutions.github.io/Godnotic/click/` |
+| **Always-latest arm64** | `https://dixonSolutions.github.io/Godnotic/click/latest-arm64.click` |
+| **Always-latest armhf** | `https://dixonSolutions.github.io/Godnotic/click/latest-armhf.click` |
+| **Machine-readable** | `https://dixonSolutions.github.io/Godnotic/click/latest.json` |
 
 ```bash
-wget https://dixonSolutions.github.io/Xonotic-Touch/click/latest-arm64.click
+wget https://dixonSolutions.github.io/Godnotic/click/latest-arm64.click
 pkcon install-local --allow-untrusted latest-arm64.click
 ```
 
 ### Install from GitHub Releases
 
-1. Open the [latest release](https://github.com/dixonSolutions/Xonotic-Touch/releases/latest) (or any older `v1.2.*` tag).
+1. Open the [latest release](https://github.com/dixonSolutions/Godnotic/releases/latest) (or any older `v1.2.*` tag).
 2. Download `xonotictouch.dixonsolutions_*_arm64.click` (or `_armhf.click`).
 3. On the device:
 
@@ -120,29 +120,29 @@ Requires **Settings → Actions → General → Workflow permissions → Read an
 
 Attached assets:
 
-- `XonoticTouch-<version>-x86_64.flatpak`
-- `XonoticTouch-<version>-aarch64.flatpak`
+- `Godnotic-<version>-x86_64.flatpak`
+- `Godnotic-<version>-aarch64.flatpak`
 - `xonotictouch.dixonsolutions_<version>_arm64.click`
 - `xonotictouch.dixonsolutions_<version>_armhf.click`
-- `XonoticTouch-<version>-arm64-v8a.apk`
-- `XonoticTouch-<version>-armeabi-v7a.apk`
-- `XonoticTouch-<version>-x86_64.apk`
+- `Godnotic-<version>-arm64-v8a.apk`
+- `Godnotic-<version>-armeabi-v7a.apk`
+- `Godnotic-<version>-x86_64.apk`
 
 Each release's notes open with **Changes**: the subjects of the commits since
 the previous release tag (`scripts/release-changelog.sh markdown`). The Pages
 job publishes the same history as plain text at
-https://dixonSolutions.github.io/Xonotic-Touch/changelog.txt (newest release
+https://dixonSolutions.github.io/Godnotic/changelog.txt (newest release
 first, kept under 15 KB). The in-game Settings → Updates screen shows that file
 under "What's new", on every platform. `scripts/test-release-changelog.sh`
 covers the script in CI.
 
-Browse all versions: https://github.com/dixonSolutions/Xonotic-Touch/releases  
-Latest: https://github.com/dixonSolutions/Xonotic-Touch/releases/latest
+Browse all versions: https://github.com/dixonSolutions/Godnotic/releases  
+Latest: https://github.com/dixonSolutions/Godnotic/releases/latest
 
 Offline Flatpak install:
 
 ```bash
-flatpak install --user XonoticTouch-1.2.<N>-x86_64.flatpak
+flatpak install --user Godnotic-1.2.<N>-x86_64.flatpak
 ```
 
 > The old `continuous` tag (if still present) is legacy from before versioned releases. Prefer `releases/latest` or a specific `v1.2.*` tag.
@@ -190,9 +190,9 @@ On first launch, `fetch-assets-runtime.sh` tries:
 
 Android does not use either: `android/app/src/main/assets/godnotic-data-url.txt`
 pins the slim archive in the `data-slim` release
-(`https://github.com/dixonSolutions/Godnotic/releases/download/data-slim/Godnotic-data.zip`,
-about 508 MB; see [PHONE_ASSETS.md](PHONE_ASSETS.md)), and the app falls back to
-the autobuild when that archive cannot be planned.
+(`https://github.com/dixonSolutions/Godnotic-data/releases/download/data-slim/Godnotic-data.zip`,
+see [PHONE_ASSETS.md](PHONE_ASSETS.md)) for GPUs that decode ASTC, and the app falls back to
+the pinned full set in the same repository otherwise, or when that archive cannot be planned.
 
 | Variable | Purpose |
 |----------|---------|

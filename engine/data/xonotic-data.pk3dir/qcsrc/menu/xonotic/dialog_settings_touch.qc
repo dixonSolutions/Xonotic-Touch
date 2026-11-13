@@ -48,14 +48,14 @@ void TouchMenu_ResetPreset_Click(entity me, entity other)
 //   Tactics     shot choices: secondary fire, lead, rockets, weapon switching,
 //               and how shots read a moving enemy or a group
 //   Dynamics    performance profile, frame rate, dynamic resolution, hop
-entity makeXonoticTouchSettingsTab()
+entity makeGodnoticSettingsTab()
 {
-	entity me = NEW(XonoticTouchSettingsTab);
+	entity me = NEW(GodnoticSettingsTab);
 	me.configureDialog(me);
 	return me;
 }
 
-void XonoticTouchSettingsTab_fill(entity me)
+void GodnoticSettingsTab_fill(entity me)
 {
 	// One row of sub-tab buttons, then the sub-tab itself: 15.5 = 1.5 + 14.
 	entity mc = makeXonoticTabController(me.rows - 1.5);
@@ -67,7 +67,7 @@ void XonoticTouchSettingsTab_fill(entity me)
 		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Tactics"),    makeXonoticMobileTacticsTab()));
 		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Dynamics"),   makeXonoticMobileDynamicsTab()));
 		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Loser"),      makeXonoticMobileLoserTab()));
-		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Mods"),       makeXonoticTouchModsTab())); // Lua mods (dialog_touch_mods.qc)
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Mods"),       makeGodnoticModsTab())); // Lua mods (dialog_touch_mods.qc)
 	me.gotoRC(me, 1.5, 0);
 		me.TD(me, me.rows - 1.5, me.columns, mc);
 }

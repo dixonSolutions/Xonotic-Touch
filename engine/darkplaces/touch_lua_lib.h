@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: Lua modules built into the sandbox, loaded with require("xt.<name>")
+Godnotic: Lua modules built into the sandbox, loaded with require("xt.<name>")
 (touch_lua.c). Each is a Lua chunk run in the mod's own state, with the same
 limits as the mod's code; it only uses the public xt API.
 */

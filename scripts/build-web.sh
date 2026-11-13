@@ -94,19 +94,19 @@ fi
 
 cd "$ROOT/engine/darkplaces"
 # CFLAGS changes (debug vs release) need a clean object dir.
-stamp="build-obj/release/xonotic-touch.js/.web-flags"
+stamp="build-obj/release/godnotic.js/.web-flags"
 want="debug=$DEBUG"
 if [ -f "$stamp" ] && [ "$(cat "$stamp")" != "$want" ]; then
-    rm -rf build-obj/release/xonotic-touch.js
+    rm -rf build-obj/release/godnotic.js
 fi
 # Link flags (--profile) only need a relink, which make does not see.
-link_stamp="build-obj/release/xonotic-touch.js/.web-link"
+link_stamp="build-obj/release/godnotic.js/.web-link"
 want_link="${LDFLAGS_WEB[*]}"
 if [ ! -f "$link_stamp" ] || [ "$(cat "$link_stamp")" != "$want_link" ]; then
-    rm -f xonotic-touch.js xonotic-touch.wasm
+    rm -f godnotic.js godnotic.wasm
 fi
 emmake make emscripten-release -j"$(nproc)" \
-    EXE_WASMJS=xonotic-touch.js \
+    EXE_WASMJS=godnotic.js \
     DP_VIDEO_CAPTURE=disabled \
     STRIP=: \
     LDFLAGS_WASMJS="${LDFLAGS_WEB[*]}"
@@ -116,7 +116,7 @@ echo "$want_link" > "$link_stamp"
 
 # ---- Page ---------------------------------------------------------------
 mkdir -p "$OUT"
-install -m 644 xonotic-touch.js xonotic-touch.wasm "$OUT/"
+install -m 644 godnotic.js godnotic.wasm "$OUT/"
 install -m 644 "$ROOT/web/index.html" "$ROOT/web/shell.js" "$ROOT/web/shell.css" \
     "$ROOT/web/manifest.webmanifest" "$ROOT/web/godnotic-banner.png" "$ROOT/web/serve.py" "$OUT/"
 for icon in "$ROOT"/web/icon-*.png; do
@@ -130,7 +130,7 @@ rev="${VERCEL_GIT_COMMIT_SHA:-$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || ech
 build_id="$(date -u +%Y%m%d%H%M%S)-${rev:0:7}"
 printf '{"build":"%s"}\n' "$build_id" > "$OUT/build.json"
 
-printf 'Built %s (%s)\n' "$OUT" "$(du -sh "$OUT/xonotic-touch.wasm" | cut -f1) wasm)"
+printf 'Built %s (%s)\n' "$OUT" "$(du -sh "$OUT/godnotic.wasm" | cut -f1) wasm)"
 if [ ! -f "$OUT/data/manifest.json" ]; then
     echo "No game data staged yet: run scripts/stage-web-data.sh" >&2
 fi

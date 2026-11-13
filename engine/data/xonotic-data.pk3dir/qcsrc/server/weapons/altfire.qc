@@ -9,7 +9,7 @@
 #include <server/weapons/common.qh>
 #include <server/world.qh>
 
-// Xonotic Touch: the touch HUD shows its ALT (+fire2) button only for a weapon
+// Godnotic: the touch HUD shows its ALT (+fire2) button only for a weapon
 // that has a secondary fire, and fades it out while that cannot fire. Only the
 // server knows both: the balance cvars that switch secondaries on and off are
 // not networked, and neither are ammo costs or placed mines.

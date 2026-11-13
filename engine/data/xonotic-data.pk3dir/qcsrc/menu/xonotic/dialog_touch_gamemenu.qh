@@ -5,16 +5,16 @@
 // thumb's width apart on a tablet; this one has finger-sized buttons, leaving
 // the server first among them.
 #include "rootdialog.qh"
-CLASS(XonoticTouchGameMenuDialog, XonoticRootDialog)
-	METHOD(XonoticTouchGameMenuDialog, fill, void(entity));
-	ATTRIB(XonoticTouchGameMenuDialog, title, string, _("Game menu"));
-	ATTRIB(XonoticTouchGameMenuDialog, color, vector, SKINCOLOR_DIALOG_QUIT);
-	ATTRIB(XonoticTouchGameMenuDialog, intendedWidth, float, 0.56);
-	ATTRIB(XonoticTouchGameMenuDialog, rows, float, 14);
-	ATTRIB(XonoticTouchGameMenuDialog, columns, float, 2);
-	ATTRIB(XonoticTouchGameMenuDialog, name, string, "TouchGameMenu");
-	ATTRIB(XonoticTouchGameMenuDialog, requiresConnection, bool, true);
-ENDCLASS(XonoticTouchGameMenuDialog)
+CLASS(GodnoticGameMenuDialog, XonoticRootDialog)
+	METHOD(GodnoticGameMenuDialog, fill, void(entity));
+	ATTRIB(GodnoticGameMenuDialog, title, string, _("Game menu"));
+	ATTRIB(GodnoticGameMenuDialog, color, vector, SKINCOLOR_DIALOG_QUIT);
+	ATTRIB(GodnoticGameMenuDialog, intendedWidth, float, 0.56);
+	ATTRIB(GodnoticGameMenuDialog, rows, float, 14);
+	ATTRIB(GodnoticGameMenuDialog, columns, float, 2);
+	ATTRIB(GodnoticGameMenuDialog, name, string, "TouchGameMenu");
+	ATTRIB(GodnoticGameMenuDialog, requiresConnection, bool, true);
+ENDCLASS(GodnoticGameMenuDialog)
 
 // m_goto's dialog name, swapped for TouchGameMenu on a touchscreen.
 string TouchGameMenu_Route(string itemname);

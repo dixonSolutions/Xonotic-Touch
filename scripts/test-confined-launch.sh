@@ -129,10 +129,10 @@ expect_posix_fetch() {
     rm -rf "$CLICK_USER_BASE"
 
     if [ "$stage_fetchd" = 'with-fetchd' ]; then
-        install -m 755 "$ROOT/scripts/xonotic-touch-fetchd.sh" \
-            "$APP_ROOT/share/xonotic/xonotic-touch-fetchd.sh"
+        install -m 755 "$ROOT/scripts/godnotic-fetchd.sh" \
+            "$APP_ROOT/share/xonotic/godnotic-fetchd.sh"
     else
-        rm -f "$APP_ROOT/share/xonotic/xonotic-touch-fetchd.sh"
+        rm -f "$APP_ROOT/share/xonotic/godnotic-fetchd.sh"
     fi
 
     # Recorder in place of the real downloader: this test is about whether the
@@ -168,7 +168,7 @@ EOF
 
     install -m 755 "$ROOT/scripts/fetch-assets-posix.sh" \
         "$APP_ROOT/share/xonotic/fetch-assets-posix.sh"
-    rm -f "$APP_ROOT/share/xonotic/xonotic-touch-fetchd.sh"
+    rm -f "$APP_ROOT/share/xonotic/godnotic-fetchd.sh"
 }
 
 stage_fake_click
@@ -234,11 +234,11 @@ xonotic_fetch_game_assets() {
 }
 EOF
     # A fetchd that refuses to come up: exits without writing a pidfile.
-    cat > "$APP_ROOT/share/xonotic/xonotic-touch-fetchd.sh" <<'EOF'
+    cat > "$APP_ROOT/share/xonotic/godnotic-fetchd.sh" <<'EOF'
 #!/bin/bash
 exit 1
 EOF
-    chmod 755 "$APP_ROOT/share/xonotic/xonotic-touch-fetchd.sh"
+    chmod 755 "$APP_ROOT/share/xonotic/godnotic-fetchd.sh"
 
     # An engine that lingers, so the window closes with the fetch job settled
     # into its loop. Stopping a process tree is only hard once the root has a
@@ -272,7 +272,7 @@ EOF
     fi
 
     install -m 644 "$ROOT/scripts/lib/asset-fetch.sh" "$APP_ROOT/share/xonotic/asset-fetch.sh"
-    rm -f "$APP_ROOT/share/xonotic/xonotic-touch-fetchd.sh"
+    rm -f "$APP_ROOT/share/xonotic/godnotic-fetchd.sh"
     rm -rf "$CLICK_USER_BASE"
     stage_engine_stub
 }

@@ -35,7 +35,7 @@
       ]
     },
     {
-      "source": "/(index.html|config.js|shell.js|shell.css|build.json|xonotic-touch.js|xonotic-touch.wasm)?",
+      "source": "/(index.html|config.js|shell.js|shell.css|build.json|godnotic.js|godnotic.wasm)?",
       "headers": [
         {
           "key": "Cache-Control",

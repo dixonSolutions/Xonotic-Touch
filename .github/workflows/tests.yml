@@ -135,5 +135,12 @@ jobs:
         run: bash scripts/test-web-cache.sh
       - name: Safe component imports
         run: bash scripts/test-components.sh
+      - name: Engine and game code match their pinned component commits
+        run: |
+          set -euo pipefail
+          for component in darkplaces data; do
+            pin=$(python3 scripts/export-components.py --show-pin "$component")
+            python3 scripts/export-components.py --check "$component" "$pin"
+          done
       - name: Missing maps stop signon with a visible recovery console
         run: bash scripts/test-join-world.sh

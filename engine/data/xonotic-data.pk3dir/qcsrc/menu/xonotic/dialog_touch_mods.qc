@@ -111,7 +111,7 @@ void TouchMods_setText(entity me, string t)
 	me.setText(me, me.modText);
 }
 
-void XonoticTouchModsButton_draw(entity me)
+void GodnoticModsButton_draw(entity me)
 {
 	TouchMods_refresh();
 	int i = touchMods_page * TOUCH_MODS_PER_PAGE + me.modSlot;
@@ -131,10 +131,10 @@ void XonoticTouchModsButton_draw(entity me)
 	if (me.modRole == TOUCH_MODS_SWITCH && i < touchMods_count)
 		me.color = (TouchMods_on(i) ? '0.55 1 0.55' : '1 1 1');
 	if (t != "")
-		SUPER(XonoticTouchModsButton).draw(me);
+		SUPER(GodnoticModsButton).draw(me);
 }
 
-void XonoticTouchModsLabel_draw(entity me)
+void GodnoticModsLabel_draw(entity me)
 {
 	TouchMods_refresh();
 	int i = touchMods_page * TOUCH_MODS_PER_PAGE + me.modSlot;
@@ -160,7 +160,7 @@ void XonoticTouchModsLabel_draw(entity me)
 	}
 	TouchMods_setText(me, t);
 	if (t != "")
-		SUPER(XonoticTouchModsLabel).draw(me);
+		SUPER(GodnoticModsLabel).draw(me);
 }
 
 void TouchMods_click(entity btn, entity me)
@@ -208,7 +208,7 @@ void TouchMods_click(entity btn, entity me)
 
 entity TouchMods_button(int slot, int role)
 {
-	entity e = NEW(XonoticTouchModsButton);
+	entity e = NEW(GodnoticModsButton);
 	e.configureXonoticButton(e, "", '0 0 0', string_null);
 	e.modSlot = slot;
 	e.modRole = role;
@@ -219,21 +219,21 @@ entity TouchMods_button(int slot, int role)
 
 entity TouchMods_label(int slot, int role)
 {
-	entity e = NEW(XonoticTouchModsLabel);
+	entity e = NEW(GodnoticModsLabel);
 	e.configureLabel(e, "", e.fontSize, 0);
 	e.modSlot = slot;
 	e.modRole = role;
 	return e;
 }
 
-entity makeXonoticTouchModsTab()
+entity makeGodnoticModsTab()
 {
-	entity me = NEW(XonoticTouchModsTab);
+	entity me = NEW(GodnoticModsTab);
 	me.configureDialog(me);
 	return me;
 }
 
-void XonoticTouchModsTab_fill(entity me)
+void GodnoticModsTab_fill(entity me)
 {
 	entity e;
 	int s;
