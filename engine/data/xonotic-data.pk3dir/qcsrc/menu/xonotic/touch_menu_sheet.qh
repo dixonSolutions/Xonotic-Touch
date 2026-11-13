@@ -36,3 +36,5 @@ void TouchSheet_mouseRelease(vector pos);
 // menu.qc, around main.draw: scrim, setup, fling and focus; then the scroll bar.
 void TouchSheet_preDraw();
 void TouchSheet_postDraw();
+// m_keydown: the mouse wheel over a tall sheet (not over a list) scrolls it.
+bool TouchSheet_wheel(float key);

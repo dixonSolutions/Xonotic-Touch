@@ -34,7 +34,7 @@ void TouchLauncher_Goto(entity btn, entity me)
 entity TouchLauncher_Tile(string label, vector color, float big)
 {
 	entity e = makeGodnoticButton(label, color);
-	e.fontSize = big ? SKINFONTSIZE_TITLE * 1.4 : SKINFONTSIZE_NORMAL * 1.5;
+	e.fontSize = big ? SKINFONTSIZE_TITLE * 1.2 : SKINFONTSIZE_NORMAL * 1.4; // room for "Einstellungen"
 	return e;
 }
 

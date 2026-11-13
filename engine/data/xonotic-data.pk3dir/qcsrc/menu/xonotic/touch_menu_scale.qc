@@ -39,7 +39,12 @@ float TouchMenuScale_dpi()
 	dpi = cvar("vid_touchscreen_ydpi");
 	if (dpi >= 72 && dpi != 160 && dpi != 300)
 		return dpi;
-	// Nothing known: guess a phone, whose short side is about 2.7 inches.
+	// Nothing known on a desktop that asked for the touch layout: one dp
+	// per pixel, as a desktop's 100% scale.
+	if (!cvar("vid_touchscreen") && !cvar("vid_touchscreen_detected"))
+		return 160;
+	// Nothing known on a touch screen: guess a phone, whose short side is
+	// about 2.7 inches.
 	float px_short = min(cvar("vid_conwidth"), cvar("vid_conheight")) * TouchMenuScale_pxPerCon();
 	return max(96, px_short / 2.7);
 }
@@ -80,18 +85,28 @@ float TouchMenuScale_compute()
 // corner over whatever a full-width dialog puts there (its close button).
 void TouchMenuScale_reserve()
 {
-	float l = 0, r = 0;
+	float l = 0, r = 0, density = 0;
 	float px2con = 1 / TouchMenuScale_pxPerCon();
-	if (tokenize_console(cvar_string("_touch_safe_insets")) >= 4)
+	int n = tokenize_console(cvar_string("_touch_safe_insets"));
+	if (n >= 4)
 	{
 		l = stof(argv(0)) * px2con;
 		r = stof(argv(2)) * px2con;
 	}
+	if (n >= 5)
+		density = stof(argv(4));
 	if (cvar("touch_shell_button") >= 1)
 	{
+		// The density touch_shellbtn.c sizes the button with: the platform's,
+		// else its guess from the short side.
+		if (density <= 0)
+		{
+			float shortpx = min(cvar("vid_width"), cvar("vid_height"));
+			density = (shortpx >= 900) ? bound(1, shortpx / 420, 4) : 1;
+		}
 		// Its size and 8 dp margin, plus 8 dp between it and the dialog.
 		float bs = bound(32, cvar("touch_shell_button_size"), 96);
-		r += (bs + 16) / TouchMenuScale_conToDp(1);
+		r += (bs + 16) * density * px2con;
 	}
 	touch_menu_reserve_l = l;
 	touch_menu_reserve_r = r;

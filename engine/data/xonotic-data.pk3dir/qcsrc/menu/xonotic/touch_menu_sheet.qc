@@ -312,3 +312,21 @@ void TouchSheet_postDraw()
 	draw_Fill(top, eX * w + eY * view, '1 1 1', 0.12 * draw_alpha);
 	draw_Fill(top + eY * (t * (view - thumb)), eX * w + eY * thumb, '0.55 0.8 1', (0.45 + 0.5 * touch_sheet_bar) * draw_alpha);
 }
+
+bool TouchSheet_wheel(float key)
+{
+	if (!touch_menu_on || (key != K_MWHEELUP && key != K_MWHEELDOWN))
+		return false;
+	entity f = TouchSheet_front();
+	if (!TouchSheet_scrolls(f))
+		return false;
+	entity leaf = TouchSheet_leafAt(menuMousePos);
+	if (leaf && leaf.instanceOfListBox)
+		return false;
+	// Three rows a notch.
+	float d = TouchMenuScale_dpToUnits(3 * (TOUCH_MENU_ROW_DP + TOUCH_MENU_GAP_DP) * TouchMenuScale_size()) / conheight;
+	TouchSheet_setScroll(f, f.ModalController_initialOrigin.y + ((key == K_MWHEELUP) ? d : -d));
+	touch_sheet_bar = 1;
+	touch_sheet_resize = true;
+	return true;
+}

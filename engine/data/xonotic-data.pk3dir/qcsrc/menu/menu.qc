@@ -321,6 +321,7 @@ void m_keydown(float key, float ascii)
 {
 	if (!menuInitialized) return;
 	if (!Menu_Active) return;
+	if (TouchSheet_wheel(key)) return; // Touch: the mouse wheel scrolls a tall sheet
 
 	if (menuMouseMode && key >= K_MOUSE1 && key <= K_MOUSE3)
 	{
