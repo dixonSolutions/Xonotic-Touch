@@ -20,7 +20,7 @@
 
 static cvar_t mod_lazyload = {CF_CLIENT | CF_SERVER, "mod_lazyload", "1", "precached models load when first used, or in the background during the game (Godnotic); 0 = all at precache"};
 static cvar_t mod_lazyload_budget = {CF_CLIENT | CF_SERVER, "mod_lazyload_budget", "8", "milliseconds per frame spent loading precached models not used yet while a menu or dialog is open in the game (0 = only on first use)"};
-static cvar_t mod_lazyload_maxsize = {CF_CLIENT | CF_SERVER, "mod_lazyload_maxsize", "4096", "models whose file is bigger than this many KiB are not loaded in the background, only on first use (one load cannot be split across frames)"};
+static cvar_t mod_lazyload_maxsize = {CF_CLIENT | CF_SERVER, "mod_lazyload_maxsize", "1536", "models whose file is bigger than this many KiB are not loaded in the background, only on first use (one load cannot be split across frames)"};
 
 #define TOUCHMOD_MAX 4096
 static model_t *touchmod_deferred[TOUCHMOD_MAX];
