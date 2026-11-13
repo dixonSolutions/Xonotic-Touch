@@ -115,14 +115,14 @@ fi
 
 if [ ! -f "$PREFIX/lib/libopus.a" ]; then
     log "libopus $OPUS_VERSION"
-    fetch "https://downloads.xiph.org/releases/opus/opus-$OPUS_VERSION.tar.gz" "opus-$OPUS_VERSION"
+    fetch "https://github.com/xiph/opus/releases/download/v$OPUS_VERSION/opus-$OPUS_VERSION.tar.gz" "opus-$OPUS_VERSION"
     cmake_build "$SRC_DIR/opus-$OPUS_VERSION" opus -DBUILD_SHARED_LIBS=OFF \
         -DOPUS_BUILD_PROGRAMS=OFF -DOPUS_BUILD_TESTING=OFF -DOPUS_DRED=OFF -DOPUS_DEEP_PLC=OFF
 fi
 
 if [ ! -f "$PREFIX/lib/libopusfile.a" ]; then
     log "opusfile $OPUSFILE_VERSION"
-    fetch "https://downloads.xiph.org/releases/opus/opusfile-$OPUSFILE_VERSION.tar.gz" "opusfile-$OPUSFILE_VERSION"
+    fetch "https://github.com/xiph/opusfile/releases/download/v$OPUSFILE_VERSION/opusfile-$OPUSFILE_VERSION.tar.gz" "opusfile-$OPUSFILE_VERSION"
     # the release tarball only has autotools; four sources need no more than this
     cat > "$SRC_DIR/opusfile-$OPUSFILE_VERSION/CMakeLists.txt" <<'EOF_CMAKE'
 cmake_minimum_required(VERSION 3.10)
