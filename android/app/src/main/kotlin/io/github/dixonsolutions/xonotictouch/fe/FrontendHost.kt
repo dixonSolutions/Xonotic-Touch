@@ -242,7 +242,11 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         }
     }
 
+    /** What the engine's state asks for; applied again when the first screen arrives. */
+    private var wantVisible = false
+
     private fun setVisible(show: Boolean) {
+        wantVisible = show
         val v = if (show && screens.isNotEmpty()) View.VISIBLE else View.GONE
         if (root.visibility != v) {
             root.visibility = v
@@ -380,6 +384,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
                 view.animate().alpha(1f).setDuration(110).withEndAction { screenLayer.removeView(old) }.start()
             }
         }
+        if (wantVisible && root.visibility != View.VISIBLE) setVisible(true)
         if (skeleton != null) {
             // the one deliberate transition: Home fades in over the banner
             if (!Theme.reducedMotion(activity)) { view.alpha = 0f; view.animate().alpha(1f).setDuration(180).start() }
