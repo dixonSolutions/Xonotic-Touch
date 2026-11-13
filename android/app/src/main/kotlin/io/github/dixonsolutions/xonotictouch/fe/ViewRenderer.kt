@@ -199,8 +199,10 @@ class ViewRenderer(
     private fun layoutFor(g: ViewGroup, child: Entry, fill: Boolean): ViewGroup.LayoutParams {
         if (fill && g is LinearLayout) return LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
         if (child.type == "divider") return LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, max(1, dp(1f)))
+        if (g is LinearLayout && g.orientation == LinearLayout.HORIZONTAL && child.type == "field")
+            return LinearLayout.LayoutParams(dp(380f), ViewGroup.LayoutParams.WRAP_CONTENT)
         if (g is LinearLayout && g.orientation == LinearLayout.HORIZONTAL) {
-            val grow = child.type == "field" || child.type == "card" || child.type == "hero" || child.props.str("width") == "fill"
+            val grow = child.type == "card" || child.type == "hero" || child.type == "row" || child.props.str("width") == "fill"
             return LinearLayout.LayoutParams(if (grow) 0 else ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, if (grow) 1f else 0f)
         }
         if (g is LinearLayout) return LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -750,6 +752,7 @@ class ViewRenderer(
     }
 
     private fun switchRow(id: String, props: Map<String, Any?>): Entry {
+        if (props.str("style") == "checkbox") return checkChip(id, props)
         var muted = false
         val s = Kit.switch(ctx, props.bool("value"), title(props)) { v -> if (!muted) events.value(id, v) }
         val holder = FrameLayout(ctx)
@@ -850,6 +853,25 @@ class ViewRenderer(
         return e
     }
 
+    /** A checkbox as a compact pill (the server list's filters: LAN, Empty, Full, Laggy). */
+    private fun checkChip(id: String, props: Map<String, Any?>): Entry {
+        val holder = FrameLayout(ctx)
+        val e = Entry(id, "switch", holder, null, props)
+        e.bind = { x ->
+            holder.removeAllViews()
+            val on = x.props.bool("value")
+            val chip = chipView(title(x.props), on) {
+                x.props = x.props + ("value" to !on)
+                bindSafe(x)
+                events.value(id, !on)
+            }
+            Kit.icon(chip, x.props.str("icon"), if (on) Color.WHITE else Theme.TEXT_MUTED, 18f)
+            chip.isEnabled = !x.props.containsKey("enabled") || x.props.bool("enabled")
+            holder.addView(chip)
+        }
+        return e
+    }
+
     /** A compact on/off pill; tapping it never opens anything. */
     private fun chipView(label: String, on: Boolean, tap: () -> Unit): TextView = Kit.text(ctx, (if (on) "✓ " else "") + label, Theme.SP_BODY, if (on) Color.WHITE else Theme.TEXT_MUTED, bold = true, lines = 1).apply {
         gravity = Gravity.CENTER
@@ -911,8 +933,10 @@ class ViewRenderer(
         col.addView(titleV); col.addView(line); col.addView(helpV)
         e.bind = { x ->
             val p = x.props
-            titleV.text = title(p); titleV.visibility = if (titleV.text.isEmpty()) View.GONE else View.VISIBLE
-            input.hint = p.str("placeholder")
+            val inBar = nodes[x.parent ?: ""]?.type in setOf("toolbar", "actionbar", "row")
+            titleV.text = title(p); titleV.visibility = if (titleV.text.isEmpty() || inBar) View.GONE else View.VISIBLE
+            if (inBar) col.setPadding(0, 0, 0, 0)
+            input.hint = p.str("placeholder").ifEmpty { title(p) }
             input.isEnabled = !p.containsKey("enabled") || p.bool("enabled")
             if (!secret && !input.hasFocus() && input.text.toString() != p.str("value")) input.setText(p.str("value"))
             // the lock: open while no password applies, closed when one is on and set
