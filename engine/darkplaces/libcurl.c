@@ -6,6 +6,7 @@
 #include "image.h"
 #include "jpeg.h"
 #include "image_png.h"
+#include "touch_lua.h" // Touch: Lua mod installs stay on HTTPS
 
 static cvar_t curl_enabled = {CF_SHARED | CF_ARCHIVE, "curl_enabled","1", "whether libcurl may be used to GET files or POST data"};
 static cvar_t curl_maxdownloads = {CF_SHARED | CF_ARCHIVE, "curl_maxdownloads","3", "maximum number of concurrent HTTP/FTP downloads"};
@@ -791,6 +792,7 @@ static void CheckPendingDownloads(void)
 					Con_Printf("^1WARNING:^7 for security reasons, please upgrade to libcurl 7.19.4 or above. In a later version of DarkPlaces, HTTP redirect support will be disabled for this libcurl version.\n");
 					//qcurl_easy_setopt(di->curle, CURLOPT_FOLLOWLOCATION, 0);
 				}
+				if (TouchLua_CurlProtocols(di->callback, false)) { qcurl_easy_setopt(di->curle, CURLOPT_PROTOCOLS, TouchLua_CurlProtocols(di->callback, false)); qcurl_easy_setopt(di->curle, CURLOPT_REDIR_PROTOCOLS, TouchLua_CurlProtocols(di->callback, true)); } // Touch: Lua mod installs: HTTPS only (touch_lua_pkg.c)
 				if(di->post_content_type)
 				{
 					qcurl_easy_setopt(di->curle, CURLOPT_POST, 1);

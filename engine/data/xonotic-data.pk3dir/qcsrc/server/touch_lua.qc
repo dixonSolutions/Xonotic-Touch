@@ -4,6 +4,19 @@
 // nothing is called unless it registered the sv_lua_enable cvar itself.
 
 float touch_lua_event(string ev, entity a, entity b, float n, string s) = #1740;
+// the hook bridge (engine/darkplaces/touch_lua_hooks.c, docs/LUA_HOOKS.md)
+float touch_lua_hook_begin(float hook) = #1741;
+void touch_lua_hook_argf(float f) = #1742;
+void touch_lua_hook_arge(entity e) = #1743;
+void touch_lua_hook_argv(vector v) = #1744;
+void touch_lua_hook_args(string s) = #1745;
+float touch_lua_hook_call() = #1746;
+float touch_lua_hook_changed(float slot) = #1747;
+float touch_lua_hook_outf(float slot) = #1748;
+vector touch_lua_hook_outv(float slot) = #1749;
+string touch_lua_hook_outs(float slot) = #1750;
+float touch_lua_hook_gen(float signature) = #1751;
+float touch_lua_hook_wanted(float hook) = #1752;
 
 bool touch_lua_checked;
 bool touch_lua_present;
@@ -19,6 +32,8 @@ bool touch_lua_on()
 }
 
 REGISTER_MUTATOR(touch_lua, true);
+
+#include <server/touch_lua_hooks.qc>
 
 MUTATOR_HOOKFUNCTION(touch_lua, ClientConnect)
 {
@@ -83,5 +98,8 @@ MUTATOR_HOOKFUNCTION(touch_lua, MatchEnd)
 MUTATOR_HOOKFUNCTION(touch_lua, SV_StartFrame)
 {
 	if (touch_lua_on())
+	{
 		touch_lua_event("frame", NULL, NULL, 0, "");
+		touch_lua_hooks_sync(); // the plugins' hooks in or out of their chains
+	}
 }
