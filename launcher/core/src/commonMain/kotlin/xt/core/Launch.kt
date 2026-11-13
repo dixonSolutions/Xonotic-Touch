@@ -48,7 +48,7 @@ object Launch {
             "-customgamename", "Xonotic Touch",
             "-customgamenetworkfiltername", "Xonotic",
             "+sys_colortranslation", "0",
-            "+hostname", cfg.string(Keys.HOST_NAME, "Xonotic Touch server").ifBlank { "Xonotic Touch server" },
+            "+hostname", cfg.string(Keys.HOST_NAME, "Godnotic server").ifBlank { "Godnotic server" },
             "+port", cfg.int(Keys.HOST_PORT, 26000).coerceIn(1024, 65535).toString(),
             "+maxplayers", cfg.int(Keys.HOST_MAXPLAYERS, 8).coerceIn(2, 64).toString(),
             "+sv_public", if (cfg.bool(Keys.HOST_PUBLIC, false)) "1" else "0",

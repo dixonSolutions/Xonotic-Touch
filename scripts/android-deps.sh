@@ -49,6 +49,17 @@ test -f "$TOOLCHAIN" || { echo "Missing $TOOLCHAIN" >&2; exit 1; }
 mkdir -p "$SRC_DIR" "$PREFIX"
 JOBS="${JOBS:-$(nproc)}"
 
+# A restored cache predating 16 KiB support must not silently ship 4 KiB .so
+# files. Only the shared libraries need relinking; static archives are reusable.
+PAGE_SIZE_STAMP="$PREFIX/.shared-16k-v1"
+case "$ABI" in
+    arm64-v8a|x86_64)
+        if [ ! -f "$PAGE_SIZE_STAMP" ]; then
+            rm -f "$PREFIX/lib/libSDL2.so" "$PREFIX/lib/libpng16.so" "$PREFIX/lib/libcurl.so"
+        fi
+        ;;
+esac
+
 log() { printf '\n-- [%s] %s\n' "$ABI" "$*"; }
 
 fetch() {
@@ -79,6 +90,7 @@ cmake_build() {
         -DCMAKE_PREFIX_PATH="$PREFIX" \
         -DCMAKE_FIND_ROOT_PATH="$PREFIX" \
         -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-z,max-page-size=16384" \
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         "$@" >/dev/null
     cmake --build "$build" --parallel "$JOBS" >/dev/null
@@ -216,5 +228,8 @@ if [ ! -f "$PREFIX/lib/libcurl.so" ]; then
     test -f "$PREFIX/lib/libcurl.so" || { echo "curl build produced no shared object" >&2; ls -la "$PREFIX/lib" >&2; exit 1; }
 fi
 
+case "$ABI" in
+    arm64-v8a|x86_64) touch "$PAGE_SIZE_STAMP" ;;
+esac
 log "dependencies ready in $PREFIX"
 ls -1 "$PREFIX/lib" | sed 's/^/   /'

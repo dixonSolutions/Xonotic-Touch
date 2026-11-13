@@ -15,12 +15,11 @@ fun playPage(ctx: Ctx): Widget {
 
     // Hero: the name, where the data stands, and one very large button.
     val brand = hbox(12,
-        label("XONOTIC", "brand"),
-        label("TOUCH", "brand", "brand-accent"),
+        label("GODNOTIC", "brand", "brand-accent"),
     ).align(h = GTK_ALIGN_CENTER)
     val status = label("Checking game data…", "status-pill").align(h = GTK_ALIGN_CENTER)
     val play = button("PLAY", null, "play-button") { ctx.play() }
-    gtk_widget_set_tooltip_text(play, "Start Xonotic Touch with these settings")
+    gtk_widget_set_tooltip_text(play, "Start Godnotic with these settings")
     val playClamp = clamp(play, 460).margins(18, 4, 8, 4)
     val hero = vbox(10,
         brand,

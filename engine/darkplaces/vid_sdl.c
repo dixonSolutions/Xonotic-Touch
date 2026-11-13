@@ -1689,6 +1689,9 @@ void Sys_SDL_HandleEvents(void)
 	Uchar unicode;
 	SDL_Event event;
 
+#ifdef __ANDROID__
+	{ extern void NativeUI_Frame(void); NativeUI_Frame(); } // Touch: Android native UI bridge
+#endif
 	VID_EnableJoystick(true);
 	VID_LiftTappedFingers(); // Touch
 

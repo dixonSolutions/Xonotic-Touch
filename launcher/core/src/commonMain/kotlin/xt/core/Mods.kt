@@ -47,6 +47,15 @@ object Mods {
     fun parseEnabled(text: String): Set<String> =
         text.lineSequence().map { it.trim().substringBefore(' ').substringBefore('\t') }.filter { it.isNotEmpty() }.toSet()
 
+    /** Apply one change to the complete on-disk list, retaining unavailable mods.
+     * A failed read or write never reports success to the UI. */
+    fun setEnabled(name: String, on: Boolean, read: () -> String?, write: (String) -> Boolean): Boolean {
+        val current = read() ?: return false
+        val names = parseEnabled(current).toMutableSet()
+        if (on) names.add(name) else names.remove(name)
+        return write(serializeEnabled(names))
+    }
+
     /** enabled.txt as the engine writes it: one folder name per line. */
     fun serializeEnabled(names: Collection<String>): String = names.sorted().joinToString("") { "$it\n" }
 

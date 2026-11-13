@@ -76,12 +76,23 @@ object Sys {
     /** Writes through a temp file and rename, so a crash never leaves half a file. */
     fun writeText(path: String, text: String): Boolean {
         mkdirs(path.substring(0, path.lastIndexOf('/').coerceAtLeast(1)))
-        val tmp = "$path.tmp"
-        val f = fopen(tmp, "wb") ?: return false
-        val bytes = text.encodeToByteArray()
-        val ok = bytes.isEmpty() || bytes.usePinned { fwrite(it.addressOf(0), 1u, bytes.size.toULong(), f) == bytes.size.toULong() }
-        if (fclose(f) != 0 || !ok) return false
-        return rename(tmp, path) == 0
+        return memScoped {
+            val tmp = "$path.tmp.XXXXXX".cstr.getPointer(this)
+            val fd = mkstemp(tmp)
+            if (fd < 0) return@memScoped false
+            val f = fdopen(fd, "wb")
+            if (f == null) {
+                close(fd)
+                unlink(tmp)
+                return@memScoped false
+            }
+            val bytes = text.encodeToByteArray()
+            val ok = bytes.isEmpty() || bytes.usePinned { fwrite(it.addressOf(0), 1u, bytes.size.toULong(), f) == bytes.size.toULong() }
+            val closed = fclose(f) == 0
+            val renamed = ok && closed && rename(tmp, path.cstr.getPointer(this)) == 0
+            if (!renamed) unlink(tmp)
+            renamed
+        }
     }
 
     fun mkdirs(dir: String) {
