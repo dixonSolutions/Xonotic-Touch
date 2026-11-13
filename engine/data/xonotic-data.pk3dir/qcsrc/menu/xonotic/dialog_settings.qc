@@ -1,4 +1,6 @@
 #include "dialog_settings.qh"
+#include "touch_menu_reflow.qh" // Touch
+#include "dialog_touch_mods.qh" // Touch
 
 #include "dialog_settings_video.qh"
 #include "dialog_settings_effects.qh"
@@ -28,6 +30,8 @@ void XonoticSettingsDialog_fill(entity me)
 	me.TR(me);
 		me.TD(me, 1, 1.5, mc.makeTabButton(mc, _("Mobile"), makeGodnoticSettingsTab()));
 		me.TD(me, 1, 1.5, mc.makeTabButton(mc, _("Updates"), makeXonoticUpdatesSettingsTab()));
+		me.TD(me, 1, 1.5, mc.makeTabButton(mc, _("Mods"), makeGodnoticModsTab())); // Touch: Lua mods (dialog_touch_mods.qc)
 	me.gotoRC(me, 3.5, 0);
 		me.TD(me, me.rows - 3.5, me.columns, mc);
+	TouchSettings_Reflow(me, mc); // Touch: a list of categories, each opening as the whole sheet (touch_menu_reflow.qc)
 }

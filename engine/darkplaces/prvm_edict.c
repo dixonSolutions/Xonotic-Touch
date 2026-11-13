@@ -23,6 +23,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "progsvm.h"
 #include "csprogs.h"
 #include "prvm_cmds.h"
+#include "touch_prvm.h" // Touch: edict growth (touch_prvm.c)
 
 prvm_prog_t prvm_prog_list[PRVM_PROG_MAX];
 
@@ -113,6 +114,7 @@ void PRVM_MEM_IncreaseEdicts(prvm_prog_t *prog)
 
 	// increase edicts
 	prog->max_edicts = min(prog->max_edicts + 256, prog->limit_edicts);
+	prog->max_edicts = TouchPRVM_EdictGrowth(prog, prog->max_edicts); // Touch: grow to the size needed before, or by half (touch_prvm.c)
 
 	prog->entityfieldsarea = prog->entityfields * prog->max_edicts;
 	prog->edictsfields.fp = (prvm_vec_t*)Mem_Realloc(prog->progs_mempool, (void *)prog->edictsfields.fp, prog->entityfieldsarea * sizeof(prvm_vec_t));

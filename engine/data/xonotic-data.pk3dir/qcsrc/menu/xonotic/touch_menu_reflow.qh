@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
+
+// Godnotic: stock dialogs laid out again for a touch device, after they are
+// built, from one hook at the end of their fill. Nothing here runs on a
+// desktop (touch_menu_on).
+//
+// Settings: a list of its categories (Video, Effects, ... Mobile, Updates)
+// as big buttons; a tap opens that category as the whole sheet, titled with
+// its name, with "< Back" in the title bar. Back (Escape) there returns to
+// the list, the close button closes Settings. The three rows of tab buttons
+// no longer fill a phone's first screen, and every category gets the height.
+//
+// Multiplayer's server list: the filter row on two lines (Filter, its field
+// and Refresh; then the checkboxes, LAN among them, each with room for its
+// label), a slim sort bar and compact rows (touch_menu_scale.qc), so many
+// more servers show. Hosting is Create's LAN box (dialog_touch_lan.qc).
+
+#include "rootdialog.qh"
+#include "touchbutton.qh"
+
+// XonoticSettingsDialog_fill (dialog_settings.qc), mc its tab controller.
+void TouchSettings_Reflow(entity me, entity mc);
+// Every frame (touch_menu_sheet.qc): list or category, as Settings opens.
+void TouchSettings_Frame();
+// Back (Escape) on Settings showing a category: back to the list; true when it did.
+bool TouchSettings_Back();
+// XonoticServerListTab_fill (dialog_multiplayer_join.qc).
+void TouchServers_Reflow(entity me);

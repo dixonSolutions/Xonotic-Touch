@@ -20,6 +20,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // com_crc16.c
 
 #include "darkplaces.h"
+#include "touch_crc.h" // Touch: CRC_Block eight bytes at a time
 
 /*
 ============================================================================
@@ -75,6 +76,7 @@ static const u16 crctable[256] =
 unsigned short CRC_Block(const unsigned char *data, size_t size)
 {
 	unsigned short crc = CRC_INIT_VALUE;
+	if (TouchCRC_Block(data, size, &crc)) return crc; // Touch: slicing-by-8 (touch_crc.c)
 	while (size--)
 		crc = (crc << 8) ^ crctable[(crc >> 8) ^ (*data++)];
 	return crc ^ CRC_XOR_VALUE;

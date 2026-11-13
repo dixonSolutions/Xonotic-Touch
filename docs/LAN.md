@@ -8,19 +8,19 @@ has no UDP, so there the Host screen says so and its buttons are off.
 
 ## Host
 
-**Multiplayer → Servers → Host LAN...** (or, in a match on a touchscreen, the
-game menu's **LAN game** button). The Host screen:
+**Multiplayer → Create**, tick **LAN**, then **Start multiplayer!** The game
+mode, map, slots and bots are Create's own; the LAN box adds:
 
 | Setting | Default | Notes |
 |---|---|---|
-| Server name | Godnotic server | what others see in their list |
-| Game mode | Deathmatch | DM, TDM, CTF, Clan Arena, Freeze Tag, Duel, LMS, Keepaway, Key Hunt, Domination |
-| Map | stormkeep | or **Random**; a map without the chosen mode is swapped for a random one that has it, and the screen says so. After the first map the server's normal rotation for the mode follows |
-| Bots | 4 | they take player slots too; slots are raised to bots + 2 so at least one friend fits |
-| Slots | 8 | |
 | Port | 26000 | UDP, 1024-65535. If it is taken (another game or app on this device), **Start** says so, puts the next free port in the box and asks you to press Start again |
-| Password | none | optional, see below. **Remember on this device** keeps it for next time |
-| Touch assists | All | what `sv_touch_assist` allows players' touch controls: all, no auto-shoot, aim assist only, or none |
+| Password | off | tick **Password** and type one: only players who know it can join (see below). The lock beside the port shows it: open while no password applies, shut once one does |
+
+Unticked, Create starts a local game as before. In a match on a touchscreen
+the game menu's LAN row shows the addresses others join at, and **Stop LAN**.
+The Host screen (`menu_cmd directmenu TouchLanHost`, with server name, game
+mode, map, bots, slots, port, password and touch assists) is still there for
+the console, but nothing in the menu opens it any more.
 
 These are the launcher's Host page defaults too (name, port, slots, bots, map),
 so both start the same game.

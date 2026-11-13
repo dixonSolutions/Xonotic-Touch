@@ -1,4 +1,70 @@
-# Lua mods and plugins
+# Lua mods
+
+## Your first mod in 5 minutes
+
+A mod is a folder with an `init.lua` and a `mod.txt`. This one writes a line on your
+HUD and adds a console command.
+
+`hello/mod.txt` (the `id` must be the folder's name):
+
+```
+id: hello
+title: Hello
+version: 1.0
+author: You
+description: Says hello on the HUD and adds a greet command.
+api: 2
+realm: client
+permissions: events, display, commands
+reason.events: draws on every HUD frame
+reason.display: draws one line of text
+reason.commands: adds the lua_hello_greet command
+```
+
+`hello/init.lua`:
+
+```lua
+print("hello loaded")
+xt.on("hud", function(w, h)
+  xt.draw.text(20, h - 40, "hello from Lua", 16, 1, 1, 0.5, 1)
+end)
+xt.command("greet", function(who) print("hi " .. (who or "there")) end, "say hi")
+```
+
+**Put it in the game.** Either copy the `hello` folder into your mods folder:
+
+| Where you play | Mods folder |
+|---|---|
+| Android | `Android/data/io.github.dixonsolutions.xonotictouch/files/userdata/mods/` (the app's files folder; many file managers cannot open it, so installing the zip is easier) |
+| Linux, Flatpak | `~/.xonotic/mods/` (the Flatpak uses the same folder) |
+| Web build | no folder you can reach from outside the browser, and no `https://` downloads (no libcurl): write and test mods on Android or Linux |
+
+The console command `lua_mods` prints the folder this game reads. Or zip the folder
+and **install** it: in the Mods manager (Settings → Mobile → Mods) press **Install...**
+and give a path or an `https://` link to the `.zip` (on Android, **Pick file** opens the
+system file picker), or type `lua_mod_install /path/to/hello.zip` (a folder path works
+too while you develop) and then `lua_install_confirm`. Either way you see what it asks
+for before anything is written.
+
+**Turn it on.** A new mod starts off with nothing granted. Flip its switch in the Mods
+manager: it shows what the mod asks for and why, and grants what you select. From the
+console: `lua_mod_permission hello grant all`, then `lua_mod_enable hello`.
+
+**See its output.** `print` goes to the console as `[hello] hello loaded`, and into the
+mod's log: the manager's **Output** page, or `lua_mod_log hello`. Errors land in the same
+places. Start a match to see the HUD line, and type `lua_hello_greet you` in the console.
+Changed the code? `lua_mod_reload hello`.
+
+**A server mod** (one that runs in games you host) is the same with `realm: server`, in
+the `plugins/` folder next to `mods/` (the folder keeps its old name for compatibility),
+managed with `sv_lua_mods` and `sv_lua_mod_*`; see *API: server mods* below.
+
+Next: [PLUGIN_STANDARD.md](PLUGIN_STANDARD.md) (the mod package standard: manifest,
+permissions, install and update, settings) and [LUA_HOOKS.md](LUA_HOOKS.md) (the game
+hooks server mods can use). Working examples are in
+[`touch/lua/examples`](../touch/lua/examples).
+
+## What mods can do
 
 Godnotic runs **Lua 5.4** scripts in a sandbox:
 
@@ -6,16 +72,17 @@ Godnotic runs **Lua 5.4** scripts in a sandbox:
   keys, fingers and the mouse, add console commands, change a few settings, play sounds,
   and keep small files. They are how new Touch UI (HUD panels, overlays, settings pages)
   should be written from now on.
-- **Server plugins** (`<userdir>/plugins/<name>/`) run on a server this engine hosts (a
-  local match or a dedicated server) and react to the game: connects, spawns, deaths,
+- **Server mods** (`<userdir>/plugins/<name>/`: the folder keeps its old name for
+  compatibility) run in games you host (a local match or a dedicated server this
+  engine runs) and react to the game: connects, spawns, deaths,
   damage, chat, item pickups, `cmd` commands, map changes, match end.
 
 **[PLUGIN_STANDARD.md](PLUGIN_STANDARD.md)** is the standard: package format, manifest,
 API levels, lifecycle (install → review → enable → update → uninstall), permission
 scopes, hooks, long-running work and the stability promise. This page is the API
-reference; [LUA_HOOKS.md](LUA_HOOKS.md) lists the 172 game hooks plugins can use.
+reference; [LUA_HOOKS.md](LUA_HOOKS.md) lists the 172 game hooks server mods can use.
 
-The userdir is `~/.xonotic` on Linux (inside the Flatpak: `~/.var/app/<id>/.xonotic`),
+The userdir is `~/.xonotic` on Linux (the Flatpak uses the same folder),
 the app's files folder on Android. A mod is a folder with an `init.lua`.
 
 ## Why mods instead of engine and QC edits
@@ -40,7 +107,8 @@ read). A feature written as a mod adds **no** upstream lines at all.
 
 ## Managing mods
 
-A new folder starts **off**. Turn client mods on and off in **Settings → Mobile → Mods**:
+A new folder starts **off**. Turn client mods and server mods on and off in
+**Settings → Mobile → Mods**:
 one row per mod with a large ON/OFF switch, its state (running, off, stopped by an
 error with the message), Reload and Info, plus Reload all and the master switch. The
 tab lists the folder again every two seconds while the menu is open.
@@ -51,19 +119,20 @@ in its single top folder, which names the mod; every entry name is checked (no a
 paths, `..`, backslashes or drive letters), at most 256 files, 1 MB each, 8 MB in all.
 An update keeps the mod's `data/` folder. The imported mod starts off, like any other.
 
-The same state from the console:
+The same state from the console (the server mod commands were called `sv_lua_plugins`
+and `sv_lua_plugin_*` before; those old names still work):
 
-| Client | Server | |
+| Client mods | Server mods | |
 |---|---|---|
-| `lua_mods` | `sv_lua_plugins` | list, with state (`off`, `enabled`, `running`, `error`) and error text |
-| `lua_mod_enable <name>` | `sv_lua_plugin_enable <name>` | turn on (kept in `mods/enabled.txt` / `plugins/enabled.txt`) |
-| `lua_mod_disable <name>` | `sv_lua_plugin_disable <name>` | turn off |
-| `lua_mod_reload [name]` | `sv_lua_plugin_reload [name]` | restart one or all, clearing errors |
-| `lua_mod_info <name>` | `sv_lua_plugin_info <name>` | folder, memory, error, events, hooks, commands, settings, permissions with reasons |
-| `lua_mod_log <name> [n]` | `sv_lua_plugin_log <name> [n]` | its recent `print` output, errors and manager notes |
-| `lua_mod_install <zip/folder/https-url>` | `sv_lua_plugin_install ...` | check a package and show its review; `lua_install_confirm` / `lua_install_cancel` / `lua_install_status` |
-| `lua_mod_update <name> [src]` | `sv_lua_plugin_update ...` | fetch again (recorded source, or `update:`) and review |
-| `lua_mod_uninstall <name> [keepdata]` | `sv_lua_plugin_uninstall ...` | remove folder, grants and source record |
+| `lua_mods` | `sv_lua_mods` | list, with state (`off`, `enabled`, `running`, `error`) and error text |
+| `lua_mod_enable <name>` | `sv_lua_mod_enable <name>` | turn on (kept in `mods/enabled.txt` / `plugins/enabled.txt`) |
+| `lua_mod_disable <name>` | `sv_lua_mod_disable <name>` | turn off |
+| `lua_mod_reload [name]` | `sv_lua_mod_reload [name]` | restart one or all, clearing errors |
+| `lua_mod_info <name>` | `sv_lua_mod_info <name>` | folder, memory, error, events, hooks, commands, settings, permissions with reasons |
+| `lua_mod_log <name> [n]` | `sv_lua_mod_log <name> [n]` | its recent `print` output, errors and manager notes |
+| `lua_mod_install <zip/folder/https-url>` | `sv_lua_mod_install ...` | check a package and show its review; `lua_install_confirm` / `lua_install_cancel` / `lua_install_status` |
+| `lua_mod_update <name> [src]` | `sv_lua_mod_update ...` | fetch again (recorded source, or `update:`) and review |
+| `lua_mod_uninstall <name> [keepdata]` | `sv_lua_mod_uninstall ...` | remove folder, grants and source record |
 | `lua` / `lua_help` | `sv_lua_hooks [all]` | every manager command with one line of help / the hooks, subscribers and their cost |
 
 `cl_lua_enable` / `sv_lua_enable` are the master switches. `enabled.txt` stays next to
@@ -76,7 +145,7 @@ A mod that raises an error or hits a limit is **stopped** and shows `error` with
 message; the game goes on. Fix it and `lua_mod_reload <name>`.
 
 **Crash-loop protection.** While a mod loads (`init.lua` and what it requires), the
-engine keeps `<userdir>/luastate/mods/loading.txt` (`luastate/plugins/` for plugins) on
+engine keeps `<userdir>/luastate/mods/loading.txt` (`luastate/plugins/` for server mods) on
 disk, written with `fsync` before the mod's first line runs and removed once loading
 ends, either way. If the engine dies or is killed there, the next start finds it: that
 mod is **not** started, is turned off (also in `enabled.txt`) and shows *did not finish
@@ -89,8 +158,8 @@ the userdir reaches IndexedDB only after the frame yields, which a hang never do
 input. So while connected to a server this engine does not host, while playing a demo,
 and afterwards until all text such a server queued has run (including what it queued
 with `defer`), these refuse: `lua_mod_enable`, `lua_mod_disable`, `lua_mod_reload`,
-`lua_mod_permission ... grant|revoke` and their `sv_lua_plugin_*` twins (a client's
-plugins run when it hosts a game later); changes to `lua_memory_mb`, `lua_instructions`,
+`lua_mod_permission ... grant|revoke` and their `sv_lua_mod_*` twins (a client's
+server mods run when it hosts a game later); changes to `lua_memory_mb`, `lua_instructions`,
 `lua_time_ms`, `cl_lua_enable`, `sv_lua_enable` (put back at once); and every
 `lua_<mod>_<name>` command, unless the mod registered it with `{fromserver = true}`.
 The engine marks such text in `CL_VM_Parse_StuffCmd` (the `csprogs.c` hook above). A
@@ -139,7 +208,7 @@ information in that event without a separate `players` or `input` grant. Lua's
 basic language, `print` and `require` of files in the mod remain available.
 Scopes never expand the client/server API or its existing allowlists. For example,
 `exec` cannot run arbitrary console commands, and client `players` does not reveal
-other players' positions. Server plugins already have more information than client
+other players' positions. Server mods already have more information than client
 mods because they run on the host.
 
 API 2 adds `hooks` (watch the game's mutator hooks, server) and `hooks_write` (change
@@ -153,7 +222,7 @@ Inspect and change grants from the local console:
 lua_mod_permission hello
 lua_mod_permission hello grant events
 lua_mod_permission hello revoke events
-sv_lua_plugin_permission welcome grant messages
+sv_lua_mod_permission welcome grant messages
 ```
 
 Only declared scopes may be granted. Revocation applies immediately, including
@@ -179,9 +248,9 @@ are stored separately so switching a manifest to API 1 does not silently inherit
 access. The examples in `touch/lua/examples` declare API 1.
 The sandbox is not a substitute for trusting the engine and installed game files.
 
-## A first mod
+## A first mod without a manifest
 
-`<userdir>/mods/hello/init.lua`:
+`<userdir>/mods/hello/init.lua` alone:
 
 ```lua
 xt.on("hud", function(w, h)
@@ -194,8 +263,9 @@ Then `lua_mod_enable hello`; the command is `lua_hello_greet`. (Without a `mod.t
 this is a legacy mod, which may draw, listen to events and add commands.) Working examples are in
 [`touch/lua/examples`](../touch/lua/examples): `hud_clock` (HUD panel, own cvar,
 `require`), `settings_panel` (a settings page with `xt.ui`, `xt.save`), `chat_keys`
-(key event), and the plugins `welcome` (connect, death, chat filter, `cmd stats`) and
-`underdog` (damage scaling). Copy a folder into `mods/` or `plugins/`.
+(key event), and the server mods `welcome` (connect, death, chat filter, `cmd stats`) and
+`underdog` (damage scaling). Copy a folder into `mods/` (client mods) or `plugins/`
+(server mods).
 
 ## The sandbox
 
@@ -227,7 +297,7 @@ and `utf8`.
   and module names cannot hold separators or dot-only parts. The manager's state
   (grants, the crash marker) is in `<userdir>/luastate/`, which no mod path reaches.
 - **Names**: a mod's commands and own cvars are `<prefix><mod>_<name>` (`lua_` for
-  client mods, `sv_lua_` for plugins) where `<name>` is `a-z0-9` without `_`, so a
+  client mods, `sv_lua_` for server mods) where `<name>` is `a-z0-9` without `_`, so a
   name belongs to exactly one mod even though mod names may contain `_`. Folders whose
   name would share a namespace with the engine (`mod`, `mods`, `plugin`, `plugins`,
   `memory`, `time`, `instructions`, `enable`, `status`, `permission(s)`, or any name
@@ -236,7 +306,7 @@ and `utf8`.
   cvars are saved in `config.cfg` only when it has `storage`.
 - **Engine resources**: all mods together may name 64 different pictures
   (`xt.draw.pic`) and 64 different sounds (`xt.sound`) per session (the engine keeps
-  them cached for good). Plugins may send each player 10 messages a second (burst 20)
+  them cached for good). Server mods may send each player 10 messages a second (burst 20)
   and broadcast 5 a second (burst 10), and a message that would overflow a client's
   buffer is dropped.
 - **Re-entry and aborted frames**: an engine path that comes back into the Lua code
@@ -245,7 +315,7 @@ and `utf8`.
   frame in the middle of a call (`Host_AbortCurrentFrame`: CANCEL on the loading
   screen, `Host_Error`), the next frame notices, stops that one mod with *interrupted*
   and every other mod keeps running.
-- **Quit**: every running mod and plugin gets its `unload` event when the engine quits.
+- **Quit**: every running mod and server mod gets its `unload` event when the engine quits.
 - No API returns another player's position, an entity list or a trace, and none sets
   view angles or fires: a mod cannot see through walls or aim. The offline practice
   tools (`cl_touch_esp_enabled`, aim assist) are neither readable as data nor writable.
@@ -288,7 +358,7 @@ a bot match.
 | `xt.on(event, fn)` | add a handler (events below) |
 | `xt.command(name, fn, help, opts)` | console command `lua_<mod>_<name>` (server: `sv_lua_<mod>_<name>`), `name` `a-z0-9` without `_`, up to 16 per mod; `fn` gets the arguments as strings. A server's text cannot run it unless `opts` is `{fromserver = true}` |
 | `xt.cvar(name)` | a cvar's value, or nil for unknown, private and secret ones (passwords, rcon, keys, tokens, log destinations) |
-| `xt.setcvar(name, value)` | set an allowlisted cvar, or the mod's own `lua_<mod>_<name>` (plugins: `sv_lua_<plugin>_<name>`; `name` `a-z0-9` without `_`; up to 32, created on first set, saved in `config.cfg` only with `storage`); values may not contain `; " $ \` or control characters |
+| `xt.setcvar(name, value)` | set an allowlisted cvar, or the mod's own `lua_<mod>_<name>` (server mods: `sv_lua_<mod>_<name>`; `name` `a-z0-9` without `_`; up to 32, created on first set, saved in `config.cfg` only with `storage`); values may not contain `; " $ \` or control characters |
 | `xt.exec(line)` | run an allowlisted console command (up to 8 per call); no `; " $ \` or line breaks |
 | `xt.save(key, text)` / `xt.load(key)` | text up to 64 KB in `<mod>/data/<key>.txt` (up to 64 keys; never through a symlink or a hard link) |
 | `xt.realtime()` | seconds since the game started |
@@ -378,7 +448,7 @@ end)
 `ui.pointer`, and `ui.theme` (colours and sizes, change freely). Lua passes all of a
 call's results only to the last argument, so take `col:row()` into locals first.
 
-## API: server plugins
+## API: server mods
 
 Players are numbers `1..maxplayers`; `0` means the world or not a player.
 
@@ -398,7 +468,7 @@ Players are numbers `1..maxplayers`; `0` means the world or not a player.
 |---|---|
 | `xt.players()` | ids of the connected players |
 | `xt.player(id)` | `{id, name, bot, frags, spectator, team, health, armor, alive, origin = {x, y, z}}` |
-| `xt.tell(id, text)` / `xt.centerprint(id, text)` / `xt.broadcast(text)` | messages (10 a second per player, 5 broadcasts a second, for all plugins together) |
+| `xt.tell(id, text)` / `xt.centerprint(id, text)` / `xt.broadcast(text)` | messages (10 a second per player, 5 broadcasts a second, for all server mods together) |
 | `xt.map()`, `xt.time()`, `xt.maxplayers()` | |
 | `xt.hook(name, fn)` | subscribe to a game hook (`hooks`; outputs and cancel with `hooks_write`), [LUA_HOOKS.md](LUA_HOOKS.md) |
 | `xt.entity(n)` | `{id, classname, netname, player, owner, health, team, origin}` of a hook's entity number (`hooks`) |
@@ -416,9 +486,9 @@ Commands (`xt.exec`, with `exec`): `say` and `echo` (text), `restart` (the map),
 `unlockteams`, `shuffleteams`, `nextmap` (match control). None writes files, binds keys,
 quits or connects.
 
-Server plugins only get game events on a server running the Touch game code (local
+Server mods only get game events on a server running the Touch game code (local
 matches, Touch dedicated servers); the `frame` and `map` events come from it too.
-Servers with `sv_threaded 1` run no plugins.
+Servers with `sv_threaded 1` run no server mods.
 
 ## Engine side
 

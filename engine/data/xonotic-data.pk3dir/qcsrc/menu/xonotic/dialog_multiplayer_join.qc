@@ -1,4 +1,5 @@
 #include "dialog_multiplayer_join.qh"
+#include "touch_menu_reflow.qh" // Touch
 
 #include "serverlist.qh"
 
@@ -102,4 +103,5 @@ void XonoticServerListTab_fill(entity me)
 			e.onClick = ServerList_Connect_Click;
 			e.onClickEntity = slist;
 			slist.connectButton = e;
+	TouchServers_Reflow(me); // Touch: the secondary filters on a sheet of their own (touch_menu_reflow.qc)
 }

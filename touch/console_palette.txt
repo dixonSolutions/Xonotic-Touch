@@ -19,10 +19,10 @@
 "help" "say need help"
 "push" "say push!"
 
-# Lua mods and plugins (docs/PLUGIN_STANDARD.md)
+# Lua mods: client mods and server mods (docs/PLUGIN_STANDARD.md)
 "lua help" "lua_help"
 "mods" "lua_mods"
-"plugins" "sv_lua_plugins"
+"server mods" "sv_lua_mods"
 "reload mods" "lua_mod_reload"
 "install status" "lua_install_status"
 "install ok" "lua_install_confirm"

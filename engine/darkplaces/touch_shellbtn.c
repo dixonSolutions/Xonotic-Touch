@@ -158,6 +158,12 @@ static void place(void)
 		float hdr = TouchUI_SheetHeaderHeight(H);
 		by = max(by, hdr + margin);
 	}
+	else if (cl.intermission)
+	{
+		// End of the match (scoreboard, map vote): the touch HUD and its MENU
+		// pill are gone, so beside where MENU was the button floated alone
+		// over the middle of the top edge. The menu's corner, as out of a match.
+	}
 	else if (in_match() && vid_touchscreen.integer && cv("touch_pause_visible", 1))
 	{
 		// In a match the corner belongs to the score list and the info

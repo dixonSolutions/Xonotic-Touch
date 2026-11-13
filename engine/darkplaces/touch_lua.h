@@ -1,10 +1,10 @@
 /*
-Godnotic: Lua 5.4 client mods and server plugins in a sandbox.
+Godnotic: Lua 5.4 client mods and server mods (the code calls them plugins) in a sandbox.
 
-Client mods live in <userdir>/mods/<name>/init.lua and server plugins in
+Client mods live in <userdir>/mods/<name>/init.lua and server mods in
 <userdir>/plugins/<name>/init.lua, on the real filesystem only: nothing is ever
 loaded from the game's virtual filesystem, so a pk3 a server sends can never
-carry code. A new folder starts disabled; lua_mod_enable / sv_lua_plugin_enable
+carry code. A new folder starts disabled; lua_mod_enable / sv_lua_mod_enable
 (or the Mods dialog) turn it on, and the choice is kept in enabled.txt next to
 the folders.
 

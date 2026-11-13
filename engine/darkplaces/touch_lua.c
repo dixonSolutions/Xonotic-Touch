@@ -69,16 +69,16 @@ its lua_State; everything else in Lua's libraries is either not compiled in
 #include <emscripten.h>
 #endif
 
-static cvar_t lua_memory_mb = {CF_CLIENT | CF_SERVER | CF_ARCHIVE, "lua_memory_mb", "16", "memory limit of each Lua mod or plugin in MB (1-64)"};
+static cvar_t lua_memory_mb = {CF_CLIENT | CF_SERVER | CF_ARCHIVE, "lua_memory_mb", "16", "memory limit of each Lua mod or server mod in MB (1-64)"};
 static cvar_t lua_instructions = {CF_CLIENT | CF_SERVER | CF_ARCHIVE, "lua_instructions", "2000000", "instruction limit of each call into a Lua mod (an event, a command); loading gets 10 times as many"};
 static cvar_t lua_time_ms = {CF_CLIENT | CF_SERVER | CF_ARCHIVE, "lua_time_ms", "40", "time limit in milliseconds of each call into a Lua mod (1-250); loading gets 1 second"};
 static cvar_t cl_lua_enable = {CF_CLIENT | CF_ARCHIVE, "cl_lua_enable", "1", "run the enabled Lua client mods from <userdir>/mods (lua_mods lists them)"};
-static cvar_t sv_lua_enable = {CF_SERVER | CF_ARCHIVE, "sv_lua_enable", "1", "run the enabled Lua server plugins from <userdir>/plugins on servers this engine hosts (sv_lua_plugins lists them)"};
+static cvar_t sv_lua_enable = {CF_SERVER | CF_ARCHIVE, "sv_lua_enable", "1", "run the enabled Lua server mods from <userdir>/plugins on servers this engine hosts (sv_lua_mods lists them)"};
 static cvar_t cl_lua_status = {CF_CLIENT | CF_READONLY, "_cl_lua_mods", "", "client mods for the Mods dialog: one line per mod, name<TAB>state<TAB>title<TAB>error<TAB>description"};
 static cvar_t cl_lua_permissions = {CF_CLIENT | CF_READONLY, "_cl_lua_permissions", "", "client permissions: name<TAB>mode<TAB>requested<TAB>granted, one mod per line"};
-static cvar_t sv_lua_status = {CF_CLIENT | CF_SERVER | CF_READONLY, "_sv_lua_plugins", "", "server plugins for the Mods dialog: one line per plugin, name<TAB>state<TAB>title<TAB>error<TAB>description"};
-static cvar_t lua_select = {CF_CLIENT, "_lua_select", "", "the Mods dialog's selection, \"mod <name>\" or \"plugin <name>\": _lua_detail describes it"};
-static cvar_t lua_detail = {CF_CLIENT | CF_READONLY, "_lua_detail", "", "the selected mod or plugin (_lua_select) for the Mods dialog: key<TAB>value lines"};
+static cvar_t sv_lua_status = {CF_CLIENT | CF_SERVER | CF_READONLY, "_sv_lua_plugins", "", "server mods for the Mods dialog: one line per server mod, name<TAB>state<TAB>title<TAB>error<TAB>description"};
+static cvar_t lua_select = {CF_CLIENT, "_lua_select", "", "the Mods dialog's selection, \"mod <name>\" or \"plugin <name>\" (a server mod): _lua_detail describes it"};
+static cvar_t lua_detail = {CF_CLIENT | CF_READONLY, "_lua_detail", "", "the selected mod or server mod (_lua_select) for the Mods dialog: key<TAB>value lines"};
 static cvar_t lua_last = {CF_CLIENT | CF_READONLY, "_lua_last", "", "the Lua manager's last message, for the Mods dialog"};
 
 tlua_mod_t *tlua_current;
@@ -1048,7 +1048,7 @@ void TLua_Require(lua_State *L, unsigned permission)
 	if (!(m->requested & permission))
 		luaL_error(L, "permission denied: %s (not requested in mod.txt)", name);
 	luaL_error(L, "permission denied: %s; not granted yet: %s (grant them in Mods, or %s%s_permission %s grant all)",
-		name, missing, m->realm->cmdprefix, m->realm == &tlua_server ? "plugin" : "mod", m->name);
+		name, missing, m->realm->cmdprefix, "mod", m->name);
 }
 
 static int tlua_on(lua_State *L)
@@ -1152,11 +1152,11 @@ static int tlua_command(lua_State *L)
 		dp_strlcpy(tlua_cmds[i].mod, m->name, sizeof(tlua_cmds[i].mod));
 		dp_strlcpy(tlua_cmds[i].cmd, name, sizeof(tlua_cmds[i].cmd));
 		tlua_numcmds++;
-		dpsnprintf(tlua_cmds[i].desc, sizeof(tlua_cmds[i].desc), "Lua %s %s: %s", m->realm->kind, m->name, TLua_CleanText(help, clean, sizeof(clean), false));
+		dpsnprintf(tlua_cmds[i].desc, sizeof(tlua_cmds[i].desc), "Lua %s %s: %s", TLUA_NOUN(m->realm), m->name, TLua_CleanText(help, clean, sizeof(clean), false));
 		Cmd_AddCommand(m->realm->cmdflags, tlua_cmds[i].full, tlua_modcmd_f, tlua_cmds[i].desc);
 	}
 	else
-		dpsnprintf(tlua_cmds[i].desc, sizeof(tlua_cmds[i].desc), "Lua %s %s: %s", m->realm->kind, m->name, TLua_CleanText(help, clean, sizeof(clean), false));
+		dpsnprintf(tlua_cmds[i].desc, sizeof(tlua_cmds[i].desc), "Lua %s %s: %s", TLUA_NOUN(m->realm), m->name, TLua_CleanText(help, clean, sizeof(clean), false));
 	tlua_cmds[i].fromserver = fromserver;
 	lua_pushvalue(L, 1);
 	lua_pushvalue(L, 2);
@@ -1242,7 +1242,7 @@ static int tlua_setcvar(lua_State *L)
 				return luaL_error(L, "xt.setcvar: too many cvars (%d per mod)", TLUA_MAX_MODCVARS);
 			if (Cmd_Exists(cmd_local, name))
 				return luaL_error(L, "xt.setcvar: '%s' is a command", name);
-			dpsnprintf(desc, sizeof(desc), "setting of Lua %s %s", m->realm->kind, m->name);
+			dpsnprintf(desc, sizeof(desc), "setting of Lua %s %s", TLUA_NOUN(m->realm), m->name);
 			Cvar_Get(&cvars_all, name, value, m->realm->cmdflags | (archive ? CF_ARCHIVE : 0), desc);
 			m->owncvars++;
 			lua_pushboolean(L, 1);
@@ -1782,7 +1782,7 @@ static void tlua_fail(tlua_mod_t *m, const char *msg)
 	char clean[512];
 	TLua_CleanText(msg, clean, sizeof(clean), false);
 	dp_strlcpy(m->error, clean, sizeof(m->error));
-	Con_Printf(CON_ERROR "Lua %s %s stopped: %s\n", m->realm->kind, m->name, m->error);
+	Con_Printf(CON_ERROR "Lua %s %s stopped: %s\n", TLUA_NOUN(m->realm), m->name, m->error);
 	TLua_Log(m, "^1stopped: %s", m->error);
 	m->state = TLUA_ERROR;
 	tlua_close(m);
@@ -1940,7 +1940,7 @@ static void tlua_check_marker(tlua_realm_t *r)
 	m->crashed = true;
 	dp_strlcpy(m->error, "did not finish loading last time: turned off, turn it on again to retry", sizeof(m->error));
 	TLua_Log(m, "^3%s", m->error);
-	Con_Printf(CON_WARN "Lua %s %s %s\n", r->kind, m->name, m->error);
+	Con_Printf(CON_WARN "Lua %s %s %s\n", TLUA_NOUN(r), m->name, m->error);
 }
 
 static void tlua_start(tlua_mod_t *m)
@@ -1978,7 +1978,7 @@ static void tlua_start(tlua_mod_t *m)
 	m->state = TLUA_RUNNING;
 	tlua_marker_set(m);
 	if (tlua_run(m, tlua_setup_tramp, m, true))
-		Con_Printf("Lua %s %s loaded (%i KB)\n", m->realm->kind, m->name, (int)(m->mem >> 10));
+		Con_Printf("Lua %s %s loaded (%i KB)\n", TLUA_NOUN(m->realm), m->name, (int)(m->mem >> 10));
 	tlua_marker_clear(m->realm);
 }
 
@@ -2091,7 +2091,7 @@ static void tlua_modcmd_f(cmd_state_t *cmd)
 		m = TLua_Find(c->realm, c->mod);
 		if (!m || m->state != TLUA_RUNNING || !tlua_has(m, TLUA_PERM_COMMANDS))
 		{
-			Con_Printf("%s: Lua %s %s is not running\n", full, c->realm->kind, c->mod);
+			Con_Printf("%s: Lua %s %s is not running\n", full, TLUA_NOUN(c->realm), c->mod);
 			return;
 		}
 		cc.cmd = c->cmd;
@@ -2106,7 +2106,7 @@ static void tlua_modcmd_f(cmd_state_t *cmd)
 
 // Names a mod may not have: <prefix><name>_<x> would share the namespace of
 // the manager's own commands and cvars (lua_mod_enable, lua_memory_mb,
-// sv_lua_plugin_info), or of any other engine command or cvar.
+// sv_lua_mod_info), or of any other engine command or cvar.
 static qbool tlua_reservedname(tlua_realm_t *r, const char *name)
 {
 	static const char *const reserved[] = {"mod", "mods", "plugin", "plugins", "memory", "time", "instructions", "enable", "status", "permission", "permissions", NULL};
@@ -2362,7 +2362,7 @@ void TLua_ParseManifest(tlua_mod_t *m, char *text)
 	if (m->id[0] && strcmp(m->id, m->name))
 		tlua_manifest_bad(m, "id '%s' does not match the folder name '%s'", m->id, m->name);
 	if (m->realm && m->realmdecl == TLUA_REALM_SERVER && m->realm == &tlua_client)
-		tlua_manifest_bad(m, "this is a server plugin: it belongs in plugins/");
+		tlua_manifest_bad(m, "this is a server mod: it belongs in plugins/");
 	if (m->realm && m->realmdecl == TLUA_REALM_CLIENT && m->realm == &tlua_server)
 		tlua_manifest_bad(m, "this is a client mod: it belongs in mods/");
 	for (i = 0; i < TLUA_NUMPERMS; i++)
@@ -2420,7 +2420,7 @@ static void tlua_settings_cvars(tlua_mod_t *m)
 		}
 		if (Cmd_Exists(cmd_local, name))
 			continue;
-		dpsnprintf(desc, sizeof(desc), "setting of Lua %s %s: %s", m->realm->kind, m->name, st->label);
+		dpsnprintf(desc, sizeof(desc), "setting of Lua %s %s: %s", TLUA_NOUN(m->realm), m->name, st->label);
 		Cvar_Get(&cvars_all, name, st->def, m->realm->cmdflags | CF_ARCHIVE, desc);
 	}
 }
@@ -2736,7 +2736,7 @@ void TLua_Rescan(tlua_realm_t *r)
 			continue;
 		if (r->nummods >= TLUA_MAX_MODS)
 		{
-			Con_Printf(CON_WARN "Lua: more than %d %ss, %s ignored\n", TLUA_MAX_MODS, r->kind, name);
+			Con_Printf(CON_WARN "Lua: more than %d %ss, %s ignored\n", TLUA_MAX_MODS, TLUA_NOUN(r), name);
 			continue;
 		}
 		m = &r->mods[r->nummods++];
@@ -2796,7 +2796,7 @@ void TLua_UnloadAll(tlua_realm_t *r, const char *why)
 		tlua_stop(&r->mods[i]);
 	}
 	if (n && why)
-		Con_DPrintf("Lua: %d %s(s) stopped (%s)\n", n, r->kind, why);
+		Con_DPrintf("Lua: %d %s(s) stopped (%s)\n", n, TLUA_NOUN(r), why);
 	r->loaded = false;
 	tlua_updatestatus(r);
 }
@@ -2808,7 +2808,7 @@ static tlua_realm_t *tlua_realmofcmd(cmd_state_t *cmd)
 
 // A server can put any command in a client's console (stufftext, its CSQC's
 // localcmd), and the engine runs it like typed input: a change to mods or
-// grants (either realm: a client's plugins run when it hosts a game later) is
+// grants (either realm: a client's server mods run when it hosts a game later) is
 // refused while it may come from one (TLua_FromServer), and from inside a
 // call into a mod.
 static qbool tlua_remote_refused(cmd_state_t *cmd)
@@ -2837,7 +2837,7 @@ static void tlua_list_f(cmd_state_t *cmd)
 		return;
 	TLua_Rescan(r);
 	tlua_dir(r, dir, sizeof(dir));
-	Con_Printf("Lua %ss in %s (master switch %s %s):\n", r->kind, dir, r->enable->name, r->enable->integer ? "on" : "off");
+	Con_Printf("Lua %ss in %s (master switch %s %s):\n", TLUA_NOUN(r), dir, r->enable->name, r->enable->integer ? "on" : "off");
 	for (i = 0; i < r->nummods; i++)
 	{
 		tlua_mod_t *m = &r->mods[i];
@@ -2863,7 +2863,7 @@ static tlua_mod_t *tlua_argmod(cmd_state_t *cmd, tlua_realm_t *r)
 	TLua_Rescan(r);
 	m = TLua_Find(r, Cmd_Argv(cmd, 1));
 	if (!m)
-		Con_Printf("%s: no %s named %s\n", Cmd_Argv(cmd, 0), r->kind, Cmd_Argv(cmd, 1));
+		Con_Printf("%s: no %s named %s\n", Cmd_Argv(cmd, 0), TLUA_NOUN(r), Cmd_Argv(cmd, 1));
 	return m;
 }
 
@@ -2890,10 +2890,10 @@ static void tlua_enable_f(cmd_state_t *cmd)
 		char missing[256];
 		tlua_missing(m, missing, sizeof(missing));
 		if (missing[0])
-			TLua_Say("Lua %s %s: %s; it asks for permissions not granted: %s (%s_permission %s grant all)", r->kind, m->name, tlua_statename(m), missing,
-				r == &tlua_server ? "sv_lua_plugin" : "lua_mod", m->name);
+			TLua_Say("Lua %s %s: %s; it asks for permissions not granted: %s (%s_permission %s grant all)", TLUA_NOUN(r), m->name, tlua_statename(m), missing,
+				r == &tlua_server ? "sv_lua_mod" : "lua_mod", m->name);
 		else
-			TLua_Say("Lua %s %s: %s", r->kind, m->name, tlua_statename(m));
+			TLua_Say("Lua %s %s: %s", TLUA_NOUN(r), m->name, tlua_statename(m));
 	}
 }
 
@@ -2910,7 +2910,7 @@ static void tlua_disable_f(cmd_state_t *cmd)
 	m->crashed = false;
 	tlua_updatestatus(r);
 	TLua_Log(m, "turned off");
-	TLua_Say("Lua %s %s: off", r->kind, m->name);
+	TLua_Say("Lua %s %s: off", TLUA_NOUN(r), m->name);
 }
 
 static void tlua_reload_f(cmd_state_t *cmd)
@@ -2930,7 +2930,7 @@ static void tlua_reload_f(cmd_state_t *cmd)
 		if (m->enabled && r->loaded && r->enable->integer)
 			tlua_start(m);
 		tlua_updatestatus(r);
-		TLua_Say("Lua %s %s: %s", r->kind, m->name, tlua_statename(m));
+		TLua_Say("Lua %s %s: %s", TLUA_NOUN(r), m->name, tlua_statename(m));
 		return;
 	}
 	for (i = 0; i < r->nummods; i++)
@@ -2952,7 +2952,7 @@ static void tlua_info_f(cmd_state_t *cmd)
 	char vabuf[64];
 	if (TLua_Busy() || !(m = tlua_argmod(cmd, r)))
 		return;
-	Con_Printf("%s %s: %s\n  folder: %s\n", r->kind, m->name, tlua_statename(m), m->dir);
+	Con_Printf("%s %s: %s\n  folder: %s\n", TLUA_NOUN(r), m->name, tlua_statename(m), m->dir);
 	if (m->title[0])
 		Con_Printf("  title: %s\n", m->title);
 	if (m->version[0])
@@ -3002,10 +3002,10 @@ static void tlua_log_f(cmd_state_t *cmd)
 	n = bound(1, n, m->logcount);
 	if (!m->logcount)
 	{
-		Con_Printf("Lua %s %s: no output yet\n", r->kind, m->name);
+		Con_Printf("Lua %s %s: no output yet\n", TLUA_NOUN(r), m->name);
 		return;
 	}
-	Con_Printf("Lua %s %s, last %d line(s):\n", r->kind, m->name, n);
+	Con_Printf("Lua %s %s, last %d line(s):\n", TLUA_NOUN(r), m->name, n);
 	for (j = m->logcount - n; j < m->logcount; j++)
 		Con_Printf("  %s\n", m->log[(m->lognext - m->logcount + j + TLUA_LOGLINES) % TLUA_LOGLINES]);
 }
@@ -3026,17 +3026,19 @@ static void tlua_help_f(cmd_state_t *cmd)
 		{"lua_install_status", "what the pending install is doing"},
 		{"lua_mod_update <name> [path|url]", "fetch the mod again from where it came from (or the given source) and review it"},
 		{"lua_mod_uninstall <name> [keepdata]", "remove the mod's folder, grants and record (keepdata keeps data/)"},
-		{"sv_lua_plugins, sv_lua_plugin_*", "the same for server plugins (info, log, enable, disable, reload, permission, install, update, uninstall)"},
-		{"sv_lua_hooks [all]", "mutator hooks plugins can use, and which are subscribed"},
+		{"sv_lua_mods, sv_lua_mod_*", "the same for server mods, the ones that run in games you host (info, log, enable, disable, reload, permission, install, update, uninstall; the old sv_lua_plugin_* names still work)"},
+		{"sv_lua_hooks [all]", "mutator hooks server mods can use, and which are subscribed"},
 		{"cl_lua_enable / sv_lua_enable", "master switches"},
 		{"lua_memory_mb, lua_instructions, lua_time_ms", "limits per call"},
-		{"lua_hook_ms, lua_hook_frame_ms", "limits of hook calls (per call, per plugin per frame)"},
+		{"lua_hook_ms, lua_hook_frame_ms", "limits of hook calls (per call, per server mod per frame)"},
 	};
 	size_t i;
 	(void)cmd;
-	Con_Printf("Lua mods and plugins (docs/PLUGIN_STANDARD.md):\n");
+	Con_Printf("Lua mods: client mods run on this device, server mods in games you host (docs/PLUGIN_STANDARD.md)\n");
+	Con_Printf("^2How to make a mod: https://github.com/dixonSolutions/Godnotic/blob/main/docs/MODDING.md^7\n");
 	for (i = 0; i < sizeof(help) / sizeof(help[0]); i++)
 		Con_Printf("  ^3%s^7\n      %s\n", help[i][0], help[i][1]);
+	Con_Printf("^2How to make a mod: https://github.com/dixonSolutions/Godnotic/blob/main/docs/MODDING.md^7\n");
 }
 
 // Grants are a local user choice, never supplied by a Lua mod. Store each
@@ -3053,7 +3055,7 @@ static void tlua_permission_f(cmd_state_t *cmd)
 	if (Cmd_Argc(cmd) == 2)
 	{
 		if (TLua_Busy() || !(m = tlua_argmod(cmd, r))) return;
-		Con_Printf("Lua %s %s API: %s%s\n", r->kind, m->name, m->scoped ? "1" : "legacy", m->manifest_error ? " (invalid manifest)" : "");
+		Con_Printf("Lua %s %s API: %s%s\n", TLUA_NOUN(r), m->name, m->scoped ? "1" : "legacy", m->manifest_error ? " (invalid manifest)" : "");
 		for (i = 0; tlua_permissions[i].name; i++)
 			Con_Printf("  %s: %s%s\n", tlua_permissions[i].name, (m->granted & tlua_permissions[i].bit) ? "granted" : "denied", (m->requested & tlua_permissions[i].bit) ? " (requested)" : " (not requested)");
 		return;
@@ -3109,10 +3111,10 @@ static void tlua_permission_f(cmd_state_t *cmd)
 		tlua_stop(m);
 		m->error[0] = 0;
 		tlua_start(m);
-		TLua_Say("Lua %s %s: granted %s, restarted: %s", r->kind, m->name, name, tlua_statename(m));
+		TLua_Say("Lua %s %s: granted %s, restarted: %s", TLUA_NOUN(r), m->name, name, tlua_statename(m));
 	}
 	else
-		TLua_Say("Lua %s %s: %s %s", r->kind, m->name, action, name);
+		TLua_Say("Lua %s %s: %s %s", TLUA_NOUN(r), m->name, action, name);
 	tlua_updatestatus(r);
 }
 
@@ -3242,16 +3244,25 @@ void TLua_InitOnce(void)
 	Cmd_AddCommand(CF_CLIENT, "lua_mod_reload", tlua_reload_f, "restart one Lua client mod, or all of them (clears errors)");
 	Cmd_AddCommand(CF_CLIENT, "lua_mod_permission", tlua_permission_f, "inspect or change a Lua client mod's permissions");
 	Cmd_AddCommand(CF_CLIENT, "lua_mod_info", tlua_info_f, "show a Lua client mod's details, error, events and commands");
-	Cmd_AddCommand(CF_SERVER, "sv_lua_plugins", tlua_list_f, "list the Lua server plugins in <userdir>/plugins and their state");
-	Cmd_AddCommand(CF_SERVER, "sv_lua_plugin_enable", tlua_enable_f, "turn a Lua server plugin on (kept in plugins/enabled.txt)");
-	Cmd_AddCommand(CF_SERVER, "sv_lua_plugin_disable", tlua_disable_f, "turn a Lua server plugin off");
-	Cmd_AddCommand(CF_SERVER, "sv_lua_plugin_reload", tlua_reload_f, "restart one Lua server plugin, or all of them (clears errors)");
-	Cmd_AddCommand(CF_SERVER, "sv_lua_plugin_permission", tlua_permission_f, "inspect or change a Lua server plugin's permissions");
-	Cmd_AddCommand(CF_SERVER, "sv_lua_plugin_info", tlua_info_f, "show a Lua server plugin's details, error, events and commands");
+	// server mods (games you host); the code and the plugins/ folder still say plugin
+	Cmd_AddCommand(CF_SERVER, "sv_lua_mods", tlua_list_f, "list the Lua server mods (games you host) in <userdir>/plugins and their state");
+	Cmd_AddCommand(CF_SERVER, "sv_lua_mod_enable", tlua_enable_f, "turn a Lua server mod on (kept in plugins/enabled.txt)");
+	Cmd_AddCommand(CF_SERVER, "sv_lua_mod_disable", tlua_disable_f, "turn a Lua server mod off");
+	Cmd_AddCommand(CF_SERVER, "sv_lua_mod_reload", tlua_reload_f, "restart one Lua server mod, or all of them (clears errors)");
+	Cmd_AddCommand(CF_SERVER, "sv_lua_mod_permission", tlua_permission_f, "inspect or change a Lua server mod's permissions");
+	Cmd_AddCommand(CF_SERVER, "sv_lua_mod_info", tlua_info_f, "show a Lua server mod's details, error, events and commands");
 	Cmd_AddCommand(CF_CLIENT, "lua_mod_log", tlua_log_f, "show a Lua client mod's recent output and errors");
-	Cmd_AddCommand(CF_SERVER, "sv_lua_plugin_log", tlua_log_f, "show a Lua server plugin's recent output and errors");
-	Cmd_AddCommand(CF_CLIENT | CF_SERVER, "lua", tlua_help_f, "list the Lua mod and plugin manager commands");
-	Cmd_AddCommand(CF_CLIENT | CF_SERVER, "lua_help", tlua_help_f, "list the Lua mod and plugin manager commands");
+	Cmd_AddCommand(CF_SERVER, "sv_lua_mod_log", tlua_log_f, "show a Lua server mod's recent output and errors");
+	// old names of the server mod commands, kept so scripts and configs go on working
+	Cmd_AddCommand(CF_SERVER, "sv_lua_plugins", tlua_list_f, "old name of sv_lua_mods");
+	Cmd_AddCommand(CF_SERVER, "sv_lua_plugin_enable", tlua_enable_f, "old name of sv_lua_mod_enable");
+	Cmd_AddCommand(CF_SERVER, "sv_lua_plugin_disable", tlua_disable_f, "old name of sv_lua_mod_disable");
+	Cmd_AddCommand(CF_SERVER, "sv_lua_plugin_reload", tlua_reload_f, "old name of sv_lua_mod_reload");
+	Cmd_AddCommand(CF_SERVER, "sv_lua_plugin_permission", tlua_permission_f, "old name of sv_lua_mod_permission");
+	Cmd_AddCommand(CF_SERVER, "sv_lua_plugin_info", tlua_info_f, "old name of sv_lua_mod_info");
+	Cmd_AddCommand(CF_SERVER, "sv_lua_plugin_log", tlua_log_f, "old name of sv_lua_mod_log");
+	Cmd_AddCommand(CF_CLIENT | CF_SERVER, "lua", tlua_help_f, "list the Lua mod manager commands (client mods and server mods)");
+	Cmd_AddCommand(CF_CLIENT | CF_SERVER, "lua_help", tlua_help_f, "list the Lua mod manager commands (client mods and server mods)");
 	TLua_Hooks_Setup();
 	TLua_Pkg_Setup();
 }

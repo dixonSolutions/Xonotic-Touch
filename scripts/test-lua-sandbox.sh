@@ -184,10 +184,11 @@ mkdir -p "$UD/plugins" "$UD/luastate/plugins/grants"
 cp -r "$ROOT/tests/lua-sandbox/plugins/scoped_server" "$UD/plugins/"
 printf 'scoped_server\n' > "$UD/plugins/enabled.txt"
 printf 'v1 2\n' > "$UD/luastate/plugins/grants/scoped_server.txt"
+# grant with sv_lua_mod_permission, revoke with its old name sv_lua_plugin_permission
 cat > "$UD/data/server-permissions.cfg" <<'EOF'
 map stormkeep
 defer 3 "sv_lua_scoped_server_probe"
-defer 4 "sv_lua_plugin_permission scoped_server grant messages"
+defer 4 "sv_lua_mod_permission scoped_server grant messages"
 defer 5 "sv_lua_scoped_server_probe"
 defer 6 "sv_lua_plugin_permission scoped_server revoke messages"
 defer 7 "sv_lua_scoped_server_probe"
@@ -219,6 +220,7 @@ text = (b"lua_mod_enable victim\n"
         b"lua_remote_cmd_open\n"
         b"lua_mod_permission remote_cmd grant exec\n"
         b"sv_lua_plugin_permission anything grant exec\n"
+        b"sv_lua_mod_permission anything grant exec\n"
         b"defer 2 \"lua_mod_enable victim\"\n"
         b"disconnect\n"
         b"lua_mod_enable victim\n")

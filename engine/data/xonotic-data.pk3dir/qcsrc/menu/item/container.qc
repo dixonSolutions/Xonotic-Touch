@@ -1,4 +1,5 @@
 #include "container.qh"
+#include <menu/xonotic/touch_menu_sheet.qh> // Touch
 
 	void Container_enterSubitem(entity me, entity sub)
 	{
@@ -122,6 +123,7 @@
 			if (e.Container_alpha < 0.003)  // can't change color values anyway
 				continue;
 			me.enterSubitem(me, e);
+			if (TouchSheet_drawLater(me, e)) { me.leaveSubitem(me); continue; } // Touch: a sheet's pinned title and action row, touch_menu_sheet.qc
 			e.draw(e);
 			me.leaveSubitem(me);
 		}

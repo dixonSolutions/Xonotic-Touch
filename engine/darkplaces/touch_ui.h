@@ -16,7 +16,8 @@ typedef enum touchui_sheet_e
 {
 	TOUCHUI_SHEET_CONSOLE = 0,
 	TOUCHUI_SHEET_CHAT,
-	TOUCHUI_SHEET_PREVIEW
+	TOUCHUI_SHEET_PREVIEW,
+	TOUCHUI_SHEET_MENU         /* keys alone, under a menu text field */
 }
 touchui_sheet_t;
 
@@ -28,7 +29,8 @@ typedef enum touchui_style_e
 	TOUCHUI_STYLE_DIM,
 	TOUCHUI_STYLE_TEXT,
 	TOUCHUI_STYLE_POPUP,       /* hold popup cell: opaque, over the keys */
-	TOUCHUI_STYLE_POPUP_SEL    /* hold popup cell the finger picks */
+	TOUCHUI_STYLE_POPUP_SEL,   /* hold popup cell the finger picks */
+	TOUCHUI_STYLE_PLATE        /* opaque backing behind keys over the menu */
 }
 touchui_style_t;
 
@@ -47,7 +49,8 @@ typedef enum touchui_action_e
 	TOUCHUI_ACT_BKSP_HOLD,     /* backspace with hold-repeat */
 	TOUCHUI_ACT_SPECTATE,      /* action_arg = spectator entry index; runs it and closes the sheet */
 	TOUCHUI_ACT_KB_TOGGLE,     /* show / hide the on-screen keys */
-	TOUCHUI_ACT_POPUP          /* hold popup cell; picked by sliding, not by a tap */
+	TOUCHUI_ACT_POPUP,         /* hold popup cell; picked by sliding, not by a tap */
+	TOUCHUI_ACT_DONE           /* menu keys: put them away, the field keeps its text and focus */
 }
 touchui_action_t;
 
@@ -94,6 +97,7 @@ extern struct cvar_s touch_kb_minkey_px;
 extern struct cvar_s touch_kb_hold_time;
 extern struct cvar_s touch_conui_shade;
 extern struct cvar_s touch_conui_palette_file;
+extern struct cvar_s touch_menu_keyboard;
 
 void TouchUI_Init(void);
 void TouchUI_RegisterCvars(void);
@@ -123,6 +127,18 @@ qbool TouchUI_KeysShown(touchui_sheet_t kind);
  * vid_sdl.c keeps SDL text input (which raises it on Android) off. With HIDE
  * KEYS chosen, or a keyboard listed, text input works as before. */
 qbool TouchUI_EngineKeysUp(void);
+/*
+ * Menu text fields (docs/TOUCH_CONSOLE_SPEC.md, "Menu text fields"). While a
+ * menu text field has focus (the menu sets vid_touchscreen_showkeyboard) the
+ * engine's own keys come up along the bottom instead of the system keyboard,
+ * as for the console and chat: touch_menu_keyboard 0 picks them for Latin
+ * languages with no keyboard attached and leaves the system keyboard (and
+ * its input methods) to the others; 1 always the engine's keys, 2 always the
+ * system keyboard. DONE puts them away until a tap lands on a field again
+ * (the menu sets _touch_menu_keys_ask). The menu reads _touch_menu_keys_top
+ * to keep the field above them and to leave presses there to the keys.
+ */
+qbool TouchUI_MenuKeysUp(void);
 /* gfx/conback, or touch_conback_picture when that loads (console.c hook).
  * NULL (the background switched off) stays NULL. */
 struct cachepic_s *TouchUI_ConbackPic(struct cachepic_s *stock, unsigned int flags);
