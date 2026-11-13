@@ -69,7 +69,7 @@ print("ok:", textures, rec["size"], "bytes")
 EOF
 }
 
-"$PY" -I "$here/repack-phone-assets.py" --textures keep -j 2 -o "$tmp/keep" "$tmp/in.pk3" 2>"$tmp/log" || { cat "$tmp/log"; exit 1; }
+"$PY" -I "$here/repack-phone-assets.py" --textures keep --audio keep -j 2 -o "$tmp/keep" "$tmp/in.pk3" 2>"$tmp/log" || { cat "$tmp/log"; exit 1; }
 check "$tmp/keep" keep
 
 astcenc=${ASTCENC:-$(command -v astcenc-avx2 || command -v astcenc-sse4.1 || command -v astcenc || true)}
