@@ -38,6 +38,15 @@ void TouchLAN_Rejected(const char *reason, int length, const struct lhnetaddress
 qbool TouchLAN_RefuseJoin(struct lhnetsocket_s *sock, struct lhnetaddress_s *peer, const char *connect);
 // NetConn_OpenServerPorts: a new server starts (not a changelevel).
 void TouchLAN_ServerPortsOpened(void);
+// NetConn_OpenServerPorts: whether the new server opens its UDP sockets. A game
+// on this device that was not hosted on the LAN on purpose keeps the loopback
+// socket only (touch_lan_private).
+int TouchLAN_OpenNetPorts(int opennetports);
+// SV_Shutdown: the host ends its game; the other devices are told why they
+// are disconnected. Client side: that packet, and whether it just came.
+void TouchLAN_ServerClosing(void);
+void TouchLAN_ClientConnectionless(const char *string, int length, const struct lhnetaddress_s *peer);
+qbool TouchLAN_HostEnded(void);
 // The running local game was started from the Host screen (a LAN game the
 // player hosts on purpose), and how many humans other than the local player
 // are in it: what keeps it running in the background on Android.

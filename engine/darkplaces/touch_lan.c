@@ -155,6 +155,12 @@ static cvar_t touch_lan_host_password_remember = {CF_CLIENT | CF_ARCHIVE, "touch
 
 static cvar_t touch_lan_host_password_set = {CF_CLIENT | CF_READONLY, "touch_lan_host_password_set", "0",
 	"1 when the Host screen has a password (the menu cannot read the password itself)"};
+static cvar_t touch_lan_private = {CF_SHARED | CF_ARCHIVE, "touch_lan_private", "1",
+	"1: a game started on this device opens a network socket only when it is hosted on the LAN on purpose (Create with LAN ticked, the Host screen, touch_lan_arm); a local game then has the loopback socket alone and nobody else can find or join it. 0: every game listens on its port, as stock DarkPlaces does"};
+static cvar_t touch_lan_popup_autoclose = {CF_CLIENT | CF_ARCHIVE, "touch_lan_popup_autoclose", "1",
+	"the popup with the join addresses a LAN host sees closes by itself when the first player joins"};
+static cvar_t touch_lan_ended = {CF_CLIENT, "_touch_lan_ended", "0",
+	"1 after the host of the LAN game this client was in ended it; the menu shows \"The host ended the game\" and sets it back to 0"};
 static cvar_t touch_lan_locked = {CF_CLIENT | CF_READONLY, "touch_lan_locked", "0",
 	"while hosting: 1 when joining needs the password"};
 
@@ -1276,11 +1282,74 @@ static void TouchLAN_ApplyPassword_f(cmd_state_t *cmd)
 
 // NetConn_OpenServerPorts: a new server (a map command; a changelevel keeps
 // the old one). It is a LAN game the player hosts on purpose when the Host
-// screen started it; Create, Singleplayer or a console map is not.
+// screen or Create with LAN ticked started it (touch_lan_host_password_apply
+// or touch_lan_arm right before the map command); Singleplayer, the campaign,
+// Create without LAN or a console map is not.
 void TouchLAN_ServerPortsOpened(void)
 {
 	lan_host_deliberate = lan_host_armed;
 	lan_host_armed = false;
+}
+
+// NetConn_OpenServerPorts, after TouchLAN_ServerPortsOpened: whether this
+// server opens its UDP sockets. A game nobody chose to host has the loopback
+// socket only: no port is bound, so no query, challenge or connect from
+// another device can reach it, whatever sv_public says.
+int TouchLAN_OpenNetPorts(int opennetports)
+{
+	if (cls.state == ca_dedicated || !touch_lan_private.integer)
+		return opennetports;
+	if (opennetports && !lan_host_deliberate)
+		Con_DPrintf("Local game: no network socket (not hosted on the LAN)\n");
+	return opennetports && lan_host_deliberate;
+}
+
+static void TouchLAN_Arm_f(cmd_state_t *cmd)
+{
+	lan_host_armed = true;
+}
+
+// SV_Shutdown, before the clients are dropped: the host left or quit. The
+// stock protocol's disconnect carries no reason, so the other devices are told
+// out of band why it comes; they show "The host ended the game" and do not
+// try to join again (touch_net.c).
+#define HOSTENDED "touchlan hostended"
+void TouchLAN_ServerClosing(void)
+{
+	int i, k;
+	if (cls.state == ca_dedicated || !sv.active)
+		return;
+	for (i = 0; i < svs.maxclients; i++)
+	{
+		client_t *c = &svs.clients[i];
+		if (!c->active || !c->netconnection || !c->netconnection->mysocket
+			|| LHNETADDRESS_GetAddressType(&c->netconnection->peeraddress) == LHNETADDRESSTYPE_LOOP)
+			continue;
+		for (k = 0; k < 2; k++)
+			NetConn_Write(c->netconnection->mysocket, "\377\377\377\377" HOSTENDED, 4 + (int)strlen(HOSTENDED), &c->netconnection->peeraddress);
+	}
+}
+
+static double host_ended_time;
+// Client, a connectionless packet: the marker above from the server we are on.
+void TouchLAN_ClientConnectionless(const char *string, int length, const lhnetaddress_t *peer)
+{
+	if (length != (int)strlen(HOSTENDED) || memcmp(string, HOSTENDED, length) || !cls.netcon || sv.active)
+		return;
+	if (LHNETADDRESS_Compare(peer, &cls.netcon->peeraddress))
+		return;
+	host_ended_time = host.realtime;
+}
+
+// touch_net.c, when the client disconnects: true when the host just said it
+// ended the game (then nothing is joined again and the menu says so).
+qbool TouchLAN_HostEnded(void)
+{
+	if (!host_ended_time || host.realtime - host_ended_time > 5)
+		return false;
+	host_ended_time = 0;
+	Cvar_SetQuick(&touch_lan_ended, "1");
+	return true;
 }
 
 qbool TouchLAN_HostingOnPurpose(void)
@@ -1434,10 +1503,14 @@ void TouchLAN_Init(void)
 	Cvar_RegisterVariable(&touch_lan_host_password_remember);
 	Cvar_RegisterVariable(&touch_lan_host_password_set);
 	Cvar_RegisterVariable(&touch_lan_locked);
+	Cvar_RegisterVariable(&touch_lan_private);
+	Cvar_RegisterVariable(&touch_lan_popup_autoclose);
+	Cvar_RegisterVariable(&touch_lan_ended);
 	Cvar_RegisterCallback(&touch_lan_host_password, HostPassword_c);
 	Cvar_RegisterCallback(&touch_lan_host_password_remember, HostPassword_c);
 	Cmd_AddCommand(CF_SHARED, "touch_lan_status", TouchLAN_Status_f, "show the addresses and players of the game this one hosts");
 	Cmd_AddCommand(CF_CLIENT, "touch_lan_host_password_apply", TouchLAN_ApplyPassword_f, "make the Host screen's password (touch_lan_host_password) the server's join password");
+	Cmd_AddCommand(CF_SHARED, "touch_lan_arm", TouchLAN_Arm_f, "the next map command hosts its game on the LAN (opens the network port); without it a game started on this device is local only while touch_lan_private is 1");
 	Cmd_AddCommand(CF_CLIENT, "touch_lan_forget", TouchLAN_Forget_f, "forget remembered join passwords: all, or the one for an address");
 	Cvar_RegisterVariable(&touch_lan_address_labels);
 	Cvar_RegisterVariable(&touch_lan_join_link);

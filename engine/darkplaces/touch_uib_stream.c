@@ -216,8 +216,29 @@ static int open_listen(const char *path)
 }
 #endif
 
+// The QuakeC renderer's Copy: the menu VM sets _uib_clipboard to the text (a
+// cvar_set, so the text is never parsed as a command) and the engine puts it on
+// the system clipboard. _uib_clipboard_ok says whether this build can.
+static cvar_t uib_clipboard = {CF_CLIENT, "_uib_clipboard", "", "set by the menu: text to put on the system clipboard"};
+static cvar_t uib_clipboard_ok = {CF_CLIENT | CF_READONLY, "_uib_clipboard_ok", "0", "1 when this build can write the system clipboard"};
+static void UIB_Clipboard_c(cvar_t *var)
+{
+#ifdef UIB_SDL_WINDOW
+	if (var->string[0])
+		SDL_SetClipboardText(var->string);
+#else
+	(void)var;
+#endif
+}
+
 void UIBStream_Init(void)
 {
+	Cvar_RegisterVariable(&uib_clipboard);
+	Cvar_RegisterCallback(&uib_clipboard, UIB_Clipboard_c);
+	Cvar_RegisterVariable(&uib_clipboard_ok);
+#ifdef UIB_SDL_WINDOW
+	Cvar_SetQuick(&uib_clipboard_ok, "1");
+#endif
 	int i = Sys_CheckParm("-uibridge");
 	if (!i)
 		return;

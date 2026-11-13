@@ -81,6 +81,7 @@ set bot_number 1
 set g_warmup 0
 maxplayers 4
 port 26000
+touch_lan_arm
 map $MAP
 alias lanloop "touch_lan_status; exec hostpoll.cfg; defer 5 lanloop"
 defer 15 lanloop

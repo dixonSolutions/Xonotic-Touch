@@ -27,6 +27,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "touch_hud.h" // Touch: CANCEL on the loading screen
 #include "touch_assist.h" // Touch: server switch for the touch assists
 #include "touch_lua.h" // Touch: Lua mods and plugins
+#include "touch_lan.h" // Touch: the host ended its LAN game
 
 // current client
 client_t *host_client;
@@ -2155,6 +2156,7 @@ void SV_Shutdown(void)
 	NetConn_Heartbeat(2);
 	NetConn_Heartbeat(2);
 
+	TouchLAN_ServerClosing(); // Touch: tell the other devices the host ended the game
 	// make sure all the clients know we're disconnecting
 	for (i = 0, host_client = svs.clients;i < svs.maxclients;i++, host_client++)
 		if (host_client->active)
