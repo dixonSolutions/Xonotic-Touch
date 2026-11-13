@@ -67,6 +67,8 @@ int hs_n;
 
 // virtual lists
 const int RB_LISTS = 6;
+float rb_short;             // a very short page (a phone on its side): strips become chips
+float lc_band[RB_LISTS];    // the name band under a tile's picture
 float lc_rows[RB_LISTS];    // > 0: a card list of this many rows that scrolls sideways
 float lc_vieww[RB_LISTS];   // ... and the width it is seen through
 string lc_id[RB_LISTS];
@@ -506,16 +508,33 @@ float RB_LayoutGrid(string id, float x, float y, float w, float region)
 		bool compact = rg_s[0].y < D(540);
 		if (compact) { cw = min(cw, D(116)); ih = cw * 0.5; }
 		float h = 0;
+		float xx = x;
 		for (int i = 0; i < n; ++i)
 		{
-			float hh = RB_LayoutCard(uib_child(id, i), x + i * (cw + gap), y, cw, region, ih);
+			string cc = uib_child(id, i);
+			if (rb_short)
+			{
+				// chips: the name only, one row
+				drawfont = FONT_USER + 3;
+				cw = RB_TextW(uib_get(cc, "title"), D(16)) + D(34);
+				drawfont = FONT_USER;
+			}
+			float hh = RB_LayoutCard(cc, xx, y, cw, region, ih);
 			if (rb_n)
 			{
 				entity ce = rb_item[rb_n - 1];
 				ce.rb_hs = hs;
 				if (compact) { strcpy(ce.rb_t2, ""); ce.rb_s_y = ih + D(38); hh = ih + D(38); }
+				if (rb_short) { strcpy(ce.rb_img, ""); strcpy(ce.rb_icon, ""); ce.rb_size = 0; ce.rb_s_y = D(40); hh = D(40); }
 			}
 			h = max(h, hh);
+			xx += cw + gap;
+		}
+		if (rb_short)
+		{
+			hs_max[hs] = max(0, xx - gap - x - w);
+			hs_scroll[hs] = bound(0, hs_scroll[hs], hs_max[hs]);
+			return h;
 		}
 		hs_max[hs] = max(0, n * (cw + gap) - gap - w);
 		hs_scroll[hs] = bound(0, hs_scroll[hs], hs_max[hs]);
@@ -773,11 +792,14 @@ float RB_LayoutList(string id, float x, float y, float w, float region)
 		// list's top when that is enough, else from the whole view (the section
 		// header stays stuck above it while the page scrolls the list into view).
 		int rows = bound(1, stof(uib_get(id, "rows")), 4);
-		float gap = D(10), band = D(30), bar = D(10);
-		float th = (rg_s[0].y - y - D(8) - bar - gap * (rows - 1)) / rows;
-		if (th < D(84))
+		float gap = D(10), bar = D(10);
+		float band = D(30);
+		if (rb_short) band = D(24);
+		lc_band[k] = band;
+		float th = (rg_s[0].y - y - D(4) - bar - gap * (rows - 1)) / rows;
+		if (th < D(rb_short ? 58 : 84))
 			th = (rg_s[0].y - D(56) - D(8) - bar - gap * (rows - 1)) / rows;
-		th = bound(D(64), th, D(176));
+		th = bound(D(56), th, D(176));
 		float cw = (uib_get(id, "aspectItem") == "4:3") ? (th - band) * 4 / 3 : (th - band) * 16 / 9;
 		int hs = RB_HsFor(id);
 		float cols = ceil(max(1, count) / rows);
@@ -869,17 +891,21 @@ float RB_LayoutNode(string id, float x, float y, float w, float region)
 			float y0 = y;
 			string title = uib_get(id, "title");
 			entity hd = NULL;
+			// a phone on its side: a section that is one strip of cards (the game
+			// modes) is just that strip, as chips, so what follows keeps its room
+			if (rb_short && uib_count(id) == 1 && uib_type(uib_child(id, 0)) == "grid" && uib_get(uib_child(id, 0), "scroll") == "horizontal")
+				title = "";
 			if (title != "")
 			{
 				hd = RB_Item("sechead", id, region, eX * x + eY * y, eX * w + eY * D(40));
 				if (hd)
 				{
 					strcpy(hd.rb_t1, title);
-					strcpy(hd.rb_t2, uib_get(id, "subtitle"));
+					strcpy(hd.rb_t2, rb_short ? "" : uib_get(id, "subtitle"));
 					hd.rb_sel = uib_get(id, "sticky") == "1";
 				}
-				y += D(40);
-				if (uib_get(id, "subtitle") != "") y += D(8);
+				y += rb_short ? D(34) : D(40);
+				if (!rb_short && uib_get(id, "subtitle") != "") y += D(8);
 			}
 			y += RB_LayoutChildren(id, x, y, w, region, D(10));
 			if (uib_get(id, "footer") != "")
@@ -1203,6 +1229,7 @@ void RB_Layout()
 	float pad = D(rb_touch ? 20 : 28);
 	float hdr = D(58);
 	rb_narrow = W < D(600);
+	rb_short = (H - hdr - D(66)) < D(330);
 	uib_narrow = rb_narrow;
 	for (int r = 0; r < RB_REGIONS; ++r) { rg_o[r] = '0 0 0'; rg_s[r] = '0 0 0'; rg_content[r] = 0; rg_max[r] = 0; }
 	string sc = rb_top;
@@ -1338,7 +1365,7 @@ void RB_Layout()
 	}
 	rg_o[0] = eY * top;
 	rg_s[0] = eX * W + eY * (bottom - top);
-	float y = D(14);
+	float y = rb_short ? D(8) : D(14);
 	if (split != "")
 	{
 		y = RB_LayoutSplit(split, top, bottom, cx, cw);
@@ -1779,7 +1806,7 @@ void RB_DrawCardsSideways(entity e, vector p, string sel)
 {
 	int k = e.rb_list;
 	int rows = lc_rows[k];
-	float ch = lc_cardh[k], cw = lc_cardw[k], gap = D(10), band = D(30);
+	float ch = lc_cardh[k], cw = lc_cardw[k], gap = D(10), band = lc_band[k];
 	float W = rb_scr.x;
 	float c0 = max(0, floor((0 - p.x) / (cw + gap))), c1 = ceil((W - p.x) / (cw + gap));
 	float first = c0 * rows, last = min(lc_total[k], (c1 + 1) * rows);
@@ -1810,7 +1837,7 @@ void RB_DrawCardsSideways(entity e, vector p, string sel)
 		string title = RB_Cell(row, lc_cols[k], "title");
 		if (title == "") title = RB_Cell(row, lc_cols[k], "name");
 		drawfont = FONT_USER + 3;
-		RB_TextFit(co + eX * D(10) + eY * (ch - band + D(7)), title, D(14), cw - D(20) - (issel ? D(24) : 0), (issel ? RB_EMBER : RB_TEXT), rb_a);
+		RB_TextFit(co + eX * D(10) + eY * (ch - band + (rb_short ? D(5) : D(7))), title, (rb_short ? D(12) : D(14)), cw - D(20) - (issel ? D(24) : 0), (issel ? RB_EMBER : RB_TEXT), rb_a);
 		drawfont = FONT_USER;
 		if (issel)
 		{
@@ -1981,7 +2008,7 @@ void RB_DrawItem(entity e, int idx)
 				RB_Card(bo, eX * bw + eY * D(22), D(11), '0.3 0.2 0.05', a, RB_WARN, 0.6 * a);
 				RB_Text(bo + eX * D(8) + eY * D(5), bt, D(12), RB_WARN, a);
 			}
-			if (e.rb_sel)
+			if (e.rb_sel && s.y > D(60))   // a chip is marked by its outline alone
 			{
 				RB_RRect(p + eX * (s.x - D(36)) + eY * D(10), eX * D(26) + eY * D(26), D(13), RB_EMBER, a);
 				RB_TextCenter(p + eX * (s.x - D(36)) + eY * D(10), eX * D(26) + eY * D(26), "✓", D(16), RB_INK, a);

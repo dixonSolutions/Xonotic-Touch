@@ -3,7 +3,6 @@ Godnotic UI bridge: data sources, read by window (offset, limit, sort, filter), 
 2,000-server list never crosses the bridge at once.
 
   servers, servers.lan, servers.fav   the engine's server list (Internet, LAN, VPN)
-  players:<address>                   a server's players from its status reply
   maps, maps:<mode>                   installed maps from the maps/ mapinfo files
   anything else                       rows the menu VM sets (modes, recent, mods ...)
 
@@ -37,7 +36,7 @@ struct uibrow_s
 typedef struct
 {
 	char name[160];
-	int kind;               // 0 static, 1 servers, 2 maps, 3 players
+	int kind;               // 0 static, 1 servers, 2 maps
 	uibrow_t *rows;
 	int nrows, maxrows;
 	int64_t rev;
@@ -85,8 +84,6 @@ static source_t *getsource(const char *name, int create)
 		s->kind = 1;
 	else if (!strcmp(name, "maps") || !strncmp(name, "maps:", 5))
 		s->kind = 2;
-	else if (!strncmp(name, "players:", 8))
-		s->kind = 3;
 	s->notified_rev = s->rev;
 	return s;
 }
@@ -279,59 +276,12 @@ static void build_servers(source_t *s)
 	}
 }
 
-static void build_players(source_t *s)
-{
-	freerows(s);
-	const char *addr = s->name + 8;
-	for (unsigned i = 0; i < serverlist_cachecount; i++)
-	{
-		const serverlist_info_t *in = &serverlist_cache[i].info;
-		if (strcmp(in->cname, addr))
-			continue;
-		// "frags ping \"name\" team" per line
-		const char *p = in->players;
-		int n = 0;
-		while (*p && n < 256)
-		{
-			int frags = 0, ping = 0, team = 0;
-			char name[160] = "";
-			const char *eol = strchr(p, '\n');
-			size_t ll = eol ? (size_t)(eol - p) : strlen(p);
-			char line[256];
-			if (ll >= sizeof(line)) ll = sizeof(line) - 1;
-			memcpy(line, p, ll);
-			line[ll] = 0;
-			char *q1 = strchr(line, '"'), *q2 = q1 ? strrchr(q1 + 1, '"') : NULL;
-			if (q1 && q2)
-			{
-				sscanf(line, "%d %d", &frags, &ping);
-				dpsnprintf(name, sizeof(name), "%.*s", (int)(q2 - q1 - 1), q1 + 1);
-				sscanf(q2 + 1, "%d", &team);
-				char key[16];
-				dpsnprintf(key, sizeof(key), "p%d", n++);
-				uibrow_t *r = addrow(s, key, NULL);
-				cell_s(r, "name", name, strlen(name));
-				cell_n(r, "score", frags);
-				cell_n(r, "ping", ping);
-				char t[8];
-				dpsnprintf(t, sizeof(t), "%d", team);
-				cell_s(r, "team", team > 0 ? t : "", team > 0 ? strlen(t) : 0);
-			}
-			if (!eol)
-				break;
-			p = eol + 1;
-		}
-		break;
-	}
-}
-
 // ---------------------------------------------------------------- maps
 
 #else
 // Dedicated server (make sv-release): there is no server browser cache.
 static unsigned server_sig(void) { return 1; }
 static void build_servers(source_t *s) { freerows(s); }
-static void build_players(source_t *s) { freerows(s); }
 #endif
 
 static void build_maps(source_t *s)
@@ -464,14 +414,13 @@ static void refresh(source_t *s, int force)
 	if (!force && now < s->next_poll)
 		return;
 	s->next_poll = now + (s->kind == 2 ? 3600 : 0.25);
-	if (s->kind == 1 || s->kind == 3)
+	if (s->kind == 1)
 	{
 		unsigned sig = server_sig();
 		if (sig == s->sig)
 			return;
 		s->sig = sig;
-		if (s->kind == 1) build_servers(s);
-		else build_players(s);
+		build_servers(s);
 		s->rev++;
 	}
 	else if (s->kind == 2)
@@ -637,7 +586,7 @@ void UIBSrc_Window(uibbuf_t *b, int msgid, int64_t re, const char *source, int o
                    const char *sort, int desc, const char *filter, int hasfilter)
 {
 	source_t *s = getsource(source, 0);
-	if (!s && (!strncmp(source, "servers", 7) || !strncmp(source, "maps", 4) || !strncmp(source, "players:", 8)))
+	if (!s && (!strncmp(source, "servers", 7) || !strncmp(source, "maps", 4)))
 		s = getsource(source, 1);
 	if (!s)
 	{
