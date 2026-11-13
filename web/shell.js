@@ -767,8 +767,8 @@
   // reads come from the browser's storage (web/lazyfs.js): nothing is
   // copied at start-up, and a map's pack costs nothing until the engine
   // reads it. Where the browser cannot do that (probe), the old way: the
-  // files are copied into the JS heap, and only the core, the music and the
-  // one map being played are mounted.
+  // files are copied into the JS heap: everything but the map packs, and the
+  // one map being played.
   const mounts = new Map(); // engine path -> manifest file
   const enginePaths = new Set(); // mounted paths the engine has scanned (fs_rescan)
   const pathOf = (f) => `${BASEDIR}/${f.path}`;
@@ -1507,6 +1507,9 @@
       const killed = killedReason(true);
       let reason = prevCrumb && prevCrumb.phase === 'download' ? killed : '';
       if (!reason && data.kind === 'memory') reason = 'Nothing can be stored in this window, so the game data downloads on every visit.';
+      // "Verify data" found damage and removed it: say that, not "the browser".
+      if (!reason && store.get('damaged', '')) reason = `${mb(sum(missing))} of the game data was damaged and has been removed (Verify data): downloading that part again.`;
+      store.del('damaged');
       if (!reason && hadStart && (firstInstall || sameRelease)) {
         reason = (firstInstall ? 'The game data is gone from this browser' : `${mb(sum(missing))} of the game data is gone from this browser`) +
           ': the browser removed it (to free space, or because its site data was deleted). Downloading ' + (firstInstall ? 'it' : 'that part') + ' again.';
@@ -1520,7 +1523,9 @@
       // part of the whole. The question is for first installs, big updates,
       // and a Godnotic folder waiting for its permission.
       const restore = hadStart && (firstInstall || sameRelease) && data.kind !== 'memory';
-      const small = !firstInstall && (sum(missing) <= SMALL_UPDATE || sum(missing) <= total / 4);
+      // (With a Godnotic folder in use, what is left is this build's own
+      // files: small, even the first time.)
+      const small = (!firstInstall || !!state.folder) && (sum(missing) <= SMALL_UPDATE || (!firstInstall && sum(missing) <= total / 4));
       if ((restore || small) && !state.folderPending && !params.has('ask')) {
         try {
           await runDownload(missing, restore ? 'Downloading the game data again…' : 'Updating…');
@@ -1605,8 +1610,9 @@
       await mountUserdir();
       importConfig();
       state.lazy = await decideLazy();
-      // Lazy: everything stored costs nothing until read. In memory: the
-      // core and the music; maps when they are played.
+      // Lazy: everything stored costs nothing until read. In memory:
+      // everything but the map packs (the extra pack too: what no map was
+      // traced to may still be used by one); maps when they are played.
       const complete = [];
       const here = await Promise.all(files.map(async (f) => !(await data.missing([f])).length));
       files.forEach((f, i) => {
@@ -1655,6 +1661,7 @@
     const out = $('xt-verify-text');
     try {
       const r = await data.verify(state.files, (n, total) => { out.textContent = `Checking ${n} of ${total} pieces…`; });
+      if (r.bad) store.set('damaged', r.bad);
       out.textContent = r.bad
         ? `${r.bad} damaged ${r.bad === 1 ? 'piece was' : 'pieces were'} removed. Reload to download ${r.bad === 1 ? 'it' : 'them'} again.`
         : `All ${r.checked - r.missing} stored pieces are intact` + (r.missing ? ` (${r.missing} not downloaded).` : '.');

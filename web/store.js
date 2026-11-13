@@ -117,7 +117,9 @@
     if (!nav.storage || !nav.storage.getDirectory) { why.push('OPFS: not offered'); return null; }
     const FH = global.FileSystemFileHandle;
     const mainWrites = !!(FH && 'createWritable' in FH.prototype);
-    const workerWrites = !!(FH && 'createSyncAccessHandle' in FH.prototype && global.Worker && global.URL && global.URL.createObjectURL);
+    // createSyncAccessHandle() only exists inside workers, so it cannot be
+    // looked for here: the store's test write (open()) finds out.
+    const workerWrites = !!(FH && global.Worker && global.URL && global.URL.createObjectURL && global.Blob);
     const useWorker = writer === 'worker' ? workerWrites : !mainWrites && workerWrites;
     if (!mainWrites && !useWorker) { why.push('OPFS: no way to write files here'); return null; }
     let dir;
