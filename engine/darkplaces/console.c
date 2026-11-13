@@ -27,6 +27,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "thread.h"
+#include "touch_ui.h" // Touch: touch_conback_picture
 
 // for u8_encodech
 #include "ft2.h"
@@ -2175,6 +2176,7 @@ void Con_DrawConsole (int lines, qbool forcedfullscreen)
 		if (sx != 0 || sy != 0)
 			conbackflags &= CACHEPICFLAG_NOCLAMP;
 		conbackpic = scr_conbrightness.value >= 0.01f ? Draw_CachePic_Flags("gfx/conback", conbackflags) : NULL;
+		conbackpic = TouchUI_ConbackPic(conbackpic, conbackflags); // Touch: touch_conback_picture
 		sx *= host.realtime; sy *= host.realtime;
 		sx -= floor(sx); sy -= floor(sy);
 		if (Draw_IsPicLoaded(conbackpic))

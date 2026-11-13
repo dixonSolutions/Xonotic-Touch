@@ -118,6 +118,15 @@ int TouchUI_LayoutSheet(touchui_sheet_t kind, float x, float y, float w, float h
  * controls on and no keyboard listed, otherwise after the player opens them
  * with the KEYBOARD toggle. */
 qbool TouchUI_KeysShown(touchui_sheet_t kind);
+/* The console or chat sheet is open with its own keys showing and no keyboard
+ * is listed: the system's on-screen keyboard would only cover them, so
+ * vid_sdl.c keeps SDL text input (which raises it on Android) off. With HIDE
+ * KEYS chosen, or a keyboard listed, text input works as before. */
+qbool TouchUI_EngineKeysUp(void);
+/* gfx/conback, or touch_conback_picture when that loads (console.c hook).
+ * NULL (the background switched off) stays NULL. */
+struct cachepic_s *TouchUI_ConbackPic(struct cachepic_s *stock, unsigned int flags);
+extern struct cvar_s touch_conback_picture;
 /* Top of the chat sheet's keys from the last layout, or -1 when none show. */
 float TouchUI_ChatKeysTop(void);
 
