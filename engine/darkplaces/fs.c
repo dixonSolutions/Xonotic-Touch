@@ -419,6 +419,8 @@ static unsigned int fs_dirnames_generation = 1;
 #endif
 
 
+#include "touch_assets_fs.h" // Touch: zstd pk3 entries
+
 /*
 =============================================================================
 
@@ -806,6 +808,7 @@ static int PK3_BuildFileList (pack_t *pack, const pk3_endOfCentralDir_t *eocd)
 					flags = PACKFILE_FLAG_DEFLATED;
 				else
 					flags = 0;
+				flags = Touch_PK3_EntryFlags ((unsigned short)BuffLittleShort (&ptr[10]), flags); // Touch: zstd entries
 				offset = (unsigned int)(BuffLittleLong (&ptr[42]) + eocd->prepended_garbage);
 				packsize = (unsigned int)BuffLittleLong (&ptr[20]);
 				realsize = (unsigned int)BuffLittleLong (&ptr[24]);
@@ -2591,6 +2594,7 @@ static qfile_t *FS_OpenPackedFile (pack_t* pack, int pack_ind)
 	file->offset = pfile->offset;
 	file->position = 0;
 	file->ungetc = EOF;
+	if (pfile->flags & PACKFILE_FLAG_ZSTD) return Touch_FS_OpenZstd (file, pfile); // Touch: zstd entries
 
 	if (pfile->flags & PACKFILE_FLAG_DEFLATED)
 	{
