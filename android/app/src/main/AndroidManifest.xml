@@ -56,6 +56,25 @@
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
+            <!-- Hand-over from the web game (web/shell.js): a godnotic: link
+                 or an intent URL naming this package opens the app, which
+                 has the game data and the settings. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="godnotic" />
+            </intent-filter>
+            <!-- App Link: a link to the web game opens the app instead, once
+                 Android has verified https://godnotic.vercel.app/.well-known/assetlinks.json
+                 (web/.well-known/assetlinks.json: this package and its signing
+                 certificate). -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="godnotic.vercel.app" android:path="/" />
+            </intent-filter>
         </activity>
 
         <activity
@@ -75,6 +94,13 @@
             android:screenOrientation="sensorLandscape"
             android:preferMinimalPostProcessing="true"
             android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation" />
+
+        <!-- The web game asks Chrome whether this app is installed
+             (navigator.getInstalledRelatedApps); Chrome answers only for
+             sites the app names here. -->
+        <meta-data
+            android:name="asset_statements"
+            android:resource="@string/asset_statements" />
 
         <service
             android:name=".KeepAliveService"
