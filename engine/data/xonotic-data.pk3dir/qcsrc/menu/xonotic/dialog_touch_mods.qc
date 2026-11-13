@@ -451,7 +451,7 @@ void TouchMods_modelDetail()
 	switch (tm_sub)
 	{
 		case TM_P_PERMS:
-			what = _("Permissions: tap to grant or take back. Reload after granting.");
+			what = _("Permissions: tap to grant or take back. A grant restarts it if it stopped without one.");
 			first = TouchMods_paging(tm_np, per);
 			if (!tm_np)
 				TM_SET(tm_title[1], strcat("^8", _("It asks for no permissions.")));

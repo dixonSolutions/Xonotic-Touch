@@ -2594,8 +2594,8 @@ static void tlua_updatestatus(tlua_realm_t *r)
 	char buf[8192];
 	int i;
 	tlua_detail_dirty = true;
-	if (!r->status)
-		return;
+	if (!r->status || (r == &tlua_client && cls.state == ca_dedicated))
+		return; // a dedicated server has no client cvars
 	buf[0] = 0;
 	for (i = 0; i < r->nummods; i++)
 	{
