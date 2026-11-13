@@ -62,6 +62,7 @@ static inline void TouchLoadTime_ScopeEnd(touch_lt_scope_t *s) { TouchLoadTime_E
 #endif
 
 void TouchLoadTime_Init(void);
+
 // After every drawn frame: notices the menu's first frame and a load's first
 // game frame.
 void TouchLoadTime_Frame(void);

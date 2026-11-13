@@ -29,6 +29,7 @@ as they arrive. Neither applies in the menu or in the game.
 #include "quakedef.h"
 #include "touch_loadtime.h"
 #include "libcurl.h"
+#include "touch_loadfs.h"
 #ifdef __linux__
 #include <unistd.h>
 #include <time.h>
@@ -348,6 +349,7 @@ double TouchLoadTime_SleepTime(double sleeptime)
 
 void TouchLoadTime_Init(void)
 {
+	TouchLoadFS_Init();
 	Cvar_RegisterVariable(&touch_loadtime);
 	Cvar_RegisterVariable(&touch_load_restless);
 	Cvar_RegisterVariable(&touch_loadtime_menu);

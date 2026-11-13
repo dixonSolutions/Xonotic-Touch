@@ -417,6 +417,11 @@ static unsigned int fs_dirnames_generation = 1;
 #else
 # define FS_DIRNAMES_CHANGED() ((void)0)
 #endif
+#include "touch_loadfs.h" // Touch: cached loose-directory listings
+#ifndef __EMSCRIPTEN__
+#undef FS_DIRNAMES_CHANGED
+#define FS_DIRNAMES_CHANGED() TouchLoadFS_Changed() // Touch: the engine wrote a file, listings are stale
+#endif
 
 
 #include "touch_assets_fs.h" // Touch: zstd pk3 entries
@@ -2832,6 +2837,7 @@ static searchpath_t *FS_FindFile (const char *name, int *index, const char **can
 			if (!search->pack && !FS_DirMayHave(search, name))
 				continue;
 #endif
+			if (!TouchLoadFS_MayHave(search->filename, name)) continue; // Touch: cached directory listings, no stat() for a sure miss
 			TouchLoadTime_Count(TLC_FS_DIRSTAT); // Touch: load-time counters
 			dpsnprintf(netpath, sizeof(netpath), "%s%s", search->filename, name);
 			if (FS_SysFileExists (netpath))
