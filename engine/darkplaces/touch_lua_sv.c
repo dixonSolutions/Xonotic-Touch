@@ -495,7 +495,7 @@ void TouchLua_SV_InstallBuiltins(prvm_prog_t *prog)
 	TLua_InitOnce();
 	if (prog->numbuiltins >= TLUA_SV_BUILTIN_EVENT)
 	{
-		Con_Printf(CON_WARN "Lua: the server VM has %d builtins, #%d is taken; server plugins get no game events\n", prog->numbuiltins, TLUA_SV_BUILTIN_EVENT);
+		Con_Printf(CON_WARN "Lua: the server VM has %d builtins, #%d is taken; server mods get no game events\n", prog->numbuiltins, TLUA_SV_BUILTIN_EVENT);
 		return;
 	}
 	for (i = 0; i < TLUA_SV_NUMBUILTINS; i++)

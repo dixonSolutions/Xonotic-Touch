@@ -27,7 +27,7 @@ CLASS(GodnoticLanHostDialog, XonoticRootDialog)
 	ATTRIB(GodnoticLanHostDialog, title, string, _("Host a LAN game"));
 	ATTRIB(GodnoticLanHostDialog, color, vector, SKINCOLOR_DIALOG_MULTIPLAYER);
 	ATTRIB(GodnoticLanHostDialog, intendedWidth, float, 0.9);
-	ATTRIB(GodnoticLanHostDialog, rows, float, 18);
+	ATTRIB(GodnoticLanHostDialog, rows, float, 9.4);
 	ATTRIB(GodnoticLanHostDialog, columns, float, 6);
 	ATTRIB(GodnoticLanHostDialog, name, string, "TouchLanHost");
 ENDCLASS(GodnoticLanHostDialog)
@@ -39,7 +39,7 @@ CLASS(GodnoticLanPasswordDialog, XonoticRootDialog)
 	ATTRIB(GodnoticLanPasswordDialog, title, string, _("Password"));
 	ATTRIB(GodnoticLanPasswordDialog, color, vector, SKINCOLOR_DIALOG_MULTIPLAYER);
 	ATTRIB(GodnoticLanPasswordDialog, intendedWidth, float, 0.7);
-	ATTRIB(GodnoticLanPasswordDialog, rows, float, 9);
+	ATTRIB(GodnoticLanPasswordDialog, rows, float, 6);
 	ATTRIB(GodnoticLanPasswordDialog, columns, float, 4);
 	ATTRIB(GodnoticLanPasswordDialog, name, string, "TouchLanPassword");
 	ATTRIB(GodnoticLanPasswordDialog, lanAddress, string);

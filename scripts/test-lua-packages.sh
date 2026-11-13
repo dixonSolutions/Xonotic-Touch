@@ -160,7 +160,7 @@ expect_attack api "needs API 9"
 expect_attack notzip "not a zip archive"
 expect_attack bomb "unpacks to more than it says"
 expect_attack encrypted "is encrypted"
-expect_attack realm "server plugin"
+expect_attack realm "server mod"
 for f in evil evilapi srvonly; do [ -e "$UD/mods/$f" ] && bad "attack left $UD/mods/$f"; done
 [ ! -e "$UD/evil.lua" ] && [ ! -e "/tmp/evil.lua" ] && [ ! -e "$UD/mods/evil.lua" ] && ok "no attack file written anywhere" || bad "an attack wrote evil.lua"
 [ "$(cat "$UD/luastate/mods/canary.txt" 2>/dev/null)" = canary ] && ok "manager state untouched by the planted .install.tmp symlink" || bad "luastate/mods/canary.txt changed or gone"
@@ -228,7 +228,7 @@ python3 - "$RUD/data/stuff.dem" "$P/pkgmod-1.zip" <<'EOF'
 import struct, sys
 z = sys.argv[2].encode()
 text = (b"lua_mod_install " + z + b"\n" + b"lua_install_confirm\n" + b"lua_mod_uninstall victim\n" +
-        b"lua_mod_update victim " + z + b"\n" + b"sv_lua_plugin_install " + z + b"\n" + b"lua_install_cancel\n" +
+        b"lua_mod_update victim " + z + b"\n" + b"sv_lua_plugin_install " + z + b"\n" + b"sv_lua_mod_install " + z + b"\n" + b"lua_install_cancel\n" +
         b"set lua_install_insecure_localhost 1\n")
 msg = bytes([9]) + text + b"\0"
 with open(sys.argv[1], "wb") as f:
@@ -243,7 +243,7 @@ defer 7 "quit"
 EOF
 RLOG="$WORK/remote.log"
 run_engine "$RLOG" -userdir "$RUD" +exec remote.cfg
-for c in lua_mod_install lua_install_confirm lua_mod_uninstall lua_mod_update sv_lua_plugin_install lua_install_cancel; do
+for c in lua_mod_install lua_install_confirm lua_mod_uninstall lua_mod_update sv_lua_plugin_install sv_lua_mod_install lua_install_cancel; do
 	grep -aq "$c: not while connected to a server" "$RLOG" && ok "server text: $c refused" || bad "server text: $c not refused"
 done
 grep -aqE 'lua_install_insecure_localhost(.\[m)?"? is "0"' "$RLOG" && ok "server text cannot allow plain http" || bad "lua_install_insecure_localhost changed by server text"
@@ -272,7 +272,7 @@ map stormkeep
 defer 10 "togglemenu 0"
 defer 12 "togglemenu 0"
 defer 14 "togglemenu 0"
-defer 40 "sv_lua_plugins"
+defer 40 "sv_lua_mods"
 defer 40.5 "sv_lua_hooks"
 defer 41 "quit"
 EOF
@@ -286,12 +286,12 @@ last=$(grep -ao "HOOKS deaths [0-9]* hits [0-9]*" "$M" | tail -1)
 deaths=$(echo "$last" | awk '{print $3}'); hits=$(echo "$last" | awk '{print $5}')
 [ -n "$hits" ] && [ "$hits" -gt 20 ] && ok "Damage_Calculate seen by a read-only subscriber ($hits hits)" || bad "too few hits seen: $last"
 [ "${deaths:-1}" = 0 ] && ok "hooks_write set the damage to 0: no deaths in the match" || bad "players died with damage scaled to 0 ($last)"
-grep -aqE "Lua plugin hookerror stopped: .*HOOKERROR on purpose" "$M" && ok "an erroring hook subscriber is stopped" || bad "hookerror not stopped"
-grep -aqE "Lua plugin hookslow stopped: .*(time limit|instruction limit)" "$M" && ok "a hook call over lua_hook_ms is stopped" || bad "hookslow not stopped"
-grep -aqE "Lua plugin hookframe stopped: hook budget" "$M" && ok "a subscriber over the frame budget is stopped" || bad "hookframe not stopped by the frame budget"
-stopline=$(grep -an "Lua plugin hookframe stopped\|Lua plugin hookslow stopped" "$M" | tail -1 | cut -d: -f1)
+grep -aqE "Lua server mod hookerror stopped: .*HOOKERROR on purpose" "$M" && ok "an erroring hook subscriber is stopped" || bad "hookerror not stopped"
+grep -aqE "Lua server mod hookslow stopped: .*(time limit|instruction limit)" "$M" && ok "a hook call over lua_hook_ms is stopped" || bad "hookslow not stopped"
+grep -aqE "Lua server mod hookframe stopped: hook budget" "$M" && ok "a subscriber over the frame budget is stopped" || bad "hookframe not stopped by the frame budget"
+stopline=$(grep -an "Lua server mod hookframe stopped\|Lua server mod hookslow stopped" "$M" | tail -1 | cut -d: -f1)
 afterline=$(grep -an "HOOKS deaths" "$M" | tail -1 | cut -d: -f1)
-[ -n "$stopline" ] && [ "${afterline:-0}" -gt "$stopline" ] && ok "the match and the other plugins go on after the stops" || bad "nothing ran after the stops"
+[ -n "$stopline" ] && [ "${afterline:-0}" -gt "$stopline" ] && ok "the match and the other server mods go on after the stops" || bad "nothing ran after the stops"
 grep -aqE "^ *damage_scale +running" "$M" && ok "damage_scale still running" || bad "damage_scale not running"
 grep -aq "Damage_Calculate.*calls" "$M" && ok "sv_lua_hooks counts the calls: $(grep -ao 'Damage_Calculate.*calls[^)]*)' "$M" | head -1 | tr -s ' ')" || bad "no hook stats"
 RC=$(match nowrite 0)

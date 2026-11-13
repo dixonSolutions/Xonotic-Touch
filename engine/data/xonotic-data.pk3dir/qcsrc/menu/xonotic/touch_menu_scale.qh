@@ -42,8 +42,10 @@ bool touch_menu_scale_fixed;
 bool touch_menu_on;
 // dp per layout unit for this menu instance.
 float touch_menu_unit_dp;
-// Layout area kept clear on the left and right, in console units.
+// Layout area kept clear on the left and right (and top and bottom: the
+// display cutout, a gesture bar), in console units.
 float touch_menu_reserve_l, touch_menu_reserve_r;
+float touch_menu_reserve_t, touch_menu_reserve_b;
 
 bool TouchMenuScale_active();
 // Called by UpdateConWidthHeight (menu.qc) after it set conwidth/conheight.
@@ -59,9 +61,13 @@ float TouchMenuScale_conToDp(float conunits);
 // Layout units for a length in dp.
 float TouchMenuScale_dpToUnits(float dp);
 float TouchMenuScale_size();
-// XonoticListBox_resizeNotify: an item height (relative to the list) at least
-// TOUCH_MENU_LISTROW_DP tall.
-float TouchMenuScale_listItemHeight(float itemHeight, vector absSize);
+// XonoticListBox_resizeNotify: an item height (relative to the list) at
+// least the list's row height on a touch device: TOUCH_MENU_LISTROW_DP for a
+// list of things to tap, TOUCH_MENU_DATAROW_DP for a data list (servers,
+// maps, demos, screenshots...), or what the list sets in touch_list_row_dp.
+.float touch_list_row_dp;
+const float TOUCH_MENU_DATAROW_DP = 40;
+float TouchMenuScale_listItemHeight(entity me, float itemHeight, vector absSize);
 
 // Drawn sizes of the small controls on a touch device, in dp before
 // menu_touch_size. Their finger targets are the whole 48 dp row already;
@@ -69,7 +75,6 @@ float TouchMenuScale_listItemHeight(float itemHeight, vector absSize);
 const float TOUCH_MENU_BOX_DP = 30;     // checkbox and radio button (the picture has a margin: about 26 dp seen)
 const float TOUCH_MENU_THUMB_DP = 30;   // slider thumb
 const float TOUCH_MENU_TRACK_DP = 6;    // slider track
-const float TOUCH_MENU_SCROLLBAR_DP = 32;
 
 // Button_draw (item/button.qc), for a button that draws its picture as a
 // box beside its text (a checkbox, a radio button): on a touch device the

@@ -302,12 +302,12 @@ string TouchMods_importStatus()
 
 string TouchMods_prefix(int realm)
 {
-	return realm ? "sv_lua_plugin_" : "lua_mod_";
+	return realm ? "sv_lua_mod_" : "lua_mod_";
 }
 
 string TouchMods_kind(int realm)
 {
-	return realm ? _("plugin") : _("mod");
+	return realm ? _("server mod") : _("mod");
 }
 
 string TouchMods_stateText(string st)
@@ -387,10 +387,10 @@ void TouchMods_modelList()
 	TouchMods_readList();
 	int first = TouchMods_paging(tm_count, TM_SLOTS);
 	string p = TouchMods_prefix(tm_realm);
-	TM_SET(tm_header, (tm_realm ? _("Server plugins (games you host)") : _("Client mods")));
+	TM_SET(tm_header, (tm_realm ? _("Server mods (games you host)") : _("Client mods (this device)")));
 	if (!tm_count)
 		TM_SET(tm_summary, strcat((tm_realm
-			? _("No plugins yet. Install one, or put its folder in the plugins folder; new ones start off.")
+			? _("No server mods yet. Install one, or put its folder in the plugins folder; new ones start off.")
 			: _("No mods yet. Install one, or put its folder in the mods folder; new ones start off.")), TouchMods_lastMessage()));
 	else
 		TM_SET(tm_summary, strcat(sprintf(_("%d installed. %s"), tm_count, TouchMods_pageText(tm_count, TM_SLOTS)), TouchMods_lastMessage()));
@@ -413,8 +413,19 @@ void TouchMods_modelList()
 			TM_SET(tm_bact[s], strcat(p, "reload ", tm_name[i]));
 		}
 	}
-	TouchMods_bar(0, _("Mods"), "@realm 0", !tm_realm);
-	TouchMods_bar(1, _("Plugins"), "@realm 1", tm_realm);
+	// How to make a mod: in the first row the page leaves free.
+	for (int hs = 0; hs < TM_SLOTS; ++hs)
+		if (first + hs >= tm_count)
+		{
+			TM_SET(tm_big[hs], _("Guide"));
+			TM_SET(tm_bigact[hs], "@howto");
+			tm_bigcolor[hs] = '0.6 0.85 1';
+			TM_SET(tm_title[hs], strcat("^7", _("How to make a mod")));
+			TM_SET(tm_detail[hs], strcat("^8", _("Opens the guide (docs/MODDING.md on GitHub) in your browser: a first mod in five minutes.")));
+			break;
+		}
+	TouchMods_bar(0, _("Client mods"), "@realm 0", !tm_realm);
+	TouchMods_bar(1, _("Server mods"), "@realm 1", tm_realm);
 	TouchMods_bar(2, _("Install..."), "@install", false);
 	if (tm_count)
 		TouchMods_bar(3, _("Reload all"), strcat(p, "reload"), false);
@@ -435,7 +446,7 @@ void TouchMods_modelDetail()
 		return;
 	}
 	bool on = TouchMods_isOn(tm_d_state);
-	TM_SET(tm_header, sprintf("%s %s", (tm_realm ? _("Plugin") : _("Mod")), tm_d_title));
+	TM_SET(tm_header, sprintf("%s %s", (tm_realm ? _("Server mod") : _("Mod")), tm_d_title));
 	TM_SET(tm_big[0], (on ? _("ON") : _("OFF")));
 	TM_SET(tm_bigact[0], (on ? sprintf("%sdisable %s", p, tm_sel) : strcat("@turnon ", tm_sel)));
 	tm_bigcolor[0] = (tm_d_state == "error" || tm_d_state == "unfinished") ? '1 0.55 0.55' : (on ? '0.55 1 0.55' : '1 1 1');
@@ -570,7 +581,7 @@ void TouchMods_modelDetail()
 void TouchMods_modelInstall()
 {
 	TouchMods_readInstall();
-	TM_SET(tm_header, (tm_target ? _("Install a server plugin") : _("Install a client mod")));
+	TM_SET(tm_header, (tm_target ? _("Install a server mod") : _("Install a client mod")));
 	TM_SET(tm_summary, _("Nothing is written until you have seen what it asks for. It installs switched off, with no permissions."));
 	// What it is: two choices, the chosen one lit.
 	TM_SET(tm_big[0], (!tm_target ? _("Chosen") : _("Choose")));
@@ -581,7 +592,7 @@ void TouchMods_modelInstall()
 	TM_SET(tm_big[1], (tm_target ? _("Chosen") : _("Choose")));
 	tm_bigcolor[1] = tm_target ? '0.55 1 0.55' : '1 1 1';
 	TM_SET(tm_bigact[1], "@target 1");
-	TM_SET(tm_title[1], strcat("^7", _("Server plugin (games you host)")));
+	TM_SET(tm_title[1], strcat("^7", _("Server mod (games you host)")));
 	TM_SET(tm_detail[1], strcat("^8", _("Runs in the games this device hosts, for everyone in them; not in games you join.")));
 	// Where it comes from: the field over slot 2's title.
 	TM_SET(tm_detail[2], strcat("^8", _("A https:// link or a path to a .zip with init.lua and mod.txt. Add #sha256=<hash> to a link to pin the exact file.")));
@@ -622,7 +633,7 @@ void TouchMods_modelReview()
 {
 	TouchMods_readInstall();
 	bool plugin = (tm_i_realm == "plugin");
-	TM_SET(tm_header, (tm_i_update ? sprintf(_("Update this %s?"), plugin ? _("plugin") : _("mod")) : sprintf(_("Install this %s?"), plugin ? _("plugin") : _("mod"))));
+	TM_SET(tm_header, (tm_i_update ? sprintf(_("Update this %s?"), plugin ? _("server mod") : _("mod")) : sprintf(_("Install this %s?"), plugin ? _("server mod") : _("mod"))));
 	TM_SET(tm_big[0], (tm_i_update ? _("Update") : _("New")));
 	tm_bigcolor[0] = '0.6 0.8 1';
 	string by = "";
@@ -856,6 +867,7 @@ void TouchMods_run(string act)
 		case "@install": tm_view = TM_V_INSTALL; tm_target = tm_realm; tm_page = 0; break;
 		case "@target": tm_target = (arg != "") ? (stof(arg) != 0) : !tm_target; break;
 		case "@textback": tm_view = tm_textback; break;
+		case "@howto": localcmd("\nopenurl https://github.com/dixonSolutions/Godnotic/blob/main/docs/MODDING.md\n"); break;
 		case "@clear": if (tm_input) tm_input.setText(tm_input, ""); break;
 		case "@review":
 		{
@@ -1230,9 +1242,9 @@ void GodnoticModsTab_fill(entity me)
 {
 	entity e;
 	me.TR(me);
-		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Mods and plugins")));
+		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Mods")));
 	me.TR(me);
-		me.TD(me, 3, me.columns, e = makeXonoticTextLabel(0, _("Lua client mods change your own game on this device (HUD, sounds, controls). Server plugins run in the games this device hosts. Each one starts switched off and gets only the permissions you allow it.")));
+		me.TD(me, 3, me.columns, e = makeXonoticTextLabel(0, _("Client mods change your own game on this device (HUD, sounds, controls). Server mods run in the games this device hosts. Each one starts switched off and gets only the permissions you allow it.")));
 			e.allowWrap = true;
 	me.gotoRC(me, 4.5, 1.5);
 		me.TD(me, 1.6, 3, e = makeGodnoticButton(_("Open the Mods manager"), '0.6 0.85 1'));

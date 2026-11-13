@@ -1,6 +1,6 @@
 # Godnotic client architecture and delivery record
 
-Godnotic uses a DarkPlaces client, QuakeC game code and a bounded Lua plugin
+Godnotic uses a DarkPlaces client, QuakeC game code and a bounded Lua mod
 runtime. This document distinguishes implemented work, measured evidence and
 remaining work. It is not a claim that downloads or map loads take milliseconds.
 Network throughput, pack size, storage latency and shader compilation set hard
@@ -32,7 +32,7 @@ scheduled because installed clients reject expired manifests.
 
 ## Native UI
 
-Android now has a Kotlin native console and client-plugin panel over the SDL game
+Android now has a Kotlin native console and client-mod panel over the SDL game
 surface. JNI places commands into a bounded resident queue; only the engine thread
 pumps that queue into the engine command buffer. Native dialogs never access live
 engine structures from Android's UI thread. The resident bridge survives an AndySU
@@ -47,24 +47,25 @@ A Rust service can be introduced behind a versioned protocol if a real need rema
 there is no Rust launcher to repair in the current source tree.
 
 The Android console currently shows submitted-command history, not a live engine
-log. The native panels cover console and plugins, not every QuakeC game widget.
+log. The native panels cover console and mods, not every QuakeC game widget.
 Converting every menu, hosting, downloads, update screen and in-game widget requires
 further view-model and event-schema work; it must not be described as completed.
 
-## Plugins
+## Mods
 
-The existing Lua 5.4 runtime supplies separate client and server realms, event
-subscriptions and namespaced console commands. Memory, instruction and wall-time
-limits disable runaway loops; errors disable that plugin while the engine continues.
+The existing Lua 5.4 runtime supplies separate realms, client mods (this device)
+and server mods (games you host), event subscriptions and namespaced console
+commands. Memory, instruction and wall-time
+limits disable runaway loops; errors disable that mod while the engine continues.
 This is bounded execution, not an absolute guarantee against every native engine bug.
 
 Versioned manifest permissions and persisted user grants sit below the existing
 realm allowlists. Importing a manifest never grants it privileges. See
 [MODDING.md](MODDING.md) for the exact syntax, commands, limits and compatibility
-behavior. Executable native plugins are not part of the Lua sandbox standard;
+behavior. Executable native mods are not part of the Lua sandbox standard;
 launching an arbitrary executable would require a separate process protocol and OS
 isolation. File import already exists on Android. A cross-platform remote installer,
-confirmation UI, uninstall and executable-plugin protocol remain work to complete.
+confirmation UI, uninstall and executable-mod protocol remain work to complete.
 
 ## Browser choice and caching
 
@@ -120,7 +121,7 @@ table in [PHONE_ASSETS.md](PHONE_ASSETS.md) records what the published set measu
 | --- | --- |
 | Launcher core | JVM tests pass, including ordered toggles, failed saves and missing-folder entries |
 | GTK launcher | x86_64 native build passes; ARM Linux runtime was unavailable locally |
-| Android JNI | x86_64 APK builds; emulator enabled and disabled an actual Lua plugin through native controls |
+| Android JNI | x86_64 APK builds; emulator enabled and disabled an actual Lua mod through native controls |
 | ARM Android | Must compile and exercise on the physical tablet; not inferred from an x86 emulator |
 | Lua isolation | Actual engine harness exercises escapes, runaway loops and permission denial/revocation |
 | Web downloads | Behavioral tests must cover cache reuse, canceled transfers and resuming verified chunks |
@@ -130,5 +131,5 @@ table in [PHONE_ASSETS.md](PHONE_ASSETS.md) records what the published set measu
 | Ubuntu Touch | Confined launcher regression tests; actual UT hardware validation remains separate |
 
 Full replacement of every widget, a Rust download supervisor, universal remote
-plugin installation, executable plugin isolation, public server rendering A/B and
+mod installation, executable mod isolation, public server rendering A/B and
 long-running battery measurements are not implied by the foundational changes.

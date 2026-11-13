@@ -2,9 +2,9 @@
 
 // The manager for Lua client mods (<userdir>/mods) and server plugins
 // (<userdir>/plugins), docs/PLUGIN_STANDARD.md: a sheet of its own
-// ("touchmods"), opened by the launcher's Mods tile and by the button on
-// Settings -> Mobile -> Mods, so its pages get the whole screen rather than
-// the room under four rows of tabs.
+// ("touchmods"), opened from Settings > Mods (directly on a touch device,
+// by the button on that page on a desktop), so its pages get the whole
+// screen rather than the room under the rows of tabs.
 //
 // One sheet with these views: the list (client mods or server plugins), a mod's
 // details (permissions with the author's reasons and a switch each, settings,
@@ -40,7 +40,7 @@
 
 CLASS(GodnoticModsDialog, XonoticRootDialog)
 	METHOD(GodnoticModsDialog, fill, void(entity));
-	ATTRIB(GodnoticModsDialog, title, string, _("Mods and plugins"));
+	ATTRIB(GodnoticModsDialog, title, string, _("Mods"));
 	ATTRIB(GodnoticModsDialog, color, vector, SKINCOLOR_DIALOG_SETTINGS);
 	ATTRIB(GodnoticModsDialog, intendedWidth, float, 0.96);
 	ATTRIB(GodnoticModsDialog, rows, float, 14);
@@ -50,12 +50,14 @@ ENDCLASS(GodnoticModsDialog)
 entity godnotic_mods_dialog;
 // mainwindow.qc: add the manager's sheet.
 void TouchMods_ConfigureDialogs(entity mainwindow);
+// A button's onClick: open the manager (Settings > Mods).
+void TouchMods_OpenManager(entity btn, entity me);
 
-// Settings -> Mobile -> Mods: what the manager is, and a button to open it.
+// Settings > Mods: what the manager is, and a button to open it.
 CLASS(GodnoticModsTab, XonoticTab)
 	METHOD(GodnoticModsTab, fill, void(entity));
 	ATTRIB(GodnoticModsTab, intendedWidth, float, 0.9);
-	ATTRIB(GodnoticModsTab, rows, float, 14);
+	ATTRIB(GodnoticModsTab, rows, float, 15.5);
 	ATTRIB(GodnoticModsTab, columns, float, 6);
 	ATTRIB(GodnoticModsTab, name, string, "touchmodstab");
 ENDCLASS(GodnoticModsTab)

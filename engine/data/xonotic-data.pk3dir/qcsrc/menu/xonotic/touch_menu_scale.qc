@@ -85,14 +85,19 @@ float TouchMenuScale_compute()
 // corner over whatever a full-width dialog puts there (its close button).
 void TouchMenuScale_reserve()
 {
-	float l = 0, r = 0, density = 0;
+	float l = 0, r = 0, t = 0, b = 0, density = 0;
 	float px2con = 1 / TouchMenuScale_pxPerCon();
 	int n = tokenize_console(cvar_string("_touch_safe_insets"));
 	if (n >= 4)
 	{
 		l = stof(argv(0)) * px2con;
+		t = stof(argv(1)) * px2con;
 		r = stof(argv(2)) * px2con;
+		b = stof(argv(3)) * px2con;
 	}
+	// Never more than a fifth of the height between them.
+	touch_menu_reserve_t = min(t, realconheight * 0.1);
+	touch_menu_reserve_b = min(b, realconheight * 0.1);
 	if (n >= 5)
 		density = stof(argv(4));
 	if (cvar("touch_shell_button") >= 1)
@@ -131,14 +136,15 @@ void TouchMenuScale_layout()
 	float s = touch_menu_scale;
 	TouchMenuScale_reserve();
 	float avail_w = TouchMenuScale_availWidth();
+	float avail_h = realconheight - touch_menu_reserve_t - touch_menu_reserve_b;
 	if (realconheight > realconwidth)
 	{
 		conwidth = avail_w / s;
-		conheight = realconheight / s;
+		conheight = avail_h / s;
 	}
 	else
 	{
-		conheight = realconheight / s;
+		conheight = avail_h / s;
 		conwidth = min(avail_w / s, conheight * TOUCH_MENU_MAX_ASPECT);
 	}
 }
@@ -149,8 +155,9 @@ bool TouchMenuScale_drawReset()
 		return false;
 	float s = touch_menu_scale;
 	float avail_w = TouchMenuScale_availWidth();
+	float avail_h = realconheight - touch_menu_reserve_t - touch_menu_reserve_b;
 	float left = min(touch_menu_reserve_l, realconwidth - avail_w);
-	draw_reset(conwidth * s, conheight * s, left + 0.5 * (avail_w - conwidth * s), 0.5 * (realconheight - conheight * s));
+	draw_reset(conwidth * s, conheight * s, left + 0.5 * (avail_w - conwidth * s), touch_menu_reserve_t + 0.5 * (avail_h - conheight * s));
 	return true;
 }
 
@@ -174,16 +181,40 @@ void TouchMenuScale_applySkin()
 	SKINMARGIN_COLUMNS = max(SKINMARGIN_COLUMNS, gap);
 	SKINMARGIN_TOP = max(SKINMARGIN_TOP, gap);
 	SKINMARGIN_BOTTOM = max(SKINMARGIN_BOTTOM, gap);
-	// A scroll bar a thumb can find and hold.
-	SKINWIDTH_SCROLLBAR = max(SKINWIDTH_SCROLLBAR, TouchMenuScale_dpToUnits(TOUCH_MENU_SCROLLBAR_DP * sz));
+	// No scroll bar column: a finger drags a list from anywhere on it, and
+	// a thin indicator inside the list shows where it is (touch_menu_sheet.qc).
+	SKINWIDTH_SCROLLBAR = 0;
 }
 
-float TouchMenuScale_listItemHeight(float itemHeight, vector absSize)
+// Data lists: compact rows, many in view; a list can set its own.
+bool TouchMenuScale_dataList(entity me)
+{
+	switch (me.classname)
+	{
+		case "XonoticServerList":
+		case "XonoticMapList":
+		case "XonoticDemoList":
+		case "XonoticScreenshotList":
+		case "XonoticCvarList":
+		case "XonoticKeyBinder":
+		case "XonoticPlayList":
+		case "XonoticSoundList":
+		case "XonoticStatsList":
+			return true;
+	}
+	return false;
+}
+
+float TouchMenuScale_listItemHeight(entity me, float itemHeight, vector absSize)
 {
 	if (!touch_menu_on || absSize.y <= 0)
 		return itemHeight;
-	float h = TouchMenuScale_dpToUnits(TOUCH_MENU_LISTROW_DP * TouchMenuScale_size()) / absSize.y;
-	return max(itemHeight, h);
+	float dp = me.touch_list_row_dp;
+	if (dp <= 0)
+		dp = TouchMenuScale_dataList(me) ? TOUCH_MENU_DATAROW_DP : TOUCH_MENU_LISTROW_DP;
+	float h = TouchMenuScale_dpToUnits(dp * TouchMenuScale_size()) / absSize.y;
+	// A data list keeps its own row when that is taller (two-line rows).
+	return TouchMenuScale_dataList(me) ? max(min(itemHeight, h * 1.6), h) : max(itemHeight, h);
 }
 
 // The item's height in layout units, from its font size: Label_resizeNotify

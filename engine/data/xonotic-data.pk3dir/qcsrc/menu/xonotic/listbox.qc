@@ -14,6 +14,6 @@ void XonoticListBox_configureXonoticListBox(entity me)
 void XonoticListBox_resizeNotify(entity me, vector relOrigin, vector relSize, vector absOrigin, vector absSize)
 {
 	me.itemHeight = me.rowsPerItem * me.fontSize / absSize.y;
-	me.itemHeight = TouchMenuScale_listItemHeight(me.itemHeight, absSize); // Touch: finger-sized list rows
+	me.itemHeight = TouchMenuScale_listItemHeight(me, me.itemHeight, absSize); // Touch: finger-sized list rows
 	SUPER(XonoticListBox).resizeNotify(me, relOrigin, relSize, absOrigin, absSize);
 }

@@ -21,7 +21,7 @@ CLASS(GodnoticLauncherDialog, XonoticDialog)
 	ATTRIB(GodnoticLauncherDialog, backgroundImage, string, string_null);
 	ATTRIB(GodnoticLauncherDialog, color, vector, SKINCOLOR_DIALOG_SETTINGS);
 	ATTRIB(GodnoticLauncherDialog, intendedWidth, float, 1);
-	ATTRIB(GodnoticLauncherDialog, rows, float, 5);
+	ATTRIB(GodnoticLauncherDialog, rows, float, 4);
 	ATTRIB(GodnoticLauncherDialog, columns, float, 6);
 	ATTRIB(GodnoticLauncherDialog, name, string, "TouchLauncher");
 	ATTRIB(GodnoticLauncherDialog, singleplayerDialog, entity);

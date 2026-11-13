@@ -6,23 +6,20 @@
 #include "../item/inputbox.qh"
 #include "touch_menu_scale.qh"
 #include "dialog_touch_launcher.qh"
+#include "touch_menu_reflow.qh"
 #include "../item/borderimage.qh"
 #include "../item/checkbox.qh"
 #include "../item/listbox.qh"
 
-bool touch_sheet_pending;    // a press held back until it is a tap or a drag
-entity touch_sheet_target;   // the sheet the press landed on
-entity touch_sheet_scrolling;
-entity touch_sheet_fling;
-vector touch_sheet_p0;       // where the press landed
-float touch_sheet_o0;        // the sheet's origin.y then
-vector touch_sheet_last;
-float touch_sheet_lasttime;
-float touch_sheet_vel;       // layout heights per second
-float touch_sheet_bar;       // scroll bar emphasis, 0..1
 bool touch_sheet_resize;     // children need their absolute positions again
 entity touch_sheet_focus;    // the focused control last frame
 bool touch_sheet_swallow;    // the held press landed on a pinned band, off its buttons
+float touch_keys_frac;       // top of the engine's keys, fraction of the screen; 0 none
+float touch_keys_top = 1;    // the same in the main window's units; 1 none
+bool touch_sheet_keyspress;  // the press is the engine's keys', not the menu's
+entity touch_kb_field;       // the field last moved above the keys
+float touch_kb_fieldtop;
+.float touch_sheet_kbshift;  // the sheet left its range to show a field above the keys
 
 entity TouchSheet_front()
 {
@@ -54,6 +51,21 @@ vector TouchSheet_rectInMain(entity it)
 		s = boxToGlobalSize(s, e.Container_size);
 	}
 	return o + eZ * s.y; // .z carries the height
+}
+
+void TouchScroll_drawBars();
+
+// List boxes drawn this frame, for their scroll indicators.
+const int TOUCH_BAR_LISTS = 16;
+entity touch_bar_list[TOUCH_BAR_LISTS];
+int touch_bar_n;
+void TouchScroll_noteList(entity e)
+{
+	if (touch_menu_on && touch_bar_n < TOUCH_BAR_LISTS)
+	{
+		touch_bar_list[touch_bar_n] = e;
+		++touch_bar_n;
+	}
 }
 
 // ---- Pinned chrome -------------------------------------------------------
@@ -218,8 +230,12 @@ void TouchSheet_updatePins(entity f)
 	touch_pin_hdr_bottom = f.touch_sheet_max + touch_pin_title * h;
 	if (f.closeButton)
 		TouchSheet_pin(f.closeButton, 1);
+	for (entity t = f.firstChild; t; t = t.nextSibling)
+		if (t.touch_sheet_titlebar && t.Container_alpha >= 0.003)
+			TouchSheet_pin(t, 1);
 
-	entity c = TouchSheet_footerHost(f);
+	// With the engine's keys up the action row would only be under them.
+	entity c = (touch_keys_top < 1) ? NULL : TouchSheet_footerHost(f);
 	if (c)
 	{
 		entity low = TouchSheet_lowest(c);
@@ -276,6 +292,8 @@ void TouchSheet_updatePins(entity f)
 
 bool TouchSheet_drawLater(entity me, entity e)
 {
+	if (e.instanceOfListBox)
+		TouchScroll_noteList(e);
 	if (!touch_pin_sheet)
 		return false;
 	if (me == main)
@@ -433,9 +451,30 @@ void TouchSheet_setup()
 	}
 }
 
+// With the engine's keys up, a sheet scrolls on until its end is above them.
+float TouchSheet_keysExtra()
+{
+	return (touch_keys_top < 1) ? max(0, 1 - TouchSheet_margin() - touch_keys_top) : 0;
+}
+
+void TouchSheet_resized(entity e)
+{
+	float h = e.intendedHeight;
+	e.ModalController_initialSize_y = h;
+	e.ModalController_initialOrigin_y = 0.5 * (1 - h);
+	if (e.ModalController_factor >= 1)
+	{
+		e.Container_size_y = h;
+		e.Container_origin_y = 0.5 * (1 - h);
+	}
+	e.touch_sheet_h = 0;
+	e.touch_sheet_was_shown = false; // starts at the top
+	touch_sheet_resize = true;
+}
+
 void TouchSheet_setScroll(entity e, float y)
 {
-	y = bound(e.touch_sheet_min, y, e.touch_sheet_max);
+	y = bound(e.touch_sheet_min - TouchSheet_keysExtra(), y, e.touch_sheet_max);
 	e.ModalController_initialOrigin_y = y;
 	if (e.ModalController_state != 1 || e.ModalController_factor >= 1)
 		e.Container_origin_y = y;
@@ -485,7 +524,10 @@ void TouchSheet_press(vector pos)
 	while (leaf.focusedChild)
 		leaf = leaf.focusedChild;
 	if (leaf.instanceOfInputBox && cvar("vid_touchscreen") && cvar("vid_touchscreen_showkeyboard"))
+	{
 		cvar_set("vid_touchscreen_showkeyboard", "2");
+		cvar_set("_touch_menu_keys_ask", "1"); // the engine's own keys too, after DONE (touch_ui.c)
+	}
 }
 
 // A dialog opened by a button saves the focus of everything under it
@@ -519,27 +561,159 @@ void TouchSheet_dropSavedFocus(vector pos)
 	}
 }
 
-// A list that has more rows than it shows scrolls itself under the finger.
-// One whose rows all fit (the LAN list, a short map list) is part of the
-// sheet: a drag on it scrolls the sheet, or a sheet whose list is taller
-// than the screen (Multiplayer's) could not be moved to Join from the list.
-bool TouchSheet_listScrolls(entity leaf)
+// ---- Scrollers: what a drag moves --------------------------------------
+//
+// The reusable part (touch_menu_sheet.qh): any entity in the menu tree is a
+// scroller when it sets touch_scroll_get/_max/_set/_unit. Sheets (root
+// dialogs) and list boxes get theirs here; anything else can set its own.
+
+bool TouchScroll_is(entity e)
 {
-	return leaf && leaf.instanceOfListBox && leaf.getTotalHeight(leaf) > 1.001;
+	return e && e.touch_scroll_get != func_null;
+}
+
+float TouchScroll_room(entity e)
+{
+	return TouchScroll_is(e) ? e.touch_scroll_max(e) : 0;
+}
+
+// Can e move further in dir (+1: towards its end, as a finger moving up)?
+bool TouchScroll_canMove(entity e, float dir)
+{
+	if (!TouchScroll_is(e))
+		return false;
+	float o = e.touch_scroll_get(e), m = e.touch_scroll_max(e);
+	if (m <= 0.0001)
+		return false;
+	return (dir > 0) ? (o < m - 0.0001) : (o > 0.0001);
+}
+
+// List boxes: scrollPos in list heights.
+float TouchScroll_listGet(entity me) { return me.scrollPos; }
+float TouchScroll_listMax(entity me) { return max(0, me.getTotalHeight(me) - 1); }
+void TouchScroll_listSet(entity me, float o)
+{
+	o = bound(0, o, max(0, me.getTotalHeight(me) - 1));
+	me.scrollPos = me.scrollPosTarget = o;
+	me.focusedItem = -1; // no row stays lit under a finger that scrolled
+}
+float TouchScroll_listUnit(entity me) { return TouchSheet_rectInMain(me).z; }
+
+// Sheets: how far the dialog is moved up from its top position.
+float TouchScroll_sheetGet(entity me) { return me.touch_sheet_max - me.ModalController_initialOrigin.y; }
+float TouchScroll_sheetMax(entity me)
+{
+	if (!TouchSheet_scrolls(me) && !(touch_keys_top < 1))
+		return 0;
+	return me.touch_sheet_max - (me.touch_sheet_min - TouchSheet_keysExtra());
+}
+void TouchScroll_sheetSet(entity me, float o) { TouchSheet_setScroll(me, me.touch_sheet_max - o); }
+float TouchScroll_sheetUnit(entity me) { return 1; }
+void TouchScroll_sheetEnd(entity me) { touch_sheet_resize = true; }
+
+void TouchScroll_adopt(entity e)
+{
+	if (!e || TouchScroll_is(e))
+		return;
+	if (e.instanceOfListBox)
+	{
+		e.touch_scroll_get = TouchScroll_listGet;
+		e.touch_scroll_max = TouchScroll_listMax;
+		e.touch_scroll_set = TouchScroll_listSet;
+		e.touch_scroll_unit = TouchScroll_listUnit;
+	}
+	else if (e.parent == main && e.instanceOfDialog && e.touch_sheet_h > 0)
+	{
+		e.touch_scroll_get = TouchScroll_sheetGet;
+		e.touch_scroll_max = TouchScroll_sheetMax;
+		e.touch_scroll_set = TouchScroll_sheetSet;
+		e.touch_scroll_unit = TouchScroll_sheetUnit;
+		e.touch_scroll_end = TouchScroll_sheetEnd;
+	}
+}
+
+// The innermost scroller at or above leaf that can still move in dir; with
+// dir 0, the innermost one with any room at all.
+entity TouchScroll_find(entity leaf, float dir)
+{
+	for (entity e = leaf; e && e != main; e = e.parent)
+	{
+		TouchScroll_adopt(e);
+		if (dir ? TouchScroll_canMove(e, dir) : (TouchScroll_room(e) > 0.0001))
+			return e;
+	}
+	return NULL;
+}
+
+void TouchScroll_ended(entity e)
+{
+	if (e && e.touch_scroll_end)
+		e.touch_scroll_end(e);
+}
+
+// The scroll indicator: a thin rounded thumb inside the box o..o+s (main
+// window units), at its right edge, for content `total` long of which
+// `view` shows, scrolled by `pos`; alpha fades it.
+void TouchScroll_drawBar(vector o, vector s, float view, float total, float pos, float alpha)
+{
+	if (alpha < 0.02 || total <= view + 0.0001 || s.y <= 0)
+		return;
+	float w = TouchMenuScale_dpToUnits(TOUCH_SCROLL_BAR_DP) / conwidth;
+	float inset = TouchMenuScale_dpToUnits(TOUCH_SCROLL_INSET_DP);
+	float ix = inset / conwidth, iy = inset / conheight;
+	float trackh = s.y - 2 * iy;
+	if (trackh <= 0)
+		return;
+	float th = max(TouchMenuScale_dpToUnits(24) / conheight, trackh * view / total);
+	th = min(th, trackh);
+	float t = bound(0, pos / (total - view), 1);
+	vector to = eX * (o.x + s.x - ix - w) + eY * (o.y + iy + t * (trackh - th));
+	float cap = w * conwidth / conheight; // a circle's height for its width
+	vector c = '0.85 0.92 1';
+	float a = 0.55 * alpha;
+	if (th > 2 * cap)
+		draw_Fill(to + eY * (0.5 * cap), eX * w + eY * (th - cap), c, a);
+	draw_Picture(to, "/gfx/touch/disc", eX * w + eY * cap, c, a);
+	draw_Picture(to + eY * (th - cap), "/gfx/touch/disc", eX * w + eY * cap, c, a);
+}
+
+// ---- The gesture: tap, drag, fling -------------------------------------
+
+bool touch_g_pending;        // a press held back until it is a tap or a drag
+bool touch_g_stopper;        // the press stopped a fling: a tap then does nothing
+entity touch_g_leaf;         // what the press landed on
+entity touch_g_scroller;     // what the drag moves
+entity touch_g_fling;
+vector touch_g_p0;           // where the press landed (main units)
+float touch_g_o0;            // the scroller's offset then
+vector touch_g_last;
+float touch_g_lasttime;
+float touch_g_vel;           // main-window heights per second, + = content moves up
+
+bool TouchSheet_overKeys(vector pos)
+{
+	return touch_menu_on && touch_keys_top < 1 && pos.y >= touch_keys_top;
 }
 
 void TouchSheet_mousePress(vector pos)
 {
+	// The engine's keys are over the menu there: the press is theirs.
+	touch_sheet_keyspress = TouchSheet_overKeys(pos);
+	if (touch_sheet_keyspress)
+		return;
 	TouchSheet_dropSavedFocus(pos);
-	touch_sheet_pending = false;
-	touch_sheet_scrolling = NULL;
-	if (touch_sheet_fling)
+	touch_g_pending = false;
+	touch_g_scroller = NULL;
+	touch_g_stopper = false;
+	if (touch_g_fling)
 	{
-		touch_sheet_fling = NULL; // a finger stops a fling, and that is all it does
-		touch_sheet_resize = true;
+		// A finger stops a fling, and that is all it does.
+		entity fl = touch_g_fling;
+		touch_g_fling = NULL;
+		TouchScroll_ended(fl);
+		touch_g_stopper = true;
 	}
-	entity f = TouchSheet_front();
-	if (!touch_menu_on || !TouchSheet_scrolls(f))
+	if (!touch_menu_on)
 	{
 		TouchSheet_press(pos);
 		return;
@@ -548,62 +722,80 @@ void TouchSheet_mousePress(vector pos)
 	// On the pinned bands only their own buttons take a tap; the rest of
 	// the band covers content scrolled under it. A drag scrolls either way.
 	touch_sheet_swallow = (TouchSheet_inPinBand(pos) && !TouchSheet_isPinned(leaf));
-	if (!touch_sheet_swallow && (TouchSheet_listScrolls(leaf)
-		|| pos.y < f.Container_origin.y || pos.y > f.Container_origin.y + f.Container_size.y
-		|| pos.x < f.Container_origin.x || pos.x > f.Container_origin.x + f.Container_size.x))
+	// Nothing under the finger can scroll: the press goes straight on.
+	if (!touch_sheet_swallow && !touch_g_stopper && !TouchScroll_find(leaf, 0))
 	{
 		TouchSheet_press(pos);
 		return;
 	}
-	touch_sheet_pending = true;
-	touch_sheet_target = f;
-	touch_sheet_p0 = pos;
+	touch_g_pending = true;
+	touch_g_leaf = leaf;
+	touch_g_p0 = pos;
 }
 
 void TouchSheet_mouseDrag(vector pos)
 {
-	if (touch_sheet_pending)
+	if (touch_sheet_keyspress)
+		return;
+	if (touch_g_pending)
 	{
-		vector d = pos - touch_sheet_p0;
+		vector d = pos - touch_g_p0;
 		float dx = fabs(d.x) * conwidth * touch_menu_unit_dp;
 		float dy = fabs(d.y) * conheight * touch_menu_unit_dp;
 		if (max(dx, dy) < TOUCH_SHEET_SLOP_DP)
 			return;
-		touch_sheet_pending = false;
+		touch_g_pending = false;
 		if (dy >= dx)
 		{
-			touch_sheet_scrolling = touch_sheet_target;
-			touch_sheet_o0 = touch_sheet_target.ModalController_initialOrigin.y;
-			touch_sheet_last = pos;
-			touch_sheet_lasttime = time;
-			touch_sheet_vel = 0;
-		}
-		else if (touch_sheet_swallow)
-		{
-			touch_sheet_swallow = false;
+			// Up or down: the innermost thing that can still go that way.
+			float dir = (d.y < 0) ? 1 : -1;
+			entity s = TouchScroll_find(touch_g_leaf, dir);
+			touch_g_scroller = s;
+			if (s)
+				touch_g_o0 = s.touch_scroll_get(s);
+			touch_g_p0 = pos; // no jump by the slop
+			touch_g_last = pos;
+			touch_g_lasttime = time;
+			touch_g_vel = 0;
 			return;
 		}
-		else
-		{
-			// Sideways: the control under the finger gets the press after all.
-			TouchSheet_press(touch_sheet_p0);
-			main.mouseDrag(main, pos);
+		if (touch_sheet_swallow || touch_g_stopper)
 			return;
-		}
+		// Sideways: the control under the finger (a slider) gets the press.
+		TouchSheet_press(touch_g_p0);
+		main.mouseDrag(main, pos);
+		return;
 	}
-	if (touch_sheet_scrolling)
+	if (touch_g_scroller || touch_sheet_swallow || touch_g_stopper)
 	{
-		entity e = touch_sheet_scrolling;
-		TouchSheet_setScroll(e, touch_sheet_o0 + pos.y - touch_sheet_p0.y);
-		float dt = time - touch_sheet_lasttime;
+		entity e = touch_g_scroller;
+		float dt = time - touch_g_lasttime;
 		if (dt > 0.001)
 		{
-			float v = (pos.y - touch_sheet_last.y) / dt;
-			touch_sheet_vel = (dt > 0.1) ? v : 0.6 * v + 0.4 * touch_sheet_vel;
-			touch_sheet_last = pos;
-			touch_sheet_lasttime = time;
+			float v = (touch_g_last.y - pos.y) / dt;
+			touch_g_vel = (dt > 0.1) ? v : 0.6 * v + 0.4 * touch_g_vel;
+			touch_g_last = pos;
+			touch_g_lasttime = time;
 		}
-		touch_sheet_bar = 1;
+		if (!e)
+			return;
+		float want = touch_g_o0 + (touch_g_p0.y - pos.y) / max(0.0001, e.touch_scroll_unit(e));
+		e.touch_scroll_set(e, want);
+		e.touch_scroll_bar = 1;
+		// At its end: the rest of the drag goes to the next one out that can.
+		float got = e.touch_scroll_get(e);
+		if (fabs(got - want) > 0.0001)
+		{
+			float dir = (want > got) ? 1 : -1;
+			entity p = TouchScroll_find(e.parent, dir);
+			if (p)
+			{
+				TouchScroll_ended(e);
+				touch_g_scroller = p;
+				touch_g_o0 = p.touch_scroll_get(p);
+				touch_g_p0 = pos;
+			}
+		}
 		return;
 	}
 	main.mouseDrag(main, pos);
@@ -611,32 +803,64 @@ void TouchSheet_mouseDrag(vector pos)
 
 void TouchSheet_mouseRelease(vector pos)
 {
-	if (touch_sheet_pending)
+	if (touch_sheet_keyspress)
 	{
-		// A tap: the control gets its press and release together.
-		touch_sheet_pending = false;
-		if (touch_sheet_swallow)
-		{
-			touch_sheet_swallow = false;
-			return; // on a pinned band, off its buttons: nothing under it
-		}
-		TouchSheet_press(touch_sheet_p0);
-		main.mouseRelease(main, touch_sheet_p0);
+		touch_sheet_keyspress = false;
 		return;
 	}
-	if (touch_sheet_scrolling)
+	if (touch_g_pending)
 	{
-		entity e = touch_sheet_scrolling;
-		touch_sheet_scrolling = NULL;
-		if (time - touch_sheet_lasttime > 0.12)
-			touch_sheet_vel = 0; // the finger stopped before it lifted
-		if (fabs(touch_sheet_vel) > 0.2)
-			touch_sheet_fling = e;
+		// A tap: the control gets its press and release together.
+		touch_g_pending = false;
+		if (touch_sheet_swallow || touch_g_stopper)
+		{
+			touch_sheet_swallow = touch_g_stopper = false;
+			return; // a pinned band off its buttons, or the tap that stopped a fling
+		}
+		TouchSheet_press(touch_g_p0);
+		main.mouseRelease(main, touch_g_p0);
+		return;
+	}
+	if (touch_g_scroller || touch_sheet_swallow || touch_g_stopper)
+	{
+		entity e = touch_g_scroller;
+		touch_g_scroller = NULL;
+		touch_sheet_swallow = touch_g_stopper = false;
+		if (!e)
+			return;
+		if (time - touch_g_lasttime > 0.12)
+			touch_g_vel = 0; // the finger stopped before it lifted
+		if (fabs(touch_g_vel) > 0.2)
+			touch_g_fling = e;
 		else
-			touch_sheet_resize = true;
+			TouchScroll_ended(e);
 		return;
 	}
 	main.mouseRelease(main, pos);
+}
+
+// Every frame: a fling slows down and stops at the end.
+void TouchScroll_flingFrame()
+{
+	entity e = touch_g_fling;
+	if (!e)
+		return;
+	float u = max(0.0001, e.touch_scroll_unit(e));
+	float want = e.touch_scroll_get(e) + touch_g_vel * frametime / u;
+	e.touch_scroll_set(e, want);
+	e.touch_scroll_bar = 1;
+	touch_g_vel *= pow(0.03, frametime);
+	float got = e.touch_scroll_get(e);
+	if (fabs(touch_g_vel) < 0.05 || fabs(got - want) > 0.0001 || (e.instanceOfDialog && e.ModalController_state != 1))
+	{
+		touch_g_fling = NULL;
+		TouchScroll_ended(e);
+	}
+}
+
+bool TouchSheet_busy()
+{
+	return touch_g_scroller != NULL || touch_g_fling != NULL;
 }
 
 void TouchSheet_followFocus(entity f)
@@ -664,6 +888,7 @@ void TouchSheet_followFocus(entity f)
 		lo = max(lo, f.touch_sheet_max + touch_pin_title * f.Container_size.y + m);
 		hi = min(hi, touch_pin_ftr_top - m);
 	}
+	hi = min(hi, touch_keys_top - m);
 	if (r.z > hi - lo)
 		return;
 	float y = f.ModalController_initialOrigin.y;
@@ -677,10 +902,57 @@ void TouchSheet_followFocus(entity f)
 	touch_sheet_resize = true;
 }
 
+// The engine's keys (touch_ui.c) are up for a menu text field: move the
+// sheet so the field is above them, once each time the field or the keys
+// change (a drag still scrolls it after), and back when they go.
+void TouchSheet_keysFollowField(entity f)
+{
+	if (!f)
+		return;
+	entity leaf = f;
+	while (leaf.focusedChild)
+		leaf = leaf.focusedChild;
+	if (touch_keys_top >= 1 || !leaf.instanceOfInputBox)
+	{
+		touch_kb_field = NULL;
+		if (f.touch_sheet_kbshift)
+		{
+			f.touch_sheet_kbshift = 0;
+			float y0 = bound(f.touch_sheet_min, f.ModalController_initialOrigin.y, f.touch_sheet_max);
+			f.ModalController_initialOrigin_y = y0;
+			if (f.ModalController_factor >= 1)
+				f.Container_origin_y = y0;
+			touch_sheet_resize = true;
+		}
+		return;
+	}
+	if (leaf == touch_kb_field && touch_keys_top == touch_kb_fieldtop)
+		return;
+	touch_kb_field = leaf;
+	touch_kb_fieldtop = touch_keys_top;
+	vector r = TouchSheet_rectInMain(leaf);
+	float m = TouchSheet_margin() * 2;
+	float over = r.y + r.z - (touch_keys_top - m);
+	if (over <= 0)
+		return;
+	float y = f.ModalController_initialOrigin.y - over;
+	f.touch_sheet_kbshift = 1;
+	f.ModalController_initialOrigin_y = y;
+	if (f.ModalController_factor >= 1)
+		f.Container_origin_y = y;
+	touch_sheet_resize = true;
+}
+
 void TouchSheet_preDraw()
 {
 	if (!touch_menu_on)
 		return;
+	// Where the engine's keys start, in the main window's units.
+	touch_keys_frac = cvar("_touch_menu_keys_top");
+	touch_keys_top = 1;
+	if (touch_keys_frac > 0 && touch_keys_frac < 1)
+		touch_keys_top = globalToBox(eY * (touch_keys_frac * realconheight), draw_shift, draw_scale).y;
+	TouchSettings_Frame();
 	TouchSheet_setup();
 	TouchLauncher_heal();
 
@@ -693,22 +965,12 @@ void TouchSheet_preDraw()
 		e.touch_sheet_was_shown = (e.ModalController_state != 0);
 	}
 
-	if (touch_sheet_fling)
-	{
-		entity e = touch_sheet_fling;
-		float y = e.ModalController_initialOrigin.y + touch_sheet_vel * frametime;
-		touch_sheet_vel *= pow(0.03, frametime);
-		TouchSheet_setScroll(e, y);
-		if (fabs(touch_sheet_vel) < 0.05 || y <= e.touch_sheet_min || y >= e.touch_sheet_max || e.ModalController_state != 1)
-		{
-			touch_sheet_fling = NULL;
-			touch_sheet_resize = true;
-		}
-		touch_sheet_bar = 1;
-	}
-	if (touch_sheet_resize && !touch_sheet_scrolling && !touch_sheet_fling)
+	TouchScroll_flingFrame();
+	touch_bar_n = 0;
+	if (touch_sheet_resize && !TouchSheet_busy())
 		TouchSheet_doResize();
 
+	TouchSheet_keysFollowField(f);
 	TouchSheet_updatePins(f);
 	if (f)
 		TouchSheet_followFocus(f);
@@ -731,38 +993,101 @@ void TouchSheet_postDraw()
 	if (!touch_menu_on)
 		return;
 	TouchSheet_drawPins();
+	TouchScroll_drawBars();
+}
+
+// Where an item is in the main window: origin, and its size in touch_box_size.
+vector touch_box_size;
+vector TouchSheet_boxInMain(entity it)
+{
+	vector o = '0 0 0', s = '1 1 0';
+	for (entity e = it; e && e != main; e = e.parent)
+	{
+		o = boxToGlobal(o, e.Container_origin, e.Container_size);
+		s = boxToGlobalSize(s, e.Container_size);
+	}
+	touch_box_size = s;
+	return o;
+}
+
+// Lit while it moves, by a finger or anything else; fades out after.
+float TouchScroll_emphasis(entity e)
+{
+	float off = e.touch_scroll_get(e);
+	if (fabs(off - e.touch_scroll_lastoff) > 0.00001 || e == touch_g_scroller || e == touch_g_fling)
+		e.touch_scroll_bar = max(e.touch_scroll_bar, 1);
+	e.touch_scroll_lastoff = off;
+	if (e.touch_scroll_bar > 1)
+		e.touch_scroll_bar = 1.6; // hold a moment at full, then fade
+	e.touch_scroll_bar = max(0, e.touch_scroll_bar - frametime * 1.6);
+	return min(1, e.touch_scroll_bar);
+}
+
+void TouchScroll_drawBars()
+{
+	float lo = 0, hi = 1;
 	entity f = TouchSheet_front();
-	if (!TouchSheet_scrolls(f) || f.ModalController_factor < 1)
-		return;
-	if (!touch_sheet_scrolling && !touch_sheet_fling)
-		touch_sheet_bar = max(0, touch_sheet_bar - frametime * 2);
-	float range = f.touch_sheet_max - f.touch_sheet_min;
-	float view = 1 - 2 * TouchSheet_margin();
-	float thumb = max(0.08, view * view / f.touch_sheet_h);
-	float t = (f.touch_sheet_max - f.Container_origin.y) / range;
-	float w = TouchMenuScale_dpToUnits(4) / conwidth;
-	float x = f.Container_origin.x + f.Container_size.x + w;
-	if (x + w > 1)
-		x = f.Container_origin.x + f.Container_size.x - 2 * w;
-	vector top = eX * x + eY * TouchSheet_margin();
-	draw_Fill(top, eX * w + eY * view, '1 1 1', 0.12 * draw_alpha);
-	draw_Fill(top + eY * (t * (view - thumb)), eX * w + eY * thumb, '0.55 0.8 1', (0.45 + 0.5 * touch_sheet_bar) * draw_alpha);
+	if (f && touch_pin_sheet == f)
+	{
+		lo = touch_pin_hdr_bottom;
+		hi = touch_pin_ftr_top;
+	}
+	// The sheet's, inside its card: right of the content, left of the frame.
+	TouchScroll_adopt(f);
+	if (TouchScroll_is(f) && TouchSheet_scrolls(f) && f.ModalController_factor >= 1)
+	{
+		float a = TouchScroll_emphasis(f);
+		float m = TouchSheet_margin();
+		float top = max(lo, max(f.Container_origin.y, m));
+		float bot = min(hi, min(f.Container_origin.y + f.Container_size.y, 1 - m));
+		float right = f.marginRight * 0.6 / conwidth;
+		float view = bot - top;
+		TouchScroll_drawBar(eX * f.Container_origin.x + eY * top, eX * (f.Container_size.x - right) + eY * view,
+			view, view + TouchScroll_room(f), TouchScroll_sheetGet(f), a);
+	}
+	// Each list's, inside its box.
+	for (int i = 0; i < touch_bar_n; ++i)
+	{
+		entity e = touch_bar_list[i];
+		TouchScroll_adopt(e);
+		if (e.getTotalHeight(e) <= 1.001)
+			continue;
+		float la = TouchScroll_emphasis(e);
+		vector o = TouchSheet_boxInMain(e);
+		vector s = touch_box_size;
+		float t0 = max(o.y, lo), t1 = min(o.y + s.y, hi);
+		if (t1 - t0 < s.y * 0.2)
+			continue;
+		// The thumb maps the whole list onto the part of the box in view.
+		TouchScroll_drawBar(eX * o.x + eY * t0, eX * s.x + eY * (t1 - t0), 1, e.getTotalHeight(e), e.scrollPos, la);
+	}
 }
 
 bool TouchSheet_wheel(float key)
 {
+	// Back (Escape) with the engine's keys up puts them away first, as Back
+	// does with a system keyboard; the next Back closes the sheet.
+	if (key == K_ESCAPE && touch_menu_on && touch_keys_frac > 0)
+	{
+		cvar_set("_touch_menu_keys_ask", "-1");
+		touch_keys_frac = 0;
+		return true;
+	}
+	// Settings showing a category: back to its list.
+	if (key == K_ESCAPE && touch_menu_on && TouchSettings_Back())
+		return true;
 	if (!touch_menu_on || (key != K_MWHEELUP && key != K_MWHEELDOWN))
 		return false;
 	entity f = TouchSheet_front();
 	if (!TouchSheet_scrolls(f))
 		return false;
 	entity leaf = TouchSheet_leafAt(menuMousePos);
-	if (TouchSheet_listScrolls(leaf))
+	if (leaf && leaf.instanceOfListBox && leaf.getTotalHeight(leaf) > 1.001)
 		return false;
 	// Three rows a notch.
 	float d = TouchMenuScale_dpToUnits(3 * (TOUCH_MENU_ROW_DP + TOUCH_MENU_GAP_DP) * TouchMenuScale_size()) / conheight;
 	TouchSheet_setScroll(f, f.ModalController_initialOrigin.y + ((key == K_MWHEELUP) ? d : -d));
-	touch_sheet_bar = 1;
+	f.touch_scroll_bar = 1;
 	touch_sheet_resize = true;
 	return true;
 }
