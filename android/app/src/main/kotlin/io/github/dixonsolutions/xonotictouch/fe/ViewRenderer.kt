@@ -43,7 +43,7 @@ class ViewRenderer(
         fun toast(text: String, kind: String)
         fun canBack(): Boolean
         /** link / share / copy actions handled natively; true when handled. */
-        fun platformAction(action: Map<String, Any?>): Boolean
+        fun platformAction(node: String, action: Map<String, Any?>): Boolean
         fun confirm(confirm: Map<String, Any?>, ok: () -> Unit)
     }
 
@@ -218,7 +218,7 @@ class ViewRenderer(
         if (a.isEmpty() || (a.containsKey("enabled") && !a.bool("enabled"))) return
         val go = {
             if (a.str("kind") == "back") events.back()
-            else if (!host.platformAction(a)) events.action(node, a)
+            else if (!host.platformAction(node, a)) events.action(node, a)
         }
         val c = a["confirm"].obj()
         if (c.isNotEmpty()) host.confirm(c, go) else go()
@@ -263,7 +263,7 @@ class ViewRenderer(
         val body = Kit.column(ctx, 18f)
         body.setPadding(pad, dp(8f), pad, dp(28f))
         val stickyHost = FrameLayout(ctx)
-        val sv = ScrollView(ctx)
+        val sv = PageScroll(ctx)
         sv.isFillViewport = true
         sv.isVerticalScrollBarEnabled = true
         sv.scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
@@ -275,6 +275,9 @@ class ViewRenderer(
         pinned.setPadding(pad + dp(4f), dp(8f), pad, dp(8f))
         pinned.visibility = View.GONE
         stickyHost.addView(pinned, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
+        // a list scrolled to the top sits under the pinned section title
+        pinned.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        sv.topInset = pinned.measuredHeight
         root.addView(stickyHost, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         val fill = FrameLayout(ctx)
         fill.visibility = View.GONE
@@ -368,10 +371,9 @@ class ViewRenderer(
         val vl = e.list ?: return
         val lp = e.view.layoutParams
         if (e.props.str("display") == "cards" && fitRows(e.props) > 0) {
-            // `rows: N` in a scrolling page: the grid is as tall as the page's
-            // visible area (between the sticky header and the action bar), so
-            // scrolled to it N whole rows fit; it scrolls inside its frame
-            vl.view.isNestedScrollingEnabled = true
+            // `rows: N` in a scrolling page: N rows that scroll sideways, as
+            // tall as the page's visible area under the pinned section title,
+            // so scrolled to them all N rows show whole
             val frame = (vl.view.layoutParams as? LinearLayout.LayoutParams)
             frame?.let { it.weight = 0f; it.height = ctx.resources.displayMetrics.heightPixels / 2; vl.view.layoutParams = it }
             lp?.height = ViewGroup.LayoutParams.WRAP_CONTENT
@@ -379,7 +381,7 @@ class ViewRenderer(
             var top: Entry? = e
             while (top != null && top.type != "screen") top = top.parent?.let { nodes[it] }
             top?.scroller?.addOnLayoutChangeListener { sv, _, t, _, b, _, _, _, _ ->
-                val h = b - t - sv.paddingTop - sv.paddingBottom - dp(8f)
+                val h = b - t - sv.paddingTop - sv.paddingBottom - ((sv as? PageScroll)?.topInset ?: 0)
                 val l = vl.view.layoutParams
                 if (h > dp(120f) && l != null && l.height != h) { l.height = h; vl.view.post { vl.view.layoutParams = l } }
             }
@@ -1180,10 +1182,11 @@ class ViewRenderer(
                     if (ref.isEmpty()) { if (row == null) c.img.set(null) else c.img.none() } else picture(c.img, ref)
                     c.card.isSelected = row != null && e.props["selected"].list().contains(row.str("key"))
                     (c.card.layoutParams as? ViewGroup.MarginLayoutParams)?.let { lp ->
+                        // `rows: N`: fixed tiles in rows that scroll sideways
                         val f = e.list?.fit
-                        val v = gap / 2 + (f?.extra ?: 0)
-                        if (lp.topMargin != v) { lp.topMargin = v; lp.bottomMargin = v; c.card.layoutParams = lp }
-                        c.card.minimumHeight = f?.height ?: 0
+                        val w = f?.width ?: ViewGroup.LayoutParams.MATCH_PARENT
+                        val h = f?.height ?: ViewGroup.LayoutParams.WRAP_CONTENT
+                        if (lp.width != w || lp.height != h) { lp.width = w; lp.height = h; c.card.layoutParams = lp }
                     }
                     c.card.contentDescription = row?.let { "${c.titleV.text}. ${c.sub.text}" } ?: "Loading"
                     bindTap(c.card, e, id, row)
@@ -1215,7 +1218,7 @@ class ViewRenderer(
                 probe.setPadding(dp(12f), dp(8f), dp(12f), dp(12f))
                 probe.addView(t); probe.addView(sub); probe.addView(badges)
                 probe.measure(View.MeasureSpec.makeMeasureSpec(dp(300f), View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
-                probe.measuredHeight
+                probe.measuredHeight + dp(12f) // the badges row measures short outside a card
             }
             box.addView(empty)
             box.addView(vl.view, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
@@ -1411,6 +1414,46 @@ class ViewRenderer(
             "mode" -> { t.text = cells.str("modeName").ifEmpty { cells.str(key).uppercase() }; t.setTextColor(Theme.TEXT_MUTED) }
             else -> { t.text = cells.str(key); t.setTextColor(if (c.str("width") == "fill") Theme.TEXT else Theme.TEXT_MUTED) }
         }
+    }
+}
+
+/**
+ * A screen's page. A list scrolling inside it (a `rows: N` map grid, as tall
+ * as the page's visible area) gets the drag only once the page has brought
+ * it to the top: until then the page scrolls, so the grid is never scrolled
+ * half off screen. Coming back up the grid scrolls to its start first
+ * (the platform's nested scrolling), then the page.
+ */
+class PageScroll(ctx: Context) : ScrollView(ctx) {
+    init { isNestedScrollingEnabled = true }
+
+    /** The pinned section title's height: a list stops under it. */
+    var topInset = 0
+
+    private fun topOf(target: View): Int {
+        var y = 0
+        var v: View? = target
+        while (v != null && v !== this) { y += v.top; v = v.parent as? View }
+        return y - scrollY - topInset
+    }
+
+    override fun onStartNestedScroll(child: View, target: View, axes: Int): Boolean =
+        (axes and View.SCROLL_AXIS_VERTICAL) != 0
+
+    override fun onNestedPreScroll(target: View, dx: Int, dy: Int, consumed: IntArray) {
+        if (dy > 0) {
+            val gap = topOf(target)
+            if (gap > 0 && canScrollVertically(1)) {
+                val d = minOf(dy, gap)
+                scrollBy(0, d)
+                consumed[1] = d
+            }
+        }
+    }
+
+    override fun onNestedPreFling(target: View, velocityX: Float, velocityY: Float): Boolean {
+        if (velocityY > 0 && topOf(target) > 0 && canScrollVertically(1)) { fling(velocityY.toInt()); return true }
+        return false
     }
 }
 

@@ -189,6 +189,9 @@ public final class XonoticActivity extends SDLActivity {
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (frontend != null && frontend.onActivityResult(requestCode, resultCode, data)) {
+            return; // the native Mods screen's Install from file
+        }
         if (modImport != null && modImport.onActivityResult(requestCode, resultCode, data)) {
             return;
         }

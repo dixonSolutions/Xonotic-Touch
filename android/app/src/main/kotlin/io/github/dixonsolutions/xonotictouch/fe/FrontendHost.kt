@@ -64,7 +64,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     private var attached = false
     private var failed = false
     private var renderer: ViewRenderer? = null
-    private var client: UibClient? = null
+    private var client: UiClient? = null
     private var stopgap: StopgapActions? = null
     private val screens = ArrayList<String>()
     private var drainPosted = false
@@ -156,7 +156,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
      */
     private fun checkStuck() {
         val top = screens.lastOrNull() ?: return
-        val kind = client?.store?.node(top)?.str("kind") ?: ""
+        val kind = client?.topKind ?: ""
         val stuck = app.str("state") == "menu" && kind == "loading" && root.visibility == View.VISIBLE && dialogLayer.visibility != View.VISIBLE
         val now = SystemClock.elapsedRealtime()
         if (!stuck) { stuckSince = 0; return }
@@ -199,7 +199,8 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
             "app" -> onApp(Json.parseOrNull(json).obj())
             "event" -> onEvent(Json.parseOrNull(json).obj())
             "image" -> Json.parseOrNull(json).obj().let { renderer?.imageReady(it.str("ref"), it.str("path")) }
-            "ui" -> if (!failed) client?.receive(Json.parseOrNull(json).obj())
+            "ui" -> if (!failed) client?.receiveText(json)
+            "mods" -> onMods(Json.parseOrNull(json).obj())
         }
     }
 
@@ -264,7 +265,11 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     private fun attach() {
         val r = ViewRenderer(activity, this, this)
         renderer = r
-        val c = UibClient(r) { msg -> NativeBridge.enqueue(FeArgs.command("ui", msg)) }
+        val send: (String) -> Unit = { msg -> NativeBridge.enqueue(FeArgs.command("ui", msg)) }
+        // the Rust core (loader/crates/android) when this build carries it; the Kotlin reader otherwise
+        val c: UiClient = (if (app.bool("ui_bridge") && !File(baseDir, "fe-kotlin-core").isFile) RustCore.create(r, send) else null)
+            ?: UibClient(r, send)
+        Log.i(tag, "Native UI: UI bridge read by ${if (c is RustCore) "the Rust core" else "the Kotlin reader"}")
         c.ignoreRows = testRows
         client = c
         attached = true
@@ -273,14 +278,14 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         NativeBridge.enqueue(FeArgs.command("attach", "1"))
         if (app.bool("ui_bridge")) {
             // touch_warm prepares the map Home's Play starts: the hero's picture names it
-            c.onChanged = { st ->
-                val ref = st.nodes.values.firstOrNull { it.type == "hero" }?.str("image") ?: ""
+            c.onChanged = {
+                val ref = c.hero
                 if (ref.startsWith("pk3:maps/")) reportPower("touch_warm_map", ref.removePrefix("pk3:maps/"))
             }
             c.hello(caps())
         }
         else {
-            stopgap = StopgapActions(activity, c)
+            stopgap = StopgapActions(activity, c as UibClient)
             // touch_warm prepares what Play starts while Home is idle
             NativeBridge.enqueue(FeArgs.command("set", "touch_warm_map", StopgapActions.STOPGAP_MAP))
         }
@@ -331,7 +336,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
                 // description did not come back to it) a native one, so a refused
                 // join always ends at a password prompt with the reason
                 main.postDelayed({
-                    val modal = client?.store?.app?.props?.get("modal").list()
+                    val modal = client?.modal
                     if (modal.isNullOrEmpty() && app.str("state") == "menu") passwordPrompt(addr, wrong)
                 }, 700)
             }
@@ -361,6 +366,107 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         lp.leftMargin = Theme.dp(activity, 16f); lp.topMargin = Theme.dp(activity, 12f)
         activity.addContentView(b, lp)
         backPill = b
+    }
+
+    // ---------------------------------------------------------------- install from a file
+
+    private var pendingFile: Pair<String, Map<String, Any?>>? = null
+    private var installSeen = ""
+
+    /** `kind: file` (Mods > Install from file): the system picker, the file copied where the engine can read it. */
+    private fun pickFile(node: String, action: Map<String, Any?>) {
+        pendingFile = node to action
+        // tests: `<basedir>/fe-test-install` lists zips (one per line, relative to the basedir);
+        // the first one stands for the picker's choice and is taken off the list
+        val hook = baseDir?.let { File(it, "fe-test-install") }
+        if (hook != null && hook.isFile) {
+            val lines = hook.readLines().map { it.trim() }.filter { it.isNotEmpty() }
+            if (lines.isNotEmpty()) {
+                hook.writeText(lines.drop(1).joinToString("\n"))
+                onActivityResult(PICK_FILE, Activity.RESULT_OK, Intent().setData(Uri.fromFile(File(baseDir, lines[0]))))
+                return
+            }
+        }
+        val i = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+            .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"))
+        try { activity.startActivityForResult(i, PICK_FILE) } catch (e: Exception) { pendingFile = null; toast("No app can pick a file here", "error") }
+    }
+
+    /** From XonoticActivity.onActivityResult: true when it was the picker's. */
+    fun onActivityResult(request: Int, result: Int, data: Intent?): Boolean {
+        if (request != PICK_FILE) return false
+        val (node, action) = pendingFile ?: return true
+        pendingFile = null
+        val uri = data?.data ?: return true
+        Thread({
+            val path = try { importFile(uri) } catch (e: Exception) { Log.w(tag, "Native UI: could not copy the chosen file", e); null }
+            main.post {
+                if (path == null) { toast("Could not read that file", "error"); return@post }
+                // the install is reviewed before anything is written: the mods topic says when
+                NativeBridge.enqueue(FeArgs.command("sub", "mods", "1"))
+                client?.event("action", mapOf("node" to node, "action" to action.str("id"), "payload" to mapOf("path" to path)))
+            }
+        }, "godnotic-import").start()
+        return true
+    }
+
+    private fun importFile(uri: Uri): String {
+        var name = if (uri.scheme == "file") uri.lastPathSegment ?: "mod.zip" else "mod.zip"
+        if (uri.scheme != "file") activity.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0)?.let { name = it }
+        }
+        // the file's stem names the mod when the archive has no top folder: keep it, plainly
+        val ext = if (name.lowercase().endsWith(".pk3")) ".pk3" else ".zip"
+        val stem = name.substringBeforeLast('.').lowercase().replace(Regex("[^a-z0-9_-]"), "_").take(48).ifEmpty { "mod" }
+        // where ModImport (the QuakeC menu's picker) puts it too: no mod can reach it
+        val dir = java.io.File(baseDir ?: activity.getExternalFilesDir(null) ?: activity.filesDir, "userdata/luastate/incoming")
+        dir.mkdirs()
+        val out = java.io.File(dir, stem + ext)
+        var total = 0L
+        activity.contentResolver.openInputStream(uri)!!.use { input ->
+            out.outputStream().use { o ->
+                val buf = ByteArray(64 * 1024)
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    total += n
+                    if (total > 8L * 1024 * 1024) throw java.io.IOException("over 8 MB, the engine's limit for a package")
+                    o.write(buf, 0, n)
+                }
+            }
+        }
+        return out.absolutePath
+    }
+
+    /** The install review (`_lua_install`): what the package is and asks for, then Install or Cancel. */
+    private fun onMods(m: Map<String, Any?>) {
+        val raw = m.str("install")
+        if (raw == installSeen) return
+        installSeen = raw
+        val kv = LinkedHashMap<String, String>()
+        val perms = ArrayList<String>()
+        for (line in raw.split('\n')) {
+            val f = line.split('\t')
+            if (f.size < 2) continue
+            if (f[0] == "perm" && f.size >= 4) perms.add("${if (f[2] == "kept") "✓" else "•"} ${f[1]}: ${f[3]}${if (f[2] == "new") " (new)" else ""}")
+            else kv[f[0]] = f[1]
+        }
+        when (kv["state"]) {
+            "review" -> {
+                val body = buildString {
+                    append(listOf(kv["version"], kv["author"]).filter { !it.isNullOrEmpty() }.joinToString(" · "))
+                    kv["description"]?.takeIf { it.isNotEmpty() }?.let { append("\n\n").append(it) }
+                    append("\n\n").append(kv["files"] ?: "")
+                    if (perms.isNotEmpty()) append("\n\nAsks for:\n").append(perms.joinToString("\n"))
+                    append("\n\nIt is installed turned off, with nothing granted.")
+                }
+                confirmOrCancel(mapOf("title" to (if (kv["update"] == "1") "Update ${kv["title"]}?" else "Install ${kv["title"]}?"), "body" to body.trim(), "ok" to "Install"),
+                    ok = { NativeBridge.enqueue(FeArgs.command("mod", "confirm")) },
+                    cancel = { NativeBridge.enqueue(FeArgs.command("mod", "cancel")) })
+            }
+            "done" -> { toast(kv["message"]?.ifEmpty { null } ?: "Installed", "success"); NativeBridge.enqueue(FeArgs.command("sub", "mods", "0")) }
+            "error" -> { toast(kv["message"]?.ifEmpty { null } ?: "Could not install it", "error"); NativeBridge.enqueue(FeArgs.command("sub", "mods", "0")) }
+        }
     }
 
     // ---------------------------------------------------------------- UiEvents (from the views)
@@ -457,6 +563,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     fun onDestroy() {
         NativeBridge.onDirty = null
         main.removeCallbacks(tick)
+        client?.close()
         powerReceiver?.let { try { activity.unregisterReceiver(it) } catch (e: Exception) {} }
         if (Build.VERSION.SDK_INT >= 29) (thermalListener as? PowerManager.OnThermalStatusChangedListener)?.let {
             (activity.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.removeThermalStatusListener(it)
@@ -540,10 +647,11 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         main.postDelayed({ toastLayer.removeView(t) }, 3500)
     }
 
-    override fun canBack(): Boolean = client?.store?.app?.bool("canBack") ?: false
+    override fun canBack(): Boolean = client?.canBack ?: false
 
-    override fun platformAction(action: Map<String, Any?>): Boolean {
+    override fun platformAction(node: String, action: Map<String, Any?>): Boolean {
         when (action.str("kind")) {
+            "file" -> { pickFile(node, action); return true }
             "link" -> {
                 val url = action.str("url")
                 if (!url.startsWith("https://") && !url.startsWith("http://")) return true
@@ -567,13 +675,15 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         return false
     }
 
-    override fun confirm(confirm: Map<String, Any?>, ok: () -> Unit) {
+    override fun confirm(confirm: Map<String, Any?>, ok: () -> Unit) = confirmOrCancel(confirm, ok) {}
+
+    private fun confirmOrCancel(confirm: Map<String, Any?>, ok: () -> Unit, cancel: () -> Unit) {
         val col = Kit.column(activity, 14f)
         col.addView(Kit.text(activity, confirm.str("title"), Theme.SP_HEADLINE, Theme.TEXT, bold = true))
         confirm.str("body").takeIf { it.isNotEmpty() }?.let { col.addView(Kit.text(activity, it, Theme.SP_BODY, Theme.TEXT_MUTED)) }
         val actions = Kit.row(activity, 12f)
         actions.gravity = Gravity.END
-        actions.addView(Kit.button(activity, confirm.str("cancel", "Cancel")) { showDialog(null) })
+        actions.addView(Kit.button(activity, confirm.str("cancel", "Cancel")) { showDialog(null); cancel() })
         val okB = Kit.button(activity, confirm.str("ok", "OK"), primary = true) { showDialog(null); ok() }
         if (confirm.bool("destructive")) okB.setTextColor(0xFF3A0000.toInt())
         actions.addView(okB)
@@ -581,7 +691,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         val frame = FrameLayout(activity)
         frame.setBackgroundColor(0xB3000000.toInt())
         frame.isClickable = true
-        frame.setOnClickListener { showDialog(null) }
+        frame.setOnClickListener { showDialog(null); cancel() }
         val box = Kit.card(activity, clickable = false, radiusDp = 24f)
         box.isClickable = true
         val p = Theme.dp(activity, 24f)
@@ -655,6 +765,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     }
 
     companion object {
+        const val PICK_FILE = 0x6d6f64
         fun joinAddress(uri: Uri?): String? {
             if (uri == null || uri.scheme != "godnotic" || uri.host != "join") return null
             return parseJoin(uri.path?.trimStart('/') ?: "")

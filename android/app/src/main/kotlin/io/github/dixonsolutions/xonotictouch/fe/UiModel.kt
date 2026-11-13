@@ -69,30 +69,59 @@ class UibStore {
  * the screen being rebuilt), reconciles children whose id list changed, and
  * passes rows and pictures through. Unknown message types are ignored.
  */
-class UibClient(private val renderer: UiRenderer, private val send: (String) -> Unit) {
+/**
+ * What reads the UI bridge for the views: the Kotlin [UibClient] or the Rust
+ * core ([RustCore], loader/crates/android). FrontendHost talks to this only.
+ */
+interface UiClient {
+    fun hello(caps: Map<String, Any?>)
+    fun sync()
+    fun event(ev: String, body: Map<String, Any?>)
+    fun window(source: String, offset: Int, limit: Int, sort: String = "", desc: Boolean = false, filter: String = "")
+    fun image(ref: String, w: Int, h: Int)
+    /** One engine message as it came off the bridge (JSON text). */
+    fun receiveText(json: String)
+    /** Rows come from elsewhere (test builds generate them). */
+    var ignoreRows: Boolean
+    /** After every snapshot or diff that applied. */
+    var onChanged: (() -> Unit)?
+    /** The top screen's `kind` (loading, detail ...). */
+    val topKind: String
+    val canBack: Boolean
+    /** Dialog ids shown over the stack. */
+    val modal: List<String>
+    /** The hero's picture ref (Home's Play map). */
+    val hero: String
+    fun close() {}
+}
+
+class UibClient(private val renderer: UiRenderer, private val send: (String) -> Unit) : UiClient {
     val store = UibStore()
     private val built = HashSet<String>()   // node ids whose views exist
     private var shownStack: List<String> = emptyList()
     private var shownModal: List<String> = emptyList()
     private var nextId = 1L
-    /** Called after every snapshot or diff that applied (the platform reads things off the store). */
-    var onChanged: ((UibStore) -> Unit)? = null
-    /** Rows come from elsewhere (test builds generate them): the engine's rows and source notices are not applied. */
-    var ignoreRows = false
+    override var onChanged: (() -> Unit)? = null
+    override var ignoreRows = false
+    override val topKind: String get() = store.app?.props?.get("stack").list().lastOrNull()?.let { store.node(it.toString())?.str("kind") } ?: ""
+    override val canBack: Boolean get() = store.app?.bool("canBack") ?: false
+    override val modal: List<String> get() = store.app?.props?.get("modal").list().map { it.toString() }
+    override val hero: String get() = store.nodes.values.firstOrNull { it.type == "hero" }?.str("image") ?: ""
+    override fun receiveText(json: String) = receive(Json.parseOrNull(json).obj())
 
     private fun msg(t: String, body: Map<String, Any?>): String =
         Json.write(linkedMapOf<String, Any?>("uib" to 1, "t" to t, "id" to nextId++) + body)
 
-    fun hello(caps: Map<String, Any?>) = send(msg("hello", mapOf("schema" to "1.0",
+    override fun hello(caps: Map<String, Any?>) = send(msg("hello", mapOf("schema" to "1.0",
         "renderer" to mapOf("name" to "godnotic-android", "version" to "0.1"), "caps" to caps)))
-    fun sync() = send(msg("sync", mapOf("have" to store.rev)))
-    fun event(ev: String, body: Map<String, Any?>) = send(msg("ev", mapOf<String, Any?>("ev" to ev) + body))
-    fun window(source: String, offset: Int, limit: Int, sort: String = "", desc: Boolean = false, filter: String = "") =
+    override fun sync() = send(msg("sync", mapOf("have" to store.rev)))
+    override fun event(ev: String, body: Map<String, Any?>) = send(msg("ev", mapOf<String, Any?>("ev" to ev) + body))
+    override fun window(source: String, offset: Int, limit: Int, sort: String, desc: Boolean, filter: String) =
         send(msg("window", linkedMapOf<String, Any?>("source" to source, "offset" to offset, "limit" to minOf(limit, 200)).apply {
             if (sort.isNotEmpty()) { put("sort", sort); put("desc", desc) }
             if (filter.isNotEmpty()) put("filter", filter)
         }))
-    fun image(ref: String, w: Int, h: Int) = send(msg("image", mapOf("ref" to ref, "w" to w, "h" to h)))
+    override fun image(ref: String, w: Int, h: Int) = send(msg("image", mapOf("ref" to ref, "w" to w, "h" to h)))
 
     /** One engine message (already parsed). */
     fun receive(m: Map<String, Any?>) {
@@ -101,14 +130,14 @@ class UibClient(private val renderer: UiRenderer, private val send: (String) -> 
                 store.snapshot(m)
                 if (!store.consistent()) { sync(); return }
                 rebuildAll()
-                onChanged?.invoke(store)
+                onChanged?.invoke()
             }
             "diff" -> {
                 val changed = LinkedHashSet<String>()
                 val deleted = LinkedHashSet<String>()
                 if (!store.diff(m, changed, deleted) || !store.consistent()) { sync(); return }
                 applyChanges(changed, deleted)
-                onChanged?.invoke(store)
+                onChanged?.invoke()
             }
             "rows" -> if (!ignoreRows) renderer.listRows(m.str("source"), m.int("offset"), m.int("total"), m["rows"].list().map { it.obj() })
             "source" -> if (!ignoreRows) renderer.listRows(m.str("source"), 0, m.int("total"), emptyList())
