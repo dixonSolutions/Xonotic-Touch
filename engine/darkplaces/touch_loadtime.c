@@ -38,6 +38,7 @@ as they arrive. Neither applies in the menu or in the game.
 static cvar_t touch_loadtime = {CF_CLIENT | CF_SERVER, "touch_loadtime", "0", "print where start-up and each map load spent their time (Godnotic): 1 = at the main menu's first frame and at the first game frame after a load"};
 static cvar_t touch_load_restless = {CF_CLIENT, "touch_load_restless", "0", "do not wait for the frame limiter or sleep while a game is loading or the connection handshake runs (Godnotic); 0 = stock behaviour"};
 
+static cvar_t touch_load_lazysbar = {CF_CLIENT, "touch_load_lazysbar", "1", "Xonotic: cache the engine status bar's Quake pictures when the engine HUD is first drawn instead of at every renderer start (Godnotic); 0 = at renderer start"};
 static cvar_t touch_loadtime_menu = {CF_CLIENT | CF_READONLY, "_touch_loadtime_menu", "0", "1 once the main menu has drawn its first frame (for scripts that wait for it)"};
 static cvar_t touch_loadtime_game = {CF_CLIENT | CF_READONLY, "_touch_loadtime_game", "0", "counts loads that reached their first game frame (for scripts that wait for one)"};
 
@@ -301,6 +302,28 @@ qbool TouchLoadTime_Restless(void)
 	return false;
 }
 
+static void (*tl_sbar_start)(void);
+static qbool tl_sbar_deferred, tl_sbar_running;
+
+qbool TouchLoad_SbarDefer(void (*start)(void))
+{
+	if (!touch_load_lazysbar.integer || gamemode != GAME_XONOTIC || tl_sbar_running)
+		return false;
+	tl_sbar_start = start;
+	tl_sbar_deferred = true;
+	return true;
+}
+
+void TouchLoad_SbarEnsure(void)
+{
+	if (!tl_sbar_deferred)
+		return;
+	tl_sbar_deferred = false;
+	tl_sbar_running = true;
+	tl_sbar_start();
+	tl_sbar_running = false;
+}
+
 float TouchLoadTime_MaxFPS(float maxfps)
 {
 	// no frame limiter: CL_Frame then runs every host frame on the real
@@ -352,6 +375,7 @@ void TouchLoadTime_Init(void)
 	TouchLoadFS_Init();
 	Cvar_RegisterVariable(&touch_loadtime);
 	Cvar_RegisterVariable(&touch_load_restless);
+	Cvar_RegisterVariable(&touch_load_lazysbar);
 	Cvar_RegisterVariable(&touch_loadtime_menu);
 	Cvar_RegisterVariable(&touch_loadtime_game);
 	Cmd_AddCommand(CF_CLIENT | CF_SERVER, "touch_loadtime_start", TouchLoadTime_Start_f, "start timing a load now (put it before map or connect); touch_loadtime 1 prints the result at the first game frame");

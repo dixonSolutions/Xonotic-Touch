@@ -63,6 +63,12 @@ static inline void TouchLoadTime_ScopeEnd(touch_lt_scope_t *s) { TouchLoadTime_E
 
 void TouchLoadTime_Init(void);
 
+// sbar.c's render module start caches ~112 Quake status bar pictures that
+// Xonotic does not have and never draws (its HUD is CSQC). With
+// touch_load_lazysbar 1 the start is remembered and run on the engine HUD's
+// first draw (Sbar_Draw with drawenginesbar, Sbar_DeathmatchOverlay).
+qbool TouchLoad_SbarDefer(void (*start)(void));
+void TouchLoad_SbarEnsure(void);
 // After every drawn frame: notices the menu's first frame and a load's first
 // game frame.
 void TouchLoadTime_Frame(void);
