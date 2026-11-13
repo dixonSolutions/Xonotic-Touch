@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
+
+// Settings > Mobile > Menu: the touch menu's size (menu_touch_size) with a
+// preview of the new size before the menu restarts into it, and a switch
+// back to the stock desktop layout.
+#include "tab.qh"
+CLASS(GodnoticMenuSizeTab, XonoticTab)
+	METHOD(GodnoticMenuSizeTab, fill, void(entity));
+	ATTRIB(GodnoticMenuSizeTab, intendedWidth, float, 0.9);
+	ATTRIB(GodnoticMenuSizeTab, rows, float, 14);
+	ATTRIB(GodnoticMenuSizeTab, columns, float, 6);
+	ATTRIB(GodnoticMenuSizeTab, name, string, "mobilemenu");
+ENDCLASS(GodnoticMenuSizeTab)
+entity makeGodnoticMenuSizeTab();
+
+// A row and a line of text drawn at the size the slider picks, beside one at
+// today's size.
+CLASS(GodnoticMenuSizePreview, MenuItem)
+	METHOD(GodnoticMenuSizePreview, draw, void(entity));
+	METHOD(GodnoticMenuSizePreview, resizeNotify, void(entity, vector, vector, vector, vector));
+ENDCLASS(GodnoticMenuSizePreview)

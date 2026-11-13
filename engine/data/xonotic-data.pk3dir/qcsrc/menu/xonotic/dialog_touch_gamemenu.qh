@@ -7,6 +7,7 @@
 #include "rootdialog.qh"
 CLASS(GodnoticGameMenuDialog, XonoticRootDialog)
 	METHOD(GodnoticGameMenuDialog, fill, void(entity));
+	METHOD(GodnoticGameMenuDialog, configureDialog, void(entity));
 	ATTRIB(GodnoticGameMenuDialog, title, string, _("Game menu"));
 	ATTRIB(GodnoticGameMenuDialog, color, vector, SKINCOLOR_DIALOG_QUIT);
 	ATTRIB(GodnoticGameMenuDialog, intendedWidth, float, 0.56);

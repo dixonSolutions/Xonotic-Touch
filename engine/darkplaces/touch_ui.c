@@ -48,6 +48,85 @@ float TouchUI_ChatKeysTop(void)
 	return touchui_chat_keys_top;
 }
 
+/* Top of the keys or command palette under the console, sheet units; -1 none. */
+static float touchui_console_keys_top = -1;
+static double touchui_console_keys_time;
+
+/*
+ * Console units per dp: from the density Android reports with the insets
+ * (_touch_safe_insets), the engine's display reading (vid_touch_dpi), the
+ * Linux launcher's measurement, or a phone-sized guess -- the same sources,
+ * in the same order, as the menu's size (touch_menu_scale.qc).
+ */
+static float TouchUI_ConPerDp(void)
+{
+	float density = 0, l, t, r, b;
+	cvar_t *v = Cvar_FindVar(&cvars_all, "_touch_safe_insets", ~0);
+	if (v && v->string[0])
+		if (sscanf(v->string, "%f %f %f %f %f", &l, &t, &r, &b, &density) < 5)
+			density = 0;
+	if (density < 0.4f)
+	{
+		v = Cvar_FindVar(&cvars_all, "vid_touch_dpi", ~0);
+		if (v && v->value >= 72)
+			density = v->value / 160.0f;
+	}
+	if (density < 0.4f)
+	{
+		v = Cvar_FindVar(&cvars_all, "vid_touchscreen_ydpi", ~0);
+		if (v && v->value >= 72 && v->value != 160 && v->value != 300)
+			density = v->value / 160.0f;
+	}
+	if (density < 0.4f)
+	{
+		float shortside = (float)min(vid.mode.width, vid.mode.height);
+		density = bound(1.0f, shortside / 420.0f, 4.0f);
+	}
+	return vid.mode.height > 0 ? density * vid_conheight.value / (float)vid.mode.height : density;
+}
+
+/* Gap around each key: touch_kb_gap of the width, at most 3 dp, so six rows of
+ * finger-sized keys fit a phone's short side. */
+static float TouchUI_KeyGap(float w)
+{
+	return min(bound(2.0f, touch_kb_gap.value * w, 16.0f), max(2.0f, 3.0f * TouchUI_ConPerDp()));
+}
+
+/* The sheet's header row (CLOSE, the tabs, KEYBOARD): 48 dp, as the menu's
+ * rows (touch_menu_scale.qc). touch_shellbtn.c keeps the console button under it. */
+float TouchUI_SheetHeaderHeight(float h)
+{
+	float hdr_h = bound(36.0f, h * 0.10f, 64.0f);
+	return min(max(hdr_h, 48.0f * TouchUI_ConPerDp()), h * 0.16f);
+}
+
+/*
+ * Keyboard height: touch_kb_height of the sheet, but never so short that a
+ * key is under TOUCHUI_MIN_KEY_DP (nor under touch_kb_minkey_px device
+ * pixels), and never so tall that fewer than TOUCHUI_MIN_LOG_DP of console
+ * is left above it for the log and the input line.
+ */
+#define TOUCHUI_MIN_KEY_DP 44.0f
+#define TOUCHUI_MIN_LOG_DP 72.0f
+static float TouchUI_KeysHeight(float w, float h, float hdr_h, float kb_frac)
+{
+	float dp = TouchUI_ConPerDp();
+	float gap = TouchUI_KeyGap(w);
+	float px2con = vid.mode.height > 0 ? vid_conheight.value / (float)vid.mode.height : 1.0f;
+	float key = max(TOUCHUI_MIN_KEY_DP * dp, touch_kb_minkey_px.value * px2con);
+	float kb_h = max(h * kb_frac, 6.0f * (key + gap * 2.0f));
+	return min(kb_h, h - hdr_h - TOUCHUI_MIN_LOG_DP * dp);
+}
+
+/* SCR_SetUpToDrawConsole: the console stops above the keys, so the input line
+ * stays in sight while typing. */
+float TouchUI_ConsoleHeight(float con_h)
+{
+	if (touchui_console_keys_top <= 0 || host.realtime - touchui_console_keys_time > 0.5)
+		return con_h;
+	return min(con_h, touchui_console_keys_top);
+}
+
 /* Sheet rect of the last layout, to keep the hold popup on screen. */
 static float touchui_sheet_x, touchui_sheet_y, touchui_sheet_w, touchui_sheet_h;
 
@@ -500,7 +579,7 @@ static const char *TouchUI_LayerRows(touchui_layer_t layer, int row)
 static int TouchUI_LayoutKeyboard(float x, float y, float w, float h,
 	touchui_item_t *out, int maxout, int n)
 {
-	float gap = bound(2.0f, touch_kb_gap.value * w, 16.0f);
+	float gap = TouchUI_KeyGap(w);
 	float row_h = h / 6.0f;
 	float th = bound(12.0f, row_h * 0.40f, 26.0f);
 	int r, c, len, i;
@@ -903,7 +982,7 @@ static int TouchUI_LayoutMouseSheet(touchui_sheet_t kind, float x, float y, floa
 	qbool keys = TouchUI_KeysShown(kind);
 	float bh = bound(28.0f, h * 0.06f, 44.0f);
 	float bw = bh * 4.0f;
-	float kb_h = h * bound(0.28f, touch_kb_height.value, 0.70f);
+	float kb_h = TouchUI_KeysHeight(w, h, 0, bound(0.28f, touch_kb_height.value, 0.70f));
 
 	float by;
 
@@ -911,6 +990,11 @@ static int TouchUI_LayoutMouseSheet(touchui_sheet_t kind, float x, float y, floa
 		n = TouchUI_LayoutKeyboard(x, y + h - kb_h, w, kb_h, out, maxout, n);
 	if (kind == TOUCHUI_SHEET_CHAT)
 		touchui_chat_keys_top = keys ? y + h - kb_h : -1;
+	if (kind == TOUCHUI_SHEET_CONSOLE && keys)
+	{
+		touchui_console_keys_top = y + h - kb_h;
+		touchui_console_keys_time = host.realtime;
+	}
 	/* Hung under the right end of the console, or of the chat line at the top,
 	 * and never over the keys. */
 	by = y + 8.0f;
@@ -941,8 +1025,8 @@ int TouchUI_LayoutSheet(touchui_sheet_t kind, float x, float y, float w, float h
 		return TouchUI_LayoutMouseSheet(kind, x, y, w, h, out, maxout);
 
 	kb_frac = bound(0.28f, touch_kb_height.value, 0.70f);
-	hdr_h = bound(36.0f, h * 0.10f, 64.0f);
-	kb_h = h * kb_frac;
+	hdr_h = TouchUI_SheetHeaderHeight(h);
+	kb_h = TouchUI_KeysHeight(w, h, hdr_h, kb_frac);
 	if (kb_h < 80.0f)
 		kb_h = min(h * 0.5f, 80.0f);
 	/* Chat with a keyboard attached: just the quick phrases, at the bottom. */
@@ -961,6 +1045,11 @@ int TouchUI_LayoutSheet(touchui_sheet_t kind, float x, float y, float w, float h
 		n = TouchUI_LayoutSampleLog(x, body_top, w, log_h, out, maxout, n);
 	}
 
+	if (kind == TOUCHUI_SHEET_CONSOLE)
+	{
+		touchui_console_keys_top = y + h - kb_h;
+		touchui_console_keys_time = host.realtime;
+	}
 	if (kind == TOUCHUI_SHEET_CONSOLE || kind == TOUCHUI_SHEET_PREVIEW)
 	{
 		if (touchui_tab == TOUCHUI_TAB_COMMANDS || !keys)

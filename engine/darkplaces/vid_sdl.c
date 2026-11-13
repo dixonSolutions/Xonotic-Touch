@@ -1232,6 +1232,7 @@ static void VID_TouchMenuFingerEvent(int id, qbool down, float nx, float ny)
 	in_windowmouse_x = nx * vid.mode.width;
 	in_windowmouse_y = ny * vid.mode.height;
 	Key_Event(K_MOUSE1, 0, down);
+	if (vid_touchscreen_showkeyboard.integer == 2) { Cvar_SetValueQuick(&vid_touchscreen_showkeyboard, 1); if (VID_NeedsScreenKeyboard() && !VID_ShowingKeyboard()) VID_ShowKeyboard(true); } // Touch: the menu asks again when a tap lands on a text field (touch_menu_sheet.qc), bringing back a keyboard Back put away
 }
 
 // In-engine console keyboard — one character per finger-down (no hold repeat).

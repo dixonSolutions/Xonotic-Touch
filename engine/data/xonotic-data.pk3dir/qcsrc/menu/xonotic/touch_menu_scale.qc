@@ -3,13 +3,16 @@
 
 #include "../menu.qh"
 
-AUTOCVAR_SAVE(menu_touch_size, float, 1, "Godnotic: menu size on a touch screen (0.6 to 1.6, 1 = sized from the screen's density; -1 = the stock desktop layout). Applies when the menu restarts");
+AUTOCVAR_SAVE(menu_touch_size, float, 1, "Godnotic: menu size on a touch screen (0.6 to 1.6, 1 = sized from the screen's density; -1 = the stock desktop layout; anything but 1 on a desktop forces the touch layout). Applies when the menu restarts");
 
 bool TouchMenuScale_active()
 {
 	if (autocvar_menu_touch_size < 0)
 		return false; // -1: stock layout everywhere
-	return cvar("vid_touchscreen") || cvar("vid_touchscreen_detected");
+	if (cvar("vid_touchscreen") || cvar("vid_touchscreen_detected"))
+		return true;
+	// A desktop asked for the touch layout explicitly (anything but the default 1).
+	return autocvar_menu_touch_size != 1 && autocvar_menu_touch_size > 0;
 }
 
 // Real pixels per console unit (scr_sbarscale is vid.mode.height / vid_conheight).
@@ -28,12 +31,20 @@ float TouchMenuScale_dpi()
 	float dpi = cvar("vid_touch_dpi");
 	if (dpi >= 72)
 		return dpi;
+	// Android's own density, as the activity reports it with the insets.
+	if (tokenize_console(cvar_string("_touch_safe_insets")) >= 5 && stof(argv(4)) > 0.4)
+		return stof(argv(4)) * 160;
 	// What the Linux launcher measured (screen-calc.sh); 160 is its "unknown"
 	// placeholder and 300 the engine default nobody set.
 	dpi = cvar("vid_touchscreen_ydpi");
 	if (dpi >= 72 && dpi != 160 && dpi != 300)
 		return dpi;
-	// Nothing known: guess a phone, whose short side is about 2.7 inches.
+	// Nothing known on a desktop that asked for the touch layout: one dp
+	// per pixel, as a desktop's 100% scale.
+	if (!cvar("vid_touchscreen") && !cvar("vid_touchscreen_detected"))
+		return 160;
+	// Nothing known on a touch screen: guess a phone, whose short side is
+	// about 2.7 inches.
 	float px_short = min(cvar("vid_conwidth"), cvar("vid_conheight")) * TouchMenuScale_pxPerCon();
 	return max(96, px_short / 2.7);
 }
@@ -43,6 +54,16 @@ float TouchMenuScale_conToDp(float conunits)
 	return conunits * TouchMenuScale_pxPerCon() * 160 / TouchMenuScale_dpi();
 }
 
+float TouchMenuScale_dpToUnits(float dp)
+{
+	return (touch_menu_unit_dp > 0) ? dp / touch_menu_unit_dp : dp;
+}
+
+float TouchMenuScale_size()
+{
+	return (autocvar_menu_touch_size > 0) ? bound(0.6, autocvar_menu_touch_size, 1.6) : 1;
+}
+
 float TouchMenuScale_compute()
 {
 	if (!TouchMenuScale_active())
@@ -50,12 +71,50 @@ float TouchMenuScale_compute()
 	float con_short = min(realconwidth, realconheight);
 	if (con_short <= 0)
 		return 1;
-	float short_dp = TouchMenuScale_conToDp(con_short);
-	float size = autocvar_menu_touch_size ? bound(0.6, autocvar_menu_touch_size, 1.6) : 1;
-	float layout = max(TOUCH_MENU_MIN_LAYOUT, short_dp / (TOUCH_MENU_DP_PER_UNIT * size));
+	// Console units per layout unit so one unit is DP_PER_UNIT dp.
+	float s = TOUCH_MENU_DP_PER_UNIT * TouchMenuScale_size() / TouchMenuScale_conToDp(1);
+	// Never so big that a layout is shorter than about seven rows.
+	s = min(s, con_short / 200);
 	// Only ever larger than stock: a touch monitor already showing the stock
 	// layout big keeps it.
-	return max(1, con_short / layout);
+	return max(1, s);
+}
+
+// Left and right console units kept clear: display cutouts, and on the right
+// the engine's console button (touch_shellbtn.c), which sits in the top right
+// corner over whatever a full-width dialog puts there (its close button).
+void TouchMenuScale_reserve()
+{
+	float l = 0, r = 0, density = 0;
+	float px2con = 1 / TouchMenuScale_pxPerCon();
+	int n = tokenize_console(cvar_string("_touch_safe_insets"));
+	if (n >= 4)
+	{
+		l = stof(argv(0)) * px2con;
+		r = stof(argv(2)) * px2con;
+	}
+	if (n >= 5)
+		density = stof(argv(4));
+	if (cvar("touch_shell_button") >= 1)
+	{
+		// The density touch_shellbtn.c sizes the button with: the platform's,
+		// else its guess from the short side.
+		if (density <= 0)
+		{
+			float shortpx = min(cvar("vid_width"), cvar("vid_height"));
+			density = (shortpx >= 900) ? bound(1, shortpx / 420, 4) : 1;
+		}
+		// Its size and 8 dp margin, plus 8 dp between it and the dialog.
+		float bs = bound(32, cvar("touch_shell_button_size"), 96);
+		r += (bs + 16) * density * px2con;
+	}
+	touch_menu_reserve_l = l;
+	touch_menu_reserve_r = r;
+}
+
+float TouchMenuScale_availWidth()
+{
+	return max(realconwidth * 0.5, realconwidth - touch_menu_reserve_l - touch_menu_reserve_r);
 }
 
 void TouchMenuScale_layout()
@@ -70,15 +129,17 @@ void TouchMenuScale_layout()
 	if (touch_menu_scale <= 1)
 		return;
 	float s = touch_menu_scale;
+	TouchMenuScale_reserve();
+	float avail_w = TouchMenuScale_availWidth();
 	if (realconheight > realconwidth)
 	{
-		conwidth = realconwidth / s;
+		conwidth = avail_w / s;
 		conheight = realconheight / s;
 	}
 	else
 	{
 		conheight = realconheight / s;
-		conwidth = min(realconwidth / s, conheight * TOUCH_MENU_MAX_ASPECT);
+		conwidth = min(avail_w / s, conheight * TOUCH_MENU_MAX_ASPECT);
 	}
 }
 
@@ -87,18 +148,38 @@ bool TouchMenuScale_drawReset()
 	if (touch_menu_scale <= 1)
 		return false;
 	float s = touch_menu_scale;
-	draw_reset(conwidth * s, conheight * s, 0.5 * (realconwidth - conwidth * s), 0.5 * (realconheight - conheight * s));
+	float avail_w = TouchMenuScale_availWidth();
+	float left = min(touch_menu_reserve_l, realconwidth - avail_w);
+	draw_reset(conwidth * s, conheight * s, left + 0.5 * (avail_w - conwidth * s), 0.5 * (realconheight - conheight * s));
 	return true;
 }
 
 void TouchMenuScale_applySkin()
 {
+	touch_menu_on = false;
 	if (!TouchMenuScale_active())
 		return;
-	// Compact dialog margins, so the 24-row dialogs fit a phone's short side
-	// at a larger size. Rows keep their full height; the spacing between them
-	// shrinks from 4 to 2 units.
-	SKINMARGIN_TOP = min(SKINMARGIN_TOP, 4);
-	SKINMARGIN_BOTTOM = min(SKINMARGIN_BOTTOM, 6);
-	SKINMARGIN_ROWS = min(SKINMARGIN_ROWS, 2);
+	if (!touch_menu_scale_fixed)
+		touch_menu_scale = TouchMenuScale_compute();
+	touch_menu_on = true;
+	touch_menu_unit_dp = TouchMenuScale_conToDp(max(1, touch_menu_scale));
+	float sz = TouchMenuScale_size();
+	// Rows: a finger target each, with a finger's gap between them. The
+	// fonts stay as the skin has them; the rows grow around them.
+	float row = TouchMenuScale_dpToUnits(TOUCH_MENU_ROW_DP * sz);
+	float gap = TouchMenuScale_dpToUnits(TOUCH_MENU_GAP_DP * sz);
+	SKINHEIGHT_NORMAL = max(SKINHEIGHT_NORMAL, row / SKINFONTSIZE_NORMAL);
+	SKINHEIGHT_TITLE = max(SKINHEIGHT_TITLE, row / SKINFONTSIZE_TITLE);
+	SKINMARGIN_ROWS = max(SKINMARGIN_ROWS, gap);
+	SKINMARGIN_COLUMNS = max(SKINMARGIN_COLUMNS, gap);
+	SKINMARGIN_TOP = max(SKINMARGIN_TOP, gap);
+	SKINMARGIN_BOTTOM = max(SKINMARGIN_BOTTOM, gap);
+}
+
+float TouchMenuScale_listItemHeight(float itemHeight, vector absSize)
+{
+	if (!touch_menu_on || absSize.y <= 0)
+		return itemHeight;
+	float h = TouchMenuScale_dpToUnits(TOUCH_MENU_LISTROW_DP * TouchMenuScale_size()) / absSize.y;
+	return max(itemHeight, h);
 }

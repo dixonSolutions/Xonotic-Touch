@@ -60,6 +60,7 @@
 #include "dialog_settings.qh"
 #include "dialog_credits.qh"
 #include "dialog_touch_credits.qh" // Touch
+#include "dialog_touch_launcher.qh" // Touch
 #include "dialog_quit.qh"
 
 /** Open the asset-fetch wizard instantly (no zoom animation).
@@ -358,6 +359,7 @@ void MainWindow_configureMainWindow(entity me)
 
 
 	// main dialogs/windows
+	if (TouchLauncher_Configure(me)) return; // Touch: a launcher and sheets instead of the nexposee
 	me.mainNexposee = n = NEW(XonoticNexposee);
 
 	/*

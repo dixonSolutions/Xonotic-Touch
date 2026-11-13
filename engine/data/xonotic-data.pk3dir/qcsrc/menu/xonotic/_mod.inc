@@ -94,6 +94,7 @@
 #include <menu/xonotic/dialog_touch_credits.qc> // Touch
 #include <menu/xonotic/dialog_touch_esp.qc> // Touch
 #include <menu/xonotic/dialog_touch_gamemenu.qc>
+#include <menu/xonotic/dialog_touch_launcher.qc> // Touch
 #include <menu/xonotic/dialog_touch_mods.qc> // Touch: Lua mods tab
 #include <menu/xonotic/dialog_touch_lan.qc> // Touch: LAN games
 #include <menu/xonotic/dialog_touch_privacy.qc> // Touch
@@ -138,6 +139,8 @@
 #include <menu/xonotic/textslider.qc>
 #include <menu/xonotic/touch_menu_layout.qc>
 #include <menu/xonotic/touch_menu_scale.qc> // Touch
+#include <menu/xonotic/touch_menu_settings.qc> // Touch
+#include <menu/xonotic/touch_menu_sheet.qc> // Touch
 #include <menu/xonotic/touch_startup_util.qc>
 #include <menu/xonotic/touch_update_util.qc>
 #include <menu/xonotic/touchbutton.qc>
