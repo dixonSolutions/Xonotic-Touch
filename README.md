@@ -1,12 +1,38 @@
 <p align="center"><img src="branding/godnotic-banner.png" alt="Godnotic" width="720"></p>
 
-**Godnotic** is a touch-first build of [Xonotic](https://xonotic.org) for **Android**, **Ubuntu Touch**, and **any Linux phone, tablet or touchscreen PC via Flatpak**. Virtual sticks, weapon wheels, and layout presets are tuned for two-thumb play in landscape. Ships as a slim Android **`.apk`**, Ubuntu Touch **`.click`**, or **Flatpak** (~60 MB); textures, maps, and music download on first launch (~3 GB). Native C + QuakeC — no Qt shell.
+**Godnotic** is a custom fork of [Xonotic](https://xonotic.org), the free arena shooter. It plays on touch devices and on a stock keyboard and mouse alike: **Android**, **Ubuntu Touch**, **any Linux phone, tablet or PC via Flatpak**, and **the browser**. The game underneath is Xonotic (DarkPlaces engine, Xonotic's game code, maps and servers), so you play on the same public servers as everyone else. What Godnotic adds is everything around it: touch controls, an interface drawn by each platform's own toolkit, small fast downloads, self-updating packages, LAN games and Lua mods.
 
 | | |
 |---|---|
-| **Install** | Android `.apk` from GitHub Releases, Flatpak remote (any Linux distro), [OpenStore](https://open-store.io/app/xonotictouch.dixonsolutions) / Ubuntu Touch `.click`, or [in the browser](https://godnotic.vercel.app) — versioned GitHub Releases on each `main` push |
-| **Platforms** | Android: `arm64-v8a` + `armeabi-v7a` + `x86_64` (Waydroid, Chromebooks). Flatpak: any Linux, `x86_64` + `aarch64` (Wayland/X11) — postmarketOS, Mobian, Fedora, Ubuntu, … Click: Ubuntu Touch `arm64` + `armhf` |
-| **Input** | Touch, keyboard and mouse, together or apart, detected from the system. The on-screen controls show on a touchscreen with no keyboard attached and step aside while one is plugged in; touch and a mouse keep working either way (fingers press menus and turn the view, a mouse aims). **Ctrl+Alt+1** switches by hand and **Ctrl+Alt+2** locks the choice — see [TOUCH_DETECTION.md](docs/TOUCH_DETECTION.md) |
+| **Install** | Android `.apk` from [GitHub Releases](https://github.com/dixonSolutions/Godnotic/releases/latest), Flatpak remote (any Linux distro), [OpenStore](https://open-store.io/app/xonotictouch.dixonsolutions) / Ubuntu Touch `.click`, or [in the browser](https://godnotic.vercel.app). Every push to `main` is a versioned release |
+| **Platforms** | Android: `arm64-v8a`, `armeabi-v7a`, `x86_64` (Waydroid, Chromebooks). Flatpak: `x86_64` and `aarch64`, Wayland or X11 (postmarketOS, Mobian, Fedora, Ubuntu, …). Click: Ubuntu Touch `arm64` and `armhf`. Web: WebAssembly and WebGL 2 |
+| **Input** | Touch, keyboard and mouse, together or apart, detected from the system. The on-screen controls show on a touchscreen with no keyboard attached and step aside while one is plugged in; touch and a mouse keep working either way (fingers press menus and turn the view, a mouse aims). **Ctrl+Alt+1** switches by hand and **Ctrl+Alt+2** locks the choice: see [TOUCH_DETECTION.md](docs/TOUCH_DETECTION.md) |
+| **Download** | The package is small (about 60 MB). Game data comes on first launch: the slim set is about 390 MB (ASTC textures, zstd packs, Opus music, always including the music) against about 1 GB for stock Xonotic's packs; devices without ASTC take the full set |
+
+## What Godnotic changes
+
+**Touch controls, without taking the keyboard away.** Virtual sticks, a weapons strip, and layout presets tuned for two-thumb play in landscape, with aim help that only works offline against bots. The touch HUD is drawn by the engine, so it looks the same on a public server running stock Xonotic as in a local match. Plug in a keyboard and the stock Xonotic HUD and binds are back; nothing about desktop play is removed. Controls and presets: [CONTROLS.md](docs/CONTROLS.md).
+
+**One interface description, native on each platform.** The menus are described once, in QuakeC, as screens made of cards, lists, tabs and switches ([UI_BRIDGE.md](docs/UI_BRIDGE.md)). Each platform then draws that description with its own toolkit and its own look:
+
+| Platform | Drawn by | Notes |
+|---|---|---|
+| Android | Kotlin views over the game surface ([FRONTEND_BRIDGE.md](docs/FRONTEND_BRIDGE.md), [ANDROID.md](docs/ANDROID.md)) | 48 dp targets, system keyboard, Back at every level; one continuous launch from the banner to Home |
+| Linux (Flatpak) | A Rust loader with GTK 4 and libadwaita ([LAUNCHER.md](docs/LAUNCHER.md)) | follows the desktop's light or dark style and adapts from phone width to desktop |
+| Browser | An HTML shell in the same style, then the QuakeC touch menu ([WEB.md](docs/WEB.md)) | |
+| Ubuntu Touch | The QuakeC touch menu | also the fallback anywhere a native interface cannot start |
+
+The engine's real console is one tap away on every platform (the console button at the top right), with its own on-screen keys.
+
+**Fast to get and fast to start.** Phone-sized data ([PHONE_ASSETS.md](docs/PHONE_ASSETS.md)), ranged and resumable downloads that continue in the background, lazy loading and pre-warming of the next map ([PERFORMANCE.md](docs/PERFORMANCE.md)), and a faster join handshake, parallel in-game downloads and automatic reconnect on the network side ([NETWORK.md](docs/NETWORK.md)).
+
+**Packaging that updates itself.** Android builds are [AndySU](andysu.toml) hosts: a signed update is fetched and applied in place, live where it can be and at the next start otherwise, and rolled back by a watchdog if the new build does not come up healthy. The Flatpak updates through its remote, the Ubuntu Touch click through OpenStore, and the web build with each deploy. Details: [ANDROID.md](docs/ANDROID.md) for the update host, [RELEASES.md](docs/RELEASES.md) for the channels.
+
+**LAN games and mods.** Host a game on your network from the Create screen (a LAN switch, a port, an optional password), find games without a master server, including over a VPN ([LAN.md](docs/LAN.md)). Lua mods for the client and the server run in a light sandbox with four permission tiers, their own settings pages and HUD panels, and 15 tested examples ([MODDING.md](docs/MODDING.md)).
+
+The repository is split in three: this one (packaging, native interfaces, releases), [Godnotic-darkplaces](https://github.com/dixonSolutions/Godnotic-darkplaces) (the engine) and [Godnotic-data](https://github.com/dixonSolutions/Godnotic-data) (game code and the data packs). What has been measured and what is still unfinished is written down in [GODNOTIC.md](docs/GODNOTIC.md).
+
+## In a match
 
 | Local bot match | Stock Xonotic server |
 |---|---|
@@ -26,7 +52,7 @@ On screen: the **MOVE** stick on the left (drag on the right side of the screen 
 
 ## Play in the browser
 
-**https://godnotic.vercel.app**: nothing to install. The first visit downloads about 1 GB of game data, which the browser keeps; settings and touch layouts are saved in the browser too. Touch and keyboard and mouse work; local games against bots, not online servers yet. Mirror on [GitHub Pages](https://dixonSolutions.github.io/Godnotic/web/). Details, limits and self-hosting: [docs/WEB.md](docs/WEB.md).
+**https://godnotic.vercel.app**: nothing to install. The first visit downloads the game data once (about 405 MB on a GPU with ASTC textures, about 1 GB otherwise) into the browser's private file storage; later visits start straight away, and a new deploy only fetches what changed. The browser may clear that storage when the device runs short of space unless you turn on "Keep game data on this device" in the Storage menu. Settings and touch layouts are saved in the browser too. If the Godnotic app is installed, the page offers to open it instead. Touch and keyboard and mouse work; local games against bots, not online servers yet. Mirror on [GitHub Pages](https://dixonSolutions.github.io/Godnotic/web/). Details, limits and self-hosting: [docs/WEB.md](docs/WEB.md).
 
 ## Install (Flatpak)
 
@@ -59,7 +85,7 @@ Or: `./scripts/build-click.sh --arch arm64`
 
 ### Android (.apk)
 
-Sideload from [GitHub Releases](https://github.com/dixonSolutions/Godnotic/releases/latest) — `arm64-v8a` for anything from the last decade, `armeabi-v7a` for older phones, `x86_64` for Waydroid and Chromebooks. Same slim-package deal: the APK carries game logic and the menu, and the first launch pulls maps, textures and music.
+Sideload from [GitHub Releases](https://github.com/dixonSolutions/Godnotic/releases/latest) — `arm64-v8a` for anything from the last decade, `armeabi-v7a` for older phones, `x86_64` for Waydroid and Chromebooks. Same slim-package deal: the APK carries the engine, game logic and the interface, and the first launch downloads maps, textures and music (about 390 MB) with a progress notification; it carries on in the background and resumes if interrupted.
 
 Local build: `ANDROID_SDK_ROOT=~/Android/Sdk ./scripts/android-build.sh --abi arm64-v8a` — see [docs/ANDROID.md](docs/ANDROID.md).
 
@@ -90,10 +116,12 @@ First launch downloads game data into the platform writable dir (see [docs/RELEA
 |------|---------|
 | `engine/` | Xonotic fork with touch changes integrated in-tree |
 | `touch/` | Defaults, screen math, layout/performance presets |
-| `packaging/start.sh` | Launcher: sync bundle, fetch assets, run game |
+| `loader/` | Rust loader: core (downloads, sessions, UI bridge client) and the GTK 4 / libadwaita interface |
+| `packaging/start.sh` | Start script: sync bundle, fetch assets, run game (Ubuntu Touch, fallback) |
 | `flatpak/` | Flatpak manifest, metainfo, desktop entry |
 | `click/` | Ubuntu Touch click metadata (manifest, desktop, AppArmor) |
-| `android/` | Gradle project; darkplaces built as `libmain.so` by the NDK |
+| `android/` | Gradle project: Kotlin interface and boot/download screens; darkplaces built as `libmain.so` by the NDK |
+| `web/` | Browser loader and storage |
 | `clickable.yaml` | Clickable build entry for UT `.click` packages |
 | `scripts/` | Build, staging, runtime asset fetch, local installers |
 
@@ -109,6 +137,8 @@ First launch downloads game data into the platform writable dir (see [docs/RELEA
 - [docs/SCREEN.md](docs/SCREEN.md) — landscape screen calculation
 - [docs/CONTROLS.md](docs/CONTROLS.md) — touch controls and presets
 - [docs/SETUP.md](docs/SETUP.md) — first-run wizard, download progress, OSK, touch menus
+- [docs/UI_BRIDGE.md](docs/UI_BRIDGE.md) — how QuakeC describes screens and native renderers draw them; [FRONTEND_BRIDGE.md](docs/FRONTEND_BRIDGE.md) the Android side, [LAUNCHER.md](docs/LAUNCHER.md) the Linux loader
+- [docs/NETWORK.md](docs/NETWORK.md) — faster joins, parallel downloads, reconnect, measurements
 - [docs/LAN.md](docs/LAN.md) — LAN games: host from the menu, find games on your network, optional password
 - [docs/PLUGIN_STANDARD.md](docs/PLUGIN_STANDARD.md) — Lua mods (client mods and server mods): package format, permissions, hooks, install from a file or a link ([MODDING.md](docs/MODDING.md) is the API, [LUA_HOOKS.md](docs/LUA_HOOKS.md) the 172 game hooks)
 - [docs/MODDING.md](docs/MODDING.md) — making a mod: first steps, testing, publishing; [docs/LUA_API.md](docs/LUA_API.md) every function (generated), [docs/MOD_COOKBOOK.md](docs/MOD_COOKBOOK.md) recipes, each a tested example in [touch/lua/examples](touch/lua/examples)
