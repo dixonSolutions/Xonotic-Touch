@@ -1,10 +1,11 @@
 # Web loader tests
 
-Three layers, from fast to real:
+Four layers, from fast to real:
 
 | | What | Needs | Time |
 |---|---|---|---|
 | `scripts/test-web-cache.sh` | `cache.test.mjs`: the store (`web/store.js`) and the page's loader flow (`web/shell.js`) in node against an in-memory OPFS, Cache API and data host; `test-web-cache-repro.sh`: staging and the map split are reproducible | node 22, python3 | seconds (CI runs it) |
+| `browser.sh` | `storage.html`: the store against the browser's own OPFS, the browser killed and restarted between steps (Chromium, Firefox); with `--site`: the page in Chromium (persist switch, eviction, damage, new deploy, the app offer, an existing folder) | Chromium, Firefox; a built page for part 2 | 1 min, 5 with a page |
 | `e2e.sh` | one visit in headless GPU Chromium over CDP: download, menu, bot matches, heap and renderer memory, throttling | a built page, Chromium | a minute |
 | `matrix.sh` | every scenario in every engine this host can run (below) | a built page, Chromium, Firefox, Xvfb | 15-30 min per engine |
 
@@ -30,6 +31,21 @@ display. Both scripts refuse to start while `WAYLAND_DISPLAY` or a desktop
 `DISPLAY` is set; run them under `env -u`.
 
 ## Running
+
+```bash
+env -u WAYLAND_DISPLAY -u DISPLAY -u XAUTHORITY tests/web-cache/browser.sh                   # the store, both engines
+# the page too, and an existing folder: DIR holds stock pk3s under their
+# stock names (xonotic-<date>-data.pk3, -maps.pk3, -music.pk3, ...)
+env -u WAYLAND_DISPLAY -u DISPLAY -u XAUTHORITY tests/web-cache/browser.sh --site build/web --install DIR
+```
+
+`step.mjs` is its driver: one navigation and evaluation in a browser
+already running, over CDP (Chromium) or WebDriver BiDi (Firefox). Firefox
+runs with `MOZ_HEADLESS` here (the store needs no WebGL). What it cannot
+do: show the real folder picker or permission prompts (the folder test
+answers `showDirectoryPicker()` with an OPFS directory handle it fills),
+and run on Android.
+
 
 ```bash
 env -u WAYLAND_DISPLAY -u DISPLAY -u XAUTHORITY tests/web-cache/matrix.sh                    # both engines

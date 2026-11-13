@@ -26,7 +26,9 @@ page.
 | Returning visitors | Keep the full download they already have; nothing is downloaded again |
 | Updates | A new release fetches only the files that changed; under 50 MB (new game code is about 3 MB) it does so without asking |
 | Interrupted downloads | Carry on where they stopped, after Cancel, a reload, a lost connection or the browser killing the page |
-| Storage popover | The header bar's menu button (or `web_storage` in the console, over the game): where the data is kept, how much, the site's quota, whether the browser keeps it, the last problem; Verify data, Clear data, Install app; render resolution and fullscreen |
+| Storage | The origin private file system (OPFS) of the browser: it survives reloads, closing the tab, restarting the browser and new releases of the page. The page never asks for persistent storage by itself, so by default the browser may clear it when the device runs short of space; what is gone is downloaded again at the next start, only that, without a question |
+| Storage popover | The header bar's menu button (or `web_storage` in the console, over the game): where the data is kept, how much, the site's quota, the switch "Keep game data on this device" (persistent storage, with the browser's real answer), the last problem; Verify data, Clear data, Install app, Use an existing Godnotic folder (desktop Chromium), Import settings; render resolution and fullscreen |
+| Already have the app | On Android in Chrome, a first visit says when the Godnotic app is installed and offers "Open the Godnotic app" instead of the download; other browsers on Android and Linux get the same hand-over as a plain link. See "An existing install" |
 | Saved | `config.cfg`, touch layouts and everything else the game writes, kept in IndexedDB |
 | Display | Fills the window; fullscreen at the first tap or key (Storage popover), or the game's own fullscreen setting |
 | Mouse | Click to capture (pointer lock, raw motion where the browser offers it); Esc opens the menu |
@@ -63,7 +65,8 @@ web/index.html, shell.css     loader UI: download, Play, settings
 web/shell.js                  the platform layer (below)
 web/store.js                  the game data store (chunks, hashes, resume)
 web/lazyfs.js                 pk3s read from that store on demand (no copy)
-web/manifest.webmanifest      installable app: fullscreen, landscape
+web/manifest.webmanifest      installable app: fullscreen, landscape; names the Android app
+web/.well-known/assetlinks.json  Android App Links: the app and its signing certificate
 web/serve.py                  local dev server
 vercel.json                   Vercel: build commands, main-only, headers
 scripts/vercel-build.sh       Vercel's build (tools, SDK, engine, data)
@@ -181,7 +184,7 @@ takes long on Vercel's 2 cores, so it is a release asset:
 | `<maps>-0extra.pk3`: textures, models and sounds no map and nothing in the game uses (texture sets for mappers) | 222 MB | 57 MB |
 
 What a map uses is traced from its .bsp (shader names, entity paths, noise
-keys relative to `sound/`), the shaders by name and every path in them
+keys relative to `sound/`, worldspawn's `sky` with its six sides), the shaders by name and every path in them
 (skyparms' six sides), md3/iqm models and their .skin files, and a
 texture's `_norm`/`_gloss`/`_glow`/`_pants`/`_shirt`/`_reflect` companions;
 whatever the data pk3's QuakeC, configs, shaders and models name stays in
@@ -209,8 +212,8 @@ calls) or JSPI: the cost is one frame and a rescan of the pk3 list.
 
 The first download is everything, so the per-map packs are not about
 downloading any more but about memory: where the page cannot read in place
-(below) it copies only the core and the one map being played into memory,
-and a new map's pack replaces the last one. The fetch-when-played path
+(below) it copies everything but the map packs into memory, and the one
+map being played; a new map's pack replaces the last one. The fetch-when-played path
 stays as the fallback for a pack that is missing (removed by the browser,
 or an interrupted update): a card over the game shows its download.
 `web_maps` in the console says how much of the data is stored.
@@ -223,10 +226,12 @@ start (MEMFS, about 1.08 GB), which phone browsers kill tabs for. Now
 from the stored chunks themselves (OPFS files or Cache API blobs, which
 stay on disk):
 
-- a synchronous `XMLHttpRequest` for a byte range of a `blob:` URL made
-  from the chunk. Main-thread synchronous XHR is still allowed; with the
-  `x-user-defined` charset its text is the bytes. Measured: Chrome about
-  10 ms per MiB (8 for the request, 2.6 for the copy), Firefox about 5 ms.
+- a synchronous `XMLHttpRequest` for a `blob:` URL of just the bytes
+  wanted (`chunk.slice(off, off + len)`: a slice refers to the stored
+  chunk, nothing is copied). Main-thread synchronous XHR is still allowed;
+  with the `x-user-defined` charset its text is the bytes. Measured with
+  ranged requests on one URL per chunk, which this replaced: Chrome about
+  10 ms per MiB, Firefox about 5 ms.
 - 1 MiB blocks, the most recent kept (48 MiB); reads of a block or more go
   straight into the engine's memory.
 - read-ahead: synchronous reads cost ten times what `Blob.slice()
@@ -236,26 +241,28 @@ stay on disk):
   before the engine starts or loads a map, four runs at a time, and shrinks
   the cache to 16 MiB 15 s after the load.
 - byte order marks: text decoding sniffs FF FE, FE FF and EF BB BF at the
-  start of a response before it looks at the charset, so a range that
-  happens to start with one came back as UTF-16 or UTF-8 (half the length,
-  wrong bytes) and the engine's read failed, which stopped a map load for
-  good. Every blob URL now has three zero bytes in front, and a read that
-  does not come back as clean x-user-defined text (length, and every
-  character below 0x80 or in U+F780-U+F7FF) is asked again from one byte
-  earlier, at worst from the zero padding. `tests/web-cache/lazyfs.html`
-  plants such marks at chunk and block starts and checks every byte.
-- a probe at start-up checks a 16-byte ranged read against `Blob.slice()`;
+  start of a response before it looks at the charset, so a read that
+  happened to start with one came back as UTF-16 or UTF-8 (half the
+  length, wrong bytes). Every read's blob therefore starts with three zero
+  bytes of its own (`new Blob([zeros, chunk.slice(...)])`), so no response
+  ever starts with data. (The first fix asked a ranged read again from one
+  byte earlier; a run of alternating FE/FF bytes before a block start
+  defeated that.) `tests/web-cache/lazyfs.html` plants marks and such runs
+  at chunk and block starts and checks every byte.
+- a read the browser's storage fails (a chunk removed under the page, a
+  picked folder's file changed on disk) reaches the engine as `EIO`, not
+  as an exception that stops the game; `xt.lazyStats().errors` counts them.
+- a probe at start-up checks a 16-byte read against `Blob.slice()`;
   where it fails (status, length or bytes), the page copies the files into
-  memory as before, and then mounts only the core, the music and the one
-  map being played (a new map's pack replaces the last one).
+  memory as before, and then mounts everything but the map packs, and the
+  one map being played (a new map's pack replaces the last one).
 
 The other options, measured or checked:
 
 | | Works on | Cost | Verdict |
 |---|---|---|---|
 | Mount only the packs a session needs | everywhere | still copies the core (156 MB slim, 440 MB stock) | done, as the fallback |
-| Synchronous ranged XHR on blob: URLs, read-ahead in the background | Chrome, Firefox | | done (see the BOM note below) |
-| Synchronous ranged XHR on blob: URLs | Chrome, Firefox (both checked); Safari unverified | about 10 ms/MiB, hidden by read-ahead | done |
+| Synchronous XHR on blob: URLs, read-ahead in the background | Chrome, Firefox (both checked); Safari unverified | about 10 ms/MiB, hidden by read-ahead | done |
 | Engine in a worker, OPFS `createSyncAccessHandle` | everywhere | SDL2's Emscripten port only runs off the main thread with pthreads (OFFSCREENCANVAS_SUPPORT, proxied input and audio), which need SharedArrayBuffer, so COOP/COEP headers. Pages cannot send them; a service-worker shim (coi-serviceworker) can fake them, but needs a reload on the first visit, breaks when the worker is not in control (hard reload, private windows in some browsers), and makes every cross-origin resource need CORP/CORS (the Pages shell's data on Vercel has it). The page's touch, keyboard and pointer-lock code would have to proxy to the worker. | not done |
 | JSPI (`-sJSPI`) | Chrome/Edge 137+, Firefox from 153 (intent to ship), Safari unconfirmed | a second engine build for other browsers, and a map load becomes thousands of awaited reads | not done |
 | Free each ArrayBuffer after indexing, re-read on demand | needs a synchronous read: one of the above | | the lazy reads are this |
@@ -293,33 +300,75 @@ that time; desktop Firefox here reproduces the parts a desktop can:
 What changed: 32 MiB chunks committed one by one with their hash (a kill
 loses at most the chunks in flight; on slow connections 4 MiB pieces), the
 data read in place instead of copied (heap at the menu: 30 MB, not 1 GB),
-`persist()` asked inside the Download click and never awaited, the slim set
+`persist()` never called on the start path (now: never by the page at all,
+only by the switch in the Storage popover), the slim set
 (405 MB) on ASTC GPUs such as the tablet's Mali-G68, a memory-only store
 with a stated reason where nothing can be stored (Firefox private windows
 throw `SecurityError` from `getDirectory()` and from the Cache API), and
 breadcrumbs that say when the browser killed the page.
 
+What Firefox for Android has, by the compatibility data (not run here):
+`navigator.storage.getDirectory()`, `createWritable()` and, in workers,
+`createSyncAccessHandle()` since Firefox 111, the same as desktop. The page
+uses `createWritable()` there. Desktop Firefox 160, headless, passes
+`tests/web-cache/browser.sh`: a download into OPFS cut off and resumed, the
+browser killed (SIGKILL) and started again with every chunk there and
+intact, the same through the worker writer, an evicted and a damaged chunk
+fetched again alone.
+
 What desktop Gecko cannot show: Fenix's memory limits and tab discarding,
 its quota on that device's free space, how its permission prompt for
-`persist()` looks (or whether it auto-denies), and its GPU's exact WebGL
-extensions. Checklist for the tablet (Firefox, Wi-Fi):
+`persist()` looks (or whether it auto-denies), whether "Delete browsing
+data on quit" is on, and its GPU's exact WebGL extensions. Those are on the
+checklist under "Checking on a tablet by hand".
 
-1. Open https://godnotic.vercel.app. The page shows "Download Godnotic,
-   405 MB" (not 1.07 GB: that would mean the tablet got the DXT set).
-2. Tap the menu button (top right). Storage popover: "Stored in: Browser
-   files (OPFS)", "Space: … used of N GB" (N should be well over 0.5),
-   "Kept: No" for now. Close it.
-3. Tap Download. If Firefox asks to allow persistent storage, allow it.
-   Leave the tablet awake on the page until the game starts by itself.
-4. Popover again: "Game data: 405 MB of 405 MB · ASTC set", "Kept: Yes" if
-   allowed, "Last problem: None".
-5. Close the tab, swipe Firefox away, open the page again: the game must
-   start with no download page. If a download page shows instead, its
-   yellow line and the popover's "Last problem" say why: note both.
-6. Optional: during a first download, switch to another app for a while
-   and come back. If Firefox reloads the page, it must say "The browser
-   closed this page while downloading (… pieces were saved …)" and
-   continue from there, not from 0 %.
+### Checking on a tablet by hand
+
+Nothing here was run on a phone or tablet. On the Samsung Tab Active5
+(Mali-G68), in Chrome and then in Firefox, on Wi-Fi, with the preview or
+production URL:
+
+1. Open the page. It shows "Download Godnotic", 405 MB (1.07 GB would mean
+   the tablet got the DXT set), a line that the browser may not keep the
+   data, and under the size either "Godnotic is installed on this
+   device…" with "Open the Godnotic app" (Chrome, once the app with
+   `asset_statements` is installed) or the link "Have the Godnotic app?
+   Open it" (Firefox; Chrome with an older app).
+2. Tap the app button or link. With the app installed (a build with the
+   `godnotic` intent filter) it opens. Without it, Chrome comes back to
+   the page with "The Godnotic app is not installed on this device."; in
+   Firefox note what happens (a prompt, nothing, an error page).
+3. Back in the browser, tap the menu button: "Stored in: Browser files
+   (OPFS)", "Space: … used of N GB" (N well over 0.5), the switch "Keep
+   game data on this device" off. Leave it off.
+4. Tap Download and keep the tablet awake until the game starts by itself.
+   No permission prompt may appear (the page no longer asks for persistent
+   storage). Play a bot match on stormkeep and one more map; note if the
+   browser closes the page (memory: desktop Firefox under a 2 GB limit was
+   killed loading stormkeep, with software GL overstating it).
+5. Menu button: "Game data: 405 MB of 405 MB · ASTC set", "Last problem:
+   None".
+6. Close the tab, swipe the browser away, open the page again: the game
+   starts with no download page. Then restart the tablet and repeat. If a
+   download page or a progress page shows instead, its yellow line and the
+   popover's "Last problem" say why: note both, and whether the browser is
+   set to delete browsing data on quit (Firefox: Settings, Delete browsing
+   data on quit).
+7. Turn the switch on. Chrome answers at once (most likely no on a fresh
+   profile: the line under it says so and the switch goes back; after
+   "Install app" or some days of use it says yes). Firefox shows its
+   prompt: allow it, and the switch stays on; the game must not have
+   stopped meanwhile. Reload: the switch shows the same answer.
+8. During a first download (clear the site's data first), switch to
+   another app for a few minutes and come back. If the browser reloaded
+   the page, it must say "The browser closed this page while downloading
+   (what had arrived is kept; it carries on from there)" and continue from
+   there, not from 0 %.
+9. Chrome only, with the app installed from a release signed with the
+   repository keystore: tap a link to https://godnotic.vercel.app/ in
+   another app (a chat message, a note). After the app's first start
+   Android verifies the link (Settings, Apps, Godnotic, Open by default:
+   "1 verified link"); the tap then opens the app instead of the browser.
 
 ### On the server
 
@@ -343,7 +392,8 @@ data/manifest.json        the web profile in the format pages before
 
 Groups: `core` (needed before the menu: this fork's files, the stock data,
 xoncompat and font pk3s, the maps core pack), `map` (one map's pack),
-`extra`, `music` (optional, background). The page is built knowing its
+`extra`, `music`. All of them are one download; the groups only say what
+the in-memory fallback mounts when. The page is built knowing its
 profiles: `index.html` carries them in its `xt-config` block, next to the
 content-hashed engine and page files (see "Start-up"); a page without them
 (served from `web/`, or the release zip) asks `data/profiles.json`.
@@ -382,9 +432,30 @@ m-<id>.json       manifests seen, so a start needs no network
 r-<page path>     which manifests a page path uses, and when
 ```
 
-OPFS where `createWritable()` exists (Chrome, Edge, Firefox, Safari 26+),
-else the Cache API with keys that carry no data host
-(`https://xt-store.invalid/c-…`). `?store=cache` forces the fallback.
+Where: the origin private file system (`navigator.storage.getDirectory()`).
+Chunks are written with `createWritable()` on the main thread where it
+exists (Chrome and Edge 86+, Chrome for Android 109+, Firefox 111+ on
+desktop and Android, Safari 26+): the browser writes a swap file and
+replaces the entry on `close()`, so a reader never sees half a chunk.
+Where it does not (Safari 15.2 to 18), a worker made from text inside
+`store.js` writes with `createSyncAccessHandle()` (truncate, write, flush):
+a write cut short leaves a file of the wrong size, which counts as absent.
+`?store=opfs-worker` forces that path (tested in Chromium and Firefox;
+Safari itself is unverified). Where OPFS cannot be written at all, the
+Cache API with keys that carry no data host
+(`https://xt-store.invalid/c-…`; `?store=cache` forces it), and where
+nothing can be stored (Firefox private windows) memory, for that visit.
+
+What the store does, against what was asked of it:
+
+| | |
+|---|---|
+| Streamed writes | A chunk (32 MiB at most) is received into one reused buffer, hashed, then written in one piece; on slow connections its 4 MiB pieces are written as they arrive. Memory while downloading: two 32 MiB buffers, whatever the size of the data |
+| Resumable | Per chunk, and inside a chunk from its last 4 MiB piece with an HTTP `Range` request |
+| Integrity | SHA-256 of every chunk before it is stored; a chunk that fails twice is an error, never stored |
+| Read in place | Yes (`web/lazyfs.js`, above): nothing is copied into WebAssembly memory but the blocks the engine reads |
+| Survives | Reloads, closing the tab, a browser restart (tested with SIGKILL in Chromium and Firefox), and new releases: chunks are named by their SHA-256, never by a build or a manifest, so a release that changes no data fetches nothing, and one that changes a file fetches that file's chunks |
+| Deleted by the page | A chunk whose size is wrong when it is mounted, or whose hash is wrong when "Verify data" runs; "Clear data"; and pruning (below), which only touches chunks no release used in the last 60 days lists any more (replaced game code, mostly). Nothing else, ever |
 
 - **Warm start** checks that each chunk exists with the right size (about
   20 ms for the 40 chunks); it does not hash. "Verify data" (Settings and
@@ -392,9 +463,20 @@ else the Cache API with keys that carry no data host
 - **Downloads** run two chunks at a time; Pause, Cancel, a reload or a lost
   connection keep every finished chunk and the pieces of the rest.
 - **Updates.** What is missing after a release is fetched without a question
-  when it is under 50 MB and not a first install (`?ask` forces the dialog);
-  bigger downloads and the first install ask, saying how much, how much is
-  already there, and how much room the browser offers.
+  when it is under 50 MB or under a quarter of the whole, and not a first
+  install (`?ask` forces the dialog); bigger downloads and the first install
+  ask, saying how much, how much is already there, and how much room the
+  browser offers.
+- **Data the browser removed.** Each start notes which release (manifest
+  ids) it started with. When a later start of the same release finds
+  chunks missing, they were removed (evicted, or site data deleted): the
+  page says so in one line and downloads exactly those again with the
+  progress page, without a question and without an error. A browser that
+  evicts takes the whole origin at once (OPFS, IndexedDB and localStorage
+  together), so after a real eviction the page cannot know it was ever
+  here: that visit looks like a first one, with the Download button, and
+  the settings are gone with it. "Clear data" in the popover is the
+  player's own doing and also leads to the first-visit question.
 - **Older layouts** (pages before this one kept whole files as
   `<rev>-<path>` in OPFS, or 32 MiB parts keyed by data URL in the Cache
   API): adopted at the first start, each chunk read, hash-checked and
@@ -405,12 +487,20 @@ else the Cache API with keys that carry no data host
   keeps every chunk of every manifest any page path started with in the last
   60 days (two Pages paths share one origin), and stops if one of those
   manifests cannot be read.
-- **Persistence.** After a download the page asks for persistent storage
-  (`navigator.storage.persist()`). The ready screen says how much is stored,
-  how much the browser allows the site, and, when storage is not persistent,
-  that the browser may clear it under disk pressure (and that Safari clears
-  it after 7 days without a visit), pointing at Install / Add to Home Screen,
-  which keeps it.
+- **Persistence.** The page never calls `navigator.storage.persist()` by
+  itself. Without it the storage is "best effort": it stays between
+  visits, but the browser may delete the whole site's data when the device
+  runs short of space (least recently used sites first), Safari deletes
+  script-written data of sites not visited for seven days of use, and a
+  browser set to delete site data when it closes deletes it every time.
+  The first-visit page says so. The switch "Keep game data on this device"
+  in the Storage popover calls `persist()` inside that click and then shows
+  what `persisted()` says: Chrome and Safari answer by themselves, without
+  a prompt (Chrome says yes to sites that are installed, bookmarked or used
+  often; a fresh profile gets no), Firefox asks the player. A yes cannot be
+  taken back from the page (there is no API for it), only in the browser's
+  site settings, and the switch says that too. The popover also shows
+  `estimate()`: used and quota.
 
 Each origin has its own storage: `godnotic.vercel.app`, every Vercel preview
 URL and `dixonsolutions.github.io` each download once.
@@ -489,6 +579,134 @@ set's textures are ASTC only (DXT was kept only where ASTC came out
 bigger), so a GPU without ASTC must not get it: the profile is offered only
 where the extension is there.
 
+## An existing install
+
+The wish: a device that already has Godnotic (the Android app, the Flatpak)
+should not download the game data a second time for the browser, and
+nobody should have to pick a folder. What the web platform allows, checked
+against the documents linked here on 2026-11-14:
+
+| Route | Possible? | What was done |
+|---|---|---|
+| The page finds the install's files by itself | **No.** A page cannot list or read the device's files, or another app's storage. The only way to files outside its own storage is `showDirectoryPicker()`, which "requires transient user activation" (a click) and always shows the browser's folder picker ([MDN](https://developer.mozilla.org/en-US/docs/Web/API/Window/showDirectoryPicker)). It exists in Chrome and Edge 86+ on desktop and Chrome for Android 132+, not in Firefox or Safari ([compat data](https://github.com/mdn/browser-compat-data/blob/main/api/Window.json)) | nothing to do |
+| Reading the Android app's data folder with the picker | **No.** The app keeps its packs in its private storage, which Android gives to no other app, and the system picker that Chrome for Android opens does not show app-private directories. (No Chrome or Android document says this in one sentence; it follows from Android's app sandbox, and is not tested on a device here.) | nothing to do |
+| The browser tells the page the app is installed | **Chrome on Android only**: `navigator.getInstalledRelatedApps()` (Chrome for Android 80+), when the web manifest lists the app in `related_applications` and the app names the site in an `asset_statements` entry of its manifest ([Chrome docs](https://developer.chrome.com/docs/capabilities/get-installed-related-apps)). Nothing there requires the app to come from Google Play, but sideloaded installs are not verified here | done: web side (`manifest.webmanifest`, `shell.js`), app side (`AndroidManifest.xml`, `res/values/asset_statements.xml`) |
+| Handing over to the app (no pick, no download) | **Yes, with one tap.** A link to a URL the app handles opens it. Chrome for Android takes `intent://…#Intent;scheme=…;package=…;S.browser_fallback_url=…;end` from a tap, not from a typed URL or a script without a gesture ([Chrome docs](https://developer.chrome.com/docs/android/intents)); other browsers and Linux take the custom scheme, `godnotic://open` | done: the first-visit page offers "Open the Godnotic app" (see below); the app declares the `godnotic` scheme; the Flatpak's desktop file already registered `x-scheme-handler/godnotic` |
+| Links to the web game open the app (Android App Links) | **Yes, on one host.** The app's intent filter with `autoVerify` plus `/.well-known/assetlinks.json` at the root of the host, naming the package and its signing certificate, served as JSON without redirects ([Android docs](https://developer.android.com/training/app-links/configure-assetlinks)). That works for `godnotic.vercel.app`; it cannot for the GitHub Pages copy, whose host root (`dixonsolutions.github.io/.well-known/`) belongs to another repository. A verified link opens the app from other apps and from links tapped on other sites; a URL typed into the browser stays in the browser | done: `web/.well-known/assetlinks.json` (copied by `scripts/build-web.sh`), the intent filter for `https://godnotic.vercel.app/` |
+| Reusing a desktop install's packs after one pick | **Yes, in desktop Chromium.** One `showDirectoryPicker()`, the handle kept in IndexedDB; on later visits the browser asks again or, from Chrome 122, offers "Allow on every visit" ([Chrome blog](https://developer.chrome.com/blog/persistent-permissions-for-the-file-system-access-api)). `requestPermission()` needs a click | done: "Use an existing Godnotic folder" in the Storage popover (below) |
+| The running app serves its packs to the page on loopback | Technically yes, not worth it (below) | not done |
+
+**The signing certificate** in `assetlinks.json` is the one the release APKs
+carry: SHA-256 `DB:CE:85:DC:DE:04:16:1C:E5:77:08:6B:B2:2E:03:82:AC:20:3B:D2:0E:47:45:84:C1:2D:DC:06:B0:31:5A:5B`
+(subject `CN=dixonSolutions, OU=Android, O=dixonSolutions, C=US`), read from
+the APK signing block of `Godnotic-1.2.189-arm64-v8a.apk`, `-x86_64.apk`,
+`XonoticTouch-live-1.2.189-arm64.apk` and `Godnotic-1.2.175-arm64-v8a.apk`
+(all the same; package `io.github.dixonsolutions.xonotictouch`). It is the
+keystore in the repository secret `ANDROID_KEYSTORE_BASE64`; a build signed
+with the throwaway key (`scripts/android-build.sh` without a keystore) is
+not covered. A new keystore means a new fingerprint in that file.
+
+### What the page does
+
+A returning visitor with the data in the browser never sees any of this:
+the game starts. On a first visit, the download page:
+
+- asks `getInstalledRelatedApps()` where it exists. When the Godnotic app
+  is reported: "Godnotic is installed on this device, with the game data
+  and your settings: no download needed.", the button "Open the Godnotic
+  app" as the suggested action, and Download next to it.
+- on Android and Linux where the browser cannot tell (Firefox, Chrome
+  before the app update with `asset_statements`, every Linux browser): a
+  plain link "Have the Godnotic app? Open it". The page does not claim the
+  app is there. On Chrome for Android the link is an intent URL naming the
+  package, with this page plus `?noapp=1` as its fallback, so a device
+  without the app comes back and reads "The Godnotic app is not installed
+  on this device."; a `godnotic:` link with no handler does nothing
+  visible in most browsers.
+- elsewhere (Windows, macOS, iOS): nothing, there is no app.
+
+The app opens as from its launcher (the link carries nothing yet); the
+Linux launcher already understands `godnotic://join/HOST:PORT`.
+
+### An existing folder (desktop Chromium)
+
+Storage popover, "Use an existing Godnotic folder" (shown where
+`showDirectoryPicker` exists). The player picks a folder once; the page
+looks up to four levels below it for the shallowest folder with a
+`xonotic-…-data.pk3` and a `xonotic-…-maps.pk3`, and takes from it the
+stock packs it knows (data, maps, music, xoncompat, the fonts; the newest
+of each), nothing else. It refuses, with the reason, a folder without
+them, a pack that is not a whole zip (still downloading in the app), the
+phone set (ASTC textures) on a GPU without ASTC, and a browser that cannot
+read files in place. Then:
+
+- those packs are read in place from the folder (`web/lazyfs.js`, the same
+  reads as from OPFS), read only; the handle is asked for with
+  `mode: 'read'`;
+- this build's own files (game code, configs, about 15 MB) still come
+  from the site into OPFS, with no question: the page's engine needs its
+  own game code, not the app's;
+- a `config.cfg` next to the packs is taken over as the browser game's
+  settings (asked first when the browser game already has settings).
+  "Import settings" does the same for a `config.cfg` picked by itself, in
+  every browser;
+- on later visits the handle comes from IndexedDB. Permission still
+  granted: straight into the game, no data requests. Not granted: when the
+  browser's own storage has everything, that is used; otherwise the
+  download page offers "Use the folder “…”" (one click, the browser's
+  permission prompt) next to Download;
+- "Stop using the folder" forgets the handle.
+
+Where the packs are on Linux (from `packaging/start.sh` and the Flatpak
+manifest):
+
+| Install | Packs | Settings | Pickable in Chromium? |
+|---|---|---|---|
+| Flatpak | `~/.var/app/io.github.dixonSolutions.XonoticTouch/data/xonotic-touch/data/` | `~/.xonotic/data/config.cfg` | Yes: `~/.var` is not on Chromium's block list. It is hidden, so the path has to be typed (Ctrl+L in the GTK picker) |
+| Local package (no Flatpak) | `~/.local/share/xonotic-touch/data/` | `~/.xonotic/data/config.cfg` | **No**: Chromium refuses `~/.local/share` and everything below it, like `~/.config`, `~/.ssh` and the home folder itself ([source](https://github.com/chromium/chromium/blob/main/chrome/browser/file_system_access/chrome_file_system_access_permission_context.cc), `kBlockPaths`). A copy or a symlinked folder elsewhere works |
+| Stock Xonotic | its `data/` folder (`~/.var/app/org.xonotic.Xonotic/…`, `/usr/share/xonotic/data`, an unpacked zip) | `~/.xonotic/data/config.cfg` | as its location allows; `/usr/share` works |
+| Ubuntu Touch, Android | app-confined storage | | no picker reaches it |
+
+The settings live in another tree than the Flatpak's packs, and the home
+folder itself cannot be picked, so one pick cannot cover both: "Import
+settings" is the way for `~/.xonotic/data/config.cfg`.
+
+Limits, plainly: this is a convenience for desktop Chromium, not the
+"find it without asking" that was wished for, which no browser offers.
+The picker cannot be driven in a headless browser, so the automated test
+answers `showDirectoryPicker()` with a directory handle it fills itself
+(an OPFS directory: the same interface); the picker window, Chromium's
+permission prompts and "Allow on every visit" are checked by hand only.
+A pack that the app replaces while the page is open fails its reads
+(`EIO` to the engine) until a reload.
+
+### The app serving its packs on loopback: evaluated, not done
+
+The Android or Linux app could answer `http://127.0.0.1:<port>/` with its
+packs, and the page could fetch them without any pick.
+
+- Mixed content does not forbid it: loopback addresses are "potentially
+  trustworthy" ([Secure Contexts](https://w3c.github.io/webappsec-secure-contexts/)),
+  and Chrome and Firefox allow `fetch('http://127.0.0.1…')` from an https
+  page (Safari's behaviour is not confirmed).
+- Chrome 142 put it behind a permission prompt of its own, Local Network
+  Access, for every request from a public site to a local or loopback
+  address ([Chrome blog](https://developer.chrome.com/blog/local-network-access)):
+  so it is not "without asking" either, and the prompt ("look for and
+  connect to devices on your local network") reads worse than a folder
+  picker.
+- It only works while the app runs, which on Android means a foreground
+  service serving half a gigabyte to a browser tab that is about to
+  compete with it for memory; and the device then holds the data twice
+  anyway, because the page has to keep what it fetched (in OPFS) to start
+  without the app next time.
+- It is a file server in the app: it would need loopback-only binding, a
+  fixed read-only list of packs, an `Origin` check and a port the page can
+  guess, and every one of those is a place to get security wrong.
+
+The hand-over to the app gives the player the installed game with no
+download at all, which is what this route would be for.
+
 ## The shell
 
 What shows before and around the canvas (web/index.html, shell.css,
@@ -511,20 +729,29 @@ banner is the hero, on its own black card.
   Cancel); then the game.
 - **Storage popover** (menu button; `web_storage` in the console over the
   game, which frees the mouse): Stored in (OPFS, cache storage, or memory
-  only with the reason), Game data (stored of total, which set), Space
-  (`estimate()`), Kept (`persisted()`), Last problem; Install app, Verify
-  data, Clear data (with a confirmation); render resolution and fullscreen.
+  only with the reason, and the folder when one is used), Game data
+  (stored of total, which set), Space (`estimate()`), the switch Keep game
+  data on this device (`persist()` on the click, `persisted()` shown), Last
+  problem; Install app, Verify data, Clear data (with a confirmation;
+  refused while another tab of the site is open, whose game it would
+  break), Use an existing Godnotic folder / Stop using the folder, Import
+  settings (a `config.cfg`); render resolution and fullscreen.
   Closes on Escape or a tap outside it; taps on it never grab the mouse.
 - **Problems in one line**, on the download page, in the popover and in the
-  console: "The browser closed this page while downloading (12 of 13
-  pieces were saved; it carries on from there), most likely to free
-  memory.", "The game data is gone from this browser: it was cleared …",
+  console: "The browser closed this page while downloading (what had
+  arrived is kept; it carries on from there), most likely to free memory.",
+  "39 MB of the game data is gone from this browser: the browser removed
+  it …",
   "Not enough space: this needs 405 MB and the browser offers 300 MB …",
   "Nothing can be stored in this window …", "An update: 3 MB changed."
 - **Breadcrumbs**: each start writes its phase to localStorage (download
   with pieces saved, mount, engine, running, quit), and "closed" on
   `pagehide`. A phase without "closed" at the next load means the browser
-  killed the page; that is what the first line above says.
+  killed the page; that is what the first line above says. Not every such
+  breadcrumb is a kill: each page holds a Web Lock named after itself, so a
+  breadcrumb whose page still holds its lock is another tab at work, and
+  one left in the download phase says nothing once the data is complete.
+  A second tab that has to wait for the first one's download says so.
 
 ## Build and run locally
 
@@ -573,12 +800,22 @@ Tests: `scripts/test-web-cache.sh` runs `tests/web-cache/cache.test.mjs` (the
 store and the loader flow in node, against an in-memory OPFS, Cache API and
 a data host with Range: first visit, warm start with zero requests, small and
 large updates, pause and resume, reload mid-chunk, damaged chunks, adopting
-the older layouts, prune safety; maps on demand, a cancelled map download,
+the older layouts, prune safety; the persist switch, data removed by the
+browser, a new deploy with the same packs, the installed-app offer, the
+checks on a picked folder; maps on demand, a cancelled map download,
 the background download with pause and resume, a map asked for during it,
 the profile by GPU, a returning visitor keeping the full set, and one whose
 full set is incomplete) and `scripts/test-web-cache-repro.sh` (staging and
 the map split are reproducible; where each traced file goes). CI
 runs both on every push and pull request that touches the web loader.
+`tests/web-cache/browser.sh` runs the store in real browsers (headless
+Chromium and Firefox), killing and restarting them between steps: a
+download into OPFS cut off and resumed, a restart, the worker writer, an
+evicted and a damaged chunk, `persist()`; with `--site build/web` it also
+drives the page in Chromium: first visit without `persist()`, a restart and
+a new deploy with no data requests, one chunk evicted or damaged (one
+request each), the switch denied and granted, the installed-app offer, and
+with `--install DIR` an existing folder (see tests/web-cache/README.md).
 `tests/web-cache/e2e.sh PROFILE URL LABEL` drives a real headless GPU Chrome
 through a visit (clicks Download, waits for the menu) and prints times,
 heap (V8 heap, ArrayBuffer backing stores, the renderer's private memory)
@@ -606,8 +843,9 @@ are needed:
 - `buildCommand` (`scripts/vercel-build.sh`): `scripts/build-web.sh` (and
   libopus, cached), then the stock data from the pinned Godnotic data
   release (`data-20261107`; move the pin to change the data) and the slim
-  set (`data-slim`, sha256-pinned; a different file is used with a
-  warning), split and staged with `scripts/stage-web-data.sh` (the split
+  set (`data-slim`, sha256-pinned: the build fails when it cannot be
+  fetched or is not the pinned file, rather than deploying without the
+  ASTC profile or with other data), split and staged with `scripts/stage-web-data.sh` (the split
   takes seconds). Output: about 1.46 GB of blobs (web 1.07 GB, astc 0.40 GB,
   the full set's shared chunks counted once, its maps pk3 not hosted).
   About 3½ minutes on the Hobby build machine (2 cores); the SDK comes from
@@ -666,9 +904,12 @@ creates them):
 
 The zip must keep the stock file names under `Xonotic/data/`: the stager
 finds the data and maps pk3 by `xonotic-*-data.pk3` / `xonotic-*-maps.pk3`
-and splits the maps pk3 itself. Publishing the slim set under an immutable
-tag (`data-slim-<date>`) instead of the moving `data-slim` would make
-builds reproducible; the pin warns when the asset changes.
+and splits the maps pk3 itself. `data-slim` is a tag that moves: the build
+is pinned to the asset's hash and fails when it changes. The slim set
+should be published under an immutable tag (`data-slim-<stock date>-<n>`,
+for example `data-slim-20261107-1`, asset `Godnotic-data.zip` with its
+`.sha256`), and `SLIM_URL`/`SLIM_SHA256` in `scripts/vercel-build.sh`
+moved to it on purpose.
 
 **GitHub Pages** (shell). `.github/workflows/web.yml` runs after every
 successful "Build and publish" run (each push to `main`), or by hand from the
