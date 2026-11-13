@@ -20,6 +20,9 @@ class Ctx(val env: Map<String, String>, val configPath: String, val cfg: Launche
     var maps: List<String>? = null
         private set
     private val dataListeners = mutableListOf<() -> Unit>()
+    val download = Download(this)
+    /** Switches the window to a page by name; set by the window. */
+    var showPage: (String) -> Unit = {}
     private var saveQueued = false
     /** The config text last written, so quitting does not rewrite an unchanged file. */
     var savedText = ""
@@ -68,6 +71,16 @@ class Ctx(val env: Map<String, String>, val configPath: String, val cfg: Launche
     }
 
     fun play() {
+        if (download.busy) {
+            showPage("data")
+            toast("The game data is still downloading")
+            return
+        }
+        if (data?.ready == false) {
+            showPage("data")
+            toast("Download the game data first")
+            return
+        }
         val start = paths.startScript
         if (start == null) {
             toast("Game not found. Set its folder in Settings.")
@@ -158,6 +171,19 @@ window.xt { background: #0b0f14; }
 .console-frame { border-radius: 12px; border: 1px solid #233041; }
 .big-action { min-height: 56px; border-radius: 16px; font-size: 18px; font-weight: 800; padding: 0 28px; }
 .section-gap { margin-top: 18px; }
+/* Touch first: every row and button a comfortable thumb target (48 px and up). */
+row, row.activatable, row.combo, row.entry, row.spin { min-height: 56px; }
+row .title { font-size: 16px; }
+row .subtitle { font-size: 14px; }
+button { min-height: 40px; min-width: 40px; }
+button.big-action { min-height: 56px; }
+.banner-pic { margin: 0 8px; }
+.state-text { font-size: 16px; }
+.progress-card { padding: 18px 20px; }
+.xt-progress trough, .xt-progress progress { min-height: 14px; border-radius: 7px; }
+.error-card { padding: 16px 20px; background: rgba(217,83,74,0.14); }
+.error-text { color: #ffb4ad; font-size: 15px; }
+row.warning-row .subtitle { color: #ffc07a; }
 /* Phones and narrow windows: bigger targets for thumbs. */
 window.narrow row.activatable, window.narrow row.combo, window.narrow row.entry, window.narrow row.spin,
 window.narrow row.switch-row, window.narrow row { min-height: 64px; }
@@ -166,6 +192,7 @@ window.narrow .play-button { min-height: 96px; min-width: 0; font-size: 28px; }
 window.narrow .brand { font-size: 24px; letter-spacing: 4px; }
 window.narrow viewswitcherbar button { min-height: 64px; }
 window.narrow button.big-action { min-height: 64px; }
+window.narrow .title-1 { font-size: 24px; }
 """
 
 class LauncherWindow(val ctx: Ctx, app: CPointer<GtkApplication>?, startPage: String) {
@@ -175,6 +202,7 @@ class LauncherWindow(val ctx: Ctx, app: CPointer<GtkApplication>?, startPage: St
     private val holders = mutableMapOf<String, Widget>()
     private val builders = linkedMapOf<String, () -> Widget>(
         "play" to { playPage(ctx) },
+        "data" to { dataPage(ctx) },
         "mods" to { modsPage(ctx) },
         "host" to { hostPage(ctx) },
         "settings" to { settingsPage(ctx) },
@@ -183,6 +211,7 @@ class LauncherWindow(val ctx: Ctx, app: CPointer<GtkApplication>?, startPage: St
     init {
         ctx.window = win
         gtk_window_set_title(win.cast(), "Godnotic")
+        gtk_window_set_icon_name(win.cast(), APP_ID)
         val (dw, dh) = windowSize ?: (980 to 720)
         gtk_window_set_default_size(win.cast(), dw, dh)
         gtk_widget_set_size_request(win, 360, 480)
@@ -198,6 +227,7 @@ class LauncherWindow(val ctx: Ctx, app: CPointer<GtkApplication>?, startPage: St
         adw_view_switcher_bar_set_stack(bar.cast(), stack.cast())
 
         page("play", "Play", "media-playback-start-symbolic")
+        page("data", "Data", "folder-download-symbolic")
         page("mods", "Mods", "application-x-addon-symbolic")
         page("host", "Host", "network-server-symbolic")
         page("settings", "Settings", "emblem-system-symbolic")
@@ -227,6 +257,11 @@ class LauncherWindow(val ctx: Ctx, app: CPointer<GtkApplication>?, startPage: St
             gtk_widget_remove_css_class(win, "narrow")
         }
         adw_application_window_add_breakpoint(win.cast(), bp)
+
+        ctx.showPage = { name ->
+            ensureBuilt(name)
+            adw_view_stack_set_visible_child_name(stack.cast(), name)
+        }
 
         // Pages are built the first time they are shown; Play is built now.
         stack.onNotify("visible-child-name") { ensureBuilt(adw_view_stack_get_visible_child_name(stack.cast())?.toKString()) }

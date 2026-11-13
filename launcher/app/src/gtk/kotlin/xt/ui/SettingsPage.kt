@@ -12,8 +12,8 @@ fun settingsPage(ctx: Ctx): Widget {
 
     // Game data
     val dataRow = actionRow("Game data", "Checking…", "folder-download-symbolic")
-    val setUp = button("Set Up", null, "suggested-action") { ctx.play() }.align(v = GTK_ALIGN_CENTER)
-    gtk_widget_set_tooltip_text(setUp, "Starts the game, which downloads the data it needs")
+    val setUp = button("Download", null, "suggested-action") { ctx.showPage("data") }.align(v = GTK_ALIGN_CENTER)
+    gtk_widget_set_tooltip_text(setUp, "Opens the Data page to download the game data")
     dataRow.suffix(setUp.visible(false))
     val folderRow = actionRow("Data folder", ctx.paths.userBase, "folder-symbolic")
     folderRow.suffix(button(null, "folder-open-symbolic", "flat") { Sys.mkdirs(ctx.paths.userBase); openFolder(ctx.window, ctx.paths.userBase) }
@@ -21,7 +21,7 @@ fun settingsPage(ctx: Ctx): Widget {
     val gameRow = actionRow("Game", ctx.paths.startScript ?: "Not found", "applications-games-symbolic")
     ctx.onData {
         val d = ctx.data ?: return@onData
-        dataRow.setSubtitle(if (d.ready) "Ready · ${d.summary}" else "Not downloaded yet. Set Up starts the game's downloader (about 3 GB).")
+        dataRow.setSubtitle(if (d.ready) "Ready · ${d.summary}" else "Not downloaded yet. Download fetches it (about 1.2 GB, less with the slim set).")
         setUp.visible(!d.ready)
         folderRow.setSubtitle(ctx.paths.userBase)
         gameRow.setSubtitle(ctx.paths.startScript ?: "Not found")

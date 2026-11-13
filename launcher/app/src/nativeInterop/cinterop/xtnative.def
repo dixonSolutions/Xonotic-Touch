@@ -1,0 +1,43 @@
+headers = curl/curl.h zlib.h
+headerFilter = curl/* zlib.h zconf.h
+package = xtnative
+compilerOpts = -DCURL_DISABLE_TYPECHECK
+---
+/* curl_easy_setopt and curl_easy_getinfo are variadic: one typed wrapper per argument kind. */
+static inline CURLcode xt_setopt_long(CURL *h, CURLoption o, long v) { return curl_easy_setopt(h, o, v); }
+static inline CURLcode xt_setopt_ptr(CURL *h, CURLoption o, void *v) { return curl_easy_setopt(h, o, v); }
+static inline CURLcode xt_setopt_str(CURL *h, CURLoption o, const char *v) { return curl_easy_setopt(h, o, v); }
+static inline long xt_response_code(CURL *h) { long c = 0; curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &c); return c; }
+
+/* zlib, through wrappers: inflateInit2 is a macro over inflateInit2_. */
+static inline int xt_inflate_init_raw(z_stream *s) { return inflateInit2(s, -15); }
+static inline int xt_inflate(z_stream *s) { return inflate(s, Z_NO_FLUSH); }
+static inline int xt_inflate_end(z_stream *s) { return inflateEnd(s); }
+enum { XT_Z_OK = Z_OK, XT_Z_STREAM_END = Z_STREAM_END, XT_Z_BUF_ERROR = Z_BUF_ERROR };
+
+/* statvfs and flock, which Kotlin/Native's posix bindings lack or shadow. */
+#include <sys/statvfs.h>
+#include <sys/file.h>
+static inline long long xt_free_bytes(const char *path) {
+    struct statvfs s;
+    if (statvfs(path, &s) != 0) return -1;
+    return (long long)s.f_bavail * (long long)s.f_frsize;
+}
+static inline int xt_flock(int fd, int op) { return flock(fd, op); }
+
+/* libepoxy, which GTK already loads: what the current GL context offers.
+ * Declared here rather than through epoxy/gl.h, which is very large. */
+#include <stdbool.h>
+bool epoxy_has_gl_extension(const char *extension);
+int epoxy_gl_version(void);
+bool epoxy_is_desktop_gl(void);
+typedef const unsigned char *(*xt_glgetstring_fn)(unsigned int name);
+extern xt_glgetstring_fn epoxy_glGetString;
+static inline const char *xt_gl_string(unsigned int name) { return (const char *)epoxy_glGetString(name); }
+
+/* --fetch (headless): Ctrl-C or SIGTERM stops the download cleanly, saving its state. */
+#include <signal.h>
+static volatile sig_atomic_t xt_stop_flag = 0;
+static void xt_on_stop_signal(int s) { (void)s; xt_stop_flag = 1; }
+static inline void xt_catch_stop_signals(void) { signal(SIGINT, xt_on_stop_signal); signal(SIGTERM, xt_on_stop_signal); }
+static inline int xt_stop_requested(void) { return xt_stop_flag; }

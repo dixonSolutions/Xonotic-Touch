@@ -13,33 +13,53 @@ fun playPage(ctx: Ctx): Widget {
     val layouts = Profiles.layouts(profiles).ifEmpty { Profiles.layouts(Profiles.builtin) }
     val perf = Profiles.performance(profiles)
 
-    // Hero: the name, where the data stands, and one very large button.
-    val brand = hbox(12,
-        label("GODNOTIC", "brand", "brand-accent"),
-    ).align(h = GTK_ALIGN_CENTER)
-    val status = label("Checking game data…", "status-pill").align(h = GTK_ALIGN_CENTER)
+    // Hero: the banner, where the data stands, and one very large button.
+    val brand = Branding.picture(Branding.banner, 132, "Godnotic")?.css("banner-pic")
+        ?: hbox(12, label("GODNOTIC", "brand", "brand-accent")).align(h = GTK_ALIGN_CENTER)
+    val status = label("Checking game data…", "status-pill", wrap = true).align(h = GTK_ALIGN_CENTER)
     val play = button("PLAY", null, "play-button") { ctx.play() }
     gtk_widget_set_tooltip_text(play, "Start Godnotic with these settings")
     val playClamp = clamp(play, 460).margins(18, 4, 8, 4)
+    // Shown while the data is missing: the way to the download.
+    val getData = button("Download Game Data", "folder-download-symbolic", "big-action", "suggested-action") { ctx.showPage("data") }
+        .align(h = GTK_ALIGN_CENTER).visible(false)
     val hero = vbox(10,
         brand,
         label("Arena FPS for phones, tablets and touchscreens", "tagline", wrap = true),
         status,
+        getData,
         playClamp,
     ).css("hero")
 
-    ctx.onData {
-        val d = ctx.data ?: return@onData
+    fun showStatus() {
+        val d = ctx.data ?: return
+        val dl = ctx.download
         gtk_widget_remove_css_class(status, "ok")
         gtk_widget_remove_css_class(status, "warn")
-        if (d.ready) {
-            status.setLabel("Game data ready · ${d.summary}")
-            status.css("ok")
-        } else {
-            status.setLabel("Game data not downloaded yet · Play opens the downloader")
-            status.css("warn")
+        val p = dl.progress
+        when {
+            dl.phase == Download.Phase.RUNNING && p != null && p.total > 0 -> {
+                status.setLabel("Downloading game data · ${p.done * 100 / p.total} %")
+                status.css("warn")
+            }
+            d.ready -> {
+                status.setLabel("Game data ready · ${d.summary}")
+                status.css("ok")
+            }
+            dl.phase == Download.Phase.PAUSED || (dl.need?.resumed ?: 0) > 0 -> {
+                status.setLabel("Game data download paused · resume it on the Data page")
+                status.css("warn")
+            }
+            else -> {
+                status.setLabel("Game data not downloaded yet")
+                status.css("warn")
+            }
         }
+        getData.visible(!d.ready)
+        playClamp.visible(d.ready)
     }
+    ctx.onData { showStatus() }
+    ctx.download.onChange { showStatus() }
 
     // Controls
     val layoutIdx = layouts.indexOfFirst { it.id == cfg.string(Keys.TOUCH_PROFILE, "standard") }.coerceAtLeast(0)
