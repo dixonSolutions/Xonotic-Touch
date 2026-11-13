@@ -667,6 +667,8 @@ void UIB_BuildPassword()
 		return;
 	uib_s("presentation", "dialog");
 	uib_b("dismissable", 1);
+	// a button as well as Enter: the dialog's main action (renderers put it in the action bar)
+	uib_j("primary", UIB_AS("password.join", _("Join"), "play", "primary"));
 	UIB_Text("text", sprintf(_("%s needs a password."), UIB_VM("mp.server")), "");
 	UIB_Open("form", "form");
 		uib_j("submit", UIB_AS("password.join", _("Join"), "play", "primary"));
@@ -1003,7 +1005,8 @@ void UIB_Action(string node, string a, string payload)
 		case "resume": m_hide(); return;
 		case "spectate": localcmd("\nspec\n"); m_hide(); return;
 		case "disconnect": localcmd("\ndisconnect\n"); return;
-		case "loading.cancel": localcmd("\ndisconnect\n"); return;
+		// disconnect alone does not stop a join the server has not answered yet
+		case "loading.cancel": localcmd("\ndisconnect\n_touch_cancel_join\n"); return;
 		case "credits.full": m_goto("Credits", true); return;
 	}
 }
