@@ -151,6 +151,8 @@ def main():
     ud = tempfile.mkdtemp(prefix="uibt-", dir=os.environ.get("TMPDIR"))
     sock = os.path.join(ud, "run", "uib.sock")
     pre = "".join("uib_modpage hostile %s %s\n" % (k, v) for k, v in HOSTILE) + "uib_modpage radar main " + GOOD + "\n"
+    # a join that goes nowhere (then cancelled by the test), and the password prompt
+    pre += 'defer 30 "connect 127.0.0.1:9"\ndefer 50 "set _uib_debug_open mp.password"\n'
     t0 = time.monotonic()
     p, log = spawn(["-uibridge", "listen:" + sock], ud, pre)
     try:
@@ -216,14 +218,33 @@ def main():
         c.settle()
         mp = c.nodes.get("mods.page.radar.main/g/r")
         check(mp is not None and mp.get("origin") == "mod:radar", "mod page nodes carry origin mod:radar")
+        # a join that is cancelled (or refused) must not leave the loading screen on the stack
+        end = time.monotonic() + 40
+        while time.monotonic() < end and c.nodes.get("app", {}).get("props", {}).get("stack") != ["loading"]:
+            c.recv(1.0)
+        check(c.nodes["app"]["props"].get("stack") == ["loading"], "a join shows the loading screen")
+        holder = next((k for k, n in c.nodes.items() if k.startswith("loading") and "loading.cancel" in json.dumps(n.get("props", {}))), "loading")
+        r = c.request({"t": "ev", "ev": "action", "node": holder, "action": "loading.cancel"}, limit=3)
+        check(r is None or r.get("t") != "error", f"Cancel accepted on {holder} ({r})")
+        c.settle(quiet=3, limit=8)
+        stack = c.nodes["app"]["props"].get("stack")
+        check(stack and stack[-1] != "loading" and c.nodes["app"]["props"].get("context") == "menu",
+              f"after Cancel the stack leaves the loading screen ({stack}, context {c.nodes['app']['props'].get('context')})")
+        # the password prompt has a Join button, not only Enter
+        end = time.monotonic() + 30
+        while time.monotonic() < end and "mp.password" not in c.nodes:
+            c.recv(1.0)
+        pw = c.nodes.get("mp.password", {}).get("props", {})
+        check(pw.get("primary", {}).get("id") == "password.join", "the password prompt's primary action is Join")
         # reconnect: drop the socket, come back, same session
+        cur = (c.nodes.get("app", {}).get("props", {}).get("modal") or c.nodes.get("app", {}).get("props", {}).get("stack") or [""])[-1]
         s.close()
         time.sleep(1)
         s = connect(sock, 10)
         c = Conn(s)
         h2 = hello(c)
         check(h2 is not None and h2.get("session") == session, "reconnect: same engine session, fresh snapshot")
-        check("mods.page.radar.main" in c.nodes, "reconnect: the snapshot is the current screen")
+        check(cur in c.nodes, f"reconnect: the snapshot is the current screen ({cur})")
         # the engine quits about 10 s after the last front end leaves
         s.close()
         try:
