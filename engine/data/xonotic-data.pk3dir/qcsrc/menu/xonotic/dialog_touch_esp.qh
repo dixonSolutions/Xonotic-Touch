@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
+
+// Settings -> Mobile -> ESP: the offline-practice helpers (see-through walls,
+// enemy intel, Full 360, the autopilot) and the switch that turns them all off.
+//
+// Every control is an archived engine cvar the client reads each frame
+// (touch_aim.c, touch_tactics.c), so a change applies at once and is kept.
+// Whatever is set here, the engine runs these helpers only behind its offline
+// gate (TouchWep_PracticeGate): this process runs the server, the client is
+// on it over the loopback, no other human is connected, no demo plays. On any
+// other server they are off. cl_touch_esp_enabled takes "local" (the gate) or
+// "off"; there is no value that opens them anywhere else.
+#include "tab.qh"
+CLASS(GodnoticEspTab, XonoticTab)
+	METHOD(GodnoticEspTab, fill, void(entity));
+	ATTRIB(GodnoticEspTab, intendedWidth, float, 0.9);
+	ATTRIB(GodnoticEspTab, rows, float, 14);
+	ATTRIB(GodnoticEspTab, columns, float, 6);
+	ATTRIB(GodnoticEspTab, name, string, "mobileesp");
+ENDCLASS(GodnoticEspTab)
+entity makeGodnoticEspTab();

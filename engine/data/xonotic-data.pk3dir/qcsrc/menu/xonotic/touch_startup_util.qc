@@ -51,21 +51,59 @@ bool TouchStartup_assetFetchDialog_shouldShow()
 
 bool TouchStartup_userProfileNeeded()
 {
-	// Explicit flag set by FirstRun "Save settings".
-	if (cvar("touch_profile_done"))
-		return false;
+	// Godnotic opens on the main menu: no welcome / profile popup. The name and
+	// the language are in Settings (User, Mobile > Privacy, Multiplayer >
+	// Profile); a player who never picks a name plays as the engine default,
+	// and the language follows the system's (LanguageList_applySystemLanguage).
+	return false;
+}
 
-	string name = cvar_string("_cl_name");
-	// Legacy migrate: a real name + stats choice means profile was finished
-	// before touch_profile_done existed — do not force the wizard again.
-	if (name != cvar_defstring("_cl_name")
-		&& name != ""
-		&& name != "player"
-		&& name != "Player"
-		&& cvar_string("cl_allow_uid2name") != "-1")
-		return false;
+/** Statistics and identity on an install nobody asked, without a popup.
+ *
+ * Stock Xonotic asks every new player to accept its terms of service
+ * (dialog_termsofservice.qc), and its defaults send match statistics with the
+ * player ID to XonStat (cl_allow_uidtracking 1) on that acceptance. Godnotic
+ * shows no terms popup (TouchStartup_skipTermsOfService), so nobody has
+ * accepted anything: statistics start off, the player name is not shared and
+ * the in-game "use your nickname?" question is answered no. Settings > Mobile >
+ * Privacy turns them on and shows the terms.
+ *
+ * Once per install (touch_privacy_defaults_done). An install that accepted the
+ * terms in an earlier version (_termsofservice_accepted > 0), or that already
+ * chose to share its name (cl_allow_uid2name 1), keeps what it has.
+ */
+void TouchStartup_applyPrivacyDefaults()
+{
+	if (cvar("touch_privacy_defaults_done"))
+		return;
+	if (cvar("_termsofservice_accepted") <= 0 && cvar_string("cl_allow_uid2name") != "1")
+	{
+		cvar_set("cl_allow_uidtracking", "0");
+		cvar_set("cl_allow_uidranking", "0");
+		if (cvar_string("cl_allow_uid2name") == "-1")
+			cvar_set("cl_allow_uid2name", "0");
+	}
+	localcmd("seta touch_privacy_defaults_done 1\nsaveconfig\n");
+}
 
+/** No terms of service popup, on first start or when the terms change.
+ *
+ * Godnotic is not Xonotic's release and does not make playing conditional on
+ * accepting XonStat's terms. They stay readable from Credits and Settings >
+ * Mobile > Privacy (GodnoticTerms_Open), next to the statistics switch they
+ * are about. _termsofservice_accepted is left as it is: nobody accepted
+ * anything here.
+ */
+bool TouchStartup_skipTermsOfService()
+{
 	return true;
+}
+
+/** XonStat requests that carry the player ID, from the menu (the Profile
+ * statistics list): only when the player allows statistics. */
+bool TouchStartup_statsAllowed()
+{
+	return cvar("cl_allow_uidtracking") == 1;
 }
 
 bool TouchStartup_touchSetupNeeded()

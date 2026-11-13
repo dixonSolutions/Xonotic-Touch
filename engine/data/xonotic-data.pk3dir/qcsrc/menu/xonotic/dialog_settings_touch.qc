@@ -1,5 +1,7 @@
 #include "dialog_settings_touch.qh"
 #include "dialog_touch_mods.qh"
+#include "dialog_touch_esp.qh"
+#include "dialog_touch_privacy.qh"
 
 #include "touch_menu_layout.qh"
 #include "textlabel.qh"
@@ -57,17 +59,19 @@ entity makeGodnoticSettingsTab()
 
 void GodnoticSettingsTab_fill(entity me)
 {
-	// One row of sub-tab buttons, then the sub-tab itself: 15.5 = 1.5 + 14.
+	// One row of ten sub-tab buttons, then the sub-tab itself: 15.5 = 1.5 + 14.
 	entity mc = makeXonoticTabController(me.rows - 1.5);
 	me.TR(me);
-		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Controls"),   makeXonoticMobileControlsTab()));
-		me.TD(me, 1, 1, mc.makeTabButton(mc, _("HUD"),        makeXonoticMobileHudTab()));
-		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Aim"),        makeXonoticMobileAimTab()));
-		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Auto-shoot"), makeXonoticMobileAutoShootTab()));
-		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Tactics"),    makeXonoticMobileTacticsTab()));
-		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Dynamics"),   makeXonoticMobileDynamicsTab()));
-		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Loser"),      makeXonoticMobileLoserTab()));
-		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Mods"),       makeGodnoticModsTab())); // Lua mods (dialog_touch_mods.qc)
+		me.TD(me, 1, 0.6, mc.makeTabButton(mc, _("Controls"),   makeXonoticMobileControlsTab()));
+		me.TD(me, 1, 0.6, mc.makeTabButton(mc, _("HUD"),        makeXonoticMobileHudTab()));
+		me.TD(me, 1, 0.6, mc.makeTabButton(mc, _("Aim"),        makeXonoticMobileAimTab()));
+		me.TD(me, 1, 0.6, mc.makeTabButton(mc, _("Auto-shoot"), makeXonoticMobileAutoShootTab()));
+		me.TD(me, 1, 0.6, mc.makeTabButton(mc, _("Tactics"),    makeXonoticMobileTacticsTab()));
+		me.TD(me, 1, 0.6, mc.makeTabButton(mc, _("ESP"),        makeGodnoticEspTab())); // offline practice helpers (dialog_touch_esp.qc)
+		me.TD(me, 1, 0.6, mc.makeTabButton(mc, _("Dynamics"),   makeXonoticMobileDynamicsTab()));
+		me.TD(me, 1, 0.6, mc.makeTabButton(mc, _("Loser"),      makeXonoticMobileLoserTab()));
+		me.TD(me, 1, 0.6, mc.makeTabButton(mc, _("Mods"),       makeGodnoticModsTab())); // Lua mods (dialog_touch_mods.qc)
+		me.TD(me, 1, 0.6, mc.makeTabButton(mc, _("Privacy"),    makeGodnoticPrivacyTab())); // stats, name, terms (dialog_touch_privacy.qc)
 	me.gotoRC(me, 1.5, 0);
 		me.TD(me, me.rows - 1.5, me.columns, mc);
 }
@@ -545,14 +549,7 @@ void XonoticMobileTacticsTab_fill(entity me)
 			_("When the enemy you are fighting goes out of sight, keep the crosshair where it was last seen, for up to 3 seconds")));
 			setDependent(e, "cl_touch_aimassist", 1, 1);
 	me.TR(me);
-		me.TD(me, 1, 2, e = makeXonoticCheckBox_T(0, "cl_touch_practice_seethrough", _("See through walls"),
-			_("Mobile aim assist: mark enemies behind walls, aim where they will come out, and reach them with splash and rockets. Works in every match on this device")));
-		me.TD(me, 1, 2, e = makeXonoticCheckBox_T(0, "cl_touch_practice_360", _("Full 360 targets"),
-			_("Mobile aim assist: with Targets set to Full 360, enemies all around you can be the target. Works in every match on this device")));
-		me.TD(me, 1, 2, e = makeXonoticCheckBox_T(0, "cl_touch_practice_instant", _("Instant turn"),
-			_("Mobile aim assist: the aim moves onto the target at once. Works in every match on this device")));
-	me.TR(me);
-		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("These three are part of the touch aim assist and work in every match on this device.")));
+		me.TD(me, 1, 6, e = makeXonoticTextLabel(0, _("See-through walls, Full 360 and instant turn are in the ESP tab: offline matches against bots only.")));
 }
 
 entity makeXonoticMobileDynamicsTab()

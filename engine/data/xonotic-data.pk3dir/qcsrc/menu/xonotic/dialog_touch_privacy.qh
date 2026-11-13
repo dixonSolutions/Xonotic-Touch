@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
+
+// Settings -> Mobile -> Privacy: whether servers may send this player's match
+// statistics to XonStat (stats.xonotic.org), the player name and ranking that
+// go with them, and Xonotic's terms of service to read. Godnotic shows no
+// terms popup at start (TouchStartup_applyPrivacyDefaults); on an install
+// nobody asked, statistics start off.
+#include "tab.qh"
+CLASS(GodnoticPrivacyTab, XonoticTab)
+	METHOD(GodnoticPrivacyTab, fill, void(entity));
+	ATTRIB(GodnoticPrivacyTab, intendedWidth, float, 0.9);
+	ATTRIB(GodnoticPrivacyTab, rows, float, 14);
+	ATTRIB(GodnoticPrivacyTab, columns, float, 6);
+	ATTRIB(GodnoticPrivacyTab, name, string, "mobileprivacy");
+ENDCLASS(GodnoticPrivacyTab)
+entity makeGodnoticPrivacyTab();

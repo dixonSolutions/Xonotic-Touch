@@ -30,6 +30,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "touch_vote.h"
 #include "screen.h"
 #include "touch_android.h"
+#include "touch_display.h" // Touch
 
 #ifndef __IPHONEOS__
 #ifdef MACOSX
@@ -2399,6 +2400,7 @@ void VID_Init (void)
 #endif
 	// Android starts with the controls on and follows InputManager from there.
 	VID_TouchDetect_Init();
+	TouchDisplay_Init(); // Touch: vid_touch_dpi for the menu size
 	Cvar_RegisterVariable(&joy_sdl2_trigger_deadzone);
 
 	Cvar_RegisterCallback(&vid_display,                VID_ApplyDisplayMode_c);
@@ -2694,6 +2696,7 @@ static qbool VID_InitModeGL(const viddef_mode_t *mode)
 	context = SDL_GL_CreateContext(window);
 	if (context == NULL)
 		Sys_Error("Failed to initialize OpenGL context: %s\n", SDL_GetError());
+	TouchDisplay_Update(SDL_GetWindowDisplayIndex(window)); // Touch
 
 	GL_InitFunctions();
 

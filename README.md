@@ -111,3 +111,30 @@ First launch downloads game data into the platform writable dir (see [docs/RELEA
 - [docs/SETUP.md](docs/SETUP.md) — first-run wizard, download progress, OSK, touch menus
 
 Architecture, measured checks and unfinished work: [Godnotic delivery record](docs/GODNOTIC.md).
+
+## Licensing
+
+Source: <https://github.com/dixonSolutions/Godnotic>
+
+Godnotic's own work (the touch layer, launchers, packaging and scripts, and the files
+marked `SPDX-License-Identifier: GPL-3.0-or-later`) is licensed under the
+**GNU General Public License, version 3 or (at your option) any later version**. The full
+text is in [`LICENSE`](LICENSE).
+
+Godnotic is built on other projects, which keep their own licences. Nothing here relicenses
+their files or changes their headers. As a combined work the game is distributed under the
+GPL version 3 or later.
+
+| Component | Path | Licence |
+|---|---|---|
+| Xonotic game code and data | `engine/data/xonotic-data.pk3dir` | GPL-3.0-or-later ([`engine/COPYING`](engine/COPYING), [`engine/GPL-3`](engine/GPL-3)); some files under `qcsrc/` may also be usable under the licences named in COPYING files there |
+| DarkPlaces engine | `engine/darkplaces` | GPL-2.0-or-later ([`engine/darkplaces/COPYING`](engine/darkplaces/COPYING), file headers) |
+| Lua 5.4 (Lua mods) | `engine/darkplaces/touch_lua54` | MIT ([`LICENSE`](engine/darkplaces/touch_lua54/LICENSE)) |
+| zstd decoder | `engine/darkplaces/touch_vendor/zstd` | BSD-3-Clause ([`LICENSE`](engine/darkplaces/touch_vendor/zstd/LICENSE)) |
+| d0_blind_id (player IDs) | `engine/d0_blind_id` | BSD-style ([`COPYING`](engine/d0_blind_id/COPYING)) |
+| GMQCC (QuakeC compiler, build only) | `engine/gmqcc` | MIT ([`LICENSE`](engine/gmqcc/LICENSE)) |
+| Xolonium font, Xonotic edition | `engine/data/font-xolonium.pk3dir` | GPL-2.0-or-later with a font embedding exception (`fonts/README.txt` in the pack) |
+| Xonotic emblem (in the icon and banner) | `engine/misc/logos/xonotic_icon.svg` | LGPL-2.1-or-later or CC-BY-3.0 (licence block in the SVG) |
+
+The upstream Xonotic credits are in the game under Credits, after Godnotic's.
+
