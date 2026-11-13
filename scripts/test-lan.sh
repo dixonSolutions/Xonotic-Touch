@@ -89,7 +89,7 @@ mkdir -p "$WORK/host/data"
 cp "$WORK/hostcfg.cfg" "$WORK/host/data/hostcfg.cfg"
 : > "$WORK/host/data/hostpoll.cfg"
 [ -n "${SHOTS:-}" ] && SIZE=(+vid_width 2400 +vid_height 1080 +vid_touchscreen 1)
-run_engine host host 300 +exec hostcfg.cfg > "$WORK/host.log" 2>&1 &
+run_engine host host 600 +exec hostcfg.cfg > "$WORK/host.log" 2>&1 &
 HOSTPID=$!
 SIZE=(+vid_width 640 +vid_height 400)
 
@@ -218,6 +218,81 @@ if grep -aF "$PASSWORD" "$WORK"/*.log | grep -v "hostcfg\|join.cfg" > /dev/null;
 else
 	ok "the password is in no log"
 fi
+
+# --- VPNs: two more links between the same two namespaces, modelling L3
+# overlays. "tailscale0": a /32 on each side with a peer route and a 1280
+# MTU, as Tailscale sets it up (not swept: a /32); "wg0": a /24 with a 1420
+# MTU, as WireGuard. Both are routed overlays to the engine (by name), so the
+# LAN search sends them no broadcast: wg0 is swept with unicast queries, the
+# /32 is found as a remembered host.
+ip link add tailscale0 type veth peer name tshost
+ip link set tshost netns "$NSPID"
+ip link set tailscale0 mtu 1280 up
+ip addr add 100.100.7.1/32 peer 100.100.7.2/32 dev tailscale0
+inhost sh -c 'ip link set tshost name tailscale0; ip link set tailscale0 mtu 1280 up; ip addr add 100.100.7.2/32 peer 100.100.7.1/32 dev tailscale0'
+ip link add wg0 type veth peer name wghost
+ip link set wghost netns "$NSPID"
+ip link set wg0 mtu 1420 up
+ip addr add 10.66.0.1/24 dev wg0
+inhost sh -c 'ip link set wghost name wg0; ip link set wg0 mtu 1420 up; ip addr add 10.66.0.2/24 dev wg0'
+sleep 7
+grep -aq "VPN (tailscale0) 100.100.7.2:26000" "$WORK/host.log" \
+	&& ok "host lists its VPN addresses, labelled: $(grep -ao 'VPN (tailscale0) [0-9.:]*' "$WORK/host.log" | tail -1), $(grep -ao 'VPN (wg0) [0-9.:]*' "$WORK/host.log" | tail -1)" \
+	|| bad "no labelled VPN address in touch_lan_status: $(grep -a '^  ' "$WORK/host.log" | tail -4 | tr '\n' ' ')"
+grep -aq "LAN (lanhost) 10.77.0.2:26000" "$WORK/host.log" \
+	&& ok "and the LAN one: $(grep -ao 'LAN (lanhost) [0-9.:]*' "$WORK/host.log" | tail -1)" || bad "LAN address not labelled"
+grep -aqE "Join link: godnotic://join/[0-9.]+:26000" "$WORK/host.log" \
+	&& ok "join link: $(grep -ao 'Join link: .*' "$WORK/host.log" | tail -1)" || bad "no join link"
+
+# discovery: the routed /24 by unicast sweep, the /32 by a remembered host
+mkdir -p "$WORK/vpnfind/data"
+{
+	echo 'set net_slist_lan_only 1'
+	echo 'lan_addhost godnotic://join/100.100.7.2:26000'
+	# twice: a server answers one status query per second per address, and
+	# the menu's own refresh at start-up may have just asked it
+	echo 'defer 8 "net_slist"'
+	echo 'defer 12 "net_slist"'
+	echo 'defer 18 "lan_hosts; quit"'
+} > "$WORK/vpnfind/data/find.cfg"
+run_engine vpnfind peer 60 +exec find.cfg > "$WORK/vpnfind.log" 2>&1
+grep -aqE '10\.66\.0\.2:26000' "$WORK/vpnfind.log" \
+	&& ok "LAN search found the game over the routed VPN subnet (unicast sweep of 10.66.0.0/24)" || bad "not found by the wg0 sweep"
+grep -aqE '100\.100\.7\.2:26000' "$WORK/vpnfind.log" \
+	&& ok "LAN search found the game at its remembered /32 VPN address" || bad "not found at the remembered 100.100.7.2"
+
+# join over the VPN path with the password: the challenge is the VPN
+# address's and the proof checks out there too; packets stay inside 1280
+ADDR_LAN=$ADDR
+ADDR=100.100.7.2:26000
+tcpdump -Z root -i tailscale0 -U -s 0 -w - udp > "$WORK/vpn.pcap" 2> /dev/null &
+CAPPID=$!
+sleep 0.5
+join vpnpw "$PASSWORD"
+kill $CAPPID 2> /dev/null; wait $CAPPID 2> /dev/null
+if grep -aq "Connection established to $ADDR" "$WORK/vpnpw.log" && ! grep -aq "rejected" "$WORK/vpnpw.log"; then
+	ok "joined over the VPN address with the password"
+else
+	bad "VPN join: $(grep -a 'rejected\|Connect' "$WORK/vpnpw.log" | tail -2)"
+fi
+big=$(tcpdump -Z root -r "$WORK/vpn.pcap" -n 2> /dev/null | grep -o 'length [0-9]*' | awk '{if ($2 > m) m = $2} END {print m + 0}')
+frags=$(tcpdump -Z root -r "$WORK/vpn.pcap" -n -v 2> /dev/null | grep -c 'flags \[+\]\|frag [0-9]')
+pkts=$(tcpdump -Z root -r "$WORK/vpn.pcap" -n 2> /dev/null | wc -l)
+if [ "$pkts" -gt 50 ] && [ "$frags" = 0 ] && [ "$big" -le $((1280 - 28)) ]; then
+	ok "1280 MTU path: $pkts UDP packets, largest payload $big bytes, no IP fragments"
+else
+	bad "1280 MTU path: largest UDP payload $big, $frags fragments in $pkts packets"
+fi
+# remembered: a new search, no lan_addhost, finds the VPN game again
+{
+	echo 'set net_slist_lan_only 1'
+	echo 'defer 8 "net_slist"'
+	echo 'defer 14 "quit"'
+} > "$WORK/vpnpw/data/find2.cfg"
+run_engine vpnpw peer 60 +exec find2.cfg > "$WORK/vpnfind2.log" 2>&1
+grep -aqE '100\.100\.7\.2:26000' "$WORK/vpnfind2.log" \
+	&& ok "a game joined over the VPN is remembered and found again" || bad "joined VPN game not remembered"
+ADDR=$ADDR_LAN
 
 # --- optional: screenshots of the Host screen, the LAN list with the locked
 # game and the password prompt, at a phone's and a tablet's size.
