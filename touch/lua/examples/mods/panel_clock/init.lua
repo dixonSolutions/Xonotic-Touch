@@ -40,7 +40,7 @@ local page = xt.settings.page{
         xt.setcvar("lua_panel_clock_size", "16")
         print("panel_clock: reset pressed")
       end},
-    {type = "label", id = "where", text = "Move the panel in the HUD editor."},
+    {type = "text", id = "where", text = "Move the panel in the HUD editor."},
   },
   on_change = function(row, value, event)
     print("panel_clock: " .. row .. " " .. event .. " " .. tostring(value))

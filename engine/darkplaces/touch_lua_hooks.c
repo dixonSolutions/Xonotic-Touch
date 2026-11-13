@@ -357,6 +357,37 @@ static qbool tlua_hk_read(lua_State *L, const tlua_hookarg_t *a, tlua_hkval_t *v
 	return changed;
 }
 
+// h[4] (Insanotic's ev[4]): the argument at the game's index 4, found through
+// a metatable only when a handler asks, so ordinary calls set two keys per
+// argument, not three
+static char tlua_key_hkmt;
+static int tlua_hk_index(lua_State *L)
+{
+	lua_Integer idx;
+	const char *name;
+	int set, i, k;
+	if (!lua_isinteger(L, 2))
+		return 0;
+	idx = lua_tointeger(L, 2);
+	lua_getfield(L, 1, "name");
+	name = lua_tostring(L, -1);
+	if (!name)
+		return 0;
+	for (set = 0; set < 2; set++)
+	{
+		tlua_hookset_t *hs = set ? &tlua_cl_hooks : &tlua_sv_hooks;
+		for (i = 0; i < hs->count; i++)
+			if (!strcmp(hs->defs[i].name, name))
+				for (k = 0; k < hs->defs[i].nargs; k++)
+					if (hs->defs[i].args[k].idx == idx)
+					{
+						lua_getfield(L, 1, hs->defs[i].args[k].key);
+						return 1;
+					}
+	}
+	return 0;
+}
+
 static int tlua_hk_tramp(lua_State *L)
 {
 	tlua_hkcall_t *c = (tlua_hkcall_t *)lua_touserdata(L, 1);
@@ -371,16 +402,24 @@ static int tlua_hk_tramp(lua_State *L)
 	list = lua_gettop(L);
 	// The keys are string constants of the generated table: Lua's string
 	// cache finds them by address, so no key is hashed or built per call.
-	lua_createtable(L, 0, d->nargs * 3 + 1);
+	lua_createtable(L, 0, d->nargs * 2 + 1);
 	h = lua_gettop(L);
+	if (lua_rawgetp(L, LUA_REGISTRYINDEX, &tlua_key_hkmt) != LUA_TTABLE)
+	{
+		lua_pop(L, 1);
+		lua_createtable(L, 0, 1);
+		lua_pushcfunction(L, tlua_hk_index);
+		lua_setfield(L, -2, "__index");
+		lua_pushvalue(L, -1);
+		lua_rawsetp(L, LUA_REGISTRYINDEX, &tlua_key_hkmt);
+	}
+	lua_setmetatable(L, h);
 	lua_pushstring(L, d->name);
 	lua_setfield(L, h, "name");
 	for (k = 0; k < d->nargs; k++)
 	{
 		const tlua_hookarg_t *a = &d->args[k];
 		tlua_hk_push(L, a, &hs->vals[k]);
-		lua_pushvalue(L, -1);
-		lua_rawseti(L, h, a->idx); // h[4], Insanotic's ev[4]
 		if (a->alias)
 		{
 			lua_pushvalue(L, -1);

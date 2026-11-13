@@ -51,6 +51,17 @@ static int tlua_gate(lua_State *L)
 	return d->fn(L);
 }
 
+// a module table that took the place of an API 1/2 function of the same name
+// (xt.time): calling the table calls the old function
+static int tlua_callold(lua_State *L)
+{
+	lua_remove(L, 1); // the table itself
+	lua_pushvalue(L, lua_upvalueindex(1));
+	lua_insert(L, 1);
+	lua_call(L, lua_gettop(L) - 1, LUA_MULTRET);
+	return lua_gettop(L);
+}
+
 void TLua_API_Open(lua_State *L, tlua_mod_t *m)
 {
 	const tlua_apidef_t *d;
@@ -62,10 +73,20 @@ void TLua_API_Open(lua_State *L, tlua_mod_t *m)
 			continue;
 		if (d->module)
 		{
-			if (lua_getfield(L, xt, d->module) != LUA_TTABLE)
+			int t = lua_getfield(L, xt, d->module);
+			if (t != LUA_TTABLE)
 			{
-				lua_pop(L, 1);
 				lua_newtable(L);
+				if (t == LUA_TFUNCTION)
+				{
+					// keep xt.time() working: the module is callable
+					lua_createtable(L, 0, 1);
+					lua_pushvalue(L, -3);
+					lua_pushcclosure(L, tlua_callold, 1);
+					lua_setfield(L, -2, "__call");
+					lua_setmetatable(L, -2);
+				}
+				lua_remove(L, -2);
 				lua_pushvalue(L, -1);
 				lua_setfield(L, xt, d->module);
 			}

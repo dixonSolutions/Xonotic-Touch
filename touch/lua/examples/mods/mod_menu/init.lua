@@ -19,7 +19,7 @@ local page
 page = xt.menu.page{
   id = "notes", title = xt.setting("title"),
   rows = {
-    {type = "text", id = "draft", label = "New note", placeholder = "type here",
+    {type = "field", id = "draft", label = "New note", placeholder = "type here",
       on_change = function(v) draft = v end},
     {type = "button", id = "add", label = "Add",
       on_press = function()
@@ -35,7 +35,7 @@ page = xt.menu.page{
     {type = "list", id = "list", label = "Notes", items = items(),
       on_select = function(id) print("mod_menu: selected " .. id) end},
     {type = "progress", id = "fill", label = "Space used", value = #notes / 5},
-    {type = "button", id = "clear", label = "Clear", style = "danger",
+    {type = "button", id = "clear", label = "Clear", style = "destructive",
       on_press = function()
         notes = {}
         xt.data.save("notes", notes)

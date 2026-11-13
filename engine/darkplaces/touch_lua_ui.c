@@ -214,7 +214,15 @@ static void tlua_jwstr(lua_State *L, tlua_jw_t *w, const char *s)
 	tlua_jw(L, w, tmp);
 }
 
-static const char *const tlua_rowtypes[] = {"section", "card", "label", "switch", "slider", "choice", "text", "color", "keybind", "button", "list", "image", "progress", NULL};
+// the UI bridge's node types (docs/UI_BRIDGE.md, "Mods"); "label" and "color"
+// are accepted as the older names of "text" and "colour"; "list" is ours
+static const char *const tlua_rowtypes[] = {"section", "card", "text", "divider", "switch", "slider", "stepper", "choice", "field", "colour", "keybind", "button", "list", "image", "progress", "label", "color", NULL};
+static const char *tlua_rowtype_name(const char *t)
+{
+	if (!strcmp(t, "label")) return "text";
+	if (!strcmp(t, "color")) return "colour";
+	return t;
+}
 
 static qbool tlua_rowid_ok(const char *s)
 {
@@ -289,7 +297,8 @@ static void tlua_jrow(lua_State *L, tlua_jw_t *w, int r, int depth)
 	if (!tlua_rowtypes[i])
 		luaL_error(L, "page: no row type '%s'", type);
 	tlua_jw(L, w, "{\"type\":");
-	tlua_jwstr(L, w, type);
+	tlua_jwstr(L, w, tlua_rowtype_name(type));
+	type = tlua_rowtype_name(type); // a constant now: the stack slot can go
 	lua_pop(L, 1);
 	if (lua_getfield(L, r, "id") != LUA_TNIL)
 	{
@@ -298,7 +307,7 @@ static void tlua_jrow(lua_State *L, tlua_jw_t *w, int r, int depth)
 		tlua_jw(L, w, ",\"id\":");
 		tlua_jwstr(L, w, lua_tostring(L, -1));
 	}
-	else if (strcmp(type, "section") && strcmp(type, "label") && strcmp(type, "image") && strcmp(type, "card"))
+	else if (strcmp(type, "section") && strcmp(type, "text") && strcmp(type, "image") && strcmp(type, "card") && strcmp(type, "divider"))
 		luaL_error(L, "page: a %s row needs an id", type);
 	lua_pop(L, 1);
 	tlua_jfield_str(L, w, r, "label");
@@ -336,7 +345,7 @@ static void tlua_jrow(lua_State *L, tlua_jw_t *w, int r, int depth)
 		tlua_jw(L, w, ",\"value\":");
 		if (!strcmp(type, "switch"))
 			tlua_jw(L, w, atof(val) != 0 ? "true" : "false");
-		else if (!strcmp(type, "slider") || !strcmp(type, "progress"))
+		else if (!strcmp(type, "slider") || !strcmp(type, "stepper") || !strcmp(type, "progress"))
 		{
 			char num[64];
 			dpsnprintf(num, sizeof(num), "%.10g", atof(val));
@@ -563,7 +572,7 @@ static const char tlua_page_dispatch_src[] =
 	"if not row then return end\n"
 	"if event == 'change' or event == 'select' then\n"
 	"  if row.type == 'switch' then value = (value == '1' or value == 'true')\n"
-	"  elseif row.type == 'slider' or row.type == 'progress' then value = tonumber(value) or 0 end\n"
+	"  elseif row.type == 'slider' or row.type == 'stepper' or row.type == 'progress' then value = tonumber(value) or 0 end\n"
 	"  if not row.setting then row.value = value end\n"
 	"  local f = event == 'select' and (row.on_select or row.on_change) or row.on_change\n"
 	"  if f then f(value, player) end\n"
@@ -1117,7 +1126,7 @@ void TLua_UI_SyncManifest(tlua_realm_t *r)
 				dp_strlcat(json, "},", sizeof(json));
 			}
 			type = !strcmp(st->type, "bool") ? "switch" : (!strcmp(st->type, "number") || !strcmp(st->type, "int") || !strcmp(st->type, "float")) ? "slider"
-				: !strcmp(st->type, "choice") ? "choice" : !strcmp(st->type, "color") ? "color" : !strcmp(st->type, "key") ? "keybind" : "text";
+				: !strcmp(st->type, "choice") ? "choice" : !strcmp(st->type, "color") ? "colour" : !strcmp(st->type, "key") ? "keybind" : "field";
 			dpsnprintf(line, sizeof(line), "{\"type\":\"%s\",\"id\":\"%s\",\"setting\":", type, st->name);
 			dp_strlcat(json, line, sizeof(json));
 			TLua_JsonAppendString(json, sizeof(json), cv);
