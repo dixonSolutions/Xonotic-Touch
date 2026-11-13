@@ -1221,7 +1221,6 @@
   // the browser keeps it, and the last problem: readable without devtools.
   async function showStorage() {
     const files = (state.files || []).filter((f) => f.hosted !== false || f.group === 'core');
-    const used = await data.storedBytes(files);
     const total = files.reduce((n, f) => n + f.size, 0);
     const est = await estimate();
     const kept = await persisted();
@@ -1231,7 +1230,6 @@
     $('xt-st-backend').textContent = where;
     $('xt-folder').hidden = !window.showDirectoryPicker || !!fold || !!state.folderPending;
     $('xt-folder-stop').hidden = !fold && !state.folderPending;
-    $('xt-st-stored').textContent = `${mb(used)} of ${mb(total)}` + (state.profile ? ` · ${state.profile === 'astc' ? 'ASTC set' : state.profile === 'full' ? 'full set' : 'standard set'}` : '');
     $('xt-st-quota').textContent = est && est.quota ? `${mb(est.usage || 0)} used of ${mb(est.quota)}` : 'not reported';
     const sw = $('xt-opt-persist');
     $('xt-opt-persist-row').hidden = data.kind === 'memory' || !(navigator.storage && navigator.storage.persist);
@@ -1245,6 +1243,9 @@
       else if (isIOS) why = 'To keep it, add this page to the Home Screen (Share, then Add to Home Screen) and play from there.';
     }
     $('xt-storage-text').textContent = why;
+    // Last: looking at every chunk takes a moment.
+    const used = await data.storedBytes(files);
+    $('xt-st-stored').textContent = `${mb(used)} of ${mb(total)}` + (state.profile ? ` · ${state.profile === 'astc' ? 'ASTC set' : state.profile === 'full' ? 'full set' : 'standard set'}` : '');
   }
 
   async function freeSpaceLine(need) {
@@ -1501,7 +1502,10 @@
       // The release this browser last started with: when it is the same one
       // and data is missing, the browser (or the player) removed it; that is
       // not an update.
-      const sameRelease = hadStart && store.get(idsKey, '') === profile.ids.join(',');
+      // (Not when the last start read its stock packs from a folder that is
+      // no longer used: then nothing was removed, it was never here.)
+      const leftFolder = store.get('via', '') === 'folder' && !state.folder;
+      const sameRelease = hadStart && !leftFolder && store.get(idsKey, '') === profile.ids.join(',');
       // A page closed mid-download explains missing data best; closed at
       // another time, it explains nothing about data that is gone.
       const killed = killedReason(true);
@@ -1510,7 +1514,8 @@
       // "Verify data" found damage and removed it: say that, not "the browser".
       if (!reason && store.get('damaged', '')) reason = `${mb(sum(missing))} of the game data was damaged and has been removed (Verify data): downloading that part again.`;
       store.del('damaged');
-      if (!reason && hadStart && (firstInstall || sameRelease)) {
+      if (!reason && leftFolder) reason = state.folderPending ? '' : 'The Godnotic folder is no longer used, so the game data it held has to be downloaded.';
+      if (!reason && hadStart && !leftFolder && (firstInstall || sameRelease)) {
         reason = (firstInstall ? 'The game data is gone from this browser' : `${mb(sum(missing))} of the game data is gone from this browser`) +
           ': the browser removed it (to free space, or because its site data was deleted). Downloading ' + (firstInstall ? 'it' : 'that part') + ' again.';
       }
@@ -1522,10 +1527,10 @@
       // for an update that is small (new game code, a config) or a small
       // part of the whole. The question is for first installs, big updates,
       // and a Godnotic folder waiting for its permission.
-      const restore = hadStart && (firstInstall || sameRelease) && data.kind !== 'memory';
+      const restore = hadStart && !leftFolder && (firstInstall || sameRelease) && data.kind !== 'memory';
       // (With a Godnotic folder in use, what is left is this build's own
       // files: small, even the first time.)
-      const small = (!firstInstall || !!state.folder) && (sum(missing) <= SMALL_UPDATE || (!firstInstall && sum(missing) <= total / 4));
+      const small = (!firstInstall || !!state.folder) && (sum(missing) <= SMALL_UPDATE || (!firstInstall && !leftFolder && sum(missing) <= total / 4));
       if ((restore || small) && !state.folderPending && !params.has('ask')) {
         try {
           await runDownload(missing, restore ? 'Downloading the game data again…' : 'Updating…');
@@ -1631,6 +1636,7 @@
     state.warming = warm(null).then(() => mark('warmed'));
     store.set(startedKey, 1);
     store.set(idsKey, profile.ids.join(','));
+    store.set('via', state.folder ? 'folder' : 'store');
     store.set('profile', profile.name);
     // Every file this start needs was there: drop what no page path that
     // started recently still lists (older releases' chunks, old layouts).
