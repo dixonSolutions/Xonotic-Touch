@@ -50,6 +50,26 @@ static void Touch_KTX_Init(void)
 	Cmd_AddCommand(CF_CLIENT, "r_texture_astc_stats", Touch_KTX_Stats_f, "how many ASTC (.ktx) textures were loaded");
 }
 
+// Once the GL extensions are known, before the first texture loads: a GPU
+// without S3TC gets the DDS-only textures (the DXT entries the phone packs
+// kept where ASTC would have been bigger, and every DDS of the full packs)
+// decoded in software, and no runtime S3TC compression. The menu's
+// updateCompression() sets the same values at its init and restarts the
+// renderer when they changed; r_texture_dds_swdecode is not archived and
+// touch/xonotic.cfg sets gl_texturecompression 1, so on such a GPU that was a
+// full second renderer start (fonts, pics, shaders) on every launch.
+// ASTC textures (dds/foo.ktx) load before any of this and are not decoded or
+// downscaled.
+static void Touch_KTX_Start(void)
+{
+	if (vid.support.ext_texture_compression_s3tc)
+		return;
+	if (r_texture_dds_swdecode.integer < 1)
+		Cvar_SetValueQuick(&r_texture_dds_swdecode, 1);
+	if (gl_texturecompression.integer)
+		Cvar_SetValueQuick(&gl_texturecompression, 0);
+}
+
 static qbool Touch_KTX_Usable(void)
 {
 	static int noastc = -1;

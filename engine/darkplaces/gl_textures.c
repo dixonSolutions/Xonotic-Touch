@@ -659,6 +659,7 @@ static void R_TextureStats_f(cmd_state_t *cmd)
 	R_TextureStats_Print(true, true, true);
 }
 
+static void Touch_KTX_Start(void); // Touch: in touch_assets_ktx.h
 static void r_textures_start(void)
 {
 	switch(vid.renderpath)
@@ -680,6 +681,7 @@ static void r_textures_start(void)
 		Cvar_SetValueQuick (&scr_screenshot_jpeg, 0);
 	if (! PNG_OpenLibrary ())
 		Cvar_SetValueQuick (&scr_screenshot_png, 0);
+	Touch_KTX_Start(); // Touch: DDS decode settings for a GPU without S3TC, before the menu restarts the renderer for them
 }
 
 static void r_textures_shutdown(void)
