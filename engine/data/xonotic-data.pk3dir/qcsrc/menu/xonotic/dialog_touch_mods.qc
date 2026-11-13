@@ -76,7 +76,9 @@ string TouchMods_importStatus()
 	if (fh >= 0)
 	{
 		line = fgets(fh);
-		if (!line)
+		// an empty line is "ready"; fgets gives "" for it, not a null
+		// string, and "" must still say "this platform has an importer"
+		if (line == "")
 			line = " ";
 		fclose(fh);
 	}
