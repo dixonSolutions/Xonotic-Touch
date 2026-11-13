@@ -3,6 +3,7 @@
 
 #include "../menu.qh"
 #include "../item/modalcontroller.qh"
+#include "../item/inputbox.qh"
 #include "touch_menu_scale.qh"
 #include "dialog_touch_launcher.qh"
 
@@ -105,6 +106,20 @@ entity TouchSheet_leafAt(vector pos)
 	return e;
 }
 
+// The press goes to the main window. A press that lands on a text field
+// asks for the screen keyboard again (vid_touchscreen_showkeyboard 2, which
+// the engine turns back into 1): Android's Back puts the keyboard away
+// without the field losing focus, and tapping the field must bring it back.
+void TouchSheet_press(vector pos)
+{
+	main.mousePress(main, pos);
+	entity leaf = main;
+	while (leaf.focusedChild)
+		leaf = leaf.focusedChild;
+	if (leaf.instanceOfInputBox && cvar("vid_touchscreen") && cvar("vid_touchscreen_showkeyboard"))
+		cvar_set("vid_touchscreen_showkeyboard", "2");
+}
+
 // A dialog opened by a button saves the focus of everything under it
 // (DialogOpenButton_Click, saveFocus), and Container_setFocus hands the
 // next focus to that saved item, whatever was asked for. With a mouse the
@@ -158,7 +173,7 @@ void TouchSheet_mousePress(vector pos)
 	entity f = TouchSheet_front();
 	if (!touch_menu_on || !TouchSheet_scrolls(f))
 	{
-		main.mousePress(main, pos);
+		TouchSheet_press(pos);
 		return;
 	}
 	entity leaf = TouchSheet_leafAt(pos);
@@ -166,7 +181,7 @@ void TouchSheet_mousePress(vector pos)
 		|| pos.y < f.Container_origin.y || pos.y > f.Container_origin.y + f.Container_size.y
 		|| pos.x < f.Container_origin.x || pos.x > f.Container_origin.x + f.Container_size.x)
 	{
-		main.mousePress(main, pos);
+		TouchSheet_press(pos);
 		return;
 	}
 	touch_sheet_pending = true;
@@ -195,7 +210,7 @@ void TouchSheet_mouseDrag(vector pos)
 		else
 		{
 			// Sideways: the control under the finger gets the press after all.
-			main.mousePress(main, touch_sheet_p0);
+			TouchSheet_press(touch_sheet_p0);
 			main.mouseDrag(main, pos);
 			return;
 		}
@@ -224,7 +239,7 @@ void TouchSheet_mouseRelease(vector pos)
 	{
 		// A tap: the control gets its press and release together.
 		touch_sheet_pending = false;
-		main.mousePress(main, touch_sheet_p0);
+		TouchSheet_press(touch_sheet_p0);
 		main.mouseRelease(main, touch_sheet_p0);
 		return;
 	}
