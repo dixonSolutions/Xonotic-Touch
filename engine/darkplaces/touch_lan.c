@@ -55,6 +55,7 @@ when the player ticks "remember".
 #include "hmac.h"
 #include "mdfour.h"
 #include "touch_lan.h"
+#include "touch_nativefe.h"
 #include "touch_lan_logic.h"
 
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
@@ -508,6 +509,7 @@ void TouchLAN_Rejected(const char *reason, int length, const lhnetaddress_t *pee
 			Cvar_SetQuick(&cl_touch_lan_password, "");
 	}
 	dp_strlcpy(cl_connect_status, kind == 2 ? "Connect: wrong password" : "Connect: this game needs a password", sizeof(cl_connect_status));
+	if (TouchNativeFE_PasswordRejected(kind == 2, addr)) return; // Touch: the desktop app asks for the password
 #ifdef CONFIG_MENU
 	// The menu's password prompt (dialog_touch_lan.qc) takes it from here.
 	dpsnprintf(cmd, sizeof(cmd), "\ntogglemenu 1; menu_cmd directmenu TouchLanPassword %s \"%s\"\n", kind == 2 ? "wrong" : "required", addr);
