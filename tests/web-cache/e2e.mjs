@@ -2,7 +2,7 @@
 //
 //   node tests/web-cache/e2e.mjs --chrome PATH --url URL --profile DIR [--label NAME]
 //        [--no-click] [--timeout SEC] [--throttle-bps N] [--latency MS] [--stop-after-bytes N]
-//        [--map NAME] [--map2 NAME] [--expect-fetch] [--bots N] [--settle SEC]
+//        [--map NAME] [--map2 NAME] [--expect-fetch] [--bots N] [--settle SEC] [--cpu N]
 //
 // --map: once the menu is up, start a bot match on NAME ("map NAME" from
 // the console, bot_number N, default 4) and wait until it is playable (the
@@ -146,6 +146,8 @@ await send('Network.enable');
 await send('Runtime.enable');
 await send('Page.enable');
 await send('Emulation.setFocusEmulationEnabled', { enabled: true });
+// --cpu N: N times slower CPU (a phone stand-in).
+if (Number(opt('cpu', '0')) > 1) await send('Emulation.setCPUThrottlingRate', { rate: Number(opt('cpu')) });
 if (throttle || latency) {
   await send('Network.emulateNetworkConditions', { offline: false, latency, downloadThroughput: throttle || -1, uploadThroughput: -1 });
 }

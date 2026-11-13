@@ -745,9 +745,15 @@
   async function chunkBlobs(f) {
     const blobs = [];
     for (const c of data.chunks(f)) {
-      const b = await data.be.blob('c-' + c.h).catch(() => null);
-      if (!b || b.size !== c.size) {
-        await data.be.remove('c-' + c.h);
+      let b;
+      try {
+        b = await data.be.blob('c-' + c.h);
+      } catch (e) {
+        // Unreadable now is not proof of damage: keep it, say so.
+        throw new Error(`${f.name} could not be read from the browser's storage (${e && e.name}: ${e && e.message}). Reload to try again.`);
+      }
+      if (b.size !== c.size) {
+        await data.be.remove('c-' + c.h); // the wrong size can never be right
         throw new Error(`${f.name} is incomplete in the browser's storage. Reload to download the missing part again.`);
       }
       blobs.push(b);
@@ -877,8 +883,9 @@
   function remember(touched) {
     const hot = hotList();
     for (const [p, ks] of Object.entries(touched)) {
-      const f = mounts.get(p);
-      if (!f || f.group === 'map') continue; // a map's pack is read whole before its load
+      // Map packs too: the menu reads every map's .mapinfo and level shot
+      // from them at start-up.
+      if (!mounts.get(p)) continue;
       hot[p] = [...new Set([...(hot[p] || []), ...ks])].sort((a, b) => a - b);
     }
     for (const p of Object.keys(hot)) if (!mounts.has(p)) delete hot[p]; // files of older releases
@@ -970,9 +977,17 @@
   }
   // Best-effort storage is the browser's to clear under disk pressure; ask
   // for it to be kept once there is something worth keeping.
-  async function requestPersist() {
-    if (!navigator.storage || !navigator.storage.persist || await persisted()) return;
-    try { await navigator.storage.persist(); } catch (e) { /* not offered */ }
+  // Firefox shows a prompt for this and resolves only when it is answered:
+  // callers must not wait for it.
+  let persistAsked = null;
+  function requestPersist() {
+    if (persistAsked) return persistAsked;
+    persistAsked = (async () => {
+      if (!navigator.storage || !navigator.storage.persist || await persisted()) return;
+      try { await navigator.storage.persist(); } catch (e) { /* not offered */ }
+      try { if (data) await showStorage(); } catch (e) { /* panel only */ }
+    })();
+    return persistAsked;
   }
 
   const BACKEND_LABEL = {
@@ -1218,6 +1233,9 @@
     state.profile = profile.name;
     for (const f of files) if (f.group === 'map' && f.map) maps.byName.set(normMap(f.map), f);
     mark('manifest');
+    // Claim this release's chunks before downloading any: another tab's
+    // prune (an older release) keeps what a recorded manifest lists.
+    data.ref(location.pathname, profile.ids).catch(() => {});
 
     // One download with everything in it (every map, the music): nothing
     // to choose. Files the host no longer serves (the full set's maps pk3)
@@ -1308,7 +1326,10 @@
           await refresh();
         }
       }
-      await requestPersist();
+      // Never awaited: Firefox answers persist() only when the player
+      // answers its permission prompt, and until then the game would not
+      // start (production did this: a finished download that hung at 100%).
+      requestPersist().catch(() => {});
     }
     mark('data-ready');
 

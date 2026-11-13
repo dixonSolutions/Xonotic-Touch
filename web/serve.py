@@ -91,6 +91,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # time: a build copied with its old timestamps must not answer 304
         # to a page from a newer one.
         path = self.translate_path(self.path)
+        if os.path.isdir(path) and os.path.isfile(os.path.join(path, "index.html")):
+            path = os.path.join(path, "index.html")
         if os.path.isfile(path) and not IMMUTABLE.match(self.path.split("?", 1)[0]):
             import hashlib
             with open(path, "rb") as f:

@@ -217,7 +217,7 @@ Canvas.prototype.getContext = () => ({ RENDERER: 1, MAX_TEXTURE_SIZE: 2, getPara
  * Load web/store.js and web/shell.js the way the page does, in a fresh
  * context sharing `prof` (storage) with earlier loads: a reload.
  */
-function loadPage(prof, host, { search = '', engine = true, persist = false, astc = false } = {}) {
+function loadPage(prof, host, { search = '', engine = true, persist = false, astc = false, persistHangs = false } = {}) {
   const elements = new Map();
   const element = (id) => {
     if (!elements.has(id)) elements.set(id, id === 'canvas' ? new Canvas(id) : new Element(id));
@@ -246,7 +246,7 @@ function loadPage(prof, host, { search = '', engine = true, persist = false, ast
       maxTouchPoints: 0, language: 'en', languages: ['en'], userAgent: 'test', sendBeacon() {},
       storage: {
         getDirectory: prof.root ? async () => prof.root : undefined,
-        persist: async () => { prof.persistAsked = (prof.persistAsked || 0) + 1; return persist; },
+        persist: async () => { prof.persistAsked = (prof.persistAsked || 0) + 1; if (persistHangs) await new Promise(() => {}); return persist; },
         persisted: async () => persist,
         estimate: async () => ({ usage: 0, quota: 10e9 }),
       },
@@ -565,6 +565,24 @@ await test('prune never deletes what another page path uses, and stops on an unr
   assert.match(r.kept, /unreadable/);
 });
 
+await test('a tab on a newer release, still downloading, keeps its chunks when an older tab prunes', async () => {
+  const prof = profile();
+  const hostA = makeHost(baseFiles().slice(0, 2));
+  const filesB = baseFiles().slice(0, 2);
+  filesB[0].bytes = fill(3000, 55);
+  const hostB = makeHost(filesB);
+  // Tab B (newer) opened, recorded its manifests and stored one new chunk;
+  // it has not started (so has not pruned) yet.
+  const b = loadPage(prof, hostB);
+  await until(() => b.shown.includes('xt-download') || b.page.state.timing.ready, 'tab B going');
+  const s = await store(loadPage(prof, hostA, { engine: false }).context);
+  await s.saveManifest(hostA.id, hostA.text);
+  await dl(s, await s.missing(hostA.files), hostA);
+  await dl(s, s.chunks(hostB.files[0]), hostB);
+  await s.prune('/web/', [hostA.id]); // tab A (older) prunes after its start
+  assert.ok(opfsNames(prof).includes('c-' + hostB.files[0].chunks[0]), "tab B's new chunk survives");
+});
+
 await test('a cancelled start keeps what arrived and never prunes', async () => {
   const prof = profile();
   const host = makeHost(baseFiles());
@@ -693,6 +711,15 @@ await test('no storage at all (private window): memory only, says why, still pla
   p.element('xt-dl-go').onclick();
   await ready(p, 'ready');
   await until(() => p.context.__started, 'plays');
+});
+
+await test('Firefox: a persist() prompt nobody answers does not stop the game from starting', async () => {
+  const prof = profile();
+  const host = makeProfiles({ web: { files: splitFiles(), defaultMap: 'stormkeep' } });
+  const p = loadPage(prof, host, { persistHangs: true });
+  await firstVisit(p);
+  assert.ok(prof.persistAsked >= 1, 'asked');
+  await until(() => p.context.__started, 'started while the prompt is still open');
 });
 
 await test('profile by GPU: ASTC gets the slim set, others the standard one; the choice is kept', async () => {

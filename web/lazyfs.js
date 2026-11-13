@@ -109,6 +109,9 @@
     const blockOf = (k) => {
       const key = id + ':' + k;
       let b = cache.get(key);
+      // Every block read is remembered, served from the cache or not: the
+      // page reads the same ones ahead next time (takeTouched).
+      touched.add(path + '\t' + k);
       if (b) {
         cache.delete(key); // most recently used goes last
         cache.set(key, b);

@@ -110,6 +110,9 @@ function firefox() {
         navigate: (u) => send('browsingContext.navigate', { context: ctx, url: u, wait: 'none' }),
       };
     },
+    // Firefox takes one BiDi session at a time: end it, or the next visit
+    // cannot connect.
+    close: () => send('session.end', {}, 3000),
   };
 }
 
@@ -169,4 +172,5 @@ if (flag('two-tabs')) {
 const st = await stats();
 if (st) Object.assign(out, { blobRequests: st.blobRequests, blobBytes: st.blobBytes });
 console.log(JSON.stringify(out));
+if (drv.close) await drv.close();
 process.exit(r === 'kill' ? 3 : out.error ? 1 : 0);
