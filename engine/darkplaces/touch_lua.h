@@ -48,4 +48,9 @@ void TouchLua_SV_InstallBuiltins(struct prvm_prog_s *prog);
 // limit cvars refuse changes (TLua_FromServer).
 void TouchLua_ServerText(void);
 
+// libcurl.c, for each transfer it sets up: the protocols a Lua mod install
+// may use (HTTPS only, and for redirects too); 0 for every other transfer.
+// The values are CURLPROTO_HTTP (1) and CURLPROTO_HTTPS (2).
+long TouchLua_CurlProtocols(void (*callback)(int, size_t, unsigned char *, void *), qbool redirect);
+
 #endif

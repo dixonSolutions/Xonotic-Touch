@@ -533,6 +533,7 @@ static void tlua_cl_frame(void)
 	a.n1 = host.realtime - lastrealtime;
 	lastrealtime = host.realtime;
 	TLua_Fire(&tlua_client, "frame", tlua_push_n, NULL, &a);
+	TLua_RunTimers(&tlua_client);
 }
 
 static void tlua_cl_draw(const char *event)

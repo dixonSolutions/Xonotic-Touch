@@ -53,6 +53,8 @@ OBJ_COMMON= \
 	touch_lua_cl.o \
 	touch_lua_sv.o \
 	touch_lua_vm.o \
+	touch_lua_pkg.o \
+	touch_lua_hooks.o \
 	touch_assets_zstd.o \
 	touch_loadtime.o \
 	touch_loadfs.o \
