@@ -102,6 +102,8 @@ EOF
 	# shellcheck disable=SC2046
 	timeout 120 "$ENGINE" $(engine_args "$TEMPLATE") +exec bench-quit.cfg > "$OUT/template.log" 2>&1 || true
 	[ -f "$TEMPLATE/data/config.cfg" ] || { echo "template run made no config.cfg (see $OUT/template.log)" >&2; exit 1; }
+	# a returning player: no first-run dialog over the main menu
+	printf 'seta touch_profile_done 1\nseta _cl_name "Bench"\nseta cl_allow_uid2name 0\n' >> "$TEMPLATE/data/config.cfg"
 }
 
 fresh_userdir() { # name

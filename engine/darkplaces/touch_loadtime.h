@@ -1,6 +1,8 @@
 #ifndef TOUCH_LOADTIME_H
 #define TOUCH_LOADTIME_H
 
+struct prvm_prog_s;
+
 // Godnotic: where start-up and map loading spend their time.
 //
 // Phases are timed always (a clock read per call, nothing printed); with
@@ -73,6 +75,13 @@ qbool TouchFont_LoadPendingOne(void);
 // first draw (Sbar_Draw with drawenginesbar, Sbar_DeathmatchOverlay).
 qbool TouchLoad_SbarDefer(void (*start)(void));
 void TouchLoad_SbarEnsure(void);
+
+// The menu precaches every picture of its skin at start (107 on the phone
+// packs, each one or two JPEG decodes). touch_load_lazypics 1: a menu
+// precache_pic of a file that exists only remembers the name and flags; the
+// picture loads, persistent as precached, when first drawn.
+qbool TouchLoad_LazyPrecachePic(struct prvm_prog_s *prog, const char *name, unsigned int flags);
+unsigned int TouchLoad_PicFlags(const char *path, unsigned int flags);
 // After every drawn frame: notices the menu's first frame and a load's first
 // game frame.
 void TouchLoadTime_Frame(void);

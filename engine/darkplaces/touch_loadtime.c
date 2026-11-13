@@ -30,6 +30,7 @@ as they arrive. Neither applies in the menu or in the game.
 #include "touch_loadtime.h"
 #include "libcurl.h"
 #include "touch_loadfs.h"
+#include "image.h"
 #ifdef __linux__
 #include <unistd.h>
 #include <time.h>
@@ -39,6 +40,7 @@ static cvar_t touch_loadtime = {CF_CLIENT | CF_SERVER, "touch_loadtime", "0", "p
 static cvar_t touch_load_restless = {CF_CLIENT, "touch_load_restless", "0", "do not wait for the frame limiter or sleep while a game is loading or the connection handshake runs (Godnotic); 0 = stock behaviour"};
 
 static cvar_t touch_load_lazysbar = {CF_CLIENT, "touch_load_lazysbar", "1", "Xonotic: cache the engine status bar's Quake pictures when the engine HUD is first drawn instead of at every renderer start (Godnotic); 0 = at renderer start"};
+static cvar_t touch_load_lazypics = {CF_CLIENT, "touch_load_lazypics", "1", "the menu's precache_pic only notes a picture that exists; it loads when first drawn (Godnotic); 0 = load at precache"};
 static cvar_t touch_loadtime_menu = {CF_CLIENT | CF_READONLY, "_touch_loadtime_menu", "0", "1 once the main menu has drawn its first frame (for scripts that wait for it)"};
 static cvar_t touch_loadtime_game = {CF_CLIENT | CF_READONLY, "_touch_loadtime_game", "0", "counts loads that reached their first game frame (for scripts that wait for one)"};
 
@@ -334,6 +336,64 @@ void TouchLoad_SbarEnsure(void)
 	tl_sbar_running = false;
 }
 
+// lazily precached menu pictures: name -> the flags precache_pic asked for
+#define TL_LAZYPICS 1024
+typedef struct tl_lazypic_s { char name[MAX_QPATH]; unsigned int flags; } tl_lazypic_t;
+static tl_lazypic_t *tl_lazypics;
+static int tl_numlazypics;
+
+static int TL_FindLazyPic(const char *name)
+{
+	int i;
+	for (i = 0; i < tl_numlazypics; i++)
+		if (!strcmp(tl_lazypics[i].name, name))
+			return i;
+	return -1;
+}
+
+qbool TouchLoad_LazyPrecachePic(prvm_prog_t *prog, const char *name, unsigned int flags)
+{
+	static const char *const forms[] = {"dds/%s.dds", "dds/%s.ktx", "%s.tga", "%s.png", "%s.jpg", "%s.pcx"};
+	char base[MAX_QPATH], path[MAX_QPATH + 16];
+	size_t i;
+
+	if (!touch_load_lazypics.integer || prog != MVM_prog || cls.state == ca_dedicated || !name[0] || strlen(name) >= MAX_QPATH)
+		return false;
+	if (TL_FindLazyPic(name) >= 0)
+		return true;
+	if (tl_numlazypics >= TL_LAZYPICS)
+		return false;
+	Image_StripImageExtension(name, base, sizeof(base));
+	// an existing file in a form every image loader search list tries;
+	// anything else is precached now, so a missing picture still returns
+	// "" to the QC as before
+	for (i = 0; i < sizeof(forms) / sizeof(forms[0]); i++)
+	{
+		dpsnprintf(path, sizeof(path), forms[i], base);
+		if (FS_FileExists(path))
+			break;
+	}
+	if (i == sizeof(forms) / sizeof(forms[0]))
+		return false;
+	if (!tl_lazypics)
+		tl_lazypics = (tl_lazypic_t *)Mem_Alloc(cls.permanentmempool, TL_LAZYPICS * sizeof(*tl_lazypics));
+	dp_strlcpy(tl_lazypics[tl_numlazypics].name, name, sizeof(tl_lazypics[0].name));
+	tl_lazypics[tl_numlazypics].flags = flags;
+	tl_numlazypics++;
+	return true;
+}
+
+unsigned int TouchLoad_PicFlags(const char *path, unsigned int flags)
+{
+	int i;
+	if (!tl_numlazypics || (i = TL_FindLazyPic(path)) < 0)
+		return flags;
+	// first load of a precached picture: persistent, with precache's flags
+	flags = (flags & ~(CACHEPICFLAG_NOTPERSISTENT | CACHEPICFLAG_FAILONMISSING)) | (tl_lazypics[i].flags & ~CACHEPICFLAG_FAILONMISSING);
+	tl_lazypics[i] = tl_lazypics[--tl_numlazypics];
+	return flags;
+}
+
 float TouchLoadTime_MaxFPS(float maxfps)
 {
 	// no frame limiter: CL_Frame then runs every host frame on the real
@@ -386,6 +446,7 @@ void TouchLoadTime_Init(void)
 	Cvar_RegisterVariable(&touch_loadtime);
 	Cvar_RegisterVariable(&touch_load_restless);
 	Cvar_RegisterVariable(&touch_load_lazysbar);
+	Cvar_RegisterVariable(&touch_load_lazypics);
 	Cvar_RegisterVariable(&touch_loadtime_menu);
 	Cvar_RegisterVariable(&touch_loadtime_game);
 	Cmd_AddCommand(CF_CLIENT | CF_SERVER, "touch_loadtime_start", TouchLoadTime_Start_f, "start timing a load now (put it before map or connect); touch_loadtime 1 prints the result at the first game frame");

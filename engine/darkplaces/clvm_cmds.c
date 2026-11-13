@@ -1325,6 +1325,7 @@ void VM_precache_pic(prvm_prog_t *prog)
 			flags |= CACHEPICFLAG_MIPMAP;
 	}
 
+	if (TouchLoad_LazyPrecachePic(prog, s, flags)) return; // Touch: the menu's pics load when first drawn
 	if( !Draw_IsPicLoaded(Draw_CachePic_Flags(s, flags | CACHEPICFLAG_QUIET)) )
 		PRVM_G_INT(OFS_RETURN) = OFS_NULL;
 }
