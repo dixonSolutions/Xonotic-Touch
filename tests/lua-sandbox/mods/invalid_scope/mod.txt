@@ -1,0 +1,2 @@
+api: 1
+permissions: exec, definitely_unknown

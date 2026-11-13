@@ -24,6 +24,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "cl_collision.h"
 #include "csprogs.h"
 #include "libcurl.h"
+#include "touch_join.h" // Touch: reject a failed world load before prespawn
 #include "utf8lib.h"
 #ifdef CONFIG_MENU
 #include "menu.h"
@@ -1298,6 +1299,7 @@ static void CL_BeginDownloads(qbool aborteddownload)
 				{
 					// the worldmodel failed, but we need to set up anyway
 					Mod_FreeQ3Shaders();
+					TouchJoin_RequireWorld(cl.model_precache[1] && cl.model_precache[1]->Draw, cl.model_name[1]); // Touch:
 					CL_SetupWorldModel();
 					if (!cl.loadfinished && cl_joinbeforedownloadsfinish.integer)
 					{
@@ -1340,6 +1342,7 @@ static void CL_BeginDownloads(qbool aborteddownload)
 				// we now have the worldmodel so we can set up the game world
 				// or maybe we do not have it (cl_serverextension_download 0)
 				// then we need to continue loading ANYWAY!
+				TouchJoin_RequireWorld(cl.model_precache[1] && cl.model_precache[1]->Draw, cl.model_name[1]); // Touch:
 				CL_SetupWorldModel();
 				if (!cl.loadfinished && cl_joinbeforedownloadsfinish.integer)
 				{

@@ -83,6 +83,7 @@ static float tlua_optcolor(lua_State *L, int idx)
 
 static int tlua_draw_fill(lua_State *L)
 {
+	TLua_Require(L, TLUA_PERM_DISPLAY);
 	tlua_cl_needdraw(L);
 	DrawQ_Fill((float)luaL_checknumber(L, 1), (float)luaL_checknumber(L, 2), (float)luaL_checknumber(L, 3), (float)luaL_checknumber(L, 4),
 		tlua_optcolor(L, 5), tlua_optcolor(L, 6), tlua_optcolor(L, 7), tlua_optcolor(L, 8), 0);
@@ -94,6 +95,7 @@ static int tlua_draw_text(lua_State *L)
 	size_t len;
 	const char *s;
 	float size, w;
+	TLua_Require(L, TLUA_PERM_DISPLAY);
 	tlua_cl_needdraw(L);
 	s = luaL_checklstring(L, 3, &len);
 	size = (float)bound(1, luaL_optnumber(L, 4, 12), 256);
@@ -110,6 +112,7 @@ static int tlua_draw_textwidth(lua_State *L)
 	size_t len;
 	const char *s = luaL_checklstring(L, 1, &len);
 	float size = (float)bound(1, luaL_optnumber(L, 2, 12), 256);
+	TLua_Require(L, TLUA_PERM_DISPLAY);
 	if (len > 1024)
 		len = 1024;
 	lua_pushnumber(L, DrawQ_TextWidth(s, len, size, size, false, FONT_DEFAULT));
@@ -120,6 +123,7 @@ static int tlua_draw_pic(lua_State *L)
 {
 	const char *path = luaL_checkstring(L, 1), *p;
 	cachepic_t *pic;
+	TLua_Require(L, TLUA_PERM_DISPLAY);
 	tlua_cl_needdraw(L);
 	if (strncmp(path, "gfx/", 4) || strstr(path, "..") || strlen(path) > 96)
 		return luaL_error(L, "xt.draw.pic: the path must start with gfx/");
@@ -145,6 +149,7 @@ static qbool tlua_cl_ingame(void)
 
 static int tlua_screen(lua_State *L)
 {
+	TLua_Require(L, TLUA_PERM_DISPLAY);
 	lua_pushnumber(L, vid_conwidth.value);
 	lua_pushnumber(L, vid_conheight.value);
 	return 2;
@@ -152,24 +157,28 @@ static int tlua_screen(lua_State *L)
 
 static int tlua_ingame(lua_State *L)
 {
+	TLua_Require(L, TLUA_PERM_STATE);
 	lua_pushboolean(L, tlua_cl_ingame());
 	return 1;
 }
 
 static int tlua_islocal(lua_State *L)
 {
+	TLua_Require(L, TLUA_PERM_STATE);
 	lua_pushboolean(L, sv.active);
 	return 1;
 }
 
 static int tlua_map(lua_State *L)
 {
+	TLua_Require(L, TLUA_PERM_STATE);
 	lua_pushstring(L, tlua_cl_ingame() ? cl.worldbasename : "");
 	return 1;
 }
 
 static int tlua_gametime(lua_State *L)
 {
+	TLua_Require(L, TLUA_PERM_STATE);
 	lua_pushnumber(L, cl.time);
 	return 1;
 }
@@ -194,6 +203,7 @@ static void tlua_pushscore(lua_State *L, int i)
 static int tlua_players(lua_State *L)
 {
 	int i, n = 0;
+	TLua_Require(L, TLUA_PERM_PLAYERS);
 	lua_newtable(L);
 	if (!tlua_cl_ingame())
 		return 1;
@@ -209,6 +219,7 @@ static int tlua_players(lua_State *L)
 
 static int tlua_me(lua_State *L)
 {
+	TLua_Require(L, TLUA_PERM_PLAYERS);
 	if (!tlua_cl_ingame())
 		return 0;
 	lua_createtable(L, 0, 8);
@@ -236,6 +247,7 @@ static int tlua_me(lua_State *L)
 
 static int tlua_draw_clip(lua_State *L)
 {
+	TLua_Require(L, TLUA_PERM_DISPLAY);
 	tlua_cl_needdraw(L);
 	DrawQ_SetClipArea((float)luaL_checknumber(L, 1), (float)luaL_checknumber(L, 2), (float)luaL_checknumber(L, 3), (float)luaL_checknumber(L, 4));
 	return 0;
@@ -243,6 +255,7 @@ static int tlua_draw_clip(lua_State *L)
 
 static int tlua_draw_noclip(lua_State *L)
 {
+	TLua_Require(L, TLUA_PERM_DISPLAY);
 	tlua_cl_needdraw(L);
 	DrawQ_ResetClipArea();
 	return 0;
@@ -252,6 +265,7 @@ static int tlua_draw_noclip(lua_State *L)
 static int tlua_fingers(lua_State *L)
 {
 	int slot, n = 0;
+	TLua_Require(L, TLUA_PERM_INPUT);
 	lua_newtable(L);
 	for (slot = 0; slot < 10; slot++)
 	{
@@ -276,6 +290,7 @@ static int tlua_mouse(lua_State *L)
 {
 	float x = vid.mode.width ? in_windowmouse_x * vid_conwidth.value / vid.mode.width : 0;
 	float y = vid.mode.height ? in_windowmouse_y * vid_conheight.value / vid.mode.height : 0;
+	TLua_Require(L, TLUA_PERM_INPUT);
 	lua_pushnumber(L, x);
 	lua_pushnumber(L, y);
 	return 2;
@@ -284,6 +299,7 @@ static int tlua_mouse(lua_State *L)
 static int tlua_keydown(lua_State *L)
 {
 	int k = Key_StringToKeynum(luaL_checkstring(L, 1));
+	TLua_Require(L, TLUA_PERM_INPUT);
 	lua_pushboolean(L, k >= 0 && k < MAX_KEYS && tlua_keystate[k]);
 	return 1;
 }
@@ -293,6 +309,7 @@ static int tlua_sound(lua_State *L)
 	const char *path = luaL_checkstring(L, 1), *p;
 	static double window;
 	static int count;
+	TLua_Require(L, TLUA_PERM_DISPLAY);
 	if (strncmp(path, "sound/", 6) || strstr(path, "..") || strlen(path) > 96)
 		return luaL_error(L, "xt.sound: the path must start with sound/");
 	for (p = path; *p; p++)

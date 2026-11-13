@@ -8,6 +8,19 @@ realms, client mods (touch_lua_cl.c) and server plugins (touch_lua_sv.c).
 #include "touch_lua54/lua.h"
 #include "touch_lua54/lauxlib.h"
 
+#define TLUA_PERM_EVENTS    (1u << 0)
+#define TLUA_PERM_COMMANDS  (1u << 1)
+#define TLUA_PERM_CVAR_READ (1u << 2)
+#define TLUA_PERM_CVAR_WRITE (1u << 3)
+#define TLUA_PERM_EXEC      (1u << 4)
+#define TLUA_PERM_STORAGE   (1u << 5)
+#define TLUA_PERM_DISPLAY   (1u << 6)
+#define TLUA_PERM_INPUT     (1u << 7)
+#define TLUA_PERM_PLAYERS   (1u << 8)
+#define TLUA_PERM_MESSAGES  (1u << 9)
+#define TLUA_PERM_STATE     (1u << 10)
+#define TLUA_PERM_ALL       ((1u << 11) - 1)
+
 #define TLUA_MAX_MODS 32
 #define TLUA_NAME_LEN 32
 #define TLUA_MAX_FILE (1024 * 1024)      // init.lua, a required file, a load() chunk
@@ -31,6 +44,8 @@ typedef struct tlua_mod_s
 	char author[64];
 	char description[256];
 	qbool enabled;                  // the user's choice (enabled.txt)
+	unsigned requested, granted;
+	qbool manifest_error, scoped;
 	tlua_state_t state;
 	char error[512];
 	lua_State *L;
@@ -85,6 +100,7 @@ void TLua_Fire(tlua_realm_t *r, const char *event, tlua_push_f push, tlua_result
 
 // Helpers for realm API functions.
 tlua_mod_t *TLua_Self(lua_State *L);
+void TLua_Require(lua_State *L, unsigned permission);
 void TLua_SetField(lua_State *L, const char *k, lua_CFunction f);
 const char *TLua_CleanText(const char *in, char *out, size_t outsize, qbool allownewline);
 

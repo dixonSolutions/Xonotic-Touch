@@ -1,6 +1,6 @@
 # Lua mods and plugins
 
-Xonotic Touch runs **Lua 5.4** scripts in a sandbox:
+Godnotic runs **Lua 5.4** scripts in a sandbox:
 
 - **Client mods** (`<userdir>/mods/<name>/`) draw over the HUD or the whole screen, see
   keys, fingers and the mouse, add console commands, change a few settings, play sounds,
@@ -69,6 +69,69 @@ version: 1.0
 author: You
 description: One line about it.
 ```
+
+## Permission scopes (API 1)
+
+A new mod can opt into scoped permissions in `mod.txt`:
+
+```
+api: 1
+permissions: events, display, commands
+```
+
+The comma- or space-separated list declares the APIs the mod needs. None are
+initially granted. Enable the mod after granting its needs; a denied call raises
+`permission denied` (and an uncaught error stops that mod). Unsupported API
+versions and unknown scope names reject the manifest. `xt.apiversion` is `"1"`.
+
+| Scope | Access |
+|---|---|
+| `events` | `xt.on` and delivery of event payloads, including key, chat and player events |
+| `commands` | register and receive the mod's own console commands |
+| `cvar_read` | `xt.cvar` (private and secret cvars remain hidden) |
+| `cvar_write` | `xt.setcvar` (own namespace and realm allowlist only) |
+| `exec` | `xt.exec` (realm command allowlist and rate limits still apply) |
+| `storage` | `xt.save`, `xt.load`, confined to the mod's data folder |
+| `display` | client screen dimensions, drawing and sound |
+| `input` | client finger, mouse and key state |
+| `players` | player and scoreboard information permitted to that realm |
+| `messages` | server tell, centerprint and broadcast |
+| `state` | match state, map, time and `xt.realtime` |
+
+`events` includes all event payloads, so a player or key event also reveals the
+information in that event without a separate `players` or `input` grant. Lua's
+basic language, `print` and `require` of files in the mod remain available.
+Scopes never expand the client/server API or its existing allowlists. For example,
+`exec` cannot run arbitrary console commands, and client `players` does not reveal
+other players' positions. Server plugins already have more information than client
+mods because they run on the host.
+
+Inspect and change grants from the local console:
+
+```
+lua_mod_permission hello
+lua_mod_permission hello grant events
+lua_mod_permission hello revoke events
+sv_lua_plugin_permission welcome grant messages
+```
+
+Only declared scopes may be granted. Revocation applies immediately, including
+to already registered event handlers and commands; granting a scope does not
+re-run a failed initialization, so reload that mod after granting it. Grants are
+stored separately per mod and realm in `mods/.permissions/<name>.txt` or
+`plugins/.permissions/<name>.txt`, outside the mod folder, and changes fail closed
+if they cannot be saved. Client grants cannot be changed while connected to a
+remote server. Grant files are user data and cannot be supplied by a mod package.
+The read-only `_cl_lua_permissions` cvar exposes newline-separated client rows:
+`name<TAB>mode<TAB>requested<TAB>granted`. Mode is `v1`, `legacy`, or `invalid`;
+the last two fields are comma-separated scope names, and granted is the effective
+intersection with requested.
+
+For compatibility, a mod with no `api` declaration retains the previous full set
+of sandboxed APIs by default. Its permissions can still be inspected and revoked;
+legacy grants and API 1 grants are stored separately so switching a manifest to
+API 1 does not silently inherit legacy access. Existing examples are legacy mods.
+The sandbox is not a substitute for trusting the engine and installed game files.
 
 ## A first mod
 
