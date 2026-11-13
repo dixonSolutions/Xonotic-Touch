@@ -71,13 +71,41 @@ sharpness. A full repack takes 11 minutes on 16 threads.
 `--profile slim` is what the app downloads, from the same source build
 (`xonotic-20261107-*`), without nexcompat:
 
-| pack | official | slim | of which textures |
-| --- | ---: | ---: | --- |
-| data | 312.2 MB | 132.3 MB | 201.2 -> 25.7 MB |
-| maps | 618.4 MB | 325.2 MB | 380.3 -> 94.9 MB |
-| music | 110.7 MB | 47.1 MB | (Opus 64 kbit/s) |
-| xoncompat, fonts | 5.3 MB | 3.7 MB | |
-| **total** | **1046 MB** | **508 MB** | |
+| pack | official | slim | textures | JPEGs | left out |
+| --- | ---: | ---: | --- | --- | ---: |
+| data | 312.2 MB | 118.1 MB | 201.2 -> 25.7 MB | 18.5 -> 9.9 MB | 6.1 MB |
+| maps | 618.4 MB | 264.2 MB | 380.3 -> 94.9 MB | 126.9 -> 73.4 MB | 9.1 MB |
+| music | 110.7 MB | 47.1 MB | (Opus 64 kbit/s) | | |
+| xoncompat, fonts | 5.3 MB | 3.7 MB | | | |
+| **total** | **1046 MB** | **433 MB** | | | |
+
+### JPEGs and what is left out
+
+The official lightmaps (`maps/<map>/lm_*.jpg`) are saved at quality ~99 and were a
+third of the slim maps pack. The slim profile re-encodes JPEGs (`--jpeg-quality 86`,
+`--lightmap-quality 90`), under three rules that came out of a failed first attempt:
+
+- **The source's chroma sampling is kept.** Pillow's default halves the colour
+  resolution, which bleeds neighbouring charts of a lightmap atlas into each
+  other: seams and discoloured patches in game.
+- **Deluxemaps are not lightmaps.** Under the odd numbers (`lm_0001`, ...) a
+  deluxemapped map stores the light's direction as a colour. Those start at
+  quality 95 with a stricter floor. They are recognised by their pixels being
+  mostly unit vectors; five sparsely filled ones in the 20261107 set fall under
+  that test and take the lightmap path (40.7 dB or better on their vector pixels).
+- **Every re-encode is decoded and compared with its source** and used only at or
+  above a PSNR floor (38 dB; deluxemaps 41 dB), trying qualities 93, 96 and 97
+  first; otherwise the original entry stays. A file already at or below the
+  target quality, or not a tenth smaller, stays too.
+
+Left out, because a running game never opens them: map and model sources
+(`maps/*.map`, `models/*.map`, `*.ase`), QuakeC line tables (`*.lno`, only used to
+number lines in a QC error trace) and the two demos (`demos/*.dem`; Media > Demos
+is empty with this set).
+
+Checked in the engine against the full and the previous slim set: eight maps from
+four cameras each with deluxemapping on, 44-51 dB against the previous slim set on
+every still shot, no new log lines, all 10,005 entries decoding to their CRC.
 
 The streamed archive measures the same 508 MB (its entries are stored), where
 the previous download was the 1.17 GB autobuild archive: about 57 % less to

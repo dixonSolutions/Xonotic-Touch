@@ -70,7 +70,8 @@ PROFILES = {
     # A phone screen is small and held at arm's length, which is what buys the
     # bytes back; 2D graphics, the part read at 1:1, keep their size.
     # JPEGs: the official lightmaps are saved at quality ~99 and are a third of
-    # the maps pack; at 90 they are a quarter of that and look the same. What a
+    # the maps pack. Each re-encode keeps the source's chroma sampling and is
+    # checked against the picture it replaces (recompress_jpeg). What a
     # running game never opens (map and model sources, QuakeC line tables, the
     # benchmark demo) is left out.
     "slim": {"world_blocks": (10, 10), "model_blocks": (8, 6), "norm_blocks": (6, 6),
@@ -244,34 +245,74 @@ def is_lightmap(name):
     return name.startswith("maps/") and "/lm_" in name
 
 
-def recompress_jpeg(name, data, quality):
+# A re-encode has to stay this close to the picture it replaces (PSNR in dB,
+# over all channels), or it is not used.
+JPEG_FLOOR = 38.0
+# Lightmaps are smooth and forgiving. A deluxemap is not: it stores the light's
+# direction as a colour, so a colour error turns a surface's shading, and it
+# sits in the same folder under the odd numbers (lm_0001, lm_0003, ...).
+LIGHTMAP_FLOOR = 38.0
+DELUXEMAP_QUALITY = 95
+DELUXEMAP_FLOOR = 41.0
+
+
+def is_deluxemap(name, rgb):
+    """An odd-numbered lightmap whose pixels are mostly unit vectors."""
+    try:
+        odd = int(name.rsplit("lm_", 1)[1][:4]) % 2 == 1
+    except (IndexError, ValueError):
+        return False
+    if not odd or rgb.ndim != 3:
+        return False
+    v = rgb.astype(np.float32) / 127.5 - 1.0
+    return float(np.mean(np.abs(np.sqrt((v * v).sum(-1)) - 1.0) < 0.12)) > 0.3
+
+
+def recompress_jpeg(name, data, quality, lightmap=False):
     """The same picture as a smaller baseline JPEG, or None to keep the entry.
 
-    Baseline with optimised Huffman tables, which every libjpeg reads. Only a
-    saving of a tenth or more is worth a generation of loss. Greyscale stays
-    greyscale (the *_alpha.jpg masks); CMYK and anything Pillow cannot read is
-    left alone.
+    Baseline with optimised Huffman tables, which every libjpeg reads, and the
+    source's own chroma sampling: Pillow's default halves the colour resolution,
+    which bleeds neighbouring charts of a lightmap atlas into each other. The
+    result is decoded again and compared with the source; when it is further
+    off than the floor for its kind, higher qualities are tried, and the entry is kept as it is
+    if none is both close enough and a tenth smaller. Greyscale stays greyscale
+    (the *_alpha.jpg masks); CMYK and anything Pillow cannot read is left alone.
     """
     if not quality or data[:2] != b"\xff\xd8":
         return None
     try:
-        from PIL import Image
+        from PIL import Image, JpegImagePlugin
         import io
         im = Image.open(io.BytesIO(data))
-        im.load()
-        if im.mode not in ("RGB", "L"):
-            return None
+        sampling = JpegImagePlugin.get_sampling(im) if im.mode == "RGB" else -1
         table = im.quantization.get(0) if im.quantization else None
-        out = io.BytesIO()
-        im.save(out, "JPEG", quality=quality, optimize=True, progressive=False)
+        im.load()
+        if im.mode not in ("RGB", "L") or (im.mode == "RGB" and sampling not in (0, 1, 2)):
+            return None
+        ref = np.asarray(im, dtype=np.int16)
+        floor = JPEG_FLOOR
+        if lightmap:
+            floor = LIGHTMAP_FLOOR
+            if is_deluxemap(name, ref):
+                quality, floor = max(quality, DELUXEMAP_QUALITY), DELUXEMAP_FLOOR
+        # Already at or below the target: re-encoding would only add loss.
+        if table and sum(table) / len(table) >= _QTABLE_MEAN.get(quality, 0):
+            return None
+        for q in sorted({quality, max(quality, 93), max(quality, 96), max(quality, 97)}):
+            out = io.BytesIO()
+            opts = {"subsampling": sampling} if im.mode == "RGB" else {}
+            im.save(out, "JPEG", quality=q, optimize=True, progressive=False, **opts)
+            out = out.getvalue()
+            if len(out) > len(data) * 0.9:
+                return None  # a higher quality will only be bigger
+            got = np.asarray(Image.open(io.BytesIO(out)), dtype=np.int16)
+            mse = float(np.mean((got - ref) ** 2))
+            if mse == 0 or 10 * np.log10(255.0 ** 2 / mse) >= floor:
+                return out
     except Exception as e:  # a broken picture is the engine's to report, not ours
         log("  %s: kept (%s)" % (name, e))
-        return None
-    # Already at or below the target: re-encoding would only add loss.
-    if table and sum(table) / len(table) >= _QTABLE_MEAN.get(quality, 0):
-        return None
-    out = out.getvalue()
-    return out if len(out) <= len(data) * 0.9 else None
+    return None
 
 
 def _qtable_means():
@@ -406,8 +447,9 @@ def repack(args, pack, textures, stats):
                 if opus is not None:
                     newname, newdata, kind = name, opus, "audio"
             elif ext in ("jpg", "jpeg"):
-                quality = getattr(args, "lightmap_quality", 0) if is_lightmap(name) else getattr(args, "jpeg_quality", 0)
-                jpeg = recompress_jpeg(name, data, quality)
+                lightmap = is_lightmap(name)
+                quality = getattr(args, "lightmap_quality", 0) if lightmap else getattr(args, "jpeg_quality", 0)
+                jpeg = recompress_jpeg(name, data, quality, lightmap)
                 if jpeg is not None:
                     newname, newdata, kind = name, jpeg, "jpeg"
         except (subprocess.CalledProcessError, OSError, ValueError) as e:
