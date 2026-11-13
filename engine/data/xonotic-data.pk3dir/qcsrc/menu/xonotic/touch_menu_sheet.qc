@@ -105,8 +105,40 @@ entity TouchSheet_leafAt(vector pos)
 	return e;
 }
 
+// A dialog opened by a button saves the focus of everything under it
+// (DialogOpenButton_Click, saveFocus), and Container_setFocus hands the
+// next focus to that saved item, whatever was asked for. With a mouse the
+// hover after the dialog closes takes it once and the next hover puts it
+// right. A finger's press is the first event at the new spot: it went to
+// the saved button (the tile that opened the last sheet), outside it, and
+// the tap was lost -- every other tap on the launcher. A press means the
+// item under it, so the containers it goes through forget what they saved.
+void TouchSheet_dropSavedFocus(vector pos)
+{
+	entity e = main;
+	vector p = pos;
+	for (int i = 0; e && e.instanceOfContainer && i < 32; ++i)
+	{
+		e.savedFocus = NULL;
+		entity c = NULL;
+		if (e.instanceOfModalController)
+		{
+			for (entity x = e.firstChild; x; x = x.nextSibling)
+				if (x.ModalController_state)
+					c = x; // the front one, as ModalController_draw picks it
+		}
+		else
+			c = e.itemFromPoint(e, p);
+		if (!c)
+			break;
+		p = globalToBox(p, c.Container_origin, c.Container_size);
+		e = c;
+	}
+}
+
 void TouchSheet_mousePress(vector pos)
 {
+	TouchSheet_dropSavedFocus(pos);
 	touch_sheet_pending = false;
 	touch_sheet_scrolling = NULL;
 	if (touch_sheet_fling)
