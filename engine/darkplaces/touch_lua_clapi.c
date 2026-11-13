@@ -652,6 +652,24 @@ void TLua_CL_DrawWidgets(void)
 		tlua_widgets_publish();
 }
 
+// fingers, with lua_mod_simulate's stand-ins (for testing a mod without a touchscreen)
+static int tlua_sim_finger[10];
+static float tlua_sim_fx[10], tlua_sim_fy[10];
+static void tlua_finger(int slot, int *act, float *x, float *y)
+{
+	float nx, ny;
+	if (tlua_sim_finger[slot])
+	{
+		*act = 1;
+		*x = tlua_sim_fx[slot];
+		*y = tlua_sim_fy[slot];
+		return;
+	}
+	VID_GetTouchFinger(slot, act, &nx, &ny);
+	*x = nx * vid_conwidth.value;
+	*y = ny * vid_conheight.value;
+}
+
 // touch buttons: a finger (or the mouse with MOUSE1) landing on one presses
 // it, hold runs every frame while it stays down, release when it lifts
 static qbool tlua_mouse1;
@@ -661,12 +679,7 @@ static void tlua_widgets_input(void)
 	float fx[11], fy[11];
 	int act[11];
 	for (slot = 0; slot < 10; slot++)
-	{
-		float nx, ny;
-		VID_GetTouchFinger(slot, &act[slot], &nx, &ny);
-		fx[slot] = nx * vid_conwidth.value;
-		fy[slot] = ny * vid_conheight.value;
-	}
+		tlua_finger(slot, &act[slot], &fx[slot], &fy[slot]);
 	act[10] = tlua_mouse1 && key_dest == key_game;
 	fx[10] = vid.mode.width ? in_windowmouse_x * vid_conwidth.value / vid.mode.width : 0;
 	fy[10] = vid.mode.height ? in_windowmouse_y * vid_conheight.value / vid.mode.height : 0;
@@ -731,7 +744,7 @@ int TLuaAPI_cl_bind(lua_State *L)
 	if (key < 0 || key >= MAX_KEYS || key == K_ESCAPE)
 		return luaL_error(L, "xt.bind: no key '%s' (or Escape)", name);
 	bind = Key_GetBind(key, -1);
-	if (bind && (strstr(bind, "toggleconsole") || strstr(bind, "togglemenu") || strstr(bind, "menu_")))
+	if (bind && (strstr(bind, "toggleconsole") || strstr(bind, "togglemenu")))
 		return luaL_error(L, "xt.bind: %s opens the console or the menu; it stays theirs", name);
 	for (i = 0; i < TLUA_MAX_BINDS; i++)
 	{
@@ -894,11 +907,56 @@ static qbool tlua_visible(const vec3_t from, const vec3_t to)
 	return !tr.startsolid && tr.fraction >= 0.999f;
 }
 
+// the players of the server this process runs (offline only: the caller checks)
+static int tlua_server_players(lua_State *L, const vec3_t eye, int n)
+{
+	prvm_prog_t *prog = SVVM_prog;
+	int i;
+	if (!prog->loaded)
+		return n;
+	for (i = 0; i < svs.maxclients && n < 256; i++)
+	{
+		client_t *c = svs.clients + i;
+		prvm_edict_t *ed;
+		float *org, sx, sy, depth;
+		vec3_t mid;
+		char clean[MAX_SCOREBOARDNAME];
+		if (!c->active || !c->edict || i + 1 == cl.playerentity)
+			continue;
+		ed = c->edict;
+		if (PRVM_serveredictfloat(ed, health) <= 0 || PRVM_serveredictfloat(ed, frags) == -666)
+			continue;
+		org = PRVM_serveredictvector(ed, origin);
+		VectorCopy(org, mid);
+		mid[2] += 16;
+		lua_createtable(L, 0, 8);
+		lua_pushinteger(L, i + 1);
+		lua_setfield(L, -2, "id");
+		lua_pushstring(L, "player");
+		lua_setfield(L, -2, "kind");
+		lua_pushnumber(L, org[0]);
+		lua_setfield(L, -2, "x");
+		lua_pushnumber(L, org[1]);
+		lua_setfield(L, -2, "y");
+		lua_pushnumber(L, org[2]);
+		lua_setfield(L, -2, "z");
+		lua_pushboolean(L, tlua_project(mid, &sx, &sy, &depth) && tlua_visible(eye, mid));
+		lua_setfield(L, -2, "visible");
+		lua_pushinteger(L, (lua_Integer)PRVM_serveredictfloat(ed, team));
+		lua_setfield(L, -2, "team");
+		lua_pushstring(L, TLua_CleanText(c->name, clean, sizeof(clean), false));
+		lua_setfield(L, -2, "name");
+		lua_rawseti(L, -2, ++n);
+	}
+	return n;
+}
+
 int TLuaAPI_cl_entities(lua_State *L)
 {
 	prvm_prog_t *prog = CLVM_prog;
 	const char *want = luaL_optstring(L, 1, NULL);
 	static int f_isplayer = -2, f_entnum, f_team, f_draw;
+	static qbool i_isplayer, i_entnum, i_team;
 	static int fn_proj, fn_item;
 	static unsigned seenprog;
 	int i, n = 0;
@@ -915,6 +973,13 @@ int TLuaAPI_cl_entities(lua_State *L)
 		f_isplayer = PRVM_ED_FindFieldOffset(prog, "isplayermodel");
 		f_entnum = PRVM_ED_FindFieldOffset(prog, "entnum");
 		f_team = PRVM_ED_FindFieldOffset(prog, "team");
+		// gmqcc's int fields hold integers, not floats
+		{
+			mdef_t *d;
+			i_isplayer = (d = PRVM_ED_FindField(prog, "isplayermodel")) && (d->type & ~DEF_SAVEGLOBAL) != ev_float;
+			i_entnum = (d = PRVM_ED_FindField(prog, "entnum")) && (d->type & ~DEF_SAVEGLOBAL) != ev_float;
+			i_team = (d = PRVM_ED_FindField(prog, "team")) && (d->type & ~DEF_SAVEGLOBAL) != ev_float;
+		}
 		f_draw = PRVM_ED_FindFieldOffset(prog, "draw");
 		f = PRVM_ED_FindFunction(prog, "Projectile_Draw");
 		fn_proj = f ? (int)(f - prog->functions) : -1;
@@ -922,6 +987,14 @@ int TLuaAPI_cl_entities(lua_State *L)
 		fn_item = f ? (int)(f - prog->functions) : -1;
 	}
 	Matrix4x4_OriginFromMatrix(&r_refdef.view.matrix, eye);
+	// Offline, this process runs the server: the players come from it, so a
+	// radar sees bots the network would not send yet (outside the view)
+	if (offline && sv.active && (!want || !strcmp(want, "player")))
+	{
+		n = tlua_server_players(L, eye, n);
+		if (want)
+			return 1;
+	}
 	for (i = 1; i < prog->num_edicts && n < 256; i++)
 	{
 		prvm_edict_t *ed = PRVM_EDICT_NUM(i);
@@ -930,15 +1003,18 @@ int TLuaAPI_cl_entities(lua_State *L)
 		vec3_t mid;
 		float sx, sy, depth;
 		qbool onscreen, vis;
-		int pnum = 0;
+		int pnum = 0, isp;
 		if (ed->free)
 			continue;
-		if (f_isplayer >= 0 && ((int)PRVM_E_FLOAT(ed, f_isplayer) & 2)) // ISPLAYER_CLIENT
+		isp = f_isplayer < 0 ? 0 : i_isplayer ? PRVM_E_INT(ed, f_isplayer) : (int)PRVM_E_FLOAT(ed, f_isplayer);
+		if (isp & 2) // ISPLAYER_CLIENT
 		{
-			if ((int)PRVM_E_FLOAT(ed, f_isplayer) & 4) // ISPLAYER_LOCAL: the player itself
+			if (offline && sv.active)
+				continue; // listed from the server above
+			if (isp & 4) // ISPLAYER_LOCAL: the player itself
 				continue;
 			kind = "player";
-			pnum = f_entnum >= 0 ? (int)PRVM_E_FLOAT(ed, f_entnum) : 0;
+			pnum = f_entnum < 0 ? 0 : i_entnum ? PRVM_E_INT(ed, f_entnum) : (int)PRVM_E_FLOAT(ed, f_entnum);
 		}
 		else if (f_draw >= 0 && fn_proj >= 0 && PRVM_E_INT(ed, f_draw) == fn_proj)
 			kind = "projectile";
@@ -970,7 +1046,7 @@ int TLuaAPI_cl_entities(lua_State *L)
 		lua_setfield(L, -2, "visible");
 		if (f_team >= 0)
 		{
-			lua_pushinteger(L, (lua_Integer)PRVM_E_FLOAT(ed, f_team));
+			lua_pushinteger(L, i_team ? (lua_Integer)PRVM_E_INT(ed, f_team) : (lua_Integer)PRVM_E_FLOAT(ed, f_team));
 			lua_setfield(L, -2, "team");
 		}
 		if (pnum >= 1 && pnum <= cl.maxclients && cl.scores)
@@ -1145,7 +1221,9 @@ static void VM_CL_touch_lua_clevent(prvm_prog_t *prog)
 		char name[128], text[1024];
 		const char *nl = strchr(s1, '\n'), *nm;
 		size_t nlen = nl ? (size_t)(nl - s1) : strlen(s1);
-		dp_strlcpy(name, s1, min(nlen + 1, sizeof(name)));
+		nlen = min(nlen, sizeof(name) - 1);
+		memcpy(name, s1, nlen);
+		name[nlen] = 0;
 		nm = name;
 		if (!strncmp(nm, "Notification_", 13))
 			nm += 13;
@@ -1161,7 +1239,8 @@ static void VM_CL_touch_lua_clevent(prvm_prog_t *prog)
 			TLua_Fire(&tlua_client, "notification", tlua_push_notification, tlua_result_notif_hide, &nt);
 			e.hide = nt.hide;
 		}
-		if (!strncmp(ev + 13, "info", 4) && (strstr(nm, "DEATH_") == nm || strstr(nm, "INFO_DEATH_") == nm) && TLua_AnyHandler(&tlua_client, "kill"))
+		// the kill feed: INFO_DEATH_* (the world, yourself) and INFO_WEAPON_*_MURDER_* (a frag)
+		if (!strncmp(ev + 13, "info", 4) && (!strncmp(nm, "INFO_DEATH_", 11) || !strncmp(nm, "DEATH_", 6) || strstr(nm, "_MURDER")) && TLua_AnyHandler(&tlua_client, "kill"))
 		{
 			// the arguments: s1 is the victim, s2 the attacker in Xonotic's death notifications
 			char victim[128] = "", attacker[128] = "";
@@ -1321,9 +1400,7 @@ void TLua_CL_PollEvents(void)
 		{
 			int act;
 			float nx, ny;
-			VID_GetTouchFinger(i, &act, &nx, &ny);
-			nx *= vid_conwidth.value;
-			ny *= vid_conheight.value;
+			tlua_finger(i, &act, &nx, &ny);
 			if (act || fingers[i])
 			{
 				const char *phase = act && !fingers[i] ? "down" : !act ? "up" : (nx != fpos[i][0] || ny != fpos[i][1]) ? "move" : NULL;
@@ -1363,9 +1440,41 @@ void TLua_CLAPI_ModStopped(tlua_mod_t *m)
 		tlua_widgets_publish();
 }
 
+// lua_mod_simulate key <name> <1|0> / finger <0-9> <x> <y> <1|0>: input for
+// testing a mod (in 2D units, as xt.draw), on any device
+static void tlua_simulate_f(cmd_state_t *cmd)
+{
+	const char *what = Cmd_Argv(cmd, 1);
+	if (TLua_RemoteRefused(cmd))
+		return;
+	if (!strcmp(what, "key") && Cmd_Argc(cmd) == 4)
+	{
+		int k = Key_StringToKeynum(Cmd_Argv(cmd, 2));
+		if (k < 0 || k >= MAX_KEYS)
+		{
+			Con_Printf("lua_mod_simulate: no key %s\n", Cmd_Argv(cmd, 2));
+			return;
+		}
+		TouchLua_KeyEvent(k, 0, atoi(Cmd_Argv(cmd, 3)) != 0);
+		return;
+	}
+	if (!strcmp(what, "finger") && Cmd_Argc(cmd) == 6)
+	{
+		int slot = atoi(Cmd_Argv(cmd, 2));
+		if (slot < 0 || slot > 9)
+			return;
+		tlua_sim_fx[slot] = (float)atof(Cmd_Argv(cmd, 3));
+		tlua_sim_fy[slot] = (float)atof(Cmd_Argv(cmd, 4));
+		tlua_sim_finger[slot] = atoi(Cmd_Argv(cmd, 5)) != 0;
+		return;
+	}
+	Con_Printf("usage: lua_mod_simulate key <name> <1|0>  or  lua_mod_simulate finger <0-9> <x> <y> <1|0>\n");
+}
+
 void TLua_CLAPI_Setup(void)
 {
 	if (cls.state == ca_dedicated)
 		return;
 	TLua_RegisterCvar(&lua_hud_panels);
+	Cmd_AddCommand(CF_CLIENT, "lua_mod_simulate", tlua_simulate_f, "press a key or put a finger down for client mods, to test them: lua_mod_simulate key <name> <1|0> / finger <0-9> <x> <y> <1|0>");
 }

@@ -1197,7 +1197,10 @@ static int tlua_cvar(lua_State *L)
 	cvar_t *v = Cvar_FindVar(&cvars_all, name, ~0);
 	TLua_Require(L, TLUA_PERM_CVAR_READ);
 	if (!v || (v->flags & CF_PRIVATE) || tlua_cvar_secret(name))
-		return 0;
+	{
+		lua_pushnil(L);
+		return 1;
+	}
 	lua_pushstring(L, v->string);
 	return 1;
 }
@@ -2462,7 +2465,9 @@ void TLua_ParseManifest(tlua_mod_t *m, char *text)
 			char sname[TLUA_SUFFIX_LEN + 1];
 			const char *field = strchr(k + 8, '.') + 1;
 			int j;
-			dp_strlcpy(sname, k + 8, min(sizeof(sname), (size_t)(field - 1 - (k + 8)) + 1));
+			size_t slen = min(sizeof(sname) - 1, (size_t)(field - 1 - (k + 8)));
+			memcpy(sname, k + 8, slen);
+			sname[slen] = 0;
 			for (j = 0; j < m->numsettings; j++)
 				if (!strcmp(m->settings[j].name, sname))
 					break;

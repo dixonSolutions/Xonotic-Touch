@@ -163,3 +163,11 @@ string touch_lua_api_gametype()
 {
 	return MapInfo_Type_ToString(MapInfo_CurrentGametype());
 }
+
+// mod channel commands have the engine's own limits per player (touch_lua_chan.c):
+// the game's command flood control must not drop a mod's hello or answers
+MUTATOR_HOOKFUNCTION(touch_lua, ClientCommand_FloodControl)
+{
+	string c = M_ARGV(1, string);
+	return c == "xtmsg" || c == "xthello" || c == "xtpage";
+}

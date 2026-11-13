@@ -24,7 +24,7 @@ logging, URLs, bans, passwords and files.
 #include "touch_lua_int.h"
 
 #define TLUA_SV_BUILTIN_EVENT 1740
-#define TLUA_SV_NUMBUILTINS 1753 // #1741-#1752: the hook bridge (touch_lua_hooks.c)
+#define TLUA_SV_NUMBUILTINS 1755 // #1741-#1754: the hook bridge (touch_lua_hooks.c)
 
 void TLua_Hooks_InstallBuiltins(prvm_builtin_t *b);
 

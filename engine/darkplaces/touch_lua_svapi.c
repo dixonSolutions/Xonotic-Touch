@@ -544,6 +544,9 @@ static int tlua_ent_index(lua_State *L)
 	case ev_float:
 		lua_pushnumber(L, PRVM_E_FLOAT(ed, d->ofs));
 		return 1;
+	case 8: // ev_integer (gmqcc's int)
+		lua_pushinteger(L, PRVM_E_INT(ed, d->ofs));
+		return 1;
 	case ev_vector:
 		tlua_pushvec3(L, &PRVM_E_FLOAT(ed, d->ofs));
 		return 1;

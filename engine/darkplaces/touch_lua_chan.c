@@ -504,7 +504,9 @@ qbool TouchLua_CL_StuffCmd(const char *msg, size_t len)
 			long n = tlua_chan_decode(tlua_cl_page_buf, tlua_cl_page_len, pagejson, sizeof(pagejson));
 			char mod[64];
 			const char *dot = strchr(a, '.');
-			dp_strlcpy(mod, a, min(sizeof(mod), dot ? (size_t)(dot - a) + 1 : sizeof(mod)));
+			size_t ml = min(sizeof(mod) - 1, dot ? (size_t)(dot - a) : strlen(a));
+			memcpy(mod, a, ml);
+			mod[ml] = 0;
 			tlua_cl_page_id[0] = 0;
 			if (n > 0 && cl_lua_server_pages.integer && !tlua_cl_is_blocked("pages"))
 				TLua_UI_ServerPage(a, pagejson, mod);
@@ -527,9 +529,9 @@ qbool TLua_Chan_PageReply(const char *pageid, const char *row, const char *event
 		return false;
 	if (!tlua_take(&tlua_cl_pg, &tlua_cl_pgt, 0, 20, 20))
 		return false;
-	if (!tlua_chan_encode(value, strlen(value), enc, sizeof(enc)))
+	if (value[0] && !tlua_chan_encode(value, strlen(value), enc, sizeof(enc)))
 		return false;
-	if (!enc[0])
+	if (!value[0])
 		dp_strlcpy(enc, "%00", sizeof(enc)); // an empty value still is one token
 	dpsnprintf(text, sizeof(text), "xtpage %s %s %s %s", pageid, row, event, enc);
 	tlua_cl_send(text);

@@ -967,8 +967,9 @@ int TLuaAPI_engine_cvar(lua_State *L)
 	const char *name = luaL_checkstring(L, 1);
 	cvar_t *v = Cvar_FindVar(&cvars_all, name, ~0);
 	if (!v || (v->flags & CF_PRIVATE) || TLua_CvarSecret(name))
-		return 0;
-	lua_pushstring(L, v->string);
+		lua_pushnil(L);
+	else
+		lua_pushstring(L, v->string);
 	return 1;
 }
 
@@ -1017,7 +1018,9 @@ typedef struct tlua_http_s
 static tlua_http_t tlua_http[TLUA_HTTP_MAX];
 
 // libcurl.c asks touch_lua_pkg.c, which asks this, for each transfer: ours
-// stay on HTTPS (HTTP to localhost for tests); 0 leaves a transfer alone
+// stay on HTTP(S) for the request itself and HTTPS for any redirect; 0
+// leaves a transfer alone. Which URL a mod may start with was checked when
+// it asked (https://, or http:// to this machine only).
 static void tlua_http_cb(int status, size_t length, unsigned char *buffer, void *cbdata);
 static qbool tlua_http_local;
 long TLua_Http_Protocols(void (*callback)(int, size_t, unsigned char *, void *), qbool redirect);
@@ -1025,7 +1028,7 @@ long TLua_Http_Protocols(void (*callback)(int, size_t, unsigned char *, void *),
 {
 	if (callback != tlua_http_cb)
 		return 0;
-	return (tlua_http_local && !redirect) ? (1 | 2) : 2;
+	return redirect ? 2 : (1 | 2);
 }
 
 static void tlua_http_cb(int status, size_t length, unsigned char *buffer, void *cbdata)
