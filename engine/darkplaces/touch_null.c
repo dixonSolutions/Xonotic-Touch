@@ -10,6 +10,7 @@
  */
 #include "quakedef.h"
 #include "touch_loadtime.h"
+#include "touch_warm.h"
 
 #define TOUCH_NULL_FINGERS 11
 float multitouch[TOUCH_NULL_FINGERS][3];
@@ -27,4 +28,9 @@ void VID_GetTouchFinger(int slot, int *active, float *nx, float *ny)
 qbool TouchSnd_PreloadName(const char *name)
 {
 	return false;
+}
+
+int TouchSnd_WarmName(const char *name)
+{
+	return 0;
 }
