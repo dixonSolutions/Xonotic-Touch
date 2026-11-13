@@ -174,6 +174,7 @@ void Touch_Chat_Open(bool team)
 	// Setting the panel off makes HUD_Chat park con_chat/con_chatrect, and turning
 	// it back on restores them. The sheet's own backlog is the feed while it is up.
 	cvar_set("hud_panel_chat", "0");
+	cvar_set("_touch_chat_sheet", "1"); // the engine's console button keeps off the sheet's header
 	touch_chat_open = true;
 	touch_chat_team = team;
 	touch_chat_hot_row = -1;
@@ -187,6 +188,7 @@ void Touch_Chat_Close(void)
 	touch_chat_open = false;
 	touch_chat_pill_arming = false;
 	cvar_set("hud_panel_chat", "1");
+	cvar_set("_touch_chat_sheet", "0");
 	Touch_Pointer_Clear();
 	strcpy(touch_chat_text, "");
 }
