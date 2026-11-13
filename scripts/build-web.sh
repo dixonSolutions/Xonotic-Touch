@@ -115,23 +115,64 @@ echo "$want" > "$stamp"
 echo "$want_link" > "$link_stamp"
 
 # ---- Page ---------------------------------------------------------------
+# Everything the page loads by name gets its content hash in the name, under
+# a/ (served immutable, docs/WEB.md), and index.html, the one file that is
+# always revalidated, names them: no build.json round trip, no ?v= busting,
+# and an unchanged engine stays in the browser's cache across deploys.
 mkdir -p "$OUT"
-install -m 644 godnotic.js godnotic.wasm "$OUT/"
-install -m 644 "$ROOT/web/index.html" "$ROOT/web/shell.js" "$ROOT/web/shell.css" \
-    "$ROOT/web/manifest.webmanifest" "$ROOT/web/godnotic-banner.png" "$ROOT/web/serve.py" "$OUT/"
+rm -rf "$OUT/a"
+mkdir -p "$OUT/a"
+install -m 644 "$ROOT/web/manifest.webmanifest" "$ROOT/web/serve.py" "$OUT/"
 for icon in "$ROOT"/web/icon-*.png; do
     [ -f "$icon" ] && install -m 644 "$icon" "$OUT/"
 done
-# Site config: XT_WEB_DATA_URL points the page at game data hosted elsewhere
-# (the GitHub Pages copy uses the data deployed with the Vercel copy).
-printf 'window.XT_CONFIG = %s;\n' "$(python3 -c 'import json,os; print(json.dumps({k: v for k, v in {"dataUrl": os.environ.get("XT_WEB_DATA_URL", "")}.items() if v}))')" > "$OUT/config.js"
-# The page uses this to tell builds apart (cache-busting the engine).
-rev="${VERCEL_GIT_COMMIT_SHA:-$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo local)}"
-build_id="$(date -u +%Y%m%d%H%M%S)-${rev:0:7}"
-printf '{"build":"%s"}\n' "$build_id" > "$OUT/build.json"
+rm -f "$OUT/config.js" "$OUT/build.json" "$OUT/godnotic.js" "$OUT/godnotic.wasm" \
+    "$OUT/shell.js" "$OUT/shell.css" "$OUT/store.js" "$OUT/godnotic-banner.png"
+rev="${VERCEL_GIT_COMMIT_SHA:-${GITHUB_SHA:-$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo local)}}"
+XT_BUILD_ID="$(date -u +%Y%m%d%H%M%S)-${rev:0:7}" XT_WEB_DATA_URL="${XT_WEB_DATA_URL:-}" \
+python3 -I - "$ROOT/web" "$PWD" "$OUT" <<'PY'
+import hashlib, json, os, re, shutil, sys
+web, engine, out = sys.argv[1:4]
 
-printf 'Built %s (%s)\n' "$OUT" "$(du -sh "$OUT/godnotic.wasm" | cut -f1) wasm)"
-if [ ! -f "$OUT/data/manifest.json" ]; then
+def hashed(src, name):
+    data = open(src, 'rb').read()
+    stem, ext = name.rsplit('.', 1)
+    dst = f'a/{stem}.{hashlib.sha256(data).hexdigest()[:12]}.{ext}'
+    with open(os.path.join(out, dst), 'wb') as f:
+        f.write(data)
+    return dst
+
+names = {
+    'godnotic.js': hashed(os.path.join(engine, 'godnotic.js'), 'godnotic.js'),
+    'godnotic.wasm': hashed(os.path.join(engine, 'godnotic.wasm'), 'godnotic.wasm'),
+}
+for f in ('shell.js', 'shell.css', 'store.js', 'godnotic-banner.png'):
+    names[f] = hashed(os.path.join(web, f), f)
+
+html = open(os.path.join(web, 'index.html'), encoding='utf-8').read()
+for plain in ('shell.js', 'shell.css', 'store.js', 'godnotic-banner.png'):
+    html, n = re.subn(r'((?:src|href)=")' + re.escape(plain) + '"', r'\g<1>' + names[plain] + '"', html)
+    assert n == 1, plain
+cfg = {'engine': names['godnotic.js'], 'wasm': names['godnotic.wasm'], 'manifest': '',
+       'dataUrl': os.environ.get('XT_WEB_DATA_URL', ''), 'build': os.environ['XT_BUILD_ID']}
+env = os.path.join(out, 'data', 'web-data.env')
+if os.path.exists(env):
+    cfg['manifest'] = open(env).read().strip().split('=', 1)[1]
+pat = re.compile(r'(<script id="xt-config" type="application/json">)(.*?)(</script>)', re.S)
+m = pat.search(html)
+html = html[:m.start(2)] + json.dumps(cfg, separators=(',', ':')) + html[m.end(2):]
+# Start the engine download while the page checks storage. crossorigin:
+# Emscripten fetches the wasm in CORS mode, and a preload only matches a
+# request with the same mode.
+preload = (f'<link rel="preload" href="{names["godnotic.wasm"]}" as="fetch" type="application/wasm" crossorigin>\n'
+           f'<link rel="preload" href="{names["godnotic.js"]}" as="script">')
+assert '<!--xt:preload-->' in html
+html = html.replace('<!--xt:preload-->', preload)
+open(os.path.join(out, 'index.html'), 'w', encoding='utf-8').write(html)
+PY
+
+printf 'Built %s (%s wasm)\n' "$OUT" "$(du -sh godnotic.wasm | cut -f1)"
+if [ ! -f "$OUT/data/web-data.env" ]; then
     echo "No game data staged yet: run scripts/stage-web-data.sh" >&2
 fi
 
