@@ -1273,8 +1273,10 @@ fn table(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
             let (Some(app), Some(obj), Some(b)) = (w.upgrade(), item.item(), item.child()) else { return };
             let pos = app::index(&obj);
             saw(&app, &lv2, pos);
-            let row = row_cells(&app, &src, pos);
-            let cells = row.as_ref().and_then(|r| r.get("cells")).and_then(Value::as_object);
+            // Read the row in place (no copy): binding happens many times a second while flinging.
+            let core = app.core.borrow();
+            let row = core.store.sources.get(&src).and_then(|w| w.row(pos));
+            let cells = row.and_then(|r| r.get("cells")).and_then(Value::as_object);
             let first = b.first_child();
             if row.is_none() {
                 b.add_css_class("gn-placeholder");

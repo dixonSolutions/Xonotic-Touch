@@ -1,0 +1,5 @@
+# 2,500 servers (FIXTURE=servers-2500) then 200 map cards (maps-200): fling through each.
+wait 1500
+fling mp/servers 4000
+snapshot OUT/stress-servers-end.png
+quit

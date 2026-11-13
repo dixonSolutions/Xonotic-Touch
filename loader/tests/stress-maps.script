@@ -1,0 +1,4 @@
+wait 1500
+fling sp/maps/list 4000
+snapshot OUT/stress-maps-end.png
+quit

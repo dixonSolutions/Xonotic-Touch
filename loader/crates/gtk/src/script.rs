@@ -103,6 +103,40 @@ fn step(w: std::rc::Weak<app::Shared>, mut lines: VecDeque<String>) {
             app::back(&app);
             delay = 250;
         }
+        "fling" => {
+            // fling <list id> <ms>: scrolls the list from top to bottom over <ms> on the frame
+            // clock and prints the frame intervals (indicative only under Xvfb).
+            let list = args.first().copied().unwrap_or("");
+            let ms: i64 = args.get(1).and_then(|a| a.parse().ok()).unwrap_or(3000);
+            let w = app.ui.borrow().as_ref().and_then(|u| u.activators.get(list).cloned());
+            if let Some(sw) = w.and_then(|w| w.ancestor(gtk::ScrolledWindow::static_type())).and_downcast::<gtk::ScrolledWindow>() {
+                let adj = sw.vadjustment();
+                let start = std::cell::Cell::new(0i64);
+                let times = std::rc::Rc::new(std::cell::RefCell::new(Vec::<i64>::new()));
+                let t2 = times.clone();
+                sw.add_tick_callback(move |_, clock| {
+                    let now = clock.frame_time();
+                    if start.get() == 0 {
+                        start.set(now);
+                    }
+                    t2.borrow_mut().push(now);
+                    let f = ((now - start.get()) as f64 / (ms as f64 * 1000.0)).min(1.0);
+                    adj.set_value(f * (adj.upper() - adj.page_size()));
+                    if f >= 1.0 {
+                        let t = t2.borrow();
+                        let mut d: Vec<i64> = t.windows(2).map(|x| x[1] - x[0]).collect();
+                        d.sort_unstable();
+                        if !d.is_empty() {
+                            let pct = |p: f64| d[((d.len() - 1) as f64 * p) as usize] as f64 / 1000.0;
+                            println!("fling: {} frames, median {:.1} ms, p95 {:.1} ms, max {:.1} ms, scrolled to {:.0} px", d.len() + 1, pct(0.5), pct(0.95), pct(1.0), adj.value());
+                        }
+                        return glib::ControlFlow::Break;
+                    }
+                    glib::ControlFlow::Continue
+                });
+            }
+            delay = (ms + 500) as u64;
+        }
         "join" => {
             let addr = args.first().and_then(|a| godnotic_core::link::parse_join(a));
             if let Some(addr) = addr {

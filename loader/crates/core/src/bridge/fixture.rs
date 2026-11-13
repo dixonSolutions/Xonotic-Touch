@@ -178,8 +178,16 @@ impl Player {
             return json!({"uib": 1, "t": "error", "id": id, "re": re, "code": "not_found", "msg": format!("no rows for source {src}")}).as_object().cloned().unwrap_or_default();
         };
         let cap = self.totals.get(&src).copied().unwrap_or(all.len());
-        let mut rows: Vec<Value> = all.iter().take(cap).cloned().collect();
         let flt = req.str_of("filter").unwrap_or_default().to_lowercase();
+        let off = req.i64_of("offset").unwrap_or(0).max(0) as usize;
+        let lim = req.i64_of("limit").unwrap_or(50).clamp(0, 200) as usize;
+        if flt.is_empty() && req.str_of("sort").is_none() {
+            // The common case: a plain window, no copy of the whole source.
+            let total = cap.min(all.len());
+            let page: Vec<Value> = all.iter().take(total).skip(off).take(lim).cloned().collect();
+            return json!({"uib": 1, "t": "rows", "id": id, "re": re, "source": src, "rev": 1, "total": total, "offset": off, "rows": page}).as_object().cloned().unwrap_or_default();
+        }
+        let mut rows: Vec<Value> = all.iter().take(cap).cloned().collect();
         if !flt.is_empty() {
             rows.retain(|r| r.get("cells").and_then(Value::as_object).is_some_and(|c| c.values().any(|v| cell_text(v).to_lowercase().contains(&flt))));
         }
@@ -194,8 +202,6 @@ impl Player {
                 if desc { o.reverse() } else { o }
             });
         }
-        let off = req.i64_of("offset").unwrap_or(0).max(0) as usize;
-        let lim = req.i64_of("limit").unwrap_or(50).clamp(0, 200) as usize;
         let total = rows.len();
         let page: Vec<Value> = rows.into_iter().skip(off).take(lim).collect();
         json!({"uib": 1, "t": "rows", "id": id, "re": re, "source": src, "rev": 1, "total": total, "offset": off, "rows": page}).as_object().cloned().unwrap_or_default()
