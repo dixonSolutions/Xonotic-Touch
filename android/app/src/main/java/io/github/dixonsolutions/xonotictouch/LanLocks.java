@@ -65,7 +65,54 @@ final class LanLocks {
         }
     }
 
+    private static WifiManager.WifiLock away;
+
+    /**
+     * Connected, joining or downloading while the game is in the background:
+     * a low-latency Wi-Fi lock, or the radio's power save with the screen off
+     * delays packets by hundreds of ms and some devices drop the association
+     * (docs/NETWORK.md, Android requirements).
+     */
+    static synchronized void connected(Context context, boolean on) {
+        if (on == (away != null)) {
+            return;
+        }
+        if (!on) {
+            try {
+                away.release();
+            } catch (RuntimeException e) {
+                Log.w(TAG, "Wi-Fi lock release", e);
+            }
+            away = null;
+            return;
+        }
+        WifiManager manager = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        if (manager == null) {
+            return;
+        }
+        try {
+            int mode = Build.VERSION.SDK_INT >= 29
+                    ? WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+                    : WifiManager.WIFI_MODE_FULL_HIGH_PERF;
+            away = manager.createWifiLock(mode, "Godnotic:connected");
+            away.setReferenceCounted(false);
+            away.acquire();
+            Log.i(TAG, "Connected in the background: Wi-Fi low-latency lock held");
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Could not take the Wi-Fi lock for the connection", e);
+            away = null;
+        }
+    }
+
     static synchronized void release() {
+        if (away != null) {
+            try {
+                away.release();
+            } catch (RuntimeException e) {
+                Log.w(TAG, "Wi-Fi lock release", e);
+            }
+            away = null;
+        }
         held = false;
         if (multicast != null) {
             try {

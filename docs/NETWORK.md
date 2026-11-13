@@ -223,39 +223,37 @@ foreground service has to be running (see "Android requirements" below).
 `touch_netstate` reports "joining / Reconnecting to ..." during a
 reconnect so the foreground service stays up through it.
 
-#### Android requirements (for the Android agent, `android/**`)
+#### Android side (XonoticActivity.watchNetState, KeepAliveService, LanLocks)
 
-What the logs and code say and what still needs the Java side (KeepAliveService,
-XonoticActivity.watchNetState):
+`watchNetState` reads `touch_netstate` every 2 s (line 1 the kind, line 2 the
+text, line 3 a download's size/speed/time left):
 
-1. **Do not stop the foreground service on a short idle.** `watchNetState`
-   stops `KeepAliveService` the moment `touch_netstate` reads `idle`, and
-   `KeepAliveService.show` cannot start it again from the background
-   (Android 12+ refuses `startForegroundService` there). A map change, a
-   disconnect-and-reconnect or a download finishing can read `idle` for one
-   poll; the service is then gone for the rest of the stay and the process
-   is frozen. Keep the service for 60 s after the last busy state while the
-   activity is not in front (and stop it at once when the player is in the
-   menu in front).
-2. **Hold a Wi-Fi lock while connected in the background**, not only while
-   hosting: `WifiManager.createWifiLock(WIFI_MODE_FULL_LOW_LATENCY)` (API
-   29+, else `WIFI_MODE_FULL_HIGH_PERF`) from the first busy state until the
-   service stops; with the screen off the radio's power save otherwise
-   delays packets by hundreds of ms and some devices drop the association.
-3. **Service type**: keep `specialUse` for a connection (Android 14+ requires
-   a declared type; `dataSync` is limited to 6 hours a day on Android 15
-   and is right only for downloads). The partial wake lock is already held
-   only while the service runs: keep it so.
-4. **Doze**: a foreground service with a partial wake lock keeps the CPU,
-   but Doze and app standby can still defer network access on some
-   vendors' builds with the screen off for long. The 10-minute away limit
-   bounds it; a prompt to exempt the game from battery optimisation is not
-   needed for that.
-5. **Notification**: the third line of `touch_netstate` is free for the
-   download's line (`TouchNet_CurlText`: "3.2 MB of 12.0 MB (27%) @ 850
-   KiB/s, 0:10 left"); when the state goes from `joining` to `connected`
-   while the activity is not in front, post "Ready to play: tap to return".
-6. Nothing for a network change: the engine notices it by itself.
+1. **The foreground service outlives a short idle.** While the activity is
+   not in front the service stays 60 s after the last busy state (joining,
+   connected, downloading, hosting), so a map change, a reconnect or a
+   finished download that reads `idle` for a poll does not lose it (it could
+   not be started again from the background on Android 12+). In front, an
+   idle state stops it at once.
+2. **Wi-Fi lock while connected in the background**: from the first busy
+   poll while away until idle or back in front, a
+   `WIFI_MODE_FULL_LOW_LATENCY` lock (API 29+, else `FULL_HIGH_PERF`),
+   "Godnotic:connected"; hosting keeps its own multicast and Wi-Fi locks.
+3. **Service type** `specialUse` for a connection (Android 14+), `dataSync`
+   only for the data download; the partial wake lock lives with the service.
+4. **Doze**: not handled beyond the foreground service; the 10-minute away
+   limit bounds it.
+5. **Notification**: the state line, and under it (expanded and as the
+   subtext) the download line from `TouchNet_CurlText`. A join that finishes
+   (`joining` to `connected`) while the activity is not in front posts
+   "Ready to play" (its own channel, tap returns to the game), cleared when
+   the player comes back.
+6. **Reconnect UI**: the front-end bridge's `app` topic carries `reconnect`
+   (what the automatic reconnect is doing, "Reconnecting to ... (attempt n
+   of 5)") and `reconnect_note` (why it gave up). The native layer shows a
+   bar over the game or the loading screen with the text and Cancel
+   (`fe reconnect_cancel` = `net_reconnect_cancel`; the loading screen's
+   Cancel also stops it), and a toast for a "Disconnected by ..." note.
+7. A network change needs nothing: the engine notices it.
 
 Battery: a backgrounded connected client runs its loop at `cl_maxidlefps`
 (20 Hz) without rendering (`vid_hidden`), reading packets and sending a

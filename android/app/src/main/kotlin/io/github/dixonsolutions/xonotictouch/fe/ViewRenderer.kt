@@ -367,6 +367,24 @@ class ViewRenderer(
     private fun nestList(e: Entry) {
         val vl = e.list ?: return
         val lp = e.view.layoutParams
+        if (e.props.str("display") == "cards" && fitRows(e.props) > 0) {
+            // `rows: N` in a scrolling page: the grid is as tall as the page's
+            // visible area (between the sticky header and the action bar), so
+            // scrolled to it N whole rows fit; it scrolls inside its frame
+            vl.view.isNestedScrollingEnabled = true
+            val frame = (vl.view.layoutParams as? LinearLayout.LayoutParams)
+            frame?.let { it.weight = 0f; it.height = ctx.resources.displayMetrics.heightPixels / 2; vl.view.layoutParams = it }
+            lp?.height = ViewGroup.LayoutParams.WRAP_CONTENT
+            e.view.layoutParams = lp
+            var top: Entry? = e
+            while (top != null && top.type != "screen") top = top.parent?.let { nodes[it] }
+            top?.scroller?.addOnLayoutChangeListener { sv, _, t, _, b, _, _, _, _ ->
+                val h = b - t - sv.paddingTop - sv.paddingBottom - dp(8f)
+                val l = vl.view.layoutParams
+                if (h > dp(120f) && l != null && l.height != h) { l.height = h; vl.view.post { vl.view.layoutParams = l } }
+            }
+            return
+        }
         if (e.props.str("display") == "cards") {
             val w = dp(e.props.num("minItem", 220.0).toFloat()) + dp(14f)
             vl.carousel(w)
@@ -379,6 +397,8 @@ class ViewRenderer(
         }
         e.view.layoutParams = lp
     }
+
+    private fun fitRows(p: Map<String, Any?>) = listOf(p.int("rows"), p["style"].obj().int("rows"), p["hints"].obj().int("rows")).firstOrNull { it > 0 } ?: 0
 
     private fun fillChain(list: Entry) {
         var cur: Entry? = list
@@ -1159,8 +1179,14 @@ class ViewRenderer(
                     val ref = row?.str("image") ?: ""
                     if (ref.isEmpty()) { if (row == null) c.img.set(null) else c.img.none() } else picture(c.img, ref)
                     c.card.isSelected = row != null && e.props["selected"].list().contains(row.str("key"))
+                    (c.card.layoutParams as? ViewGroup.MarginLayoutParams)?.let { lp ->
+                        val f = e.list?.fit
+                        val v = gap / 2 + (f?.extra ?: 0)
+                        if (lp.topMargin != v) { lp.topMargin = v; lp.bottomMargin = v; c.card.layoutParams = lp }
+                        c.card.minimumHeight = f?.height ?: 0
+                    }
                     c.card.contentDescription = row?.let { "${c.titleV.text}. ${c.sub.text}" } ?: "Loading"
-                    c.card.setOnClickListener { v -> row?.let { Kit.haptic(v); events.row(id, VirtualList.keyOf(it)) } }
+                    bindTap(c.card, e, id, row)
                 },
                 makeCell = { _ ->
                     val card = Kit.card(ctx, clickable = true, radiusDp = 16f)
@@ -1179,6 +1205,18 @@ class ViewRenderer(
                     card.layoutParams = lp
                     CardCell(card, img, t, s, b)
                 })
+            vl.cellGap = gap
+            vl.cellChrome = {
+                // one tile measured with a typical row: its height less the picture's
+                val probe = Kit.column(ctx)
+                val t = Kit.text(ctx, "Map", Theme.SP_BODY, Theme.TEXT, bold = true, lines = 1)
+                val sub = Kit.text(ctx, "2-4", Theme.SP_CAPTION, Theme.TEXT_MUTED, lines = 1)
+                val badges = FlowGrid(ctx, 0, dp(4f), wrap = true).apply { addView(badge(mapOf("text" to "DM"))) }
+                probe.setPadding(dp(12f), dp(8f), dp(12f), dp(12f))
+                probe.addView(t); probe.addView(sub); probe.addView(badges)
+                probe.measure(View.MeasureSpec.makeMeasureSpec(dp(300f), View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                probe.measuredHeight
+            }
             box.addView(empty)
             box.addView(vl.view, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         } else {
@@ -1196,8 +1234,12 @@ class ViewRenderer(
                     val cells = data?.get("cells").obj()
                     for ((i, c) in columns.withIndex()) bindCell(r.getChildAt(i) as TextView, c, cells, data == null)
                     r.alpha = if (data?.bool("disabled") == true) 0.5f else 1f
-                    r.contentDescription = if (data == null) "Loading" else columns.joinToString(", ") { c -> "${c.str("label")} ${cells.str(c.str("key"))}" }
-                    r.setOnClickListener { v -> data?.let { Kit.haptic(v); events.row(id, VirtualList.keyOf(it)) } }
+                    val on = data != null && e.props["selected"].list().any { it.toString() == VirtualList.keyOf(data) }
+                    r.isSelected = on
+                    r.background = if (on) Theme.rounded(0xFF1D3A73.toInt(), dp(8f).toFloat(), max(1, dp(1.5f)), Theme.EMBER)
+                        else Theme.surface(ctx, Color.TRANSPARENT, 0f, Color.TRANSPARENT)
+                    r.contentDescription = if (data == null) "Loading" else columns.joinToString(", ") { c -> "${c.str("label")} ${cells.str(c.str("key"))}" } + if (on) ", selected" else ""
+                    bindTap(r, e, id, data)
                 },
                 makeCell = { _ ->
                     val r = Kit.row(ctx)
@@ -1226,6 +1268,12 @@ class ViewRenderer(
         var lastQuery = ""
         e.bind = { x ->
             val p = x.props
+            if (cards) {
+                // `rows: 2`: the map picker shows two whole rows of tiles (docs/UI_BRIDGE.md)
+                val rows = fitRows(p)
+                val asp = aspect(mapOf("aspect" to p.str("aspectItem", "16:9")), 16f / 9f)
+                if (rows != vl.fitRows || asp != vl.cellAspect) { vl.fitRows = rows; vl.cellAspect = asp; vl.view.requestLayout() }
+            }
             val newCols = visibleColumns(p["columns"].list().map { it.obj() })
             val colsChanged = newCols != columns
             columns = newCols
@@ -1262,6 +1310,52 @@ class ViewRenderer(
             bindEmpty(x)
         }
         return e
+    }
+
+    private val a11yActions = java.util.WeakHashMap<View, Int>()
+    private var lastTapKey = ""
+    private var lastTapAt = 0L
+
+    /**
+     * Rows and cards of a list. With `selection` single or multi, a tap
+     * selects (event row/select, drawn at once) and a double tap, Enter or
+     * the accessibility "Activate" action activates (event row/activate:
+     * joins the server, starts the map); without selection a tap activates.
+     */
+    private fun bindTap(v: View, e: Entry, id: String, row: Map<String, Any?>?) {
+        if (row == null) { v.setOnClickListener(null); v.setOnKeyListener(null); return }
+        val key = VirtualList.keyOf(row)
+        val selecting = e.props.str("selection") in setOf("single", "multi")
+        v.setOnClickListener { x ->
+            Kit.haptic(x)
+            if (!selecting) { events.row(id, key, "activate"); return@setOnClickListener }
+            val now = android.os.SystemClock.uptimeMillis()
+            val second = key == lastTapKey && now - lastTapAt <= android.view.ViewConfiguration.getDoubleTapTimeout() + 100
+            lastTapKey = if (second) "" else key
+            lastTapAt = now
+            if (second) {
+                if (e.props.str("selection") == "multi") select(e, id, key, true) // the first tap's toggle undone
+                events.row(id, key, "activate")
+            } else select(e, id, key, true)
+        }
+        v.setOnKeyListener { _, code, ev ->
+            if (ev.action == android.view.KeyEvent.ACTION_UP && (code == android.view.KeyEvent.KEYCODE_ENTER || code == android.view.KeyEvent.KEYCODE_DPAD_CENTER || code == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+                events.row(id, key, "activate"); true
+            } else false
+        }
+        // recycled cells: the previous row's action goes first
+        a11yActions.remove(v)?.let { androidx.core.view.ViewCompat.removeAccessibilityAction(v, it) }
+        if (selecting) {
+            androidx.core.view.ViewCompat.replaceAccessibilityAction(v, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK, "Select", null)
+            a11yActions[v] = androidx.core.view.ViewCompat.addAccessibilityAction(v, e.props["rowPrimary"].obj().str("label", "Activate")) { _, _ -> events.row(id, key, "activate"); true }
+        }
+    }
+
+    private fun select(e: Entry, id: String, key: String, send: Boolean) {
+        val cur = e.props["selected"].list().map { it.toString() }
+        val next = if (e.props.str("selection") == "multi") (if (key in cur) cur - key else cur + key) else listOf(key)
+        if (next != cur) { e.props = e.props + mapOf("selected" to next); e.list?.refresh() }
+        if (send) events.row(id, key, "select")
     }
 
     private fun bindEmpty(e: Entry) {

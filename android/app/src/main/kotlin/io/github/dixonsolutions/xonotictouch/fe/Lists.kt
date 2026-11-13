@@ -39,6 +39,19 @@ class VirtualList(
     private val adapter = Adapter()
     private var spans = 1
 
+    /** Grid fitted to `rows`: columns, extra space above and below each tile, tile height (px). */
+    data class Fit(val columns: Int, val extra: Int, val height: Int)
+
+    /** `rows: N` on a card grid; 0 sizes the columns by [minCellPx]. */
+    var fitRows = 0
+    var cellAspect = 16f / 9f
+    /** Space between tiles (px, the cell margins). */
+    var cellGap = 0
+    /** A tile's height besides its picture (text, padding): measured by the renderer. */
+    var cellChrome: () -> Int = { 0 }
+    var fit: Fit? = null
+        private set
+
     abstract class Cell(v: View) : RecyclerView.ViewHolder(v) {
         open fun recycled() {}
     }
@@ -53,10 +66,25 @@ class VirtualList(
         view.layoutManager = if (grid) GridLayoutManager(ctx, 1) else LinearLayoutManager(ctx)
         adapter.setHasStableIds(true)
         view.adapter = adapter
-        if (grid) view.addOnLayoutChangeListener { _, l, _, r, _, _, _, _, _ ->
-            val n = max(1, (r - l) / max(1, minCellPx))
+        if (grid) view.addOnLayoutChangeListener { _, l, t, r, b, _, _, _, _ ->
             val lm = view.layoutManager
-            if (n != spans && lm is GridLayoutManager) { spans = n; lm.spanCount = n }
+            if (lm !is GridLayoutManager) return@addOnLayoutChangeListener
+            val n: Int
+            if (fitRows > 0 && b - t > 0) {
+                // `rows: N`: exactly N rows of whole tiles in the visible height
+                // (no cut-off row under them), the picture's aspect kept: the
+                // tiles are as wide as N rows allow, the columns follow, and the
+                // height left over goes between the rows.
+                val w = r - l
+                val pitch = (b - t - view.paddingTop - view.paddingBottom) / fitRows
+                val chrome = cellChrome()
+                val picMax = max(1, pitch - chrome - cellGap)
+                n = max(1, kotlin.math.ceil(w / (picMax * cellAspect + cellGap).toDouble()).toInt())
+                val pic = ((w / n - cellGap) / cellAspect).toInt()
+                val spec = Fit(n, max(0, pitch - (pic + chrome + cellGap)) / 2, pic + chrome)
+                if (spec != fit) { fit = spec; view.post { adapter.notifyDataSetChanged() } }
+            } else n = max(1, (r - l) / max(1, minCellPx))
+            if (n != spans) { spans = n; lm.spanCount = n }
         }
         view.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) = ask()

@@ -122,6 +122,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         val sk = skeleton ?: return
         skeleton = null
         Log.i(tag, "Native UI: skeleton lifted after ${SystemClock.elapsedRealtime() - started} ms ($why)")
+        pendingJoin?.let { addr -> pendingJoin = null; if (!failed) askJoin(addr) }
         val gone = { screenLayer.removeView(sk); if (screens.isEmpty()) root.visibility = View.GONE }
         if (Theme.reducedMotion(activity)) gone() else sk.animate().alpha(0f).setDuration(150).withEndAction(gone).start()
     }
@@ -213,6 +214,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
             if (!a.bool("enabled") || a.int("proto") != 1) { fallBack("touch_native_frontend is off or the protocol differs"); return }
             attach()
         }
+        if (attached && resumed && !a.bool("attached")) reattach()
         val state = a.str("state")
         val sig = "$state menu=${a.bool("menu")} owns=${a.bool("owns_menu")} adv=${a.bool("advanced")} console=${a.bool("console")}"
         if (sig != lastSig) { lastSig = sig; Log.i(tag, "Native UI: engine $sig") }
@@ -223,6 +225,40 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
             else -> { showBackPill(false); setVisible(false) } // in a match, or the engine's loading screen
         }
         reportPower("_android_idle_home", if (state == "menu" && root.visibility == View.VISIBLE) "1" else "0")
+        showReconnect(a.str("reconnect"))
+        val note = a.str("reconnect_note")
+        if (note != lastReconnectNote) { lastReconnectNote = note; if (note.isNotEmpty() && note.startsWith("Disconnected")) toast(note, "warning") }
+    }
+
+    private var reconnectBar: View? = null
+    private var reconnectText: android.widget.TextView? = null
+    private var lastReconnectNote = ""
+
+    /**
+     * The automatic reconnect (docs/NETWORK.md, touch_net.c) over whatever is
+     * on screen, the game or the loading screen: "Reconnecting to ... (attempt
+     * n of 5)" and Cancel (net_reconnect_cancel). Added to the activity, not
+     * the overlay, because the overlay is hidden while the engine draws.
+     */
+    private fun showReconnect(text: String) {
+        if (text.isEmpty()) { reconnectBar?.let { (it.parent as? ViewGroup)?.removeView(it) }; reconnectBar = null; reconnectText = null; return }
+        reconnectText?.let { if (it.text != text) it.text = text; return }
+        val bar = android.widget.LinearLayout(activity)
+        bar.orientation = android.widget.LinearLayout.HORIZONTAL
+        bar.gravity = Gravity.CENTER_VERTICAL
+        val p = Theme.dp(activity, 12f)
+        bar.setPadding(Theme.dp(activity, 16f), p / 2, p / 2, p / 2)
+        bar.background = Theme.rounded(0xF20B1730.toInt(), Theme.dp(activity, 14f).toFloat(), Theme.dp(activity, 2f), Theme.WARN)
+        val t = Kit.text(activity, text, Theme.SP_BODY, Theme.TEXT, bold = true)
+        t.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        bar.addView(t)
+        val cancel = Kit.button(activity, "Cancel") { NativeBridge.enqueue(FeArgs.command("reconnect_cancel")) }
+        bar.addView(cancel, android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = p })
+        val lp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
+        lp.topMargin = Theme.dp(activity, 12f)
+        activity.addContentView(bar, lp)
+        reconnectBar = bar
+        reconnectText = t
     }
 
     private fun attach() {
@@ -232,6 +268,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         c.ignoreRows = testRows
         client = c
         attached = true
+        reattachAt = SystemClock.elapsedRealtime() + 2000 // the first app snapshots still say detached
         NativeBridge.frontendBeat()
         NativeBridge.enqueue(FeArgs.command("attach", "1"))
         if (app.bool("ui_bridge")) {
@@ -247,6 +284,23 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
             // touch_warm prepares what Play starts while Home is idle
             NativeBridge.enqueue(FeArgs.command("set", "touch_warm_map", StopgapActions.STOPGAP_MAP))
         }
+    }
+
+    private var reattachAt = 0L
+
+    /**
+     * The engine dropped the UI (no heartbeat for 30 s, the bridge closed):
+     * attach again and ask for the screens anew, rather than leave the
+     * QuakeC menu running under a native screen nobody updates.
+     */
+    private fun reattach() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - reattachAt < 3000) return
+        reattachAt = now
+        Log.w(tag, "Native UI: the engine detached us; attaching again")
+        NativeBridge.frontendBeat()
+        NativeBridge.enqueue(FeArgs.command("attach", "1"))
+        if (app.bool("ui_bridge")) client?.hello(caps())
     }
 
     private fun caps(): Map<String, Any?> {
@@ -361,6 +415,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     private fun reportAll() {
         val pm = activity.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
         reportPower("touch_device_powersave", if (pm.isPowerSaveMode) "1" else "0")
+        reportPower("touch_device_charging", if (charging()) "1" else "0")
         if (Build.VERSION.SDK_INT >= 29) reportPower("touch_device_thermal", pm.currentThermalStatus.toString())
     }
 
@@ -370,16 +425,30 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     private fun watchPower() {
         val pm = activity.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
         powerReceiver = object : BroadcastReceiver() {
-            override fun onReceive(c: Context, i: Intent) { reportPower("touch_device_powersave", if (pm.isPowerSaveMode) "1" else "0") }
+            override fun onReceive(c: Context, i: Intent) {
+                reportPower("touch_device_powersave", if (pm.isPowerSaveMode) "1" else "0")
+                reportPower("touch_device_charging", if (charging()) "1" else "0")
+            }
         }
         try {
-            activity.registerReceiver(powerReceiver, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
+            val f = IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
+            f.addAction(Intent.ACTION_POWER_CONNECTED)
+            f.addAction(Intent.ACTION_POWER_DISCONNECTED)
+            activity.registerReceiver(powerReceiver, f)
         } catch (e: Exception) { powerReceiver = null }
         if (Build.VERSION.SDK_INT >= 29) {
             val l = PowerManager.OnThermalStatusChangedListener { s -> reportPower("touch_device_thermal", s.toString()) }
             pm.addThermalStatusListener(activity.mainExecutor, l)
             thermalListener = l
         }
+    }
+
+    /** Plugged in (AC, USB, wireless): touch_warm then runs fully under battery saver. */
+    private fun charging(): Boolean {
+        val bm = activity.getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager
+        if (Build.VERSION.SDK_INT >= 23 && bm != null && bm.isCharging) return true
+        val st = try { activity.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) } catch (e: Exception) { null }
+        return (st?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
     }
 
     fun onResume() { resumed = true; if (attached) NativeBridge.frontendBeat() }
@@ -567,14 +636,22 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     // ---------------------------------------------------------------- join links
 
     /** A godnotic://join/<host>:<port> link: a native confirmation, then `fe connect`. */
+    private var pendingJoin: String? = null
+
     fun handleJoinLink(uri: Uri?): Boolean {
         val addr = joinAddress(uri) ?: return false
+        // at a cold start the question waits for Home: the first screen would cover it
+        if (skeleton != null) { pendingJoin = addr; return true }
+        askJoin(addr)
+        return true
+    }
+
+    private fun askJoin(addr: String) {
         main.post {
             confirm(mapOf("title" to "Join this game?", "body" to addr, "ok" to "Join")) {
                 NativeBridge.enqueue(FeArgs.command("connect", addr))
             }
         }
-        return true
     }
 
     companion object {
