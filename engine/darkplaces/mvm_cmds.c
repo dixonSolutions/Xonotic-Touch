@@ -4,6 +4,7 @@
 #include "clvm_cmds.h"
 #include "menu.h"
 #include "csprogs.h"
+#include "touch_uib_mvm.h" // Touch: UI bridge builtins
 
 // TODO check which strings really should be engine strings
 
@@ -1739,6 +1740,7 @@ NULL,							// #640
 VM_M_crypto_getmyidstatus,				// #641 float(float i) crypto_getmyidstatus
 VM_coverage,						// #642
 VM_M_crypto_getidstatus,				// #643 float(string addr) crypto_getidstatus
+#include "touch_uib_mvm.inc" // Touch: UI bridge builtins #1180..
 NULL
 };
 

@@ -143,6 +143,10 @@
 #include <menu/xonotic/touch_menu_sheet.qh> // Touch
 #include <menu/xonotic/touch_menu_reflow.qh> // Touch
 #include <menu/xonotic/touch_menu_vgrid.qh> // Touch
+#include <menu/xonotic/touch_uib_api.qh> // Touch: UI bridge
+#include <menu/xonotic/touch_uib_build.qh> // Touch: UI bridge
+#include <menu/xonotic/touch_uib_screens.qh> // Touch: UI bridge
+#include <menu/xonotic/touch_uib_render.qh> // Touch: UI bridge
 #include <menu/xonotic/touch_startup_util.qh>
 #include <menu/xonotic/touch_update_util.qh>
 #include <menu/xonotic/touchbutton.qh>
