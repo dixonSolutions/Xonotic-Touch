@@ -2460,13 +2460,14 @@ void RB_EndEdit(bool submit)
 	strcpy(rb_edit_text, "");
 }
 
-// A tap on a row. In a list with rowSelect one tap chooses the row (kind select)
+// A tap on a row. In a list with selection single or multi one tap chooses the row (kind select)
 // and a second tap on it within RB_DOUBLETAP plays or joins it (kind activate);
 // in any other list a tap activates.
 void RB_SendRowTap(string list, string key)
 {
 	string kind = "activate";
-	if (uib_has(list, "rowSelect"))
+	string selmode = uib_get(list, "selection");
+	if (selmode == "single" || selmode == "multi")
 	{
 		float now = uib_gettime(1);
 		bool dbl = (key == rb_tap_row && list == rb_tap_list && now - rb_tap_t <= RB_DOUBLETAP);

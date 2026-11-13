@@ -276,7 +276,7 @@ pub fn plain_text(s: &str) -> String {
 /// Two clicks or taps on the same row this close together are a double click.
 pub const DOUBLE_CLICK: std::time::Duration = std::time::Duration::from_millis(400);
 
-/// Choosing versus playing in a list that has `rowSelect` (docs/UI_BRIDGE.md 6.1): the
+/// Choosing versus playing in a list whose `selection` is `single` or `multi` (docs/UI_BRIDGE.md 6.1): the
 /// first click or tap on a row chooses it (`row`, kind `select`); a second one on the same
 /// row within [`DOUBLE_CLICK`] plays it (kind `activate`). A third click starts over, and
 /// a click on another row, or a slow second click, only chooses. Scrolling never clicks.

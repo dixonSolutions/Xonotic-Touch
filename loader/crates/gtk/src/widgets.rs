@@ -1336,7 +1336,7 @@ fn table(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
     let model = lv.borrow().model.clone();
     // A list with `rowSelect` (the server list): a click chooses the row and shows it chosen,
     // a second click in time joins (app::row_activated tells the two apart). Others activate.
-    let selects = n.obj("rowSelect").is_some();
+    let selects = selects_rows(n);
     let cv = if selects {
         let sel = gtk::SingleSelection::new(Some(model));
         sel.set_autoselect(false);
@@ -1523,6 +1523,11 @@ fn table(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
 }
 
 /// `display: cards` (the map picker): a GtkGridView of preview cards; pictures load only for bound cards.
+/// A list whose `selection` is `single` or `multi` tells choosing from activating (6.1).
+pub fn selects_rows(n: &Node) -> bool {
+    matches!(n.str("selection").as_deref(), Some("single") | Some("multi"))
+}
+
 /// `rows: N` with `scroll: horizontal` on a card list (the map picker): N full rows of
 /// tiles in view, more by scrolling sideways.
 fn sideways_rows(n: &Node) -> Option<u32> {

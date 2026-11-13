@@ -614,7 +614,7 @@ pub fn row_activated(app: &App, list_node: &str, source: &str, pos: usize) {
     if let Some(k) = key {
         // A list with `rowSelect`: the first click chooses the row (row/select); a second
         // click on the same row within the double-click time plays it (row/activate).
-        let selects = app.core.borrow().store.node(list_node).is_some_and(|n| n.obj("rowSelect").is_some());
+        let selects = app.core.borrow().store.node(list_node).is_some_and(crate::widgets::selects_rows);
         if selects && app.clicks.borrow_mut().click(list_node, &k, std::time::Instant::now()) == "select" {
             let m = app.core.borrow_mut().client.row(list_node, &k, "select");
             send(app, m);
