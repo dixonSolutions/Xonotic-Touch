@@ -12,6 +12,7 @@
 #include "touch_hud.h"
 #include "touch_vote.h"
 #include "touch_aim.h" // Touch: offline practice markers
+#include "touch_lua.h" // Touch: Lua mods and plugins
 #ifdef CONFIG_VIDEO_CAPTURE
 #include "cap_avi.h"
 #include "cap_ogg.h"
@@ -1838,6 +1839,7 @@ static void SCR_DrawScreen (void)
 		SCR_CheckDrawCenterString();
 	}
 	SCR_DrawNetGraph ();
+	TouchLua_ClientFrame(); // Touch: Lua client mods (touch_lua_cl.c)
 #ifdef CONFIG_MENU
 	if(!scr_loading)
 		MR_Draw();

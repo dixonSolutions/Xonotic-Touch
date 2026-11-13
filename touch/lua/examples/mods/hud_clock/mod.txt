@@ -1,0 +1,4 @@
+title: HUD clock
+version: 1.0
+author: Xonotic Touch
+description: Clock, frame rate and your health in a corner of the screen. lua_hud_clock_toggle hides it.

@@ -26,6 +26,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "thread.h"
 #include "touch_hud.h" // Touch: CANCEL on the loading screen
 #include "touch_assist.h" // Touch: server switch for the touch assists
+#include "touch_lua.h" // Touch: Lua mods and plugins
 
 // current client
 client_t *host_client;
@@ -2327,6 +2328,7 @@ static void SV_VM_Setup(void)
 	prog->progs_mempool = Mem_AllocPool("Server Progs", 0, NULL);
 	prog->builtins = vm_sv_builtins;
 	prog->numbuiltins = vm_sv_numbuiltins;
+	TouchLua_SV_InstallBuiltins(prog); // Touch: Lua server plugin events (touch_lua_sv.c)
 	prog->max_edicts = 512;
 	if (sv.protocol == PROTOCOL_QUAKE)
 		prog->limit_edicts = 640; // before quake mission pack 1 this was 512

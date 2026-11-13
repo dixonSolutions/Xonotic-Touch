@@ -47,6 +47,10 @@ OBJ_COMMON= \
 	touch_pause.o \
 	touch_nade.o \
 	touch_android.o \
+	touch_lua.o \
+	touch_lua_cl.o \
+	touch_lua_sv.o \
+	touch_lua_vm.o \
 	vid_touchdetect.o \
 	cl_video.o \
 	cl_video_libavw.o \

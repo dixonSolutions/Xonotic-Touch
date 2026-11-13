@@ -1,0 +1,4 @@
+title: Settings panel
+version: 1.0
+author: Xonotic Touch
+description: A small settings page made with xt.ui: crosshair size and the HUD clock, saved with xt.save. Open it with lua_settings_panel_open.

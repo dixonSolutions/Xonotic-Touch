@@ -1,0 +1,4 @@
+title: Underdog
+version: 1.0
+author: Xonotic Touch
+description: The player with the fewest kills this map takes 25% less damage (lua_underdog_scale changes how much).

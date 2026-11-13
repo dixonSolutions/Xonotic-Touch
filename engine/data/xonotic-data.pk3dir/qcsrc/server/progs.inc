@@ -23,6 +23,7 @@
 #include <lib/warpzone/util_server.qc>
 
 #include <ecs/_mod.inc>
+#include <server/touch_lua.qc> // Touch: Lua server plugin events
 #endif
 
 #ifdef BUILD_MOD

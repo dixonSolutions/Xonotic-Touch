@@ -26,6 +26,7 @@
 #include "csprogs.h"
 #include "touch_hud.h" // Touch
 #include "touch_vote.h" // Touch
+#include "touch_lua.h" // Touch: Lua mods and plugins
 
 cvar_t con_closeontoggleconsole = {CF_CLIENT | CF_ARCHIVE, "con_closeontoggleconsole","1", "allows toggleconsole binds to close the console as well; when set to 2, this even works when not at the start of the line in console input; when set to 3, this works even if the toggleconsole key is the color tag"};
 
@@ -1885,6 +1886,8 @@ Key_Event (int key, int ascii, qbool down)
 	}
 
 	if(keydest == key_void)
+		return;
+	if (keydest == key_game && key != K_ESCAPE && TouchLua_KeyEvent(key, ascii, down)) // Touch: Lua client mods
 		return;
 
 	// key_consoleactive is a flag not a key_dest because the console is a

@@ -1,0 +1,228 @@
+# Lua mods and plugins
+
+Xonotic Touch runs **Lua 5.4** scripts in a sandbox:
+
+- **Client mods** (`<userdir>/mods/<name>/`) draw over the HUD or the whole screen, see
+  keys, fingers and the mouse, add console commands, change a few settings, play sounds,
+  and keep small files. They are how new Touch UI (HUD panels, overlays, settings pages)
+  should be written from now on.
+- **Server plugins** (`<userdir>/plugins/<name>/`) run on a server this engine hosts (a
+  local match or a dedicated server) and react to the game: connects, spawns, deaths,
+  damage, chat, item pickups, `cmd` commands, map changes, match end.
+
+The userdir is `~/.xonotic` on Linux (inside the Flatpak: `~/.var/app/<id>/.xonotic`),
+the app's files folder on Android. A mod is a folder with an `init.lua`.
+
+## Why mods instead of engine and QC edits
+
+Most of `engine/` and the game QC is upstream Xonotic, merged daily
+([UPSTREAM_SYNC.md](UPSTREAM_SYNC.md)); every upstream line Touch changes can conflict
+at the next sync. The whole Lua runtime touches upstream in **three hook lines** plus
+their includes and one QC include:
+
+| Upstream file | Line | What it does |
+|---|---|---|
+| `engine/darkplaces/cl_screen.c` | `TouchLua_ClientFrame();` | each client frame, in the 2D pass under the menu: loads mods, runs `frame`, `hud`, `draw` |
+| `engine/darkplaces/keys.c` | `TouchLua_KeyEvent(...)` | each game key (not Escape): mods may take it |
+| `engine/darkplaces/sv_main.c` | `TouchLua_SV_InstallBuiltins(prog);` | gives the server VM the `touch_lua_event` builtin (#1740) |
+| `qcsrc/server/progs.inc` | `#include <server/touch_lua.qc>` | the Touch mutator that reports game events |
+
+Cvars and console commands are registered from Touch code on first use, and the build
+lists only gain object names (`makefile.inc`, which Android's CMake and the web build
+read). A feature written as a mod adds **no** upstream lines at all.
+
+## Managing mods
+
+A new folder starts **off**. Turn mods on and off from the console (the Mods dialog will
+use the same state):
+
+| Client | Server | |
+|---|---|---|
+| `lua_mods` | `sv_lua_plugins` | list, with state (`off`, `enabled`, `running`, `error`) and error text |
+| `lua_mod_enable <name>` | `sv_lua_plugin_enable <name>` | turn on (kept in `mods/enabled.txt` / `plugins/enabled.txt`) |
+| `lua_mod_disable <name>` | `sv_lua_plugin_disable <name>` | turn off |
+| `lua_mod_reload [name]` | `sv_lua_plugin_reload [name]` | restart one or all, clearing errors |
+| `lua_mod_info <name>` | `sv_lua_plugin_info <name>` | folder, memory, error, events, commands |
+
+`cl_lua_enable` / `sv_lua_enable` are the master switches. `_cl_lua_mods` (read-only)
+holds one line per client mod, `name<TAB>state<TAB>title<TAB>error`, for menu code.
+
+A mod that raises an error or hits a limit is **stopped** and shows `error` with the
+message; the game goes on. Fix it and `lua_mod_reload <name>`.
+
+An optional `mod.txt` gives the manager a title:
+
+```
+title: HUD clock
+version: 1.0
+author: You
+description: One line about it.
+```
+
+## A first mod
+
+`<userdir>/mods/hello/init.lua`:
+
+```lua
+xt.on("hud", function(w, h)
+  xt.draw.text(20, h - 40, "hello from Lua", 16, 1, 1, 0.5, 1)
+end)
+xt.command("greet", function(who) print("hi " .. (who or "there")) end, "say hi")
+```
+
+Then `lua_mod_enable hello`; the command is `lua_hello_greet`. Working examples are in
+[`touch/lua/examples`](../touch/lua/examples): `hud_clock` (HUD panel, own cvar,
+`require`), `settings_panel` (a settings page with `xt.ui`, `xt.save`), `chat_keys`
+(key event), and the plugins `welcome` (connect, death, chat filter, `cmd stats`) and
+`underdog` (damage scaling). Copy a folder into `mods/` or `plugins/`.
+
+## The sandbox
+
+Each mod has its own Lua state with only `base`, `coroutine`, `table`, `string`, `math`
+and `utf8`.
+
+- **Not there**: `io`, `os`, `debug`, `package`, `dofile`, `loadfile`, `string.dump`,
+  `warn`. `load` takes a text string only (never bytecode, never a reader function).
+- `require("a.b")` loads `a/b.lua` from the mod's own folder and nothing else;
+  `require("xt.ui")` is the built-in widget library.
+- `setmetatable` refuses `__gc` (finalizers run where no limit can stop them).
+  `collectgarbage` allows `"count"`, `"collect"`, `"step"`.
+- **Limits per call** (an event, a command; loading gets 10x instructions and 1 s):
+  `lua_memory_mb` (16), `lua_instructions` (2,000,000), `lua_time_ms` (40). String
+  pattern functions refuse subjects over 1 MB and patterns over 512 bytes, and the
+  matcher itself checks the time limit, so a catastrophic pattern stops too.
+- A mod that hits a limit **cannot catch its own death**: `pcall`, `xpcall`,
+  `coroutine.resume`/`close` and `load` raise again instead of returning, and every
+  further instruction raises.
+- Mods only load from your own `mods/` folder, never from the game's virtual filesystem,
+  so a server cannot send code in a pk3. While connected to someone else's server,
+  `lua_mod_enable` and `lua_mod_reload` refuse (servers can put commands in your console).
+- No API returns another player's position, an entity list or a trace, and none sets
+  view angles or fires: a mod cannot see through walls or aim. The offline practice
+  tools (`cl_touch_esp_enabled`, aim assist) are neither readable as data nor writable.
+
+`tests/lua-sandbox` holds escape attempts; `scripts/test-lua-sandbox.sh` runs them in
+the real engine (90 checks plus 9 mods that must get stopped), and
+`scripts/test-lua-match.sh` runs the examples in a bot match.
+
+## API: both realms (`xt`)
+
+| Call | |
+|---|---|
+| `xt.on(event, fn)` | add a handler (events below) |
+| `xt.command(name, fn, help)` | console command `lua_<mod>_<name>` (server: `sv_lua_<mod>_<name>`); `fn` gets the arguments as strings |
+| `xt.cvar(name)` | a cvar's value, or nil for unknown, private and secret ones (passwords, rcon, keys, tokens, log destinations) |
+| `xt.setcvar(name, value)` | set an allowlisted cvar, or the mod's own `lua_<mod>_*` (created and saved on first set); values may not contain `; " $ \` or control characters |
+| `xt.exec(line)` | run an allowlisted console command (up to 8 per call); no `; " $ \` or line breaks |
+| `xt.save(key, text)` / `xt.load(key)` | text up to 64 KB in `<mod>/data/<key>.txt` (up to 64 keys) |
+| `xt.realtime()` | seconds since the game started |
+| `xt.modname`, `xt.realm`, `xt.apiversion` | `"hello"`, `"client"`/`"server"`, `"1"` |
+| `print(...)` | to the console as `[mod] ...` (64 lines per call) |
+
+Both realms also have an `unload` event, run when the mod is turned off.
+
+## API: client mods
+
+Events:
+
+| Event | Arguments | Return |
+|---|---|---|
+| `frame` | `dt` | |
+| `hud` | `w, h` (2D size) | in a match, over the game view and HUD |
+| `draw` | `w, h` | every frame, under the menu and console: overlays and mod-made pages |
+| `key` | `key, down, char` (`"MOUSE1"`, `"F5"`, ...) | `true` keeps the key from its binding; keys bound to the console or menu always go through |
+| `menu` | `open` | |
+| `map` | `name` (`""` when leaving) | |
+
+Calls:
+
+| Call | |
+|---|---|
+| `xt.draw.fill(x, y, w, h, r, g, b, a)` | rectangle (colours 0..1) |
+| `xt.draw.text(x, y, text, size, r, g, b, a)` | text with `^` colour codes; returns its width |
+| `xt.draw.textwidth(text, size)` | |
+| `xt.draw.pic(path, x, y, w, h, r, g, b, a)` | an image under `gfx/` |
+| `xt.draw.clip(x, y, w, h)` / `xt.draw.noclip()` | clip later drawing (reset after each handler) |
+| `xt.screen()` | `w, h` of the 2D coordinate space |
+| `xt.fingers()` | `{ {id, x, y}, ... }` fingers on the screen |
+| `xt.mouse()` | `x, y` of the pointer |
+| `xt.keydown(key)` | is a game key down |
+| `xt.sound(path)` | play a sound under `sound/` (16 a second at most) |
+| `xt.ingame()`, `xt.islocal()`, `xt.map()`, `xt.time()` | match state, local server, map, game time |
+| `xt.me()` | `{health, armor, weapon, alive, name, frags, color}` (yourself only) |
+| `xt.players()` | scoreboard: `{ {name, frags, color, slot, me}, ... }` |
+
+`xt.draw.*` only works inside `hud` and `draw`.
+
+Settable cvars: `crosshair*`, `hud_*`, `con_notify*`, `con_chat*`, `viewsize`, `fov`,
+`cl_bob*`, `showfps`, `cl_showfps`, `showtime`, `showdate`, `sensitivity`, `volume`,
+`bgmvolume`, `r_drawviewmodel`, `cl_gunalign`, `scr_conalpha`, `scr_centertime`,
+`cl_hidewaypoints`, `cl_zoomfactor`, `cl_zoomspeed`.
+Commands: `echo`, `say`, `say_team` (one line per 2 s for all mods together),
+`screenshot`, `togglemenu`, `weapnext`, `weapprev`, `weaplast`, `weapbest`,
+`messagemode`, `messagemode2`, `ready`, `+showscores`, `-showscores`, `kill`, `impulse`,
+`play`.
+
+### `xt.ui`
+
+```lua
+local ui = require("xt.ui")
+xt.on("draw", function(w, h)
+  ui.begin()                                        -- reads finger / mouse
+  local x, y, iw = ui.panel(40, 40, 300, 200, "Title")
+  local col = ui.column(x, y, iw)
+  local rx, ry, rw, rh = col:row(32)
+  if ui.button(rx, ry, rw, rh, "Press") then print("pressed") end
+end)
+```
+
+`ui.panel`, `ui.button` (true when tapped), `ui.toggle(..., label, value)`,
+`ui.slider(..., label, value, min, max)`, `ui.text`, `ui.textcentered`,
+`ui.column(x, y, w, gap)` with `:row(h)`, `ui.split(x, w, n, gap)`, `ui.inside`,
+`ui.pointer`, and `ui.theme` (colours and sizes, change freely). Lua passes all of a
+call's results only to the last argument, so take `col:row()` into locals first.
+
+## API: server plugins
+
+Players are numbers `1..maxplayers`; `0` means the world or not a player.
+
+| Event | Arguments | Return |
+|---|---|---|
+| `frame` | `dt` | |
+| `map` | `name` | |
+| `connect`, `disconnect`, `spawn` | `id` | |
+| `death` | `victim, attacker, deathtype` | |
+| `damage` | `target, attacker, damage, deathtype` | a number replaces the damage (0..100000); handlers chain |
+| `chat` | `id, message, teamsay` | `false` holds the message back |
+| `pickup` | `id, item` | `false` stops the pickup |
+| `clientcmd` | `id, command, args` (from `cmd <command> ...`) | `true` when handled |
+| `matchend` | | |
+
+| Call | |
+|---|---|
+| `xt.players()` | ids of the connected players |
+| `xt.player(id)` | `{id, name, bot, frags, spectator, team, health, armor, alive, origin = {x, y, z}}` |
+| `xt.tell(id, text)` / `xt.centerprint(id, text)` / `xt.broadcast(text)` | messages |
+| `xt.map()`, `xt.time()`, `xt.maxplayers()` | |
+
+Settable cvars: `g_balance_*`, `g_start_weapon_*`, `g_pickup_*`, the mutator switches
+(`g_instagib`, `g_nix`, `g_grappling_hook`, `g_vampire`, `g_midair`, `g_jetpack`,
+`g_dodging`, `g_bloodloss`, `g_rocket_flying`, `g_nades`, `g_buffs`, `g_powerups`,
+`g_new_toys`, `g_overkill`, `g_melee_only`, `g_random_gravity`, `g_walljump`,
+`g_weaponarena`), `g_spawnshieldtime`, `g_respawn_delay`, `g_friendlyfire`,
+`g_mirrordamage`, `timelimit`, `fraglimit`, `leadlimit`, `sv_gravity`; never a name with
+`uri`, `url`, `log`, `ban`, `http`, `dest`, `file`, `path` or `password` in it.
+Commands: `say`, `echo`, `restart`, `kick`, and `sv_cmd` with `gotomap`, `endmatch`,
+`allready`, `lockteams`, `unlockteams`, `shuffleteams`, `nextmap`.
+
+Server plugins only get game events on a server running the Touch game code (local
+matches, Touch dedicated servers); the `frame` and `map` events come from it too.
+Servers with `sv_threaded 1` run no plugins.
+
+## Engine side
+
+`engine/darkplaces/touch_lua.c` (sandbox, limits, manager, common API),
+`touch_lua_cl.c` (client realm), `touch_lua_sv.c` (server realm, builtin #1740),
+`touch_lua_lib.h` (`xt.ui`), `touch_lua_vm.c` (Lua compiled as one unit) and
+`touch_lua54/` (Lua 5.4.8 from lua.org, MIT, unmodified). The game side is
+`qcsrc/server/touch_lua.qc`.
