@@ -1,4 +1,4 @@
-# Xonotic Touch: Technical Architecture
+# Godnotic: Technical Architecture
 
 Native C + QuakeC touch port for Android, Ubuntu Touch, and any Linux touch device via Flatpak. **Slim Flatpak, Ubuntu Touch click, and Android APK packages** ship compiled logic and touch configs; large game assets download on first launch into the platform writable data dir (Flatpak: app data under `xonotic-touch/`; Click: `~/.local/share/xonotictouch.dixonsolutions/`; Android: see [ANDROID.md](ANDROID.md); native: `~/.local/share/xonotic-touch/`).
 

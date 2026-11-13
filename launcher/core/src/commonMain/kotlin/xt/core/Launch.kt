@@ -45,7 +45,7 @@ object Launch {
     fun server(cfg: LauncherConfig, engine: String, paths: GamePaths): LaunchPlan {
         val args = mutableListOf(
             "-xonotic", "-dedicated",
-            "-customgamename", "Xonotic Touch",
+            "-customgamename", "Godnotic",
             "-customgamenetworkfiltername", "Xonotic",
             "+sys_colortranslation", "0",
             "+hostname", cfg.string(Keys.HOST_NAME, "Godnotic server").ifBlank { "Godnotic server" },

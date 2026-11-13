@@ -1,5 +1,5 @@
 /*
- * AndySU / Xonotic Touch: contract between the resident loader (libandysu_xonotic_loader.so) and
+ * AndySU / Godnotic: contract between the resident loader (libandysu_xonotic_loader.so) and
  * a swappable engine library (libmain.so, later libmain.<hash8>.so). See ../LIVE_SWAP.md 2.2.
  *
  * Stage 1 (this version): the loader dlopens the engine, calls andysu_engine_v1()->run() and

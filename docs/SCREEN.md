@@ -12,7 +12,7 @@ Landscape-first display sizing for touch devices. Implemented in **`touch/screen
 
 ## Landscape orientation
 
-Xonotic Touch is **landscape-only** (including inverted landscape). `touch/screen-calc.sh` always maps the long edge to `vid_width`. Portrait is not supported.
+Godnotic is **landscape-only** (including inverted landscape). `touch/screen-calc.sh` always maps the long edge to `vid_width`. Portrait is not supported.
 
 ## Testing without a phone
 

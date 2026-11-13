@@ -33,9 +33,9 @@
     <string name="keepalive_connection_title">Godnotic is staying connected</string>
     <string name="keepalive_download_title">Godnotic is downloading</string>
     <string name="keepalive_download_text">Game data: maps, textures and sounds</string>
-    <string name="boot_notice_ready_title">Xonotic is ready</string>
+    <string name="boot_notice_ready_title">Godnotic is ready</string>
     <string name="boot_notice_ready_text">Game data is downloaded. Tap to play.</string>
-    <string name="boot_notice_failed_title">Xonotic download stopped</string>
+    <string name="boot_notice_failed_title">Godnotic download stopped</string>
     <string name="boot_notice_failed_text">Tap to carry on from where it stopped.</string>
     <string name="update_title">Godnotic %1$s</string>
     <string name="update_message">You have %1$s. Updating keeps your settings, keybinds and downloaded maps.</string>

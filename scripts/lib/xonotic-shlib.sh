@@ -1,5 +1,5 @@
 #!/bin/bash
-# Shared helpers for Xonotic Touch scripts.
+# Shared helpers for Godnotic scripts.
 set -euo pipefail
 
 xonotic_root() {
@@ -580,7 +580,7 @@ xonotic_touch_stop_asset_fetch() {
         {
             printf '%s\n' paused
             printf '%s\n' "$pct"
-            printf '%s\n' "Download paused. Reopen Xonotic Touch to continue."
+            printf '%s\n' "Download paused. Reopen Godnotic to continue."
         } > "${progress_file}.tmp.$$" \
             && mv -f "${progress_file}.tmp.$$" "$progress_file"
     fi
@@ -635,7 +635,7 @@ xonotic_run_native() {
     # then list no servers; -customgamenetworkfiltername puts the stock name back.
     while :; do
         "$bin" -xonotic \
-            -customgamename "Xonotic Touch" \
+            -customgamename "Godnotic" \
             -customgamenetworkfiltername Xonotic \
             +exec xonotic.cfg \
             +exec screen.layout.cfg \

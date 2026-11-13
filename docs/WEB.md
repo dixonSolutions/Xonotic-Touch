@@ -1,4 +1,4 @@
-# Xonotic Touch in the browser
+# Godnotic in the browser
 
 The same engine and game code as the Android, Flatpak and Click builds,
 compiled to WebAssembly with Emscripten and drawn with WebGL 2. Touch

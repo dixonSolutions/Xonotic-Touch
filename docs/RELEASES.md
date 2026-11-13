@@ -1,6 +1,6 @@
 # Releases and packaging
 
-**Xonotic Touch** ships as:
+**Godnotic** ships as:
 
 | Format | Targets | Notes |
 |--------|---------|--------|
@@ -165,7 +165,7 @@ flatpak install --user XonoticTouch-1.2.<N>-x86_64.flatpak
 | | |
 |---|---|
 | **App id** | `xonotictouch.dixonsolutions` |
-| **Title** | Xonotic Touch |
+| **Title** | Godnotic |
 | **Manage** | https://open-store.io/manage/xonotictouch.dixonsolutions |
 | **Public page** | https://open-store.io/app/xonotictouch.dixonsolutions |
 | **Secret** | Repo secret `OPENSTORE_API_KEY` |

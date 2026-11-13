@@ -1,4 +1,4 @@
-# Xonotic Touch — agent notes
+# Godnotic — agent notes
 
 ## Coordinating agents: agent-locks
 

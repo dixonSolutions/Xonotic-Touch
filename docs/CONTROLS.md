@@ -1387,7 +1387,7 @@ a Seeker is flown at the player's path but turns faster than any strafe, so
 it is seldom dodged; the higher the ping, the less warning is left: see the
 measurements below.
 
-Measured (Xonotic Touch v1.2.145 work, scripted bots on nexballarena in a
+Measured (Godnotic v1.2.145 work, scripted bots on nexballarena in a
 free-for-all, the player's damage per shot; dodge off -> v1.2.140 -> now):
 nine projectile weapons (Devastator, Mortar both fires, Electro both fires,
 Hagar, Crylink, Seeker, Mine Layer) from 400, 800 and 1500 units at a player
@@ -1795,7 +1795,7 @@ Set via menu defaults + cfg (not a full game rewrite):
 Format: plain QuakeC `exec` text (`.cfg`), same keys as schema above.
 
 ```
-// Xonotic Touch profile — exported 2026-06-12
+// Godnotic profile — exported 2026-06-12
 touch_preset "casual"
 touch_sens_base 2.8
 touch_move_x 0.10

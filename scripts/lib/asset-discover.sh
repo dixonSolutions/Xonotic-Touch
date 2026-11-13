@@ -1,5 +1,5 @@
 #!/bin/bash
-# Resolve game assets for Xonotic Touch into OUR user data directory only.
+# Resolve game assets for Godnotic into OUR user data directory only.
 #
 # Sync (before launch): only ask "is our data already ready?"
 # Background (drives fullscreen wizard): Flatpak copy → else download.
@@ -212,7 +212,7 @@ xonotic_resolve_missing_assets() {
     xonotic_discovery_progress_write discover 5 "Checking this app's game data folder..."
 
     if declare -F xonotic_assets_are_ready >/dev/null 2>&1 && xonotic_assets_are_ready "$target_dir"; then
-        xonotic_discovery_progress_write "done" 100 "Game data already installed in Xonotic Touch."
+        xonotic_discovery_progress_write "done" 100 "Game data already installed in Godnotic."
         return 0
     fi
 

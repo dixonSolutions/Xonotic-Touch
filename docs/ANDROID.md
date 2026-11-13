@@ -1,6 +1,6 @@
 # Android package
 
-Xonotic Touch ships a native Android APK alongside the Flatpak and Ubuntu Touch
+Godnotic ships a native Android APK alongside the Flatpak and Ubuntu Touch
 `.click`. There is no upstream Android build of darkplaces to inherit, so this
 one is assembled here: `android/` is a plain gradle project whose native library
 is darkplaces compiled with the NDK.
@@ -8,7 +8,7 @@ is darkplaces compiled with the NDK.
 | | |
 |---|---|
 | Package id | `io.github.dixonsolutions.xonotictouch` |
-| App name | Xonotic Touch |
+| App name | Godnotic |
 | Launcher icon | `engine/misc/logos/icons_png/xonotic_512.png` — the same logo the Click and Flatpak packages use |
 | ABIs | `arm64-v8a`, `armeabi-v7a`, `x86_64` |
 | min / target SDK | 21 / 35 |
@@ -178,7 +178,7 @@ end a match, a join or a download:
 While the engine is connected, joining or downloading (it writes the state to
 `userdata/data/touch_netstate`, which `XonoticActivity` reads every 2 s), and
 while the first-launch download runs, `KeepAliveService` is a foreground
-service with a notification ("Xonotic Touch is staying connected: Connected
+service with a notification ("Godnotic is staying connected: Connected
 to <server> - <map>") and holds a partial wake lock. Without it Android
 freezes a background app's process within seconds (Android 14+), can kill it
 for memory, and lets the CPU sleep with the screen off. The service stops as

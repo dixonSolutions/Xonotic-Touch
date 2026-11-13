@@ -1,14 +1,14 @@
 # First-run setup and touch UX
 
-Xonotic Touch uses a **guided startup chain** on the main menu, **in-game asset download progress**, touch-native menus (no on-screen pointer), and **system keyboard** integration on GNOME/Wayland.
+Godnotic uses a **guided startup chain** on the main menu, **in-game asset download progress**, touch-native menus (no on-screen pointer), and **system keyboard** integration on GNOME/Wayland.
 
 ## Branding
 
 | Surface | Value |
 |---------|--------|
-| Window title | `Xonotic Touch` (`-customgamename` from launcher / `run-local.sh`) |
-| Network / version cvar | `g_xonoticversion` → `"Xonotic Touch"` in `touch/xonotic.cfg` |
-| Setup dialogs | Titles use **Xonotic Touch** (not generic “Welcome” or engine build strings) |
+| Window title | `Godnotic` (`-customgamename` from launcher / `run-local.sh`) |
+| Network / version cvar | `g_xonoticversion` → `"Godnotic"` in `touch/xonotic.cfg` |
+| Setup dialogs | Titles use **Godnotic** (not generic “Welcome” or engine build strings) |
 
 Engine build watermarks (`WATERMARK`, `buildstring`) remain for developer logs only; they are not shown in the touch setup UI.
 
@@ -51,7 +51,7 @@ After ToS accept or asset download completes, `main.firstDraw = true` re-runs th
 
 ### Asset resolution (our app owns everything)
 
-Xonotic Touch always runs from **its own** user data directory (user data + game packs). Resolution order — stop at the first success:
+Godnotic always runs from **its own** user data directory (user data + game packs). Resolution order — stop at the first success:
 
 | Step | Condition | Action |
 |------|-----------|--------|

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Install Flatpak tooling and build/install Xonotic Touch locally.
+# Install Flatpak tooling and build/install Godnotic locally.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -24,7 +24,7 @@ usage() {
     cat <<EOF
 Usage: $(basename "$0") [options]
 
-Install Flatpak build tools, then build and install Xonotic Touch for the local user.
+Install Flatpak build tools, then build and install Godnotic for the local user.
 
 Options:
   --deps-only       Install flatpak + flatpak-builder only

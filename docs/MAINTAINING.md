@@ -1,6 +1,6 @@
 # Maintainer guide
 
-**Xonotic Touch** — touch-first Xonotic for Android, Ubuntu Touch, and any Linux device via Flatpak. CI builds **Flatpak** (`x86_64`/`aarch64`), Ubuntu Touch **`.click`** (`arm64`/`armhf`) and Android **`.apk`** (`arm64-v8a`/`armeabi-v7a`/`x86_64`) on every push to `main` (versioned GitHub Releases + Pages OSTree remote with history). You edit source; GitHub Actions packages it.
+**Godnotic** — touch-first Xonotic for Android, Ubuntu Touch, and any Linux device via Flatpak. CI builds **Flatpak** (`x86_64`/`aarch64`), Ubuntu Touch **`.click`** (`arm64`/`armhf`) and Android **`.apk`** (`arm64-v8a`/`armeabi-v7a`/`x86_64`) on every push to `main` (versioned GitHub Releases + Pages OSTree remote with history). You edit source; GitHub Actions packages it.
 
 ## Daily workflow
 
