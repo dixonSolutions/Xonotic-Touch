@@ -844,7 +844,9 @@ void TouchVote_Draw(void)
 	qbool show;
 	update_state();
 	chip.drawn = false;
-	if (!in_play() || !touch_device())
+	// The end-of-match scoreboard and the next-map vote own the screen: MENU
+	// and the console button only (touch_hudmode.h TouchMode_Controls).
+	if (!in_play() || !touch_device() || !(TouchMode_Controls(TouchHudMode_Current()->mode, 0) & TOUCHCTL_VOTECHIP))
 	{
 		card.drawn = false;
 		return;
