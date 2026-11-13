@@ -50,7 +50,13 @@ object Net {
         @Suppress("DEPRECATION")
         val wifiWithoutInternet = cm.allNetworks.any { n ->
             val c = cm.getNetworkCapabilities(n)
+            // This device's own hotspot (or a Wi-Fi Direct group) is a
+            // WIFI-transport network with LOCAL_NETWORK and no INTERNET on
+            // Android 15+: not a Wi-Fi the player joined, so it must not read
+            // as "Wi-Fi is connected but has no internet access".
             c != null && c.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
+                !(Build.VERSION.SDK_INT >= 35 &&
+                    c.hasCapability(NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK)) &&
                 !(c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
                     c.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED))
         }
