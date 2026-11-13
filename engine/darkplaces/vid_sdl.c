@@ -1699,6 +1699,7 @@ void Sys_SDL_HandleEvents(void)
 #ifdef __ANDROID__
 	{ extern void NativeUI_Frame(void); NativeUI_Frame(); } // Touch: Android native UI bridge
 #endif
+	{ extern void TouchFE_Frame(void); TouchFE_Frame(); } // Touch: native front-end bridge (touch_frontend.c)
 	VID_EnableJoystick(true);
 	VID_LiftTappedFingers(); // Touch
 

@@ -99,6 +99,20 @@ android {
     }
 }
 
+dependencies {
+    // The native interface's lists and grids (fe/Lists.kt): view recycling,
+    // windowed data, stable ids. Its views are built in code, never inflated,
+    // so no layout of it reaches the (AndySU host's) resource table.
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
+    testImplementation 'junit:junit:4.13.2'
+}
+
+// JVM unit tests of the native interface's model (src/test): the UI bridge
+// fixtures of the tree when present (docs/UI_BRIDGE.md section 13).
+tasks.withType(Test).configureEach {
+    systemProperty 'uib.fixtures', "${rootDir}/../tests/uibridge/fixtures"
+}
+
 // HostRes reads this build's strings from the assets, never through R.string
 // ids, which point into whatever table the installed (AndySU) host has.
 def copyStringsAsset = tasks.register('copyStringsAsset', Copy) {

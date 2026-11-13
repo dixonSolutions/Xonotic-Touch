@@ -5,14 +5,33 @@
 #include <dlfcn.h>
 #include <GLES2/gl2.h>
 
+#include "touch_frontend.h"
+
 typedef int (*nativeui_pop_fn)(char *, size_t);
+
+/* The front-end bridge's sink (touch_frontend.c): only a bridge built with it
+ * (nativeui_fe_version) gets one. An engine swapped in under an older resident
+ * bridge, or a bridge under an older engine, simply has no native front end,
+ * and the QuakeC menu stays in charge. */
+static void NativeUI_AttachFrontend(void *bridge)
+{
+    int (*version)(void) = (int (*)(void))dlsym(bridge, "nativeui_fe_version");
+    touchfe_sink_t sink;
+    if (!version || version() < TOUCHFE_PROTOCOL)
+        return;
+    sink.put = (void (*)(const char *, const char *, int))dlsym(bridge, "nativeui_fe_put");
+    sink.beat_age_ms = (long long (*)(void))dlsym(bridge, "nativeui_fe_beat_age_ms");
+    sink.cancel_requested = (int (*)(void))dlsym(bridge, "nativeui_fe_cancel_requested");
+    if (sink.put && sink.beat_age_ms && sink.cancel_requested)
+        TouchFE_SetSink(&sink);
+}
 typedef void (*nativeui_publish_fn)(const char *);
 void NativeUI_Frame(void)
 {
     static nativeui_pop_fn pop;
     static nativeui_publish_fn publish, publish_permissions;
     static unsigned retry;
-    char command[1024];
+    static char command[8192];
     cvar_t *mods;
     if (!pop || !publish || !publish_permissions)
     {
@@ -25,6 +44,7 @@ void NativeUI_Frame(void)
         publish_permissions = (nativeui_publish_fn)dlsym(bridge, "nativeui_publish_permissions");
         if (!pop || !publish || !publish_permissions) { dlclose(bridge); return; }
         /* Keep this reference: JNI may use the resident bridge throughout a swap. */
+        NativeUI_AttachFrontend(bridge);
     }
     while (pop(command, sizeof command))
         Cbuf_AddText(cmd_local, command);

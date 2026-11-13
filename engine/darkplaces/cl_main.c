@@ -2825,6 +2825,7 @@ double CL_Frame (double time)
 	// this is simpler and gives pings more representative of what can be expected when playing.
 	maxfps = (vid_activewindow || serverlist_querystage ? cl_maxfps : cl_maxidlefps).value;
 	maxfps = TouchLoadTime_MaxFPS(maxfps); // Touch: no frame limiter while a game loads
+	{ extern double TouchFE_MaxFPS(double); maxfps = TouchFE_MaxFPS(maxfps); } // Touch: idle rate behind a native screen
 
 	if (cls.state != ca_dedicated && (cl_timer > 0 || host.restless || maxfps <= 0))
 	{

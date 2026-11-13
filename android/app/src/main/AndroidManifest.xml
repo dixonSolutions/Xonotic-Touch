@@ -74,6 +74,7 @@
             android:launchMode="singleInstance"
             android:screenOrientation="sensorLandscape"
             android:preferMinimalPostProcessing="true"
+            android:theme="@style/Theme.XonoticGame"
             android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation" />
 
         <service
