@@ -1,0 +1,521 @@
+{
+ "name": "seq-download",
+ "description": "Connecting and downloading a map: progress, size, speed, time left.",
+ "generated": "seed",
+ "snapshot": {
+  "uib": 1,
+  "t": "snapshot",
+  "id": 2,
+  "rev": 1,
+  "root": "app",
+  "nodes": [
+   {
+    "id": "app",
+    "type": "app",
+    "props": {
+     "title": "Godnotic",
+     "stack": [
+      "loading"
+     ],
+     "modal": [],
+     "canBack": false,
+     "context": "loading",
+     "busy": {
+      "label": "Joining Clan Wars #12",
+      "progress": 0.0,
+      "cancel": {
+       "id": "loading.cancel",
+       "label": "Cancel",
+       "icon": "close"
+      }
+     }
+    },
+    "children": [
+     "loading"
+    ]
+   },
+   {
+    "id": "loading",
+    "type": "screen",
+    "props": {
+     "title": "Loading",
+     "kind": "loading",
+     "presentation": "fullscreen",
+     "background": "pk3:maps/stormkeep"
+    },
+    "children": [
+     "loading/status",
+     "loading/progress"
+    ]
+   },
+   {
+    "id": "loading/status",
+    "type": "status",
+    "props": {
+     "icon": "download",
+     "title": "Joining Clan Wars #12",
+     "body": "Connecting",
+     "progress": 0.0,
+     "primary": {
+      "id": "loading.cancel",
+      "label": "Cancel",
+      "icon": "close",
+      "style": "secondary"
+     },
+     "live": true
+    },
+    "children": []
+   },
+   {
+    "id": "loading/progress",
+    "type": "progress",
+    "props": {
+     "label": "Connecting",
+     "value": 0.0,
+     "detail": "",
+     "live": true,
+     "cancel": {
+      "id": "loading.cancel",
+      "label": "Cancel",
+      "icon": "close"
+     }
+    },
+    "children": []
+   }
+  ]
+ },
+ "steps": [
+  {
+   "delay": 0.5,
+   "msg": {
+    "uib": 1,
+    "t": "diff",
+    "id": 11,
+    "base": 1,
+    "rev": 2,
+    "set": [
+     {
+      "id": "app",
+      "type": "app",
+      "props": {
+       "title": "Godnotic",
+       "stack": [
+        "loading"
+       ],
+       "modal": [],
+       "canBack": false,
+       "context": "loading",
+       "busy": {
+        "label": "Joining Clan Wars #12",
+        "progress": 0.05,
+        "cancel": {
+         "id": "loading.cancel",
+         "label": "Cancel",
+         "icon": "close"
+        }
+       }
+      },
+      "children": [
+       "loading"
+      ]
+     },
+     {
+      "id": "loading/status",
+      "type": "status",
+      "props": {
+       "icon": "download",
+       "title": "Joining Clan Wars #12",
+       "body": "Downloading map",
+       "progress": 0.05,
+       "primary": {
+        "id": "loading.cancel",
+        "label": "Cancel",
+        "icon": "close",
+        "style": "secondary"
+       },
+       "live": true
+      },
+      "children": []
+     },
+     {
+      "id": "loading/progress",
+      "type": "progress",
+      "props": {
+       "label": "Downloading map",
+       "value": 0.05,
+       "detail": "2.0 MB of 40 MB · 3.2 MB/s · 11 s left",
+       "live": true,
+       "cancel": {
+        "id": "loading.cancel",
+        "label": "Cancel",
+        "icon": "close"
+       }
+      },
+      "children": []
+     }
+    ],
+    "del": []
+   }
+  },
+  {
+   "delay": 0.5,
+   "msg": {
+    "uib": 1,
+    "t": "diff",
+    "id": 12,
+    "base": 2,
+    "rev": 3,
+    "set": [
+     {
+      "id": "app",
+      "type": "app",
+      "props": {
+       "title": "Godnotic",
+       "stack": [
+        "loading"
+       ],
+       "modal": [],
+       "canBack": false,
+       "context": "loading",
+       "busy": {
+        "label": "Joining Clan Wars #12",
+        "progress": 0.2,
+        "cancel": {
+         "id": "loading.cancel",
+         "label": "Cancel",
+         "icon": "close"
+        }
+       }
+      },
+      "children": [
+       "loading"
+      ]
+     },
+     {
+      "id": "loading/status",
+      "type": "status",
+      "props": {
+       "icon": "download",
+       "title": "Joining Clan Wars #12",
+       "body": "Downloading map",
+       "progress": 0.2,
+       "primary": {
+        "id": "loading.cancel",
+        "label": "Cancel",
+        "icon": "close",
+        "style": "secondary"
+       },
+       "live": true
+      },
+      "children": []
+     },
+     {
+      "id": "loading/progress",
+      "type": "progress",
+      "props": {
+       "label": "Downloading map",
+       "value": 0.2,
+       "detail": "8.0 MB of 40 MB · 3.2 MB/s · 10 s left",
+       "live": true,
+       "cancel": {
+        "id": "loading.cancel",
+        "label": "Cancel",
+        "icon": "close"
+       }
+      },
+      "children": []
+     }
+    ],
+    "del": []
+   }
+  },
+  {
+   "delay": 0.5,
+   "msg": {
+    "uib": 1,
+    "t": "diff",
+    "id": 13,
+    "base": 3,
+    "rev": 4,
+    "set": [
+     {
+      "id": "app",
+      "type": "app",
+      "props": {
+       "title": "Godnotic",
+       "stack": [
+        "loading"
+       ],
+       "modal": [],
+       "canBack": false,
+       "context": "loading",
+       "busy": {
+        "label": "Joining Clan Wars #12",
+        "progress": 0.45,
+        "cancel": {
+         "id": "loading.cancel",
+         "label": "Cancel",
+         "icon": "close"
+        }
+       }
+      },
+      "children": [
+       "loading"
+      ]
+     },
+     {
+      "id": "loading/status",
+      "type": "status",
+      "props": {
+       "icon": "download",
+       "title": "Joining Clan Wars #12",
+       "body": "Downloading map",
+       "progress": 0.45,
+       "primary": {
+        "id": "loading.cancel",
+        "label": "Cancel",
+        "icon": "close",
+        "style": "secondary"
+       },
+       "live": true
+      },
+      "children": []
+     },
+     {
+      "id": "loading/progress",
+      "type": "progress",
+      "props": {
+       "label": "Downloading map",
+       "value": 0.45,
+       "detail": "18.0 MB of 40 MB · 3.2 MB/s · 6 s left",
+       "live": true,
+       "cancel": {
+        "id": "loading.cancel",
+        "label": "Cancel",
+        "icon": "close"
+       }
+      },
+      "children": []
+     }
+    ],
+    "del": []
+   }
+  },
+  {
+   "delay": 0.5,
+   "msg": {
+    "uib": 1,
+    "t": "diff",
+    "id": 14,
+    "base": 4,
+    "rev": 5,
+    "set": [
+     {
+      "id": "app",
+      "type": "app",
+      "props": {
+       "title": "Godnotic",
+       "stack": [
+        "loading"
+       ],
+       "modal": [],
+       "canBack": false,
+       "context": "loading",
+       "busy": {
+        "label": "Joining Clan Wars #12",
+        "progress": 0.7,
+        "cancel": {
+         "id": "loading.cancel",
+         "label": "Cancel",
+         "icon": "close"
+        }
+       }
+      },
+      "children": [
+       "loading"
+      ]
+     },
+     {
+      "id": "loading/status",
+      "type": "status",
+      "props": {
+       "icon": "download",
+       "title": "Joining Clan Wars #12",
+       "body": "Downloading map",
+       "progress": 0.7,
+       "primary": {
+        "id": "loading.cancel",
+        "label": "Cancel",
+        "icon": "close",
+        "style": "secondary"
+       },
+       "live": true
+      },
+      "children": []
+     },
+     {
+      "id": "loading/progress",
+      "type": "progress",
+      "props": {
+       "label": "Downloading map",
+       "value": 0.7,
+       "detail": "28.0 MB of 40 MB · 3.2 MB/s · 3 s left",
+       "live": true,
+       "cancel": {
+        "id": "loading.cancel",
+        "label": "Cancel",
+        "icon": "close"
+       }
+      },
+      "children": []
+     }
+    ],
+    "del": []
+   }
+  },
+  {
+   "delay": 0.5,
+   "msg": {
+    "uib": 1,
+    "t": "diff",
+    "id": 15,
+    "base": 5,
+    "rev": 6,
+    "set": [
+     {
+      "id": "app",
+      "type": "app",
+      "props": {
+       "title": "Godnotic",
+       "stack": [
+        "loading"
+       ],
+       "modal": [],
+       "canBack": false,
+       "context": "loading",
+       "busy": {
+        "label": "Joining Clan Wars #12",
+        "progress": 0.95,
+        "cancel": {
+         "id": "loading.cancel",
+         "label": "Cancel",
+         "icon": "close"
+        }
+       }
+      },
+      "children": [
+       "loading"
+      ]
+     },
+     {
+      "id": "loading/status",
+      "type": "status",
+      "props": {
+       "icon": "download",
+       "title": "Joining Clan Wars #12",
+       "body": "Downloading map",
+       "progress": 0.95,
+       "primary": {
+        "id": "loading.cancel",
+        "label": "Cancel",
+        "icon": "close",
+        "style": "secondary"
+       },
+       "live": true
+      },
+      "children": []
+     },
+     {
+      "id": "loading/progress",
+      "type": "progress",
+      "props": {
+       "label": "Downloading map",
+       "value": 0.95,
+       "detail": "38.0 MB of 40 MB · 3.2 MB/s · 0 s left",
+       "live": true,
+       "cancel": {
+        "id": "loading.cancel",
+        "label": "Cancel",
+        "icon": "close"
+       }
+      },
+      "children": []
+     }
+    ],
+    "del": []
+   }
+  },
+  {
+   "delay": 0.5,
+   "msg": {
+    "uib": 1,
+    "t": "diff",
+    "id": 16,
+    "base": 6,
+    "rev": 7,
+    "set": [
+     {
+      "id": "app",
+      "type": "app",
+      "props": {
+       "title": "Godnotic",
+       "stack": [
+        "loading"
+       ],
+       "modal": [],
+       "canBack": false,
+       "context": "loading",
+       "busy": {
+        "label": "Joining Clan Wars #12",
+        "progress": 1.0,
+        "cancel": {
+         "id": "loading.cancel",
+         "label": "Cancel",
+         "icon": "close"
+        }
+       }
+      },
+      "children": [
+       "loading"
+      ]
+     },
+     {
+      "id": "loading/status",
+      "type": "status",
+      "props": {
+       "icon": "download",
+       "title": "Joining Clan Wars #12",
+       "body": "Loading map",
+       "progress": 1.0,
+       "primary": {
+        "id": "loading.cancel",
+        "label": "Cancel",
+        "icon": "close",
+        "style": "secondary"
+       },
+       "live": true
+      },
+      "children": []
+     },
+     {
+      "id": "loading/progress",
+      "type": "progress",
+      "props": {
+       "label": "Loading map",
+       "value": 1.0,
+       "detail": "40.0 MB of 40 MB · 3.2 MB/s · 0 s left",
+       "live": true,
+       "cancel": {
+        "id": "loading.cancel",
+        "label": "Cancel",
+        "icon": "close"
+       }
+      },
+      "children": []
+     }
+    ],
+    "del": []
+   }
+  }
+ ]
+}
