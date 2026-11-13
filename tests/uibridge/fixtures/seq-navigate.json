@@ -1,7 +1,30 @@
 {
  "name": "seq-navigate",
- "description": "Home, push Singleplayer, back to Home.",
- "generated": "seed",
+ "description": "Home, push Singleplayer, back to Home (engine diffs).",
+ "generated": "engine",
+ "caps": {
+  "nodes": [],
+  "hints": [],
+  "width": 1280,
+  "height": 720,
+  "dpi": 96,
+  "widthClass": "expanded",
+  "heightClass": "medium",
+  "input": [
+   "mouse",
+   "keyboard"
+  ],
+  "locale": "en",
+  "reducedMotion": false,
+  "powerSave": false,
+  "thermal": "nominal",
+  "insets": {
+   "top": 0,
+   "right": 0,
+   "bottom": 0,
+   "left": 0
+  }
+ },
  "snapshot": {
   "uib": 1,
   "t": "snapshot",
@@ -40,7 +63,8 @@
        "style": "secondary",
        "confirm": {
         "title": "Quit Godnotic?",
-        "ok": "Quit"
+        "ok": "Quit",
+        "destructive": false
        }
       }
      ]
@@ -92,11 +116,6 @@
       "style": "primary"
      },
      "actions": [
-      {
-       "id": "quick",
-       "label": "Quick match",
-       "icon": "players"
-      },
       {
        "id": "sp",
        "label": "Choose…",
@@ -191,7 +210,7 @@
    "msg": {
     "uib": 1,
     "t": "diff",
-    "id": 11,
+    "id": 3,
     "base": 1,
     "rev": 2,
     "set": [
@@ -219,20 +238,20 @@
       "props": {
        "title": "Singleplayer",
        "kind": "page",
+       "header": {
+        "collapsible": true
+       },
        "primary": {
         "id": "play",
         "label": "Play",
         "icon": "play",
         "style": "primary"
-       },
-       "header": {
-        "collapsible": true
        }
       },
       "children": [
        "sp/modes",
        "sp/maps",
-       "sp/options-s",
+       "sp/match",
        "sp/recent"
       ]
      },
@@ -290,7 +309,6 @@
        "subtitle": "Help your team score the most frags",
        "image": "pk3:gfx/menu/luma/gametype_tdm",
        "aspect": "1:1",
-       "selected": false,
        "primary": {
         "id": "mode.tdm",
         "label": "Team Deathmatch"
@@ -303,10 +321,9 @@
       "type": "card",
       "props": {
        "title": "Capture the Flag",
-       "subtitle": "Find and bring the enemy flag to your base",
+       "subtitle": "Bring the enemy flag to your base",
        "image": "pk3:gfx/menu/luma/gametype_ctf",
        "aspect": "1:1",
-       "selected": false,
        "primary": {
         "id": "mode.ctf",
         "label": "Capture the Flag"
@@ -319,10 +336,9 @@
       "type": "card",
       "props": {
        "title": "Clan Arena",
-       "subtitle": "Kill all enemy players to win the round",
+       "subtitle": "Wipe out the other team to win the round",
        "image": "pk3:gfx/menu/luma/gametype_ca",
        "aspect": "1:1",
-       "selected": false,
        "primary": {
         "id": "mode.ca",
         "label": "Clan Arena"
@@ -338,7 +354,6 @@
        "subtitle": "One on one",
        "image": "pk3:gfx/menu/luma/gametype_duel",
        "aspect": "1:1",
-       "selected": false,
        "primary": {
         "id": "mode.duel",
         "label": "Duel"
@@ -351,10 +366,9 @@
       "type": "card",
       "props": {
        "title": "Freeze Tag",
-       "subtitle": "Freeze the enemy team, thaw your teammates",
+       "subtitle": "Freeze the enemy team, thaw your own",
        "image": "pk3:gfx/menu/luma/gametype_ft",
        "aspect": "1:1",
-       "selected": false,
        "primary": {
         "id": "mode.ft",
         "label": "Freeze Tag"
@@ -367,10 +381,9 @@
       "type": "card",
       "props": {
        "title": "Domination",
-       "subtitle": "Capture and defend all the control points",
+       "subtitle": "Capture and hold the control points",
        "image": "pk3:gfx/menu/luma/gametype_dom",
        "aspect": "1:1",
-       "selected": false,
        "primary": {
         "id": "mode.dom",
         "label": "Domination"
@@ -386,7 +399,6 @@
        "subtitle": "Hold the ball to score",
        "image": "pk3:gfx/menu/luma/gametype_ka",
        "aspect": "1:1",
-       "selected": false,
        "primary": {
         "id": "mode.ka",
         "label": "Keepaway"
@@ -402,7 +414,6 @@
        "subtitle": "Gather all the keys to win the round",
        "image": "pk3:gfx/menu/luma/gametype_kh",
        "aspect": "1:1",
-       "selected": false,
        "primary": {
         "id": "mode.kh",
         "label": "Key Hunt"
@@ -415,10 +426,9 @@
       "type": "card",
       "props": {
        "title": "Last Man Standing",
-       "subtitle": "Survive and kill until the enemies have no lives left",
+       "subtitle": "Survive until the others run out of lives",
        "image": "pk3:gfx/menu/luma/gametype_lms",
        "aspect": "1:1",
-       "selected": false,
        "primary": {
         "id": "mode.lms",
         "label": "Last Man Standing"
@@ -431,8 +441,8 @@
       "type": "section",
       "props": {
        "title": "Map",
-       "subtitle": "Tap a map to see it",
-       "sticky": true
+       "sticky": true,
+       "subtitle": "Tap a map to see it"
       },
       "children": [
        "sp/maps/list"
@@ -444,33 +454,30 @@
       "props": {
        "source": "maps:dm",
        "display": "cards",
-       "count": 15,
+       "rowHeight": "card",
+       "minItem": 220,
+       "aspectItem": "16:9",
        "state": "ready",
        "selection": "single",
        "selected": [
         "stormkeep"
        ],
-       "rowHeight": "card",
-       "minItem": 220,
-       "aspectItem": "16:9",
        "columns": [
         {
          "key": "title",
          "type": "text",
          "label": "Map",
-         "priority": 1
+         "width": "fill",
+         "priority": 1,
+         "sortable": true
         },
         {
-         "key": "players",
+         "key": "author",
          "type": "text",
-         "label": "Players",
-         "priority": 2
-        },
-        {
-         "key": "size",
-         "type": "size",
-         "label": "Size",
-         "priority": 3
+         "label": "Author",
+         "width": "m",
+         "priority": 3,
+         "sortable": false
         }
        ],
        "rowPrimary": {
@@ -480,69 +487,67 @@
        },
        "rowActions": [
         {
-         "id": "map.play",
-         "label": "Play",
-         "icon": "play"
+         "id": "map.choose",
+         "label": "Use this map",
+         "icon": "check"
         }
        ],
        "empty": {
         "title": "No maps for this mode",
         "icon": "map"
-       }
+       },
+       "count": 18
       },
       "children": []
      },
      {
-      "id": "sp/options-s",
+      "id": "sp/match",
       "type": "section",
       "props": {
        "title": "Match"
       },
       "children": [
-       "sp/options"
+       "sp/match/form"
       ]
      },
      {
-      "id": "sp/options",
+      "id": "sp/match/form",
       "type": "form",
       "props": {
        "density": "compact"
       },
       "children": [
-       "sp/options/bots",
-       "sp/options/skill",
-       "sp/options/timelimit",
-       "sp/options/fraglimit",
-       "sp/options/mutator",
-       "sp/options/slots",
-       "sp/options/lan",
-       "sp/options/port",
-       "sp/options/pwon",
-       "sp/options/password"
+       "sp/match/form/bots",
+       "sp/match/form/skill",
+       "sp/match/form/time",
+       "sp/match/form/weapons",
+       "sp/match/form/slots",
+       "sp/match/form/lan",
+       "sp/match/form/port",
+       "sp/match/form/pwon",
+       "sp/match/form/password"
       ]
      },
      {
-      "id": "sp/options/bots",
+      "id": "sp/match/form/bots",
       "type": "stepper",
       "props": {
        "label": "Bots",
-       "bind": "vm:sp.bots",
-       "value": 4,
+       "bind": "cvar:touch_lan_bots",
        "min": 0,
        "max": 15,
        "step": 1,
        "format": "int",
-       "icon": "bot"
+       "value": 4
       },
       "children": []
      },
      {
-      "id": "sp/options/skill",
+      "id": "sp/match/form/skill",
       "type": "choice",
       "props": {
        "label": "Bot skill",
-       "bind": "vm:sp.skill",
-       "value": "4",
+       "bind": "cvar:skill",
        "style": "segmented",
        "options": [
         {
@@ -561,50 +566,54 @@
          "value": "10",
          "label": "Godlike"
         }
-       ]
+       ],
+       "value": "8"
       },
       "children": []
      },
      {
-      "id": "sp/options/timelimit",
-      "type": "stepper",
+      "id": "sp/match/form/time",
+      "type": "choice",
       "props": {
        "label": "Time limit",
        "bind": "cvar:timelimit_override",
-       "value": 10,
-       "min": 0,
-       "max": 60,
-       "step": 5,
-       "format": "int",
-       "unit": "min"
-      },
-      "children": []
-     },
-     {
-      "id": "sp/options/fraglimit",
-      "type": "stepper",
-      "props": {
-       "label": "Frag limit",
-       "bind": "cvar:fraglimit_override",
-       "value": 30,
-       "min": 0,
-       "max": 200,
-       "step": 10,
-       "format": "int"
-      },
-      "children": []
-     },
-     {
-      "id": "sp/options/mutator",
-      "type": "choice",
-      "props": {
-       "label": "Weapons",
-       "bind": "vm:sp.weapons",
-       "value": "normal",
        "style": "dropdown",
        "options": [
         {
-         "value": "normal",
+         "value": "-1",
+         "label": "Map default"
+        },
+        {
+         "value": "5",
+         "label": "5 minutes"
+        },
+        {
+         "value": "10",
+         "label": "10 minutes"
+        },
+        {
+         "value": "20",
+         "label": "20 minutes"
+        },
+        {
+         "value": "0",
+         "label": "No limit"
+        }
+       ],
+       "value": "-1"
+      },
+      "children": []
+     },
+     {
+      "id": "sp/match/form/weapons",
+      "type": "choice",
+      "props": {
+       "label": "Weapons",
+       "bind": "vm:create.weapons",
+       "style": "dropdown",
+       "options": [
+        {
+         "value": "",
          "label": "Normal"
         },
         {
@@ -619,56 +628,56 @@
          "value": "rockets",
          "label": "Rocket arena"
         }
-       ]
+       ],
+       "value": ""
       },
       "children": []
      },
      {
-      "id": "sp/options/slots",
+      "id": "sp/match/form/slots",
       "type": "stepper",
       "props": {
        "label": "Player slots",
-       "bind": "cvar:menu_maxplayers",
-       "value": 8,
+       "bind": "cvar:touch_lan_maxplayers",
        "min": 2,
        "max": 32,
        "step": 1,
        "format": "int",
-       "icon": "players"
+       "value": 8
       },
       "children": []
      },
      {
-      "id": "sp/options/lan",
+      "id": "sp/match/form/lan",
       "type": "switch",
       "props": {
        "label": "LAN",
        "style": "checkbox",
+       "icon": "lan",
        "bind": "vm:create.lan",
        "value": false,
-       "icon": "lan",
        "help": "Host on your network (Wi-Fi or VPN) so others can join"
       },
       "children": []
      },
      {
-      "id": "sp/options/port",
+      "id": "sp/match/form/port",
       "type": "stepper",
       "props": {
        "label": "Port",
-       "bind": "cvar:port",
-       "value": 26000,
+       "bind": "cvar:touch_lan_host_port",
        "min": 1024,
        "max": 65535,
        "step": 1,
        "format": "int",
        "help": "26000 is free",
-       "hidden": true
+       "hidden": true,
+       "value": 26000
       },
       "children": []
      },
      {
-      "id": "sp/options/pwon",
+      "id": "sp/match/form/pwon",
       "type": "switch",
       "props": {
        "label": "Password",
@@ -681,15 +690,15 @@
       "children": []
      },
      {
-      "id": "sp/options/password",
+      "id": "sp/match/form/password",
       "type": "field",
       "props": {
        "label": "Password",
        "bind": "vm:create.password",
-       "value": "",
        "kind": "password",
        "private": true,
        "hasValue": false,
+       "maxLength": 64,
        "hidden": true
       },
       "children": []
@@ -712,24 +721,25 @@
       "props": {
        "source": "recent",
        "display": "rows",
-       "count": 3,
+       "rowHeight": "compact",
+       "density": "compact",
        "state": "ready",
        "columns": [
         {
-         "key": "map",
+         "key": "title",
          "type": "map",
-         "label": "Map"
+         "label": "Map",
+         "width": "fill",
+         "priority": 1,
+         "sortable": false
         },
         {
-         "key": "mode",
-         "type": "mode",
-         "label": "Mode"
-        },
-        {
-         "key": "when",
-         "type": "date",
-         "label": "When",
-         "priority": 3
+         "key": "modeName",
+         "type": "text",
+         "label": "Mode",
+         "width": "m",
+         "priority": 2,
+         "sortable": false
         }
        ],
        "rowPrimary": {
@@ -737,7 +747,11 @@
         "label": "Play again",
         "icon": "play"
        },
-       "density": "compact"
+       "empty": {
+        "title": "Nothing played yet",
+        "icon": "timer"
+       },
+       "count": 0
       },
       "children": []
      }
@@ -750,7 +764,7 @@
    "msg": {
     "uib": 1,
     "t": "diff",
-    "id": 12,
+    "id": 6,
     "base": 2,
     "rev": 3,
     "set": [
@@ -772,9 +786,6 @@
      }
     ],
     "del": [
-     "sp",
-     "sp/modes",
-     "sp/modes/grid",
      "sp/modes/grid/dm",
      "sp/modes/grid/tdm",
      "sp/modes/grid/ctf",
@@ -785,243 +796,26 @@
      "sp/modes/grid/ka",
      "sp/modes/grid/kh",
      "sp/modes/grid/lms",
-     "sp/maps",
+     "sp/modes/grid",
+     "sp/modes",
      "sp/maps/list",
-     "sp/options-s",
-     "sp/options",
-     "sp/options/bots",
-     "sp/options/skill",
-     "sp/options/timelimit",
-     "sp/options/fraglimit",
-     "sp/options/mutator",
-     "sp/options/slots",
-     "sp/options/lan",
-     "sp/options/port",
-     "sp/options/pwon",
-     "sp/options/password",
+     "sp/maps",
+     "sp/match/form/bots",
+     "sp/match/form/skill",
+     "sp/match/form/time",
+     "sp/match/form/weapons",
+     "sp/match/form/slots",
+     "sp/match/form/lan",
+     "sp/match/form/port",
+     "sp/match/form/pwon",
+     "sp/match/form/password",
+     "sp/match/form",
+     "sp/match",
+     "sp/recent/list",
      "sp/recent",
-     "sp/recent/list"
+     "sp"
     ]
    }
   }
- ],
- "rows": {
-  "maps:dm": [
-   {
-    "key": "afterslime",
-    "image": "pk3:maps/afterslime",
-    "cells": {
-     "name": "afterslime",
-     "title": "Afterslime",
-     "author": "kuniu the frogg, t0uYK8Ne",
-     "modes": "dm tdm lms ca ft ka kh dom",
-     "players": "2-8",
-     "size": "medium"
-    }
-   },
-   {
-    "key": "atelier",
-    "image": "pk3:maps/atelier",
-    "cells": {
-     "name": "atelier",
-     "title": "Atelier",
-     "author": "ShadoW, Mirio, Debugger",
-     "modes": "dm lms tdm ca ft ka kh dom",
-     "players": "6-16",
-     "size": "large"
-    }
-   },
-   {
-    "key": "boil",
-    "image": "pk3:maps/boil",
-    "cells": {
-     "name": "boil",
-     "title": "Boil",
-     "author": "kuniu the frogg, Mirio",
-     "modes": "dm tdm lms ca ft kh ka duel",
-     "players": "2-6",
-     "size": "small"
-    }
-   },
-   {
-    "key": "darkzone",
-    "image": "pk3:maps/darkzone",
-    "cells": {
-     "name": "darkzone",
-     "title": "Darkzone",
-     "author": "Cortez, CuBe0wL, SavageX, Mossepo",
-     "modes": "dm lms ka tdm ca kh ft duel",
-     "players": "2-6",
-     "size": "small"
-    }
-   },
-   {
-    "key": "erbium",
-    "image": "pk3:maps/erbium",
-    "cells": {
-     "name": "erbium",
-     "title": "Erbium",
-     "author": "Justin, Mirio, t0uYK8Ne",
-     "modes": "dm lms tdm ca ft ka kh dom duel",
-     "players": "2-6",
-     "size": "small"
-    }
-   },
-   {
-    "key": "finalrage",
-    "image": "pk3:maps/finalrage",
-    "cells": {
-     "name": "finalrage",
-     "title": "Final Rage",
-     "author": "Munyul Verminard, tZork, L0, proraide",
-     "modes": "dm tdm dom lms ca ft kh ka duel",
-     "players": "2-6",
-     "size": "small"
-    }
-   },
-   {
-    "key": "fuse",
-    "image": "pk3:maps/fuse",
-    "cells": {
-     "name": "fuse",
-     "title": "Fuse",
-     "author": "Ferdinand 'cityy' List",
-     "modes": "dm lms ka kh ft ca tdm duel",
-     "players": "2-4",
-     "size": "small"
-    }
-   },
-   {
-    "key": "glowplant",
-    "image": "pk3:maps/glowplant",
-    "cells": {
-     "name": "glowplant",
-     "title": "Glow Plant",
-     "author": "tZork, Cuinnton, Debugger, Mirio",
-     "modes": "dm tdm dom lms ca kh ft ka",
-     "players": "4-12",
-     "size": "medium"
-    }
-   },
-   {
-    "key": "implosion",
-    "image": "pk3:maps/implosion",
-    "cells": {
-     "name": "implosion",
-     "title": "Implosion",
-     "author": "MintOX, Mirio, Mario, packer, SpiKe",
-     "modes": "ctf ft kh ka ca tdm lms dom dm",
-     "players": "6-12",
-     "size": "medium"
-    }
-   },
-   {
-    "key": "runningman",
-    "image": "pk3:maps/runningman",
-    "cells": {
-     "name": "runningman",
-     "title": "Running Man",
-     "author": "FruitieX, Cortez, Strahlemann, Debugger",
-     "modes": "dm lms ka duel",
-     "players": "2-8",
-     "size": "medium"
-    }
-   },
-   {
-    "key": "silentsiege",
-    "image": "pk3:maps/silentsiege",
-    "cells": {
-     "name": "silentsiege",
-     "title": "Silent Siege",
-     "author": "Justin, kuniu the frogg",
-     "modes": "dm lms tdm ca ft ka kh dom duel",
-     "players": "2-8",
-     "size": "medium"
-    }
-   },
-   {
-    "key": "solarium",
-    "image": "pk3:maps/solarium",
-    "cells": {
-     "name": "solarium",
-     "title": "Solarium",
-     "author": "theShadow, SpiKe",
-     "modes": "dm tdm lms ca ka ft kh duel",
-     "players": "3-6",
-     "size": "medium"
-    }
-   },
-   {
-    "key": "stormkeep",
-    "image": "pk3:maps/stormkeep",
-    "cells": {
-     "name": "stormkeep",
-     "title": "Stormkeep",
-     "author": "FruitieX, Cuinnton, SavageX, Strahlemann, W. Libert, tZork, Mirio",
-     "modes": "dm tdm dom lms kh ca ft ka duel",
-     "players": "4-12",
-     "size": "medium"
-    }
-   },
-   {
-    "key": "warfare",
-    "image": "pk3:maps/warfare",
-    "cells": {
-     "name": "warfare",
-     "title": "Warfare",
-     "author": "Maddin, Tymo",
-     "modes": "dm tdm lms ca ka kh ft duel",
-     "players": "2-6",
-     "size": "small"
-    }
-   },
-   {
-    "key": "xoylent",
-    "image": "pk3:maps/xoylent",
-    "cells": {
-     "name": "xoylent",
-     "title": "Xoylent",
-     "author": "sev, Strahlemann",
-     "modes": "dm lms tdm ca ft ka duel",
-     "players": "2-8",
-     "size": "medium"
-    }
-   }
-  ],
-  "recent": [
-   {
-    "key": "r1",
-    "image": "pk3:maps/stormkeep",
-    "cells": {
-     "map": "stormkeep",
-     "mode": "dm",
-     "when": "2026-11-13",
-     "result": "2nd of 5",
-     "address": ""
-    }
-   },
-   {
-    "key": "r2",
-    "image": "pk3:maps/dance",
-    "cells": {
-     "map": "dance",
-     "mode": "ctf",
-     "when": "2026-11-12",
-     "result": "Won 3:1",
-     "address": "192.168.1.20:26000"
-    }
-   },
-   {
-    "key": "r3",
-    "image": "pk3:maps/boil",
-    "cells": {
-     "map": "boil",
-     "mode": "duel",
-     "when": "2026-11-10",
-     "result": "Lost 8:10",
-     "address": ""
-    }
-   }
-  ]
- }
+ ]
 }

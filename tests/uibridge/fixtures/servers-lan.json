@@ -1,12 +1,35 @@
 {
  "name": "servers-lan",
- "description": "Servers with the LAN checkbox ticked (Wi-Fi and VPN rows).",
- "generated": "seed",
+ "description": "Servers with LAN ticked.",
+ "generated": "engine",
+ "caps": {
+  "nodes": [],
+  "hints": [],
+  "width": 1280,
+  "height": 720,
+  "dpi": 96,
+  "widthClass": "expanded",
+  "heightClass": "medium",
+  "input": [
+   "mouse",
+   "keyboard"
+  ],
+  "locale": "en",
+  "reducedMotion": false,
+  "powerSave": false,
+  "thermal": "nominal",
+  "insets": {
+   "top": 0,
+   "right": 0,
+   "bottom": 0,
+   "left": 0
+  }
+ },
  "snapshot": {
   "uib": 1,
   "t": "snapshot",
   "id": 2,
-  "rev": 1,
+  "rev": 15,
   "root": "app",
   "nodes": [
    {
@@ -42,7 +65,8 @@
        "style": "secondary",
        "confirm": {
         "title": "Quit Godnotic?",
-        "ok": "Quit"
+        "ok": "Quit",
+        "destructive": false
        }
       }
      ]
@@ -94,11 +118,6 @@
       "style": "primary"
      },
      "actions": [
-      {
-       "id": "quick",
-       "label": "Quick match",
-       "icon": "players"
-      },
       {
        "id": "sp",
        "label": "Choose…",
@@ -243,8 +262,8 @@
      "label": "LAN",
      "style": "checkbox",
      "bind": "vm:mp.lan",
-     "value": true,
-     "icon": "lan"
+     "icon": "lan",
+     "value": true
     },
     "children": []
    },
@@ -306,49 +325,50 @@
        "type": "lock",
        "label": "",
        "width": "xs",
-       "priority": 2
+       "priority": 2,
+       "sortable": false
       },
       {
        "key": "name",
        "type": "text",
        "label": "Server",
-       "sortable": true,
        "width": "fill",
-       "priority": 1
+       "priority": 1,
+       "sortable": true
       },
       {
        "key": "map",
        "type": "map",
        "label": "Map",
-       "sortable": true,
        "width": "m",
-       "priority": 2
+       "priority": 2,
+       "sortable": true
       },
       {
        "key": "mode",
        "type": "mode",
        "label": "Mode",
-       "sortable": true,
        "width": "s",
-       "priority": 2
+       "priority": 2,
+       "sortable": true
       },
       {
        "key": "players",
        "type": "players",
        "label": "Players",
-       "sortable": true,
        "width": "s",
-       "align": "end",
-       "priority": 1
+       "priority": 1,
+       "sortable": true,
+       "align": "end"
       },
       {
        "key": "ping",
        "type": "ping",
        "label": "Ping",
-       "sortable": true,
        "width": "s",
-       "align": "end",
-       "priority": 1
+       "priority": 1,
+       "sortable": true,
+       "align": "end"
       }
      ],
      "sort": "ping",
@@ -357,9 +377,8 @@
      "selection": "none",
      "density": "compact",
      "display": "table",
-     "state": "ready",
-     "count": 3,
      "rowHeight": "compact",
+     "state": "ready",
      "rowPrimary": {
       "id": "server.open",
       "label": "Details",
@@ -382,14 +401,7 @@
       "text": "Games hosted on your Wi-Fi or VPN show up here.",
       "icon": "lan"
      },
-     "error": {
-      "title": "The master server did not answer",
-      "action": {
-       "id": "refresh",
-       "label": "Try again",
-       "icon": "refresh"
-      }
-     }
+     "count": 0
     },
     "children": []
    },
@@ -413,7 +425,7 @@
      "bind": "vm:mp.address",
      "value": "",
      "kind": "address",
-     "placeholder": "host:port or godnotic://join/...",
+     "placeholder": "host:port or godnotic://join/…",
      "submit": {
       "id": "join.address",
       "label": "Join",
@@ -454,821 +466,6 @@
   ]
  },
  "rows": {
-  "servers": [
-   {
-    "key": "192.168.1.20:26000",
-    "cells": {
-     "name": "Godnotic LAN 1",
-     "map": "geoplanetary",
-     "mode": "ctf",
-     "players": 20,
-     "max": 24,
-     "bots": 0,
-     "ping": 4,
-     "lock": false,
-     "fav": false,
-     "address": "192.168.1.20:26000",
-     "net": "lan",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/geoplanetary"
-   },
-   {
-    "key": "192.168.1.21:26000",
-    "cells": {
-     "name": "Godnotic LAN 2",
-     "map": "catharsis",
-     "mode": "ctf",
-     "players": 3,
-     "max": 32,
-     "bots": 1,
-     "ping": 3,
-     "lock": true,
-     "fav": false,
-     "address": "192.168.1.21:26000",
-     "net": "lan",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/catharsis"
-   },
-   {
-    "key": "100.64.0.5:26000",
-    "cells": {
-     "name": "Godnotic LAN 3",
-     "map": "runningman",
-     "mode": "dm",
-     "players": 1,
-     "max": 12,
-     "bots": 1,
-     "ping": 3,
-     "lock": false,
-     "fav": false,
-     "address": "100.64.0.5:26000",
-     "net": "vpn",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/runningman"
-   },
-   {
-    "key": "203.0.113.13:26000",
-    "cells": {
-     "name": "Frag Palace #3",
-     "map": "catharsis",
-     "mode": "ctf",
-     "players": 3,
-     "max": 32,
-     "bots": 3,
-     "ping": 131,
-     "lock": true,
-     "fav": false,
-     "address": "203.0.113.13:26000",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/catharsis"
-   },
-   {
-    "key": "203.0.113.14:26001",
-    "cells": {
-     "name": "Duel Pit #4",
-     "map": "courtfun",
-     "mode": "ons",
-     "players": 4,
-     "max": 24,
-     "bots": 4,
-     "ping": 310,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.14:26001",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/courtfun"
-   },
-   {
-    "key": "203.0.113.15:26002",
-    "cells": {
-     "name": "Duel Pit #5",
-     "map": "xoylent",
-     "mode": "lms",
-     "players": 3,
-     "max": 8,
-     "bots": 2,
-     "ping": 298,
-     "lock": false,
-     "fav": true,
-     "address": "203.0.113.15:26002",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/xoylent"
-   },
-   {
-    "key": "203.0.113.16:26000",
-    "cells": {
-     "name": "Oceania #6",
-     "map": "techassault",
-     "mode": "as",
-     "players": 13,
-     "max": 32,
-     "bots": 3,
-     "ping": 178,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.16:26000",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/techassault"
-   },
-   {
-    "key": "203.0.113.17:26001",
-    "cells": {
-     "name": "Rocket Rush #7",
-     "map": "silentsiege",
-     "mode": "ka",
-     "players": 7,
-     "max": 16,
-     "bots": 1,
-     "ping": 59,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.17:26001",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/silentsiege"
-   },
-   {
-    "key": "203.0.113.18:26002",
-    "cells": {
-     "name": "Pickup #8",
-     "map": "space-elevator",
-     "mode": "ctf",
-     "players": 14,
-     "max": 16,
-     "bots": 2,
-     "ping": 78,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.18:26002",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/space-elevator"
-   },
-   {
-    "key": "203.0.113.19:26000",
-    "cells": {
-     "name": "Frag Palace #9",
-     "map": "dance",
-     "mode": "ft",
-     "players": 7,
-     "max": 12,
-     "bots": 3,
-     "ping": 57,
-     "lock": false,
-     "fav": true,
-     "address": "203.0.113.19:26000",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/dance"
-   },
-   {
-    "key": "203.0.113.20:26001",
-    "cells": {
-     "name": "Asia #10",
-     "map": "techassault",
-     "mode": "as",
-     "players": 11,
-     "max": 16,
-     "bots": 4,
-     "ping": 314,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.20:26001",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/techassault"
-   },
-   {
-    "key": "203.0.113.21:26002",
-    "cells": {
-     "name": "Frag Palace #11",
-     "map": "boil",
-     "mode": "tdm",
-     "players": 15,
-     "max": 16,
-     "bots": 0,
-     "ping": 176,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.21:26002",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/boil"
-   },
-   {
-    "key": "203.0.113.22:26000",
-    "cells": {
-     "name": "Midnight #12",
-     "map": "xoylent",
-     "mode": "duel",
-     "players": 9,
-     "max": 24,
-     "bots": 3,
-     "ping": 29,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.22:26000",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/xoylent"
-   },
-   {
-    "key": "203.0.113.23:26001",
-    "cells": {
-     "name": "Frag Palace #13",
-     "map": "glowplant",
-     "mode": "dom",
-     "players": 7,
-     "max": 32,
-     "bots": 3,
-     "ping": 129,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.23:26001",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/glowplant"
-   },
-   {
-    "key": "203.0.113.24:26002",
-    "cells": {
-     "name": "Pickup #14",
-     "map": "courtfun",
-     "mode": "cts",
-     "players": 12,
-     "max": 24,
-     "bots": 3,
-     "ping": 103,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.24:26002",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/courtfun"
-   },
-   {
-    "key": "203.0.113.25:26000",
-    "cells": {
-     "name": "Newbies #15",
-     "map": "stormkeep",
-     "mode": "kh",
-     "players": 6,
-     "max": 12,
-     "bots": 4,
-     "ping": 230,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.25:26000",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/stormkeep"
-   },
-   {
-    "key": "203.0.113.26:26001",
-    "cells": {
-     "name": "Casual #16",
-     "map": "xoylent",
-     "mode": "ca",
-     "players": 2,
-     "max": 12,
-     "bots": 0,
-     "ping": 95,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.26:26001",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/xoylent"
-   },
-   {
-    "key": "203.0.113.27:26002",
-    "cells": {
-     "name": "Newbies #17",
-     "map": "erbium",
-     "mode": "dm",
-     "players": 18,
-     "max": 24,
-     "bots": 1,
-     "ping": 162,
-     "lock": true,
-     "fav": false,
-     "address": "203.0.113.27:26002",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/erbium"
-   },
-   {
-    "key": "203.0.113.28:26000",
-    "cells": {
-     "name": "Frag Palace #18",
-     "map": "runningman",
-     "mode": "ka",
-     "players": 20,
-     "max": 32,
-     "bots": 1,
-     "ping": 251,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.28:26000",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/runningman"
-   },
-   {
-    "key": "203.0.113.29:26001",
-    "cells": {
-     "name": "Euro #19",
-     "map": "xoylent",
-     "mode": "duel",
-     "players": 25,
-     "max": 32,
-     "bots": 3,
-     "ping": 219,
-     "lock": true,
-     "fav": false,
-     "address": "203.0.113.29:26001",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/xoylent"
-   },
-   {
-    "key": "203.0.113.30:26002",
-    "cells": {
-     "name": "Instagib #20",
-     "map": "warfare",
-     "mode": "ft",
-     "players": 3,
-     "max": 8,
-     "bots": 0,
-     "ping": 243,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.30:26002",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/warfare"
-   },
-   {
-    "key": "203.0.113.31:26000",
-    "cells": {
-     "name": "Duel Pit #21",
-     "map": "geoplanetary",
-     "mode": "ctf",
-     "players": 0,
-     "max": 8,
-     "bots": 0,
-     "ping": 204,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.31:26000",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/geoplanetary"
-   },
-   {
-    "key": "203.0.113.32:26001",
-    "cells": {
-     "name": "Newbies #22",
-     "map": "boil",
-     "mode": "ca",
-     "players": 24,
-     "max": 32,
-     "bots": 1,
-     "ping": 195,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.32:26001",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/boil"
-   },
-   {
-    "key": "203.0.113.33:26002",
-    "cells": {
-     "name": "Asia #23",
-     "map": "solarium",
-     "mode": "tdm",
-     "players": 7,
-     "max": 8,
-     "bots": 3,
-     "ping": 265,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.33:26002",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/solarium"
-   },
-   {
-    "key": "203.0.113.34:26000",
-    "cells": {
-     "name": "Casual #24",
-     "map": "courtfun",
-     "mode": "ctf",
-     "players": 8,
-     "max": 16,
-     "bots": 3,
-     "ping": 282,
-     "lock": true,
-     "fav": false,
-     "address": "203.0.113.34:26000",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/courtfun"
-   },
-   {
-    "key": "203.0.113.35:26001",
-    "cells": {
-     "name": "Arena #25",
-     "map": "space-elevator",
-     "mode": "ctf",
-     "players": 11,
-     "max": 12,
-     "bots": 4,
-     "ping": 288,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.35:26001",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/space-elevator"
-   },
-   {
-    "key": "203.0.113.36:26002",
-    "cells": {
-     "name": "Casual #26",
-     "map": "warfare",
-     "mode": "tdm",
-     "players": 16,
-     "max": 16,
-     "bots": 2,
-     "ping": 200,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.36:26002",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/warfare"
-   },
-   {
-    "key": "203.0.113.37:26000",
-    "cells": {
-     "name": "Instagib #27",
-     "map": "stormkeep",
-     "mode": "duel",
-     "players": 21,
-     "max": 32,
-     "bots": 1,
-     "ping": 140,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.37:26000",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/stormkeep"
-   },
-   {
-    "key": "203.0.113.38:26001",
-    "cells": {
-     "name": "Arena #28",
-     "map": "erbium",
-     "mode": "ca",
-     "players": 31,
-     "max": 32,
-     "bots": 2,
-     "ping": 32,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.38:26001",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/erbium"
-   },
-   {
-    "key": "203.0.113.39:26002",
-    "cells": {
-     "name": "Midnight #29",
-     "map": "solarium",
-     "mode": "ka",
-     "players": 11,
-     "max": 12,
-     "bots": 4,
-     "ping": 246,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.39:26002",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/solarium"
-   },
-   {
-    "key": "203.0.113.40:26000",
-    "cells": {
-     "name": "Rocket Rush #30",
-     "map": "glowplant",
-     "mode": "kh",
-     "players": 3,
-     "max": 8,
-     "bots": 0,
-     "ping": 258,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.40:26000",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/glowplant"
-   },
-   {
-    "key": "203.0.113.41:26001",
-    "cells": {
-     "name": "Midnight #31",
-     "map": "darkzone",
-     "mode": "duel",
-     "players": 0,
-     "max": 32,
-     "bots": 0,
-     "ping": 61,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.41:26001",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/darkzone"
-   },
-   {
-    "key": "203.0.113.42:26002",
-    "cells": {
-     "name": "Oceania #32",
-     "map": "catharsis",
-     "mode": "ctf",
-     "players": 7,
-     "max": 12,
-     "bots": 1,
-     "ping": 188,
-     "lock": true,
-     "fav": false,
-     "address": "203.0.113.42:26002",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/catharsis"
-   },
-   {
-    "key": "203.0.113.43:26000",
-    "cells": {
-     "name": "Casual #33",
-     "map": "implosion",
-     "mode": "dom",
-     "players": 23,
-     "max": 24,
-     "bots": 0,
-     "ping": 105,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.43:26000",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/implosion"
-   },
-   {
-    "key": "203.0.113.44:26001",
-    "cells": {
-     "name": "Asia #34",
-     "map": "afterslime",
-     "mode": "lms",
-     "players": 29,
-     "max": 32,
-     "bots": 1,
-     "ping": 197,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.44:26001",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/afterslime"
-   },
-   {
-    "key": "203.0.113.45:26002",
-    "cells": {
-     "name": "CTF Night #35",
-     "map": "stormkeep",
-     "mode": "dom",
-     "players": 0,
-     "max": 8,
-     "bots": 0,
-     "ping": 240,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.45:26002",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/stormkeep"
-   },
-   {
-    "key": "203.0.113.46:26000",
-    "cells": {
-     "name": "Veterans #36",
-     "map": "darkzone",
-     "mode": "tdm",
-     "players": 4,
-     "max": 8,
-     "bots": 1,
-     "ping": 274,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.46:26000",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/darkzone"
-   },
-   {
-    "key": "203.0.113.47:26001",
-    "cells": {
-     "name": "Frag Palace #37",
-     "map": "techassault",
-     "mode": "as",
-     "players": 13,
-     "max": 16,
-     "bots": 1,
-     "ping": 199,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.47:26001",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/techassault"
-   },
-   {
-    "key": "203.0.113.48:26002",
-    "cells": {
-     "name": "CTF Night #38",
-     "map": "xoylent",
-     "mode": "ft",
-     "players": 26,
-     "max": 32,
-     "bots": 4,
-     "ping": 290,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.48:26002",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/xoylent"
-   },
-   {
-    "key": "203.0.113.49:26000",
-    "cells": {
-     "name": "Arena #39",
-     "map": "space-elevator",
-     "mode": "ctf",
-     "players": 24,
-     "max": 24,
-     "bots": 1,
-     "ping": 94,
-     "lock": false,
-     "fav": false,
-     "address": "203.0.113.49:26000",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/space-elevator"
-   }
-  ],
-  "servers.lan": [
-   {
-    "key": "192.168.1.20:26000",
-    "cells": {
-     "name": "Godnotic LAN 1",
-     "map": "geoplanetary",
-     "mode": "ctf",
-     "players": 20,
-     "max": 24,
-     "bots": 0,
-     "ping": 4,
-     "lock": false,
-     "fav": false,
-     "address": "192.168.1.20:26000",
-     "net": "lan",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/geoplanetary"
-   },
-   {
-    "key": "192.168.1.21:26000",
-    "cells": {
-     "name": "Godnotic LAN 2",
-     "map": "catharsis",
-     "mode": "ctf",
-     "players": 3,
-     "max": 32,
-     "bots": 1,
-     "ping": 3,
-     "lock": true,
-     "fav": false,
-     "address": "192.168.1.21:26000",
-     "net": "lan",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/catharsis"
-   },
-   {
-    "key": "100.64.0.5:26000",
-    "cells": {
-     "name": "Godnotic LAN 3",
-     "map": "runningman",
-     "mode": "dm",
-     "players": 1,
-     "max": 12,
-     "bots": 1,
-     "ping": 3,
-     "lock": false,
-     "fav": false,
-     "address": "100.64.0.5:26000",
-     "net": "vpn",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/runningman"
-   }
-  ],
-  "servers.fav": [
-   {
-    "key": "203.0.113.15:26002",
-    "cells": {
-     "name": "Duel Pit #5",
-     "map": "xoylent",
-     "mode": "lms",
-     "players": 3,
-     "max": 8,
-     "bots": 2,
-     "ping": 298,
-     "lock": false,
-     "fav": true,
-     "address": "203.0.113.15:26002",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/xoylent"
-   },
-   {
-    "key": "203.0.113.19:26000",
-    "cells": {
-     "name": "Frag Palace #9",
-     "map": "dance",
-     "mode": "ft",
-     "players": 7,
-     "max": 12,
-     "bots": 3,
-     "ping": 57,
-     "lock": false,
-     "fav": true,
-     "address": "203.0.113.19:26000",
-     "net": "internet",
-     "version": "0.8.6"
-    },
-    "image": "pk3:maps/dance"
-   }
-  ]
+  "servers": []
  }
 }

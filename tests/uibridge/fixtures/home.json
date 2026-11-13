@@ -1,7 +1,30 @@
 {
  "name": "home",
- "description": "Home: banner, hero Play card, four section cards, Quit.",
- "generated": "seed",
+ "description": "Home: banner, hero Play card, Singleplayer, Multiplayer, Settings, Credits; Quit.",
+ "generated": "engine",
+ "caps": {
+  "nodes": [],
+  "hints": [],
+  "width": 1280,
+  "height": 720,
+  "dpi": 96,
+  "widthClass": "expanded",
+  "heightClass": "medium",
+  "input": [
+   "mouse",
+   "keyboard"
+  ],
+  "locale": "en",
+  "reducedMotion": false,
+  "powerSave": false,
+  "thermal": "nominal",
+  "insets": {
+   "top": 0,
+   "right": 0,
+   "bottom": 0,
+   "left": 0
+  }
+ },
  "snapshot": {
   "uib": 1,
   "t": "snapshot",
@@ -40,7 +63,8 @@
        "style": "secondary",
        "confirm": {
         "title": "Quit Godnotic?",
-        "ok": "Quit"
+        "ok": "Quit",
+        "destructive": false
        }
       }
      ]
@@ -92,11 +116,6 @@
       "style": "primary"
      },
      "actions": [
-      {
-       "id": "quick",
-       "label": "Quick match",
-       "icon": "players"
-      },
       {
        "id": "sp",
        "label": "Choose…",
@@ -184,27 +203,5 @@
     "children": []
    }
   ]
- },
- "caps": {
-  "nodes": [],
-  "hints": [],
-  "width": 844,
-  "height": 390,
-  "dpi": 420,
-  "widthClass": "expanded",
-  "heightClass": "compact",
-  "input": [
-   "touch"
-  ],
-  "locale": "en",
-  "reducedMotion": false,
-  "powerSave": false,
-  "thermal": "nominal",
-  "insets": {
-   "top": 0,
-   "right": 32,
-   "bottom": 0,
-   "left": 32
-  }
  }
 }

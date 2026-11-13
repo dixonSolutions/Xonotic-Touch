@@ -1,12 +1,35 @@
 {
  "name": "seq-setting",
- "description": "Field of view changed (by the renderer, then the console): value diffs.",
- "generated": "seed",
+ "description": "Field of view changed twice: value diffs from the engine.",
+ "generated": "engine",
+ "caps": {
+  "nodes": [],
+  "hints": [],
+  "width": 1280,
+  "height": 720,
+  "dpi": 96,
+  "widthClass": "expanded",
+  "heightClass": "medium",
+  "input": [
+   "mouse",
+   "keyboard"
+  ],
+  "locale": "en",
+  "reducedMotion": false,
+  "powerSave": false,
+  "thermal": "nominal",
+  "insets": {
+   "top": 0,
+   "right": 0,
+   "bottom": 0,
+   "left": 0
+  }
+ },
  "snapshot": {
   "uib": 1,
   "t": "snapshot",
   "id": 2,
-  "rev": 1,
+  "rev": 19,
   "root": "app",
   "nodes": [
    {
@@ -16,8 +39,7 @@
      "title": "Godnotic",
      "stack": [
       "home",
-      "settings",
-      "settings.video"
+      "settings"
      ],
      "modal": [],
      "canBack": true,
@@ -25,8 +47,7 @@
     },
     "children": [
      "home",
-     "settings",
-     "settings.video"
+     "settings"
     ]
    },
    {
@@ -44,7 +65,8 @@
        "style": "secondary",
        "confirm": {
         "title": "Quit Godnotic?",
-        "ok": "Quit"
+        "ok": "Quit",
+        "destructive": false
        }
       }
      ]
@@ -96,11 +118,6 @@
       "style": "primary"
      },
      "actions": [
-      {
-       "id": "quick",
-       "label": "Quick match",
-       "icon": "players"
-      },
       {
        "id": "sp",
        "label": "Choose…",
@@ -195,220 +212,265 @@
      "kind": "page"
     },
     "children": [
-     "settings/sections",
+     "settings/split",
      "settings/advanced"
     ]
    },
    {
-    "id": "settings/sections",
-    "type": "grid",
+    "id": "settings/split",
+    "type": "split",
     "props": {
-     "minItem": 240
+     "style": "vertical-tabs",
+     "bind": "vm:settings.section",
+     "value": "video",
+     "detailOpen": false
     },
     "children": [
-     "settings/sections/video",
-     "settings/sections/audio",
-     "settings/sections/game",
-     "settings/sections/input",
-     "settings/sections/touch",
-     "settings/sections/esp",
-     "settings/sections/player",
-     "settings/sections/privacy",
-     "settings/sections/updates",
-     "settings/sections/data",
-     "settings/sections/menu",
-     "settings/sections/mods"
+     "settings/split/video",
+     "settings/split/audio",
+     "settings/split/game",
+     "settings/split/input",
+     "settings/split/touch",
+     "settings/split/esp",
+     "settings/split/player",
+     "settings/split/privacy",
+     "settings/split/updates",
+     "settings/split/data",
+     "settings/split/menu",
+     "settings/split/mods"
     ]
    },
    {
-    "id": "settings/sections/video",
-    "type": "card",
+    "id": "settings/split/video",
+    "type": "pane",
     "props": {
-     "title": "Video",
-     "subtitle": "Quality, field of view, frame rate",
+     "key": "video",
+     "label": "Video",
      "icon": "video",
-     "density": "compact",
-     "primary": {
-      "id": "settings.video",
-      "label": "Video",
-      "icon": "chevron"
-     }
+     "subtitle": "Resolution, effects, field of view"
+    },
+    "children": [
+     "settings/split/video/tabs"
+    ]
+   },
+   {
+    "id": "settings/split/video/tabs",
+    "type": "tabs",
+    "props": {
+     "style": "tabs",
+     "presentation": "horizontal",
+     "swipe": true,
+     "bind": "vm:settings.video.tab",
+     "value": "view"
+    },
+    "children": [
+     "settings/split/video/tabs/display",
+     "settings/split/video/tabs/effects",
+     "settings/split/video/tabs/view"
+    ]
+   },
+   {
+    "id": "settings/split/video/tabs/display",
+    "type": "pane",
+    "props": {
+     "key": "display",
+     "label": "Display"
     },
     "children": []
    },
    {
-    "id": "settings/sections/audio",
-    "type": "card",
+    "id": "settings/split/video/tabs/effects",
+    "type": "pane",
     "props": {
-     "title": "Audio",
-     "subtitle": "Volume, music, voice",
+     "key": "effects",
+     "label": "Effects"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/video/tabs/view",
+    "type": "pane",
+    "props": {
+     "key": "view",
+     "label": "View"
+    },
+    "children": [
+     "settings/split/video/tabs/view/fov",
+     "settings/split/video/tabs/view/contrast",
+     "settings/split/video/tabs/view/brightness",
+     "settings/split/video/tabs/view/showfps"
+    ]
+   },
+   {
+    "id": "settings/split/video/tabs/view/fov",
+    "type": "slider",
+    "props": {
+     "label": "Field of view",
+     "bind": "cvar:fov",
+     "min": 60,
+     "max": 130,
+     "step": 1,
+     "format": "deg",
+     "value": 100
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/video/tabs/view/contrast",
+    "type": "slider",
+    "props": {
+     "label": "Contrast",
+     "bind": "cvar:v_contrast",
+     "min": 0.5,
+     "max": 3,
+     "step": 0.0500000007,
+     "format": "float2",
+     "value": 1
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/video/tabs/view/brightness",
+    "type": "slider",
+    "props": {
+     "label": "Brightness",
+     "bind": "cvar:v_brightness",
+     "min": 0,
+     "max": 0.5,
+     "step": 0.00999999978,
+     "format": "float2",
+     "value": 0
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/video/tabs/view/showfps",
+    "type": "switch",
+    "props": {
+     "label": "Show the frame rate",
+     "bind": "cvar:showfps",
+     "value": false
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/audio",
+    "type": "pane",
+    "props": {
+     "key": "audio",
+     "label": "Audio",
      "icon": "audio",
-     "density": "compact",
-     "primary": {
-      "id": "settings.audio",
-      "label": "Audio",
-      "icon": "chevron"
-     }
+     "subtitle": "Volume, music, hit sounds"
     },
     "children": []
    },
    {
-    "id": "settings/sections/game",
-    "type": "card",
+    "id": "settings/split/game",
+    "type": "pane",
     "props": {
-     "title": "Game",
-     "subtitle": "Crosshair, HUD, messages",
+     "key": "game",
+     "label": "Game",
      "icon": "game",
-     "density": "compact",
-     "primary": {
-      "id": "settings.game",
-      "label": "Game",
-      "icon": "chevron"
-     }
+     "subtitle": "Crosshair, weapons, content"
     },
     "children": []
    },
    {
-    "id": "settings/sections/input",
-    "type": "card",
+    "id": "settings/split/input",
+    "type": "pane",
     "props": {
-     "title": "Input",
-     "subtitle": "Mouse, keyboard and gamepad",
+     "key": "input",
+     "label": "Input",
      "icon": "input",
-     "density": "compact",
-     "primary": {
-      "id": "settings.input",
-      "label": "Input",
-      "icon": "chevron"
-     }
+     "subtitle": "Mouse, keyboard and keys"
     },
     "children": []
    },
    {
-    "id": "settings/sections/touch",
-    "type": "card",
+    "id": "settings/split/touch",
+    "type": "pane",
     "props": {
-     "title": "Touch controls",
-     "subtitle": "Presets, HUD, aim assist, auto-shoot, tactics",
+     "key": "touch",
+     "label": "Controls",
      "icon": "touch",
-     "density": "compact",
-     "primary": {
-      "id": "settings.touch",
-      "label": "Touch controls",
-      "icon": "chevron"
-     }
+     "subtitle": "Presets, HUD, aim assist, auto-shoot, tactics"
     },
     "children": []
    },
    {
-    "id": "settings/sections/esp",
-    "type": "card",
+    "id": "settings/split/esp",
+    "type": "pane",
     "props": {
-     "title": "ESP",
-     "subtitle": "Offline matches only",
+     "key": "esp",
+     "label": "ESP",
      "icon": "esp",
-     "density": "compact",
-     "primary": {
-      "id": "settings.esp",
-      "label": "ESP",
-      "icon": "chevron"
-     }
+     "subtitle": "Offline matches only"
     },
     "children": []
    },
    {
-    "id": "settings/sections/player",
-    "type": "card",
+    "id": "settings/split/player",
+    "type": "pane",
     "props": {
-     "title": "Player",
-     "subtitle": "Name, model, colours",
+     "key": "player",
+     "label": "Player",
      "icon": "player",
-     "density": "compact",
-     "primary": {
-      "id": "settings.player",
-      "label": "Player",
-      "icon": "chevron"
-     }
+     "subtitle": "Name and colours"
     },
     "children": []
    },
    {
-    "id": "settings/sections/privacy",
-    "type": "card",
+    "id": "settings/split/privacy",
+    "type": "pane",
     "props": {
-     "title": "Privacy",
-     "subtitle": "Statistics and identity",
+     "key": "privacy",
+     "label": "Privacy",
      "icon": "privacy",
-     "density": "compact",
-     "primary": {
-      "id": "settings.privacy",
-      "label": "Privacy",
-      "icon": "chevron"
-     }
+     "subtitle": "Statistics and identity"
     },
     "children": []
    },
    {
-    "id": "settings/sections/updates",
-    "type": "card",
+    "id": "settings/split/updates",
+    "type": "pane",
     "props": {
-     "title": "Updates",
-     "subtitle": "Channel and checks",
+     "key": "updates",
+     "label": "Updates",
      "icon": "update",
-     "density": "compact",
-     "primary": {
-      "id": "settings.updates",
-      "label": "Updates",
-      "icon": "chevron"
-     }
+     "subtitle": "What is new"
     },
     "children": []
    },
    {
-    "id": "settings/sections/data",
-    "type": "card",
+    "id": "settings/split/data",
+    "type": "pane",
     "props": {
-     "title": "Data",
-     "subtitle": "Game data, downloads, cache",
+     "key": "data",
+     "label": "Data",
      "icon": "data",
-     "density": "compact",
-     "primary": {
-      "id": "settings.data",
-      "label": "Data",
-      "icon": "chevron"
-     }
+     "subtitle": "Game data and downloads"
     },
     "children": []
    },
    {
-    "id": "settings/sections/menu",
-    "type": "card",
+    "id": "settings/split/menu",
+    "type": "pane",
     "props": {
-     "title": "Menu",
-     "subtitle": "Size and layout",
+     "key": "menu",
+     "label": "Menu",
      "icon": "menu",
-     "density": "compact",
-     "primary": {
-      "id": "settings.menu",
-      "label": "Menu",
-      "icon": "chevron"
-     }
+     "subtitle": "Size and layout"
     },
     "children": []
    },
    {
-    "id": "settings/sections/mods",
-    "type": "card",
+    "id": "settings/split/mods",
+    "type": "pane",
     "props": {
-     "title": "Mods",
-     "subtitle": "Client and server mods, pages from mods",
+     "key": "mods",
+     "label": "Mods",
      "icon": "mods",
-     "density": "compact",
-     "primary": {
-      "id": "settings.mods",
-      "label": "Mods",
-      "icon": "chevron"
-     }
+     "subtitle": "Client and server mods, pages from mods"
     },
     "children": []
    },
@@ -420,175 +482,9 @@
      "action": {
       "id": "settings.advanced",
       "label": "Advanced settings",
-      "icon": "more",
-      "style": "link"
+      "icon": "more"
      },
-     "help": "Every option, in the classic settings dialogs"
-    },
-    "children": []
-   },
-   {
-    "id": "settings.video",
-    "type": "screen",
-    "props": {
-     "title": "Video",
-     "kind": "page"
-    },
-    "children": [
-     "settings.video/quality",
-     "settings.video/view"
-    ]
-   },
-   {
-    "id": "settings.video/quality",
-    "type": "section",
-    "props": {
-     "title": "Quality",
-     "sticky": true
-    },
-    "children": [
-     "settings.video/quality/preset",
-     "settings.video/quality/scale",
-     "settings.video/quality/maxfps",
-     "settings.video/quality/vsync"
-    ]
-   },
-   {
-    "id": "settings.video/quality/preset",
-    "type": "choice",
-    "props": {
-     "label": "Quality",
-     "bind": "vm:video.preset",
-     "value": "medium",
-     "style": "segmented",
-     "options": [
-      {
-       "value": "low",
-       "label": "Low"
-      },
-      {
-       "value": "medium",
-       "label": "Medium"
-      },
-      {
-       "value": "high",
-       "label": "High"
-      },
-      {
-       "value": "ultra",
-       "label": "Ultra"
-      }
-     ],
-     "apply": "video"
-    },
-    "children": []
-   },
-   {
-    "id": "settings.video/quality/scale",
-    "type": "slider",
-    "props": {
-     "label": "Resolution scale",
-     "bind": "cvar:r_viewscale",
-     "value": 1.0,
-     "min": 0.5,
-     "max": 1.0,
-     "step": 0.05,
-     "format": "percent"
-    },
-    "children": []
-   },
-   {
-    "id": "settings.video/quality/maxfps",
-    "type": "choice",
-    "props": {
-     "label": "Frame rate limit",
-     "bind": "cvar:cl_maxfps",
-     "value": "60",
-     "style": "segmented",
-     "options": [
-      {
-       "value": "30",
-       "label": "30"
-      },
-      {
-       "value": "60",
-       "label": "60"
-      },
-      {
-       "value": "90",
-       "label": "90"
-      },
-      {
-       "value": "120",
-       "label": "120"
-      },
-      {
-       "value": "0",
-       "label": "Unlimited"
-      }
-     ]
-    },
-    "children": []
-   },
-   {
-    "id": "settings.video/quality/vsync",
-    "type": "switch",
-    "props": {
-     "label": "Vertical sync",
-     "bind": "cvar:vid_vsync",
-     "value": true,
-     "apply": "video"
-    },
-    "children": []
-   },
-   {
-    "id": "settings.video/view",
-    "type": "section",
-    "props": {
-     "title": "View",
-     "sticky": true
-    },
-    "children": [
-     "settings.video/view/fov",
-     "settings.video/view/gamma",
-     "settings.video/view/bob"
-    ]
-   },
-   {
-    "id": "settings.video/view/fov",
-    "type": "slider",
-    "props": {
-     "label": "Field of view",
-     "bind": "cvar:fov",
-     "value": 100,
-     "min": 60,
-     "max": 130,
-     "step": 1,
-     "format": "deg"
-    },
-    "children": []
-   },
-   {
-    "id": "settings.video/view/gamma",
-    "type": "slider",
-    "props": {
-     "label": "Brightness",
-     "bind": "cvar:v_contrast",
-     "value": 1.0,
-     "min": 0.5,
-     "max": 3.0,
-     "step": 0.05,
-     "format": "float2"
-    },
-    "children": []
-   },
-   {
-    "id": "settings.video/view/bob",
-    "type": "switch",
-    "props": {
-     "label": "View bobbing",
-     "bind": "cvar:cl_bob",
-     "value": false
+     "style": "link"
     },
     "children": []
    }
@@ -600,21 +496,21 @@
    "msg": {
     "uib": 1,
     "t": "diff",
-    "id": 11,
-    "base": 1,
-    "rev": 2,
+    "id": 29,
+    "base": 19,
+    "rev": 20,
     "set": [
      {
-      "id": "settings.video/view/fov",
+      "id": "settings/split/video/tabs/view/fov",
       "type": "slider",
       "props": {
        "label": "Field of view",
        "bind": "cvar:fov",
-       "value": 110,
        "min": 60,
        "max": 130,
        "step": 1,
-       "format": "deg"
+       "format": "deg",
+       "value": 110
       },
       "children": []
      }
@@ -628,28 +524,28 @@
    "msg": {
     "uib": 1,
     "t": "diff",
-    "id": 12,
-    "base": 2,
-    "rev": 3,
+    "id": 30,
+    "base": 20,
+    "rev": 21,
     "set": [
      {
-      "id": "settings.video/view/fov",
+      "id": "settings/split/video/tabs/view/fov",
       "type": "slider",
       "props": {
        "label": "Field of view",
        "bind": "cvar:fov",
-       "value": 90,
        "min": 60,
        "max": 130,
        "step": 1,
-       "format": "deg"
+       "format": "deg",
+       "value": 100
       },
       "children": []
      }
     ],
     "del": []
    },
-   "note": "fov 90 from console"
+   "note": "fov 100"
   }
  ]
 }

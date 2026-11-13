@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
+
+#include "touch_uib_build.qh"
+
+// Godnotic UI bridge: the screens, navigation and the menu's answer to renderer events.
+// docs/UI_BRIDGE.md; ids match tests/uibridge/fixtures.
+
+// Called by the engine for every renderer event (touch_uib_mvm.c):
+// ev = action, value, submit, row, shown, hidden, back, dismiss, visible,
+//      attach, detach, caps, changed, tick, modpages
+float UIB_Event(string ev, string node, string arg, string json);
+
+bool uib_inited;
+string uibn_stack;     // screen ids, bottom to top
+string uibn_modal;
+string uibn_context;   // menu, game, loading
+string uib_ids[16];    // scratch (navigation)
+string uib_ids2[16];   // scratch (settings)
+
+void UIB_Init();
+bool UIB_Wanted();     // a renderer (native or QuakeC) shows the descriptions
+void UIB_Push(string id);
+void UIB_Modal(string id);
+void UIB_Back();
+void UIB_RebuildAll();
+void UIB_Tick();
+string UIB_TopScreen();
+
+// settings (touch_uib_settings.qc)
+void UIB_BuildSettings(string id);
+bool UIB_SettingsAction(string node, string action, string payload);
+bool UIB_SettingsValue(string node, string value);
+bool UIB_SettingsRow(string node, string row, string json);

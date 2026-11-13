@@ -107,6 +107,14 @@ jobs:
       - name: Broadcast addresses, LAN ranges, the lock key, password rejects, port lists
         run: bash scripts/test-lan-logic.sh
 
+  uibridge:
+    name: UI bridge
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Schema, fixtures, store property test (diffs equal snapshots), fixture player
+        run: bash scripts/test-uibridge.sh
+
   release-changelog:
     name: Release changelog
     runs-on: ubuntu-latest

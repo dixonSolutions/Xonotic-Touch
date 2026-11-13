@@ -1,12 +1,35 @@
 {
  "name": "credits",
  "description": "Credits and licence.",
- "generated": "seed",
+ "generated": "engine",
+ "caps": {
+  "nodes": [],
+  "hints": [],
+  "width": 1280,
+  "height": 720,
+  "dpi": 96,
+  "widthClass": "expanded",
+  "heightClass": "medium",
+  "input": [
+   "mouse",
+   "keyboard"
+  ],
+  "locale": "en",
+  "reducedMotion": false,
+  "powerSave": false,
+  "thermal": "nominal",
+  "insets": {
+   "top": 0,
+   "right": 0,
+   "bottom": 0,
+   "left": 0
+  }
+ },
  "snapshot": {
   "uib": 1,
   "t": "snapshot",
   "id": 2,
-  "rev": 1,
+  "rev": 38,
   "root": "app",
   "nodes": [
    {
@@ -42,7 +65,8 @@
        "style": "secondary",
        "confirm": {
         "title": "Quit Godnotic?",
-        "ok": "Quit"
+        "ok": "Quit",
+        "destructive": false
        }
       }
      ]
@@ -94,11 +118,6 @@
       "style": "primary"
      },
      "actions": [
-      {
-       "id": "quick",
-       "label": "Quick match",
-       "icon": "players"
-      },
       {
        "id": "sp",
        "label": "Choose…",
@@ -257,7 +276,7 @@
     },
     "children": [
      "credits/licence/text",
-     "credits/licence/link"
+     "credits/licence/source"
     ]
    },
    {
@@ -270,7 +289,7 @@
     "children": []
    },
    {
-    "id": "credits/licence/link",
+    "id": "credits/licence/source",
     "type": "button",
     "props": {
      "label": "Source code",

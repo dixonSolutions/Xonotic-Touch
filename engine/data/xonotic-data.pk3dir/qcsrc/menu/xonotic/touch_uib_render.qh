@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
+#include "touch_uib_screens.qh"
+
+// Godnotic UI bridge: the QuakeC renderer (the web, and the fallback everywhere).
+//
+// It draws the same descriptions the native renderers get, read back from the
+// engine's store (uib_count/uib_child/uib_get), in its own card look: deep navy,
+// electric-blue outlines, ember accents, Xolonium headings. Layout runs only when
+// the store's rev or the screen size changes; each frame draws what is in view.
+//
+//  - one scrolling region per screen between a sticky header (title, back,
+//    actions), an optional sticky toolbar or tab strip, and a sticky action bar;
+//    sticky section headers and table column headers;
+//  - Settings' split as a left column of section tabs with the section on the
+//    right (one column on narrow screens), horizontal sub-tabs on top;
+//  - lists and card grids are virtual: rows are fetched by window (uib_window)
+//    for what is near the view, placeholders until they arrive, anchored on the
+//    first visible row's key when the data changes;
+//  - images load lazily, at most two new ones a frame, shimmer until then;
+//  - touch: a drag scrolls and never activates; a tap activates; a press that
+//    stops a fling only stops it (TOUCH_SHEET_SLOP_DP, as the menu's sheets);
+//  - keyboard/gamepad: arrows move a focus ring, Enter activates, Escape is back.
+//
+// menu.qc calls these (one hook line each, marked // Touch).
+bool TouchUIB_Draw(float alpha);           // true: the bridge drew (or a native renderer shows) the menu
+bool TouchUIB_KeyDown(float key, float ascii);
+bool TouchUIB_KeyUp(float key, float ascii);
+bool TouchUIB_Active();                    // menu_touch_uib on and the engine has the bridge

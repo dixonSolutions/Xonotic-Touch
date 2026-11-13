@@ -66,6 +66,13 @@ OBJ_COMMON= \
 	vid_touchdetect.o \
 	touch_display.o \
 	touch_nativefe.o \
+	touch_uib.o \
+	touch_uib_store.o \
+	touch_uib_json.o \
+	touch_uib_src.o \
+	touch_uib_img.o \
+	touch_uib_stream.o \
+	touch_uib_mvm.o \
 	cl_video.o \
 	cl_video_libavw.o \
 	clvm_cmds.o \
