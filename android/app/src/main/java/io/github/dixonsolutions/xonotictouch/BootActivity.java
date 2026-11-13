@@ -148,10 +148,10 @@ public class BootActivity extends Activity {
         retry.setOnClickListener(v -> start());
         cancel.setOnClickListener(v -> cancelPreparation());
         quit.setOnClickListener(v -> confirmQuit());
-        download.setOnClickListener(v -> startDownload(musicBox.isChecked(), false));
+        download.setOnClickListener(v -> startDownload(true, false));
         useMobile.setOnClickListener(v -> {
             if (pendingPlan != null) {
-                startDownload(musicBox.isChecked(), true);
+                startDownload(true, true);
             } else {
                 // Waiting for Wi-Fi: go ahead on this connection.
                 mobileThisRun = true;
@@ -168,7 +168,7 @@ public class BootActivity extends Activity {
                 return;
             }
             // Agreed, but not on this connection: it starts by itself on Wi-Fi.
-            boolean music = musicBox.isChecked() || musicOnly;
+            boolean music = true;
             saveConsent(this, music, false);
             pendingPlan = null;
             chosenMusic = music;
@@ -573,7 +573,8 @@ public class BootActivity extends Activity {
             showChoice(waiting);
             return;
         }
-        boolean music = musicRequested && !data.musicInstalled();
+        // Music is part of the game: a missing music pack is fetched like any other.
+        boolean music = !data.musicInstalled();
         Boolean agreed = chosenMusic;
         if (agreed == null && consentGiven(this) && data.assetsMissing()) {
             // Agreed in an earlier run that was quit, killed or lost its
@@ -656,7 +657,8 @@ public class BootActivity extends Activity {
         reveal();
         GameData data = new GameData(this);
         PackFetch.Entry music = plan.music();
-        musicBox.setVisibility(music != null && !musicOnly ? View.VISIBLE : View.GONE);
+        // No music choice: the music pack is always part of the download.
+        musicBox.setVisibility(View.GONE);
         if (music != null) {
             musicBox.setText(HostRes.string(this, "boot_music_option", size(music.csize)));
         }
@@ -678,7 +680,7 @@ public class BootActivity extends Activity {
 
     private void updateChoice(PackFetch.Plan plan) {
         File dir = new GameData(this).dataDir();
-        boolean music = musicOnly || musicBox.isChecked();
+        boolean music = true;
         List<PackFetch.Entry> todo = PackFetch.todo(dir, plan, music);
         PackFetch.Need need = PackFetch.need(dir, todo, plan);
         long free = PackFetch.freeBytes(dir);
@@ -822,7 +824,7 @@ public class BootActivity extends Activity {
     }
 
     static boolean consentMusic(Context context) {
-        return consent(context).getBoolean("music", false);
+        return true; // music is always part of the game data
     }
 
     static boolean consentMobile(Context context) {
@@ -1150,30 +1152,18 @@ public class BootActivity extends Activity {
      * screen: under AndySU the host's resources need not be this build's.
      */
     private static void updateMusicShortcut(GameData data) {
+        // Music is part of the game data now: the "Download music" shortcut an
+        // earlier release added goes, and none is added.
         if (Build.VERSION.SDK_INT < 25) {
             return;
         }
         try {
             ShortcutManager shortcuts = appContext.getSystemService(ShortcutManager.class);
-            if (shortcuts == null) {
-                return;
-            }
-            if (data.musicInstalled()) {
+            if (shortcuts != null) {
                 shortcuts.removeDynamicShortcuts(Collections.singletonList(SHORTCUT_MUSIC));
-                return;
             }
-            Intent intent = new Intent(appContext, BootActivity.class)
-                    .setAction(Intent.ACTION_VIEW)
-                    .putExtra(EXTRA_GET_MUSIC, true);
-            int icon = appContext.getApplicationInfo().icon;
-            ShortcutInfo info = new ShortcutInfo.Builder(appContext, SHORTCUT_MUSIC)
-                    .setShortLabel(HostRes.string(appContext, "boot_shortcut_music"))
-                    .setIcon(Icon.createWithResource(appContext, icon))
-                    .setIntent(intent)
-                    .build();
-            shortcuts.setDynamicShortcuts(Collections.singletonList(info));
         } catch (RuntimeException e) {
-            Log.w(TAG, "Could not update the music shortcut", e);
+            Log.w(TAG, "Could not remove the music shortcut", e);
         }
     }
 

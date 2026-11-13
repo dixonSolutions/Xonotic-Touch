@@ -95,7 +95,7 @@ class ViewRenderer(
         if (group === p.top || group === p.bottom) group.visibility = View.VISIBLE
         if (type == "tabs" && p.type == "screen" && e.strip != null) { p.top?.addView(e.strip); p.top?.visibility = View.VISIBLE }
         else if (type == "tabs" && e.strip != null) group.addView(e.strip, group.indexOfChild(e.view))
-        if (type == "list" && place == Placement.BODY) fillChain(e)
+        if (type == "list" && place == Placement.BODY) nestList(e)
     }
 
     override fun update(id: String, props: Map<String, Any?>) {
@@ -349,6 +349,28 @@ class ViewRenderer(
         }
     }
 
+    /**
+     * A list inside a scrolling page (the map picker in Create, a short list
+     * in a section): not the page's scroller, so cards become one horizontal
+     * row (a picker strip) and a table shows up to eight rows and scrolls
+     * inside its frame.
+     */
+    private fun nestList(e: Entry) {
+        val vl = e.list ?: return
+        val lp = e.view.layoutParams
+        if (e.props.str("display") == "cards") {
+            val w = dp(e.props.num("minItem", 220.0).toFloat()) + dp(14f)
+            vl.carousel(w)
+            (vl.view.layoutParams as? LinearLayout.LayoutParams)?.let { it.height = ViewGroup.LayoutParams.WRAP_CONTENT; it.weight = 0f; vl.view.layoutParams = it }
+            lp?.height = ViewGroup.LayoutParams.WRAP_CONTENT
+        } else {
+            val rows = minOf(8, maxOf(3, e.props.int("count", 5)))
+            vl.view.isNestedScrollingEnabled = true
+            lp?.height = dp(36f) + rows * dp(if (e.props.str("rowHeight") == "comfortable") 56f else 40f) + dp(2f)
+        }
+        e.view.layoutParams = lp
+    }
+
     private fun fillChain(list: Entry) {
         var cur: Entry? = list
         while (cur != null) {
@@ -465,7 +487,8 @@ class ViewRenderer(
         val texts = Kit.column(ctx, 4f)
         val titleV = Kit.text(ctx, "", Theme.SP_TITLE - 1f, Theme.TEXT, bold = true, lines = 1)
         titleV.typeface = Theme.display
-        if (android.os.Build.VERSION.SDK_INT >= 26) { titleV.ellipsize = null; titleV.setAutoSizeTextTypeUniformWithConfiguration(13, 19, 1, android.util.TypedValue.COMPLEX_UNIT_SP) }
+        titleV.maxLines = 2
+        if (android.os.Build.VERSION.SDK_INT >= 26) { titleV.ellipsize = null; titleV.setAutoSizeTextTypeUniformWithConfiguration(14, 19, 1, android.util.TypedValue.COMPLEX_UNIT_SP) }
         val subtitle = Kit.text(ctx, "", Theme.SP_CAPTION + 1f, Theme.TEXT_MUTED, lines = 2)
         val badges = FlowGrid(ctx, 0, dp(6f), wrap = true)
         val meta = FlowGrid(ctx, 0, dp(12f), wrap = true)

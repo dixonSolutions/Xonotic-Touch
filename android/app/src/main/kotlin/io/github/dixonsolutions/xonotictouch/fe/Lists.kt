@@ -55,7 +55,8 @@ class VirtualList(
         view.adapter = adapter
         if (grid) view.addOnLayoutChangeListener { _, l, _, r, _, _, _, _, _ ->
             val n = max(1, (r - l) / max(1, minCellPx))
-            if (n != spans) { spans = n; (view.layoutManager as GridLayoutManager).spanCount = n }
+            val lm = view.layoutManager
+            if (n != spans && lm is GridLayoutManager) { spans = n; lm.spanCount = n }
         }
         view.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) = ask()
@@ -99,6 +100,16 @@ class VirtualList(
 
     fun refresh() = adapter.notifyDataSetChanged()
 
+    /** One horizontal row of cards of [itemWidth] px (a picker inside a scrolling page). */
+    var carouselWidth = 0
+        private set
+    fun carousel(itemWidth: Int) {
+        carouselWidth = itemWidth
+        view.layoutManager = LinearLayoutManager(ctx, LinearLayoutManager.HORIZONTAL, false)
+        view.isHorizontalScrollBarEnabled = false
+        view.isNestedScrollingEnabled = false
+    }
+
     fun save(): Parcelable? = view.layoutManager?.onSaveInstanceState()
     fun restore(state: Parcelable?) { if (state != null) view.layoutManager?.onRestoreInstanceState(state) }
 
@@ -108,7 +119,11 @@ class VirtualList(
             val r = window.row(position) ?: return -1L - position // a placeholder: its own id until it loads
             return keyOf(r).hashCode().toLong() and 0xffffffffL
         }
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = makeCell(parent)
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Cell {
+            val c = makeCell(parent)
+            if (carouselWidth > 0) c.itemView.layoutParams = (c.itemView.layoutParams as? RecyclerView.LayoutParams ?: RecyclerView.LayoutParams(carouselWidth, ViewGroup.LayoutParams.WRAP_CONTENT)).also { it.width = carouselWidth }
+            return c
+        }
         override fun onBindViewHolder(holder: Cell, position: Int) {
             val row = window.row(position)
             bindCell(holder, row, position)
