@@ -24,7 +24,9 @@ logging, URLs, bans, passwords and files.
 #include "touch_lua_int.h"
 
 #define TLUA_SV_BUILTIN_EVENT 1740
-#define TLUA_SV_NUMBUILTINS (TLUA_SV_BUILTIN_EVENT + 1)
+#define TLUA_SV_NUMBUILTINS 1753 // #1741-#1752: the hook bridge (touch_lua_hooks.c)
+
+void TLua_Hooks_InstallBuiltins(prvm_builtin_t *b);
 
 static const char *const tlua_sv_events[] = {
 	"frame", "map", "connect", "disconnect", "spawn", "death", "damage",
@@ -267,6 +269,7 @@ static void tlua_sv_openapi(lua_State *L)
 	TLua_SetField(L, "map", tlua_sv_map);
 	TLua_SetField(L, "time", tlua_sv_time);
 	TLua_SetField(L, "maxplayers", tlua_sv_maxplayers);
+	TLua_Hooks_OpenAPI(L);
 }
 
 tlua_realm_t tlua_server = {
@@ -399,6 +402,7 @@ static void tlua_sv_frame(void)
 	static double lasttime;
 	static char lastmap[MAX_QPATH];
 	tlua_svev_t e;
+	TLua_Pkg_Frame(); // a dedicated server has no client frame
 	if (!tlua_sv_ready())
 		return;
 	memset(&e, 0, sizeof(e));
@@ -416,6 +420,7 @@ static void tlua_sv_frame(void)
 		lasttime = sv.time;
 		TLua_Fire(&tlua_server, "frame", tlua_push_n, NULL, &e);
 	}
+	TLua_RunTimers(&tlua_server);
 }
 
 static float tlua_sv_event(const char *ev, int a, int b, float n, const char *s)
@@ -496,6 +501,7 @@ void TouchLua_SV_InstallBuiltins(prvm_prog_t *prog)
 	for (i = 0; i < TLUA_SV_NUMBUILTINS; i++)
 		tlua_sv_builtins[i] = i < prog->numbuiltins ? prog->builtins[i] : NULL;
 	tlua_sv_builtins[TLUA_SV_BUILTIN_EVENT] = VM_SV_touch_lua_event;
+	TLua_Hooks_InstallBuiltins(tlua_sv_builtins);
 	prog->builtins = tlua_sv_builtins;
 	prog->numbuiltins = TLUA_SV_NUMBUILTINS;
 }

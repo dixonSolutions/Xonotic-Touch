@@ -386,8 +386,69 @@ static int tlua_sound(lua_State *L)
 	return 1;
 }
 
+// Where the touch HUD and the game's own HUD already are, as fractions of the
+// 2D screen (docs/PLUGIN_STANDARD.md, "Screen space"): a mod's panel should
+// stay out of these. The top band holds chat (left), the match timer (centre),
+// the scores, the console button and MENU (right); the bottom corners hold the
+// move stick and the aim and fire buttons; the middle is the crosshair.
+typedef struct tlua_zone_s { const char *name; float x, y, w, h; } tlua_zone_t;
+static const tlua_zone_t tlua_zones[] = {
+	{"chat", 0.00f, 0.00f, 0.36f, 0.16f},
+	{"timer", 0.36f, 0.00f, 0.28f, 0.10f},
+	{"scores_console_menu", 0.64f, 0.00f, 0.36f, 0.16f},
+	{"crosshair", 0.40f, 0.40f, 0.20f, 0.20f},
+	{"move_stick", 0.00f, 0.55f, 0.40f, 0.45f},
+	{"aim_fire_buttons", 0.60f, 0.50f, 0.40f, 0.50f},
+	{"weapons_status", 0.40f, 0.86f, 0.20f, 0.14f},
+	{NULL, 0, 0, 0, 0}
+};
+
+// xt.reserved(): { {name, x, y, w, h}, ... } in the 2D coordinates xt.draw uses
+static int tlua_reserved(lua_State *L)
+{
+	int i;
+	float w = vid_conwidth.value, h = vid_conheight.value;
+	TLua_Require(L, TLUA_PERM_DISPLAY);
+	lua_newtable(L);
+	for (i = 0; tlua_zones[i].name; i++)
+	{
+		lua_createtable(L, 0, 5);
+		lua_pushstring(L, tlua_zones[i].name);
+		lua_setfield(L, -2, "name");
+		lua_pushnumber(L, tlua_zones[i].x * w);
+		lua_setfield(L, -2, "x");
+		lua_pushnumber(L, tlua_zones[i].y * h);
+		lua_setfield(L, -2, "y");
+		lua_pushnumber(L, tlua_zones[i].w * w);
+		lua_setfield(L, -2, "w");
+		lua_pushnumber(L, tlua_zones[i].h * h);
+		lua_setfield(L, -2, "h");
+		lua_rawseti(L, -2, i + 1);
+	}
+	return 1;
+}
+
+// xt.freespot(w, h [, "left"|"right"]): x, y for a w x h panel clear of the
+// reserved zones: the left (default) or right edge, below the top band
+static int tlua_freespot(lua_State *L)
+{
+	float pw = (float)luaL_checknumber(L, 1), ph = (float)luaL_checknumber(L, 2);
+	const char *side = luaL_optstring(L, 3, "left");
+	float w = vid_conwidth.value, h = vid_conheight.value, x, y;
+	TLua_Require(L, TLUA_PERM_DISPLAY);
+	y = 0.18f * h;
+	if (y + ph > 0.55f * h)
+		y = max(0.17f * h, 0.55f * h - ph);
+	x = !strcmp(side, "right") ? w - pw - 0.01f * w : 0.01f * w;
+	lua_pushnumber(L, x);
+	lua_pushnumber(L, y);
+	return 2;
+}
+
 static void tlua_cl_openapi(lua_State *L)
 {
+	TLua_SetField(L, "reserved", tlua_reserved);
+	TLua_SetField(L, "freespot", tlua_freespot);
 	TLua_SetField(L, "screen", tlua_screen);
 	TLua_SetField(L, "ingame", tlua_ingame);
 	TLua_SetField(L, "islocal", tlua_islocal);
@@ -500,9 +561,10 @@ static void tlua_cl_frame(void)
 	open = key_dest == key_menu || key_dest == key_menu_grabbed;
 	if (open && host.realtime - lastscan > 2)
 	{
-		// the Mods dialog lists _cl_lua_mods: pick up folders added meanwhile
+		// the Mods dialog lists _cl_lua_mods and _sv_lua_plugins: pick up folders added meanwhile
 		lastscan = host.realtime;
 		TLua_Rescan(&tlua_client);
+		TLua_Rescan(&tlua_server); // and its Plugins list
 	}
 	if (!tlua_client.loaded)
 	{
@@ -533,6 +595,7 @@ static void tlua_cl_frame(void)
 	a.n1 = host.realtime - lastrealtime;
 	lastrealtime = host.realtime;
 	TLua_Fire(&tlua_client, "frame", tlua_push_n, NULL, &a);
+	TLua_RunTimers(&tlua_client);
 }
 
 static void tlua_cl_draw(const char *event)

@@ -1,0 +1,14 @@
+# A server plugin that changes the game through a write-capable hook.
+id: damage_scale
+title: Damage scale
+version: 1.0
+author: Godnotic
+description: Scales all damage between players (sv_lua_damage_scale_factor) and counts what it changed.
+api: 2
+realm: server
+permissions: hooks, hooks_write, messages
+reason.hooks: sees every hit through the Damage_Calculate hook
+reason.hooks_write: changes the damage of a hit
+reason.messages: tells a player once how much their hits are scaled
+setting.factor: number 0.5 0 4 0.25 | Damage factor (1 is normal)
+setting.selfdamage: bool 0 | Scale self damage too

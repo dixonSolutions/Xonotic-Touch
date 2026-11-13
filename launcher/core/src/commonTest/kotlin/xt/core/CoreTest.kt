@@ -147,6 +147,31 @@ class ModsTest {
     }
 }
 
+class ModPermissionsTest {
+    @Test fun requestedGrantedAndMissing() {
+        val info = Mods.parseInfo("id: hud\napi: 2\npermissions: events, display hooks\nreason.events: x\n")
+        assertEquals(listOf("events", "display", "hooks"), Mods.requested(info))
+        // v1 grant file: events (bit 0) and display (bit 6)
+        val e = Mods.entry("hud", info, emptySet(), true, "v1 41\n", withPermissions = true)
+        assertEquals(setOf("events", "display"), e.granted)
+        assertEquals(listOf("hooks"), e.missing)
+        assertTrue(e.subtitle.contains("1 of 3 permissions not granted"))
+        // no file: nothing for API 1+, the HUD set for legacy; malformed: nothing
+        assertEquals(emptySet<String>(), Mods.parseGrants(null, scoped = true))
+        assertEquals(Mods.LEGACY_DEFAULT, Mods.parseGrants(null, scoped = false))
+        assertEquals(emptySet<String>(), Mods.parseGrants("legacy 7ff", scoped = true))
+        assertEquals(11, Mods.requested(Mods.parseInfo("title: old\n")).size)
+    }
+
+    @Test fun namesAndRequests() {
+        assertTrue(Mods.isModName("hud_clock"))
+        assertFalse(Mods.isModName("Hud"))
+        assertFalse(Mods.isModName("a".repeat(33)))
+        assertEquals("plugin /tmp/x.zip\n", Mods.installRequest(true, "/tmp/x.zip"))
+        assertEquals<String?>(null, Mods.installRequest(false, "/tmp/x\";quit.zip"))
+    }
+}
+
 class ZipTest {
     /** A stored-only zip built by hand: local headers are not read, so only the central directory matters. */
     private fun zip(names: List<String>): ByteArray {

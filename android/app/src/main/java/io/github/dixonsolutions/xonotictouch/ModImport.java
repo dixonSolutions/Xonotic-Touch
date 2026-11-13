@@ -8,24 +8,19 @@ import android.net.Uri;
 import android.provider.OpenableColumns;
 import android.util.Log;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.Charset;
-import java.util.LinkedHashMap;
 import java.util.Locale;
-import java.util.Map;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 
 /**
- * "Import mod" in Settings → Mobile → Mods: picks a .zip with the system file
- * picker and unpacks it into the engine's Lua mods folder ({@code <userdir>/mods/<name>/},
- * docs/MODDING.md). The imported mod starts off; the player turns it on in the
- * same tab.
+ * "Pick file" in Settings → Mobile → Mods → Install: picks a .zip with the system
+ * file picker and hands it to the engine's installer (docs/PLUGIN_STANDARD.md),
+ * which checks it, shows what it asks for, and installs it switched off with
+ * nothing granted.
  *
  * The menu is QuakeC and cannot call Java, so it asks through a file, the same
  * handshake as {@link UpdateBridge}: the menu writes
@@ -34,23 +29,20 @@ import java.util.zip.ZipInputStream;
  * what makes the menu show the button at all. The format lives in
  * {@code qcsrc/menu/xonotic/dialog_touch_mods.qh}.
  *
- * The archive is untrusted: every entry name is checked (no absolute paths, no
- * {@code ..}, no drive letters or backslashes, nothing that resolves outside the
- * target), with limits on file count and sizes, and nothing is written until the
- * whole archive has been read and found to hold an {@code init.lua}.
+ * The archive is untrusted and this class does not open it: it only copies the
+ * bytes (at most 8 MB) to {@code <userdir>/luastate/incoming/}, where no mod can
+ * reach, and the engine does every check (names, sizes, zip bombs, symlinks).
  */
 final class ModImport {
 
     private static final String TAG = "Godnotic";
     static final int REQUEST_CODE = 0x4d4f;
 
-    private static final int MAX_FILES = 256;
-    private static final long MAX_FILE = 1024 * 1024;       // the engine's own limit for one Lua file
-    private static final long MAX_TOTAL = 8 * 1024 * 1024;
+    private static final long MAX_TOTAL = 8 * 1024 * 1024; // the engine's limit for a package
 
     private final Activity activity;
     private final File touchDir;
-    private final File modsDir;
+    private final File incomingDir;
     private final File requestFile;
     private final File statusFile;
     private Thread poller;
@@ -58,7 +50,7 @@ final class ModImport {
     ModImport(Activity activity, File baseDir) {
         this.activity = activity;
         this.touchDir = new File(GameData.engineWriteDir(baseDir), "touch");
-        this.modsDir = new File(GameData.userDir(baseDir), "mods");
+        this.incomingDir = new File(new File(GameData.userDir(baseDir), "luastate"), "incoming");
         this.requestFile = new File(touchDir, "mod-import-request.txt");
         this.statusFile = new File(touchDir, "mod-import-status.txt");
     }
@@ -117,136 +109,67 @@ final class ModImport {
             publish("Import cancelled");
             return true;
         }
-        publish("Importing...");
+        publish("Reading the file...");
         new Thread(() -> publish(importZip(uri)), "xonotic-mod-import-unzip").start();
         return true;
     }
 
+    /**
+     * Copies the picked file, unchanged, to {@code <userdir>/luastate/incoming/<name>.zip}
+     * and tells the menu "picked <time> <path>"; the menu then runs
+     * {@code lua_mod_install <path>}. Checking and unpacking are the engine's
+     * (touch_lua_pkg.c), the same code path as a file, a link or the console, with
+     * the same review before anything is installed (docs/PLUGIN_STANDARD.md). Only
+     * the size is limited here, so a huge file is not copied at all.
+     */
     private String importZip(Uri uri) {
-        Map<String, byte[]> files = new LinkedHashMap<>();
-        long total = 0;
+        String name = sanitize(displayName(uri));
+        if (name.isEmpty()) {
+            name = "imported_mod";
+        }
+        File dir = incomingDir;
+        File tmp = new File(dir, name + ".zip.part");
+        File target = new File(dir, name + ".zip");
         try (InputStream raw = activity.getContentResolver().openInputStream(uri)) {
             if (raw == null) {
                 return "Could not open the file";
             }
-            // CP437 fallback names never fail to decode; bad names are then refused below
-            ZipInputStream zip = new ZipInputStream(raw, Charset.forName("UTF-8"));
-            ZipEntry entry;
-            byte[] buf = new byte[16384];
-            while ((entry = zip.getNextEntry()) != null) {
-                if (entry.isDirectory()) {
-                    continue;
-                }
-                String name = entry.getName();
-                if (name.startsWith("__MACOSX/") || name.endsWith("/.DS_Store")) {
-                    continue;
-                }
-                String bad = checkPath(name);
-                if (bad != null) {
-                    return "Refused: " + bad;
-                }
-                if (files.size() >= MAX_FILES) {
-                    return "Refused: more than " + MAX_FILES + " files";
-                }
-                ByteArrayOutputStream out = new ByteArrayOutputStream();
-                int n;
-                long size = 0;
-                while ((n = zip.read(buf)) > 0) {
-                    size += n;
-                    total += n;
-                    if (size > MAX_FILE) {
-                        return "Refused: " + name + " is over 1 MB";
+            // only the latest pick waits here
+            File[] old = dir.listFiles();
+            if (old != null) {
+                for (File f : old) {
+                    if (!f.delete()) {
+                        Log.w(TAG, "Could not delete " + f);
                     }
+                }
+            }
+            if (!dir.isDirectory() && !dir.mkdirs()) {
+                return "Could not write the file";
+            }
+            long total = 0;
+            byte[] buf = new byte[16384];
+            try (OutputStream out = new FileOutputStream(tmp)) {
+                int n;
+                while ((n = raw.read(buf)) > 0) {
+                    total += n;
                     if (total > MAX_TOTAL) {
-                        return "Refused: the mod is over 8 MB";
+                        out.close();
+                        tmp.delete();
+                        return "Refused: the file is over 8 MB";
                     }
                     out.write(buf, 0, n);
                 }
-                if (files.put(name, out.toByteArray()) != null) {
-                    return "Refused: " + name + " is in the zip twice";
-                }
             }
-        } catch (IOException | RuntimeException e) {
-            Log.w(TAG, "Mod import failed", e);
-            return "Not a readable .zip";
-        }
-
-        // init.lua at the top, or in one folder that holds everything
-        String prefix = "";
-        String modName = displayName(uri);
-        if (!files.containsKey("init.lua")) {
-            String top = null;
-            for (String name : files.keySet()) {
-                int slash = name.indexOf('/');
-                String first = slash < 0 ? "" : name.substring(0, slash);
-                if (top == null) {
-                    top = first;
-                } else if (!top.equals(first)) {
-                    top = "";
-                }
-            }
-            if (top == null || top.isEmpty() || !files.containsKey(top + "/init.lua")) {
-                return "Refused: no init.lua in the zip";
-            }
-            prefix = top + "/";
-            modName = top;
-        }
-        String name = sanitize(modName);
-        if (name.isEmpty()) {
-            return "Refused: no usable mod name";
-        }
-
-        File tmp = new File(modsDir, ".import-" + name);
-        File target = new File(modsDir, name);
-        try {
-            deleteTree(tmp);
-            String tmpRoot = tmp.getCanonicalPath() + File.separator;
-            for (Map.Entry<String, byte[]> e : files.entrySet()) {
-                File f = new File(tmp, e.getKey().substring(prefix.length()));
-                if (!f.getCanonicalPath().startsWith(tmpRoot)) {
-                    deleteTree(tmp);
-                    return "Refused: " + e.getKey();
-                }
-                File parent = f.getParentFile();
-                if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
-                    throw new IOException("mkdirs " + parent);
-                }
-                try (OutputStream out = new FileOutputStream(f)) {
-                    out.write(e.getValue());
-                }
-            }
-            // an update keeps what the mod saved (its data/ folder)
-            File oldData = new File(target, "data");
-            if (oldData.isDirectory() && !new File(tmp, "data").exists()) {
-                if (!oldData.renameTo(new File(tmp, "data"))) {
-                    Log.w(TAG, "Could not keep " + oldData);
-                }
-            }
-            deleteTree(target);
             if (!tmp.renameTo(target)) {
                 throw new IOException("rename " + tmp + " -> " + target);
             }
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             Log.w(TAG, "Mod import failed", e);
-            deleteTree(tmp);
-            return "Could not write the mod";
+            tmp.delete();
+            return "Could not read the file";
         }
-        Log.i(TAG, "Imported mod " + name + " (" + files.size() + " files)");
-        return "Imported " + name + ": switch it on below";
-    }
-
-    /** Why this zip entry name is unsafe, or null. */
-    static String checkPath(String name) {
-        if (name.isEmpty() || name.startsWith("/") || name.contains("\\") || name.contains(":")
-                || name.indexOf('\0') >= 0) {
-            return name;
-        }
-        for (String part : name.split("/", -1)) {
-            if (part.isEmpty() || part.equals(".") || part.equals("..")) {
-                return name;
-            }
-        }
-        return null;
+        Log.i(TAG, "Picked mod package " + target);
+        return "picked " + System.currentTimeMillis() + " " + target.getAbsolutePath();
     }
 
     /** The engine only loads folders named a-z, 0-9 and _, up to 32 long. */
@@ -278,18 +201,6 @@ final class ModImport {
             Log.w(TAG, "No display name for " + uri, e);
         }
         return "imported_mod";
-    }
-
-    private static void deleteTree(File f) {
-        File[] children = f.listFiles();
-        if (children != null) {
-            for (File c : children) {
-                deleteTree(c);
-            }
-        }
-        if (f.exists() && !f.delete()) {
-            Log.w(TAG, "Could not delete " + f);
-        }
     }
 
     /** One line for the menu; an empty line means "ready". */

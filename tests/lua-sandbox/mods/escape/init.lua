@@ -101,7 +101,11 @@ check("impulse with two words refused", fails(xt.exec, "impulse 1 2"))
 -- the API offers no positions, entities, traces, aim or view angles
 local allowed = {on=1, command=1, cvar=1, setcvar=1, exec=1, realtime=1, modname=1, realm=1, apiversion=1,
   save=1, load=1, screen=1, ingame=1, islocal=1, map=1, time=1, players=1, me=1, draw=1,
-  fingers=1, mouse=1, keydown=1, sound=1}
+  fingers=1, mouse=1, keydown=1, sound=1,
+  -- API 2: timers and coroutines (they run the mod's own code, under its limits)
+  after=1, every=1, cancel=1, spawn=1, sleep=1, apimax=1,
+  -- where the touch HUD is (rectangles only, no game data)
+  reserved=1, freespot=1, setting=1}
 local extra = {}
 for k in pairs(xt) do if not allowed[k] then extra[#extra + 1] = k end end
 check("xt has only the documented functions (" .. table.concat(extra, ",") .. ")", #extra == 0)

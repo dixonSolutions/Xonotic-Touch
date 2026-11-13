@@ -110,6 +110,7 @@ First launch downloads game data into the platform writable dir (see [docs/RELEA
 - [docs/CONTROLS.md](docs/CONTROLS.md) — touch controls and presets
 - [docs/SETUP.md](docs/SETUP.md) — first-run wizard, download progress, OSK, touch menus
 - [docs/LAN.md](docs/LAN.md) — LAN games: host from the menu, find games on your network, optional password
+- [docs/PLUGIN_STANDARD.md](docs/PLUGIN_STANDARD.md) — Lua mods and plugins: package format, permissions, hooks, install from a file or a link ([MODDING.md](docs/MODDING.md) is the API, [LUA_HOOKS.md](docs/LUA_HOOKS.md) the 172 game hooks)
 
 Architecture, measured checks and unfinished work: [Godnotic delivery record](docs/GODNOTIC.md).
 

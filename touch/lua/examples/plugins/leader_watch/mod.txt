@@ -1,0 +1,13 @@
+# Continuous work without an endless loop: a coroutine that sleeps.
+id: leader_watch
+title: Leader watch
+version: 1.0
+author: Godnotic
+description: Announces a new leader a few seconds after the lead changes, and a short tick report every minute.
+api: 2
+realm: server
+permissions: events, players, messages, state
+reason.events: notices deaths and map changes
+reason.players: reads names and frags to find the leader
+reason.messages: announces the new leader to everyone
+reason.state: reads the match time for the minute report

@@ -1,0 +1,16 @@
+# A HUD panel with settings the Mods tab shows (docs/PLUGIN_STANDARD.md).
+id: hud_widget
+title: Health and armor bars
+version: 1.0
+author: Godnotic
+homepage: https://github.com/dixonSolutions/Godnotic/tree/main/touch/lua/examples/mods/hud_widget
+description: Two bars for your health and armor, placed clear of the touch controls.
+api: 2
+realm: client
+permissions: events, display, players
+reason.events: draws the bars on every HUD frame (the hud event)
+reason.display: draws the two bars
+reason.players: reads your own health and armor (xt.me)
+setting.side: choice left left right | Screen edge
+setting.width: number 160 80 320 20 | Bar width
+setting.numbers: bool 1 | Show the numbers
