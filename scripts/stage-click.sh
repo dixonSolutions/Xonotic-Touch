@@ -112,7 +112,7 @@ CLICK_ARCH="$CLICK_ARCH" bash "$ROOT/scripts/stage-click-utils.sh" "$DEST"
 copy_shared_libs "$DEST/bin/xonotic" "$DEST/lib"
 
 # Official Xonotic icon — OpenStore extracts this from the click on revision upload.
-ICON_SRC="$ROOT/engine/misc/logos/icons_png/xonotic_256.png"
+ICON_SRC="$ROOT/branding/godnotic-icon-256.png"
 test -f "$ICON_SRC" || {
     echo "Missing official icon: $ICON_SRC" >&2
     exit 1

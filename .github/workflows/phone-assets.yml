@@ -6,8 +6,7 @@ name: Phone assets
 # phone-sizes.md. The packs are too big for the repository and take ~30
 # minutes to make, so they are built here and never committed.
 #
-# Weekly, it only rebuilds when the autobuild archive changed (its ETag is in
-# the published manifest). A manual run rebuilds anyway.
+# Manual only: upstream changes never publish new Godnotic data automatically.
 on:
   workflow_dispatch:
     inputs:
@@ -15,8 +14,6 @@ on:
         description: Rebuild even when the autobuild archive did not change
         type: boolean
         default: true
-  schedule:
-    - cron: '17 4 * * 1'
 
 permissions:
   contents: write

@@ -29,7 +29,7 @@ class LauncherConfig(private val values: MutableMap<String, String> = linkedMapO
     operator fun set(key: String, value: Boolean) = set(key, if (value) "1" else "0")
 
     fun serialize(): String = buildString {
-        append("# Xonotic Touch launcher settings\n")
+        append("# Godnotic launcher settings\n")
         for ((k, v) in values) append(k).append(" = ").append(v.replace('\n', ' ')).append('\n')
     }
 

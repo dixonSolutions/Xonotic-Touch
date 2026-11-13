@@ -17,7 +17,7 @@ Packages are **slim** (~60 MB): textures, maps, and music download on **first la
 ./scripts/install-flatpak.sh --run
 ```
 
-Launch once on a **networked** device so assets download automatically (~3 GB). A **Xonotic Touch** setup dialog shows download progress; profile and touch steps are skipped if already configured.
+Launch once on a **networked** device so assets download automatically (~3 GB). A **Godnotic** setup dialog shows download progress; profile and touch steps are skipped if already configured.
 
 ## First-run setup
 
@@ -27,7 +27,7 @@ Quick checks:
 
 | Check | Expected |
 |-------|----------|
-| Window title | `Xonotic Touch` |
+| Window title | `Godnotic` |
 | Fresh install + Wi‑Fi | Download dialog with progress bar, then ToS and profile if needed; never a touch-controls dialog |
 | Fresh install, touch mode | Standard controls without asking: `touch.layout.cfg` written, `touch_setup_done 1` in `config.cfg` |
 | Returning user (name + `touch_setup_done`) | No profile dialog; touch settings untouched |

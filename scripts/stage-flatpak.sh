@@ -43,12 +43,12 @@ install -m 644 "$ROOT/flatpak/io.github.dixonSolutions.XonoticTouch.desktop" \
 install -m 644 "$ROOT/flatpak/io.github.dixonSolutions.XonoticTouch.metainfo.xml" \
     "$DEST/share/metainfo/io.github.dixonSolutions.XonoticTouch.metainfo.xml"
 
-ICON_SRC="$ROOT/engine/misc/logos/icons_png"
-install -m 644 "$ICON_SRC/xonotic_128.png" \
+ICON_SRC="$ROOT/branding"
+install -m 644 "$ICON_SRC/godnotic-icon-128.png" \
     "$DEST/share/icons/hicolor/128x128/apps/io.github.dixonSolutions.XonoticTouch.png"
-install -m 644 "$ICON_SRC/xonotic_256.png" \
+install -m 644 "$ICON_SRC/godnotic-icon-256.png" \
     "$DEST/share/icons/hicolor/256x256/apps/io.github.dixonSolutions.XonoticTouch.png"
-install -m 644 "$ICON_SRC/xonotic_512.png" \
+install -m 644 "$ICON_SRC/godnotic-icon-512.png" \
     "$DEST/share/icons/hicolor/512x512/apps/io.github.dixonSolutions.XonoticTouch.png"
 
 echo "Staged Flatpak tree to $DEST"

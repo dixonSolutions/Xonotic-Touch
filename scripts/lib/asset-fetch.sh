@@ -8,9 +8,19 @@ fi
 
 XONOTIC_DATA_PK3DIR_ASSET_DIRS=(textures models gfx sound particles demos cubemaps maps)
 
-XONOTIC_AUTOBUILD_URL="${XONOTIC_AUTOBUILD_URL:-https://beta.xonotic.org/autobuild}"
-XONOTIC_AUTOBUILD_USER="${XONOTIC_AUTOBUILD_USER:-xonotic}"
-XONOTIC_AUTOBUILD_PASS="${XONOTIC_AUTOBUILD_PASS:-g-23}"
+XONOTIC_AUTOBUILD_URL="${XONOTIC_AUTOBUILD_URL:-https://github.com/dixonSolutions/Godnotic-data/releases/download/data-20261107}"
+XONOTIC_AUTOBUILD_USER="${XONOTIC_AUTOBUILD_USER:-}"
+XONOTIC_AUTOBUILD_PASS="${XONOTIC_AUTOBUILD_PASS:-}"
+
+GODNOTIC_DATA_ARCHIVE="${GODNOTIC_DATA_ARCHIVE:-Godnotic-data-20261107.zip}"
+
+xonotic_asset_curl() {
+    local -a auth=()
+    if [ -n "$XONOTIC_AUTOBUILD_USER" ]; then
+        auth=(--user "$XONOTIC_AUTOBUILD_USER:$XONOTIC_AUTOBUILD_PASS")
+    fi
+    command curl "${auth[@]}" "$@"
+}
 
 xonotic_asset_dirs_missing() {
     local data_dir="$1"
@@ -298,7 +308,7 @@ xonotic_fetch_connections() {
 
 xonotic_autobuild_content_length() {
     local url="$1"
-    curl -sI -L --user "${XONOTIC_AUTOBUILD_USER}:${XONOTIC_AUTOBUILD_PASS}" "$url" \
+    xonotic_asset_curl -sI -L "$url" \
         | awk 'BEGIN{c=0} tolower($1)=="content-length:" {c=$2} END{print c+0}' \
         | tr -d '\r'
 }
@@ -339,9 +349,11 @@ xonotic_start_autobuild_download() {
         # Multi-connection: much better on high-latency / rate-limited links.
         (
             exec 9>&-
-            aria2c -c --console-log-level=warn --summary-interval=0 \
-                --http-user="${XONOTIC_AUTOBUILD_USER}" \
-                --http-passwd="${XONOTIC_AUTOBUILD_PASS}" \
+            local -a auth=()
+            if [ -n "$XONOTIC_AUTOBUILD_USER" ]; then
+                auth=(--http-user="$XONOTIC_AUTOBUILD_USER" --http-passwd="$XONOTIC_AUTOBUILD_PASS")
+            fi
+            aria2c -c --console-log-level=warn --summary-interval=0 "${auth[@]}" \
                 -x "$conns" -s "$conns" -j 1 -k 1M \
                 -d "$(dirname "$zip_path")" -o "$(basename "$zip_path")" \
                 "$url" >/dev/null 2>&1
@@ -353,7 +365,7 @@ xonotic_start_autobuild_download() {
     if command -v curl >/dev/null 2>&1; then
         (
             exec 9>&-
-            curl -fL -C - --user "${XONOTIC_AUTOBUILD_USER}:${XONOTIC_AUTOBUILD_PASS}" \
+            xonotic_asset_curl -fL -C - \
                 -o "$zip_path" "$url" >/dev/null 2>&1
         ) &
         XONOTIC_DOWNLOAD_PID=$!
@@ -366,7 +378,7 @@ xonotic_start_autobuild_download() {
         (
             exec 9>&-
             wget -q -O "$zip_path" \
-                "${scheme}://${XONOTIC_AUTOBUILD_USER}:${XONOTIC_AUTOBUILD_PASS}@${host_path}/${zip_name}" \
+                "$url" \
                 >/dev/null 2>&1
         ) &
         XONOTIC_DOWNLOAD_PID=$!
@@ -517,22 +529,13 @@ xonotic_fetch_autobuild_assets() {
         xonotic_mark_music_ready "$data_dir"
     fi
 
-    # Skip anything already present on disk — never re-download finished packs.
-    # Music zip is queued first so parallel slots prefer soundtrack completion.
-    if xonotic_music_assets_missing "$data_dir"; then
-        names+=("Xonotic-latest-high.zip")
-        paths+=("$tmp/xonotic-music.zip")
-        kinds+=("music")
-    fi
-    if xonotic_asset_dirs_missing "$data_dir" || xonotic_nexcompat_assets_missing "$data_dir"; then
-        names+=("Xonotic-latest.zip")
-        paths+=("$tmp/xonotic.zip")
+    # One immutable Godnotic archive contains all packs. Never fetch three
+    # overlapping upstream archives for core, maps and music.
+    if xonotic_music_assets_missing "$data_dir" || xonotic_asset_dirs_missing "$data_dir" \
+        || xonotic_nexcompat_assets_missing "$data_dir" || xonotic_maps_assets_missing "$data_dir"; then
+        names+=("$GODNOTIC_DATA_ARCHIVE")
+        paths+=("$tmp/godnotic-data.zip")
         kinds+=("core")
-    fi
-    if xonotic_maps_assets_missing "$data_dir"; then
-        names+=("Xonotic-latest-mappingsupport.zip")
-        paths+=("$tmp/xonotic-maps.zip")
-        kinds+=("maps")
     fi
 
     if [ "${#names[@]}" -eq 0 ]; then

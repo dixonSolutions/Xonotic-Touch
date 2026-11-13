@@ -1,4 +1,4 @@
 title: Chat keys
 version: 1.0
-author: Xonotic Touch
+author: Godnotic
 description: F5 says "gg", F6 says "nice shot" (one line every two seconds at most).

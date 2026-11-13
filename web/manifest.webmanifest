@@ -1,6 +1,6 @@
 {
-  "name": "Xonotic Touch",
-  "short_name": "Xonotic",
+  "name": "Godnotic",
+  "short_name": "Godnotic",
   "description": "The free arena shooter with touch controls, in your browser.",
   "start_url": "./",
   "scope": "./",

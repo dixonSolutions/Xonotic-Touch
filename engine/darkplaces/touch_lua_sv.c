@@ -95,6 +95,7 @@ static client_t *tlua_sv_client(lua_State *L, int idx)
 static int tlua_sv_players(lua_State *L)
 {
 	int i, n = 0;
+	TLua_Require(L, TLUA_PERM_PLAYERS);
 	lua_newtable(L);
 	if (!sv.active)
 		return 1;
@@ -111,10 +112,12 @@ static int tlua_sv_players(lua_State *L)
 static int tlua_sv_player(lua_State *L)
 {
 	prvm_prog_t *prog = SVVM_prog;
-	client_t *c = tlua_sv_client(L, 1);
+	client_t *c;
 	prvm_edict_t *ed;
 	char clean[64];
 	float *o;
+	TLua_Require(L, TLUA_PERM_PLAYERS);
+	c = tlua_sv_client(L, 1);
 	if (!c || !c->edict)
 		return 0;
 	ed = c->edict;
@@ -166,6 +169,7 @@ static int tlua_sv_tell(lua_State *L)
 {
 	char text[1024];
 	client_t *c = tlua_sv_client(L, 1);
+	TLua_Require(L, TLUA_PERM_MESSAGES);
 	tlua_sv_text(L, 2, text, sizeof(text) - 1);
 	if (c)
 	{
@@ -179,6 +183,7 @@ static int tlua_sv_centerprint(lua_State *L)
 {
 	char text[1024];
 	client_t *c = tlua_sv_client(L, 1);
+	TLua_Require(L, TLUA_PERM_MESSAGES);
 	tlua_sv_text(L, 2, text, sizeof(text));
 	if (c)
 		tlua_sv_send(c, svc_centerprint, text);
@@ -188,6 +193,7 @@ static int tlua_sv_centerprint(lua_State *L)
 static int tlua_sv_broadcast(lua_State *L)
 {
 	char text[1024];
+	TLua_Require(L, TLUA_PERM_MESSAGES);
 	tlua_sv_text(L, 1, text, sizeof(text) - 1);
 	dp_strlcat(text, "\n", sizeof(text));
 	if (sv.active)
@@ -197,18 +203,21 @@ static int tlua_sv_broadcast(lua_State *L)
 
 static int tlua_sv_map(lua_State *L)
 {
+	TLua_Require(L, TLUA_PERM_STATE);
 	lua_pushstring(L, sv.active ? sv.worldbasename : "");
 	return 1;
 }
 
 static int tlua_sv_time(lua_State *L)
 {
+	TLua_Require(L, TLUA_PERM_STATE);
 	lua_pushnumber(L, sv.time);
 	return 1;
 }
 
 static int tlua_sv_maxplayers(lua_State *L)
 {
+	TLua_Require(L, TLUA_PERM_STATE);
 	lua_pushinteger(L, svs.maxclients);
 	return 1;
 }

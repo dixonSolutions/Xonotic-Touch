@@ -1,0 +1,3 @@
+title: Permission test
+api: 1
+permissions: events, commands, exec, cvar_write, storage

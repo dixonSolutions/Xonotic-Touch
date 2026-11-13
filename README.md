@@ -1,10 +1,10 @@
-# Xonotic Touch
+<p align="center"><img src="branding/godnotic-banner.png" alt="Godnotic" width="720"></p>
 
-**Xonotic Touch** is a touch-first build of [Xonotic](https://xonotic.org) for **Android**, **Ubuntu Touch**, and **any Linux phone, tablet or touchscreen PC via Flatpak**. Virtual sticks, weapon wheels, and layout presets are tuned for two-thumb play in landscape. Ships as a slim Android **`.apk`**, Ubuntu Touch **`.click`**, or **Flatpak** (~60 MB); textures, maps, and music download on first launch (~3 GB). Native C + QuakeC — no Qt shell.
+**Godnotic** is a touch-first build of [Xonotic](https://xonotic.org) for **Android**, **Ubuntu Touch**, and **any Linux phone, tablet or touchscreen PC via Flatpak**. Virtual sticks, weapon wheels, and layout presets are tuned for two-thumb play in landscape. Ships as a slim Android **`.apk`**, Ubuntu Touch **`.click`**, or **Flatpak** (~60 MB); textures, maps, and music download on first launch (~3 GB). Native C + QuakeC — no Qt shell.
 
 | | |
 |---|---|
-| **Install** | Android `.apk` from GitHub Releases, Flatpak remote (any Linux distro), [OpenStore](https://open-store.io/app/xonotictouch.dixonsolutions) / Ubuntu Touch `.click`, or [in the browser](https://xonotic-web.vercel.app) — versioned GitHub Releases on each `main` push |
+| **Install** | Android `.apk` from GitHub Releases, Flatpak remote (any Linux distro), [OpenStore](https://open-store.io/app/xonotictouch.dixonsolutions) / Ubuntu Touch `.click`, or [in the browser](https://godnotic.vercel.app) — versioned GitHub Releases on each `main` push |
 | **Platforms** | Android: `arm64-v8a` + `armeabi-v7a` + `x86_64` (Waydroid, Chromebooks). Flatpak: any Linux, `x86_64` + `aarch64` (Wayland/X11) — postmarketOS, Mobian, Fedora, Ubuntu, … Click: Ubuntu Touch `arm64` + `armhf` |
 | **Input** | Touch, keyboard and mouse, together or apart, detected from the system. The on-screen controls show on a touchscreen with no keyboard attached and step aside while one is plugged in; touch and a mouse keep working either way (fingers press menus and turn the view, a mouse aims). **Ctrl+Alt+1** switches by hand and **Ctrl+Alt+2** locks the choice — see [TOUCH_DETECTION.md](docs/TOUCH_DETECTION.md) |
 
@@ -26,18 +26,18 @@ On screen: the **MOVE** stick on the left (drag on the right side of the screen 
 
 ## Play in the browser
 
-**https://xonotic-web.vercel.app**: nothing to install. The first visit downloads about 1 GB of game data, which the browser keeps; settings and touch layouts are saved in the browser too. Touch and keyboard and mouse work; local games against bots, not online servers yet. Mirror on [GitHub Pages](https://dixonSolutions.github.io/Xonotic-Touch/web/). Details, limits and self-hosting: [docs/WEB.md](docs/WEB.md).
+**https://godnotic.vercel.app**: nothing to install. The first visit downloads about 1 GB of game data, which the browser keeps; settings and touch layouts are saved in the browser too. Touch and keyboard and mouse work; local games against bots, not online servers yet. Mirror on [GitHub Pages](https://dixonSolutions.github.io/Godnotic/web/). Details, limits and self-hosting: [docs/WEB.md](docs/WEB.md).
 
 ## Install (Flatpak)
 
 ```bash
 flatpak remote-add --user --if-not-exists xonotic-touch \
-  https://dixonSolutions.github.io/Xonotic-Touch/flatpak
+  https://dixonSolutions.github.io/Godnotic/flatpak
 flatpak install --user xonotic-touch io.github.dixonSolutions.XonoticTouch
 flatpak run io.github.dixonSolutions.XonoticTouch
 ```
 
-Or download offline bundles from [GitHub Releases](https://github.com/dixonSolutions/Xonotic-Touch/releases/latest) (new `v1.2.*` tag per build; older tags kept).
+Or download offline bundles from [GitHub Releases](https://github.com/dixonSolutions/Godnotic/releases/latest) (new `v1.2.*` tag per build; older tags kept).
 
 ### Ubuntu Touch (.click)
 
@@ -48,18 +48,18 @@ Preferred: install from OpenStore on the device.
 Sideload (Pages download remote):
 
 ```bash
-wget https://dixonSolutions.github.io/Xonotic-Touch/click/latest-arm64.click
+wget https://dixonSolutions.github.io/Godnotic/click/latest-arm64.click
 pkcon install-local --allow-untrusted latest-arm64.click
 ```
 
-Or grab a versioned `.click` from [GitHub Releases](https://github.com/dixonSolutions/Xonotic-Touch/releases/latest). Index: https://dixonSolutions.github.io/Xonotic-Touch/click/
+Or grab a versioned `.click` from [GitHub Releases](https://github.com/dixonSolutions/Godnotic/releases/latest). Index: https://dixonSolutions.github.io/Godnotic/click/
 
 Local build with [Clickable](https://clickable-ut.dev/): `clickable build --arch arm64`  
 Or: `./scripts/build-click.sh --arch arm64`
 
 ### Android (.apk)
 
-Sideload from [GitHub Releases](https://github.com/dixonSolutions/Xonotic-Touch/releases/latest) — `arm64-v8a` for anything from the last decade, `armeabi-v7a` for older phones, `x86_64` for Waydroid and Chromebooks. Same slim-package deal: the APK carries game logic and the menu, and the first launch pulls maps, textures and music.
+Sideload from [GitHub Releases](https://github.com/dixonSolutions/Godnotic/releases/latest) — `arm64-v8a` for anything from the last decade, `armeabi-v7a` for older phones, `x86_64` for Waydroid and Chromebooks. Same slim-package deal: the APK carries game logic and the menu, and the first launch pulls maps, textures and music.
 
 Local build: `ANDROID_SDK_ROOT=~/Android/Sdk ./scripts/android-build.sh --abi arm64-v8a` — see [docs/ANDROID.md](docs/ANDROID.md).
 
@@ -109,3 +109,5 @@ First launch downloads game data into the platform writable dir (see [docs/RELEA
 - [docs/SCREEN.md](docs/SCREEN.md) — landscape screen calculation
 - [docs/CONTROLS.md](docs/CONTROLS.md) — touch controls and presets
 - [docs/SETUP.md](docs/SETUP.md) — first-run wizard, download progress, OSK, touch menus
+
+Architecture, measured checks and unfinished work: [Godnotic delivery record](docs/GODNOTIC.md).

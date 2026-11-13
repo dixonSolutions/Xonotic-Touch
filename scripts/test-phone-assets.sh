@@ -62,8 +62,13 @@ for i in a.infolist():
         assert (fmt, base, w, h, levels) == (0x93B7, 0x1907, 64, 32, 7), (hex(fmt), hex(base), w, h, levels)
         continue
     assert b.read(o) == a.read(i), name
-    want = 93 if name in ("maps/test.bsp", "gfx/pic.jpg", "dds/textures/wall.dds") else 0
-    assert o.compress_type == want, (name, o.compress_type)
+    if textures == "keep" and not link:
+        assert o.compress_size <= i.compress_size, (name, i.compress_size, o.compress_size)
+    assert o.compress_type in (0, 8, 93), (name, o.compress_type)
+    if name == "maps/test.bsp":
+        assert o.compress_type == 93, (name, o.compress_type)
+    if name == "sound/x.ogg":
+        assert o.compress_type == 8, "already compressed assets must not be expanded to stored ZIP entries"
 assert not bi, bi
 print("ok:", textures, rec["size"], "bytes")
 EOF
@@ -74,8 +79,32 @@ check "$tmp/keep" keep
 
 astcenc=${ASTCENC:-$(command -v astcenc-avx2 || command -v astcenc-sse4.1 || command -v astcenc || true)}
 if [ -n "$astcenc" ] && command -v ffmpeg >/dev/null 2>&1; then
-	ASTCENC=$astcenc "$PY" -I "$here/repack-phone-assets.py" -j 2 -o "$tmp/astc" "$tmp/in.pk3" 2>"$tmp/log" || { cat "$tmp/log"; exit 1; }
+	ASTCENC=$astcenc "$PY" -I "$here/repack-phone-assets.py" --allow-growth -j 2 -o "$tmp/astc" "$tmp/in.pk3" 2>"$tmp/log" || { cat "$tmp/log"; exit 1; }
 	check "$tmp/astc" astc
 else
 	echo "skip: ASTC conversion (no astcenc or ffmpeg)"
 fi
+
+# An encoder can produce a valid but larger texture. Default packing must keep
+# the original DDS and its symlink together, with the original compressed bytes.
+"$PY" -I - "$here/repack-phone-assets.py" "$tmp" <<'EOF'
+import importlib.util, pathlib, sys, types, zipfile
+spec = importlib.util.spec_from_file_location("repack", sys.argv[1])
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+root = pathlib.Path(sys.argv[2])
+out = root / "expanded"
+out.mkdir()
+args = types.SimpleNamespace(outdir=str(out), jobs=2, limit=0, zstd_level=3, audio="keep", allow_growth=False)
+class ExpandingEncoder:
+    def encode(self, name, data):
+        return bytes(range(256)) * 400
+m.repack(args, str(root / "in.pk3"), ExpandingEncoder(), {})
+with zipfile.ZipFile(root / "in.pk3") as src, zipfile.ZipFile(out / "in-phone.pk3") as dst:
+    assert dst.testzip() is None
+    assert "dds/textures/wall.ktx" not in dst.namelist()
+    for name in ("dds/textures/wall.dds", "dds/textures/wall2.dds"):
+        assert dst.read(name) == src.read(name)
+    assert dst.getinfo("dds/textures/wall.dds").compress_size <= src.getinfo("dds/textures/wall.dds").compress_size
+print("ok: growing conversion retains source DDS and symlink")
+EOF

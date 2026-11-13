@@ -181,7 +181,7 @@ fun hostPage(ctx: Ctx): Widget {
     }
     val port = spinRow("Port", "UDP; others join with +connect <your address>:<port>", 1024.0, 65535.0,
         cfg.int(Keys.HOST_PORT, 26000).toDouble()) { cfg[Keys.HOST_PORT] = it; ctx.save() }
-    val name = entryRow("Server name", cfg.string(Keys.HOST_NAME, "Xonotic Touch server")) { cfg[Keys.HOST_NAME] = it.trim(); ctx.save() }
+    val name = entryRow("Server name", cfg.string(Keys.HOST_NAME, "Godnotic server")) { cfg[Keys.HOST_NAME] = it.trim(); ctx.save() }
     val public = switchRow("List on the public server list", "Off keeps it to your network", cfg.bool(Keys.HOST_PUBLIC, false)) {
         cfg[Keys.HOST_PUBLIC] = it; ctx.save()
     }

@@ -1,6 +1,6 @@
 # Comfortable touch controls for mobile shooters and kart racers
 
-Research brief for Xonotic Touch and SuperTuxKart Touch (September 2026).
+Research brief for Godnotic and SuperTuxKart Touch (September 2026).
 Sources are linked inline; the checklists at the end are what the two ports
 act on. The same file lives in both repositories.
 
@@ -127,7 +127,7 @@ is the outlier, and the Touch port already flips that default.
 
 ## 4. Checklists
 
-### Xonotic Touch
+### Godnotic
 - [ ] MOVE stick: floating, spawns under first touch anywhere in left ~45% ×
       lower 66%; base radius ≈ 0.15h (≈11 mm on a 6" phone), full deflection at
       0.7 radius; radial dead zone 0.05–0.08 with scaled rescale; optional

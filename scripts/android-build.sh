@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build the Xonotic Touch Android APK for one ABI.
+# Build the Godnotic Android APK for one ABI.
 #
 #   scripts/android-deps.sh    native libraries darkplaces links against
 #   scripts/android-stage-assets.sh   the slim data payload inside the APK
@@ -95,7 +95,7 @@ done
 
 ##### Branding ################################################################
 
-ICON_SRC="${ANDROID_ICON_SRC:-$ROOT/engine/misc/logos/icons_png/xonotic_512.png}"
+ICON_SRC="${ANDROID_ICON_SRC:-$ROOT/branding/godnotic-icon-512.png}"
 test -f "$ICON_SRC" || { echo "Missing official icon: $ICON_SRC" >&2; exit 1; }
 MAGICK="$(command -v magick || command -v convert || true)"
 test -n "$MAGICK" || { echo "ImageMagick (magick/convert) is required" >&2; exit 1; }
@@ -138,7 +138,7 @@ if [ -z "$KEYSTORE" ]; then
             -storepass "$STOREPASS" -keypass "$STOREPASS" \
             -alias "$ALIAS" \
             -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=Xonotic Touch, OU=CI, O=dixonSolutions, C=US" >/dev/null
+            -dname "CN=Godnotic, OU=CI, O=dixonSolutions, C=US" >/dev/null
     fi
 fi
 KEYSTORE="$(cd "$(dirname "$KEYSTORE")" && pwd)/$(basename "$KEYSTORE")"
@@ -169,7 +169,7 @@ log "Gradle assembleRelease ($ABI, $VERSION+$VERSION_CODE, NDK $NDK_VERSION)"
 APK="$(find "$ANDROID_DIR/app/build/outputs/apk/release" -name '*.apk' -type f \
        -printf '%T@ %p\n' | sort -rn | head -1 | cut -d' ' -f2-)"
 test -n "$APK" || { echo "No APK produced" >&2; find "$ANDROID_DIR/app/build/outputs" -type f >&2 || true; exit 1; }
-cp -v "$APK" "$OUT_DIR/XonoticTouch-$VERSION-$ABI.apk"
+cp -v "$APK" "$OUT_DIR/Godnotic-$VERSION-$ABI.apk"
 
 log "APK in $OUT_DIR"
 ls -lh "$OUT_DIR"

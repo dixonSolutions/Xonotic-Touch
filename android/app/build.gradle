@@ -1,4 +1,5 @@
 apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
 
 // Every knob comes from scripts/android-build.sh so the gradle file stays
 // free of paths that only exist on one machine.

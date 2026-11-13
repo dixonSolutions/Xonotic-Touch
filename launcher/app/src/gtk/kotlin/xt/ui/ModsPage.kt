@@ -24,7 +24,7 @@ fun scanMods(dir: String): List<ModEntry> {
 class ModList(private val ctx: Ctx, private val dir: String, title: String, description: String, private val emptyText: String) {
     val group: Widget = group(title, description)
     private val rows = mutableListOf<Widget>()
-    private var enabled = mutableSetOf<String>()
+    private var generation = 0
 
     init {
         group.headerSuffix(hbox(6,
@@ -37,13 +37,13 @@ class ModList(private val ctx: Ctx, private val dir: String, title: String, desc
     }
 
     fun refresh() {
-        background({ scanMods(dir) }) { mods -> show(mods) }
+        val request = ++generation
+        background({ scanMods(dir) }) { mods -> if (request == generation) show(mods) }
     }
 
     private fun show(mods: List<ModEntry>) {
         rows.forEach { group.remove(it) }
         rows.clear()
-        enabled = mods.filter { it.enabled }.map { it.name }.toMutableSet()
         if (mods.isEmpty()) {
             val r = actionRow(emptyText, dir, "folder-symbolic")
             rows += r
@@ -51,20 +51,30 @@ class ModList(private val ctx: Ctx, private val dir: String, title: String, desc
             return
         }
         for (m in mods) {
-            val r = switchRow(m.title, m.subtitle.ifEmpty { m.name }, m.enabled) { on -> toggle(m.name, on) }
+            var reverting = false
+            lateinit var r: Widget
+            r = switchRow(m.title, m.subtitle.ifEmpty { m.name }, m.enabled) { on ->
+                if (!reverting && !toggle(m.name, on)) {
+                    reverting = true
+                    adw_switch_row_set_active(r.cast(), if (on) 0 else 1)
+                    reverting = false
+                }
+            }
             if (!m.hasInit) r.sensitive(false)
             rows += r
             group.add(r)
         }
     }
 
-    private fun toggle(name: String, on: Boolean) {
-        if (on) enabled += name else enabled -= name
-        val text = Mods.serializeEnabled(enabled)
+    private fun toggle(name: String, on: Boolean): Boolean {
+        // Invalidate in-flight scans before writing; their snapshots may be stale.
+        generation++
         val path = "$dir/enabled.txt"
-        background({ Sys.writeText(path, text) }) { ok ->
-            ctx.toast(if (!ok) "Could not write $path" else if (on) "$name is on for the next game" else "$name is off")
-        }
+        val ok = Mods.setEnabled(name, on, {
+            if (Sys.exists(path)) Sys.readText(path) else ""
+        }, { Sys.writeText(path, it) })
+        ctx.toast(if (!ok) "Could not write $path" else if (on) "$name is on for the next game" else "$name is off")
+        return ok
     }
 }
 

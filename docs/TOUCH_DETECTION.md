@@ -273,7 +273,7 @@ tablet-mode switch, a keyboard that never types, a pen without
 | Build | Mode | Touch-only filter |
 |-------|------|-------------------|
 | Official-style engine default | Auto (`1`) | On |
-| Xonotic Touch on a tablet/phone | Auto | On |
+| Godnotic on a tablet/phone | Auto | On |
 | Android APK | Auto (old archived Always migrated once) | On |
 | Desktop test window (`XONOTIC_DESKTOP_DEV`) | Always | On (ignored) |
 

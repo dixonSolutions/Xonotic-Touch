@@ -17,8 +17,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 EMSDK_VERSION="${EMSDK_VERSION:-7.0.0}"   # the version the web build was tested with
 # .vercel/cache survives between Vercel builds; the SDK is the slow part.
 EMSDK="${EMSDK:-$ROOT/.vercel/cache/emsdk}"
-AUTOBUILD="https://beta.xonotic.org/autobuild"
-AUTOBUILD_LOGIN="xonotic:g-23"   # public; the same one the apps use
+AUTOBUILD="https://github.com/dixonSolutions/Godnotic-data/releases/download/data-20261107"
+DATA_ARCHIVE="Godnotic-data-20261107.zip"
 
 # The QuakeC sources use #elifdef, which "cc -E" (GCC 11 on Amazon Linux
 # 2023) rejects; GCC 12+ takes it. Prints a directory to put first in PATH
@@ -114,9 +114,9 @@ QCCFLAGS_WATERMARK="web-${VERCEL_GIT_COMMIT_SHA:0:7}" EMSDK="$EMSDK" bash "$ROOT
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/xt-vercel.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
-echo "Fetching the stock data (Xonotic-latest.zip)…"
-curl -sfL --retry 3 --retry-delay 5 --user "$AUTOBUILD_LOGIN" -o "$work/Xonotic-latest.zip" \
-    "$AUTOBUILD/Xonotic-latest.zip"
+echo "Fetching the pinned Godnotic data…"
+curl -sfL --retry 3 --retry-delay 5 -o "$work/Xonotic-latest.zip" \
+    "$AUTOBUILD/$DATA_ARCHIVE"
 mkdir -p "$work/stock"
 unzip -q -j -o "$work/Xonotic-latest.zip" 'Xonotic/data/*.pk3' -d "$work/stock"
 rm -f "$work/Xonotic-latest.zip"

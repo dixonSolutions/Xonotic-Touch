@@ -1,4 +1,4 @@
 title: Welcome
 version: 1.0
-author: Xonotic Touch
+author: Godnotic
 description: Greets players, announces killing sprees, answers "cmd stats", keeps one word out of chat.

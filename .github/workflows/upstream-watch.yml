@@ -1,6 +1,6 @@
 name: Upstream watch
 
-# Polls upstream Xonotic once a day. When upstream moved, it:
+# Checks upstream Xonotic only when manually requested. When upstream moved, it:
 #   1. vendors the new upstream files onto the upstream/vendor branch,
 #   2. merges them into main with the vendor commit in upstream.lock as the
 #      merge base (scripts/upstream-sync.py merge),
@@ -16,8 +16,6 @@ name: Upstream watch
 # (tests, android) by themselves. Without it the default token is used and
 # this workflow dispatches them on the sync branch instead.
 on:
-  schedule:
-    - cron: '23 5 * * *'
   workflow_dispatch:
 
 permissions:

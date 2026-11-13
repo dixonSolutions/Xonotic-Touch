@@ -1,4 +1,4 @@
-// Xonotic Touch in the browser: data loader and platform shim.
+// Godnotic in the browser: data loader and platform shim.
 //
 // The engine is DarkPlaces built with Emscripten (scripts/build-web.sh). This
 // file is the "platform layer" that a phone or desktop OS would otherwise be:
@@ -32,6 +32,7 @@
   // it is the easy way to read the console of a phone.
   const LOGSINK = params.has('logsink');
   const sink = (text) => { try { navigator.sendBeacon('/__log', text); } catch (e) { /* ignore */ } };
+  // Do not rename: this cache is shared with already-installed web builds.
   const DATA_CACHE = 'xt-data-v1';
   const USERDIR = '/xt-user';
   const BASEDIR = '/game';
@@ -47,6 +48,7 @@
 
   const state = {
     started: false,
+    downloadController: null,
     wantLock: false,
     fsPending: false,
     kbdOn: false,
@@ -489,6 +491,45 @@
         }
         if (fill || part === 0) await flush();
       },
+      async hasPart(f, i) {
+        const r = await cache.match(key(f, i));
+        return !!r && r.headers.get('x-xt-size') === String(f.size);
+      },
+      aligned(f) {
+        const source = f.parts || [{ size: f.size }];
+        return source.length === parts(f)
+          && source.every((p, i) => p.size === Math.min(PART, f.size - i * PART));
+      },
+      async putPart(f, i, signal, progress) {
+        const sourceParts = f.parts || [{ url: f.url, size: f.size }];
+        const part = sourceParts[i];
+        const expected = part.size;
+        const request = key(f, i);
+        for (let attempt = 0; attempt < 4; attempt++) {
+          try {
+            const res = await fetch(new URL(part.url, f.base || dataBase), { cache: 'no-store', signal });
+            if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+            let got = 0;
+            const counted = res.body.pipeThrough(new TransformStream({
+              transform(chunk, ctl) {
+                got += chunk.byteLength;
+                if (got > expected) throw new Error(`${f.name} part ${i + 1} is larger than expected`);
+                progress(chunk.byteLength);
+                ctl.enqueue(chunk);
+              },
+            }));
+            await cache.put(request, new Response(counted, {
+              headers: { 'content-type': 'application/octet-stream', 'x-xt-size': String(f.size) },
+            }));
+            if (got !== expected) throw new Error(`${f.name} part ${i + 1} arrived incomplete (${got} of ${expected} bytes)`);
+            return;
+          } catch (e) {
+            await cache.delete(request);
+            if (signal.aborted || e.name === 'AbortError' || e.name === 'QuotaExceededError' || attempt === 3) throw e;
+            await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+          }
+        }
+      },
       async get(f) {
         const out = new Uint8Array(f.size);
         let off = 0;
@@ -496,6 +537,11 @@
           const r = await cache.match(key(f, i));
           if (!r) throw new Error(`${f.name} is incomplete in the browser cache. Reload to download it again.`);
           const b = new Uint8Array(await r.arrayBuffer());
+          const expected = Math.min(PART, f.size - i * PART);
+          if (b.length !== expected) {
+            await cache.delete(key(f, i));
+            throw new Error(`${f.name} has an incomplete part in the browser cache. Reload to download it again.`);
+          }
           if (off + b.length > out.length) throw new Error(`${f.name} is damaged in the browser cache. Reload to download it again.`);
           out.set(b, off);
           off += b.length;
@@ -536,14 +582,16 @@
     const parts = f.parts || [{ url: f.url, size: f.size }];
     let i = 0;
     let reader = null;
-    async function open(part) {
+    async function open(part, signal) {
       let lastErr;
       for (let attempt = 0; attempt < 4; attempt++) {
         try {
-          const res = await fetch(new URL(part.url, f.base || dataBase), { cache: 'no-store' });
+          if (signal.aborted) throw new DOMException('Download cancelled', 'AbortError');
+          const res = await fetch(new URL(part.url, f.base || dataBase), { cache: 'no-store', signal });
           if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
           return res.body.getReader();
         } catch (e) {
+          if (signal.aborted || e.name === 'AbortError') throw e;
           lastErr = e;
           await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
         }
@@ -555,7 +603,7 @@
         for (;;) {
           if (!reader) {
             if (i >= parts.length) { ctl.close(); return; }
-            reader = await open(parts[i]);
+            reader = await open(parts[i], state.downloadController.signal);
           }
           const { done, value } = await reader.read();
           if (!done) { ctl.enqueue(value); return; }
@@ -571,43 +619,71 @@
     const total = files.reduce((n, f) => n + f.size, 0);
     let done = 0;
     const t0 = performance.now();
+    const controller = new AbortController();
+    state.downloadController = controller;
+    $('xt-dl-cancel').disabled = false;
     show('xt-progress');
     for (const f of files) {
       $('xt-progress-label').textContent = `Downloading ${f.name}…`;
-      const body = fileStream(f);
       let got = 0;
       let lastPaint = 0;
-      const counted = body.pipeThrough(new TransformStream({
+      const progress = (n) => {
+        got += n;
+        const now = performance.now();
+        if (now - lastPaint > 150) {
+          lastPaint = now;
+          const all = done + got;
+          const pct = total ? (100 * all / total) : 0;
+          $('xt-bar-fill').style.width = pct.toFixed(1) + '%';
+          $('xt-bar').setAttribute('aria-valuenow', pct.toFixed(0));
+          const rate = all / Math.max(0.001, (now - t0) / 1000);
+          const eta = rate > 0 ? Math.round((total - all) / rate) : 0;
+          $('xt-progress-detail').textContent =
+            `${mb(all)} of ${mb(total)} · ${(rate / 1e6).toFixed(1)} MB/s` + (eta > 1 ? ` · about ${eta > 90 ? Math.round(eta / 60) + ' min' : eta + ' s'} left` : '');
+        }
+      };
+      const counted = (stream) => stream.pipeThrough(new TransformStream({
         transform(chunk, ctl) {
-          got += chunk.byteLength;
-          const now = performance.now();
-          if (now - lastPaint > 150) {
-            lastPaint = now;
-            const all = done + got;
-            const pct = total ? (100 * all / total) : 0;
-            $('xt-bar-fill').style.width = pct.toFixed(1) + '%';
-            $('xt-bar').setAttribute('aria-valuenow', pct.toFixed(0));
-            const rate = all / Math.max(0.001, (now - t0) / 1000);
-            const eta = rate > 0 ? Math.round((total - all) / rate) : 0;
-            $('xt-progress-detail').textContent =
-              `${mb(all)} of ${mb(total)} · ${(rate / 1e6).toFixed(1)} MB/s` + (eta > 1 ? ` · about ${eta > 90 ? Math.round(eta / 60) + ' min' : eta + ' s'} left` : '');
-          }
+          progress(chunk.byteLength);
           ctl.enqueue(chunk);
         },
       }));
       try {
-        await store.put(f, counted);
+        if (store.kind === 'cache' && store.aligned(f)) {
+          const sourceParts = f.parts || [{ url: f.url, size: f.size }];
+          for (let i = 0; i < sourceParts.length; i++) {
+            if (controller.signal.aborted) throw new DOMException('Download cancelled', 'AbortError');
+            if (!(await store.hasPart(f, i))) {
+              $('xt-progress-label').textContent = `Downloading ${f.name} (part ${i + 1} of ${sourceParts.length})…`;
+              await store.putPart(f, i, controller.signal, progress);
+            }
+          }
+        } else {
+          await store.put(f, counted(fileStream(f)));
+        }
       } catch (e) {
-        await store.drop(f);
+        state.downloadController = null;
+        if (e && e.name === 'AbortError') {
+          throw e;
+        }
+        // Cache API parts are committed one at a time. Keep completed parts so
+        // retrying only fetches the missing ones; OPFS writes as one transaction.
+        if (store.kind !== 'cache') await store.drop(f);
         if (e && e.name === 'QuotaExceededError') throw new Error('The browser ran out of storage for the game data. Free some disk space, or leave out the music.');
         throw new Error(`Saving ${f.name} failed: ${e && e.message || e}`);
       }
-      if (got !== f.size) {
+      if (got !== f.size && store.kind !== 'cache') {
         await store.drop(f);
         throw new Error(`${f.name} arrived incomplete (${got} of ${f.size} bytes). Check your connection and try again.`);
       }
       done += f.size;
     }
+    state.downloadController = null;
+    $('xt-dl-cancel').disabled = true;
+  }
+
+  function cancelDownload() {
+    if (state.downloadController) state.downloadController.abort();
   }
 
   function mkdirs(FS, path) {
@@ -835,13 +911,20 @@
           $('xt-dl-quota').textContent = `This browser offers about ${mb(free)} of storage here, less than the download. Private windows and low disk space shrink it.`;
         }
       }
-      show('xt-download');
-      await new Promise((resolve) => { $('xt-dl-go').onclick = resolve; });
-      try {
-        if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
-        await download(files, missing);
-      } catch (e) {
-        return fail(e.message || String(e));
+      while (missing.length) {
+        show('xt-download');
+        await new Promise((resolve) => { $('xt-dl-go').onclick = resolve; });
+        try {
+          if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+          await download(files, missing);
+        } catch (e) {
+          if (e && e.name === 'AbortError') {
+            missing = await missingFiles(files, selected());
+            await refresh();
+            continue;
+          }
+          return fail(e.message || String(e));
+        }
       }
     }
 
@@ -874,6 +957,7 @@
   // Settings
   $('xt-opt-scale').value = store.get('scale', 'auto');
   $('xt-opt-scale').onchange = (e) => { store.set('scale', e.target.value); refit(); };
+  $('xt-dl-cancel').onclick = cancelDownload;
   $('xt-clear').onclick = async () => {
     if (!confirm('Delete the downloaded game data from this browser? Your settings stay.')) return;
     try {

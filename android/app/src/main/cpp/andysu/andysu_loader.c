@@ -1,5 +1,5 @@
 /*
- * libandysu_xonotic_loader.so: the resident part of the Xonotic Touch live engine swap.
+ * libandysu_xonotic_loader.so: the resident part of the Godnotic live engine swap.
  *
  * SDLActivity runs `AndySU_SDL_main` (XonoticActivity.getMainFunction) on the SDL thread instead
  * of the engine's SDL_main. This library loads the engine library (libmain[.<hash8>].so, found next

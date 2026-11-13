@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "components": {
+    "darkplaces": {
+      "repository": "dixonSolutions/Godnotic-darkplaces",
+      "path": "engine/darkplaces",
+      "revision": "0000000000000000000000000000000000000000"
+    },
+    "data": {
+      "repository": "dixonSolutions/Godnotic-data",
+      "path": "engine/data/xonotic-data.pk3dir",
+      "revision": "0000000000000000000000000000000000000000"
+    }
+  }
+}

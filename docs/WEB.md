@@ -1,4 +1,4 @@
-# Xonotic Touch in the browser
+# Godnotic in the browser
 
 The same engine and game code as the Android, Flatpak and Click builds,
 compiled to WebAssembly with Emscripten and drawn with WebGL 2. Touch
@@ -68,10 +68,11 @@ scripts/stage-web-data.sh     game data -> build/web/data + manifest.json
 - **Game data.** `data/manifest.json` lists every file with a content hash.
   Files go to the origin private file system (OPFS), streamed to disk as they
   download; browsers without writable OPFS get the Cache API in 32 MB pieces.
-  Files over 40 MB are stored on the server in parts (static hosts cap single
-  files at 100 MB), each part retried on failure. A file is downloaded again
-  only when its hash changes. At startup the files are handed to the engine's
-  in-memory filesystem without a second copy.
+  Files over 32 MB are stored on the server in 32 MiB parts (static hosts cap
+  single files at 100 MB), each part retried on failure. The Cache API keeps
+  completed chunks through cancel or reload and fetches only missing ones. A
+  file is downloaded again only when its hash changes. At startup the files
+  are handed to the engine's in-memory filesystem without a second copy.
 - **User data.** The engine's userdir is IndexedDB-backed (IDBFS), synced a
   moment after each write and when the tab is hidden or closed. Settings and
   key bindings changed in the menu or console are written to `config.cfg`

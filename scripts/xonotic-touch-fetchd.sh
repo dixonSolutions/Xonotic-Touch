@@ -65,16 +65,16 @@ fi
 
 notify_ready() {
     [ "$NOTIFY" = "1" ] || return 0
-    _title="Xonotic Touch"
-    _body="Game data finished downloading. Opening Xonotic Touch…"
+    _title="Godnotic"
+    _body="Game data finished downloading. Opening Godnotic…"
     if command -v notify-send >/dev/null 2>&1; then
-        notify-send -a "Xonotic Touch" -i "$FLATPAK_ID" "$_title" "$_body" || true
+        notify-send -a "Godnotic" -i "$FLATPAK_ID" "$_title" "$_body" || true
     elif command -v gdbus >/dev/null 2>&1; then
         gdbus call --session \
             --dest org.freedesktop.Notifications \
             --object-path /org/freedesktop/Notifications \
             --method org.freedesktop.Notifications.Notify \
-            "Xonotic Touch" 0 "$FLATPAK_ID" "$_title" "$_body" \
+            "Godnotic" 0 "$FLATPAK_ID" "$_title" "$_body" \
             '[]' '{}' 8000 >/dev/null 2>&1 || true
     fi
 }

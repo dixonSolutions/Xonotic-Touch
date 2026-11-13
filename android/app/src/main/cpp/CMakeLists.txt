@@ -55,6 +55,10 @@ set(DP_SDL
 
 add_library(main SHARED ${DP_COMMON} ${DP_MENU} ${DP_SND} ${DP_SDL})
 
+# The bridge remains resident across AndySU engine swaps.
+add_library(nativeui SHARED "${CMAKE_CURRENT_SOURCE_DIR}/nativeui/bridge.c")
+target_sources(main PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/nativeui/engine.c")
+
 ##### AndySU resident loader and live engine swap ################################
 set(ANDYSU_DIR "${CMAKE_CURRENT_SOURCE_DIR}/andysu")
 target_sources(main PRIVATE "${ANDYSU_DIR}/andysu_engine.c")
@@ -73,6 +77,13 @@ add_library(andysu_xonotic_loader SHARED "${ANDYSU_DIR}/andysu_loader.c")
 target_include_directories(andysu_xonotic_loader PRIVATE "${ANDYSU_DIR}")
 target_compile_options(andysu_xonotic_loader PRIVATE -O2 -Wall)
 target_link_libraries(andysu_xonotic_loader android log dl)
+
+# Android devices may use 16 KiB pages. NDK 27 otherwise links for 4 KiB.
+if(ANDROID_ABI STREQUAL "arm64-v8a" OR ANDROID_ABI STREQUAL "x86_64")
+    foreach(target main nativeui andysu_xonotic_loader)
+        target_link_options(${target} PRIVATE "-Wl,-z,max-page-size=16384")
+    endforeach()
+endif()
 
 ##### Prebuilt dependencies ####################################################
 

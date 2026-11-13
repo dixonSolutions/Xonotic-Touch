@@ -5,7 +5,7 @@ set -euo pipefail
 
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 SITE_CLICK="${SITE_CLICK:-$ROOT/site/click}"
-CLICK_REMOTE_URL="${CLICK_REMOTE_URL:-https://dixonSolutions.github.io/Xonotic-Touch/click}"
+CLICK_REMOTE_URL="${CLICK_REMOTE_URL:-https://dixonSolutions.github.io/Godnotic/click}"
 PACKAGE_VERSION="${PACKAGE_VERSION:-}"
 CLICK_NAME="${CLICK_NAME:-xonotictouch.dixonsolutions}"
 ARM64_CLICK="${ARM64_CLICK:-}"
@@ -69,7 +69,7 @@ cat > "$SITE_CLICK/index.html" <<EOF
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Xonotic Touch — Ubuntu Touch (.click)</title>
+  <title>Godnotic — Ubuntu Touch (.click)</title>
   <style>
     body { font-family: system-ui, sans-serif; max-width: 44rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.45; }
     code, pre { background: #f2f2f2; padding: 0.15em 0.35em; border-radius: 4px; }
@@ -78,7 +78,7 @@ cat > "$SITE_CLICK/index.html" <<EOF
   </style>
 </head>
 <body>
-  <h1>Xonotic Touch for Ubuntu Touch</h1>
+  <h1>Godnotic for Ubuntu Touch</h1>
   <p>Latest build: <strong>${PACKAGE_VERSION}</strong> (<code>${CLICK_NAME}</code>)</p>
   <p>Download and install on the device:</p>
   <ul>

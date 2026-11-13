@@ -147,3 +147,11 @@ builds load it at run time if the system has it.
 - Measure on the Galaxy Tab (load time, memory, fps) and tune the block
   sizes.
 - The app does not fetch the set yet: see the TODO in docs/ANDROID.md.
+
+## Godnotic size policy
+
+The default repacker retains the original compressed entry whenever a converted
+entry would be larger, including its name and symlink targets. This fixes stored
+Ogg expansion and keeps unsuitable ASTC conversions as DDS. `--allow-growth` is
+an explicit GPU-load tradeoff for experiments; it is not the default distribution
+policy. Manifests record `size_policy` and `astc-mixed` when applicable.

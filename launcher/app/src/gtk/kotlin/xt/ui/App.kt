@@ -37,7 +37,7 @@ class Ctx(val env: Map<String, String>, val configPath: String, val cfg: Launche
         toasts?.let { adw_toast_overlay_add_toast(it.cast(), t) }
     }
 
-    /** Settings are written shortly after the last change, off the main thread. */
+    /** Settings are written shortly after the last change. */
     fun save() {
         if (saveQueued) return
         saveQueued = true
@@ -48,8 +48,8 @@ class Ctx(val env: Map<String, String>, val configPath: String, val cfg: Launche
         saveQueued = false
         val text = cfg.serialize()
         val path = configPath
-        savedText = text
-        background({ Sys.writeText(path, text) }) { ok -> if (!ok) toast("Could not save settings to $path") }
+        if (Sys.writeText(path, text)) savedText = text
+        else toast("Could not save settings to $path")
     }
 
     fun onData(f: () -> Unit) {
@@ -182,7 +182,7 @@ class LauncherWindow(val ctx: Ctx, app: CPointer<GtkApplication>?, startPage: St
 
     init {
         ctx.window = win
-        gtk_window_set_title(win.cast(), "Xonotic Touch")
+        gtk_window_set_title(win.cast(), "Godnotic")
         val (dw, dh) = windowSize ?: (980 to 720)
         gtk_window_set_default_size(win.cast(), dw, dh)
         gtk_widget_set_size_request(win, 360, 480)
@@ -234,7 +234,7 @@ class LauncherWindow(val ctx: Ctx, app: CPointer<GtkApplication>?, startPage: St
         adw_view_stack_set_visible_child_name(stack.cast(), startPage)
 
         if (ctx.paths.startScript == null) {
-            adw_banner_set_title(banner.cast(), "Xonotic Touch was not found next to the launcher")
+            adw_banner_set_title(banner.cast(), "Godnotic was not found next to the launcher")
             adw_banner_set_button_label(banner.cast(), "Settings")
             banner.on("button-clicked") { adw_view_stack_set_visible_child_name(stack.cast(), "settings") }
             adw_banner_set_revealed(banner.cast(), 1)

@@ -120,6 +120,19 @@ class ProfilesTest {
 }
 
 class ModsTest {
+    @Test fun togglesPreserveUnavailableModsAndRespectFailures() {
+        var disk = "missing\nfirst\n"
+        fun change(name: String, on: Boolean, fail: Boolean = false) = Mods.setEnabled(name, on, { disk }) {
+            if (fail) false else { disk = it; true }
+        }
+        assertTrue(change("second", true))
+        assertTrue(change("first", false))
+        assertEquals("missing\nsecond\n", disk)
+        assertFalse(change("second", false, fail = true))
+        assertEquals("missing\nsecond\n", disk)
+        assertFalse(Mods.setEnabled("second", false, { null }) { error("must not write after read failure") })
+    }
+
     @Test fun infoAndEnabled() {
         val info = Mods.parseInfo("title: Kill feed\nversion: 1.2\nauthor: Ana\ndescription: Shows: frags\n")
         assertEquals("Shows: frags", info.description)

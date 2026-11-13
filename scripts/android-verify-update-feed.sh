@@ -8,7 +8,7 @@
 # build, with no error anywhere. This asserts them instead.
 set -euo pipefail
 
-REPO="${UPDATE_FEED_REPO:-dixonSolutions/Xonotic-Touch}"
+REPO="${UPDATE_FEED_REPO:-dixonSolutions/Godnotic}"
 ABIS="${UPDATE_FEED_ABIS:-arm64-v8a armeabi-v7a}"
 API="${GITHUB_API_URL:-https://api.github.com}"
 

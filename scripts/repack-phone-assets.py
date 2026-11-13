@@ -15,7 +15,8 @@ name of the pack it came from (the manifest says so). Entry by entry:
               name: the QuakeC looks for sounds by their .ogg name, and the
               engine looks inside (touch_assets_opus.c).
   the rest    stored with zstd (zip method 93) when that saves 2% or more,
-              else stored; never deflate. The engine inflates zstd entries
+              else stored. An entry that would grow keeps its original
+              compressed payload, name and bytes. The engine inflates zstd entries
               several times faster (touch_assets_fs.h). Ogg, mp3 and other
               compressed formats are stored as they are.
 
@@ -242,7 +243,7 @@ class ZipWriter:
     def add(self, name, method, payload, size, crc, attr, dostime):
         raw = name.encode("utf-8")
         flags = 0x800 if not name.isascii() else 0
-        need = 63 if method == ZIP_ZSTD else 10
+        need = 63 if method == ZIP_ZSTD else 20 if method == 8 else 10
         off = self.f.tell()
         if off >= 1 << 32 or len(payload) >= 1 << 32 or size >= 1 << 32:
             raise OverflowError("pack needs zip64")
@@ -275,6 +276,22 @@ def is_symlink(info):
     return (info.external_attr >> 16) & 0o170000 == 0o120000
 
 
+def original_payload(src, info):
+    """Read a validated zip entry's compressed bytes without recompressing it."""
+    if info.flag_bits & 1 or info.compress_type not in (0, 8, ZIP_ZSTD):
+        return None
+    src.seek(info.header_offset)
+    header = src.read(30)
+    if len(header) != 30 or header[:4] != b"PK\x03\x04":
+        raise ValueError("invalid local ZIP header: " + info.filename)
+    name_len, extra_len = struct.unpack_from("<HH", header, 26)
+    src.seek(name_len + extra_len, 1)
+    payload = src.read(info.compress_size)
+    if len(payload) != info.compress_size:
+        raise ValueError("truncated ZIP entry: " + info.filename)
+    return payload
+
+
 def sha256_of(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -291,7 +308,7 @@ def repack(args, pack, textures, stats):
     outname = stem + "-phone.pk3"
     outpath = os.path.join(args.outdir, outname)
     zout = ZipWriter(outpath + ".part")
-    kinds = {k: [0, 0, 0] for k in ("textures", "audio", "zstd", "stored")}
+    kinds = {k: [0, 0, 0] for k in ("textures", "audio", "zstd", "stored", "retained")}
     seen = set()
     converted = set()  # dds names that became ktx
     lock = threading.Lock()
@@ -330,7 +347,7 @@ def repack(args, pack, textures, stats):
         k[1] += info.compress_size
         k[2] += len(payload)
 
-    with zipfile.ZipFile(pack) as zin, concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
+    with zipfile.ZipFile(pack) as zin, open(pack, "rb") as raw, concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
         infos = [i for i in zin.infolist() if not i.is_dir()]
         if args.limit:
             infos = infos[:args.limit]
@@ -340,7 +357,17 @@ def repack(args, pack, textures, stats):
         def work(info):
             with lock:
                 data = zin.read(info)
-            return info, convert(info, data)
+                original = original_payload(raw, info)
+            result = convert(info, data)
+            name, newdata, method, payload, kind = result
+            # A faster decoder does not justify making the default download
+            # larger. Keep both the original name and data if a conversion
+            # loses; symlink rewriting below follows only accepted KTX files.
+            old_size = info.compress_size + 2 * len(info.filename.encode("utf-8"))
+            new_size = len(payload) + 2 * len(name.encode("utf-8"))
+            if original is not None and new_size > old_size and not args.allow_growth:
+                result = (info.filename, data, info.compress_type, original, "retained")
+            return info, result
 
         # a bounded window of entries in flight keeps memory in check while
         # the output keeps the source order
@@ -378,7 +405,8 @@ def repack(args, pack, textures, stats):
     record = {
         "file": outname, "size": os.path.getsize(outpath), "sha256": sha256_of(outpath),
         "install_as": base, "source": {"file": base, "size": os.path.getsize(pack), "sha256": sha256_of(pack)},
-        "textures": "astc" if textures else "dds", "audio": args.audio,
+        "textures": "astc-mixed" if textures else "dds", "audio": args.audio,
+        "size_policy": "allow-growth" if args.allow_growth else "retain-smaller-original",
     }
     stats[base] = kinds
     log("  %s: %.1f MB -> %.1f MB in %.0f s" % (base, record["source"]["size"] / 1e6, record["size"] / 1e6,
@@ -415,6 +443,8 @@ def main():
     ap.add_argument("-o", "--outdir", required=True)
     ap.add_argument("-j", "--jobs", type=int, default=os.cpu_count() or 2)
     ap.add_argument("--textures", choices=("astc", "keep"), default="astc")
+    ap.add_argument("--allow-growth", action="store_true",
+                    help="prefer converted formats even when an entry grows (default: keep the smaller original)")
     ap.add_argument("--audio", choices=("music", "all", "keep"), default="music",
                     help="what becomes Opus: music (streamed, so no load time cost; default), all sounds "
                          "(sound effects are decoded at map load, which Opus makes slower), or nothing")
@@ -454,14 +484,14 @@ def main():
         json.dump({"format": 1, "meta": meta, "packs": records}, f, indent=1)
         f.write("\n")
     with open(os.path.join(args.outdir, "phone-sizes.md"), "w") as f:
-        f.write("| pack | official | phone | textures | audio | zstd | stored |\n")
-        f.write("| --- | ---: | ---: | ---: | ---: | ---: | ---: |\n")
+        f.write("| pack | official | phone | textures | audio | zstd | stored | retained |\n")
+        f.write("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n")
         for r in records:
             k = stats[r["install_as"]]
             cell = lambda n: "%.1f -> %.1f" % (k[n][1] / 1e6, k[n][2] / 1e6) if k[n][0] else "-"
-            f.write("| %s | %.1f MB | %.1f MB | %s | %s | %s | %s |\n" % (
+            f.write("| %s | %.1f MB | %.1f MB | %s | %s | %s | %s | %s |\n" % (
                 r["install_as"], r["source"]["size"] / 1e6, r["size"] / 1e6,
-                cell("textures"), cell("audio"), cell("zstd"), cell("stored")))
+                cell("textures"), cell("audio"), cell("zstd"), cell("stored"), cell("retained")))
 
 
 if __name__ == "__main__":

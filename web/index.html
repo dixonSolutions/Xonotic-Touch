@@ -8,15 +8,15 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="description" content="Xonotic Touch, the free arena shooter with touch controls, running in your browser.">
-<title>Xonotic Touch</title>
+<meta name="description" content="Godnotic, the free arena shooter with touch controls, running in your browser.">
+<title>Godnotic</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="stylesheet" href="shell.css">
 </head>
 <body>
-<canvas id="canvas" tabindex="-1" aria-label="Xonotic Touch game view"></canvas>
+<canvas id="canvas" tabindex="-1" aria-label="Godnotic game view"></canvas>
 
 <!-- Soft keyboards only open for a focused text field: the shim focuses this
      one while the engine wants text (chat, console, menu fields). -->
@@ -30,7 +30,7 @@
 
 <div id="xt-overlay">
   <main class="xt-card">
-    <h1 class="xt-title">Xonotic <span>Touch</span></h1>
+    <img class="xt-title" src="godnotic-banner.png" alt="Godnotic">
 
     <section id="xt-status" class="xt-panel" aria-live="polite">
       <p class="xt-line" id="xt-status-text">Checking your browser…</p>
@@ -48,6 +48,7 @@
       <p class="xt-line" id="xt-progress-label">Downloading…</p>
       <div class="xt-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="xt-bar"><div id="xt-bar-fill"></div></div>
       <p class="xt-hint" id="xt-progress-detail"></p>
+      <button class="xt-btn xt-quiet" id="xt-dl-cancel" type="button">Cancel download</button>
     </section>
 
     <section id="xt-ready" class="xt-panel" hidden>

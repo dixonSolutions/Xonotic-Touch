@@ -82,12 +82,11 @@ html, body {
 }
 
 .xt-title {
+  display: block;
+  width: 100%;
+  height: auto;
   margin: 0 0 14px;
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: .02em;
 }
-.xt-title span { color: var(--accent); }
 
 .xt-panel { margin: 0 0 14px; }
 .xt-panel[hidden] { display: none; }
