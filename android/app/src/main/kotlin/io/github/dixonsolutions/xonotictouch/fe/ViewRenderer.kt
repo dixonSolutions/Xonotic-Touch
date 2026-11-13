@@ -302,11 +302,18 @@ class ViewRenderer(
             sub.text = p.str("subtitle")
             sub.visibility = if (sub.text.isEmpty()) View.GONE else View.VISIBLE
             val kindHome = p.str("kind") == "home"
+            // a dialog or sheet screen sizes to its content inside the dialog box
+            val modal = p.str("presentation") in setOf("dialog", "sheet")
+            (stickyHost.layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
+                lp.height = if (modal) ViewGroup.LayoutParams.WRAP_CONTENT else 0; lp.weight = if (modal) 0f else 1f; stickyHost.layoutParams = lp
+            }
+            (sv.layoutParams as? FrameLayout.LayoutParams)?.let { lp -> lp.height = if (modal) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT; sv.layoutParams = lp }
+            if (modal) { bar.setPadding(dp(8f), 0, dp(8f), dp(4f)); body.setPadding(dp(8f), dp(4f), dp(8f), dp(8f)); bottom.setPadding(dp(8f), dp(8f), dp(8f), dp(4f)) }
             // the pause menu sits on a scrim over the frozen game frame: the player sees the match
-            root.setBackgroundColor(if (p.str("kind") == "game") 0xB3000000.toInt() else Theme.BG)
+            root.setBackgroundColor(if (p.str("kind") == "game") 0xB3000000.toInt() else if (modal) Color.TRANSPARENT else Theme.BG)
             bar.visibility = if (p["header"].obj().bool("hidden")) View.GONE else View.VISIBLE
             titleV.visibility = if (kindHome) View.INVISIBLE else View.VISIBLE // Home shows the banner instead
-            back.visibility = if (host.canBack() && !kindHome) View.VISIBLE else View.GONE
+            back.visibility = if (host.canBack() && !kindHome && !modal) View.VISIBLE else View.GONE
             if (p["header"].obj().bool("compact")) titleV.textSize = Theme.SP_TITLE
             trailing.removeAllViews()
             // header actions are quiet (Quit must not compete with Play)

@@ -269,7 +269,17 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
             "disconnected" -> toast("Disconnected: ${ev.str("reason")}", "error")
             "rejected" -> toast("Refused: ${ev.str("reason")}", "error")
             "failed" -> toast(ev.str("reason"), "error")
-            "password" -> toast(if (ev.str("kind") == "wrong") "Wrong password for ${ev.str("address")}" else "${ev.str("address")} needs a password", "warning")
+            "password" -> {
+                val wrong = ev.str("kind") == "wrong"
+                val addr = ev.str("address")
+                // the described prompt when there is one; otherwise (or when the
+                // description did not come back to it) a native one, so a refused
+                // join always ends at a password prompt with the reason
+                main.postDelayed({
+                    val modal = client?.store?.app?.props?.get("modal").list()
+                    if (modal.isNullOrEmpty() && app.str("state") == "menu") passwordPrompt(addr, wrong)
+                }, 700)
+            }
         }
     }
 
@@ -405,6 +415,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         if (transition != "push" && screens.isNotEmpty()) screens.removeAt(screens.size - 1)
         screens.remove(id)
         screens.add(id)
+        hideKeyboard()
         (view.parent as? ViewGroup)?.removeView(view)
         screenLayer.addView(view, match())
         if (old != null && old !== view && old !== skeleton) {
@@ -429,7 +440,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
 
     override fun showDialog(view: View?) {
         dialogLayer.removeAllViews()
-        if (view == null) { dialogLayer.visibility = View.GONE; return }
+        if (view == null) { dialogLayer.visibility = View.GONE; hideKeyboard(); return }
         dialogLayer.addView(view, match())
         dialogLayer.visibility = View.VISIBLE
         root.visibility = View.VISIBLE
@@ -498,6 +509,48 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         box.addView(col)
         frame.addView(box, FrameLayout.LayoutParams(Theme.dp(activity, 560f), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
         showDialog(frame)
+    }
+
+    /** The join password prompt: the password goes to the engine's private cvar through `fe password`, never kept here. */
+    private fun passwordPrompt(addr: String, wrong: Boolean) {
+        val col = Kit.column(activity, 14f)
+        col.addView(Kit.text(activity, if (wrong) "Wrong password" else "Password needed", Theme.SP_HEADLINE, if (wrong) Theme.BAD else Theme.TEXT, bold = true).apply { typeface = Theme.display })
+        col.addView(Kit.text(activity, if (wrong) "$addr refused that password. Try again." else "$addr needs a password to join.", Theme.SP_BODY, Theme.TEXT_MUTED))
+        var field: android.widget.EditText? = null
+        val join = {
+            val pw = field?.text?.toString() ?: ""
+            field?.setText("")
+            if (pw.isNotEmpty()) {
+                showDialog(null)
+                NativeBridge.enqueue(FeArgs.command("password", addr, pw))
+            }
+        }
+        val f = Kit.input(activity, "", "Password", password = true) { }
+        f.setOnEditorActionListener { _, a, _ -> if (a == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) { join(); true } else false }
+        field = f
+        col.addView(f, android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        col.addView(Kit.text(activity, "Sent to this game's host only, as a proof, never as text.", Theme.SP_CAPTION, Theme.TEXT_DIM))
+        val actions = Kit.row(activity, 12f)
+        actions.gravity = Gravity.END
+        actions.addView(Kit.button(activity, "Cancel") { showDialog(null) })
+        actions.addView(Kit.button(activity, "Join", primary = true, iconName = "play") { join() })
+        col.addView(actions)
+        val frame = FrameLayout(activity)
+        frame.setBackgroundColor(0xB3000000.toInt())
+        frame.isClickable = true
+        val box = Kit.card(activity, clickable = false, radiusDp = 24f)
+        box.isClickable = true
+        val p = Theme.dp(activity, 24f)
+        box.setPadding(p, p, p, p)
+        box.addView(col)
+        frame.addView(box, FrameLayout.LayoutParams(Theme.dp(activity, 600f), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        showDialog(frame)
+        f.requestFocus()
+    }
+
+    private fun hideKeyboard() {
+        val imm = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager ?: return
+        imm.hideSoftInputFromWindow(root.windowToken, 0)
     }
 
     // ---------------------------------------------------------------- join links
