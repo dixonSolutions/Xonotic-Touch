@@ -43,20 +43,47 @@ static qbool tlua_cl_cvar_writable(const char *name)
 	return tlua_prefixed(name, allow);
 }
 
+// Console commands a client mod may run (xt.exec, with the exec permission).
+// Nothing that writes files (screenshot), changes binds or settings, quits
+// or connects, opens a text input or the menu over the game (messagemode,
+// togglemenu: on a touchscreen there may be no way back), or loads files by
+// name without a limit (play; xt.sound is the bounded way):
+//   echo                    text in the console
+//   say, say_team           chat as the player: one line every 2 s, all mods together
+//   weapnext, weapprev, weaplast, weapbest   switch weapon
+//   impulse <number>        the game's weapon and action impulses (the server decides)
+//   ready                   toggle ready in warmup
+//   +showscores, -showscores the scoreboard
+//   kill                    respawn (suicide)
 static qbool tlua_cl_command_allowed(const char *word, const char *line)
 {
 	static const char *const allow[] = {
-		"echo", "say", "say_team", "screenshot", "togglemenu", "weapnext", "weapprev",
-		"weaplast", "weapbest", "messagemode", "messagemode2", "ready", "+showscores",
-		"-showscores", "kill", "impulse", "play", NULL};
+		"echo", "say", "say_team", "weapnext", "weapprev", "weaplast", "weapbest",
+		"ready", "+showscores", "-showscores", "kill", "impulse", NULL};
 	static double lastsay;
 	int i;
-	(void)line;
 	for (i = 0; allow[i]; i++)
 		if (!strcmp(word, allow[i]))
 			break;
 	if (!allow[i])
 		return false;
+	if (!strcmp(word, "impulse"))
+	{
+		// exactly one number
+		const char *p = line;
+		while (*p == ' ')
+			p++;
+		p += 7;
+		while (*p == ' ')
+			p++;
+		if (!*p)
+			return false;
+		for (; *p >= '0' && *p <= '9'; p++)
+			;
+		while (*p == ' ')
+			p++;
+		return !*p;
+	}
 	if (!strncmp(word, "say", 3))
 	{
 		// no chat spam: one line every two seconds from all mods together
@@ -64,6 +91,35 @@ static qbool tlua_cl_command_allowed(const char *word, const char *line)
 			return false;
 		lastsay = host.realtime;
 	}
+	return true;
+}
+
+// Pictures and sounds a mod loads stay in the engine's caches for the whole
+// session (the picture cache has a fixed number of slots, and a full one
+// hands every later caller the wrong picture), so all mods together may name
+// only so many different files.
+#define TLUA_MAX_ASSETS 64
+static char tlua_assets[TLUA_MAX_ASSETS * 2][100];
+static int tlua_numassets;
+
+static qbool tlua_cl_asset_ok(const char *path)
+{
+	int i;
+	for (i = 0; i < tlua_numassets; i++)
+		if (!strcmp(tlua_assets[i], path))
+			return true;
+	if (tlua_numassets >= (int)(sizeof(tlua_assets) / sizeof(tlua_assets[0])))
+		return false;
+	{
+		// pictures and sounds have separate budgets
+		int n = 0, pic = !strncmp(path, "gfx/", 4);
+		for (i = 0; i < tlua_numassets; i++)
+			if ((strncmp(tlua_assets[i], "gfx/", 4) == 0) == pic)
+				n++;
+		if (n >= TLUA_MAX_ASSETS)
+			return false;
+	}
+	dp_strlcpy(tlua_assets[tlua_numassets++], path, sizeof(tlua_assets[0]));
 	return true;
 }
 
@@ -130,6 +186,8 @@ static int tlua_draw_pic(lua_State *L)
 	for (p = path; *p; p++)
 		if (!isalnum((unsigned char)*p) && *p != '/' && *p != '_' && *p != '-' && *p != '.')
 			return luaL_error(L, "xt.draw.pic: bad character in path");
+	if (!tlua_cl_asset_ok(path))
+		return 0; // over the budget of different pictures
 	pic = Draw_CachePic_Flags(path, CACHEPICFLAG_NOTPERSISTENT | CACHEPICFLAG_FAILONMISSING);
 	if (!pic)
 		return 0;
@@ -322,6 +380,8 @@ static int tlua_sound(lua_State *L)
 	}
 	if (++count > 16) // no more than 16 sounds a second from all mods
 		return 0;
+	if (!tlua_cl_asset_ok(path))
+		return 0; // over the budget of different sounds
 	lua_pushboolean(L, S_LocalSound(path));
 	return 1;
 }
@@ -492,6 +552,12 @@ static void tlua_cl_draw(const char *event)
 void TouchLua_ClientFrame(void)
 {
 	TLua_InitOnce();
+	TLua_FrameStart();
+	// a loading screen redraw inside a call into a mod (a picture or sound it
+	// loads) comes back here: leave that call alone
+	if (TLua_Busy())
+		return;
+	tlua_cl_drawing = false;
 	TLua_SV_CheckStopped();
 	if (cls.state == ca_dedicated)
 		return;
@@ -512,6 +578,8 @@ qbool TouchLua_KeyEvent(int key, int ascii, qbool down)
 	if (key < 0 || key >= MAX_KEYS)
 		return false;
 	tlua_keystate[key] = down;
+	if (TLua_Busy()) // a key read while a mod's call loads something
+		return false;
 	if (!tlua_client.loaded || !TLua_AnyHandler(&tlua_client, "key"))
 	{
 		took = !down && held[key];

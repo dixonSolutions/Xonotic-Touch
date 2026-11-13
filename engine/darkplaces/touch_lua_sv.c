@@ -50,6 +50,10 @@ static qbool tlua_sv_cvar_writable(const char *name)
 	return false;
 }
 
+// Console commands a server plugin may run (xt.exec, with the exec
+// permission): say and echo (text), restart (the map), kick (a player), and
+// sv_cmd gotomap, endmatch, allready, lockteams, unlockteams, shuffleteams,
+// nextmap (match control). None writes files, binds keys, quits or connects.
 static qbool tlua_sv_command_allowed(const char *word, const char *line)
 {
 	static const char *const allow[] = {"say", "echo", "restart", "kick", NULL};
@@ -157,12 +161,43 @@ static const char *tlua_sv_text(lua_State *L, int idx, char *out, size_t outsize
 	return TLua_CleanText(luaL_checkstring(L, idx), out, outsize, true);
 }
 
+// Messages to players go into each client's reliable buffer; one that
+// overflows gets the client dropped. All plugins together may send each
+// player 10 messages a second (a burst of 20), and the whole server 5
+// broadcasts a second (a burst of 10); a message that does not fit in the
+// buffer's free space is dropped instead of overflowing it.
+#define TLUA_SV_TELL_RATE 10.0
+#define TLUA_SV_TELL_BURST 20.0
+#define TLUA_SV_BCAST_RATE 5.0
+#define TLUA_SV_BCAST_BURST 10.0
+static double tlua_sv_tokens[MAX_SCOREBOARD + 1], tlua_sv_tokentime[MAX_SCOREBOARD + 1];
+
+static qbool tlua_sv_take(int slot, double rate, double burst)
+{
+	double *t = &tlua_sv_tokens[slot], dt = host.realtime - tlua_sv_tokentime[slot];
+	tlua_sv_tokentime[slot] = host.realtime;
+	if (dt < 0)
+		dt = 0;
+	*t = min(burst, *t + dt * rate);
+	if (*t < 1)
+		return false;
+	*t -= 1;
+	return true;
+}
+
 static void tlua_sv_send(client_t *c, int svc, const char *text)
 {
-	if (!c->netconnection)
+	sizebuf_t *msg;
+	int slot = (int)(c - svs.clients) + 1;
+	if (!c->netconnection || slot < 1 || slot > MAX_SCOREBOARD)
 		return;
-	MSG_WriteChar(&c->netconnection->message, svc);
-	MSG_WriteString(&c->netconnection->message, text);
+	msg = &c->netconnection->message;
+	if (msg->cursize + (int)strlen(text) + 64 > msg->maxsize)
+		return;
+	if (!tlua_sv_take(slot, TLUA_SV_TELL_RATE, TLUA_SV_TELL_BURST))
+		return;
+	MSG_WriteChar(msg, svc);
+	MSG_WriteString(msg, text);
 }
 
 static int tlua_sv_tell(lua_State *L)
@@ -196,7 +231,7 @@ static int tlua_sv_broadcast(lua_State *L)
 	TLua_Require(L, TLUA_PERM_MESSAGES);
 	tlua_sv_text(L, 1, text, sizeof(text) - 1);
 	dp_strlcat(text, "\n", sizeof(text));
-	if (sv.active)
+	if (sv.active && tlua_sv_take(0, TLUA_SV_BCAST_RATE, TLUA_SV_BCAST_BURST))
 		SV_BroadcastPrint(text);
 	return 0;
 }
@@ -387,6 +422,8 @@ static float tlua_sv_event(const char *ev, int a, int b, float n, const char *s)
 {
 	tlua_svev_t e;
 	char name[64];
+	if (TLua_Busy()) // the game's code called back into here from inside a plugin's call
+		return !strcmp(ev, "damage") ? n : 0;
 	if (!strcmp(ev, "frame"))
 	{
 		tlua_sv_frame();
@@ -465,6 +502,8 @@ void TouchLua_SV_InstallBuiltins(prvm_prog_t *prog)
 
 void TLua_SV_CheckStopped(void)
 {
+	if (TLua_Busy())
+		return;
 	if (tlua_server.loaded && (!sv.active || svs.threaded))
 		TLua_UnloadAll(&tlua_server, "server stopped");
 }

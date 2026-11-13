@@ -2,3 +2,5 @@ title: Settings panel
 version: 1.0
 author: Godnotic
 description: A small settings page made with xt.ui: crosshair size and the HUD clock, saved with xt.save. Open it with lua_settings_panel_open.
+api: 1
+permissions: events, display, input, commands, cvar_read, cvar_write, exec, storage

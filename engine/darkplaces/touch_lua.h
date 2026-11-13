@@ -14,9 +14,10 @@ limit, an instruction limit and a time limit per call; cvar writes and console
 commands by allowlist. A mod that errors or hits a limit is stopped and marked
 with the error; the game goes on. docs/MODDING.md is the API reference.
 
-The engine reaches this code through three single-line hooks in upstream files,
+The engine reaches this code through four single-line hooks in upstream files,
 each marked // Touch: (a draw call in cl_screen.c, a key call in keys.c, the
-builtin table in sv_main.c) plus one include in the server QC; everything else,
+builtin table in sv_main.c, server text in csprogs.c) plus one include in the
+server QC; everything else,
 including the console commands and cvars, is registered from here on first use.
 That keeps the upstream merge surface to a handful of lines (docs/MODDING.md).
 */
@@ -40,5 +41,11 @@ qbool TouchLua_KeyEvent(int key, int ascii, qbool down);
 // (SV_VM_Setup, after prog->builtins is set); registers everything on the
 // first call, so a dedicated server gets the plugin cvars and commands too.
 void TouchLua_SV_InstallBuiltins(struct prvm_prog_s *prog);
+
+// Text a server put in the client's command buffer (svc_stufftext, from
+// CL_VM_Parse_StuffCmd). The engine runs it as if typed at the console, so
+// the mod manager notes it: until it has run, manager commands and the Lua
+// limit cvars refuse changes (TLua_FromServer).
+void TouchLua_ServerText(void);
 
 #endif

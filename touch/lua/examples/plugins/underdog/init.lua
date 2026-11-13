@@ -1,6 +1,6 @@
 -- Underdog: whoever has the fewest kills this map takes less damage.
-if not xt.cvar("lua_underdog_scale") then
-  xt.setcvar("lua_underdog_scale", "0.75")
+if not xt.cvar("sv_lua_underdog_scale") then
+  xt.setcvar("sv_lua_underdog_scale", "0.75")
 end
 
 local kills = {}
@@ -23,7 +23,7 @@ end
 local told = false
 xt.on("damage", function(target, attacker, damage, deathtype)
   if target == lowest() and attacker ~= target then
-    local scaled = damage * (tonumber(xt.cvar("lua_underdog_scale")) or 0.75)
+    local scaled = damage * (tonumber(xt.cvar("sv_lua_underdog_scale")) or 0.75)
     if not told then
       print(string.format("underdog: %s took %.0f instead of %.0f (%s)", xt.player(target).name, scaled, damage, deathtype))
       told = true

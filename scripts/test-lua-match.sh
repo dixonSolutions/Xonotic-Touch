@@ -22,6 +22,14 @@ cp -r "$ROOT/touch/lua/examples/mods/hud_clock" "$ROOT/touch/lua/examples/mods/s
 cp -r "$ROOT/touch/lua/examples/plugins/welcome" "$ROOT/touch/lua/examples/plugins/underdog" "$UD/plugins/"
 printf 'hud_clock\nsettings_panel\n' > "$UD/mods/enabled.txt"
 printf 'underdog\nwelcome\n' > "$UD/plugins/enabled.txt"
+# The examples declare API 1 permissions (mod.txt), which start ungranted; grant
+# what each one asks for, as lua_mod_permission / sv_lua_plugin_permission
+# would (<userdir>/luastate/<realm>/grants/<name>.txt: "v1 <hex mask>").
+mkdir -p "$UD/luastate/mods/grants" "$UD/luastate/plugins/grants"
+printf 'v1 56f\n' > "$UD/luastate/mods/grants/hud_clock.txt"         # events display commands cvar_read cvar_write storage players state
+printf 'v1 ff\n' > "$UD/luastate/mods/grants/settings_panel.txt"     # events display input commands cvar_read cvar_write exec storage
+printf 'v1 10d\n' > "$UD/luastate/plugins/grants/underdog.txt"       # events players cvar_read cvar_write
+printf 'v1 701\n' > "$UD/luastate/plugins/grants/welcome.txt"        # events players state messages
 
 cat > "$UD/data/match.cfg" <<EOF
 set sv_cheats 1
@@ -47,7 +55,7 @@ defer 46 "quit"
 EOF
 
 LOG="$WORK/out.log"
-SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy timeout 180 "$ENGINE" -xonotic -nosound \
+SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy timeout -k 10 180 "$ENGINE" -xonotic -nosound \
 	-basedir "$BASEDIR" -userdir "$UD" +vid_width 1280 +vid_height 720 +vid_fullscreen 0 \
 	+exec match.cfg > "$LOG" 2>&1
 RC=$?
