@@ -83,6 +83,7 @@ class ViewRenderer(
         e.view.visibility = if (props.bool("hidden")) View.GONE else View.VISIBLE
         val p = parent?.let { nodes[it] } ?: return
         if (p.type == "tabs") { tabsAdd(p, e); return }
+        if (p.type == "split") { splitAdd(p, e); return }
         val place = UiLayout.placement(p.type, type, hints, props)
         val group = when (place) {
             Placement.TOP -> p.top
@@ -175,7 +176,8 @@ class ViewRenderer(
         "row" -> if (props.bool("wrap")) group(id, type, props, FlowGrid(ctx, 0, dp(10f), wrap = true)) else group(id, type, props, Kit.row(ctx, 12f).apply {
             gravity = when (props.str("align")) { "center" -> Gravity.CENTER; "end" -> Gravity.END or Gravity.CENTER_VERTICAL; else -> Gravity.START or Gravity.CENTER_VERTICAL }
         })
-        "form", "split", "pane", "column" -> group(id, type, props, Kit.column(ctx, 12f))
+        "split" -> split(id, props)
+        "form", "pane", "column" -> group(id, type, props, Kit.column(ctx, 12f))
         "grid" -> grid(id, props)
         "tabs" -> tabs(id, props)
         "card" -> card(id, props, hero = false)
@@ -451,12 +453,81 @@ class ViewRenderer(
         val list = nodes.values.filter { it.parent == x.id && it.type == "pane" }.sortedBy { (x.children)?.indexOfChild(it.view) ?: 0 }
         holder.removeAllViews()
         val opts = list.map { it.props.str("key") to Icons.label(it.props.str("icon"), it.props.str("label")) }
-        holder.addView(Kit.segmented(ctx, opts, sel) { v ->
+        // sub-pages: a strip that scrolls sideways when it does not fit
+        val hs = HorizontalScrollView(ctx)
+        hs.isHorizontalScrollBarEnabled = false
+        hs.addView(Kit.segmented(ctx, opts, sel) { v ->
             x.props = x.props + ("value" to v)
             for (p in list) p.view.visibility = if (p.props.str("key") == v) View.VISIBLE else View.GONE
             events.value(x.id, v)
-        }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        })
+        holder.addView(hs, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         for (p in list) p.view.visibility = if (p.props.str("key") == sel || (sel.isEmpty() && p === list.first())) View.VISIBLE else View.GONE
+    }
+
+    /**
+     * List-detail (Settings: vertical tabs). The section list on the start
+     * side scrolls on its own and stays put; the selected section's content
+     * scrolls on the end side. On a compact width the list keeps only its icons.
+     */
+    private fun split(id: String, props: Map<String, Any?>): Entry {
+        val row = Kit.row(ctx, 20f)
+        row.gravity = Gravity.TOP
+        val wdp = ctx.resources.displayMetrics.widthPixels / ctx.resources.displayMetrics.density
+        val compact = wdp < 720
+        val rail = Kit.column(ctx, 6f)
+        val railScroll = ScrollView(ctx)
+        railScroll.isVerticalScrollBarEnabled = true
+        railScroll.scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
+        railScroll.addView(rail)
+        val panes = FrameLayout(ctx)
+        val paneScroll = ScrollView(ctx)
+        paneScroll.isFillViewport = true
+        paneScroll.scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
+        paneScroll.overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+        paneScroll.addView(panes)
+        row.addView(railScroll, LinearLayout.LayoutParams(dp(if (compact) 76f else 300f), ViewGroup.LayoutParams.MATCH_PARENT))
+        row.addView(paneScroll, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+        val e = Entry(id, "split", row, panes, props)
+        e.strip = null
+        e.bind = { x ->
+            rail.removeAllViews()
+            val sel = x.props.str("value")
+            val list = nodes.values.filter { it.parent == x.id && it.type == "pane" }.sortedBy { panes.indexOfChild(it.view) }
+            for (p in list) {
+                val on = p.props.str("key") == sel
+                val item = Kit.row(ctx, 14f)
+                item.minimumHeight = dp(56f)
+                item.setPadding(dp(14f), dp(8f), dp(14f), dp(8f))
+                item.background = if (on) Theme.rounded(0xFF15306A.toInt(), dp(14f).toFloat(), dp(2f), Theme.BLUE) else Theme.surface(ctx, Color.TRANSPARENT, 14f, Color.TRANSPARENT)
+                item.isClickable = true; item.isFocusable = true; item.isSelected = on
+                val icon = View(ctx)
+                icon.background = Icons.drawable(p.props.str("icon"), dp(24f), if (on) Theme.EMBER else Theme.BLUE)
+                item.addView(icon, LinearLayout.LayoutParams(dp(24f), dp(24f)))
+                if (!compact) {
+                    val texts = Kit.column(ctx)
+                    texts.addView(Kit.text(ctx, p.props.str("label"), Theme.SP_BODY, if (on) Color.WHITE else Theme.TEXT, bold = true, lines = 1))
+                    p.props.str("subtitle").takeIf { it.isNotEmpty() }?.let { texts.addView(Kit.text(ctx, it, Theme.SP_CAPTION, Theme.TEXT_MUTED, lines = 1)) }
+                    item.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                }
+                item.contentDescription = p.props.str("label") + if (on) ", selected" else ""
+                item.setOnClickListener { v ->
+                    Kit.haptic(v)
+                    x.props = x.props + ("value" to p.props.str("key"))
+                    bindSafe(x)
+                    paneScroll.scrollTo(0, 0)
+                    events.value(x.id, p.props.str("key"))
+                }
+                rail.addView(item)
+            }
+            for (p in list) p.view.visibility = if (p.props.str("key") == sel || (sel.isEmpty() && p === list.firstOrNull())) View.VISIBLE else View.GONE
+        }
+        return e
+    }
+
+    private fun splitAdd(split: Entry, pane: Entry) {
+        split.children?.addView(pane.view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        bindSafe(split)
     }
 
     private fun aspect(p: Map<String, Any?>, def: Float): Float {

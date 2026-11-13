@@ -265,7 +265,7 @@ object UiLayout {
         return when {
             type == "toolbar" -> Placement.TOP
             type == "actionbar" -> Placement.BOTTOM
-            hints.bool("fill") || type == "list" -> Placement.FILL
+            hints.bool("fill") || type == "list" || type == "split" -> Placement.FILL
             else -> Placement.BODY
         }
     }
