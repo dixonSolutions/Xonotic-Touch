@@ -18,12 +18,12 @@ concurrency:
 env:
   FLATPAK_APP_ID: io.github.dixonSolutions.XonoticTouch
   FLATPAK_REMOTE_NAME: xonotic-touch
-  FLATPAK_REMOTE_URL: https://dixonSolutions.github.io/Xonotic-Touch/flatpak
+  FLATPAK_REMOTE_URL: https://dixonSolutions.github.io/Godnotic/flatpak
   # Must match OpenStore app id exactly (createRevisionFromClick rejects mismatches).
   # Click package ids require a namespace: appname.developer
   CLICK_NAME: xonotictouch.dixonsolutions
   CLICK_FRAMEWORK: ubuntu-touch-24.04-1.x
-  CLICK_REMOTE_URL: https://dixonSolutions.github.io/Xonotic-Touch/click
+  CLICK_REMOTE_URL: https://dixonSolutions.github.io/Godnotic/click
 
 jobs:
   tests:
@@ -89,7 +89,7 @@ jobs:
         with:
           # On-disk filename is exactly this path; auto-upload (disabled below)
           # would also append -${arch} to the *artifact name* only.
-          bundle: XonoticTouch-${{ needs.version.outputs.version }}-${{ matrix.arch }}.flatpak
+          bundle: Godnotic-${{ needs.version.outputs.version }}-${{ matrix.arch }}.flatpak
           manifest-path: flatpak/io.github.dixonSolutions.XonoticTouch.yml
           arch: ${{ matrix.arch }}
           keep-build-dirs: true
@@ -107,7 +107,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: flatpak-${{ matrix.arch }}
-          path: XonoticTouch-${{ needs.version.outputs.version }}-${{ matrix.arch }}.flatpak
+          path: Godnotic-${{ needs.version.outputs.version }}-${{ matrix.arch }}.flatpak
           if-no-files-found: error
 
   click:
@@ -229,19 +229,19 @@ jobs:
           <!DOCTYPE html>
           <html lang="en"><head><meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>Xonotic Touch: touch FPS for Android, Ubuntu Touch and Linux</title>
-          <meta name="description" content="Xonotic Touch is the arena shooter Xonotic with touch controls, for Android, Ubuntu Touch, and any Linux phone, tablet or touchscreen PC via Flatpak.">
+          <title>Godnotic: touch FPS for Android, Ubuntu Touch and Linux</title>
+          <meta name="description" content="Godnotic is the arena shooter Xonotic with touch controls, for Android, Ubuntu Touch, and any Linux phone, tablet or touchscreen PC via Flatpak.">
           </head>
           <body>
-          <h1>Xonotic Touch</h1>
+          <h1>Godnotic</h1>
           <p>The arena shooter <a href="https://xonotic.org">Xonotic</a> with two-thumb touch controls, for
           <strong>Android</strong>, <strong>Ubuntu Touch</strong>, and <strong>any Linux phone, tablet or touchscreen PC</strong> via Flatpak.
           Packages are about 60 MB; maps, textures and music download on first launch.</p>
           <ul>
-            <li>Android: <a href="https://github.com/dixonSolutions/Xonotic-Touch/releases/latest">APK from GitHub Releases</a> (arm64-v8a, armeabi-v7a, x86_64)</li>
+            <li>Android: <a href="https://github.com/dixonSolutions/Godnotic/releases/latest">APK from GitHub Releases</a> (arm64-v8a, armeabi-v7a, x86_64)</li>
             <li>Linux: <a href="flatpak/">Flatpak remote</a> (x86_64 + aarch64; postmarketOS, Mobian, Fedora, Ubuntu and other distros)</li>
             <li>Ubuntu Touch: <a href="https://open-store.io/app/xonotictouch.dixonsolutions">OpenStore</a>, or <a href="click/">.click downloads</a> (arm64 + armhf)</li>
-            <li><a href="https://github.com/dixonSolutions/Xonotic-Touch">Source code and docs on GitHub</a></li>
+            <li><a href="https://github.com/dixonSolutions/Godnotic">Source code and docs on GitHub</a></li>
           </ul>
           <p>Build ${PACKAGE_VERSION} &middot; <a href="changelog.txt">What changed</a></p>
           </body></html>
@@ -305,7 +305,7 @@ jobs:
           cp release/android-x86_64/*.apk release/upload/
           ls -la release/upload/
           {
-            echo "## Xonotic Touch ${VERSION}"
+            echo "## Godnotic ${VERSION}"
             echo
             echo "Immutable release — previous tags are kept."
             echo
@@ -314,7 +314,7 @@ jobs:
             echo "### Flatpak (Linux)"
             echo '```bash'
             echo "flatpak remote-add --user --if-not-exists xonotic-touch \\"
-            echo "  https://dixonSolutions.github.io/Xonotic-Touch/flatpak"
+            echo "  https://dixonSolutions.github.io/Godnotic/flatpak"
             echo "flatpak install --user xonotic-touch io.github.dixonSolutions.XonoticTouch"
             echo '```'
             echo
@@ -325,11 +325,11 @@ jobs:
             echo "OpenStore: https://open-store.io/app/xonotictouch.dixonsolutions"
             echo
             echo "Stable sideload downloads (always latest):"
-            echo "- https://dixonSolutions.github.io/Xonotic-Touch/click/latest-arm64.click"
-            echo "- https://dixonSolutions.github.io/Xonotic-Touch/click/latest-armhf.click"
+            echo "- https://dixonSolutions.github.io/Godnotic/click/latest-arm64.click"
+            echo "- https://dixonSolutions.github.io/Godnotic/click/latest-armhf.click"
             echo
             echo '```bash'
-            echo "wget https://dixonSolutions.github.io/Xonotic-Touch/click/latest-arm64.click"
+            echo "wget https://dixonSolutions.github.io/Godnotic/click/latest-arm64.click"
             echo "pkcon install-local --allow-untrusted latest-arm64.click"
             echo '```'
             echo
@@ -337,9 +337,9 @@ jobs:
             echo
             echo "Sideload — arm64-v8a for anything from the last decade, armeabi-v7a for older phones:"
             echo
-            echo "- \`XonoticTouch-${VERSION}-arm64-v8a.apk\`"
-            echo "- \`XonoticTouch-${VERSION}-armeabi-v7a.apk\`"
-            echo "- \`XonoticTouch-${VERSION}-x86_64.apk\` (Chromebooks, Waydroid, emulators)"
+            echo "- \`Godnotic-${VERSION}-arm64-v8a.apk\`"
+            echo "- \`Godnotic-${VERSION}-armeabi-v7a.apk\`"
+            echo "- \`Godnotic-${VERSION}-x86_64.apk\` (Chromebooks, Waydroid, emulators)"
             echo
             echo "First launch downloads about 1 GB of maps, textures and music."
             echo
@@ -372,7 +372,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ needs.version.outputs.tag }}
-          name: Xonotic Touch ${{ needs.version.outputs.version }}
+          name: Godnotic ${{ needs.version.outputs.version }}
           body_path: release/notes.md
           files: release/upload/*
           fail_on_unmatched_files: true

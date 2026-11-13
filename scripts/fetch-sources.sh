@@ -7,9 +7,9 @@ cd "$ROOT"
 
 MODE="${1:-code}"
 XONOTIC_URL="${XONOTIC_URL:-https://gitlab.com/xonotic/xonotic.git}"
-DARKPLACES_URL="${DARKPLACES_URL:-https://gitlab.com/xonotic/darkplaces.git}"
+DARKPLACES_URL="${DARKPLACES_URL:-https://github.com/dixonSolutions/Godnotic-darkplaces.git}"
 GMQCC_URL="${GMQCC_URL:-https://gitlab.com/xonotic/gmqcc.git}"
-DATA_URL="${DATA_URL:-https://gitlab.com/xonotic/xonotic-data.pk3dir.git}"
+DATA_URL="${DATA_URL:-https://github.com/dixonSolutions/Godnotic-data.git}"
 BLIND_ID_URL="${BLIND_ID_URL:-https://gitlab.com/xonotic/d0_blind_id.git}"
 
 clone_repo() {

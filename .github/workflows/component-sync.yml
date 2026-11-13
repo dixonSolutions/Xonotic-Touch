@@ -1,0 +1,121 @@
+name: Sync Godnotic components
+
+# Poll only the two Godnotic-owned source repositories. Upstream Xonotic has
+# its own review path; this workflow never merges or publishes to main.
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: component-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Import, build and propose component updates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Godnotic main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Install test-only Python dependency
+        run: python -m pip install -q numpy
+
+      - name: Resolve and import current component commits
+        id: import
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          darkplaces=$(gh api repos/dixonSolutions/Godnotic-darkplaces/commits/main --jq .sha)
+          data=$(gh api repos/dixonSolutions/Godnotic-data/commits/main --jq .sha)
+          python3 scripts/export-components.py --import darkplaces "$darkplaces"
+          python3 scripts/export-components.py --import data "$data"
+          git add -- components.json engine/darkplaces engine/data/xonotic-data.pk3dir
+          python3 scripts/export-components.py --check darkplaces "$darkplaces"
+          python3 scripts/export-components.py --check data "$data"
+          echo "darkplaces=$darkplaces" >> "$GITHUB_OUTPUT"
+          echo "data=$data" >> "$GITHUB_OUTPUT"
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Both component pins are current."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install native build dependencies
+        if: steps.import.outputs.changed == 'true'
+        run: |
+          . scripts/lib/xonotic-shlib.sh
+          xonotic_install_native_deps
+
+      - name: Build integrated QuakeC and engine
+        if: steps.import.outputs.changed == 'true'
+        env:
+          DARKPLACES: ${{ steps.import.outputs.darkplaces }}
+          DATA: ${{ steps.import.outputs.data }}
+        run: |
+          set -euo pipefail
+          . scripts/lib/xonotic-shlib.sh
+          QCCFLAGS_WATERMARK="components-${DARKPLACES:0:8}-${DATA:0:8}" xonotic_compile_qc_only
+          xonotic_compile_engine_only
+
+      - name: Run quick checks
+        if: steps.import.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          scripts/test-components.sh
+          scripts=$(grep -oE 'bash scripts/test-[A-Za-z0-9_.-]+\.sh' .github/workflows/tests.yml | awk '{ print $2 }' | sort -u)
+          for test_script in $scripts; do
+            echo "::group::$test_script"
+            bash "$test_script"
+            echo "::endgroup::"
+          done
+
+      - name: Open or refresh component sync pull request
+        if: steps.import.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DARKPLACES: ${{ steps.import.outputs.darkplaces }}
+          DATA: ${{ steps.import.outputs.data }}
+          BRANCH: bot/component-sync
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c "$BRANCH"
+          git commit -m "Sync Godnotic components"
+          git push --force origin "HEAD:refs/heads/$BRANCH"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          body = f"""Automated import of the current commits from the Godnotic-owned engine
+          and game-data repositories. The integrated QuakeC/engine build and
+          quick checks passed before this pull request was opened.
+
+          - Godnotic-darkplaces: `{os.environ['DARKPLACES']}`
+          - Godnotic-data: `{os.environ['DATA']}`
+
+          Review and merge this pull request to publish a release.
+          """
+          Path(os.environ['RUNNER_TEMP'], 'component-sync-body.md').write_text(body, encoding='utf-8')
+          PY
+          pr=$(gh pr list --head "$BRANCH" --base main --state open --json number --jq '.[0].number // empty')
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --title "Sync Godnotic component sources" --body-file "$RUNNER_TEMP/component-sync-body.md"
+          else
+            gh pr create --base main --head "$BRANCH" --title "Sync Godnotic component sources" \
+              --body-file "$RUNNER_TEMP/component-sync-body.md"
+          fi

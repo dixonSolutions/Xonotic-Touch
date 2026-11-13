@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
-FLATPAK_REMOTE_URL="${FLATPAK_REMOTE_URL:-https://dixonSolutions.github.io/Xonotic-Touch/flatpak}"
+FLATPAK_REMOTE_URL="${FLATPAK_REMOTE_URL:-https://dixonSolutions.github.io/Godnotic/flatpak}"
 FLATPAK_APP_ID="${FLATPAK_APP_ID:-io.github.dixonSolutions.XonoticTouch}"
 REPO_DIR="${REPO_DIR:-$ROOT/combined-repo}"
 SITE_DIR="${SITE_DIR:-$ROOT/site/flatpak}"
@@ -105,9 +105,9 @@ fi
 cat > "$SITE_DIR/index.html" <<EOF
 <!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Xonotic Touch Flatpak remote</title></head>
+<head><meta charset="utf-8"><title>Godnotic Flatpak remote</title></head>
 <body>
-<h1>Xonotic Touch Flatpak remote</h1>
+<h1>Godnotic Flatpak remote</h1>
 <p>${VERSION_NOTE}OSTree history is retained (last ${PRUNE_DEPTH} commits per ref) so older builds remain available for rollback.</p>
 <pre>
 flatpak remote-add --user --if-not-exists xonotic-touch \\

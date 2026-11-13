@@ -1,5 +1,5 @@
 [Desktop Entry]
-Name=Xonotic Touch
+Name=Godnotic
 Comment=Touch-only arena FPS for Ubuntu Touch
 Exec=bin/start.sh
 Icon=xonotic.png

@@ -8,7 +8,7 @@ name: Web
 #     remotes, as a shell: this fork's own files (about 15 MB) are on Pages,
 #     and the stock Xonotic pk3s come from the Vercel deployment at run time
 #     (repository variable XT_WEB_DATA_URL, default
-#     https://xonotic-web.vercel.app/data/), because Pages caps a site at 1 GB
+#     https://godnotic.vercel.app/data/), because Pages caps a site at 1 GB
 # Vercel builds the full site itself from main (vercel.json,
 # scripts/vercel-build.sh); this workflow does not deploy there.
 # See docs/WEB.md.
@@ -31,7 +31,7 @@ concurrency:
 
 env:
   EMSDK_VERSION: '7.0.0'  # the version the web build was tested with
-  XT_WEB_DATA_URL: ${{ vars.XT_WEB_DATA_URL || 'https://xonotic-web.vercel.app/data/' }}
+  XT_WEB_DATA_URL: ${{ vars.XT_WEB_DATA_URL || 'https://godnotic.vercel.app/data/' }}
 
 jobs:
   build:

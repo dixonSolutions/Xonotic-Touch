@@ -1,5 +1,5 @@
 #!/bin/sh
-# Launch wrapper for Xonotic Touch (Flatpak, Click, local packages).
+# Launch wrapper for Godnotic (Flatpak, Click, local packages).
 #
 # On Ubuntu Touch this script runs inside AppArmor click confinement, which
 # denies exec of host binaries outside the click tree (see
@@ -602,7 +602,7 @@ write_fetch_paused() {
     {
         printf '%s\n' paused
         printf '%s\n' "$_wfp_pct"
-        printf '%s\n' "Download paused. Reopen Xonotic Touch to continue."
+        printf '%s\n' "Download paused. Reopen Godnotic to continue."
     } > "${PROGRESS_FILE}.tmp.$$" 2>/dev/null \
         && mv -f "${PROGRESS_FILE}.tmp.$$" "$PROGRESS_FILE" 2>/dev/null \
         || true
@@ -938,7 +938,7 @@ cd "$USER_BASE" 2>/dev/null || xonotic_log "cannot enter $USER_BASE — engine m
 # come last so they win over the defaults above them.
 run_engine() {
     "$BIN" -xonotic \
-        -customgamename "Xonotic Touch" \
+        -customgamename "Godnotic" \
         -customgamenetworkfiltername Xonotic \
         +exec xonotic.cfg \
         +exec screen.layout.cfg \

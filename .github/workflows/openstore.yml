@@ -97,7 +97,7 @@ jobs:
             exit 1
           fi
           # OpenStore prepends each revision's changelog to the app's changelog.
-          CHANGELOG="Xonotic Touch ${VERSION}. Release notes: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+          CHANGELOG="Godnotic ${VERSION}. Release notes: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
           for f in artifacts/click-arm64/*.click artifacts/click-armhf/*.click; do
             for attempt in 1 2 3; do
               echo "Publishing $(basename "$f") (attempt $attempt)..."

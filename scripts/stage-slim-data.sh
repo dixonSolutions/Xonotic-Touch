@@ -61,3 +61,9 @@ if [ -d "$ROOT/touch/gfx" ]; then
 fi
 
 echo "Staged slim data to $DEST"
+
+# Godnotic banner and icon are shared by every package and the browser.
+if [ -d "$ROOT/branding/game-gfx" ]; then
+    mkdir -p "$DEST/xonotic-data.pk3dir/gfx"
+    cp -a "$ROOT/branding/game-gfx/." "$DEST/xonotic-data.pk3dir/gfx/"
+fi

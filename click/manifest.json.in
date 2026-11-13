@@ -1,6 +1,6 @@
 {
     "name": "@CLICK_NAME@",
-    "title": "Xonotic Touch",
+    "title": "Godnotic",
     "version": "@CLICK_VERSION@",
     "maintainer": "dixonSolutions <noreply@github.com>",
     "architecture": "@CLICK_ARCH@",

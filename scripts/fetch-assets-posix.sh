@@ -7,10 +7,19 @@
 set -eu
 
 DATA_DIR="${1:?usage: fetch-assets-posix.sh <user-data-dir>}"
-AUTOBUILD_URL="${XONOTIC_AUTOBUILD_URL:-https://beta.xonotic.org/autobuild}"
-AUTOBUILD_USER="${XONOTIC_AUTOBUILD_USER:-xonotic}"
-AUTOBUILD_PASS="${XONOTIC_AUTOBUILD_PASS:-g-23}"
+AUTOBUILD_URL="${XONOTIC_AUTOBUILD_URL:-https://github.com/dixonSolutions/Godnotic-data/releases/download/data-20261107}"
+AUTOBUILD_USER="${XONOTIC_AUTOBUILD_USER:-}"
+AUTOBUILD_PASS="${XONOTIC_AUTOBUILD_PASS:-}"
 PROGRESS="${XONOTIC_ASSET_FETCH_PROGRESS:-}"
+
+GODNOTIC_DATA_ARCHIVE="${GODNOTIC_DATA_ARCHIVE:-Godnotic-data-20261107.zip}"
+asset_curl() {
+    if [ -n "$AUTOBUILD_USER" ]; then
+        command curl --user "$AUTOBUILD_USER:$AUTOBUILD_PASS" "$@"
+    else
+        command curl "$@"
+    fi
+}
 
 progress_write() {
     status="$1"
@@ -75,7 +84,7 @@ download_zip() {
 
     if command -v curl >/dev/null 2>&1; then
         expected=$(
-            curl -sI -L --user "${AUTOBUILD_USER}:${AUTOBUILD_PASS}" "$url" \
+            asset_curl -sI -L "$url" \
                 | awk 'BEGIN{c=0} tolower($1)=="content-length:" {c=$2} END{print c+0}' \
                 | tr -d '\r'
         )
@@ -86,7 +95,7 @@ download_zip() {
             progress_write running "$pct_hi" "Downloaded ${zip_name}"
             return 0
         fi
-        curl -fL -C - --user "${AUTOBUILD_USER}:${AUTOBUILD_PASS}" \
+        asset_curl -fL -C - \
             -o "$zip_path" "$url" &
         cpid=$!
         while kill -0 "$cpid" 2>/dev/null; do
@@ -119,11 +128,11 @@ download_zip() {
         # Busybox wget: no live percent; bump message before/after.
         progress_write running "$pct_lo" "Downloading ${zip_name} (please wait)..."
         wget -O "$zip_path" \
-            "${scheme}://${AUTOBUILD_USER}:${AUTOBUILD_PASS}@${host_path}/${zip_name}"
+            "$url"
         progress_write running "$pct_hi" "Downloaded ${zip_name}"
         return
     fi
-    echo "xonotic-touch: curl or wget required to download game assets" >&2
+    echo "godnotic: curl or wget required to download game assets" >&2
     return 1
 }
 
@@ -132,7 +141,7 @@ extract_pk3() {
     extract_dir="$2"
 
     if ! command -v unzip >/dev/null 2>&1; then
-        echo "xonotic-touch: unzip required to extract game assets" >&2
+        echo "godnotic: unzip required to extract game assets" >&2
         return 1
     fi
 
@@ -141,7 +150,7 @@ extract_pk3() {
     # Busybox ash: expand safely so a missing glob does not create a bogus name.
     set -- "$extract_dir"/Xonotic/data/*.pk3
     if [ ! -f "$1" ]; then
-        echo "xonotic-touch: no pk3 files extracted from $zip_path" >&2
+        echo "godnotic: no pk3 files extracted from $zip_path" >&2
         return 1
     fi
     mv "$@" "$DATA_DIR/"
@@ -159,8 +168,8 @@ if assets_ready; then
     exit 0
 fi
 
-progress_write running 5 "Starting parallel downloads from Xonotic servers..."
-echo "xonotic-touch: downloading game assets in parallel (first launch may take several minutes)..." >&2
+progress_write running 5 "Downloading Godnotic game data..."
+echo "godnotic: downloading game assets in parallel (first launch may take several minutes)..." >&2
 
 tmp="$DATA_DIR/.fetch-tmp"
 mkdir -p "$tmp"
@@ -176,7 +185,7 @@ start_bg_curl() {
     _bg_name="$2"
     _bg_url="${AUTOBUILD_URL}/${_bg_name}"
     if command -v curl >/dev/null 2>&1; then
-        curl -fL -C - --user "${AUTOBUILD_USER}:${AUTOBUILD_PASS}" \
+        asset_curl -fL -C - \
             -o "$_bg_path" "$_bg_url" >/dev/null 2>&1 &
         echo $! >> "$tmp/pids"
         return 0
@@ -185,17 +194,10 @@ start_bg_curl() {
     download_zip "$_bg_path" "$_bg_name" 10 80
 }
 
-if ! has_pk3 'xonotic-*-data.pk3' || ! has_pk3 'xonotic-*-nexcompat.pk3'; then
+if ! has_pk3 'xonotic-*-data.pk3' || ! has_pk3 'xonotic-*-nexcompat.pk3' \
+    || ! has_pk3 'xonotic-*-maps.pk3' || ! has_pk3 'xonotic-*-music.pk3'; then
     need_core=1
-    start_bg_curl "$tmp/xonotic.zip" "Xonotic-latest.zip"
-fi
-if ! has_pk3 'xonotic-*-maps.pk3'; then
-    need_maps=1
-    start_bg_curl "$tmp/xonotic-maps.zip" "Xonotic-latest-mappingsupport.zip"
-fi
-if ! has_pk3 'xonotic-*-music.pk3'; then
-    need_music=1
-    start_bg_curl "$tmp/xonotic-music.zip" "Xonotic-latest-high.zip"
+    start_bg_curl "$tmp/xonotic.zip" "$GODNOTIC_DATA_ARCHIVE"
 fi
 
 # Aggregate progress until every background curl exits.

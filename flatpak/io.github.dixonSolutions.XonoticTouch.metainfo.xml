@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>io.github.dixonSolutions.XonoticTouch</id>
-  <name>Xonotic Touch</name>
+  <name>Godnotic</name>
   <summary>Touch arena FPS for Linux phones, tablets and PCs</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
@@ -10,7 +10,7 @@
   </developer>
   <description>
     <p>
-      Xonotic Touch brings the fast-paced arena shooter Xonotic to Linux
+      Godnotic brings the fast-paced arena shooter Xonotic to Linux
       phones, tablets and touchscreen PCs. Virtual joysticks, weapon wheels, and
       layout presets are tuned for two-thumb play in landscape. A touchscreen
       is required; this build is not intended for keyboard-and-mouse play.
@@ -25,11 +25,11 @@
     </p>
   </description>
   <launchable type="desktop-id">io.github.dixonSolutions.XonoticTouch.desktop</launchable>
-  <url type="homepage">https://github.com/dixonSolutions/Xonotic-Touch</url>
-  <url type="bugtracker">https://github.com/dixonSolutions/Xonotic-Touch/issues</url>
+  <url type="homepage">https://github.com/dixonSolutions/Godnotic</url>
+  <url type="bugtracker">https://github.com/dixonSolutions/Godnotic/issues</url>
   <screenshots>
     <screenshot type="default">
-      <caption>Xonotic Touch on a touch device</caption>
+      <caption>Godnotic on a touch device</caption>
     </screenshot>
   </screenshots>
   <content_rating type="oars-1.1">

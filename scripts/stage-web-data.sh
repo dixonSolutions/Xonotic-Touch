@@ -79,7 +79,9 @@ def rev(path):
             h.update(block)
     return h.hexdigest()[:16]
 
-PART = int(os.environ.get('XT_WEB_PART_MB', '40')) * 1024 * 1024
+# Match the Cache API's persistent chunk size so an interrupted browser
+# download can retain complete source parts and fetch only the missing ones.
+PART = int(os.environ.get('XT_WEB_PART_MB', '32')) * 1024 * 1024
 
 def add(name, group, stock=False):
     """Record a file; split anything over PART into name.partNN pieces.

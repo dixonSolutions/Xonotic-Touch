@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build Xonotic Touch for the browser (WebAssembly + WebGL 2).
+# Build Godnotic for the browser (WebAssembly + WebGL 2).
 #
 #   scripts/build-web.sh                 engine + QuakeC + page, into build/web
 #   scripts/build-web.sh --engine-only   just relink the engine
@@ -118,7 +118,7 @@ echo "$want_link" > "$link_stamp"
 mkdir -p "$OUT"
 install -m 644 xonotic-touch.js xonotic-touch.wasm "$OUT/"
 install -m 644 "$ROOT/web/index.html" "$ROOT/web/shell.js" "$ROOT/web/shell.css" \
-    "$ROOT/web/manifest.webmanifest" "$ROOT/web/serve.py" "$OUT/"
+    "$ROOT/web/manifest.webmanifest" "$ROOT/web/godnotic-banner.png" "$ROOT/web/serve.py" "$OUT/"
 for icon in "$ROOT"/web/icon-*.png; do
     [ -f "$icon" ] && install -m 644 "$icon" "$OUT/"
 done

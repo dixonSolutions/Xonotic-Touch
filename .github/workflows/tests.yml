@@ -120,3 +120,18 @@ jobs:
       - uses: actions/checkout@v4
       - name: Vendor, merge, resolve and hooks on throwaway repositories
         run: bash scripts/test-upstream-sync.sh
+
+  godnotic-client:
+    name: Godnotic cache, components and join guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Cache reuse, cancellation and repair
+        run: bash scripts/test-web-cache.sh
+      - name: Safe component imports
+        run: bash scripts/test-components.sh
+      - name: Missing maps stop signon with a visible recovery console
+        run: bash scripts/test-join-world.sh

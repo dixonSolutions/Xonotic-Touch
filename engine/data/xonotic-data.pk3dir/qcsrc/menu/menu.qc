@@ -414,6 +414,7 @@ void draw_Picture_Aligned(vector algn, float scalemode, string img, float a)
 // baked into the image, because a live update changes it without touching the artwork.
 void drawBuildVersion(float a)
 {
+	if (cvar("godnotic_banner_only")) return; // Touch: Godnotic branding uses the banner alone
 	string line = TouchUpdate_buildLine();
 	if (line == "")
 		return;

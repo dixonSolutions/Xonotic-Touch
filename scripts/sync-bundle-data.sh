@@ -70,3 +70,9 @@ if [ -d "$ROOT/touch/gfx" ]; then
     mkdir -p "$USER_DIR/xonotic-data.pk3dir/gfx"
     cp -a "$ROOT/touch/gfx/." "$USER_DIR/xonotic-data.pk3dir/gfx/"
 fi
+
+# Godnotic banner and icon are shared by every package and the browser.
+if [ -d "$ROOT/branding/game-gfx" ]; then
+    mkdir -p "$USER_DIR/xonotic-data.pk3dir/gfx"
+    cp -a "$ROOT/branding/game-gfx/." "$USER_DIR/xonotic-data.pk3dir/gfx/"
+fi

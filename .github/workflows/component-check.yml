@@ -1,0 +1,74 @@
+name: Component integration check
+
+on:
+  workflow_call:
+    inputs:
+      component:
+        description: Godnotic component name (darkplaces or data)
+        type: string
+        required: true
+      revision:
+        description: Full component commit SHA to integrate and check
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  integrated-build:
+    name: Check ${{ inputs.component }} in Godnotic main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout integrated Godnotic main
+        uses: actions/checkout@v4
+        with:
+          repository: dixonSolutions/Godnotic
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Install test-only Python dependency
+        run: python -m pip install -q numpy
+
+      - name: Install native build dependencies
+        run: |
+          . scripts/lib/xonotic-shlib.sh
+          xonotic_install_native_deps
+
+      - name: Import and verify the full component revision
+        env:
+          COMPONENT: ${{ inputs.component }}
+          REVISION: ${{ inputs.revision }}
+        run: |
+          set -euo pipefail
+          python3 scripts/export-components.py --import "$COMPONENT" "$REVISION"
+          case "$COMPONENT" in
+            darkplaces) git add -- components.json engine/darkplaces ;;
+            data) git add -- components.json engine/data/xonotic-data.pk3dir ;;
+            *) echo "Unknown component: $COMPONENT" >&2; exit 2 ;;
+          esac
+          python3 scripts/export-components.py --check "$COMPONENT" "$REVISION"
+
+      - name: Compile QuakeC and engine
+        env:
+          REVISION: ${{ inputs.revision }}
+        run: |
+          set -euo pipefail
+          . scripts/lib/xonotic-shlib.sh
+          QCCFLAGS_WATERMARK="component-${REVISION:0:12}" xonotic_compile_qc_only
+          xonotic_compile_engine_only
+
+      - name: Run repository quick checks
+        run: |
+          set -euo pipefail
+          scripts/test-components.sh
+          scripts=$(grep -oE 'bash scripts/test-[A-Za-z0-9_.-]+\.sh' .github/workflows/tests.yml | awk '{ print $2 }' | sort -u)
+          for test_script in $scripts; do
+            echo "::group::$test_script"
+            bash "$test_script"
+            echo "::endgroup::"
+          done
