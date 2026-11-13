@@ -19,7 +19,7 @@ page.
 
 | | |
 |---|---|
-| First visit | One button, one size, everything (every map, the music): 405 MB on GPUs with ASTC (phones, tablets, Apple, Intel), 1.07 GB elsewhere until the web slim set is published (878 MB then); percent, speed, time left, Pause/Resume and Cancel. The game starts by itself when it is done |
+| First visit | One button, one size: what the game needs to start (the core packs and the first map: 159 MB on GPUs with ASTC, phones, tablets, Apple, Intel; about 444 MB elsewhere), six chunks at a time (three on phones); percent, speed, time left, Pause/Resume and Cancel. The game starts by itself when it is done, and the other maps and the music (246 MB with ASTC) follow one chunk at a time while it runs, mounted as they arrive. A map asked for before its pack is here downloads first, with its own progress card. Without lazy reads (`?lazy=0`, or a browser that cannot) and on a connection that asks to save data, the first download is everything, as before |
 | Later visits | Straight from a splash into the game: no download screen, no Play button, no data requests |
 | Why it downloads | Whenever the page has to download again it says why in one line (cleared by the browser, closed by the browser mid-download, not enough space, private window, an update) |
 | Memory | Game data is read from the browser's storage as the engine needs it, not copied into memory: about 30 MB of JS heap at the menu instead of 1.08 GB |
@@ -27,7 +27,7 @@ page.
 | Updates | A new release fetches only the files that changed; under 50 MB (new game code is about 3 MB) it does so without asking |
 | Interrupted downloads | Carry on where they stopped, after Cancel, a reload, a lost connection or the browser killing the page |
 | Storage | The origin private file system (OPFS) of the browser: it survives reloads, closing the tab, restarting the browser and new releases of the page. The page never asks for persistent storage by itself, so by default the browser may clear it when the device runs short of space; what is gone is downloaded again at the next start, only that, without a question |
-| Storage popover | The header bar's menu button (or `web_storage` in the console, over the game): where the data is kept, how much, the site's quota, the switch "Keep game data on this device" (persistent storage, with the browser's real answer), the last problem; Verify data, Clear data, Install app, Use an existing Godnotic folder (desktop Chromium), Import settings; render resolution and fullscreen |
+| Storage popover | The ⋮ button beside the main action (Download, Pause/Cancel, Reload), placed under or beside it (or `web_storage` in the console, in the middle of the screen over the game): how much game data is here, the switch "Keep on this device" (persistent storage, with the browser's real answer), render resolution, fullscreen; Install app, Verify data, Use an existing Godnotic folder (desktop Chromium), Import settings, Clear data; where the data is kept, the site's quota, the GPU and the last problem as small print. There is no header bar: the page is the banner, at one fixed place on the theme's background in every state, with what there is to do under it |
 | Already have the app | On Android in Chrome, a first visit says when the Godnotic app is installed and offers "Open the Godnotic app" instead of the download; other browsers on Android and Linux get the same hand-over as a plain link. See "An existing install" |
 | Saved | `config.cfg`, touch layouts and everything else the game writes, kept in IndexedDB |
 | Display | Fills the window; fullscreen at the first tap or key (Storage popover), or the game's own fullscreen setting |
@@ -111,7 +111,7 @@ Engine changes for the web, all behind `__EMSCRIPTEN__`:
   `dlopen` in WebAssembly; Opus is the slim set's music).
 - `map` and `changelevel` ask the page first (maps on demand, see "Game
   data"): wrapped from `sys_wasm.c` at start-up, no upstream file changed.
-  `web_maps pause|resume|status` controls the background map download.
+  `web_maps status` says how much of the game data is here.
 - ASTC textures (the slim set's KTX files) under WebGL's extension name.
 - The clock from `performance.now()`: Emscripten's `CLOCK_MONOTONIC_RAW` returns garbage.
 - No threads (no `-pthread` build): the task queue runs everything on the main
@@ -713,21 +713,26 @@ What shows before and around the canvas (web/index.html, shell.css,
 shell.js) looks and behaves like a libadwaita app, the Linux Godnotic app's
 toolkit: Adwaita's named colours as CSS custom properties (light and dark
 from `prefers-color-scheme`, the system accent through `AccentColor` where
-the browser has it), a header bar with the menu button, a clamp, status
-pages for the download, progress and errors, pill and suggested-action
-buttons, the Adwaita progress bar, toasts, a popover with boxed lists and a
-switch, visible focus rings, 44 px targets on touch screens, and no motion
-under `prefers-reduced-motion`. Plain HTML and CSS, no framework. The
-banner is the hero, on its own black card.
+the browser has it), one centred column in the manner of a status page,
+pill and suggested-action buttons, a round ⋮ button beside the main action
+that opens a popover (boxed list, switches, menu items), the Adwaita
+progress bar, toasts, visible focus rings, 44 px targets on touch screens,
+and no motion under `prefers-reduced-motion`. Plain HTML and CSS, no
+framework. No header bar. The banner (a transparent WebP, 47 KB) sits
+straight on the window background of the system theme, and keeps one place
+on the page (its middle at about a third of the screen height) in every
+state: splash, "Starting…", the download question, the progress, errors.
+Only what is under it changes.
 
-- **Returning visitors** see the banner on black and then the game: the
+- **Returning visitors** see the banner and then the game: the
   start-up steps show their status page only after 0.6 s, and the game
   starts without a Play button (fullscreen and sound begin at the first tap
   or key, which browsers require).
-- **First visit**: one status page, one size, one Download button; the free
-  space the browser offers under it; then the progress page (Pause,
-  Cancel); then the game.
-- **Storage popover** (menu button; `web_storage` in the console over the
+- **First visit**: one status page, one size (what the start needs, and
+  what follows while playing), one Download button with the ⋮ beside it;
+  a warning instead when the browser offers too little space; then the
+  progress page (Pause, Cancel, ⋮); then the game.
+- **Storage popover** (the ⋮ button; `web_storage` in the console over the
   game, which frees the mouse): Stored in (OPFS, cache storage, or memory
   only with the reason, and the folder when one is used), Game data
   (stored of total, which set), Space (`estimate()`), the switch Keep game
@@ -792,7 +797,8 @@ Debugging:
   `?manifest=m/<id>.json`, `?data=URL` and `?stock=URL` pick other data.
 - `?profile=web|astc|full` picks the data set; `?lazy=0` copies the data
   into memory instead of reading it in place (the fallback path);
-  `?allmaps=0|1` turns the background map download off or on for a visit.
+  `?background=0` makes the first download everything (no background
+  download of the maps and music while playing).
 - `xt.lazyStats()` in the devtools console: synchronous reads, their time,
   read-ahead, cache size; `xt.backgroundStatus()`, `xt.maps`.
 

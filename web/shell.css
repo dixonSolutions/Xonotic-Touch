@@ -1,8 +1,8 @@
 /* The page around the game, in the style of a libadwaita app (the Linux
    native Godnotic app): Adwaita's named colours as custom properties, light
    and dark from prefers-color-scheme, the system accent where the browser
-   has AccentColor, a header bar, a clamp, boxed lists, pill buttons, status
-   pages, toasts. Plain CSS, no framework. The game canvas stays black. */
+   has AccentColor, one centred status page, a boxed list in a popover, pill
+   buttons, toasts. Plain CSS, no framework. The game canvas stays black. */
 :root {
   /* libadwaita 1.6 named colours, light */
   --accent-bg: #3584e4;
@@ -14,9 +14,6 @@
   --error: #c30000;
   --window-bg: #fafafb;
   --window-fg: rgba(0, 0, 6, .8);
-  --headerbar-bg: #ffffff;
-  --headerbar-fg: rgba(0, 0, 6, .8);
-  --headerbar-shade: rgba(0, 0, 6, .12);
   --card-bg: #ffffff;
   --card-shade: rgba(0, 0, 6, .07);
   --popover-bg: #ffffff;
@@ -40,9 +37,6 @@
     --error: #ff938c;
     --window-bg: #222226;
     --window-fg: #ffffff;
-    --headerbar-bg: #2e2e32;
-    --headerbar-fg: #ffffff;
-    --headerbar-shade: rgba(0, 0, 6, .36);
     --card-bg: rgba(255, 255, 255, .08);
     --card-shade: rgba(0, 0, 6, .36);
     --popover-bg: #36363a;
@@ -110,61 +104,45 @@ html, body {
 
 /* ---------------------------------------------------------------- window */
 
+/* One background from the first paint to the game: the banner is
+   transparent and sits straight on it, in the middle of the page with
+   whatever there is to do under it. */
 #xt-overlay {
   position: fixed;
   inset: 0;
   display: flex;
   flex-direction: column;
+  align-items: center;
   background: var(--window-bg);
   overflow-y: auto;
   z-index: 10;
   -webkit-user-select: text;
   user-select: text;
-  padding-bottom: env(safe-area-inset-bottom);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 #xt-overlay.xt-gone { display: none; }
-/* A returning visitor: the hero alone, on black, until the game takes over. */
-#xt-overlay.xt-splash { background: #000; justify-content: center; }
-#xt-overlay.xt-splash .adw-headerbar,
-#xt-overlay.xt-splash .xt-foot { display: none; }
-#xt-overlay.xt-splash .xt-hero img { box-shadow: none; }
+/* A returning visitor: the banner alone until the game takes over. */
+#xt-overlay.xt-splash .xt-foot { visibility: hidden; }
 
-.adw-headerbar {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 47px;
-  padding: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) 6px max(6px, env(safe-area-inset-left));
-  background: var(--headerbar-bg);
-  color: var(--headerbar-fg);
-  box-shadow: inset 0 -1px var(--headerbar-shade);
-}
-.adw-headerbar-title { font-weight: 700; }
-.adw-headerbar .adw-icon { position: absolute; right: max(6px, env(safe-area-inset-right)); }
-
+/* The banner keeps one place on the page, whatever is under it: while the
+   page loads, at the download, during it. So the column hangs from a fixed
+   height (the banner's middle at about a third of the screen) instead of
+   being centred as a whole, which would move the banner with every change
+   of what is under it. */
 .adw-clamp {
-  width: min(600px, 100%);
+  --hero-w: min(440px, 100vw - 32px);
+  width: min(560px, 100%);
   margin: 0 auto;
-  padding: 24px 12px 12px;
+  padding: max(16px, calc(34vh - var(--hero-w) * .173)) 16px 12px;
   flex: 1 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  align-items: center;
+  gap: 12px;
 }
-#xt-overlay.xt-splash .adw-clamp { flex: 0 0 auto; }
 
-.xt-hero { margin: 0; }
-.xt-hero img {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: var(--radius-card);
-  background: #000;
-  box-shadow: 0 0 0 1px var(--card-shade), 0 2px 6px var(--card-shade);
-}
+.xt-hero { margin: 0 0 8px; width: var(--hero-w); }
+.xt-hero img { display: block; width: 100%; height: auto; }
 
 /* -------------------------------------------------------------- typography */
 
@@ -174,7 +152,7 @@ html, body {
 .adw-body { margin: 0; }
 .adw-body[hidden], .adw-caption[hidden] { display: none; }
 .adw-caption { font-size: .82rem; margin: 0; }
-.adw-numeric { font-variant-numeric: tabular-nums; font-size: 2rem; font-weight: 800; margin: 0; }
+.adw-tabular { font-variant-numeric: tabular-nums; }
 .dim { opacity: var(--dim); }
 .adw-warning { color: var(--warning); }
 .xt-err { color: var(--error); white-space: pre-wrap; text-align: left; font-size: .85rem;
@@ -189,19 +167,11 @@ html, body {
   align-items: center;
   gap: 12px;
   text-align: center;
-  padding: 12px 0;
+  width: 100%;
 }
 .adw-status[hidden] { display: none; }
-.adw-status-icon {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  font-size: 2rem;
-  font-weight: 800;
-}
-.adw-error-icon { background: var(--destructive-bg); color: #fff; }
+#xt-app { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+#xt-app[hidden] { display: none; }
 
 .adw-spinner {
   width: 32px;
@@ -212,11 +182,11 @@ html, body {
   animation: adw-spin 1s linear infinite;
 }
 @keyframes adw-spin { to { transform: rotate(1turn); } }
+.xt-done .adw-spinner { display: none; }
 
 /* ----------------------------------------------------------------- buttons */
 
-.adw-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 6px; }
-.adw-buttons-start { justify-content: flex-start; margin-top: 12px; }
+.adw-buttons { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; margin-top: 6px; }
 
 .adw-btn {
   appearance: none;
@@ -242,7 +212,9 @@ a.adw-btn { text-decoration: none; display: inline-flex; align-items: center; ju
 .adw-btn.adw-destructive { color: var(--destructive); }
 .adw-btn.adw-flat { background: transparent; }
 .adw-btn.adw-flat:hover { background: var(--button-hover); }
-.adw-btn.adw-icon { padding: 0; width: var(--target); display: grid; place-items: center; }
+/* The ⋮ beside the main action: as tall as a pill button, round. */
+.adw-btn.adw-circular { padding: 0; width: 44px; min-height: 44px; border-radius: 50%; display: grid; place-items: center; }
+.adw-btn.adw-circular[aria-expanded="true"] { background: var(--button-hover); }
 .xt-play { min-width: min(280px, 100%); font-size: 1.15rem; }
 
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -263,46 +235,45 @@ a.adw-btn { text-decoration: none; display: inline-flex; align-items: center; ju
   background: var(--accent-bg);
   transition: width .25s linear;
 }
+.adw-status > .adw-progress { width: min(360px, 100%); margin: 4px 0; }
 .xt-paused .adw-progress > div { background: var(--window-fg); opacity: .4; }
 
 /* ------------------------------------------------------------- popover */
 
-/* GtkPopover: a rounded sheet with an arrow, anchored under the header
-   bar's menu button (top right over the game). Scrolls when the screen is
+/* GtkPopover: a rounded sheet beside the ⋮ button that opened it (shell.js
+   places it: under the button, or over it when there is more room there),
+   in the middle of the screen over the game. Scrolls when the screen is
    short; never wider than the screen. */
 .adw-popover {
   position: fixed;
-  top: calc(max(6px, env(safe-area-inset-top)) + 47px);
-  right: max(8px, env(safe-area-inset-right));
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   z-index: 40;
-  width: min(360px, calc(100vw - 16px));
-  max-height: calc(100dvh - 72px);
+  width: min(340px, calc(100vw - 16px));
+  max-height: calc(100dvh - 16px);
   overflow-y: auto;
-  padding: 12px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
   background: var(--popover-bg);
   color: var(--window-fg);
   border-radius: var(--radius-card);
   box-shadow: 0 0 0 1px var(--card-shade), 0 2px 8px 2px rgba(0, 0, 0, .25);
   font-size: .93rem;
+  outline: none;
   -webkit-user-select: text;
   user-select: text;
 }
-.adw-popover::before {
-  content: "";
-  position: fixed;
-  top: calc(max(6px, env(safe-area-inset-top)) + 41px);
-  right: calc(max(6px, env(safe-area-inset-right)) + 11px);
-  border: 6px solid transparent;
-  border-bottom-color: var(--popover-bg);
-}
 .adw-popover[hidden] { display: none; }
+.adw-popover > * { flex: none; }
 .adw-popover .adw-boxed-list { background: transparent; box-shadow: 0 0 0 1px var(--border); }
 .adw-popover .adw-row { min-height: 40px; padding: 6px 10px; }
-.adw-popover .adw-group-title { margin-bottom: 8px; font-size: .93rem; }
-.adw-popover .adw-buttons-start { margin-top: 8px; gap: 8px; }
+.adw-popover .adw-caption:empty { display: none; }
+/* A GtkPopoverMenu's items: flat, full width, text at the start. */
+.adw-menu { display: flex; flex-direction: column; }
+.adw-menu .adw-btn { text-align: start; font-weight: 400; padding: 5px 10px; }
 
 /* ----------------------------------------------- preferences groups, rows */
 
@@ -370,7 +341,7 @@ a.adw-btn { text-decoration: none; display: inline-flex; align-items: center; ju
 .adw-switch:checked { background: var(--accent-bg); }
 .adw-switch:checked::after { transform: translateX(22px); }
 
-.xt-foot { text-align: center; padding: 12px 12px 18px; }
+.xt-foot { text-align: center; padding: 0 12px 14px; }
 
 /* ------------------------------------------------------------------ toast */
 
@@ -440,10 +411,9 @@ a.adw-btn { text-decoration: none; display: inline-flex; align-items: center; ju
 
 /* Phones in landscape: a short screen. */
 @media (max-height: 520px) {
-  .adw-clamp { padding-top: 12px; gap: 12px; }
-  .xt-hero img { max-height: 28vh; width: auto; margin: 0 auto; }
+  .adw-clamp { --hero-w: min(260px, 100vw - 32px); padding-top: 12px; gap: 8px; }
+  .xt-hero { margin: 0; }
   .adw-title-1 { font-size: 1.4rem; }
-  .adw-numeric { font-size: 1.5rem; }
   .xt-foot { display: none; }
 }
 

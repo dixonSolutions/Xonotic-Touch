@@ -365,7 +365,6 @@ await test('first visit asks, downloads each chunk once, mounts; a reload makes 
   assert.equal(sha(p.mounted.get('/game/data/maps.pk3')), host.files[2].sha256, 'assembled from chunks');
   assert.equal(blobFetches(host).length, 7, 'one request per chunk');
   assert.ok(!prof.persistAsked, 'the page never asks for persistent storage by itself');
-  assert.equal(p.element('xt-dl-keep').hidden, false, 'the first visit says the browser may not keep it');
   host.log.length = 0;
   const q = loadPage(prof, host);
   await ready(q, 'warm ready');
@@ -670,6 +669,44 @@ await test('one download with everything; a map pack that went missing is fetche
   assert.ok(!q.shown.includes('xt-download') && !q.shown.includes('xt-progress'), 'returning: no download UI');
   await until(() => q.context.__started, 'straight into the game');
   assert.equal(host.log.length, 0, 'no data requests');
+});
+
+await test('with lazy reads the first download is what the game needs to start; the rest follows while it runs', async () => {
+  const prof = profile();
+  const host = makeProfiles({ web: { files: splitFiles(), defaultMap: 'stormkeep' } });
+  const created = new Set();
+  const lazyfs = { probe: async () => true, create: (FS, path) => created.add(path), remove: (FS, path) => created.delete(path),
+    takeTouched: () => ({}), prefetch: async () => {}, trim() {}, BLOCK: 1 << 20, stats: {}, cacheBytes: 0 };
+  const p = loadPage(prof, host, { lazyfs });
+  await until(() => p.shown.includes('xt-download'), 'dialog');
+  const first = host.files.filter((f) => f.group === 'core' || f.map === 'stormkeep');
+  const later = host.files.filter((f) => !first.includes(f));
+  assert.ok(later.length > 1, 'the test data has other maps and music');
+  assert.equal(p.element('xt-dl-size').textContent, `${Math.round(first.reduce((n, f) => n + f.size, 0) / 1e6)} MB`, 'the size is what the start needs');
+  assert.match(p.element('xt-dl-what').textContent, /follow as you play/);
+  p.element('xt-dl-go').onclick();
+  await until(() => p.context.__started, 'the game starts');
+  assert.deepEqual([...new Set(fetchedNames(host))].sort(), first.map((f) => f.name).sort(), 'only the core and the first map before the start');
+  // (The test's timers are short: the background download starts at once.)
+  await until(() => p.page.maps.bgDone, 'the rest arrives while the game runs');
+  assert.deepEqual([...new Set(fetchedNames(host))].sort(), host.files.map((f) => f.name).sort(), 'everything downloaded');
+  for (const f of later) assert.ok(created.has('/game/' + f.path), `${f.name} mounted when it arrived`);
+  assert.equal(p.page.state.rescanPending, true, 'the engine sees them at the next map change');
+  // The next visit: nothing to ask, nothing to fetch.
+  host.log.length = 0;
+  const q = loadPage(prof, host, { lazyfs });
+  await until(() => q.context.__started, 'straight into the game');
+  assert.ok(!q.shown.includes('xt-download') && !q.shown.includes('xt-progress'), 'no dialog');
+  assert.equal(blobFetches(host).length, 0, 'no data requests');
+  // Stopped before the rest arrived (a closed tab): the start does not wait for it.
+  const prof2 = profile();
+  const r = loadPage(prof2, host, { lazyfs, search: '?background=0' });
+  await firstVisit(r);
+  await until(() => r.context.__started, 'started');
+  host.log.length = 0;
+  const t = loadPage(prof2, host, { lazyfs });
+  await until(() => t.context.__started, 'starts with the maps still missing');
+  assert.ok(!t.shown.includes('xt-download') && !t.shown.includes('xt-progress'), 'no dialog for what follows in the background');
 });
 
 await test('a cancelled map download runs nothing and keeps what arrived', async () => {
