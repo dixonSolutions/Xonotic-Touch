@@ -70,6 +70,10 @@ void TouchLoadTime_Init(void);
 // r_font_lazysizes; false when none is left.
 qbool TouchFont_LoadPendingOne(void);
 
+// snd_main.c (touch_loadsnd.h) sets this: decode precached sounds not
+// played yet within snd_lazyload_budget; called once per host frame in game.
+extern void (*touch_snd_loadsome)(void);
+
 // sbar.c's render module start caches ~112 Quake status bar pictures that
 // Xonotic does not have and never draws (its HUD is CSQC). With
 // touch_load_lazysbar 1 the start is remembered and run on the engine HUD's

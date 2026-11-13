@@ -396,6 +396,8 @@ unsigned int TouchLoad_PicFlags(const char *path, unsigned int flags)
 	return flags;
 }
 
+void (*touch_snd_loadsome)(void);
+
 float TouchLoadTime_MaxFPS(float maxfps)
 {
 	// no frame limiter: CL_Frame then runs every host frame on the real
@@ -414,6 +416,8 @@ double TouchLoadTime_SleepTime(double sleeptime)
 	{
 		if (tlt.last_hostframe > tlt.ready_time && now - tlt.last_hostframe > tlt.worst_frame)
 			tlt.worst_frame = now - tlt.last_hostframe;
+		if (developer_loading.integer && tlt.last_hostframe > tlt.ready_time && now - tlt.last_hostframe > 0.03)
+			Con_Printf("LOADTIME long frame %.1f ms at %.0f ms after ready\n", (now - tlt.last_hostframe) * 1000.0, (now - tlt.ready_time) * 1000.0);
 		tlt.frames_after++;
 		if (now - tlt.ready_time >= 3)
 		{
@@ -429,6 +433,10 @@ double TouchLoadTime_SleepTime(double sleeptime)
 	 && (cls.connect_trying || (cls.state == ca_connected && cls.signon < SIGNONS)))
 		TLT_StartLoad(now);
 	TLT_Signons(now);
+
+	// background work left by the load, once the game runs
+	if (cls.state == ca_connected && cls.signon == SIGNONS && !scr_loading && touch_snd_loadsome)
+		touch_snd_loadsome();
 
 	if (TouchLoadTime_Restless())
 	{
