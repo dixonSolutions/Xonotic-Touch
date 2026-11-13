@@ -1,6 +1,6 @@
 {
- "name": "multiplayer-internet",
- "description": "Multiplayer, Internet tab: favourite cards and the dense server list.",
+ "name": "servers-lan",
+ "description": "Servers with the LAN checkbox ticked (Wi-Fi and VPN rows).",
  "generated": "seed",
  "snapshot": {
   "uib": 1,
@@ -143,7 +143,7 @@
     "type": "card",
     "props": {
      "title": "Multiplayer",
-     "subtitle": "Internet, LAN and hosting",
+     "subtitle": "Find a game or join by address",
      "icon": "multiplayer",
      "image": "pk3:gfx/menu/luma/gametype_ctf",
      "aspect": "16:9",
@@ -189,167 +189,114 @@
     "id": "mp",
     "type": "screen",
     "props": {
-     "title": "Multiplayer",
+     "title": "Servers",
      "kind": "page",
      "header": {
       "collapsible": true
-     },
-     "actions": [
-      {
-       "id": "mp.filters",
-       "label": "Filters",
-       "icon": "filter"
-      },
-      {
-       "id": "mp.join",
-       "label": "Join by address",
-       "icon": "link"
-      },
-      {
-       "id": "refresh",
-       "label": "Refresh",
-       "icon": "refresh"
-      }
-     ]
+     }
     },
     "children": [
-     "mp/tabs"
+     "mp/bar",
+     "mp/servers",
+     "mp/join"
     ]
    },
    {
-    "id": "mp/tabs",
-    "type": "tabs",
-    "props": {
-     "style": "segmented",
-     "value": "internet",
-     "bind": "vm:mp.tab"
-    },
+    "id": "mp/bar",
+    "type": "toolbar",
+    "props": {},
     "children": [
-     "mp/tabs/internet",
-     "mp/tabs/lan",
-     "mp/tabs/host"
+     "mp/bar/search",
+     "mp/bar/filters"
     ]
    },
    {
-    "id": "mp/tabs/internet",
-    "type": "pane",
+    "id": "mp/bar/search",
+    "type": "field",
     "props": {
-     "key": "internet",
-     "label": "Internet",
-     "icon": "internet"
-    },
-    "children": [
-     "mp/tabs/internet/featured",
-     "mp/tabs/internet/servers"
-    ]
-   },
-   {
-    "id": "mp/tabs/internet/featured",
-    "type": "section",
-    "props": {
-     "title": "Favourites",
-     "importance": 2
-    },
-    "children": [
-     "mp/tabs/internet/featured/grid"
-    ]
-   },
-   {
-    "id": "mp/tabs/internet/featured/grid",
-    "type": "grid",
-    "props": {
-     "scroll": "horizontal",
-     "minItem": 260
-    },
-    "children": [
-     "mp/tabs/internet/featured/grid/0",
-     "mp/tabs/internet/featured/grid/1"
-    ]
-   },
-   {
-    "id": "mp/tabs/internet/featured/grid/0",
-    "type": "card",
-    "props": {
-     "title": "Duel Pit #5",
-     "subtitle": "Last Man Standing · xoylent",
-     "image": "pk3:maps/xoylent",
-     "aspect": "16:9",
-     "badges": [
-      {
-       "icon": "star_filled",
-       "text": "Favourite",
-       "tone": "accent"
-      }
-     ],
-     "meta": [
-      {
-       "icon": "players",
-       "text": "3/8"
-      },
-      {
-       "icon": "ping",
-       "text": "298 ms"
-      }
-     ],
-     "primary": {
-      "id": "server.open",
-      "label": "Details",
-      "icon": "info"
-     },
-     "actions": [
-      {
-       "id": "server.join",
-       "label": "Join",
-       "icon": "play",
-       "style": "primary"
-      }
-     ]
+     "label": "Search",
+     "bind": "vm:mp.search",
+     "value": "",
+     "kind": "search",
+     "placeholder": "Search servers"
     },
     "children": []
    },
    {
-    "id": "mp/tabs/internet/featured/grid/1",
-    "type": "card",
+    "id": "mp/bar/filters",
+    "type": "row",
     "props": {
-     "title": "Frag Palace #9",
-     "subtitle": "Freeze Tag · dance",
-     "image": "pk3:maps/dance",
-     "aspect": "16:9",
-     "badges": [
-      {
-       "icon": "star_filled",
-       "text": "Favourite",
-       "tone": "accent"
-      }
-     ],
-     "meta": [
-      {
-       "icon": "players",
-       "text": "7/12"
-      },
-      {
-       "icon": "ping",
-       "text": "57 ms"
-      }
-     ],
-     "primary": {
-      "id": "server.open",
-      "label": "Details",
-      "icon": "info"
-     },
-     "actions": [
-      {
-       "id": "server.join",
-       "label": "Join",
-       "icon": "play",
-       "style": "primary"
-      }
-     ]
+     "wrap": true
+    },
+    "children": [
+     "mp/bar/filters/lan",
+     "mp/bar/filters/empty",
+     "mp/bar/filters/full",
+     "mp/bar/filters/laggy",
+     "mp/bar/filters/refresh"
+    ]
+   },
+   {
+    "id": "mp/bar/filters/lan",
+    "type": "switch",
+    "props": {
+     "label": "LAN",
+     "style": "checkbox",
+     "bind": "vm:mp.lan",
+     "value": true,
+     "icon": "lan"
     },
     "children": []
    },
    {
-    "id": "mp/tabs/internet/servers",
+    "id": "mp/bar/filters/empty",
+    "type": "switch",
+    "props": {
+     "label": "Empty",
+     "style": "checkbox",
+     "bind": "cvar:menu_slist_showempty",
+     "value": true
+    },
+    "children": []
+   },
+   {
+    "id": "mp/bar/filters/full",
+    "type": "switch",
+    "props": {
+     "label": "Full",
+     "style": "checkbox",
+     "bind": "cvar:menu_slist_showfull",
+     "value": true
+    },
+    "children": []
+   },
+   {
+    "id": "mp/bar/filters/laggy",
+    "type": "switch",
+    "props": {
+     "label": "Laggy",
+     "style": "checkbox",
+     "bind": "cvar:menu_slist_showlaggy",
+     "value": false
+    },
+    "children": []
+   },
+   {
+    "id": "mp/bar/filters/refresh",
+    "type": "button",
+    "props": {
+     "label": "Refresh",
+     "action": {
+      "id": "refresh",
+      "label": "Refresh",
+      "icon": "refresh"
+     },
+     "style": "secondary"
+    },
+    "children": []
+   },
+   {
+    "id": "mp/servers",
     "type": "list",
     "props": {
      "source": "servers",
@@ -406,13 +353,12 @@
      ],
      "sort": "ping",
      "desc": false,
-     "searchable": true,
      "filter": "",
      "selection": "none",
      "density": "compact",
      "display": "table",
      "state": "ready",
-     "count": 40,
+     "count": 3,
      "rowHeight": "compact",
      "rowPrimary": {
       "id": "server.open",
@@ -432,14 +378,9 @@
       }
      ],
      "empty": {
-      "title": "No servers yet",
-      "text": "Pull to refresh, or check your connection.",
-      "icon": "server",
-      "action": {
-       "id": "refresh",
-       "label": "Refresh",
-       "icon": "refresh"
-      }
+      "title": "No games on this network",
+      "text": "Games hosted on your Wi-Fi or VPN show up here.",
+      "icon": "lan"
      },
      "error": {
       "title": "The master server did not answer",
@@ -453,22 +394,60 @@
     "children": []
    },
    {
-    "id": "mp/tabs/lan",
-    "type": "pane",
+    "id": "mp/join",
+    "type": "actionbar",
     "props": {
-     "key": "lan",
-     "label": "LAN",
-     "icon": "lan"
+     "align": "spread"
+    },
+    "children": [
+     "mp/join/address",
+     "mp/join/create",
+     "mp/join/go"
+    ]
+   },
+   {
+    "id": "mp/join/address",
+    "type": "field",
+    "props": {
+     "label": "Address",
+     "bind": "vm:mp.address",
+     "value": "",
+     "kind": "address",
+     "placeholder": "host:port or godnotic://join/...",
+     "submit": {
+      "id": "join.address",
+      "label": "Join",
+      "icon": "play"
+     }
     },
     "children": []
    },
    {
-    "id": "mp/tabs/host",
-    "type": "pane",
+    "id": "mp/join/create",
+    "type": "button",
     "props": {
-     "key": "host",
-     "label": "Host",
-     "icon": "host"
+     "label": "Create",
+     "action": {
+      "id": "create",
+      "label": "Create",
+      "icon": "add"
+     },
+     "style": "secondary"
+    },
+    "children": []
+   },
+   {
+    "id": "mp/join/go",
+    "type": "button",
+    "props": {
+     "label": "Join",
+     "action": {
+      "id": "join.address",
+      "label": "Join",
+      "icon": "play",
+      "style": "primary"
+     },
+     "style": "primary"
     },
     "children": []
    }

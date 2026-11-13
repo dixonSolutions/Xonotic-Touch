@@ -141,7 +141,7 @@
     "type": "card",
     "props": {
      "title": "Multiplayer",
-     "subtitle": "Internet, LAN and hosting",
+     "subtitle": "Find a game or join by address",
      "icon": "multiplayer",
      "image": "pk3:gfx/menu/luma/gametype_ctf",
      "aspect": "16:9",
@@ -513,7 +513,12 @@
        "sp/options/skill",
        "sp/options/timelimit",
        "sp/options/fraglimit",
-       "sp/options/mutator"
+       "sp/options/mutator",
+       "sp/options/slots",
+       "sp/options/lan",
+       "sp/options/port",
+       "sp/options/pwon",
+       "sp/options/password"
       ]
      },
      {
@@ -619,6 +624,77 @@
       "children": []
      },
      {
+      "id": "sp/options/slots",
+      "type": "stepper",
+      "props": {
+       "label": "Player slots",
+       "bind": "cvar:menu_maxplayers",
+       "value": 8,
+       "min": 2,
+       "max": 32,
+       "step": 1,
+       "format": "int",
+       "icon": "players"
+      },
+      "children": []
+     },
+     {
+      "id": "sp/options/lan",
+      "type": "switch",
+      "props": {
+       "label": "LAN",
+       "style": "checkbox",
+       "bind": "vm:create.lan",
+       "value": false,
+       "icon": "lan",
+       "help": "Host on your network (Wi-Fi or VPN) so others can join"
+      },
+      "children": []
+     },
+     {
+      "id": "sp/options/port",
+      "type": "stepper",
+      "props": {
+       "label": "Port",
+       "bind": "cvar:port",
+       "value": 26000,
+       "min": 1024,
+       "max": 65535,
+       "step": 1,
+       "format": "int",
+       "help": "26000 is free",
+       "hidden": true
+      },
+      "children": []
+     },
+     {
+      "id": "sp/options/pwon",
+      "type": "switch",
+      "props": {
+       "label": "Password",
+       "bind": "vm:create.pwon",
+       "value": false,
+       "icon": "unlock",
+       "help": "Anyone on your network can join",
+       "hidden": true
+      },
+      "children": []
+     },
+     {
+      "id": "sp/options/password",
+      "type": "field",
+      "props": {
+       "label": "Password",
+       "bind": "vm:create.password",
+       "value": "",
+       "kind": "password",
+       "private": true,
+       "hasValue": false,
+       "hidden": true
+      },
+      "children": []
+     },
+     {
       "id": "sp/recent",
       "type": "section",
       "props": {
@@ -718,6 +794,11 @@
      "sp/options/timelimit",
      "sp/options/fraglimit",
      "sp/options/mutator",
+     "sp/options/slots",
+     "sp/options/lan",
+     "sp/options/port",
+     "sp/options/pwon",
+     "sp/options/password",
      "sp/recent",
      "sp/recent/list"
     ]

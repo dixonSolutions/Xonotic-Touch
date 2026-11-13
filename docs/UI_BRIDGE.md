@@ -24,7 +24,15 @@ renderers showing the same snapshot will look different and must both be correct
 Owner rules that the descriptions follow and renderers must not undo:
 
 - Home holds a hero Play card, Singleplayer, Multiplayer, Settings, Credits and Quit. Nothing else.
-- LAN and Host LAN live inside Multiplayer. Mods is a top-level section of Settings.
+- Multiplayer is one Servers screen: a search field, one row of checkboxes (LAN, Empty,
+  Full, Laggy) and Refresh, the dense list, an address field and Join. LAN is just one of
+  those checkboxes. There is no Internet | LAN | Host switch, no filters sheet and no
+  hosting screen.
+- Hosting is part of Create: a LAN checkbox; when ticked, Port and an optional Password
+  (with its own toggle; open lock when no password applies, closed lock when one is set)
+  appear inline. While hosting, the pause menu shows one compact card with the labelled
+  join addresses and the lock state.
+- Mods is a top-level section of Settings.
 - The user-visible word is "Mods", never "plugins".
 - Data lists (the server list) are dense; action controls are large (48 dp minimum target).
 - Maps are chosen in a visual picker with preview pictures and a preview page.
@@ -309,7 +317,7 @@ small note for anything but `immediate`.
 
 | Type | Value | Props |
 | --- | --- | --- |
-| `switch` | bool | — |
+| `switch` | bool | `style` (`switch` default, `checkbox` for filter rows and form options) |
 | `slider` | number | `min`, `max`, `step`, `format` (`int`, `float1`, `float2`, `percent` (value 0..1 shown ×100), `ms`, `dp`, `db`, `x` (multiplier), `deg`), `unit` (text after the number), `marks` (`[{value, label}]`) |
 | `stepper` | number | `min`, `max`, `step`, `format` |
 | `choice` | string | `options` (`[{value, label, icon, image, help}]`), `style` (`auto`, `segmented`, `dropdown`, `radio`, `cards`) |
@@ -353,7 +361,7 @@ Nothing else in a description can open a URL or a file.
 | Source | Rows | Notes |
 | --- | --- | --- |
 | `servers` | every server the engine knows: Internet, LAN, VPN | cells: `name`, `map`, `mode`, `players`, `max`, `bots`, `ping`, `lock`, `fav`, `address`, `net` (`internet`, `lan`, `vpn`), `version` |
-| `servers.lan` | LAN and VPN rows only | as above |
+| `servers.lan` | LAN and VPN rows only | as above (the Servers screen keeps source `servers` and its LAN checkbox filters it engine-side) |
 | `servers.fav` | favourites | as above |
 | `players:<address>` | players on one server (from its status reply) | `name`, `score`, `ping`, `team` |
 | `maps` | installed maps | `name`, `title`, `author`, `modes` (space-separated mode ids), `players` (recommended, string), `size` (`small`, `medium`, `large`); row `image` is the preview ref |
@@ -394,6 +402,9 @@ by about one header height, the header shrinks to a compact single line (large t
 small title); it never disappears. `header.compact`: always compact. On very short screens
 (height class `compact`) a collapsible header starts compact. The scroll indicator is drawn
 inside the scrolling region, between the sticky top and bottom parts, never over them.
+
+A `list` with `display: table` keeps its column header row sticky at the top of the
+scrolling region while its rows scroll.
 
 **Sticky section headers.** A `section` with `sticky: true` inside the scrolling region:
 its header stays at the top of the region while its content scrolls under it, and the next
@@ -473,6 +484,7 @@ reference mapping.
 | `sort` | `sort` | `view-sort-descending-symbolic` |
 | `refresh` | `refresh` | `view-refresh-symbolic` |
 | `lock` | `lock` | `changes-prevent-symbolic` |
+| `unlock` | `lock_open` | `changes-allow-symbolic` |
 | `star` / `star_filled` | `star` / `star` (filled) | `non-starred-symbolic` / `starred-symbolic` |
 | `wifi` | `wifi` | `network-wireless-symbolic` |
 | `vpn` | `vpn_lock` | `network-vpn-symbolic` |
