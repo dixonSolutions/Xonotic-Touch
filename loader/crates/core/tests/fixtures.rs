@@ -303,3 +303,23 @@ fn multiplayer_has_one_join_and_no_page_behind_a_server() {
     assert_eq!(st.node("mp/servers").unwrap().arr("selected").len(), 1);
     assert_eq!(st.stack(), ["home", "mp"], "choosing a server opens nothing");
 }
+
+#[test]
+fn the_player_answers_a_choice_like_the_engine() {
+    let (_, f) = all().into_iter().find(|(n, _)| n == "seq-server-select.json").unwrap();
+    let key = f.rows["servers"][7]["key"].as_str().unwrap().to_string();
+    let mut p = Player::new(f);
+    let mut c = Client::new();
+    let mut st = Store::new();
+    for m in p.handle(&obj(&c.hello("t", "0", json!({})))) {
+        st.apply(&m);
+    }
+    assert!(!st.node("mp/join/go").unwrap().enabled());
+    let ch: Vec<Change> = p.handle(&obj(&c.row("mp/servers", &key, "select"))).iter().flat_map(|m| st.apply(m)).collect();
+    assert_eq!(ch.len(), 1, "one diff answers the choice");
+    assert_eq!(st.node("mp/servers").unwrap().arr("selected"), [json!(key)]);
+    assert!(st.node("mp/join/go").unwrap().enabled(), "the one Join comes on");
+    // A list without a selection refuses it.
+    let r = p.handle(&obj(&c.row("mp/join", &key, "select")));
+    assert_eq!(r[0]["t"], "error");
+}
