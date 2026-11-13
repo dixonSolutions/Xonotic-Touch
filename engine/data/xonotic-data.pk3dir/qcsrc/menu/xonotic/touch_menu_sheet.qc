@@ -54,6 +54,7 @@ vector TouchSheet_rectInMain(entity it)
 }
 
 void TouchScroll_drawBars();
+bool TouchScroll_is(entity e);
 
 // List boxes drawn this frame, for their scroll indicators.
 const int TOUCH_BAR_LISTS = 16;
@@ -292,7 +293,9 @@ void TouchSheet_updatePins(entity f)
 
 bool TouchSheet_drawLater(entity me, entity e)
 {
-	if (e.instanceOfListBox)
+	// List boxes, and any item that scrolls itself (touch_scroll_get set),
+	// get an indicator; sheets have their own.
+	if (e.instanceOfListBox || (TouchScroll_is(e) && !e.instanceOfDialog))
 		TouchScroll_noteList(e);
 	if (!touch_pin_sheet)
 		return false;
@@ -1052,7 +1055,7 @@ void TouchScroll_drawBars()
 	{
 		entity e = touch_bar_list[i];
 		TouchScroll_adopt(e);
-		if (e.getTotalHeight(e) <= 1.001)
+		if (TouchScroll_room(e) <= 0.001)
 			continue;
 		float la = TouchScroll_emphasis(e);
 		vector o = TouchSheet_boxInMain(e);
@@ -1061,7 +1064,7 @@ void TouchScroll_drawBars()
 		if (t1 - t0 < s.y * 0.2)
 			continue;
 		// The thumb maps the whole list onto the part of the box in view.
-		TouchScroll_drawBar(eX * o.x + eY * t0, eX * s.x + eY * (t1 - t0), 1, e.getTotalHeight(e), e.scrollPos, la);
+		TouchScroll_drawBar(eX * o.x + eY * t0, eX * s.x + eY * (t1 - t0), 1, 1 + TouchScroll_room(e), e.touch_scroll_get(e), la);
 	}
 }
 

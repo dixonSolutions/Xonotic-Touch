@@ -1,6 +1,7 @@
 #include "dialog_touch_mods.qh"
 
 #include "dialog.qh"
+#include "touch_menu_vgrid.qh"
 #include "../item/modalcontroller.qh"
 
 // The Mods tab (see dialog_touch_mods.qh). A model function (TouchMods_update,
@@ -1223,6 +1224,7 @@ void TouchMods_ConfigureDialogs(entity mainwindow)
 	entity i = godnotic_mods_dialog = NEW(GodnoticModsDialog);
 	i.configureDialog(i);
 	mainwindow.addItemCentered(mainwindow, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
+	TouchMapPick_ConfigureDialogs(mainwindow); // the map picker's sheets (touch_menu_vgrid.qc)
 }
 
 void TouchMods_OpenManager(entity btn, entity me)

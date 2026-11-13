@@ -1,0 +1,80 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
+
+// Godnotic: a virtualised grid (or list) of cells, and the map picker built
+// on it.
+//
+// GodnoticVirtualGrid is a scroller of the gesture layer
+// (touch_menu_sheet.qh): a drag scrolls it, a tap picks a cell, a fling
+// glides. It draws only the rows in view plus one row each side, so a count
+// of thousands costs no more than a screenful. A caller provides:
+//   vg_count(me)                      how many cells
+//   vg_drawCell(me, i, o, s, focused) draw cell i in the box o..o+s (own units)
+//   vg_click(me, i)                   cell i was tapped
+//   vg_window(me, first, last)        optional: cells first..last are near the
+//                                     view (load what they show, free the rest)
+// and sets vg_cellDp (a cell's least width; columns follow from the width)
+// and vg_aspect (cell height / width), or vg_rowDp for a one-column list.
+
+#include "rootdialog.qh"
+#include "touchbutton.qh"
+
+CLASS(GodnoticVirtualGrid, MenuItem)
+	METHOD(GodnoticVirtualGrid, draw, void(entity));
+	METHOD(GodnoticVirtualGrid, resizeNotify, void(entity, vector, vector, vector, vector));
+	METHOD(GodnoticVirtualGrid, mousePress, bool(entity, vector));
+	METHOD(GodnoticVirtualGrid, mouseRelease, float(entity, vector));
+	METHOD(GodnoticVirtualGrid, mouseMove, float(entity, vector));
+	METHOD(GodnoticVirtualGrid, keyDown, float(entity, float, float, float));
+	ATTRIB(GodnoticVirtualGrid, focusable, bool, true);
+	ATTRIB(GodnoticVirtualGrid, vg_cellDp, float, 170);
+	ATTRIB(GodnoticVirtualGrid, vg_aspect, float, 0.9);
+	ATTRIB(GodnoticVirtualGrid, vg_rowDp, float, 0);
+	ATTRIB(GodnoticVirtualGrid, vg_scroll, float, 0);   // own heights scrolled
+	ATTRIB(GodnoticVirtualGrid, vg_pressed, int, -1);
+	ATTRIB(GodnoticVirtualGrid, vg_focused, int, -1);
+	ATTRIB(GodnoticVirtualGrid, vg_abs, vector, '0 0 0');
+ENDCLASS(GodnoticVirtualGrid)
+.int(entity me) vg_count;
+.void(entity me, int i, vector o, vector s, bool focused) vg_drawCell;
+.void(entity me, int i) vg_click;
+.void(entity me, int first, int last) vg_window;
+
+// Columns, cell size (own units) and rows of a grid as laid out now.
+int TouchGrid_columns(entity me);
+vector TouchGrid_cell(entity me);
+
+// The map picker: a grid of preview pictures (a list on request), each
+// tapped open on a preview page with the map's picture, title, author,
+// description and modes, and "Use this map".
+CLASS(GodnoticMapPickerDialog, XonoticRootDialog)
+	METHOD(GodnoticMapPickerDialog, fill, void(entity));
+	ATTRIB(GodnoticMapPickerDialog, title, string, _("Choose a map"));
+	ATTRIB(GodnoticMapPickerDialog, color, vector, SKINCOLOR_DIALOG_MULTIPLAYER);
+	ATTRIB(GodnoticMapPickerDialog, intendedWidth, float, 0.96);
+	ATTRIB(GodnoticMapPickerDialog, rows, float, 11);
+	ATTRIB(GodnoticMapPickerDialog, columns, float, 6);
+	ATTRIB(GodnoticMapPickerDialog, name, string, "TouchMapPicker");
+ENDCLASS(GodnoticMapPickerDialog)
+
+CLASS(GodnoticMapPreviewDialog, XonoticRootDialog)
+	METHOD(GodnoticMapPreviewDialog, fill, void(entity));
+	ATTRIB(GodnoticMapPreviewDialog, title, string, _("Map"));
+	ATTRIB(GodnoticMapPreviewDialog, color, vector, SKINCOLOR_DIALOG_MULTIPLAYER);
+	ATTRIB(GodnoticMapPreviewDialog, intendedWidth, float, 0.9);
+	ATTRIB(GodnoticMapPreviewDialog, rows, float, 9);
+	ATTRIB(GodnoticMapPreviewDialog, columns, float, 6);
+	ATTRIB(GodnoticMapPreviewDialog, name, string, "TouchMapPreview");
+ENDCLASS(GodnoticMapPreviewDialog)
+
+// A drawn item of the preview page (picture or text, by its role).
+CLASS(GodnoticMapPreviewItem, MenuItem)
+	METHOD(GodnoticMapPreviewItem, draw, void(entity));
+	ATTRIB(GodnoticMapPreviewItem, mpRole, int, 0);
+ENDCLASS(GodnoticMapPreviewItem)
+
+// Open the picker. On "Use this map", onPick(bsp name) runs. allMaps: every
+// map (Host a LAN game); else the maps the current filter shows (Create).
+void TouchMapPick_Open(entity btn, void(string bsp) onPick, bool allMaps);
+// TouchMods_ConfigureDialogs adds the picker's two sheets too.
+void TouchMapPick_ConfigureDialogs(entity mainwindow);

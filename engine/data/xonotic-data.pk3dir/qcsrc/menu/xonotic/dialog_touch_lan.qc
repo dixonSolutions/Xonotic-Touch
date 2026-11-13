@@ -6,6 +6,7 @@
 #include "textslider.qh"
 #include "serverlist.qh"
 #include "maplist.qh"
+#include "touch_menu_vgrid.qh"
 #include <common/mapinfo.qh>
 
 // label roles
@@ -551,6 +552,24 @@ void TouchCreate_Start(entity btn, entity maplist)
 	MapList_LoadMap(btn, maplist);
 }
 
+void TouchCreate_Picked(string bsp)
+{
+	entity ml = find(NULL, classname, "XonoticMapList");
+	if (!ml)
+		return;
+	for (int i = 0; i < MapInfo_count; ++i)
+		if (MapInfo_BSPName_ByID(i) == bsp)
+		{
+			ml.setSelected(ml, i);
+			return;
+		}
+}
+
+void TouchCreate_Pictures(entity btn, entity me)
+{
+	TouchMapPick_Open(btn, TouchCreate_Picked, false);
+}
+
 void TouchCreate_Reflow(entity me)
 {
 	if (!touch_menu_on)
@@ -588,6 +607,17 @@ void TouchCreate_Reflow(entity me)
 			setDependent(e, "touch_lan_create_password", 1, 1);
 	me.gotoRC(me, 19.5, 0);
 		me.TD(me, 1, 2.9, TouchLan_label(TOUCH_LAN_STATUS));
+	// Maps with their pictures: a grid picker over the Maplist header.
+	for (entity h = me.firstChild; h; h = h.nextSibling)
+		if (h.instanceOfLabel && !h.instanceOfButton && h.text == _("Maplist") && h.Container_origin.x > 0.45)
+		{
+			h.Container_size_x *= 0.5;
+			entity b = makeGodnoticButton(_("Pictures..."), '0.6 0.85 1');
+			b.onClick = TouchCreate_Pictures;
+			b.onClickEntity = me;
+			me.addItem(me, b, h.Container_origin + eX * h.Container_size.x, h.Container_size, 1);
+			break;
+		}
 	// Start hosts on the LAN when the box is ticked.
 	if (me.mapListBox && me.mapListBox.startButton)
 		me.mapListBox.startButton.onClick = TouchCreate_Start;

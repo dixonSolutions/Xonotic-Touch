@@ -142,6 +142,7 @@
 #include <menu/xonotic/touch_menu_settings.qc> // Touch
 #include <menu/xonotic/touch_menu_sheet.qc> // Touch
 #include <menu/xonotic/touch_menu_reflow.qc> // Touch
+#include <menu/xonotic/touch_menu_vgrid.qc> // Touch
 #include <menu/xonotic/touch_startup_util.qc>
 #include <menu/xonotic/touch_update_util.qc>
 #include <menu/xonotic/touchbutton.qc>
