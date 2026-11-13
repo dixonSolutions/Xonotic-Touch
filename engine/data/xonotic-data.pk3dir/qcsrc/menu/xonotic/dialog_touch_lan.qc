@@ -343,8 +343,12 @@ void GodnoticLanPasswordDialog_readInputArgs(entity me, int argsbuf)
 void GodnoticLanPasswordDialog_showNotify(entity me)
 {
 	SUPER(GodnoticLanPasswordDialog).showNotify(me);
-	// Ready to type: on a touchscreen this brings up the keyboard.
-	me.setFocus(me, me.lanInput);
+	// Ready to type: on a touchscreen this brings up the keyboard. Only when
+	// the prompt itself has focus: the menu also notifies dialogs that are
+	// not open (m_display on the in-game MENU), and setFocus in an unfocused
+	// container is a menu QC error that drops to the engine menu.
+	if (me.focused)
+		me.setFocus(me, me.lanInput);
 }
 
 void TouchLan_PasswordJoin(entity btn, entity me)

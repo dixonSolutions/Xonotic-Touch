@@ -12,6 +12,8 @@ static cvar_t touch_shell_button = {CF_CLIENT | CF_ARCHIVE, "touch_shell_button"
 	"console button in the top right corner: 0 never, 1 menus and console only, 2 also in a match"};
 static cvar_t touch_shell_button_size = {CF_CLIENT | CF_ARCHIVE, "touch_shell_button_size", "48",
 	"console button size in density-independent pixels (dp)"};
+static cvar_t touch_shell_chat_sheet = {CF_CLIENT, "_touch_chat_sheet", "0",
+	"set by the CSQC while its chat sheet is open (touch_chat.qc): the button would sit on the sheet's TEAM button"};
 static cvar_t touch_shell_safe_insets = {CF_CLIENT, "_touch_safe_insets", "",
 	"set by the platform: \"left top right bottom density\" in window pixels, the area cutouts and rounded corners keep clear"};
 
@@ -30,6 +32,7 @@ static void ensure_cvars(void)
 	Cvar_RegisterVariable(&touch_shell_button);
 	Cvar_RegisterVariable(&touch_shell_button_size);
 	Cvar_RegisterVariable(&touch_shell_safe_insets);
+	Cvar_RegisterVariable(&touch_shell_chat_sheet);
 }
 
 static float cv(const char *name, float def)
@@ -62,11 +65,16 @@ static qbool visible(void)
 		return false; // binding a key takes every press as it is
 	if (console_open())
 		return true;
+	if (cls.state != ca_connected && touch_shell_chat_sheet.integer)
+		Cvar_SetValueQuick(&touch_shell_chat_sheet, 0); // a sheet left open by a CSQC that went away
 	if (key_dest == key_game)
 	{
 		if (cls.state != ca_connected)
 			return false; // nothing on screen yet (startup, between maps)
 		if (mode < 2)
+			return false;
+		// The CSQC chat sheet has its own CLOSE; the button covered TEAM.
+		if (touch_shell_chat_sheet.integer)
 			return false;
 		// A keyboard-and-mouse player has the mouse grabbed and the ` key.
 		return vid_touchscreen.integer || VID_SDL_HasTouchDevices() || vid_touchscreen_detected.integer;
@@ -223,7 +231,10 @@ void TouchShell_Draw(void)
 static qbool hit(float vx, float vy)
 {
 	float grow = bs * 0.20f;
-	return drawn && vx >= bx - grow && vx <= bx + bs + grow && vy >= by - grow && vy <= by + bs + grow;
+	// In the menu nothing grows above the button: full-height dialogs
+	// (Multiplayer, Credits) have their close X just over it, in the corner.
+	float top = (key_dest == key_menu && !console_open()) ? by : by - grow;
+	return drawn && vx >= bx - grow && vx <= bx + bs + grow && vy >= top && vy <= by + bs + grow;
 }
 
 static void toggle(void)

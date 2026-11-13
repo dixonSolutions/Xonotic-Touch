@@ -631,6 +631,11 @@ public final class XonoticActivity extends SDLActivity {
      * field opened the keyboard there was nothing left on screen to close it
      * with. Bringing the bars back while typing restores that way out, and
      * immersive mode returns the moment the keyboard does.
+     *
+     * Only the navigation bar: Back is what dismisses the keyboard. The status
+     * bar would cover the top of the screen, where the engine's console and
+     * chat sheets keep CLOSE and KEYBOARD (a player who chose HIDE KEYS types
+     * on the system keyboard and still needs them).
      */
     private void watchSoftKeyboard() {
         final View decor = getWindow().getDecorView();
@@ -658,7 +663,8 @@ public final class XonoticActivity extends SDLActivity {
                 return;
             }
             if (visible) {
-                controller.show(WindowInsets.Type.systemBars());
+                controller.show(WindowInsets.Type.navigationBars());
+                controller.hide(WindowInsets.Type.statusBars());
             } else {
                 controller.hide(WindowInsets.Type.systemBars());
             }
@@ -666,6 +672,7 @@ public final class XonoticActivity extends SDLActivity {
         }
         View decor = getWindow().getDecorView();
         decor.setSystemUiVisibility(visible ? View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        | View.SYSTEM_UI_FLAG_FULLSCREEN
                 : View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                         | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                         | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN

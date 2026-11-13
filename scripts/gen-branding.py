@@ -251,6 +251,28 @@ def main():
     loading.paste(lb, ((2048 - lw) // 2, (1024 - lh) // 2), lb)
     loading.convert("RGB").save(os.path.join(ROOT, "touch/gfx/godnotic_loading.jpg"), quality=90, optimize=True)
 
+    # Console background: the same idea as the loading picture (touch/xonotic.cfg
+    # points touch_conback_picture at it; downloaded data carries a gfx/conback
+    # with the Xonotic logo). Kept dark so the console text stays readable: a
+    # deep blue fade with the banner faint below the middle. The engine draws
+    # the picture's bottom edge at the console's bottom edge, so a half-height
+    # console shows the lower half: the banner sits where both show it.
+    cw, ch = 2048, 1280
+    con = Image.new("RGB", (cw, ch), (0, 0, 0))
+    px = con.load()
+    for y in range(ch):
+        t = y / (ch - 1)
+        row = (int(4 + 6 * t), int(8 + 10 * t), int(16 + 18 * t))
+        for x in range(cw):
+            px[x, y] = row
+    bw = 1100
+    bh = round(bw * BANNER_H / BANNER_W)
+    cb = img.resize((bw, bh), Image.LANCZOS)
+    alpha = cb.getchannel("A").point(lambda a: a * 0.14)
+    cb.putalpha(alpha)
+    con.paste(cb, ((cw - bw) // 2, round(ch * 0.72 - bh / 2)), cb)
+    con.save(os.path.join(ROOT, "touch/gfx/godnotic_conback.jpg"), quality=85, optimize=True)
+
     # Menu background layer: the banner alone on a transparent sheet.
     layer = Image.new("RGBA", (LAYER_W, LAYER_H), (0, 0, 0, 0))
     h = round(LAYER_BANNER_W * BANNER_H / BANNER_W)

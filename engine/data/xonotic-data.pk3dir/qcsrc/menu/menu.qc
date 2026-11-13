@@ -435,7 +435,7 @@ string menuLayerImage(string img, float layer)
 {
 	if (!menuBrandedLogo)
 		menuBrandedLogo = draw_PictureExists("touch_background_l2") ? 1 : -1;
-	if (menuBrandedLogo > 0 && layer == 2 && img == SKINGFX_BACKGROUND)
+	if (menuBrandedLogo > 0 && layer == 2 && (img == SKINGFX_BACKGROUND || img == SKINGFX_BACKGROUND_INGAME)) // in a match too: the stock _ingame_l2 is the flame-winged Xonotic logo
 		return "touch_background_l2";
 	return strcat(img, "_l", ftos(layer));
 }

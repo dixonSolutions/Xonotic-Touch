@@ -16,6 +16,8 @@ cvar_t touch_kb_minkey_px = {CF_CLIENT | CF_ARCHIVE, "touch_kb_minkey_px", "36",
 cvar_t touch_kb_hold_time = {CF_CLIENT | CF_ARCHIVE, "touch_kb_hold_time", "0.45", "seconds a key is held before its accented and special characters pop up (0 = never)"};
 cvar_t touch_conui_shade = {CF_CLIENT | CF_ARCHIVE, "touch_conui_shade", "0.62", "console sheet background shade alpha"};
 cvar_t touch_conui_palette_file = {CF_CLIENT | CF_ARCHIVE, "touch_conui_palette_file", "touch/console_palette.txt", "file of preset console commands for the COMMANDS tab"};
+/* Not archived: touch/xonotic.cfg sets it each start, like scr_loadingscreen_picture. */
+cvar_t touch_conback_picture = {CF_CLIENT, "touch_conback_picture", "", "console background picture used instead of gfx/conback when it loads (empty = gfx/conback); a name only this build ships, since downloaded data carries its own gfx/conback"};
 #define TOUCHUI_MAX_FINGERS 11
 
 static touchui_tab_t touchui_tab = TOUCHUI_TAB_KEYS;
@@ -245,6 +247,7 @@ void TouchUI_RegisterCvars(void)
 	Cvar_RegisterVariable(&touch_kb_hold_time);
 	Cvar_RegisterVariable(&touch_conui_shade);
 	Cvar_RegisterVariable(&touch_conui_palette_file);
+	Cvar_RegisterVariable(&touch_conback_picture);
 }
 
 void TouchUI_Init(void)
@@ -312,6 +315,26 @@ qbool TouchUI_KeysShown(touchui_sheet_t kind)
 	if (touchui_keys_override >= 0)
 		return touchui_keys_override != 0;
 	return ctx == 2; /* touch controls on, no keyboard */
+}
+
+qbool TouchUI_EngineKeysUp(void)
+{
+	keydest_t keydest = (key_consoleactive & KEY_CONSOLEACTIVE_USER) ? key_console : key_dest;
+	if (keydest != key_console && keydest != key_message)
+		return false;
+	/* A listed keyboard types through SDL text input, which has to stay on. */
+	if (VID_HasKeyboard())
+		return false;
+	return TouchUI_KeysShown(keydest == key_console ? TOUCHUI_SHEET_CONSOLE : TOUCHUI_SHEET_CHAT);
+}
+
+cachepic_t *TouchUI_ConbackPic(cachepic_t *stock, unsigned int flags)
+{
+	cachepic_t *pic;
+	if (!stock || !touch_conback_picture.string[0])
+		return stock;
+	pic = Draw_CachePic_Flags(touch_conback_picture.string, flags);
+	return Draw_IsPicLoaded(pic) ? pic : stock;
 }
 
 static void TouchUI_ToggleKeys(void)
