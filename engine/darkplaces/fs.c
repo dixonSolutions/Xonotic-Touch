@@ -3061,6 +3061,7 @@ int FS_Close (qfile_t* file)
 {
 	if(file->flags & QFILE_FLAG_DATA)
 	{
+		Touch_FS_ZstdClose(file); // Touch: a zstd entry opened lazily (touch_assets_fs.h)
 		Mem_Free(file);
 		return 0;
 	}
@@ -3223,6 +3224,7 @@ fs_offset_t FS_Read (qfile_t* file, void* buffer, size_t buffersize)
 	else
 		done = 0;
 
+	Touch_FS_ZstdEnsure(file); // Touch: a zstd entry decodes on its first read
 	if(file->flags & QFILE_FLAG_DATA)
 	{
 		size_t left = file->real_length - file->position;

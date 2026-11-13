@@ -392,6 +392,7 @@ void TouchWarm_Init(void)
 	// load-time switches with no init hook of their own in an upstream file
 	TouchCRC_Init();
 	TouchPRVM_Init();
+	Touch_FS_Init(); // fs_zstd_lazy (touch_assets_fs.h, in fs.c)
 #ifdef TOUCH_WARM_SDL
 	SDL_AddEventWatch(TW_EventWatch, NULL);
 #endif

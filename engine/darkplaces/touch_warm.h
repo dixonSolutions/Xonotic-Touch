@@ -16,4 +16,7 @@ int TouchPreload_ForEach(const char *map, void (*fn)(char kind, const char *name
 // touch_preload.h: a persistent picture loaded during a map load, and its cost
 void TouchWarm_PicLoaded(const char *name, unsigned int cachepicflags, double seconds);
 
+// fs.c (touch_assets_fs.h): fs_zstd_lazy
+void Touch_FS_Init(void);
+
 #endif
