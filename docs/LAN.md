@@ -16,7 +16,8 @@ mode, map, slots and bots are Create's own; the LAN box adds:
 | Port | 26000 | UDP, 1024-65535. If it is taken (another game or app on this device), **Start** says so, puts the next free port in the box and asks you to press Start again |
 | Password | off | tick **Password** and type one: only players who know it can join (see below). The lock beside the port shows it: open while no password applies, shut once one does |
 
-Unticked, Create starts a local game as before. In a match on a touchscreen
+Unticked, Create starts a local game, and a local game is local: see
+"Local games stay local" below. In a match on a touchscreen
 the game menu's LAN row shows the addresses others join at, and **Stop LAN**.
 The Host screen (`menu_cmd directmenu TouchLanHost`, with server name, game
 mode, map, bots, slots, port, password and touch assists) is still there for
@@ -64,6 +65,44 @@ lock against power-save lag. Both are released when hosting stops
 A dedicated server works too: the launcher's Host page, or
 `darkplaces -dedicated +sv_public 0 +port 26000 +maxplayers 8 +map stormkeep`,
 plus `+sv_touch_lan_password <secret>` for a password.
+
+## Local games stay local
+
+A game is on the network only when its player chose that. Singleplayer, the
+campaign and Create without the LAN box open **no network socket at all**: the
+game server has its loopback socket and nothing else, no UDP port is bound, and
+so no LAN search, status query, challenge or connect from another device can
+reach it, whatever `sv_public` says (the menus set `sv_public -1` as well).
+
+The engine decides this where a new server opens its sockets
+(`TouchLAN_OpenNetPorts`, one hook line in `NetConn_OpenServerPorts`): a listen
+server gets its network sockets only if it was armed right before its map
+command, by the menus' LAN paths (`touch_lan_host_password_apply`) or by
+`touch_lan_arm` on the console. A dedicated server always listens.
+`touch_lan_private 0` brings back the stock behaviour (every game with more
+than one slot listens).
+
+**The host leaving ends the game for everyone.** Leaving the match or quitting
+the app shuts the server down; before the stock disconnect (which carries no
+reason in this protocol) the server sends each remote client an out-of-band
+`touchlan hostended`. A client that gets it from the server it is on shows
+"The host ended the game" at its menu and does not try to join again (the
+reconnect of docs/NETWORK.md is for lost connections). The port is free again
+at once. A host whose app is killed cannot say goodbye; its clients time out.
+
+**The host's popup.** When a hosted game starts the host sees the addresses to
+give out, each with Copy, the `godnotic://join/` link, the lock, who is in, and
+**Close when someone joins** (`touch_lan_popup_autoclose`, default on; the same
+switch is in Settings > Game). The pause menu's hosting card opens it again.
+
+`scripts/test-lan-private.sh` checks all of this between two network
+namespaces: with LAN off no UDP port for the game, every probe (getinfo,
+getstatus, getchallenge, connect) to every UDP port the game process holds
+unanswered, nothing found by another game's LAN search and no join by address;
+with LAN on and a password the port answers, the lock shows, a join without the
+password is refused and one with it gets in; the host leaving, and the host
+quitting, each end the client's game with the message, the client back at
+Home, no rejoin, no host process left and the port free.
 
 ## Join
 

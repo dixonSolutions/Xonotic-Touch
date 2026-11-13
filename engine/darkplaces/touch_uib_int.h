@@ -139,6 +139,7 @@ void UIBS_Remove(const char *id);    // a whole subtree
 // Navigation (app props), set by the menu VM
 void UIBS_SetNav(const char *stack, const char *modal, int canback, const char *context);
 void UIBS_SetBusy(const char *json, size_t len);  // NULL/0: not busy
+void UIBS_SetReserved(const char *json, size_t len);  // app.reserved; NULL/0: nothing drawn over the UI
 void UIBS_Toast(const char *text, const char *kind, const char *icon, float timeout, const char *actionjson);
 void UIBS_Reset(void);
 

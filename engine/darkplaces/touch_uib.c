@@ -5,6 +5,7 @@ docs/UI_BRIDGE.md is the contract; touch_uib_store.c holds the tree.
 #include "quakedef.h"
 #include "thread.h"
 #include "touch_uib_int.h"
+#include "touch_shellbtn.h"
 #ifdef __linux__
 #include <sys/eventfd.h>
 #include <unistd.h>
@@ -733,6 +734,24 @@ static void send_changes(void)
 	}
 }
 
+// app.reserved: what the engine draws over the UI in its own window (the
+// console button, touch_shellbtn.c), in dp, so renderers lay out around it.
+static void UIB_WatchReserved(void)
+{
+	char json[160];
+	float x, y, w, h, d;
+	// not as a back end (-uibridge): the engine's window is then hidden behind
+	// the app's own, and nothing of the engine's lies over the app's UI
+	if (cls.state != ca_dedicated && !UIBStream_BackendMode() && TouchShell_Rect(&x, &y, &w, &h, &d) && d > 0)
+	{
+		dpsnprintf(json, sizeof(json), "[{\"id\":\"console\",\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d}]",
+			(int)floor(x / d), (int)floor(y / d), (int)ceil(w / d), (int)ceil(h / d));
+		UIBS_SetReserved(json, strlen(json));
+	}
+	else
+		UIBS_SetReserved(NULL, 0);
+}
+
 void TouchUIB_Frame(void)
 {
 	if (!uib.up)
@@ -776,6 +795,7 @@ void TouchUIB_Frame(void)
 	if (now >= uib.next_watch)
 	{
 		uib.next_watch = now + 0.1;
+		UIB_WatchReserved();
 		UIBS_WatchTick();
 		if (uibm_tick_wanted || UIB_ConnCount())
 			UIBM_Event("tick", "", "", "");

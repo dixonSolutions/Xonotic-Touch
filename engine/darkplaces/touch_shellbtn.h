@@ -39,4 +39,11 @@ qbool TouchShell_Finger(int type, int id, float nx, float ny);
 // by TouchShell_Finger, so the click is only swallowed).
 qbool TouchShell_Mouse(qbool down, int button, qbool synthetic, float wx, float wy);
 
+// The rect the button was last drawn in, for layouts that must keep clear of
+// it: x, y, w, h in window pixels and the density (px per dp) it was sized
+// with. False while it is not drawn. The same rect is published to the menu
+// and CSQC as fractions of the window in the cvar _touch_shell_rect
+// ("x y w h", empty while hidden), so nothing has to repeat the placement.
+qbool TouchShell_Rect(float *x, float *y, float *w, float *h, float *density);
+
 #endif

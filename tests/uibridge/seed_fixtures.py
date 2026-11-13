@@ -113,44 +113,74 @@ def mode_meta(modes):
 # ------------------------------------------------------------------ screens
 
 
-def home(last="stormkeep"):
+def home(last="stormkeep", servers=None):
     m = next(x for x in MAPS if x[0] == last)
-    hero = N("home/hero", "hero", title="Play", subtitle=f"Continue: {m[1]} · Deathmatch · 4 bots",
-             image=f"pk3:maps/{last}", aspect="16:9", featured=True,
-             meta=[{"icon": "map", "text": m[1]}, {"icon": "mode", "text": "Deathmatch"},
-                   {"icon": "bot", "text": "4 bots"}],
-             primary=A("play", "Play", "play", style="primary"),
-             actions=[A("quick", "Quick match", "players"), A("sp", "Choose…", "map")])
     tiles = N("home/tiles", "grid", [
-        N("home/tiles/sp", "card", title="Singleplayer", subtitle="Bots, your rules",
-          icon="singleplayer", image="pk3:gfx/menu/luma/gametype_dm", aspect="16:9",
+        N("home/tiles/sp", "card", title="Singleplayer", subtitle=f"{m[1]} · Deathmatch · 4 bots",
+          icon="singleplayer", image=f"pk3:maps/{last}", aspect="16:9", featured=True,
           primary=A("sp", "Open", "chevron")),
-        N("home/tiles/mp", "card", title="Multiplayer", subtitle="Find a game or join by address",
-          icon="multiplayer", image="pk3:gfx/menu/luma/gametype_ctf", aspect="16:9",
+        N("home/tiles/campaign", "card", title="Campaign", subtitle="Level 3 of 31 · Capture the Flag: Implosion",
+          icon="trophy", image="pk3:maps/implosion", aspect="16:9", featured=True, progress=2 / 31,
+          primary=A("campaign", "Open", "chevron")),
+        N("home/tiles/mp", "card", title="Multiplayer", subtitle=(servers or "Join a server, or create a game"),
+          icon="multiplayer", image="pk3:maps/xoylent", aspect="16:9", featured=True, live=True,
           primary=A("mp", "Open", "chevron")),
-        N("home/tiles/settings", "card", title="Settings", subtitle="Video, controls, Mods",
-          icon="settings", primary=A("settings", "Open", "chevron")),
-        N("home/tiles/credits", "card", title="Credits", subtitle="The people behind Xonotic and Godnotic",
-          icon="credits", primary=A("credits", "Open", "chevron")),
-    ], minItem=200)
-    return N("home", "screen", [N("home/banner", "image", ref="asset:banner", aspect="21:9", fit="contain",
-                                  alt="Godnotic"), hero, tiles],
+    ], minItem=240, maxColumns=3)
+    return N("home", "screen", [N("home/banner", "image", ref="asset:banner", role="banner", emphasis="high", aspect="21:9",
+                                  fit="contain", alt="Godnotic"), tiles],
              title="Godnotic", kind="home", background="asset:background",
-             actions=[A("quit", "Quit", "quit", style="secondary",
+             actions=[A("settings", "Settings", "settings"), A("credits", "Credits", "credits"),
+                      A("quit", "Quit", "quit", style="secondary",
                         confirm={"title": "Quit Godnotic?", "ok": "Quit"})])
 
 
-def sp_screen(mode="dm", create=False, lan=False, pw=False):
+CAMPAIGN = [("boil", "dm", "Deathmatch: Boil"), ("atelier", "dm", "Deathmatch: Atelier"), ("implosion", "ctf", "Capture the Flag: Implosion"),
+            ("finalrage", "dm", "Deathmatch: Final Rage")]
+
+
+def campaign_rows(index=2):
+    rows = []
+    for i, (mp, mode, title) in enumerate(CAMPAIGN[:index + 2]):
+        state = "done" if i < index else "next" if i == index else "locked"
+        rows.append({"key": str(i), "cells": {"n": i + 1, "title": f"{i + 1}. {title}", "map": mp, "mode": mode,
+                                              "modeName": MODE_NAME.get(mode, mode), "state": state, "locked": i > index},
+                     "image": f"pk3:maps/{mp}"})
+    return rows
+
+
+def campaign_screen(index=2, sel=None):
+    sel = index if sel is None else sel
+    mp, mode, title = CAMPAIGN[sel]
+    return N("campaign", "screen", [
+        N("campaign/sel", "preview", title=f"{sel + 1}. {title}", subtitle=f"{MODE_NAME.get(mode, mode)} on {mp.capitalize()}",
+          image=f"pk3:maps/{mp}", aspect="16:9", density="compact", body="Capture the enemy flag before they take yours.",
+          badges=[{"icon": "flag", "text": "Next", "tone": "accent"}] if sel == index else [{"icon": "check", "text": "Won", "tone": "positive"}]),
+        N("campaign/levels", "section", [
+            N("campaign/levels/list", "list", source="campaign", display="cards", rowHeight="card", minItem=220, aspectItem="16:9",
+              state="ready", count=index + 2, selection="single", selected=[str(sel)],
+              columns=[{"key": "title", "type": "text", "label": "Level", "width": "fill", "priority": 1},
+                       {"key": "modeName", "type": "text", "label": "Mode", "width": "m", "priority": 2},
+                       {"key": "state", "type": "text", "label": "State", "width": "s", "priority": 3}],
+              rowSelect=A("campaign.select", "Choose", "check"), rowPrimary=A("campaign.play", "Play", "play", style="primary")),
+        ], title="Levels", subtitle=f"{index} of 31 won · tap to choose, double tap to play", sticky=True),
+    ], title="Campaign", subtitle="Xonotic campaign", kind="page", header={"collapsible": True},
+        primary=A("campaign.play", "Play", "play", style="primary"))
+
+
+def sp_screen(mode="dm", create=False, lan=False, pw=False, chosen="stormkeep"):
+    cm = next(x for x in MAPS if x[0] == chosen)
+    play = A("play", "Host on LAN" if lan else "Play", "host" if lan else "play", style="primary")
     modecards = [N(f"sp/modes/grid/{m[0]}", "card", title=m[1], subtitle=m[2], image=f"pk3:gfx/menu/luma/gametype_{m[0]}",
                    aspect="1:1", selected=(m[0] == mode), primary=A(f"mode.{m[0]}", m[1]))
                  for m in MODES]
     maps = N("sp/maps/list", "list", source=f"maps:{mode}", display="cards", count=len([x for x in MAPS if mode in x[4].split()]),
-             state="ready", selection="single", selected=["stormkeep"], rowHeight="card", minItem=220, aspectItem="16:9",
+             state="ready", selection="single", selected=[chosen], rowHeight="card", rows=2, scroll="horizontal", minItem=160, aspectItem="16:9",
              columns=[{"key": "title", "type": "text", "label": "Map", "priority": 1},
                       {"key": "players", "type": "text", "label": "Players", "priority": 2},
                       {"key": "size", "type": "size", "label": "Size", "priority": 3}],
-             rowPrimary=A("map.preview", "Preview", "info"),
-             rowActions=[A("map.play", "Play", "play")],
+             rowSelect=A("map.select", "Choose", "check"),
+             rowPrimary=A("map.play", "Play", "play", style="primary"),
+             rowActions=[A("map.preview", "Details", "info")],
              empty={"title": "No maps for this mode", "icon": "map"})
     opts = N("sp/options", "form", [
         N("sp/options/bots", "stepper", label="Bots", bind="vm:sp.bots", value=4, min=0, max=15, step=1, format="int", icon="bot"),
@@ -162,27 +192,30 @@ def sp_screen(mode="dm", create=False, lan=False, pw=False):
         N("sp/options/mutator", "choice", label="Weapons", bind="vm:sp.weapons", value="normal", style="dropdown",
           options=[{"value": "normal", "label": "Normal"}, {"value": "instagib", "label": "InstaGib"},
                    {"value": "nix", "label": "NIX"}, {"value": "rockets", "label": "Rocket arena"}]),
-        N("sp/options/slots", "stepper", label="Player slots", bind="cvar:menu_maxplayers", value=8, min=2, max=32, step=1, format="int", icon="players"),
+    ] + ([] if not create else [
         N("sp/options/lan", "switch", label="LAN", style="checkbox", bind="vm:create.lan", value=lan, icon="lan",
-          help="Host on your network (Wi-Fi or VPN) so others can join"),
+          help=("Others on your Wi-Fi or VPN can find and join this game" if lan else "Off: a local game nobody else can see or join")),
+        N("sp/options/slots", "stepper", label="Player slots", bind="cvar:menu_maxplayers", value=8, min=2, max=32, step=1, format="int", icon="players",
+          hidden=not lan),
         N("sp/options/port", "stepper", label="Port", bind="cvar:port", value=26000, min=1024, max=65535, step=1, format="int",
           help="26000 is free", hidden=not lan),
         N("sp/options/pwon", "switch", label="Password", bind="vm:create.pwon", value=pw, icon=("lock" if pw else "unlock"),
           help=("Players need the password to join" if pw else "Anyone on your network can join"), hidden=not lan),
         N("sp/options/password", "field", label="Password", bind="vm:create.password", value="", kind="password",
           private=True, hasValue=pw, hidden=not (lan and pw)),
-    ], density="compact")
+    ]), density="compact")
     recent = N("sp/recent/list", "list", source="recent", display="rows", count=3, state="ready",
                columns=[{"key": "map", "type": "map", "label": "Map"}, {"key": "mode", "type": "mode", "label": "Mode"},
                         {"key": "when", "type": "date", "label": "When", "priority": 3}],
                rowPrimary=A("recent.play", "Play again", "play"), density="compact")
     return N("sp", "screen", [
         N("sp/modes", "section", [N("sp/modes/grid", "grid", modecards, scroll="horizontal", minItem=140)], title="Game mode"),
-        N("sp/maps", "section", [maps], title="Map", subtitle="Tap a map to see it", sticky=True),
+        N("sp/maps", "section", [maps], title="Map", subtitle="Tap to choose, double tap to play", sticky=True),
         N("sp/options-s", "section", [opts], title="Match"),
         N("sp/recent", "section", [recent], title="Recent", collapsible=True, importance=3),
-    ], title=("Create" if create else "Singleplayer"), kind="page",
-       primary=(A("play", "Host on LAN" if lan else "Play", "host" if lan else "play", style="primary")),
+    ], title=("Create a game" if create else "Singleplayer"), kind="page",
+       subtitle=("On your network: others can join" if lan else "Local game: only you and the bots"),
+       primary=play,
        header={"collapsible": True})
 
 
@@ -235,17 +268,7 @@ SERVER_COLS = [
 ]
 
 
-def server_card(id, row):
-    c = row["cells"]
-    return N(id, "card", title=c["name"], subtitle=f"{MODE_NAME.get(c['mode'], c['mode'])} · {c['map']}",
-             image=row["image"], aspect="16:9",
-             badges=([{"icon": "lock", "text": "Password", "tone": "warning"}] if c["lock"] else []) +
-                    ([{"icon": "star_filled", "text": "Favourite", "tone": "accent"}] if c["fav"] else []),
-             meta=[{"icon": "players", "text": f"{c['players']}/{c['max']}"}, {"icon": "ping", "text": f"{c['ping']} ms"}],
-             primary=A("server.open", "Details", "info"), actions=[A("server.join", "Join", "play", style="primary")])
-
-
-def mp_screen(rows=None, state="ready", total=None, lan=False):
+def mp_screen(rows=None, state="ready", total=None, lan=False, chosen=None, address=""):
     rows = rows or servers()
     count = len([r for r in rows if not lan or r["cells"]["net"] != "internet"]) if total is None else total
     bar = N("mp/bar", "toolbar", [
@@ -259,45 +282,24 @@ def mp_screen(rows=None, state="ready", total=None, lan=False):
         ], wrap=True),
     ])
     lst = N("mp/servers", "list", source="servers", columns=SERVER_COLS, sort="ping", desc=False, filter="",
-            selection="none", density="compact", display="table", state=state, count=count, rowHeight="compact",
-            rowPrimary=A("server.open", "Details", "info"),
-            rowActions=[A("server.join", "Join", "play"), A("server.fav", "Favourite", "star")],
+            selection="single", selected=([chosen] if chosen else []), live=True,
+            density="compact", display="table", state=state, count=count, rowHeight="compact",
+            rowSelect=A("server.select", "Choose", "check"),
+            rowPrimary=A("server.join", "Join", "play", style="primary"),
             empty=({"title": "No games on this network", "text": "Games hosted on your Wi-Fi or VPN show up here.", "icon": "lan"}
                    if lan else {"title": "No servers yet", "text": "Check your connection, then Refresh.", "icon": "server",
                                 "action": A("refresh", "Refresh", "refresh")}),
             error={"title": "The master server did not answer", "action": A("refresh", "Try again", "refresh")})
     join = N("mp/join", "actionbar", [
-        N("mp/join/address", "field", label="Address", bind="vm:mp.address", value="", kind="address",
-          placeholder="host:port or godnotic://join/...", submit=A("join.address", "Join", "play")),
+        N("mp/join/address", "field", label="Address", bind="vm:mp.address", value=address, kind="address",
+          placeholder="host:port or godnotic://join/...", submit=A("join", "Join", "play")),
         N("mp/join/create", "button", label="Create", action=A("create", "Create", "add"), style="secondary"),
-        N("mp/join/go", "button", label="Join", action=A("join.address", "Join", "play", style="primary"), style="primary"),
+        # the one Join: the typed address, else the chosen row; off until there is either
+        N("mp/join/go", "button", label="Join", action=A("join", "Join", "play", style="primary"), style="primary",
+          enabled=bool(chosen or address)),
     ], align="spread")
-    return N("mp", "screen", [bar, lst, join], title="Servers", kind="page", header={"collapsible": True})
-
-
-def server_detail(row):
-    c = row["cells"]
-    return N("mp.server", "screen", [
-        N("mp.server/preview", "preview", title=c["name"], subtitle=f"{MODE_NAME.get(c['mode'], c['mode'])} on {c['map']}",
-          image=row["image"], aspect="16:9",
-          attrs=[{"label": "Players", "value": f"{c['players']}/{c['max']} ({c['bots']} bots)", "icon": "players"},
-                 {"label": "Ping", "value": f"{c['ping']} ms", "icon": "ping"},
-                 {"label": "Address", "value": c["address"], "icon": "server"},
-                 {"label": "Version", "value": c["version"], "icon": "info"}],
-          badges=[{"icon": "lock", "text": "Password", "tone": "warning"}] if c["lock"] else [],
-          primary=A("server.join", "Join", "play", style="primary"),
-          actions=[A("server.fav", "Favourite", "star"), A("server.copy", "Copy address", "copy", kind="copy", text=c["address"])]),
-        N("mp.server/players", "section", [
-            N("mp.server/players/list", "list", source=f"players:{c['address']}", density="compact", display="table", count=c["players"],
-              state="ready", columns=[{"key": "name", "type": "text", "label": "Player", "width": "fill"},
-                                      {"key": "score", "type": "number", "label": "Score", "align": "end", "sortable": True},
-                                      {"key": "ping", "type": "ping", "label": "Ping", "align": "end"}],
-              empty={"title": "Nobody is playing", "icon": "players"})], title="Players", sticky=True),
-        N("mp.server/bar", "actionbar", [
-            N("mp.server/bar/fav", "button", label="Favourite", action=A("server.fav", "Favourite", "star"), style="secondary"),
-            N("mp.server/bar/join", "button", label="Join", action=A("server.join", "Join", "play", style="primary"), style="primary"),
-        ], align="end"),
-    ], title=c["name"], kind="detail", header={"collapsible": True})
+    return N("mp", "screen", [bar, lst, join], title="Multiplayer", subtitle="40 servers · 87 players", kind="page",
+             header={"collapsible": True})
 
 
 def password_dialog(server="Godnotic LAN 1"):
@@ -307,7 +309,7 @@ def password_dialog(server="Godnotic LAN 1"):
             N("mp.password/form/pw", "field", label="Password", bind="vm:join.password", value="", kind="password",
               private=True, hasValue=False, submit=A("password.join", "Join")),
         ], submit=A("password.join", "Join", "play", style="primary")),
-    ], title="Password", presentation="dialog", dismissable=True)
+    ], title="Password", presentation="dialog", dismissable=True, primary=A("password.join", "Join", "play", style="primary"))
 
 
 def settings_root():
@@ -400,8 +402,9 @@ def pause_screen(hosting=False):
               icon="host", accent="ember", density="compact",
               badges=[{"icon": "lock", "text": "Password set", "tone": "warning"}],
               meta=[{"icon": "wifi", "text": "Wi-Fi 192.168.1.23:26000"}, {"icon": "vpn", "text": "VPN 100.64.0.5:26000"}],
-              primary=A("host.share", "Share", "share", kind="share", text="godnotic://join/192.168.1.23:26000"),
-              actions=[A("host.copy", "Copy address", "copy", kind="copy", text="192.168.1.23:26000")])] if hosting else []
+              primary=A("host.popup", "Addresses", "host"),
+              actions=[A("host.copy", "Copy address", "copy", kind="copy", text="192.168.1.23:26000"),
+                       A("host.share", "Share", "share", kind="share", text="godnotic://join/192.168.1.23:26000")])] if hosting else []
     return N("pause", "screen", host + [
         N("pause/match", "card", title="Stormkeep", subtitle="Deathmatch · 7:42 left · 3rd of 5", image="pk3:maps/stormkeep",
           aspect="21:9", meta=[{"icon": "trophy", "text": "12 frags"}, {"icon": "players", "text": "5 players"}]),
@@ -410,11 +413,39 @@ def pause_screen(hosting=False):
             N("pause/actions/settings", "button", label="Settings", action=A("settings", "Settings", "settings"), style="secondary"),
             N("pause/actions/team", "button", label="Change team", action=A("team", "Change team", "players"), style="secondary", hidden=True),
             N("pause/actions/spectate", "button", label="Spectate", action=A("spectate", "Spectate", "esp"), style="secondary"),
-            N("pause/actions/disconnect", "button", label="Leave match",
-              action=A("disconnect", "Leave match", "disconnect", style="destructive",
-                       confirm={"title": "Leave the match?", "ok": "Leave", "destructive": True}), style="destructive"),
+            N("pause/actions/disconnect", "button", label=("End the game" if hosting else "Leave match"),
+              action=A("disconnect", "End the game" if hosting else "Leave match", "disconnect", style="destructive",
+                       confirm={"title": "End the game for everyone?" if hosting else "Leave the match?",
+                                "ok": "End" if hosting else "Leave", "destructive": True}), style="destructive"),
         ], minItem=200),
     ], title="Paused", kind="game", presentation="fullscreen")
+
+
+def lan_popup(players=None, autoclose=True, locked=True):
+    """The host's popup: addresses with Copy, the join link, the lock, who is in, Close when someone joins."""
+    def addr(i, label, icon, a):
+        return N(f"lan.host/addresses/a{i}", "row", [
+            N(f"lan.host/addresses/a{i}/text", "text", body=a, style="mono", selectable=True),
+            N(f"lan.host/addresses/a{i}/copy", "button", label="Copy", style="secondary", action=A("host.copy", "Copy", "copy", kind="copy", text=a)),
+        ], align="spread", label=label, icon=icon)
+    link = "godnotic://join/192.168.1.23:26000"
+    return N("lan.host", "screen", [
+        N("lan.host/addresses", "section", [
+            addr(0, "Wi-Fi", "wifi", "192.168.1.23:26000"),
+            addr(1, "VPN (tailscale0)", "vpn", "100.64.0.5:26000"),
+            N("lan.host/addresses/link", "row", [
+                N("lan.host/addresses/link/text", "text", body=link, style="mono", selectable=True),
+                N("lan.host/addresses/link/copy", "button", label="Copy", style="secondary", action=A("host.copylink", "Copy", "copy", kind="copy", text=link)),
+                N("lan.host/addresses/link/share", "button", label="Share", style="secondary", action=A("host.share", "Share", "share", kind="share", text=link)),
+            ], align="spread", label="Link", icon="link"),
+        ], title="Addresses"),
+        N("lan.host/lock", "text", body=("Password set: players need it to join" if locked else "No password: anyone on your network can join"),
+          icon=("lock" if locked else "unlock"), tone=("warning" if locked else "neutral"), style="note"),
+        N("lan.host/players", "text", body=(f"In the game: {players}" if players else "Nobody has joined yet"), icon="players", style="caption", live=True),
+        N("lan.host/autoclose", "switch", label="Close when someone joins", bind="cvar:touch_lan_popup_autoclose", value=autoclose,
+          help="This popup goes away by itself when the first player joins"),
+    ], title="Your LAN game", subtitle="Others on your Wi-Fi or VPN join with one of these", presentation="dialog", dismissable=True,
+        primary=A("host.close", "Close", "check", style="primary"))
 
 
 def loading_screen(progress=0.0, stage="Downloading map", detail="", cancel=True):
@@ -530,10 +561,15 @@ def main():
              "servers.fav": [r for r in rows_all if r["cells"]["fav"]]}
     allrows = {**srows, "maps": map_rows(), "maps:dm": map_rows("dm"), "maps:ctf": map_rows("ctf"),
                "modes": mode_rows(), "recent": RECENT_ROWS, **MOD_ROWS,
-               "players:" + rows_all[5]["key"]: players_rows(rows_all[5]["cells"]["players"] if rows_all[5]["cells"]["players"] <= 7 else 6)}
+               }
 
     h = home()
-    write("home", fixture("home", "Home: banner, hero Play card, four section cards, Quit.", app([h]), rows=None, caps=CAPS_PHONE))
+    write("home", fixture("home", "Home: the banner and exactly three cards (Singleplayer, Campaign, Multiplayer); Settings, Credits and Quit are header actions.",
+                          app([h]), rows=None, caps=CAPS_PHONE))
+    write("home-live", fixture("home-live", "Home with the server list known: the Multiplayer card says how many servers and players.",
+                               app([home(servers="214 servers · 87 players")]), rows=None))
+    write("campaign", fixture("campaign", "Campaign: the chosen level beside its picture, the levels as cards (won, next, locked).",
+                              app([h, campaign_screen()]), rows={"campaign": campaign_rows()}))
     write("singleplayer", fixture("singleplayer", "Singleplayer: mode cards, map picker (cards over maps:dm), match options, recent.",
                                   app([h, sp_screen()]), rows={k: allrows[k] for k in ("maps:dm", "maps", "modes", "recent")}))
     write("map-preview", fixture("map-preview", "Map preview page pushed over Singleplayer.",
@@ -544,8 +580,6 @@ def main():
                              app([h, mp_screen()]), rows=srows))
     write("servers-lan", fixture("servers-lan", "Servers with the LAN checkbox ticked (Wi-Fi and VPN rows).",
                                  app([h, mp_screen(lan=True)]), rows=srows))
-    write("server-detail", fixture("server-detail", "Server detail with map preview and player list.",
-                                   app([h, mp_screen(), server_detail(rows_all[5])]), rows=allrows))
     write("password-dialog", fixture("password-dialog", "Password prompt dialog.",
                                      app([h, mp_screen(lan=True)], modal=[password_dialog()]), rows=srows))
     write("settings", fixture("settings", "Settings root: twelve sections including Mods, and Advanced.", app([h, settings_root()])))
@@ -556,6 +590,8 @@ def main():
     write("pause", fixture("pause", "In-game pause menu.", app([pause_screen()], context="game")))
     write("pause-hosting", fixture("pause-hosting", "Pause menu while hosting on LAN: compact card with labelled join addresses and lock state.",
                                    app([pause_screen(hosting=True)], context="game")))
+    write("lan-popup", fixture("lan-popup", "The host's LAN popup over the pause menu: addresses with Copy, the join link, lock, players, Close when someone joins, Close.",
+                               app([pause_screen(hosting=True)], modal=[lan_popup()], context="game")))
     write("credits", fixture("credits", "Credits and licence.", app([h, credits_screen()])))
 
     # --- sequences
@@ -603,6 +639,34 @@ def main():
         {"delay": 0.5, "msg": diff(1, [own(pushed, "app")] + spn["_all"])},
         {"delay": 1.0, "msg": diff(2, [own(app([h]), "app")], [n["id"] for n in spn["_all"]])},
     ], rows={k: allrows[k] for k in ("maps:dm", "recent")}))
+    # 5a. the map picker: one tap chooses a map (row/select), the chosen-map preview and the list follow
+    s1, s2 = sp_screen(chosen="stormkeep"), sp_screen(chosen="xoylent")
+    write("seq-map-select", fixture("seq-map-select", "Map picker (two rows of tiles, scrolling sideways): a tap on Xoylent sends row/select; the engine answers with the "
+                                    "list's selected row. A double tap would send row/activate and start the match.", app([h, s1]), steps=[
+        {"delay": 0.5, "msg": diff(1, [own(s2, "sp/maps/list")]), "note": "row select xoylent"},
+    ], rows={k: allrows[k] for k in ("maps:dm", "recent")}))
+    # 5a2. the server list: a tap chooses a server and the one Join comes on; a double tap would join
+    m1, m2 = mp_screen(), mp_screen(chosen=rows_all[5]["key"])
+    write("seq-server-select", fixture("seq-server-select", "Multiplayer: a tap on a server sends row/select; the list shows it chosen and the one Join "
+                                       "button is enabled. A double tap sends row/activate and joins.", app([h, m1]), steps=[
+        {"delay": 0.5, "msg": diff(1, [own(m2, "mp/servers"), own(m2, "mp/join/go")]), "note": "row select"},
+    ], rows=srows))
+    # 5b. the LAN popup: a player joins and, with Close when someone joins on, the popup leaves with a toast
+    ph = pause_screen(hosting=True)
+    lp, lp2 = lan_popup(), lan_popup(players="you, Mara (23 ms)")
+    tj = N("toast/1", "toast", text="A player joined your game", kind="success", icon="players", timeout=3)
+    with_p = app([ph], modal=[lp], context="game")
+    write("seq-lan-popup", fixture("seq-lan-popup", "Hosting on LAN: the popup shows who joined, then closes by itself (Close when someone joins) with a toast.",
+                                   with_p, steps=[
+        {"delay": 0.8, "msg": diff(1, [own(lp2, "lan.host/players")]), "note": "a player joined"},
+        {"delay": 0.2, "msg": diff(2, [own(app([ph], context="game", toasts=[tj]), "app"), tj], [n["id"] for n in lp["_all"]]), "note": "popup closed"},
+    ]))
+    # 5c. the host ended the LAN game: back at Home with the reason
+    te = N("toast/1", "toast", text="The host ended the game", kind="warning", icon="info", timeout=8)
+    write("seq-host-ended", fixture("seq-host-ended", "A client's menu after the host of its LAN game left: Home and a toast saying why.",
+                                    app([pause_screen()], context="game"), steps=[
+        {"delay": 0.5, "msg": diff(1, [own(app([h], toasts=[te]), "app"), te] + h["_all"], [n["id"] for n in pause_screen()["_all"]])},
+    ]))
     # 6. a toast
     t = N("toast/1", "toast", text="Server added to favourites", kind="success", icon="star_filled", timeout=3,
           action=A("toast.undo", "Undo"))
