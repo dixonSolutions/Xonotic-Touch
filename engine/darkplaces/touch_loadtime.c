@@ -363,6 +363,13 @@ static int TL_FindLazyPic(const char *name)
 	return -1;
 }
 
+#ifndef CONFIG_MENU
+// a dedicated server build has no menu VM: nothing to defer
+qbool TouchLoad_LazyPrecachePic(prvm_prog_t *prog, const char *name, unsigned int flags)
+{
+	return false;
+}
+#else
 qbool TouchLoad_LazyPrecachePic(prvm_prog_t *prog, const char *name, unsigned int flags)
 {
 	static const char *const forms[] = {"dds/%s.dds", "dds/%s.ktx", "%s.tga", "%s.png", "%s.jpg", "%s.pcx"};
@@ -394,6 +401,7 @@ qbool TouchLoad_LazyPrecachePic(prvm_prog_t *prog, const char *name, unsigned in
 	tl_numlazypics++;
 	return true;
 }
+#endif
 
 unsigned int TouchLoad_PicFlags(const char *path, unsigned int flags)
 {
