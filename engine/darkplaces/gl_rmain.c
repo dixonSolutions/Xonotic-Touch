@@ -5102,7 +5102,7 @@ static void R_Bloom_StartFrame(void)
 		viewscalefpsadjusted = 1.0f;
 
 	scale = r_viewscale.value * sqrt(viewscalefpsadjusted);
-	// Xonotic Touch: a cap on rows rather than a fixed factor, so one setting
+	// Godnotic: a cap on rows rather than a fixed factor, so one setting
 	// suits a 720p phone (untouched), a 1080p one (two thirds) and a 1600p
 	// tablet (under half) alike. Every view shrinks by the same factor, from
 	// the window's height, so a CSQC camera view is not sharper than the main one.

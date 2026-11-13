@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: the offhand grenade from the touch controls (see touch_nade.h).
+Godnotic: the offhand grenade from the touch controls (see touch_nade.h).
 
 With g_nades the server hands the player a grenade on +hook (button6): held,
 it is taken out and cooks; let go, it is thrown, harder the longer it cooked

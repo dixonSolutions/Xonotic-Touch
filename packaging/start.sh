@@ -8,7 +8,7 @@
 set -e
 
 xonotic_log() {
-    echo "xonotic-touch: $*" >&2
+    echo "godnotic: $*" >&2
 }
 
 # `cd` + $PWD instead of `pwd`/`realpath`: builtins always work when confined.
@@ -393,7 +393,7 @@ clear_background_fetch_request() {
 sync_session_helpers() {
     mkdir -p "$HELPER_LIB_DIR" 2>/dev/null || return 0
     for _h in asset-fetch.sh asset-discover.sh sync-bundle-data.sh \
-        xonotic-touch-fetchd.sh fetch-assets-posix.sh; do
+        godnotic-fetchd.sh fetch-assets-posix.sh; do
         if [ -f "${APP_ROOT}/share/xonotic/$_h" ]; then
             cp -f "${APP_ROOT}/share/xonotic/$_h" "$HELPER_LIB_DIR/$_h" 2>/dev/null || true
             case "$_h" in
@@ -442,7 +442,7 @@ fetchd_can_start() {
     [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" != "1" ] || return 1
     [ -n "${BASH_VERSION:-}" ] || return 1
     sync_session_helpers
-    [ -x "$HELPER_LIB_DIR/xonotic-touch-fetchd.sh" ]
+    [ -x "$HELPER_LIB_DIR/godnotic-fetchd.sh" ]
 }
 
 # True while something still holds touch/fetch.lock.
@@ -519,7 +519,7 @@ ensure_fetchd() {
         "XONOTIC_ASSET_FETCH_PROGRESS=$PROGRESS_FILE" \
         "XONOTIC_TOUCH_AUTO_OPEN_ON_READY=1" \
         "XONOTIC_TOUCH_NOTIFY_ON_READY=1" \
-        bash "$HELPER_LIB_DIR/xonotic-touch-fetchd.sh" \
+        bash "$HELPER_LIB_DIR/godnotic-fetchd.sh" \
         >/dev/null 2>&1 &
     # Wait for the pidfile instead of assuming. The old 0.2s sleep was also the
     # last command, so this function reported success for a daemon that had not
@@ -872,7 +872,7 @@ mkdir -p "${DATA_DIR}/touch/profiles" 2>/dev/null || true
     if [ -f "${TOUCH_PROFILES_DIR}/${TOUCH_PROFILE}.cfg" ]; then
         echo "exec touch/profiles/${TOUCH_PROFILE}.cfg"
     else
-        echo "xonotic-touch: touch profile missing: ${TOUCH_PROFILES_DIR}/${TOUCH_PROFILE}.cfg" >&2
+        echo "godnotic: touch profile missing: ${TOUCH_PROFILES_DIR}/${TOUCH_PROFILE}.cfg" >&2
     fi
     # The performance profile is applied once, on the first start
     # (touch_perf_version, archived; touch/xonotic.cfg defaults it to 0 before

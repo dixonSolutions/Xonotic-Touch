@@ -41,7 +41,7 @@ import java.util.zip.ZipInputStream;
  */
 final class ModImport {
 
-    private static final String TAG = "XonoticTouch";
+    private static final String TAG = "Godnotic";
     static final int REQUEST_CODE = 0x4d4f;
 
     private static final int MAX_FILES = 256;

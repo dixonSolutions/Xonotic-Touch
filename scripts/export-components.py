@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Import and verify pinned Godnotic engine/data component snapshots."""
+"""Import, verify and export the Godnotic engine/data components.
+
+The engine (engine/darkplaces) and the game code (engine/data/xonotic-data.pk3dir)
+live in their own repositories; this checkout carries a copy of each at the commit
+pinned in components.json. --import and --check bring a commit in and compare with
+it; --export writes this checkout's copy into a clone of the component repository
+(scripts/component-push.sh commits, pushes and pins it).
+"""
 
 from __future__ import annotations
 
@@ -77,10 +84,12 @@ def validate_revision(revision: str) -> str:
 def tracked_files(root: Path, target: str) -> set[str]:
     output = git(root, "ls-files", "-z", "--", target)
     prefix = target.rstrip("/") + "/"
+    # .github, .godnotic and GODNOTIC.md belong to each repository on its own:
+    # an import never brings them in, so it must not compare or remove them.
     return {
         path[len(prefix):]
         for path in output.decode("utf-8", "surrogateescape").split("\0")
-        if path.startswith(prefix)
+        if path.startswith(prefix) and not excluded(PurePosixPath(path[len(prefix):]))
     }
 
 
@@ -278,9 +287,69 @@ def check_snapshot(root: Path, name: str, revision: str, files: dict[str, tuple[
     print(f"Checked {name} {revision} ({len(files)} files)")
 
 
+def export_tree(root: Path, name: str, clone: Path) -> None:
+    """Copy this checkout's tracked component files into a clone of its repository.
+
+    The clone ends up with exactly the tracked files of the component directory
+    (working tree content), plus whatever it keeps for itself under .github,
+    .godnotic and GODNOTIC.md. Nothing is committed or pushed here.
+    """
+    _, target = ALLOWED[name]
+    if not (clone / ".git").exists():
+        raise ComponentError(f"{clone} is not a git checkout")
+    source = tracked_files(root, target)
+    if not source:
+        raise ComponentError(f"no tracked files under {target}")
+    base = root / target
+    for relative in sorted(source):
+        src = base.joinpath(*PurePosixPath(relative).parts)
+        if src.is_symlink():
+            raise ComponentError(f"refusing to export symlink {target}/{relative}")
+        if not src.is_file():
+            # Tracked but deleted in the working tree: the removal is exported too.
+            source = source - {relative}
+            continue
+        dst = clone.joinpath(*PurePosixPath(relative).parts)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if dst.is_symlink() or dst.is_dir():
+            raise ComponentError(f"refusing to replace {dst}")
+        shutil.copyfile(src, dst)
+        os.chmod(dst, 0o755 if os.access(src, os.X_OK) else 0o644)
+    present = git(clone, "ls-files", "-z").decode("utf-8", "surrogateescape").split("\0")
+    removed = 0
+    for relative in present:
+        if not relative or excluded(PurePosixPath(relative)) or relative in source:
+            continue
+        path = clone.joinpath(*PurePosixPath(relative).parts)
+        if path.is_file() or path.is_symlink():
+            path.unlink()
+            removed += 1
+    print(f"Exported {name}: {len(source)} files into {clone} ({removed} removed)")
+
+
+def set_pin(root: Path, name: str, revision: str) -> None:
+    revision = validate_revision(revision)
+    config = load_config(root)
+    config["components"][name]["revision"] = revision
+    config_path = root / COMPONENTS_FILE
+    temporary_config = config_path.with_suffix(".json.tmp")
+    temporary_config.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary_config, config_path)
+    print(f"Pinned {name} at {revision}")
+
+
 def run(root: Path, action: str, name: str, revision: str, archive: BinaryIO | None = None) -> None:
     if name not in ALLOWED:
         raise ComponentError(f"unknown component {name!r}; choose one of: {', '.join(ALLOWED)}")
+    if action == "export":
+        export_tree(root, name, Path(revision).resolve())
+        return
+    if action == "pin":
+        set_pin(root, name, revision)
+        return
+    if action == "show-pin":
+        print(load_config(root)["components"][name]["revision"])
+        return
     revision = validate_revision(revision)
     repository, _ = ALLOWED[name]
     config = load_config(root)
@@ -299,8 +368,11 @@ def main() -> int:
     actions = parser.add_mutually_exclusive_group(required=True)
     actions.add_argument("--import", dest="action", action="store_const", const="import", help="import a pinned component snapshot")
     actions.add_argument("--check", dest="action", action="store_const", const="check", help="verify tracked files match a pinned snapshot")
+    actions.add_argument("--export", dest="action", action="store_const", const="export", help="copy the tracked component files into a clone of its repository (second argument: the clone)")
+    actions.add_argument("--pin", dest="action", action="store_const", const="pin", help="record a component commit in components.json without importing")
+    actions.add_argument("--show-pin", dest="action", action="store_const", const="show-pin", help="print the pinned commit")
     parser.add_argument("component", help="darkplaces or data")
-    parser.add_argument("revision", help="full 40-hex commit SHA")
+    parser.add_argument("revision", nargs="?", default="", help="full 40-hex commit SHA (for --export: path of the component clone)")
     args = parser.parse_args()
     try:
         run(Path(__file__).resolve().parent.parent, args.action, args.component, args.revision)

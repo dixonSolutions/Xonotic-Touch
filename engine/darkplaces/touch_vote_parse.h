@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: the vote lines a Xonotic server prints (server/command/vote.qc),
+Godnotic: the vote lines a Xonotic server prints (server/command/vote.qc),
 read back into events for touch_vote.c. Pure C, no engine state, so
 scripts/test-touch-vote.sh can check it without a build.
 

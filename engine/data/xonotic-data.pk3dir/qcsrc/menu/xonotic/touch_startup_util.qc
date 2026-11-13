@@ -133,7 +133,7 @@ bool TouchStartup_requestRelaunch()
 	if (fh < 0)
 		return false;
 
-	fputs(fh, "requested by the Xonotic Touch setup wizard\n");
+	fputs(fh, "requested by the Godnotic setup wizard\n");
 	fclose(fh);
 	localcmd("quit\n");
 	return true;
@@ -151,7 +151,7 @@ bool TouchStartup_requestBackgroundFetch()
 	if (fh < 0)
 		return false;
 
-	fputs(fh, "requested by the Xonotic Touch setup wizard\n");
+	fputs(fh, "requested by the Godnotic setup wizard\n");
 	fclose(fh);
 	return true;
 }

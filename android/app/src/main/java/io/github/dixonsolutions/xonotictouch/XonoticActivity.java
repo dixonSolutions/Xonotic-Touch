@@ -210,7 +210,7 @@ public final class XonoticActivity extends SDLActivity {
         int state = (touch ? 1 : 0) | (keyboard ? 2 : 0) | (mouse ? 4 : 0);
         if (state != reportedInputState) {
             reportedInputState = state;
-            Log.i("XonoticTouch", "Input devices: touch=" + touch + " keyboard=" + keyboard
+            Log.i("Godnotic", "Input devices: touch=" + touch + " keyboard=" + keyboard
                     + " mouse=" + mouse + names);
         }
         try {
@@ -445,7 +445,7 @@ public final class XonoticActivity extends SDLActivity {
                     bridge.publishReady(installed, update.version);
                 }
             } catch (IOException | RuntimeException e) {
-                Log.w("XonoticTouch", "Update download stopped", e);
+                Log.w("Godnotic", "Update download stopped", e);
                 if (updater.cachedBytes(update) > 0) {
                     bridge.publishPaused(installed, update.version, updater.cachedPercent(update),
                             HostRes.string(this, "update_status_paused"));
@@ -510,7 +510,7 @@ public final class XonoticActivity extends SDLActivity {
                 installFromMenu(bridge, updater, installed);
                 return;
             default:
-                Log.w("XonoticTouch", "Ignoring unknown update request: " + request);
+                Log.w("Godnotic", "Ignoring unknown update request: " + request);
         }
     }
 
@@ -604,7 +604,7 @@ public final class XonoticActivity extends SDLActivity {
         } catch (IOException | RuntimeException e) {
             // A refused or broken install keeps the download: the retry
             // installs from the cache without fetching it again.
-            Log.w("XonoticTouch", "Update install failed", e);
+            Log.w("Godnotic", "Update install failed", e);
             bridge.publishInstallFailed(installed, latest,
                     String.valueOf(e.getMessage()));
         }
@@ -771,9 +771,9 @@ public final class XonoticActivity extends SDLActivity {
                     }
                 }
             }
-            Log.i("XonoticTouch", "Extra engine arguments: " + extra);
+            Log.i("Godnotic", "Extra engine arguments: " + extra);
         } catch (IOException e) {
-            Log.w("XonoticTouch", "Could not read " + file, e);
+            Log.w("Godnotic", "Could not read " + file, e);
         }
         return extra;
     }

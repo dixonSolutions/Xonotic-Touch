@@ -31,9 +31,9 @@ On screen: the **MOVE** stick on the left (drag on the right side of the screen 
 ## Install (Flatpak)
 
 ```bash
-flatpak remote-add --user --if-not-exists xonotic-touch \
+flatpak remote-add --user --if-not-exists godnotic \
   https://dixonSolutions.github.io/Godnotic/flatpak
-flatpak install --user xonotic-touch io.github.dixonSolutions.XonoticTouch
+flatpak install --user godnotic io.github.dixonSolutions.XonoticTouch
 flatpak run io.github.dixonSolutions.XonoticTouch
 ```
 

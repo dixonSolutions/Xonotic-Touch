@@ -1,6 +1,6 @@
 app = "io.github.dixonsolutions.xonotictouch"
 host_api = 3
-public_key = "keys/xonotic-touch-public.pem"
+public_key = "keys/godnotic-public.pem"
 
 [remote]
 type = "github"

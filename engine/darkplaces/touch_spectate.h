@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: what the touch controls do while spectating, as a pure table
+Godnotic: what the touch controls do while spectating, as a pure table
 both HUDs follow (the engine's touch_hud.c on servers, the port's CSQC in a
 local match mirrors it), checked by scripts/test-touch-spectate.sh.
 

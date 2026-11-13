@@ -13,7 +13,7 @@ lower bounds. Warm cache checks can be very short; a first 1 GB download cannot.
 | `dixonSolutions/Godnotic` | Packaging, native frontends, web loader, release/update channels | Android, Flatpak, Ubuntu Touch, Pages, Vercel |
 | `dixonSolutions/Godnotic-darkplaces` | Godnotic engine, renderer hooks, Lua sandbox | Main repository via a pinned component revision |
 | `dixonSolutions/Godnotic-data` | Game code, configs, reproducible pack tools and manifests | Main repository and runtime content downloads |
-| `dixonSolutions/Godnotic` release `data-slim` | The slim pk3 archive the app streams | Android, through `godnotic-data-url.txt` |
+| `dixonSolutions/Godnotic-data` releases `data-slim`, `data-<date>` | The slim pk3 archive the app streams, and the pinned full set | Android (`godnotic-data-url.txt`, `godnotic-data-full-url.txt`), Linux, web |
 
 Imported upstream code keeps its license notices and source attribution. Stable
 Android/Flatpak/OpenStore identifiers and AndySU keys are compatibility contracts,
@@ -22,9 +22,11 @@ and strand installed users. Public names, wordmarks, icons and repository URLs u
 Godnotic; compatibility aliases remain until a separately tested migration retires
 them. In particular existing live Android clients select an exact legacy APK name.
 
-Engine and game code remain vendored in the main checkout while the split is
-established. Component imports must use full commit IDs, preserve local work and
-pass tests before release. Direct upstream Xonotic refreshes and pack rebuilds are
+Engine and game code are carried in the main checkout at the commits pinned in
+`components.json`, and CI refuses a main that differs from its pins.
+`scripts/component-push.sh` publishes a change made here to its component
+repository; `component-sync.yml` imports, builds, tests, merges and releases a
+commit made there (see AGENTS.md). Direct upstream Xonotic refreshes and pack rebuilds are
 manual, rather than scheduled release producers. AndySU signature renewal remains
 scheduled because installed clients reject expired manifests.
 

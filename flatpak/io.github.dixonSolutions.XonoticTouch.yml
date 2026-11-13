@@ -73,7 +73,7 @@ modules:
         dest-filename: xt-launcher
         only-arches: [aarch64]
 
-  - name: xonotic-touch
+  - name: godnotic
     buildsystem: simple
     build-commands:
       - bash scripts/fetch-sources.sh code

@@ -64,7 +64,7 @@ def build_device(width: int, height: int) -> UInput:
         ],
         e.EV_KEY: [e.BTN_TOUCH],
     }
-    ui = UInput(capabilities, name="XonoticTouch Test Panel", version=1,
+    ui = UInput(capabilities, name="Godnotic Test Panel", version=1,
                 input_props=[e.INPUT_PROP_DIRECT])
     return ui
 
@@ -82,7 +82,7 @@ class Keyboard:
                        and isinstance(code, int)
                        and 0 < code < e.KEY_MAX})
         self.ui = UInput({e.EV_KEY: keys},
-                         name="XonoticTouch Test Keyboard", version=1)
+                         name="Godnotic Test Keyboard", version=1)
 
     def tap(self, name: str) -> None:
         code = getattr(e, f"KEY_{name.upper()}", None)

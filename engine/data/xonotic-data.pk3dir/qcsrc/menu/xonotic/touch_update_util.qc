@@ -173,7 +173,7 @@ string TouchAndySU_statusText()
 	if (state == "shell-update")
 		return _("This update needs a new app install. Press Apply update.");
 	if (state == "error")
-		return _("The last update check failed. Xonotic Touch will try again.");
+		return _("The last update check failed. Godnotic will try again.");
 	if (state == "uptodate")
 		return sprintf(_("Up to date: version %s"), installed);
 	return sprintf(_("Version %s"), installed);
@@ -373,8 +373,8 @@ string TouchUpdate_versionLine()
 {
 	string v = TouchUpdate_runningVersion();
 	if (v == "")
-		return _("Xonotic Touch (development build)");
-	return strcat(_("Xonotic Touch"), " ", v);
+		return _("Godnotic (development build)");
+	return strcat(_("Godnotic"), " ", v);
 }
 
 string TouchUpdate_shortStatus()
@@ -438,11 +438,11 @@ void TouchUpdate_drawBanner()
 		return;
 	string line;
 	if (TouchUpdate_stateName() == TOUCH_UPDATE_READY)
-		line = sprintf(_("Xonotic Touch %s is downloaded and installs the next time you start"), latest);
+		line = sprintf(_("Godnotic %s is downloaded and installs the next time you start"), latest);
 	else if (TouchUpdate_stateName() == TOUCH_UPDATE_DOWNLOADING)
-		line = sprintf(_("Downloading Xonotic Touch %s... %d%%"), latest, TouchUpdate_percent());
+		line = sprintf(_("Downloading Godnotic %s... %d%%"), latest, TouchUpdate_percent());
 	else
-		line = sprintf(_("Xonotic Touch %s is out: Settings > Updates"), latest);
+		line = sprintf(_("Godnotic %s is out: Settings > Updates"), latest);
 	vector fs = ((1 / draw_scale.x) * eX + (1 / draw_scale.y) * eY) * 12;
 	draw_CenterText(eX * 0.5 + eY * (1 - 1.6 * fs.y), line, fs, '1 0.85 0.4', 0.9, 0);
 }

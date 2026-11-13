@@ -2188,7 +2188,7 @@ static void FS_Init_Dir (void)
 #ifdef DP_FS_BASEDIR
 		dp_strlcpy(fs_basedir, DP_FS_BASEDIR, sizeof(fs_basedir));
 #elif defined(__ANDROID__)
-		// Xonotic Touch: upstream fell back to /sdcard/<game>/ here. Shared
+		// Godnotic: upstream fell back to /sdcard/<game>/ here. Shared
 		// storage needs a storage permission the app does not (and must not)
 		// ask for, and scoped storage has made it unwritable since Android 10
 		// anyway. XonoticActivity always passes the app's private -basedir, so

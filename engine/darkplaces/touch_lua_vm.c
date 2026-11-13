@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: the vendored Lua 5.4 (touch_lua54/, MIT) as one translation unit.
+Godnotic: the vendored Lua 5.4 (touch_lua54/, MIT) as one translation unit.
 
 Only the libraries the sandbox offers are compiled in (see touch_lua54/README.md);
 io, os, debug and package do not exist in this binary. Lua's internal functions

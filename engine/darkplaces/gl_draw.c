@@ -89,7 +89,7 @@ cachepic_t *Draw_CachePic_Flags(const char *path, unsigned int cachepicflags)
 	cachepic_t *pic;
 	int texflags;
 
-	// Xonotic Touch: the overlay's masks (gfx/touch, 256 px, antialiased) and
+	// Godnotic: the overlay's masks (gfx/touch, 256 px, antialiased) and
 	// the HUD's icons are drawn at many sizes, mostly well under their own, and
 	// unmipmapped minification turned their edges to stair steps. Whoever loads
 	// a pic first decides its flags, so decide here, for the port's CSQC, a
@@ -1444,7 +1444,7 @@ A rounded box drawn as geometry rather than a stretched mask: circles
 filled or stroked. Every edge carries a one-pixel alpha ramp, so it is
 antialiased at any size, and a stroke is the same width all the way round --
 along the straight sides, through the corners, on a small control and a big
-one alike. The touch HUD draws its controls with this (Xonotic Touch);
+one alike. The touch HUD draws its controls with this (Godnotic);
 baked ring masks scaled their stroke with the control and were pieced
 together from fragments that did not meet evenly.
 

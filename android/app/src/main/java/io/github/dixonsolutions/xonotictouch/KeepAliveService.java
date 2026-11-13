@@ -31,7 +31,7 @@ import android.util.Log;
  */
 public final class KeepAliveService extends Service {
 
-    private static final String TAG = "XonoticTouch";
+    private static final String TAG = "Godnotic";
 
     static final String KIND_CONNECTION = "connection";
     static final String KIND_DOWNLOAD = "download";
@@ -127,7 +127,7 @@ public final class KeepAliveService extends Service {
         }
         if (wakeLock == null) {
             PowerManager power = (PowerManager) getSystemService(Context.POWER_SERVICE);
-            wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "XonoticTouch:keepalive");
+            wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Godnotic:keepalive");
             wakeLock.setReferenceCounted(false);
             wakeLock.acquire();
         }

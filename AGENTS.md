@@ -40,11 +40,32 @@ uncommitted work. Before committing, `git fetch origin` and look at `git status 
 - Base every edit on `origin/main`'s version of the file. A copy from the shared checkout
   (or from memory) silently reverts whatever landed since.
 
+## The engine and the game code are components
+
+`engine/darkplaces` is the copy of [dixonSolutions/Godnotic-darkplaces](https://github.com/dixonSolutions/Godnotic-darkplaces)
+and `engine/data/xonotic-data.pk3dir` the copy of
+[dixonSolutions/Godnotic-data](https://github.com/dixonSolutions/Godnotic-data), each at
+the commit pinned in `components.json`. CI fails a `main` whose copy differs from its pin.
+
+- Edit them here, where everything builds together. Before committing a change under
+  either directory, run `scripts/component-push.sh darkplaces|data|all "<message>"`: it
+  commits that directory to the component repository, pushes, and writes the pin. Commit
+  `components.json` in the same commit as the change.
+- A commit made directly in a component repository is built inside this one by that
+  repository's workflow, then imported, merged and released by
+  `.github/workflows/component-sync.yml` (half-hourly, or at once with a
+  `GODNOTIC_SYNC_TOKEN` secret there).
+- `.github/`, `.godnotic/` and `GODNOTIC.md` in a component repository belong to it alone
+  and are never imported or exported.
+- Game data packs (the pk3s clients download) are releases of Godnotic-data: `data-<date>`
+  is the pinned full set, `data-slim` the repacked one, built there by `slim-data.yml`
+  with `scripts/repack-phone-assets.py` from here.
+
 ## Upstream code under engine/
 
 Most of `engine/` is upstream Xonotic. `upstream.lock` and the `upstream/vendor` branch
-record exactly which upstream files we carry, and `.github/workflows/upstream-watch.yml`
-merges new upstream daily. Every line Touch changes in an upstream file is a line that
+record exactly which upstream files we carry. `.github/workflows/upstream-watch.yml`
+merges new upstream only when someone runs it by hand; nothing upstream releases by itself. Every line Touch changes in an upstream file is a line that
 can conflict at the next sync. See [`docs/UPSTREAM_SYNC.md`](docs/UPSTREAM_SYNC.md).
 
 - **Ask before editing a file under `engine/`:**

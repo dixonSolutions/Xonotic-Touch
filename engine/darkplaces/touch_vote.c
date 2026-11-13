@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: answering votes with a finger (see touch_vote.h).
+Godnotic: answering votes with a finger (see touch_vote.h).
 
 Two kinds of vote reach a player, and a touch player had no dependable way to
 answer either outside the stock screens' key binds:

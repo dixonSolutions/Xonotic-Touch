@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: engine-side copy of the Touch HUD (see touch_hud.h).
+Godnotic: engine-side copy of the Touch HUD (see touch_hud.h).
 
 Everything here mirrors client/touch_*.qc in xonotic-data.pk3dir:
   touch_layout.qc   -> TouchHUD_Center / Radius / Half / zones

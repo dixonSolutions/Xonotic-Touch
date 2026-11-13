@@ -1,6 +1,6 @@
 #pragma once
 
-// Xonotic Touch — touch control layer (see docs/TOUCH_LAYOUT_SPEC.md)
+// Godnotic — touch control layer (see docs/TOUCH_LAYOUT_SPEC.md)
 
 const int TOUCH_MAX_FINGERS = 4;
 const int TOUCH_ENGINE_SLOTS = 10;

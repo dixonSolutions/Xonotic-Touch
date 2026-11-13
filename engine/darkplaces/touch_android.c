@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: the Android app in the background (Home, the app switcher,
+Godnotic: the Android app in the background (Home, the app switcher,
 another app on top, the screen turned off).
 
 SDL's default is to block the main thread inside its event pump from

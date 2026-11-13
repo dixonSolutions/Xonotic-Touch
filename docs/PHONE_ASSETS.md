@@ -8,8 +8,8 @@ blurry, and CPU time during a map load that takes ~25 s on a Galaxy Tab
 Active5.
 
 The **phone pack set** is the same data repacked for phones, made by
-`scripts/repack-phone-assets.py` and published by
-`.github/workflows/phone-assets.yml`. The engine reads both: a phone pack is a
+`scripts/repack-phone-assets.py` and published by the `slim-data.yml` workflow of
+[Godnotic-data](https://github.com/dixonSolutions/Godnotic-data). The engine reads both: a phone pack is a
 pk3 like any other, and everything it adds falls back to the official format.
 The ideas come from [Insanotic](https://github.com/luohoa97/insanotic)'s
 `repack-assets.sh`; the code here is written fresh (theirs is GPL-3.0+ on an
@@ -144,11 +144,11 @@ the world, model and normal-map textures a small screen shows at arm's length.
     scripts/test-phone-assets.sh                                     # self-checks, run by tests.yml
     scripts/test-phone-archive.sh
 
-`phone-assets.yml` runs on demand (it is manual; upstream changes never publish
-new Godnotic data automatically). It takes `Xonotic-latest.zip` from the
-autobuild server -- the archive the app installs -- repacks every pk3 except
-nexcompat with `--profile slim`, and uploads to the stable `data-slim` release
-(prerelease, never "latest"):
+`slim-data.yml` in Godnotic-data runs on demand (publishing data is a decision,
+not a schedule). It takes that repository's pinned full release (`data-<date>`,
+never a moving upstream build), repacks every pk3 except nexcompat with
+`--profile slim` using the scripts here, and uploads to that repository's stable
+`data-slim` release (prerelease, never "latest"):
 
 - `Godnotic-data.zip`: the archive the app streams, entries stored under
   `Xonotic/data/` with the official pack names,
@@ -167,7 +167,7 @@ the parts of the old one.
 {
  "format": 1,
  "meta": {"source_url": "...Xonotic-latest.zip", "source_etag": "...", "built_from": "<sha>",
-          "base_url": "https://github.com/dixonSolutions/Godnotic/releases/download/data-slim/"},
+          "base_url": "https://github.com/dixonSolutions/Godnotic-data/releases/download/data-slim/"},
  "packs": [
   {"file": "xonotic-20261107-data-phone.pk3", "size": 251424941, "sha256": "...",
    "install_as": "xonotic-20261107-data.pk3",

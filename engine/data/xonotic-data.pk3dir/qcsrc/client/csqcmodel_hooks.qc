@@ -92,7 +92,7 @@ void CSQCModel_LOD_Apply(entity this, bool isplayer)
 	}
 }
 
-// Xonotic Touch: whether a player model far enough away to be drawn with its
+// Godnotic: whether a player model far enough away to be drawn with its
 // last LOD model skips the upper/lower body blend (cl_lod_skeletonblend 0).
 // Only models that have a separate farthest LOD count: one that has none is
 // drawn the same at every distance.

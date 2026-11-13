@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: auto-shoot and aim helpers for touch players.
+Godnotic: auto-shoot and aim helpers for touch players.
 
 Lives in the engine client, not in QuakeC, because on a public server the
 client runs that server's own CSQC; the same code has to work there and in a

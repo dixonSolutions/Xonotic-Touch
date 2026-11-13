@@ -13,7 +13,7 @@ import java.util.List;
 
 /** File bridge between the QuakeC Updates screen and AndySU's payload updater. */
 final class AndySUBridge {
-    private static final String TAG = "XonoticTouch";
+    private static final String TAG = "Godnotic";
     private static final int FORMAT = 1;
 
     static final String REQUEST_CHECK = "check";

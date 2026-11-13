@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: the grappling hook for touch players -- the HOOK button of both
+Godnotic: the grappling hook for touch players -- the HOOK button of both
 touch HUDs, and the fall rescue that hooks a player back when they fall with
 nothing below to land on.
 

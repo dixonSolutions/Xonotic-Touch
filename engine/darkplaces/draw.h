@@ -184,7 +184,7 @@ void DrawQ_ResetClipArea(void);
 // draw a line
 void DrawQ_Line(float width, float x1, float y1, float x2, float y2, float r, float g, float b, float alpha, int flags);
 /// circle, capsule or rounded rectangle drawn as antialiased geometry: centre, half extents,
-/// corner radius, stroke width inside the edge (0 = fill); Xonotic Touch
+/// corner radius, stroke width inside the edge (0 = fill); Godnotic
 void DrawQ_RoundedBox(float cx, float cy, float hx, float hy, float radius, float stroke, float r, float g, float b, float a, int flags);
 
 const char *Draw_GetPicName(cachepic_t *pic);

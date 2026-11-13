@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: the ledge guard. A thumb on a virtual stick overshoots; on a
+Godnotic: the ledge guard. A thumb on a virtual stick overshoots; on a
 floating map one step too far is a death. While the player is on the ground
 and not jumping, the move their stick asks for is flown ahead and, when it
 runs off into the void, lava or a hurt zone (cl_touch_ledgeguard 2: any drop

@@ -6,13 +6,13 @@ controls and keyboard and mouse work; gamepads go through the browser's
 Gamepad API (not tested yet). Local games against bots run entirely in the
 page.
 
-- Vercel: https://xonotic-web.vercel.app (page and game data), rebuilt by
+- Vercel: https://godnotic.vercel.app (page and game data), rebuilt by
   Vercel on every push to `main`
-- GitHub Pages: https://dixonSolutions.github.io/Xonotic-Touch/web/, a shell
+- GitHub Pages: https://dixonSolutions.github.io/Godnotic/web/, a shell
   like the apps: the page, engine and this fork's game code (about 15 MB) are
   on Pages, and the stock Xonotic data is fetched from the Vercel deployment
   on first launch
-- Every GitHub release carries `xonotic-touch-web-<version>.zip`: the page and
+- Every GitHub release carries `godnotic-web-<version>.zip`: the page and
   engine without game data, for hosting elsewhere
 
 ## What the player gets
@@ -176,14 +176,14 @@ are needed:
 
 No tokens or repository secrets are involved. The project is `xonotic-web`
 in the `dixonsolutions-projects` Vercel team. To set it up again, either
-import `dixonSolutions/Xonotic-Touch` in the dashboard (Add New → Project,
+import `dixonSolutions/Godnotic` in the dashboard (Add New → Project,
 every setting at its default), or with the CLI:
 
 ```bash
 npx vercel login                 # device code, approved in a browser
 npx vercel project create xonotic-web
 npx vercel link --yes --project xonotic-web
-npx vercel git connect https://github.com/dixonSolutions/Xonotic-Touch --yes
+npx vercel git connect https://github.com/dixonSolutions/Godnotic --yes
 ```
 
 then push to `main`, or start a deploy of `main` from the dashboard.
@@ -206,7 +206,7 @@ with the repository variable `XT_WEB_DATA_URL`.
 **GitHub Pages** (shell). `.github/workflows/web.yml` runs after every
 successful "Build and publish" run (each push to `main`), or by hand from the
 Actions tab. It builds the page and engine, stages only this fork's files
-(`stage-web-data.sh --shell`), attaches `xonotic-touch-web-<version>.zip` to
+(`stage-web-data.sh --shell`), attaches `godnotic-web-<version>.zip` to
 the release, then takes the site "Build and publish" deployed (the Flatpak
 and Click remotes), adds `web/` and deploys it again. Pages caps a site at
 1 GB, so the stock pk3s stay on Vercel: the shell's `data/manifest.json`

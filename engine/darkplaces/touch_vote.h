@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: answering votes with a finger.
+Godnotic: answering votes with a finger.
 
 A small round "i" chip sits in the top bar, between MENU and CHAT, while a vote
 this player can answer is open: one called in the match (vcall), or the map /

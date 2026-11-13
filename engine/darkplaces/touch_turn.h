@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: the quick-turn button (TURN). One tap spins the view round by
+Godnotic: the quick-turn button (TURN). One tap spins the view round by
 touch_turn_angle degrees (180: face what was behind) over touch_turn_time
 seconds, eased in and out, pitch kept. Done here, in the engine, for both touch
 HUDs: the engine HUD calls TouchTurn_Start, the port's CSQC sends `touch_turn`.

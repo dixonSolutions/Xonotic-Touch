@@ -5,7 +5,7 @@
 # makefile.inc rather than duplicated: the Touch port adds engine files
 # (touch_ui.c, vid_touchdetect.c) and a hand-copied list would rot.
 cmake_minimum_required(VERSION 3.22)
-project(xonotic-touch C)
+project(godnotic C)
 
 set(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../../..")
 cmake_path(NORMAL_PATH REPO_ROOT)

@@ -23,7 +23,7 @@ import java.util.Locale;
  */
 final class DeviceProfile {
 
-    private static final String TAG = "XonoticTouch";
+    private static final String TAG = "Godnotic";
 
     static final int TIER_LOW = 0;
     static final int TIER_MID = 1;

@@ -2,7 +2,7 @@ name: Web
 
 # Builds the browser version (WebAssembly + WebGL 2) after every release that
 # "Build and publish" makes:
-#   - xonotic-touch-web-<version>.zip (page + engine, no game data) on the
+#   - godnotic-web-<version>.zip (page + engine, no game data) on the
 #     GitHub release
 #   - the page on GitHub Pages under /web/, next to the Flatpak and Click
 #     remotes, as a shell: this fork's own files (about 15 MB) are on Pages,
@@ -84,7 +84,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: v${{ steps.rel.outputs.version }}
         run: |
-          ZIP="xonotic-touch-web-${{ steps.rel.outputs.version }}.zip"
+          ZIP="godnotic-web-${{ steps.rel.outputs.version }}.zip"
           (cd build/web && zip -q -r "../../$ZIP" . -x 'data/*')
           if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" "$ZIP" -R "$GITHUB_REPOSITORY" --clobber

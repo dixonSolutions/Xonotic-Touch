@@ -74,8 +74,8 @@ def main():
     ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")))
     ap.add_argument("--host", default="127.0.0.1")
     args = ap.parse_args()
-    if not os.path.isfile(os.path.join(args.dir, "xonotic-touch.wasm")):
-        sys.exit(f"{args.dir} has no xonotic-touch.wasm: run scripts/build-web.sh first")
+    if not os.path.isfile(os.path.join(args.dir, "godnotic.wasm")):
+        sys.exit(f"{args.dir} has no godnotic.wasm: run scripts/build-web.sh first")
     handler = functools.partial(Handler, directory=args.dir)
     httpd = http.server.ThreadingHTTPServer((args.host, args.port), handler)
     print(f"Serving {args.dir} at http://{'localhost' if args.host in ('127.0.0.1', '::1') else args.host}:{args.port}/")

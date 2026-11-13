@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: who holds a local game's pause (see touch_pause.h).
+Godnotic: who holds a local game's pause (see touch_pause.h).
 
 A local game stops in three places, each with its own holder:
 - host.paused: the engine's own, a one-player local game (maxclients 1) while

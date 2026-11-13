@@ -1,7 +1,7 @@
 #ifndef TOUCH_NADE_H
 #define TOUCH_NADE_H
 
-// Xonotic Touch: the offhand grenade (the nades mutator) from the touch
+// Godnotic: the offhand grenade (the nades mutator) from the touch
 // controls, for both HUDs: held to cook, let go to throw, thrown just before
 // it would blow in the hand. See touch_nade.c.
 

@@ -1,8 +1,8 @@
 # Build outputs — never commit
 build/
 # Web (Emscripten) engine, copied into build/web by scripts/build-web.sh
-engine/darkplaces/xonotic-touch.js
-engine/darkplaces/xonotic-touch.wasm
+engine/darkplaces/godnotic.js
+engine/darkplaces/godnotic.wasm
 build-flatpak/
 build-clickable/
 .clickable/

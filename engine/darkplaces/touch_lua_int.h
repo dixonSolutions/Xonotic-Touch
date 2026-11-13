@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: shared internals of the Lua sandbox (touch_lua.c) and its two
+Godnotic: shared internals of the Lua sandbox (touch_lua.c) and its two
 realms, client mods (touch_lua_cl.c) and server plugins (touch_lua_sv.c).
 */
 #ifndef TOUCH_LUA_INT_H

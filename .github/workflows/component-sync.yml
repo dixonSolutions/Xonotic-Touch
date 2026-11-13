@@ -1,15 +1,21 @@
 name: Sync Godnotic components
 
-# Poll only the two Godnotic-owned source repositories. Upstream Xonotic has
-# its own review path; this workflow never merges or publishes to main.
+# Bring new commits of the two Godnotic-owned source repositories into main:
+# import, build, test, then merge and start a release. Upstream Xonotic is not
+# involved; it is only ever merged by hand (upstream-watch.yml).
 on:
   schedule:
     - cron: '7,37 * * * *'
+  # Sent by the component repositories on a push to their main, when they hold
+  # a GODNOTIC_SYNC_TOKEN; without it the schedule above picks the commit up.
+  repository_dispatch:
+    types: [component-updated]
   workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 concurrency:
   group: component-sync
@@ -48,9 +54,11 @@ jobs:
           python3 scripts/export-components.py --check data "$data"
           echo "darkplaces=$darkplaces" >> "$GITHUB_OUTPUT"
           echo "data=$data" >> "$GITHUB_OUTPUT"
-          if git diff --cached --quiet; then
+          # A component commit that only touches that repository's own files
+          # (its workflows, its notes) changes nothing here: no pull request.
+          if git diff --cached --quiet -- engine; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "Both component pins are current."
+            echo "The engine and game code already match both components."
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
@@ -119,3 +127,9 @@ jobs:
             gh pr create --base main --head "$BRANCH" --title "Sync Godnotic component sources" \
               --body-file "$RUNNER_TEMP/component-sync-body.md"
           fi
+          # The build and the quick checks above already passed on exactly this
+          # tree, so merge. A merge made with the workflow token starts no other
+          # workflow, hence the explicit release dispatch.
+          pr=$(gh pr list --head "$BRANCH" --base main --state open --json number --jq '.[0].number')
+          gh pr merge "$pr" --merge --delete-branch
+          gh workflow run build-and-publish.yml --ref main

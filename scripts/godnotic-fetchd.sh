@@ -21,7 +21,7 @@ mkdir -p "$USER_DATA/touch" "$USER_BASE"
 exec 9>"${USER_DATA}/touch/fetch.lock"
 if command -v flock >/dev/null 2>&1; then
     flock -n 9 || {
-        echo "xonotic-touch-fetchd: fetch already running" >&2
+        echo "godnotic-fetchd: fetch already running" >&2
         exit 0
     }
 fi
@@ -37,7 +37,7 @@ trap cleanup_pid EXIT
 export XONOTIC_ASSET_FETCH_PROGRESS="$PROGRESS_FILE"
 
 if [ ! -f "${LIB_DIR}/asset-fetch.sh" ]; then
-    echo "xonotic-touch-fetchd: missing ${LIB_DIR}/asset-fetch.sh" >&2
+    echo "godnotic-fetchd: missing ${LIB_DIR}/asset-fetch.sh" >&2
     exit 1
 fi
 # shellcheck source=/dev/null
@@ -49,7 +49,7 @@ fi
 
 if declare -F xonotic_assets_are_ready >/dev/null 2>&1 \
     && xonotic_assets_are_ready "$USER_DATA"; then
-    echo "xonotic-touch-fetchd: assets already ready" >&2
+    echo "godnotic-fetchd: assets already ready" >&2
     exit 0
 fi
 

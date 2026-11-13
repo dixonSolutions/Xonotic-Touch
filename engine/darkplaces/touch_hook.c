@@ -1,5 +1,5 @@
 /*
-Xonotic Touch: the HOOK button's hold and the fall rescue (see touch_hook.h).
+Godnotic: the HOOK button's hold and the fall rescue (see touch_hook.h).
 
 Where the player is: the view origin less the view height, the server's
 velocity and on-ground flag (svc_clientdata, the same under any CSQC), and the

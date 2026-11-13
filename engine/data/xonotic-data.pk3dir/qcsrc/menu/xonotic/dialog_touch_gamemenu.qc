@@ -44,27 +44,27 @@ void TouchGameMenu_Open(entity btn, entity me)
 
 entity TouchGameMenu_SubButton(string label, string dialogname)
 {
-	entity e = makeXonoticTouchButton(label, '0 0 0');
+	entity e = makeGodnoticButton(label, '0 0 0');
 	e.cvarName = dialogname; // the dialog to open, reusing an unused string field
 	e.onClick = TouchGameMenu_Open;
 	e.onClickEntity = e;
 	return e;
 }
 
-void XonoticTouchGameMenuDialog_fill(entity me)
+void GodnoticGameMenuDialog_fill(entity me)
 {
 	entity e;
 	me.TR(me);
-		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Resume"), '0 0 0', "togglemenu 0", COMMANDBUTTON_CLOSE));
+		me.TD(me, 2, 2, e = makeGodnoticCommandButton(_("Resume"), '0 0 0', "togglemenu 0", COMMANDBUTTON_CLOSE));
 	me.TR(me);
 	me.TR(me);
 		// Never COMMANDBUTTON_CLOSE: that hides the menu while still connected.
-		me.TD(me, 2, 2, e = makeXonoticTouchCommandButton(_("Leave to main menu"), '1 0.55 0.55', LEAVEMATCH_CMD, 0));
+		me.TD(me, 2, 2, e = makeGodnoticCommandButton(_("Leave to main menu"), '1 0.55 0.55', LEAVEMATCH_CMD, 0));
 	me.TR(me);
 	me.TR(me);
 	me.TR(me);
-		me.TD(me, 1.5, 1, e = makeXonoticTouchCommandButton(_("Join"), '0 0 0', "join", COMMANDBUTTON_CLOSE));
-		me.TD(me, 1.5, 1, e = makeXonoticTouchCommandButton(_("Spectate"), '0 0 0', "spec", COMMANDBUTTON_CLOSE));
+		me.TD(me, 1.5, 1, e = makeGodnoticCommandButton(_("Join"), '0 0 0', "join", COMMANDBUTTON_CLOSE));
+		me.TD(me, 1.5, 1, e = makeGodnoticCommandButton(_("Spectate"), '0 0 0', "spec", COMMANDBUTTON_CLOSE));
 	me.TR(me);
 	me.TR(me);
 		me.TD(me, 1.5, 1, e = TouchGameMenu_SubButton(_("Settings"), "settings"));
@@ -72,9 +72,9 @@ void XonoticTouchGameMenuDialog_fill(entity me)
 	me.TR(me);
 	me.TR(me);
 		me.TD(me, 1.5, 1, e = TouchGameMenu_SubButton(_("Servers"), "servers"));
-		me.TD(me, 1.5, 1, e = makeXonoticTouchCommandButton(_("Quick menu"), '0 0 0', "quickmenu", COMMANDBUTTON_CLOSE));
+		me.TD(me, 1.5, 1, e = makeGodnoticCommandButton(_("Quick menu"), '0 0 0', "quickmenu", COMMANDBUTTON_CLOSE));
 	me.TR(me);
 	me.TR(me);
 		me.TD(me, 1.5, 1, e = TouchGameMenu_SubButton(_("Profile"), "profile"));
-		me.TD(me, 1.5, 1, e = makeXonoticTouchCommandButton(_("Quit"), '1 0 0', "menu_showquitdialog", 0));
+		me.TD(me, 1.5, 1, e = makeGodnoticCommandButton(_("Quit"), '1 0 0', "menu_showquitdialog", 0));
 }
