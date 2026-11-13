@@ -44,6 +44,10 @@ void TouchLAN_ServerPortsOpened(void);
 qbool TouchLAN_HostingOnPurpose(void);
 int TouchLAN_OtherHumans(void);
 
+// touch_net.c: a connection was accepted; a LAN or VPN game is remembered
+// (touch_lan_hosts) and asked on every LAN search.
+void TouchLAN_Joined(const struct lhnetaddress_s *peer);
+
 // Server, building a getinfo/getstatus reply: mark a password-protected game.
 void TouchLAN_StatusFlags(char *qcstatus, size_t size);
 

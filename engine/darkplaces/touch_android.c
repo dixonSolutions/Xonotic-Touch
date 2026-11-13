@@ -43,6 +43,7 @@ foreground service while there is something to keep alive.
 #include "touch_hud.h"
 #include "touch_lan.h"
 #include "touch_lan_logic.h"
+#include "touch_net.h"
 
 static qbool away;
 static EGLDisplay away_display = EGL_NO_DISPLAY;
@@ -63,6 +64,7 @@ void TouchAndroid_Background(qbool goaway)
 		return;
 	away = goaway;
 	vid_hidden = goaway;
+	TouchNet_Away(goaway); // spectate after a while away, reconnect checks
 	if (goaway)
 	{
 		const char *ext;
@@ -124,7 +126,9 @@ static void publish_netstate(void)
 	else if (cls.connect_trying)
 		LHNETADDRESS_ToString(&cls.connect_address, addr, sizeof(addr), true);
 	netstate_busy = true;
-	if (remote && (cls.connect_trying || (cls.state == ca_connected && cls.signon < SIGNONS)))
+	if (TouchNet_ReconnectState())
+		dpsnprintf(state, sizeof(state), "joining\n%s\n", TouchNet_ReconnectState());
+	else if (remote && (cls.connect_trying || (cls.state == ca_connected && cls.signon < SIGNONS)))
 		dpsnprintf(state, sizeof(state), "joining\nJoining %s%s\n", addr, Curl_Running() ? ", downloading" : "");
 	else if (remote && cls.state == ca_connected)
 		dpsnprintf(state, sizeof(state), "connected\nConnected to %s%s%s\n", addr, cl.worldbasename[0] ? " - " : "", cl.worldbasename);
@@ -145,6 +149,34 @@ static void publish_netstate(void)
 	{
 		dp_strlcpy(state, "idle\n\n", sizeof(state));
 		netstate_busy = false;
+	}
+	if (Curl_Running())
+	{
+		// a third line for the notification: the download's size, speed and time left
+		// (once a second: the file is not rewritten every frame)
+		static char line[256];
+		static double line_time;
+		if (host.realtime - line_time >= 1 || !line[0])
+		{
+			int n = 0;
+			char addinfo[128];
+			const char *more = NULL;
+			Curl_downloadinfo_t *info = Curl_GetDownloadInfo(&n, &more, addinfo, sizeof(addinfo));
+			line[0] = 0;
+			if (info && n > 0)
+			{
+				dpsnprintf(line, sizeof(line), "Downloading %s", info[0].filename);
+				TouchNet_CurlText(line, sizeof(line), 0, info[0].filename, info[0].queued, info[0].progress, info[0].speed);
+			}
+			if (info)
+				Z_Free(info);
+			line_time = host.realtime;
+		}
+		if (line[0])
+		{
+			dp_strlcat(state, line, sizeof(state));
+			dp_strlcat(state, "\n", sizeof(state));
+		}
 	}
 	if (!strcmp(state, last))
 		return;

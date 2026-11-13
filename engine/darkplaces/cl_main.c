@@ -29,6 +29,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "libcurl.h"
 #include "snd_main.h"
 #include "cdaudio.h"
+#include "touch_net.h" // Touch: reconnect
 
 // we need to declare some mouse variables here, because the menu system
 // references them even when on a unix system.
@@ -386,6 +387,7 @@ void CL_DisconnectEx(qbool kicked, const char *fmt, ... )
 	{
 		dpsnprintf(reason, sizeof(reason), "Disconnect by user");
 	}
+	TouchNet_Disconnecting(kicked, fmt ? reason : NULL); // Touch: a lost connection is joined again (touch_net.c)
 
 	if (Sys_CheckParm("-profilegameonly"))
 		Sys_AllowProfiling(false);

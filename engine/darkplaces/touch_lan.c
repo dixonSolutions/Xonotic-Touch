@@ -57,6 +57,7 @@ when the player ticks "remember".
 #include "touch_lan.h"
 #include "touch_nativefe.h"
 #include "touch_lan_logic.h"
+#include "touch_net.h"
 
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 #define TOUCHLAN_SOCKETS 1
@@ -66,6 +67,8 @@ when the player ticks "remember".
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <unistd.h>
+#include <sys/un.h>
+#include <fcntl.h>
 #ifdef __linux__
 #include <sys/ioctl.h>
 #else
@@ -103,6 +106,18 @@ static cvar_t touch_lan_port = {CF_CLIENT | CF_READONLY, "touch_lan_port", "0",
 	"the UDP port the hosted game listens on"};
 static cvar_t touch_lan_addresses = {CF_CLIENT | CF_READONLY, "touch_lan_addresses", "",
 	"while hosting: the addresses (IPv4:port) others on the network can join"};
+static cvar_t touch_lan_address_labels = {CF_CLIENT | CF_READONLY, "touch_lan_address_labels", "",
+	"while hosting: each address others can join with what it is on, \"label|address\" separated by ';' (\"Wi-Fi|192.168.1.20:26000;VPN (tailscale0)|100.101.102.103:26000\")"};
+static cvar_t touch_lan_join_link = {CF_CLIENT | CF_READONLY, "touch_lan_join_link", "",
+	"while hosting: a link to share (godnotic://join/ADDRESS:PORT); lan_join and the Join by address box take it, or its ADDRESS:PORT"};
+static cvar_t touch_lan_hosts = {CF_CLIENT | CF_READONLY, "touch_lan_hosts", "",
+	"remembered LAN and VPN games (joined before or added with lan_addhost), newest first, space separated; every LAN search asks them"};
+static cvar_t net_slist_lan_sweeps = {CF_CLIENT | CF_ARCHIVE, "net_slist_lan_sweeps", "2",
+	"passes of unicast queries over a small routed VPN subnet (/22 to /30) per LAN search; 0 = none"};
+static cvar_t net_slist_lan_sweeprate = {CF_CLIENT | CF_ARCHIVE, "net_slist_lan_sweeprate", "2000",
+	"unicast LAN search queries sent per second at most"};
+static cvar_t net_slist_lan_tailscale = {CF_CLIENT | CF_ARCHIVE, "net_slist_lan_tailscale", "1",
+	"ask the Tailscale peers the local tailscaled lists (read only, desktop Linux) in a LAN search"};
 static cvar_t touch_lan_players = {CF_CLIENT | CF_READONLY, "touch_lan_players", "",
 	"while hosting: who is in the game"};
 static cvar_t touch_lan_playercount = {CF_CLIENT | CF_READONLY, "touch_lan_playercount", "0",
@@ -320,36 +335,48 @@ static const char *password_for(const lhnetaddress_t *peer)
 	return r ? r->password : NULL;
 }
 
-// Up, non-loopback IPv4 interfaces: address and directed broadcast (host order).
-#ifdef TOUCHLAN_SOCKETS
-// Keep the list in rank order: Wi-Fi, Ethernet and hotspot interfaces first.
-static void add_interface(uint32_t *addr, uint32_t *bcast, int *ranks, int *n, uint32_t a, uint32_t b, int rank)
+// The up IPv4 interfaces others can reach this device on
+// (TouchLAN_InterfaceKind): Wi-Fi, Ethernet and hotspot first, then the
+// VPNs, then anything else; never loopback or a cellular modem's.
+typedef struct lan_iface_s
 {
+	uint32_t addr, mask, bcast; // host order; bcast 0 = send no broadcast
+	int kind;                   // TOUCHLAN_KIND_*
+	int rank;
+	int mtu;
+	char name[16];
+}
+lan_iface_t;
+
+#ifdef TOUCHLAN_SOCKETS
+static void add_iface(lan_iface_t *list, int *n, const char *name, uint32_t a, uint32_t m, int flags, int mtu)
+{
+	lan_iface_t e;
 	int at = *n;
-	while (at > 0 && ranks[at - 1] < rank)
+	memset(&e, 0, sizeof(e));
+	e.kind = TouchLAN_InterfaceKind(name, flags);
+	e.rank = TouchLAN_InterfaceRank(name, flags);
+	if (!e.rank || !a)
+		return;
+	e.addr = a;
+	e.mask = m;
+	// a routed VPN carries no broadcast: its peers get unicast probes
+	e.bcast = e.kind == TOUCHLAN_KIND_VPN_L3 ? 0 : TouchLAN_DirectedBroadcast(a, m);
+	e.mtu = mtu;
+	dp_strlcpy(e.name, name ? name : "", sizeof(e.name));
+	while (at > 0 && list[at - 1].rank < e.rank)
 	{
-		addr[at] = addr[at - 1];
-		bcast[at] = bcast[at - 1];
-		ranks[at] = ranks[at - 1];
+		list[at] = list[at - 1];
 		at--;
 	}
-	addr[at] = a;
-	bcast[at] = b;
-	ranks[at] = rank;
+	list[at] = e;
 	(*n)++;
 }
 #endif
 
-// The up IPv4 interfaces others on the local network can reach this device
-// on (TouchLAN_InterfaceRank): not loopback, point-to-point links, mobile
-// data or VPN tunnels. Wi-Fi, Ethernet and hotspot ones come first.
-static int lan_interfaces(uint32_t *addr, uint32_t *bcast, int max)
+static int lan_interfaces(lan_iface_t *list, int max)
 {
-	// at most MAX_IFACES (the size of every caller's arrays)
 	int n = 0;
-#ifdef TOUCHLAN_SOCKETS
-	int ranks[MAX_IFACES], rank;
-#endif
 #if defined(TOUCHLAN_SOCKETS) && defined(__linux__)
 	// SIOCGIFCONF rather than getifaddrs: the latter is Android API 24+, and
 	// this needs no netlink socket (sandboxes and old Android are happy).
@@ -370,7 +397,8 @@ static int lan_interfaces(uint32_t *addr, uint32_t *bcast, int max)
 	for (i = 0; i < count && n < max && n < MAX_IFACES; i++)
 	{
 		struct ifreq r;
-		uint32_t a, m, b;
+		uint32_t a, m;
+		int flags, mtu = 0;
 		if (reqs[i].ifr_addr.sa_family != AF_INET)
 			continue;
 		a = ntohl(((struct sockaddr_in *)&reqs[i].ifr_addr)->sin_addr.s_addr);
@@ -378,37 +406,83 @@ static int lan_interfaces(uint32_t *addr, uint32_t *bcast, int max)
 		memcpy(r.ifr_name, reqs[i].ifr_name, sizeof(r.ifr_name));
 		if (ioctl(fd, SIOCGIFFLAGS, &r) < 0)
 			continue;
-		rank = TouchLAN_InterfaceRank(reqs[i].ifr_name, ((r.ifr_flags & IFF_UP) ? TOUCHLAN_IF_UP : 0)
-			| ((r.ifr_flags & IFF_LOOPBACK) ? TOUCHLAN_IF_LOOPBACK : 0) | ((r.ifr_flags & IFF_POINTOPOINT) ? TOUCHLAN_IF_POINTOPOINT : 0));
-		if (!rank)
-			continue;
+		flags = ((r.ifr_flags & IFF_UP) ? TOUCHLAN_IF_UP : 0) | ((r.ifr_flags & IFF_LOOPBACK) ? TOUCHLAN_IF_LOOPBACK : 0)
+			| ((r.ifr_flags & IFF_POINTOPOINT) ? TOUCHLAN_IF_POINTOPOINT : 0) | ((r.ifr_flags & IFF_BROADCAST) ? TOUCHLAN_IF_BROADCAST : 0);
 		if (ioctl(fd, SIOCGIFNETMASK, &r) < 0)
 			continue;
 		m = ntohl(((struct sockaddr_in *)&r.ifr_netmask)->sin_addr.s_addr);
-		b = TouchLAN_DirectedBroadcast(a, m);
-		add_interface(addr, bcast, ranks, &n, a, b, rank);
+		if (ioctl(fd, SIOCGIFMTU, &r) == 0)
+			mtu = r.ifr_mtu;
+		add_iface(list, &n, reqs[i].ifr_name, a, m, flags, mtu);
 	}
 	close(fd);
 #elif defined(TOUCHLAN_SOCKETS)
-	struct ifaddrs *list, *it;
-	if (getifaddrs(&list) < 0)
+	struct ifaddrs *all, *it;
+	if (getifaddrs(&all) < 0)
 		return 0;
-	for (it = list; it && n < max && n < MAX_IFACES; it = it->ifa_next)
+	for (it = all; it && n < max && n < MAX_IFACES; it = it->ifa_next)
 	{
-		uint32_t a, m;
+		int flags;
 		if (!it->ifa_addr || it->ifa_addr->sa_family != AF_INET || !it->ifa_netmask)
 			continue;
-		rank = TouchLAN_InterfaceRank(it->ifa_name, ((it->ifa_flags & IFF_UP) ? TOUCHLAN_IF_UP : 0)
-			| ((it->ifa_flags & IFF_LOOPBACK) ? TOUCHLAN_IF_LOOPBACK : 0) | ((it->ifa_flags & IFF_POINTOPOINT) ? TOUCHLAN_IF_POINTOPOINT : 0));
-		if (!rank)
-			continue;
-		a = ntohl(((struct sockaddr_in *)it->ifa_addr)->sin_addr.s_addr);
-		m = ntohl(((struct sockaddr_in *)it->ifa_netmask)->sin_addr.s_addr);
-		add_interface(addr, bcast, ranks, &n, a, TouchLAN_DirectedBroadcast(a, m), rank);
+		flags = ((it->ifa_flags & IFF_UP) ? TOUCHLAN_IF_UP : 0) | ((it->ifa_flags & IFF_LOOPBACK) ? TOUCHLAN_IF_LOOPBACK : 0)
+			| ((it->ifa_flags & IFF_POINTOPOINT) ? TOUCHLAN_IF_POINTOPOINT : 0) | ((it->ifa_flags & IFF_BROADCAST) ? TOUCHLAN_IF_BROADCAST : 0);
+		add_iface(list, &n, it->ifa_name, ntohl(((struct sockaddr_in *)it->ifa_addr)->sin_addr.s_addr),
+			ntohl(((struct sockaddr_in *)it->ifa_netmask)->sin_addr.s_addr), flags, 0);
 	}
-	freeifaddrs(list);
+	freeifaddrs(all);
 #else
-	(void)addr; (void)bcast; (void)max;
+	(void)list; (void)max;
+#endif
+	return n;
+}
+
+// The VPN interfaces' IPv6 addresses others can join (unique local or
+// global, never link-local), as "[addr]" strings with the interface's name.
+// Linux and Android: /proc/net/if_inet6; elsewhere none.
+static int lan_vpn_ipv6(char (*addr)[48], char (*name)[16], int max)
+{
+	int n = 0;
+#if defined(TOUCHLAN_SOCKETS) && defined(__linux__)
+	FILE *f = fopen("/proc/net/if_inet6", "r");
+	char hex[40], ifname[32], line[256];
+	unsigned idx, plen, scope, flags;
+	lan_iface_t v4[MAX_IFACES];
+	int nv4 = lan_interfaces(v4, MAX_IFACES), i, j, kind;
+	if (!f)
+		return 0;
+	while (n < max && fgets(line, sizeof(line), f))
+	{
+		unsigned char a[16];
+		char text[INET6_ADDRSTRLEN];
+		if (sscanf(line, "%32s %x %x %x %x %31s", hex, &idx, &plen, &scope, &flags, ifname) != 6 || strlen(hex) != 32)
+			continue;
+		for (i = 0; i < 16; i++)
+		{
+			unsigned b;
+			if (sscanf(hex + i * 2, "%2x", &b) != 1)
+				break;
+			a[i] = (unsigned char)b;
+		}
+		if (i < 16 || !TouchLAN_UsableIPv6(a))
+			continue;
+		// only on a VPN interface (a LAN's global IPv6 is often not
+		// reachable from others, and its IPv4 is listed anyway)
+		kind = TouchLAN_InterfaceKind(ifname, TOUCHLAN_IF_UP);
+		for (j = 0; j < nv4; j++)
+			if (!strcmp(v4[j].name, ifname))
+				kind = v4[j].kind;
+		if (kind != TOUCHLAN_KIND_VPN_L2 && kind != TOUCHLAN_KIND_VPN_L3)
+			continue;
+		if (!inet_ntop(AF_INET6, a, text, sizeof(text)))
+			continue;
+		dpsnprintf(addr[n], sizeof(addr[n]), "[%s]", text);
+		dp_strlcpy(name[n], ifname, sizeof(name[n]));
+		n++;
+	}
+	fclose(f);
+#else
+	(void)addr; (void)name; (void)max;
 #endif
 	return n;
 }
@@ -579,27 +653,375 @@ static void send_to(lhnetsocket_t *s, const char *query, uint32_t ip, int port)
 		NetConn_WriteString(s, query, &to);
 }
 
-static void lan_query(lhnetsocket_t *s, qbool first)
+// Unicast sweeps of small routed VPN subnets, at most net_slist_lan_sweeprate
+// packets a second, net_slist_lan_sweeps passes. They go out of a socket of
+// their own: most swept addresses have nobody behind them, and on an
+// Ethernet-like link each of those packets waits for an ARP answer that never
+// comes, holding send-buffer memory for seconds; from the game's socket that
+// stalls the game's own packets (a connect sent then was lost). A host that
+// answers is asked again from the game's socket, so the server list sees an
+// ordinary reply.
+#define MAX_SWEEPS 8
+typedef struct lan_sweep_s
 {
-	uint32_t addr[MAX_IFACES], bcast[MAX_IFACES];
-	int ports[MAX_PORTS], nports, nifaces, i, j;
-	char query[64];
-	if (LHNETADDRESS_GetAddressType(LHNET_AddressFromSocket(s)) != LHNETADDRESSTYPE_INET4)
+	lhnetsocket_t *sock;
+	uint32_t first;
+	int count, cursor, passes;
+}
+lan_sweep_t;
+static lan_sweep_t sweeps[MAX_SWEEPS];
+static int numsweeps;
+static double sweep_time, sweep_close_time;
+static int sweep_fd = -1;
+static lhnetsocket_t *sweep_answer_sock;
+// games that answered a sweep, asked again from the game's socket a little
+// later (a server answers one query per second per address)
+#define MAX_ANSWERED 16
+static struct { lhnetaddress_t addr; double when; } answered[MAX_ANSWERED];
+static int numanswered;
+// hosts that answered this round: later passes skip them (the server would
+// count the query against its flood guard and drop the game socket's)
+static uint32_t found[MAX_ANSWERED];
+static int numfound;
+
+static void sweep_start(lhnetsocket_t *s, const lan_iface_t *e)
+{
+	uint32_t first;
+	int count, i;
+	if (!TouchLAN_SweepHosts(e->addr, e->mask, &first, &count) || net_slist_lan_sweeps.integer < 1)
+		return;
+	for (i = 0; i < numsweeps; i++)
+		if (sweeps[i].first == first)
+			return; // already going
+	if (numsweeps >= MAX_SWEEPS)
+		return;
+	if (sweep_fd < 0)
+	{
+		sweep_fd = socket(AF_INET, SOCK_DGRAM, 0);
+		if (sweep_fd < 0)
+			return;
+		fcntl(sweep_fd, F_SETFL, fcntl(sweep_fd, F_GETFL, 0) | O_NONBLOCK);
+	}
+	sweeps[numsweeps].sock = s;
+	sweeps[numsweeps].first = first;
+	sweeps[numsweeps].count = count;
+	sweeps[numsweeps].cursor = 0;
+	sweeps[numsweeps].passes = bound(1, net_slist_lan_sweeps.integer, 4);
+	numsweeps++;
+	Con_DPrintf("LAN sweep: %d hosts on %s\n", count, e->name);
+	if (!sweep_time)
+	{
+		sweep_time = host.realtime;
+		numfound = 0;
+	}
+}
+
+static void sweep_frame(void)
+{
+	int ports[MAX_PORTS], nports, budget, i, j, n;
+	char query[64], reply[64], str[32];
+	struct sockaddr_in to, from;
+	socklen_t fromlen;
+	lhnetaddress_t addr;
+	if (sweep_fd < 0)
 		return;
 	TouchLAN_BuildQuery(query, sizeof(query), host.realtime + (Sys_DirtyTime() - host.dirtytime));
+	// answers: ask that game again from the game's socket
+	for (;;)
+	{
+		fromlen = sizeof(from);
+		n = (int)recvfrom(sweep_fd, reply, sizeof(reply), 0, (struct sockaddr *)&from, &fromlen);
+		if (n <= 0)
+			break;
+		// the query is the server list's (getstatus or getinfo)
+		if (n < 16 || (memcmp(reply, "\377\377\377\377infoResponse", 16) && memcmp(reply, "\377\377\377\377statusResponse", min(n, 18)))
+			|| !sweep_answer_sock || !socket_alive(sweep_answer_sock))
+			continue;
+		dpsnprintf(str, sizeof(str), "%s:%d", inet_ntoa(from.sin_addr), ntohs(from.sin_port));
+		Con_DPrintf("LAN sweep: a game answered at %s\n", str);
+		if (numfound < MAX_ANSWERED)
+			found[numfound++] = ntohl(from.sin_addr.s_addr);
+		if (numanswered < MAX_ANSWERED && LHNETADDRESS_FromString(&addr, str, 26000))
+		{
+			answered[numanswered].addr = addr;
+			answered[numanswered].when = host.realtime + 1.1;
+			numanswered++;
+		}
+	}
+	for (i = 0; i < numanswered; )
+	{
+		if (host.realtime < answered[i].when)
+		{
+			i++;
+			continue;
+		}
+		if (sweep_answer_sock && socket_alive(sweep_answer_sock))
+			NetConn_WriteString(sweep_answer_sock, query, &answered[i].addr);
+		answered[i] = answered[--numanswered];
+	}
+	if (!numsweeps)
+	{
+		sweep_time = 0;
+		// a while for late answers, then the socket goes
+		if (host.realtime > sweep_close_time && !numanswered)
+		{
+			close(sweep_fd);
+			sweep_fd = -1;
+		}
+		return;
+	}
+	budget = (int)((host.realtime - sweep_time) * bound(100, net_slist_lan_sweeprate.integer, 20000));
+	if (budget < 1)
+		return;
+	budget = min(budget, 1000);
+	sweep_time = host.realtime;
 	nports = TouchLAN_ParsePorts(net_slist_lan_ports.string, ports, MAX_PORTS);
 	if (!nports)
 		ports[nports++] = 26000;
-	nifaces = lan_interfaces(addr, bcast, MAX_IFACES);
+	memset(&to, 0, sizeof(to));
+	to.sin_family = AF_INET;
+	for (i = 0; i < numsweeps && budget > 0; )
+	{
+		lan_sweep_t *w = &sweeps[i];
+		sweep_answer_sock = w->sock;
+		while (w->passes > 0 && budget > 0)
+		{
+			uint32_t ip = w->first + (uint32_t)w->cursor;
+			int k;
+			for (k = 0; k < numfound && found[k] != ip; k++)
+				;
+			to.sin_addr.s_addr = htonl(ip);
+			for (j = 0; j < nports && k == numfound; j++)
+			{
+				to.sin_port = htons((unsigned short)ports[j]);
+				sendto(sweep_fd, query, strlen(query), 0, (struct sockaddr *)&to, sizeof(to));
+			}
+			budget -= nports;
+			if (++w->cursor >= w->count)
+			{
+				w->cursor = 0;
+				w->passes--;
+			}
+		}
+		if (w->passes <= 0)
+			sweeps[i] = sweeps[--numsweeps];
+		else
+			i++;
+	}
+	sweep_close_time = host.realtime + 3;
+}
+
+// ---- remembered hosts: every game this device joined on a LAN or VPN
+// address, and the ones the player added; asked directly on every LAN search
+#define HOSTS_FILE "touch_lan_hosts.txt"
+#define MAX_HOSTS 32
+static char lan_hosts[MAX_HOSTS][64];
+static int num_lan_hosts = -1; // -1: not read yet
+
+static void hosts_cvar(void)
+{
+	char all[MAX_HOSTS * 65];
+	int i;
+	all[0] = 0;
+	for (i = 0; i < num_lan_hosts; i++)
+	{
+		if (i)
+			dp_strlcat(all, " ", sizeof(all));
+		dp_strlcat(all, lan_hosts[i], sizeof(all));
+	}
+	if (strcmp(touch_lan_hosts.string, all))
+		Cvar_SetQuick(&touch_lan_hosts, all);
+}
+
+static void hosts_read(void)
+{
+	qfile_t *f;
+	char buf[MAX_HOSTS * 65], *line, *next, one[64];
+	fs_offset_t len;
+	if (num_lan_hosts >= 0)
+		return;
+	num_lan_hosts = 0;
+	f = FS_OpenRealFile(HOSTS_FILE, "rb", true);
+	if (f)
+	{
+		len = FS_Read(f, buf, sizeof(buf) - 1);
+		FS_Close(f);
+		buf[len > 0 ? len : 0] = 0;
+		for (line = buf; line && *line && num_lan_hosts < MAX_HOSTS; line = next)
+		{
+			next = strchr(line, '\n');
+			if (next)
+				*next++ = 0;
+			if (TouchLAN_ParseJoin(line, one, sizeof(one)))
+				dp_strlcpy(lan_hosts[num_lan_hosts++], one, sizeof(lan_hosts[0]));
+		}
+	}
+	hosts_cvar();
+}
+
+static void hosts_write(void)
+{
+	qfile_t *f = FS_OpenRealFile(HOSTS_FILE, "wb", true);
+	int i;
+	if (!f)
+		return;
+	for (i = 0; i < num_lan_hosts; i++)
+		FS_Printf(f, "%s\n", lan_hosts[i]);
+	FS_Close(f);
+	hosts_cvar();
+}
+
+// newest first; an address already there moves to the front
+static qbool hosts_add(const char *text)
+{
+	char one[64];
+	int i;
+	if (!TouchLAN_ParseJoin(text, one, sizeof(one)))
+		return false;
+	hosts_read();
+	for (i = 0; i < num_lan_hosts && strcmp(lan_hosts[i], one); i++)
+		;
+	if (i == num_lan_hosts)
+		i = min(num_lan_hosts, MAX_HOSTS - 1);
+	else if (i == 0)
+		return true;
+	if (i == num_lan_hosts)
+		num_lan_hosts++;
+	memmove(lan_hosts[1], lan_hosts[0], i * sizeof(lan_hosts[0]));
+	dp_strlcpy(lan_hosts[0], one, sizeof(lan_hosts[0]));
+	hosts_write();
+	return true;
+}
+
+static qbool hosts_remove(const char *text)
+{
+	char one[64];
+	int i;
+	if (!TouchLAN_ParseJoin(text, one, sizeof(one)))
+		return false;
+	hosts_read();
+	for (i = 0; i < num_lan_hosts; i++)
+	{
+		if (!strcmp(lan_hosts[i], one))
+		{
+			memmove(lan_hosts[i], lan_hosts[i + 1], (num_lan_hosts - i - 1) * sizeof(lan_hosts[0]));
+			num_lan_hosts--;
+			hosts_write();
+			return true;
+		}
+	}
+	return false;
+}
+
+static void hosts_query(lhnetsocket_t *s, const char *query)
+{
+	lhnetaddress_t to;
+	int i, j, ports[MAX_PORTS], nports;
+	hosts_read();
+	nports = TouchLAN_ParsePorts(net_slist_lan_ports.string, ports, MAX_PORTS);
+	for (i = 0; i < num_lan_hosts; i++)
+	{
+		// with a port: that one; without: the LAN ports
+		qbool hasport = lan_hosts[i][0] == '[' ? strstr(lan_hosts[i], "]:") != NULL : strchr(lan_hosts[i], ':') != NULL;
+		for (j = 0; j < (hasport ? 1 : nports); j++)
+		{
+			if (!LHNETADDRESS_FromString(&to, lan_hosts[i], hasport ? 26000 : ports[j]))
+				break;
+			if (LHNETADDRESS_GetAddressType(&to) == LHNETADDRESS_GetAddressType(LHNET_AddressFromSocket(s)))
+				NetConn_WriteString(s, query, &to);
+		}
+	}
+}
+
+// ---- the VPN's own peer list, when it can be read without asking anyone:
+// Tailscale's LocalAPI (tailscaled's socket, readable by the desktop user
+// tailscaled runs for; not in the Flatpak sandbox or on Android). Read only.
+static int tailscale_peers(uint32_t *out, int max)
+{
+	int n = 0;
+#if defined(TOUCHLAN_SOCKETS) && defined(__linux__) && !defined(__ANDROID__)
+	static const char *const paths[] = {"/run/tailscale/tailscaled.sock", "/var/run/tailscale/tailscaled.sock", NULL};
+	static const char req[] = "GET /localapi/v0/status HTTP/1.0\r\nHost: local-tailscaled.sock\r\n\r\n";
+	struct sockaddr_un sun;
+	struct timeval tv = {0, 300000};
+	char *buf, *p;
+	int fd = -1, i, len = 0, got;
+	const int size = 1 << 20;
+	if (!net_slist_lan_tailscale.integer)
+		return 0;
+	for (i = 0; paths[i] && fd < 0; i++)
+	{
+		fd = socket(AF_UNIX, SOCK_STREAM, 0);
+		if (fd < 0)
+			return 0;
+		memset(&sun, 0, sizeof(sun));
+		sun.sun_family = AF_UNIX;
+		dp_strlcpy(sun.sun_path, paths[i], sizeof(sun.sun_path));
+		setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+		setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+		if (connect(fd, (struct sockaddr *)&sun, sizeof(sun)) < 0)
+		{
+			close(fd);
+			fd = -1;
+		}
+	}
+	if (fd < 0)
+		return 0;
+	buf = (char *)Mem_Alloc(tempmempool, size + 1);
+	if (write(fd, req, sizeof(req) - 1) == (ssize_t)(sizeof(req) - 1))
+		while (len < size && (got = (int)read(fd, buf + len, size - len)) > 0)
+			len += got;
+	close(fd);
+	buf[len] = 0;
+	// every "TailscaleIPs":["100.x.y.z", ...] (the node's own, too: harmless)
+	for (p = buf; n < max && (p = strstr(p, "\"TailscaleIPs\":[\"")); )
+	{
+		unsigned a, b, c, d;
+		p += strlen("\"TailscaleIPs\":[\"");
+		if (sscanf(p, "%u.%u.%u.%u", &a, &b, &c, &d) == 4 && a < 256 && b < 256 && c < 256 && d < 256)
+			out[n++] = (a << 24) | (b << 16) | (c << 8) | d;
+	}
+	Mem_Free(buf);
+#else
+	(void)out; (void)max;
+#endif
+	return n;
+}
+
+static void lan_query(lhnetsocket_t *s, qbool first)
+{
+	lan_iface_t ifs[MAX_IFACES];
+	uint32_t peers[256];
+	int ports[MAX_PORTS], nports, nifaces, npeers = 0, i, j;
+	char query[64];
+	lhnetaddresstype_t type = LHNETADDRESS_GetAddressType(LHNET_AddressFromSocket(s));
+	TouchLAN_BuildQuery(query, sizeof(query), host.realtime + (Sys_DirtyTime() - host.dirtytime));
+	// remembered and added hosts, IPv4 or IPv6 as the socket is
+	hosts_query(s, query);
+	if (type != LHNETADDRESSTYPE_INET4)
+		return;
+	nports = TouchLAN_ParsePorts(net_slist_lan_ports.string, ports, MAX_PORTS);
+	if (!nports)
+		ports[nports++] = 26000;
+	nifaces = lan_interfaces(ifs, MAX_IFACES);
+	if (first)
+		npeers = tailscale_peers(peers, (int)(sizeof(peers) / sizeof(peers[0])));
 	for (j = 0; j < nports; j++)
 	{
 		// netconn.c sent 255.255.255.255:26000 itself the first time.
 		if (!first || ports[j] != 26000)
 			send_to(s, query, 0xffffffffu, ports[j]);
 		for (i = 0; i < nifaces; i++)
-			if (bcast[i])
-				send_to(s, query, bcast[i], ports[j]);
+			if (ifs[i].bcast)
+				send_to(s, query, ifs[i].bcast, ports[j]);
+		for (i = 0; i < npeers; i++)
+			send_to(s, query, peers[i], ports[j]);
 	}
+	// routed VPNs carry no broadcast: sweep the small ones
+	if (first)
+		for (i = 0; i < nifaces; i++)
+			if (ifs[i].kind == TOUCHLAN_KIND_VPN_L3)
+				sweep_start(s, &ifs[i]);
 }
 
 static void cache_query(lhnetsocket_t *s)
@@ -678,6 +1100,7 @@ void TouchLAN_Broadcast(lhnetsocket_t *sock)
 static void repeat_frame(void)
 {
 	int i;
+	sweep_frame();
 	if (num_query_sockets && !repeats_left)
 	{
 		cache_queried = true; // every socket has had its turn
@@ -704,18 +1127,44 @@ qbool TouchLAN_LanOnly(void)
 
 static void host_status(void)
 {
-	char addrs[512], players[1024], one[160];
-	uint32_t addr[MAX_IFACES], bcast[MAX_IFACES];
+	char addrs[1024], labels[1536], link[128], players[1024], one[160], label[48];
+	char v6[8][48], v6name[8][16];
+	lan_iface_t ifs[MAX_IFACES];
 	int port = hosted_port(), n, i, humans = 0;
-	addrs[0] = players[0] = 0;
+	addrs[0] = labels[0] = link[0] = players[0] = 0;
 	if (port)
 	{
-		n = lan_interfaces(addr, bcast, MAX_IFACES);
+		// "Join at": every LAN and VPN address, labelled for the UIs
+		// (touch_lan_address_labels: "label|address;label|address")
+		n = lan_interfaces(ifs, MAX_IFACES);
 		for (i = 0; i < n; i++)
 		{
-			dpsnprintf(one, sizeof(one), "%s%u.%u.%u.%u:%d", addrs[0] ? " " : "",
-				addr[i] >> 24, (addr[i] >> 16) & 255, (addr[i] >> 8) & 255, addr[i] & 255, port);
+			dpsnprintf(one, sizeof(one), "%u.%u.%u.%u:%d", ifs[i].addr >> 24, (ifs[i].addr >> 16) & 255, (ifs[i].addr >> 8) & 255, ifs[i].addr & 255, port);
+			if (!link[0])
+				dpsnprintf(link, sizeof(link), "godnotic://join/%s", one);
+			if (addrs[0])
+				dp_strlcat(addrs, " ", sizeof(addrs));
 			dp_strlcat(addrs, one, sizeof(addrs));
+			TouchLAN_InterfaceLabel(ifs[i].name, ifs[i].kind, label, sizeof(label));
+			if (labels[0])
+				dp_strlcat(labels, ";", sizeof(labels));
+			dp_strlcat(labels, label, sizeof(labels));
+			dp_strlcat(labels, "|", sizeof(labels));
+			dp_strlcat(labels, one, sizeof(labels));
+		}
+		n = lan_vpn_ipv6(v6, v6name, 8);
+		for (i = 0; i < n; i++)
+		{
+			dpsnprintf(one, sizeof(one), "%s:%d", v6[i], port);
+			if (addrs[0])
+				dp_strlcat(addrs, " ", sizeof(addrs));
+			dp_strlcat(addrs, one, sizeof(addrs));
+			dpsnprintf(label, sizeof(label), "VPN (%s)", v6name[i]);
+			if (labels[0])
+				dp_strlcat(labels, ";", sizeof(labels));
+			dp_strlcat(labels, label, sizeof(labels));
+			dp_strlcat(labels, "|", sizeof(labels));
+			dp_strlcat(labels, one, sizeof(labels));
 		}
 		for (i = 0; i < svs.maxclients; i++)
 		{
@@ -741,6 +1190,10 @@ static void host_status(void)
 		Cvar_SetValueQuick(&touch_lan_port, port);
 	if (strcmp(touch_lan_addresses.string, addrs))
 		Cvar_SetQuick(&touch_lan_addresses, addrs);
+	if (strcmp(touch_lan_address_labels.string, labels))
+		Cvar_SetQuick(&touch_lan_address_labels, labels);
+	if (strcmp(touch_lan_join_link.string, link))
+		Cvar_SetQuick(&touch_lan_join_link, link);
 	if (strcmp(touch_lan_players.string, players))
 		Cvar_SetQuick(&touch_lan_players, players);
 	if (touch_lan_playercount.integer != humans)
@@ -785,6 +1238,23 @@ static void TouchLAN_Status_f(cmd_state_t *cmd)
 	}
 	Con_Printf("Hosting on UDP port %d%s\n", touch_lan_port.integer, sv_touch_lan_password.string[0] ? ", password protected" : "");
 	Con_Printf("Join at: %s\n", touch_lan_addresses.string[0] ? touch_lan_addresses.string : "(no network interface is up)");
+	if (touch_lan_address_labels.string[0])
+	{
+		// one line per address: "Wi-Fi 192.168.1.20:26000", "VPN (tailscale0) 100.x.y.z:26000"
+		char list[1536], *p, *bar, *next;
+		dp_strlcpy(list, touch_lan_address_labels.string, sizeof(list));
+		for (p = list; p && *p; p = next)
+		{
+			next = strchr(p, ';');
+			if (next)
+				*next++ = 0;
+			bar = strchr(p, '|');
+			if (bar)
+				*bar++ = 0;
+			Con_Printf("  %s %s\n", p, bar ? bar : "");
+		}
+		Con_Printf("Join link: %s\n", touch_lan_join_link.string);
+	}
 	Con_Printf("Players: %s\n", touch_lan_players.string[0] ? touch_lan_players.string : "none");
 }
 
@@ -848,9 +1318,83 @@ static void TouchLAN_Forget_f(cmd_state_t *cmd)
 		Con_Printf("No join password remembered for %s.\n", Cmd_Argv(cmd, 1));
 }
 
+#ifdef CONFIG_MENU
+// lan_addhost ADDRESS[:PORT] | godnotic://join/...: remember a game to ask
+// on every LAN search (a friend's VPN address, say)
+static void TouchLAN_AddHost_f(cmd_state_t *cmd)
+{
+	if (Cmd_Argc(cmd) < 2 || !hosts_add(Cmd_Argv(cmd, 1)))
+		Con_Printf("usage: lan_addhost ADDRESS[:PORT] (or a godnotic://join/ link)\n");
+}
+
+// lan_forgethost ADDRESS[:PORT]: no longer ask it; without one, forget all
+static void TouchLAN_ForgetHost_f(cmd_state_t *cmd)
+{
+	if (Cmd_Argc(cmd) < 2)
+	{
+		hosts_read();
+		num_lan_hosts = 0;
+		hosts_write();
+		return;
+	}
+	if (!hosts_remove(Cmd_Argv(cmd, 1)))
+		Con_Printf("%s is not a remembered host\n", Cmd_Argv(cmd, 1));
+}
+
+static void TouchLAN_Hosts_f(cmd_state_t *cmd)
+{
+	int i;
+	hosts_read();
+	for (i = 0; i < num_lan_hosts; i++)
+		Con_Printf("%s\n", lan_hosts[i]);
+	if (!num_lan_hosts)
+		Con_Printf("No remembered LAN or VPN games.\n");
+}
+
+// lan_join LINK-OR-ADDRESS: join from a shared join string
+static void TouchLAN_Join_f(cmd_state_t *cmd)
+{
+	char one[64], line[96];
+	if (Cmd_Argc(cmd) < 2 || !TouchLAN_ParseJoin(Cmd_Args(cmd), one, sizeof(one)))
+	{
+		Con_Printf("usage: lan_join godnotic://join/ADDRESS:PORT (or ADDRESS[:PORT])\n");
+		return;
+	}
+	dpsnprintf(line, sizeof(line), "connect \"%s\"\n", one);
+	Cbuf_AddText(cmd, line);
+}
+#endif
+
+// touch_net.c: a connection was accepted. A game on a LAN or VPN address is
+// remembered, so the next LAN search asks it even where no broadcast reaches.
+void TouchLAN_Joined(const lhnetaddress_t *peer)
+{
+#ifdef CONFIG_MENU
+	char text[128];
+	lhnetaddresstype_t type = LHNETADDRESS_GetAddressType(peer);
+	if (type != LHNETADDRESSTYPE_INET4 && type != LHNETADDRESSTYPE_INET6)
+		return;
+	if (!LHNETADDRESS_ToString(peer, text, sizeof(text), true))
+		return;
+	if (type == LHNETADDRESSTYPE_INET4)
+	{
+		unsigned a, b, c, d;
+		if (sscanf(text, "%u.%u.%u.%u", &a, &b, &c, &d) != 4 || a == 127
+			|| !TouchLAN_IsLanIPv4((a << 24) | (b << 16) | (c << 8) | d))
+			return;
+	}
+	else if (!(text[0] == '[' && (text[1] == 'f' || text[1] == 'F') && (text[2] == 'c' || text[2] == 'd' || text[2] == 'C' || text[2] == 'D')))
+		return; // IPv6: unique local addresses (VPNs) only
+	hosts_add(text);
+#else
+	(void)peer;
+#endif
+}
+
 void TouchLAN_Init(void)
 {
 	cvar_t *v;
+	TouchNet_Init(); // joins over real networks: touch_net.c
 	Cvar_RegisterVariable(&sv_touch_lan_password);
 	Cvar_RegisterVariable(&net_slist_lan_only);
 	Cvar_RegisterVariable(&net_slist_lan_ports);
@@ -889,6 +1433,18 @@ void TouchLAN_Init(void)
 	Cmd_AddCommand(CF_SHARED, "touch_lan_status", TouchLAN_Status_f, "show the addresses and players of the game this one hosts");
 	Cmd_AddCommand(CF_CLIENT, "touch_lan_host_password_apply", TouchLAN_ApplyPassword_f, "make the Host screen's password (touch_lan_host_password) the server's join password");
 	Cmd_AddCommand(CF_CLIENT, "touch_lan_forget", TouchLAN_Forget_f, "forget remembered join passwords: all, or the one for an address");
+	Cvar_RegisterVariable(&touch_lan_address_labels);
+	Cvar_RegisterVariable(&touch_lan_join_link);
+	Cvar_RegisterVariable(&touch_lan_hosts);
+	Cvar_RegisterVariable(&net_slist_lan_sweeps);
+	Cvar_RegisterVariable(&net_slist_lan_sweeprate);
+	Cvar_RegisterVariable(&net_slist_lan_tailscale);
+#ifdef CONFIG_MENU
+	Cmd_AddCommand(CF_CLIENT, "lan_addhost", TouchLAN_AddHost_f, "remember a LAN or VPN game (ADDRESS[:PORT] or a godnotic://join/ link) for every LAN search");
+	Cmd_AddCommand(CF_CLIENT, "lan_forgethost", TouchLAN_ForgetHost_f, "stop asking a remembered LAN or VPN game; without an address, all of them");
+	Cmd_AddCommand(CF_CLIENT, "lan_hosts", TouchLAN_Hosts_f, "list the remembered LAN and VPN games");
+	Cmd_AddCommand(CF_CLIENT, "lan_join", TouchLAN_Join_f, "join from a shared join string (godnotic://join/ADDRESS:PORT or ADDRESS[:PORT])");
+#endif
 
 	// The master servers' answer is in long before 4 s, and DarkPlaces servers
 	// echo a timestamp for the ping, so the stock wait before the list's own

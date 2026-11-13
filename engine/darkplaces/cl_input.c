@@ -27,6 +27,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "thread.h"
 #include "touch_aim.h"
 #include "touch_hud.h"
+#include "touch_net.h" // Touch: fast signon
 
 /*
 ===============================================================================
@@ -1932,6 +1933,7 @@ void CL_SendMove(void)
 	// always send if buttons changed or an impulse is pending
 	// even if it violates the rate limit!
 	important = (cl.cmd.impulse || (cl_netimmediatebuttons.integer && cl.cmd.buttons != cl.movecmd[1].buttons));
+	important = important || TouchNet_ClientUrgent(); // Touch: a signon reply goes out now (touch_net.c)
 
 	// improve and stabilise ping by synchronising with the server
 	lag = cl.mtime[0] - cl.cmd.time;

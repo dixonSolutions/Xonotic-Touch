@@ -6,6 +6,7 @@
 #include "image.h"
 #include "jpeg.h"
 #include "image_png.h"
+#include "touch_net.h" // Touch: download size and time left
 #include "touch_lua.h" // Touch: Lua mod installs stay on HTTPS
 
 static cvar_t curl_enabled = {CF_SHARED | CF_ARCHIVE, "curl_enabled","1", "whether libcurl may be used to GET files or POST data"};
@@ -430,6 +431,7 @@ static CURLM *curlm = NULL;
 static double bytes_received = 0; // used for bandwidth throttling
 static double bytes_sent = 0; // used for bandwidth throttling
 static double curltime = 0;
+#include "touch_curl.h" // Touch: one large download in parallel ranges
 
 /*
 ====================
@@ -444,6 +446,7 @@ static size_t CURL_fwrite(void *data, size_t size, size_t nmemb, void *vdi)
 	fs_offset_t ret = -1;
 	size_t bytes = size * nmemb;
 	downloadinfo *di = (downloadinfo *) vdi;
+	bytes = TouchCurl_Clip(di, bytes); // Touch: a split download's first piece stops at the second
 
 	if(di->buffer)
 	{
@@ -550,6 +553,7 @@ static void Curl_EndDownload(downloadinfo *di, CurlStatus status, CURLcode error
 	qbool ok = false;
 	if(!curl_dll)
 		return;
+	TouchCurl_End(di); // Touch: the parallel pieces go with the download
 	switch(status)
 	{
 		case CURL_DOWNLOAD_SUCCESS:
@@ -1207,6 +1211,7 @@ void Curl_Frame(void)
 			mc = qcurl_multi_perform(curlm, &remaining);
 		}
 		while(mc == CURLM_CALL_MULTI_PERFORM);
+		TouchCurl_Frame(); // Touch: split a large download into ranges
 
 		List_For_Each_Entry(di, &downloads, downloadinfo, list)
 		{
@@ -1227,6 +1232,7 @@ void Curl_Frame(void)
 			CURLMsg *msg = qcurl_multi_info_read(curlm, &remaining);
 			if(!msg)
 				break;
+			if(msg->msg == CURLMSG_DONE && TouchCurl_Done(msg->easy_handle, msg->data.result)) continue; // Touch: a piece of a split download
 			if(msg->msg == CURLMSG_DONE)
 			{
 				const char *ct = NULL;
@@ -1256,6 +1262,7 @@ void Curl_Frame(void)
 				Curl_EndDownload(di, failed, result, ct);
 			}
 		}
+		while ((di = TouchCurl_Finished())) Curl_EndDownload(di, touchcurl_ok ? CURL_DOWNLOAD_SUCCESS : CURL_DOWNLOAD_FAILED, CURLE_OK, NULL); // Touch: a split download complete
 	}
 
 	CheckPendingDownloads();
@@ -1680,6 +1687,7 @@ Curl_downloadinfo_t *Curl_GetDownloadInfo(int *nDownloads, const char **addition
 		{
 			downinfo[i].progress = Curl_GetDownloadAmount(di);
 			downinfo[i].speed = Curl_GetDownloadSpeed(di);
+			TouchCurl_Info(di, &downinfo[i].progress, &downinfo[i].speed, i); // Touch: size and time left, over all pieces
 			downinfo[i].queued = false;
 		}
 		else
