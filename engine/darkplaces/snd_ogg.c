@@ -26,6 +26,7 @@
 #include "snd_main.h"
 #include "snd_ogg.h"
 #include "snd_wav.h"
+#include "touch_assets.h" // Touch: Opus
 #include "sound.h"
 
 #ifdef LINK_TO_LIBVORBIS
@@ -605,6 +606,7 @@ qbool OGG_LoadVorbisFile(const char *filename, sfx_t *sfx)
 	vorbis_comment *vc;
 	double peak, gaindb;
 
+	if (Touch_Opus_LoadFile(filename, sfx)) return true; // Touch: Opus sound from the phone packs
 #ifndef LINK_TO_LIBVORBIS
 	if (!vf_dll)
 		return false;

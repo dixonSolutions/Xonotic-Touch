@@ -80,7 +80,7 @@ add_library(SDL2 SHARED IMPORTED)
 set_target_properties(SDL2 PROPERTIES
     IMPORTED_LOCATION "${XONOTIC_DEPS_PREFIX}/lib/libSDL2.so")
 
-foreach(lib jpeg freetype vorbisfile vorbis ogg)
+foreach(lib jpeg freetype vorbisfile vorbis opusfile opus ogg)
     add_library(${lib} STATIC IMPORTED)
     set_target_properties(${lib} PROPERTIES
         IMPORTED_LOCATION "${XONOTIC_DEPS_PREFIX}/lib/lib${lib}.a")
@@ -89,11 +89,13 @@ endforeach()
 target_include_directories(main PRIVATE
     "${DP_DIR}"
     "${XONOTIC_DEPS_PREFIX}/include"
-    "${XONOTIC_DEPS_PREFIX}/include/SDL2")
+    "${XONOTIC_DEPS_PREFIX}/include/SDL2"
+    "${XONOTIC_DEPS_PREFIX}/include/opus")
 
 target_compile_definitions(main PRIVATE
     CONFIG_MENU
     LINK_TO_LIBJPEG
+    LINK_TO_LIBOPUSFILE
     _FILE_OFFSET_BITS=64
     __KERNEL_STRICT_NAMES
     VCREVISION=${XONOTIC_VERSION}
@@ -124,5 +126,5 @@ target_link_options(main PRIVATE
 # stages it into jniLibs so it lands in the APK's lib/<abi>/ directory.
 target_link_libraries(main
     SDL2
-    jpeg freetype vorbisfile vorbis ogg
+    jpeg freetype vorbisfile vorbis opusfile opus ogg
     z GLESv2 EGL OpenSLES android log m dl)

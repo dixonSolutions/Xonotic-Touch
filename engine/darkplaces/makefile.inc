@@ -8,7 +8,7 @@ STRIP?=strip
 
 ###### Sound #####
 
-OBJ_SND_COMMON=snd_main.o snd_mem.o snd_mix.o snd_ogg.o snd_wav.o $(OBJ_SND_XMP)
+OBJ_SND_COMMON=snd_main.o snd_mem.o snd_mix.o snd_ogg.o snd_wav.o touch_assets_opus.o $(OBJ_SND_XMP)
 
 # No sound
 OBJ_SND_NULL=snd_null.o

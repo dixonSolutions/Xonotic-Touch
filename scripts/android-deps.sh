@@ -8,6 +8,8 @@
 #
 #   zlib        NDK sysroot (-lz)
 #   ogg/vorbis  static  — LINK_TO_LIBVORBIS
+#   opus/opusfile static — LINK_TO_LIBOPUSFILE (Opus music of the phone packs,
+#               engine/darkplaces/touch_assets_opus.c)
 #   freetype    static  — DP_FREETYPE_STATIC
 #   libjpeg     static  — LINK_TO_LIBJPEG (set by our CMakeLists)
 #   libpng      SHARED, installed as libpng.so so that image_png.c's existing
@@ -28,6 +30,8 @@ API="${ANDROID_API_LEVEL:-21}"
 SDL_VERSION="${SDL_VERSION:-2.32.10}"
 OGG_VERSION="${OGG_VERSION:-1.3.6}"
 VORBIS_VERSION="${VORBIS_VERSION:-1.3.7}"
+OPUS_VERSION="${OPUS_VERSION:-1.5.2}"
+OPUSFILE_VERSION="${OPUSFILE_VERSION:-0.12}"
 FREETYPE_TAG="${FREETYPE_TAG:-VER-2-13-3}"
 JPEG_VERSION="${JPEG_VERSION:-3.1.2}"
 PNG_VERSION="${PNG_VERSION:-1.6.50}"
@@ -105,6 +109,33 @@ if [ ! -f "$PREFIX/lib/libvorbisfile.a" ]; then
     log "libvorbis $VORBIS_VERSION"
     fetch "https://github.com/xiph/vorbis/releases/download/v$VORBIS_VERSION/libvorbis-$VORBIS_VERSION.tar.gz" "libvorbis-$VORBIS_VERSION"
     cmake_build "$SRC_DIR/libvorbis-$VORBIS_VERSION" vorbis -DBUILD_SHARED_LIBS=OFF
+fi
+
+##### opus / opusfile ########################################################
+
+if [ ! -f "$PREFIX/lib/libopus.a" ]; then
+    log "libopus $OPUS_VERSION"
+    fetch "https://downloads.xiph.org/releases/opus/opus-$OPUS_VERSION.tar.gz" "opus-$OPUS_VERSION"
+    cmake_build "$SRC_DIR/opus-$OPUS_VERSION" opus -DBUILD_SHARED_LIBS=OFF \
+        -DOPUS_BUILD_PROGRAMS=OFF -DOPUS_BUILD_TESTING=OFF -DOPUS_DRED=OFF -DOPUS_DEEP_PLC=OFF
+fi
+
+if [ ! -f "$PREFIX/lib/libopusfile.a" ]; then
+    log "opusfile $OPUSFILE_VERSION"
+    fetch "https://downloads.xiph.org/releases/opus/opusfile-$OPUSFILE_VERSION.tar.gz" "opusfile-$OPUSFILE_VERSION"
+    # the release tarball only has autotools; four sources need no more than this
+    cat > "$SRC_DIR/opusfile-$OPUSFILE_VERSION/CMakeLists.txt" <<'EOF_CMAKE'
+cmake_minimum_required(VERSION 3.10)
+project(opusfile C)
+find_path(OGG_INCLUDE ogg/ogg.h REQUIRED)
+find_path(OPUS_INCLUDE opus/opus.h REQUIRED)
+add_library(opusfile STATIC src/info.c src/internal.c src/opusfile.c src/stream.c)
+target_include_directories(opusfile PRIVATE include ${OGG_INCLUDE} ${OPUS_INCLUDE}/opus)
+target_compile_definitions(opusfile PRIVATE OP_DISABLE_HTTP OP_HAVE_LRINTF)
+install(TARGETS opusfile ARCHIVE DESTINATION lib)
+install(FILES include/opusfile.h DESTINATION include/opus)
+EOF_CMAKE
+    cmake_build "$SRC_DIR/opusfile-$OPUSFILE_VERSION" opusfile
 fi
 
 ##### freetype ################################################################
