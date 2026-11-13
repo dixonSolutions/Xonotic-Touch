@@ -241,6 +241,7 @@ function loadPage(prof, host, { search = '', engine = true, persist = false } = 
   context.__shown = shown;
   context.__status = statuses;
   vm.runInContext(storeSource, context, { filename: 'web/store.js' });
+  context.XTStore.Store.prototype.pieceAfterMs = 0; // keep pieces at once, however fast
   vm.runInContext(shell, context, { filename: 'web/shell.js' });
   if (engine) {
     // The engine's runtime comes up: an in-memory FS for the data.

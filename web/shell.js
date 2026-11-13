@@ -851,11 +851,15 @@
     const selected = () => files.filter((f) => f.group !== 'music' || wantMusic());
 
     let missing = await data.missing(selected());
+    // Set after the first complete start: until then a download is the
+    // install (however much of it already arrived), afterwards an update.
+    const hadStart = store.get('started', '') === '1';
+    let adopted = 0;
     // Downloads made by earlier versions of this page: turn them into chunks
     // once (each checked against its hash) instead of downloading again.
     if (missing.length) {
       try {
-        const adopted = await data.adopt(files, (n, total) => status('Moving downloaded data to the new storage layout…', `${mbPair(n, total)} checked`));
+        adopted = await data.adopt(files, (n, total) => status('Moving downloaded data to the new storage layout…', `${mbPair(n, total)} checked`));
         if (adopted) missing = await data.missing(selected());
       } catch (e) {
         console.warn('Adopting older downloads failed:', e);
@@ -890,10 +894,10 @@
           const stored = await data.storedBytes(selected());
           const need = sum(missing) - partial;
           $('xt-dl-size').textContent = mb(need);
-          $('xt-dl-title').textContent = firstInstall && !stored && !partial ? 'Download the game data'
-            : (missing.every((c) => c.file.group === 'music') ? 'Download the music' : 'Update the game data');
+          $('xt-dl-title').textContent = missing.every((c) => c.file.group === 'music') ? 'Download the music'
+            : (hadStart || adopted ? 'Update the game data' : 'Download the game data');
           const already = stored + partial;
-          $('xt-dl-resumed').hidden = !(already > 0 && firstInstall);
+          $('xt-dl-resumed').hidden = !(already > 0 && !hadStart);
           $('xt-dl-resumed').textContent = `${mb(already)} is already downloaded; it carries on from there.`;
           $('xt-dl-go').textContent = partial > 0 ? 'Resume' : 'Download';
           await freeSpaceLine(need);
@@ -930,6 +934,7 @@
       return fail(e.message || String(e));
     }
     mark('mounted');
+    store.set('started', 1);
     // Every file this start needs was there: drop what no page path that
     // started recently still lists (older releases' chunks, old layouts).
     data.prune(location.pathname, manifest.ids).then((r) => { state.pruned = r; }).catch(() => {});

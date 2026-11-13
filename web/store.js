@@ -199,6 +199,10 @@
             }
             const reader = res.body.getReader();
             let flushed = Math.floor(have / PIECE);
+            // Pieces cost a second write of the bytes: keep them only on a
+            // connection slow enough that losing the chunk would hurt (a
+            // chunk takes over 1.5 s), not on a fast one.
+            let lastFlush = Date.now();
             for (;;) {
               const { done, value } = await reader.read();
               if (done) break;
@@ -206,9 +210,11 @@
               buf.set(value, have);
               have += value.byteLength;
               report();
+              if (Date.now() - lastFlush < this.pieceAfterMs) continue;
               while ((flushed + 1) * PIECE <= have && (flushed + 1) * PIECE < c.size) {
                 await this.be.write(`p-${c.h}-${flushed}`, buf.subarray(flushed * PIECE, (flushed + 1) * PIECE));
                 flushed++;
+                lastFlush = Date.now();
               }
             }
             if (have !== c.size) throw new Error(`arrived incomplete (${have} of ${c.size} bytes)`);
@@ -437,6 +443,10 @@
       return n;
     }
   }
+
+  // A chunk that takes longer than this to arrive is kept in pieces as it
+  // downloads (tests set 0).
+  Store.prototype.pieceAfterMs = 1500;
 
   global.XTStore = { Store, NAME, PIECE, sha256, legacyName };
 })(typeof window !== 'undefined' ? window : globalThis);
