@@ -252,7 +252,19 @@ static void fe_update_state(void)
 {
 	int st = !fe.attached ? 0 : fe_owns_menu() ? 1 : 2;
 	if (fe_state.integer != st)
+	{
+		// The touch HUD's MENU (and the pause on leaving the app) open the
+		// QuakeC game menu dialog (commands.cfg: menu_showgamemenudialog ->
+		// menu_cmd directmenu GameMenu), which only shows itself from m_draw,
+		// which the hidden menu does not run. While the native UI owns the
+		// menu the same alias opens the (hidden) menu plainly, which the
+		// native pause menu stands for; it is put back when it does not.
+		if (st == 1)
+			Cbuf_AddText(cmd_local, "\nalias menu_showgamemenudialog \"togglemenu 1\"\n");
+		else if (fe_state.integer == 1)
+			Cbuf_AddText(cmd_local, "\nalias menu_showgamemenudialog \"menu_cmd directmenu GameMenu\"\n");
 		Cvar_SetValueQuick(&fe_state, st);
+	}
 }
 
 static void fe_switch_changed(cvar_t *var)
