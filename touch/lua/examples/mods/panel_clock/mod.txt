@@ -1,0 +1,14 @@
+id: panel_clock
+title: Clock panel
+version: 1.0
+author: Godnotic
+description: A clock in a HUD panel the game places clear of the touch controls, with a settings page.
+api: 3
+realm: client
+setting.seconds: bool 1 | Show seconds
+setting.seconds.desc: Show the seconds after the minutes
+setting.seconds.group: Look
+setting.size: int 16 10 32 2 | Text size
+setting.size.group: Look
+setting.color: color ffd060 | Colour
+setting.color.group: Look

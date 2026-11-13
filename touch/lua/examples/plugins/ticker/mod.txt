@@ -1,0 +1,7 @@
+id: ticker
+title: Ticker
+version: 1.0
+author: Godnotic
+description: Continuous work three ways: a coroutine loop, a repeating timer and a one-shot timer.
+api: 3
+realm: server

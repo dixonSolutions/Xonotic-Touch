@@ -1,0 +1,8 @@
+id: touch_weapon
+title: Next-weapon button
+version: 1.0
+author: Godnotic
+description: A touch button and a key that switch to the next weapon, and a long press for the best one.
+api: 3
+realm: client
+setting.key: key F7 | Key for next weapon

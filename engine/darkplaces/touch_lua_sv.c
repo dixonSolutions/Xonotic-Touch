@@ -24,7 +24,7 @@ logging, URLs, bans, passwords and files.
 #include "touch_lua_int.h"
 
 #define TLUA_SV_BUILTIN_EVENT 1740
-#define TLUA_SV_NUMBUILTINS 1753 // #1741-#1752: the hook bridge (touch_lua_hooks.c)
+#define TLUA_SV_NUMBUILTINS 1755 // #1741-#1754: the hook bridge (touch_lua_hooks.c)
 
 void TLua_Hooks_InstallBuiltins(prvm_builtin_t *b);
 
@@ -405,6 +405,7 @@ static void tlua_sv_frame(void)
 	TLua_Pkg_Frame(); // a dedicated server has no client frame
 	if (!tlua_sv_ready())
 		return;
+	TLua_SVAPI_Frame(); // API 3: mod channels (touch_lua_chan.c)
 	memset(&e, 0, sizeof(e));
 	if (strcmp(sv.worldbasename, lastmap) || sv.time < lasttime)
 	{
@@ -434,7 +435,12 @@ static float tlua_sv_event(const char *ev, int a, int b, float n, const char *s)
 		tlua_sv_frame();
 		return 0;
 	}
-	if (!tlua_sv_ready() || !TLua_AnyHandler(&tlua_server, ev))
+	if (!tlua_sv_ready())
+		return !strcmp(ev, "damage") ? n : 0;
+	// API 3: "!name args" in chat and "cmd name args" for xt.chatcommand (touch_lua_svapi.c)
+	if ((!strcmp(ev, "chat") && TLua_SVAPI_ChatLine(a, s)) || (!strcmp(ev, "clientcmd") && TLua_SVAPI_ClientCommand(a, s)))
+		return 1;
+	if (!TLua_AnyHandler(&tlua_server, ev))
 		return !strcmp(ev, "damage") ? n : 0;
 	memset(&e, 0, sizeof(e));
 	e.a = a;

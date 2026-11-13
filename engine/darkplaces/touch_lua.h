@@ -51,6 +51,22 @@ void TouchLua_ServerText(void);
 // libcurl.c, for each transfer it sets up: the protocols a Lua mod install
 // may use (HTTPS only, and for redirects too); 0 for every other transfer.
 // The values are CURLPROTO_HTTP (1) and CURLPROTO_HTTPS (2).
+// csprogs.c, CL_VM_Init: the client VM's Lua builtins (touch_lua_clapi.c)
+void TouchLua_CL_InstallBuiltins(struct prvm_prog_s *prog);
+
+// csprogs.c: a line the server printed / a centered message, before the game
+// code shows it; true when a client mod hid it (touch_lua_clapi.c)
+qbool TouchLua_CL_Print(const char *msg, size_t len);
+qbool TouchLua_CL_CenterPrint(const char *msg, size_t len);
+
+// csprogs.c, CL_VM_Parse_StuffCmd: a mod channel frame from the server
+// ("//xt..." lines, touch_lua_chan.c); true when it was one (never run)
+qbool TouchLua_CL_StuffCmd(const char *msg, size_t len);
+
+// The platform sets this when it can vibrate (Android: the native UI agent's
+// JNI code); xt.vibrate(ms) calls it. NULL: no vibration (xt.game.has).
+extern qbool (*TouchLua_VibrateHook)(int ms);
+
 long TouchLua_CurlProtocols(void (*callback)(int, size_t, unsigned char *, void *), qbool redirect);
 
 #endif

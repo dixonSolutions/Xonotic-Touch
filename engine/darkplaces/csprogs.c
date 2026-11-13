@@ -609,6 +609,7 @@ void CL_VM_Parse_StuffCmd(const char *msg, size_t msg_len)
 {
 	prvm_prog_t *prog = CLVM_prog;
 	int restorevm_tempstringsbuf_cursize;
+	if (TouchLua_CL_StuffCmd(msg, msg_len)) return; // Touch: a Lua mod channel frame, never run as a command (touch_lua_chan.c)
 	TouchLua_ServerText(); // Touch: the mod manager refuses changes until this text has run
 
 	if(msg[0] == 'c')
@@ -665,6 +666,7 @@ void CSQC_AddPrintText(const char *msg, size_t msg_len)
 	size_t writebytes = min(msg_len + 1, MAX_INPUTLINE - cl.csqc_printtextbuf_len);
 
 	TouchVote_ServerPrint(msg, msg_len); // Touch: vote lines (touch_vote.c)
+	if (TouchLua_CL_Print(msg, msg_len)) return; // Touch: a Lua client mod hid this line (touch_lua_clapi.c)
 
 	if(prog->loaded && PRVM_clientfunction(CSQC_Parse_Print))
 	{
@@ -697,6 +699,7 @@ void CL_VM_Parse_CenterPrint(const char *msg, size_t msg_len)
 {
 	prvm_prog_t *prog = CLVM_prog;
 	int restorevm_tempstringsbuf_cursize;
+	if (TouchLua_CL_CenterPrint(msg, msg_len)) return; // Touch: a Lua client mod hid this message (touch_lua_clapi.c)
 
 	if(prog->loaded && PRVM_clientfunction(CSQC_Parse_CenterPrint))
 	{
@@ -1125,6 +1128,7 @@ void CL_VM_Init (void)
 	prog->extensionstring = vm_sv_extensions;
 	prog->builtins = vm_cl_builtins;
 	prog->numbuiltins = vm_cl_numbuiltins;
+	TouchLua_CL_InstallBuiltins(prog); // Touch: Lua client mods' builtins (touch_lua_clapi.c)
 
 	// all callbacks must be defined (pointers are not checked before calling)
 	prog->begin_increase_edicts = CLVM_begin_increase_edicts;

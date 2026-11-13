@@ -15,11 +15,18 @@ touch_aim.c / touch_tactics.c stay behind their own gate and are not exposed).
 #include "cl_screen.h"
 #include "touch_lua.h"
 #include "touch_lua_int.h"
+#include "touch_lua_api_gen.h"
+
+void TLua_CL_PollEvents(void);
+void TLua_CL_DrawWidgets(void);
+qbool TLua_CL_BindKey(int key, qbool down);
+void TLua_CL_SetUserInput(qbool on);
 
 qbool tlua_cl_drawing;
 static qbool tlua_keystate[MAX_KEYS]; // game keys down, for xt.keydown
 
-static const char *const tlua_cl_events[] = {"frame", "hud", "draw", "key", "menu", "map", "unload", NULL};
+// docs/LUA_API.md, "Events: client mods" (scripts/lua_api_table.py)
+static const char *const tlua_cl_events[] = {TLUA_CL_EVENTS_GEN};
 
 static qbool tlua_prefixed(const char *name, const char *const *list)
 {
@@ -596,6 +603,8 @@ static void tlua_cl_frame(void)
 	lastrealtime = host.realtime;
 	TLua_Fire(&tlua_client, "frame", tlua_push_n, NULL, &a);
 	TLua_RunTimers(&tlua_client);
+	TLua_CL_PollEvents();
+	TLua_API_Frame();
 }
 
 static void tlua_cl_draw(const char *event)
@@ -628,7 +637,10 @@ void TouchLua_ClientFrame(void)
 	if (!tlua_client.loaded)
 		return;
 	if (tlua_cl_ingame())
+	{
 		tlua_cl_draw("hud");
+		TLua_CL_DrawWidgets();
+	}
 	tlua_cl_draw("draw");
 }
 
@@ -643,6 +655,8 @@ qbool TouchLua_KeyEvent(int key, int ascii, qbool down)
 	tlua_keystate[key] = down;
 	if (TLua_Busy()) // a key read while a mod's call loads something
 		return false;
+	if (tlua_client.loaded && TLua_CL_BindKey(key, down))
+		return true; // xt.bind: the mod's, not the binding's
 	if (!tlua_client.loaded || !TLua_AnyHandler(&tlua_client, "key"))
 	{
 		took = !down && held[key];
@@ -653,7 +667,9 @@ qbool TouchLua_KeyEvent(int key, int ascii, qbool down)
 	a.s = Key_KeynumToString(key, name, sizeof(name));
 	a.b = down;
 	a.n1 = ascii;
+	TLua_CL_SetUserInput(true);
 	TLua_Fire(&tlua_client, "key", tlua_push_key, tlua_result_consume, &a);
+	TLua_CL_SetUserInput(false);
 	if (down && a.consumed)
 	{
 		// the way out stays open: keys bound to the console or the menu are never taken

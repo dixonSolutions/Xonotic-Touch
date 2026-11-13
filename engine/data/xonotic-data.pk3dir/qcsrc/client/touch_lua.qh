@@ -1,0 +1,5 @@
+#pragma once
+// Godnotic: Lua client mods inside this game's client code (client/touch_lua.qc).
+
+// once per frame, after the HUD and the touch controls (view.qc)
+void TouchLua_CL_Frame();

@@ -1,0 +1,3 @@
+id: bench_cl
+api: 3
+realm: client

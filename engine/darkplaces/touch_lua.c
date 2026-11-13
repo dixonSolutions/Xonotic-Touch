@@ -46,6 +46,7 @@ its lua_State; everything else in Lua's libraries is either not compiled in
 #include "touch_lua_int.h"
 #include "touch_lua54/lualib.h"
 #include "touch_lua_lib.h"
+#include "touch_lua_api_gen.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -69,9 +70,9 @@ its lua_State; everything else in Lua's libraries is either not compiled in
 #include <emscripten.h>
 #endif
 
-static cvar_t lua_memory_mb = {CF_CLIENT | CF_SERVER | CF_ARCHIVE, "lua_memory_mb", "16", "memory limit of each Lua mod or server mod in MB (1-64)"};
-static cvar_t lua_instructions = {CF_CLIENT | CF_SERVER | CF_ARCHIVE, "lua_instructions", "2000000", "instruction limit of each call into a Lua mod (an event, a command); loading gets 10 times as many"};
-static cvar_t lua_time_ms = {CF_CLIENT | CF_SERVER | CF_ARCHIVE, "lua_time_ms", "40", "time limit in milliseconds of each call into a Lua mod (1-250); loading gets 1 second"};
+static cvar_t lua_memory_mb = {CF_CLIENT | CF_SERVER | CF_ARCHIVE, "lua_memory_mb", "64", "memory limit of each Lua mod in MB (1-256)"};
+static cvar_t lua_instructions = {CF_CLIENT | CF_SERVER | CF_ARCHIVE, "lua_instructions", "20000000", "instruction limit of each call into a Lua mod (an event, a command); loading gets 10 times as many"};
+static cvar_t lua_time_ms = {CF_CLIENT | CF_SERVER | CF_ARCHIVE, "lua_time_ms", "100", "time limit in milliseconds of each call into a Lua mod (1-1000); loading gets 2 seconds"};
 static cvar_t cl_lua_enable = {CF_CLIENT | CF_ARCHIVE, "cl_lua_enable", "1", "run the enabled Lua client mods from <userdir>/mods (lua_mods lists them)"};
 static cvar_t sv_lua_enable = {CF_SERVER | CF_ARCHIVE, "sv_lua_enable", "1", "run the enabled Lua server mods from <userdir>/plugins on servers this engine hosts (sv_lua_mods lists them)"};
 static cvar_t cl_lua_status = {CF_CLIENT | CF_READONLY, "_cl_lua_mods", "", "client mods for the Mods dialog: one line per mod, name<TAB>state<TAB>title<TAB>error<TAB>description"};
@@ -88,6 +89,7 @@ static unsigned tlua_patsteps, tlua_worksteps;
 
 static char tlua_key_events, tlua_key_cmds, tlua_key_loaded, tlua_key_timers, tlua_key_threads; // registry keys (addresses)
 static qbool tlua_inited;
+static qbool tlua_nothrottle; // set around "unload": it always runs
 
 #define TLUA_HOOK_STEP 1000
 #define TLUA_PRINTS_PER_CALL 64
@@ -950,6 +952,11 @@ static int tlua_require(lua_State *L)
 	return 1;
 }
 
+const char *TLua_ReadModFile(lua_State *L, tlua_mod_t *m, const char *rel, size_t *outlen)
+{
+	return tlua_readfile(L, m, rel, outlen);
+}
+
 // ---------------------------------------------------------------------------
 // The common xt API
 
@@ -985,31 +992,36 @@ static int tlua_eventindex(tlua_realm_t *r, const char *ev)
 	return -1;
 }
 
-static unsigned *tlua_maskof(tlua_mod_t *m)
+static unsigned long long *tlua_maskof(tlua_mod_t *m)
 {
 	return &m->eventmask;
 }
 
-// docs/PLUGIN_STANDARD.md, "Permission scopes": the order is the bit order
+// docs/PLUGIN_STANDARD.md, "Tiers"
 const tlua_permission_t tlua_permissions[] = {
-	{"events", TLUA_PERM_EVENTS, 1, "receive game events (frame, keys, chat, deaths) and their data"},
-	{"commands", TLUA_PERM_COMMANDS, 1, "add its own console commands (lua_<mod>_<name>)"},
-	{"cvar_read", TLUA_PERM_CVAR_READ, 1, "read settings (never passwords, keys or private ones)"},
-	{"cvar_write", TLUA_PERM_CVAR_WRITE, 1, "change allowlisted settings and its own"},
-	{"exec", TLUA_PERM_EXEC, 1, "run allowlisted console commands (say, weapon switch, match control)"},
-	{"storage", TLUA_PERM_STORAGE, 1, "keep small text files in its own data folder"},
-	{"display", TLUA_PERM_DISPLAY, 1, "draw on the screen and play sounds"},
-	{"input", TLUA_PERM_INPUT, 1, "see fingers, the mouse and keys held"},
-	{"players", TLUA_PERM_PLAYERS, 1, "see player names, scores and (server) player state"},
-	{"messages", TLUA_PERM_MESSAGES, 1, "send players chat lines and centerprints (server)"},
-	{"state", TLUA_PERM_STATE, 1, "see the map, match time and whether you are in a match"},
-	{"hooks", TLUA_PERM_HOOKS, 2, "watch the game's mutator hooks and their arguments (server)"},
-	{"hooks_write", TLUA_PERM_HOOKS_WRITE, 2, "change the game's results through hooks: damage, pickups, rules (server)"},
+	{"standard", TLUA_TIER_STANDARD, 1, "everything a normal mod does: events and hooks, drawing, touch buttons, sounds, its own settings, storage and pages, messages with the server you joined"},
+	{"gamerules", TLUA_TIER_GAMERULES, 1, "change the game in matches you host: damage, items, players, entities, votes, the match"},
+	{"internet", TLUA_TIER_INTERNET, 3, "connect to the web sites its manifest names (https)"},
+	{"engine_full", TLUA_TIER_ENGINE, 3, "WARNING: full engine access: any console command and any setting except passwords and keys"},
 	{NULL, 0, 0, NULL}
+};
+
+// API 1/2 scope names: still valid in mod.txt ("permissions:", "reason.<scope>")
+// and in lua_mod_permission, as the tier they belong to now
+typedef struct tlua_alias_s { const char *name; unsigned bit; int api; } tlua_alias_t;
+static const tlua_alias_t tlua_scope_aliases[] = {
+	{"events", TLUA_TIER_STANDARD, 1}, {"commands", TLUA_TIER_STANDARD, 1}, {"cvar_read", TLUA_TIER_STANDARD, 1},
+	{"cvar_write", TLUA_TIER_STANDARD, 1}, {"exec", TLUA_TIER_STANDARD, 1}, {"storage", TLUA_TIER_STANDARD, 1},
+	{"display", TLUA_TIER_STANDARD, 1}, {"input", TLUA_TIER_STANDARD, 1}, {"players", TLUA_TIER_STANDARD, 1},
+	{"messages", TLUA_TIER_STANDARD, 1}, {"state", TLUA_TIER_STANDARD, 1}, {"hooks", TLUA_TIER_STANDARD, 2},
+	{"hooks_write", TLUA_TIER_GAMERULES, 2}, {"game_rules", TLUA_TIER_GAMERULES, 3}, {"http", TLUA_TIER_INTERNET, 3},
+	{"engine", TLUA_TIER_ENGINE, 3}, {NULL, 0, 0}
 };
 
 static qbool tlua_has(tlua_mod_t *m, unsigned permission)
 {
+	if (permission == TLUA_TIER_STANDARD)
+		return true; // granted with turning the mod on
 	return (m->requested & m->granted & permission) == permission;
 }
 
@@ -1035,7 +1047,6 @@ static void tlua_missing(tlua_mod_t *m, char *out, size_t outsize)
 void TLua_Require(lua_State *L, unsigned permission)
 {
 	tlua_mod_t *m = TLua_Self(L);
-	char missing[256];
 	const char *name = "?";
 	int i;
 	if (tlua_has(m, permission))
@@ -1043,12 +1054,10 @@ void TLua_Require(lua_State *L, unsigned permission)
 	for (i = 0; tlua_permissions[i].name; i++)
 		if (tlua_permissions[i].bit == permission)
 			name = tlua_permissions[i].name;
-	// name every scope still missing, so one grant step fixes all of them
-	tlua_missing(m, missing, sizeof(missing));
 	if (!(m->requested & permission))
-		luaL_error(L, "permission denied: %s (not requested in mod.txt)", name);
-	luaL_error(L, "permission denied: %s; not granted yet: %s (grant them in Mods, or %s%s_permission %s grant all)",
-		name, missing, m->realm->cmdprefix, "mod", m->name);
+		luaL_error(L, "permission denied: needs the %s tier (add \"permissions: %s\" to mod.txt)", name, name);
+	luaL_error(L, "permission denied: the %s tier is not turned on for this mod (Mods, or %s%s_permission %s grant %s)",
+		name, m->realm->cmdprefix, "mod", m->name, name);
 }
 
 static int tlua_on(lua_State *L)
@@ -1072,7 +1081,7 @@ static int tlua_on(lua_State *L)
 	}
 	lua_pushvalue(L, 2);
 	lua_rawseti(L, -2, (lua_Integer)lua_rawlen(L, -2) + 1);
-	*tlua_maskof(m) |= 1u << idx;
+	*tlua_maskof(m) |= 1ull << idx;
 	return 0;
 }
 
@@ -1180,13 +1189,18 @@ static qbool tlua_cvar_secret(const char *name)
 	return false;
 }
 
+qbool TLua_CvarSecret(const char *name) { return tlua_cvar_secret(name); }
+
 static int tlua_cvar(lua_State *L)
 {
 	const char *name = luaL_checkstring(L, 1);
 	cvar_t *v = Cvar_FindVar(&cvars_all, name, ~0);
 	TLua_Require(L, TLUA_PERM_CVAR_READ);
 	if (!v || (v->flags & CF_PRIVATE) || tlua_cvar_secret(name))
-		return 0;
+	{
+		lua_pushnil(L);
+		return 1;
+	}
 	lua_pushstring(L, v->string);
 	return 1;
 }
@@ -1208,6 +1222,9 @@ static qbool tlua_cleanvalue(const char *s)
 			return false;
 	return true;
 }
+
+qbool TLua_OwnCvar(tlua_mod_t *m, const char *name) { return tlua_owncvar(m, name); }
+qbool TLua_CleanValue(const char *s) { return tlua_cleanvalue(s); }
 
 static int tlua_setcvar(lua_State *L)
 {
@@ -1638,11 +1655,12 @@ static void tlua_openxt(lua_State *L, tlua_mod_t *m)
 	lua_setfield(L, -2, "modname");
 	lua_pushstring(L, m->realm == &tlua_server ? "server" : "client");
 	lua_setfield(L, -2, "realm");
-	lua_pushstring(L, m->api >= 2 ? "2" : "1");
+	lua_pushstring(L, m->api >= 3 ? "3" : m->api >= 2 ? "2" : "1");
 	lua_setfield(L, -2, "apiversion");
 	lua_pushinteger(L, TLUA_API_MAX);
 	lua_setfield(L, -2, "apimax");
 	m->realm->openapi(L);
+	TLua_API_Open(L, m);
 	lua_setglobal(L, "xt");
 }
 
@@ -1740,6 +1758,9 @@ static int tlua_setup(lua_State *L)
 
 	tlua_openxt(L, m);
 	lua_settop(L, 1);
+	if (luaL_loadbufferx(L, tlua_lib_prelude, sizeof(tlua_lib_prelude) - 1, "=xt.prelude", "t") != LUA_OK)
+		return lua_error(L);
+	lua_call(L, 0, 0);
 
 	src = tlua_readfile(L, m, "init.lua", &len);
 	if (!src)
@@ -1755,6 +1776,7 @@ static void tlua_close(tlua_mod_t *m)
 {
 	if (!m->L)
 		return;
+	TLua_API_ModStopped(m); // its panels, buttons, pages, channels, requests, entities
 	// keep the killed state's hook: a __close handler run by lua_close then
 	// raises at once instead of looping
 	m->killed = true;
@@ -1800,14 +1822,25 @@ qbool TLua_Run(tlua_mod_t *m, lua_CFunction f, void *ud, double seconds)
 {
 	int status;
 	qbool loading = seconds < 0;
+	double t0;
 	if (TLua_Busy() || !m->L)
 		return false;
+	// a mod over its per-frame budget (lua_frame_ms) misses its calls for the
+	// rest of the frame, so it cannot starve the others; loading and unload
+	// always run
+	if (!loading && !tlua_nothrottle && TLua_API_Throttled(m))
+	{
+		TLua_API_Account(m, 0, true);
+		return false;
+	}
 	if (!seconds)
-		seconds = bound(1, lua_time_ms.value, 250) / 1000.0;
-	m->insns = (long long)bound(10000, lua_instructions.value, 50000000) * (loading ? 10 : 1);
+		seconds = bound(1, lua_time_ms.value, 1000) / 1000.0;
+	m->insns = (long long)bound(10000, lua_instructions.value, 500000000) * (loading ? 10 : 1);
 	m->prints = TLUA_PRINTS_PER_CALL * (loading ? 16 : 1);
 	m->execs = 8;
-	tlua_deadline = Sys_DirtyTime() + (loading ? 1.0 : seconds);
+	m->engcmds = 16;
+	t0 = Sys_DirtyTime();
+	tlua_deadline = t0 + (loading ? 2.0 : seconds);
 	tlua_current = m;
 	tlua_callframe = host.framecount;
 	lua_settop(m->L, 0);
@@ -1815,6 +1848,9 @@ qbool TLua_Run(tlua_mod_t *m, lua_CFunction f, void *ud, double seconds)
 	lua_pushlightuserdata(m->L, ud);
 	status = lua_pcall(m->L, 1, 0, 0);
 	tlua_current = NULL;
+	TLua_API_Account(m, Sys_DirtyTime() - t0, false);
+	if (m->mem > m->mempeak)
+		m->mempeak = m->mem;
 	if (status != LUA_OK || m->killed)
 	{
 		char msg[512];
@@ -1963,7 +1999,8 @@ static void tlua_start(tlua_mod_t *m)
 	m->error[0] = 0;
 	m->mem = 0;
 	m->owncvars = -1;
-	m->memlimit = (size_t)bound(1, lua_memory_mb.integer, 64) << 20;
+	m->memlimit = (size_t)bound(1, lua_memory_mb.integer, 256) << 20;
+	m->mempeak = 0;
 	*tlua_maskof(m) = 0;
 	L = lua_newstate(tlua_alloc, m);
 	if (!L)
@@ -2022,7 +2059,7 @@ static void tlua_fire_one(tlua_mod_t *m, const char *event, tlua_push_f push, tl
 {
 	tlua_fire_t f;
 	int idx = tlua_eventindex(m->realm, event);
-	if (m->state != TLUA_RUNNING || !m->L || idx < 0 || !tlua_has(m, TLUA_PERM_EVENTS) || !(*tlua_maskof(m) & (1u << idx)))
+	if (m->state != TLUA_RUNNING || !m->L || idx < 0 || !tlua_has(m, TLUA_PERM_EVENTS) || !(*tlua_maskof(m) & (1ull << idx)))
 		return;
 	f.event = event;
 	f.push = push;
@@ -2039,13 +2076,61 @@ void TLua_Fire(tlua_realm_t *r, const char *event, tlua_push_f push, tlua_result
 		tlua_fire_one(&r->mods[i], event, push, result, ud);
 }
 
+// Callbacks a mod handed to the engine (a button's press, a page's change, a
+// channel handler, an HTTP answer) are kept as registry references and
+// called with TLua_CallRef, under the same limits as an event.
+int TLua_Ref(lua_State *L, int idx)
+{
+	lua_pushvalue(L, idx);
+	return luaL_ref(L, LUA_REGISTRYINDEX);
+}
+
+void TLua_Unref(tlua_mod_t *m, int ref)
+{
+	if (m->L && ref > 0)
+		luaL_unref(m->L, LUA_REGISTRYINDEX, ref);
+}
+
+typedef struct tlua_refcall_s
+{
+	int ref;
+	int (*push)(lua_State *L, void *ud);
+	void (*result)(lua_State *L, void *ud);
+	void *ud;
+} tlua_refcall_t;
+
+static int tlua_refcall_tramp(lua_State *L)
+{
+	tlua_refcall_t *c = (tlua_refcall_t *)lua_touserdata(L, 1);
+	int n;
+	if (lua_rawgeti(L, LUA_REGISTRYINDEX, c->ref) != LUA_TFUNCTION)
+		return 0;
+	n = c->push ? c->push(L, c->ud) : 0;
+	lua_call(L, n, 1);
+	if (c->result)
+		c->result(L, c->ud);
+	return 0;
+}
+
+qbool TLua_CallRef(tlua_mod_t *m, int ref, int (*push)(lua_State *L, void *ud), void *ud, void (*result)(lua_State *L, void *ud))
+{
+	tlua_refcall_t c;
+	if (m->state != TLUA_RUNNING || !m->L || ref <= 0)
+		return false;
+	c.ref = ref;
+	c.push = push;
+	c.result = result;
+	c.ud = ud;
+	return tlua_run(m, tlua_refcall_tramp, &c, false);
+}
+
 qbool TLua_AnyHandler(tlua_realm_t *r, const char *event)
 {
 	int i, idx = tlua_eventindex(r, event);
 	if (idx < 0)
 		return false;
 	for (i = 0; i < r->nummods; i++)
-		if (r->mods[i].state == TLUA_RUNNING && tlua_has(&r->mods[i], TLUA_PERM_EVENTS) && (*tlua_maskof(&r->mods[i]) & (1u << idx)))
+		if (r->mods[i].state == TLUA_RUNNING && tlua_has(&r->mods[i], TLUA_PERM_EVENTS) && (*tlua_maskof(&r->mods[i]) & (1ull << idx)))
 			return true;
 	return false;
 }
@@ -2143,13 +2228,31 @@ static void tlua_manifest_bad(tlua_mod_t *m, const char *fmt, ...)
 	TLua_CleanText(text, m->manifest_why, sizeof(m->manifest_why), false);
 }
 
-static const tlua_permission_t *tlua_findperm(const char *name)
+// a tier by name, or the tier an API 1/2 scope name belongs to; *api is the
+// API level that name needs
+static const tlua_permission_t *tlua_findperm_api(const char *name, int *api)
 {
-	int i;
+	int i, j;
 	for (i = 0; tlua_permissions[i].name; i++)
 		if (!strcmp(name, tlua_permissions[i].name))
+		{
+			if (api) *api = tlua_permissions[i].api;
 			return &tlua_permissions[i];
+		}
+	for (j = 0; tlua_scope_aliases[j].name; j++)
+		if (!strcmp(name, tlua_scope_aliases[j].name))
+			for (i = 0; tlua_permissions[i].name; i++)
+				if (tlua_permissions[i].bit == tlua_scope_aliases[j].bit)
+				{
+					if (api) *api = tlua_scope_aliases[j].api;
+					return &tlua_permissions[i];
+				}
 	return NULL;
+}
+
+static const tlua_permission_t *tlua_findperm(const char *name)
+{
+	return tlua_findperm_api(name, NULL);
 }
 
 static qbool tlua_isnumber(const char *s)
@@ -2192,9 +2295,11 @@ static void tlua_parsesetting(tlua_mod_t *m, const char *name, char *v)
 		dp_strlcpy(st->label, name, sizeof(st->label));
 	dp_strlcpy(spec, v, sizeof(spec));
 	tok = strtok(spec, " \t");
-	if (!tok || (strcmp(tok, "bool") && strcmp(tok, "number") && strcmp(tok, "choice") && strcmp(tok, "text")))
+	if (tok && (!strcmp(tok, "int") || !strcmp(tok, "float")))
+		; // number with a whole-number step (int) or not: kept as written
+	else if (!tok || (strcmp(tok, "bool") && strcmp(tok, "number") && strcmp(tok, "choice") && strcmp(tok, "text") && strcmp(tok, "color") && strcmp(tok, "key")))
 	{
-		tlua_manifest_bad(m, "setting %s: the type is bool, number, choice or text", name);
+		tlua_manifest_bad(m, "setting %s: the type is bool, number, int, float, choice, text, color or key", name);
 		return;
 	}
 	dp_strlcpy(st->type, tok, sizeof(st->type));
@@ -2222,7 +2327,11 @@ static void tlua_parsesetting(tlua_mod_t *m, const char *name, char *v)
 	}
 	if (!strcmp(st->type, "bool") && strcmp(st->def, "0") && strcmp(st->def, "1"))
 		tlua_manifest_bad(m, "setting %s: a bool's default is 0 or 1", name);
-	else if (!strcmp(st->type, "number"))
+	else if (!strcmp(st->type, "color") && (strlen(st->def) != 6 || strspn(st->def, "0123456789abcdefABCDEF") != 6))
+		tlua_manifest_bad(m, "setting %s: a color's default is six hex digits (ff8800)", name);
+	else if (!strcmp(st->type, "key") && Key_StringToKeynum(st->def) < 0)
+		tlua_manifest_bad(m, "setting %s: a key's default is a key name (F5, JOY3, SPACE)", name);
+	else if (!strcmp(st->type, "number") || !strcmp(st->type, "int") || !strcmp(st->type, "float"))
 	{
 		char a[3][32];
 		int n = sscanf(st->args, "%31s %31s %31s", a[0], a[1], a[2]);
@@ -2298,6 +2407,18 @@ void TLua_ParseManifest(tlua_mod_t *m, char *text)
 			else
 				dp_strlcpy(m->updateurl, v, sizeof(m->updateurl));
 		}
+		else if (!strcmp(k, "http"))
+		{
+			// the hosts xt.http may reach: "example.org, api.example.org"
+			const char *c;
+			for (c = v; *c; c++)
+				if (!isalnum((unsigned char)*c) && !strchr(".-_:, ", *c))
+					break;
+			if (*c || strlen(v) >= sizeof(m->httphosts))
+				tlua_manifest_bad(m, "http: host names, comma separated");
+			else
+				dp_strlcpy(m->httphosts, v, sizeof(m->httphosts));
+		}
 		else if (!strcmp(k, "id"))
 		{
 			if (!TLua_ValidModName(v))
@@ -2335,8 +2456,27 @@ void TLua_ParseManifest(tlua_mod_t *m, char *text)
 			const tlua_permission_t *p = tlua_findperm(k + 7);
 			if (!p)
 				tlua_manifest_bad(m, "%s: no such permission", k);
-			else
+			else if (!m->reasons[p - tlua_permissions][0]) // the first reason given for a tier is shown
 				TLua_CleanText(v, m->reasons[p - tlua_permissions], sizeof(m->reasons[0]), false);
+		}
+		else if (!strncmp(k, "setting.", 8) && strchr(k + 8, '.'))
+		{
+			// setting.<name>.desc / setting.<name>.group, after the setting itself
+			char sname[TLUA_SUFFIX_LEN + 1];
+			const char *field = strchr(k + 8, '.') + 1;
+			int j;
+			size_t slen = min(sizeof(sname) - 1, (size_t)(field - 1 - (k + 8)));
+			memcpy(sname, k + 8, slen);
+			sname[slen] = 0;
+			for (j = 0; j < m->numsettings; j++)
+				if (!strcmp(m->settings[j].name, sname))
+					break;
+			if (j == m->numsettings)
+				tlua_manifest_bad(m, "%s: comes before setting.%s, or there is none", k, sname);
+			else if (!strcmp(field, "desc"))
+				TLua_CleanText(v, m->settings[j].desc, sizeof(m->settings[j].desc), false);
+			else if (!strcmp(field, "group"))
+				TLua_CleanText(v, m->settings[j].group, sizeof(m->settings[j].group), false);
 		}
 		else if (!strncmp(k, "setting.", 8))
 			tlua_parsesetting(m, k + 8, v);
@@ -2350,11 +2490,12 @@ void TLua_ParseManifest(tlua_mod_t *m, char *text)
 			tlua_manifest_bad(m, "permissions: needs an api: line");
 		for (token = strtok(perms, ", \t"); token; token = strtok(NULL, ", \t"))
 		{
-			const tlua_permission_t *p = tlua_findperm(token);
+			int api = 0;
+			const tlua_permission_t *p = tlua_findperm_api(token, &api);
 			if (!p)
 				tlua_manifest_bad(m, "unknown permission '%s'", token);
-			else if (p->api > m->api)
-				tlua_manifest_bad(m, "permission %s needs api: %d", token, p->api);
+			else if (api > m->api)
+				tlua_manifest_bad(m, "permission %s needs api: %d", token, api);
 			else
 				m->requested |= p->bit;
 		}
@@ -2368,8 +2509,10 @@ void TLua_ParseManifest(tlua_mod_t *m, char *text)
 	for (i = 0; i < TLUA_NUMPERMS; i++)
 		if (m->reasons[i][0] && !(m->requested & tlua_permissions[i].bit) && m->scoped)
 			m->reasons[i][0] = 0; // a reason for something not requested says nothing
+	// every mod gets the standard tier; a legacy one (no "api:") nothing more
+	m->requested |= TLUA_TIER_STANDARD;
 	if (!m->scoped)
-		m->requested = TLUA_PERM_API1;
+		m->requested = TLUA_TIER_STANDARD;
 	if (m->manifest_error)
 		m->requested = 0;
 }
@@ -2380,6 +2523,7 @@ static void tlua_readinfo(tlua_mod_t *m)
 	long n;
 	m->title[0] = m->version[0] = m->author[0] = m->description[0] = 0;
 	m->id[0] = m->homepage[0] = m->updateurl[0] = m->manifest_why[0] = 0;
+	m->httphosts[0] = 0;
 	memset(m->reasons, 0, sizeof(m->reasons));
 	m->numsettings = 0;
 	m->api = 0;
@@ -2391,7 +2535,7 @@ static void tlua_readinfo(tlua_mod_t *m)
 	n = tlua_slurp(dir, rel);
 	if (n < 0)
 	{
-		if (n == -1 && errno == ENOENT) m->requested = TLUA_PERM_API1;
+		if (n == -1 && errno == ENOENT) m->requested = TLUA_TIER_STANDARD; // a folder with only init.lua
 		else tlua_manifest_bad(m, "mod.txt is unreadable, over 1 MB, or not a regular file");
 		return;
 	}
@@ -2432,22 +2576,20 @@ static void tlua_grantpath(tlua_mod_t *m, char *dir, size_t dirsize, char *name,
 	dpsnprintf(name, namesize, "%s.txt", m->name);
 }
 
+// "v1 <hex>" / "legacy <hex>": only the optional tiers in it count (bits 0-11
+// were the API 1/2 standard scopes, which are always on now); a malformed file
+// grants nothing beyond standard
 static void tlua_readgrants(tlua_mod_t *m)
 {
 	char dir[1024], name[64], path[1100], line[128], extra, kind[16];
 	unsigned mask;
-	// API 1: nothing until granted; legacy: the HUD set (TLUA_PERM_LEGACY_DEFAULT)
-	m->granted = m->scoped ? 0 : TLUA_PERM_LEGACY_DEFAULT;
+	m->granted = TLUA_TIER_STANDARD;
 	tlua_grantpath(m, dir, sizeof(dir), name, sizeof(name));
 	dpsnprintf(path, sizeof(path), "%s%s", dir, name);
 	if (tlua_readstate(path, line, sizeof(line)) < 0)
-	{
-		if (errno != ENOENT) m->granted = 0;
 		return;
-	}
-	m->granted = 0; // malformed grant files fail closed
-	if (sscanf(line, "%15s %x %c", kind, &mask, &extra) == 2 && !strcmp(kind, m->scoped ? "v1" : "legacy") && !(mask & ~TLUA_PERM_ALL))
-		m->granted = mask;
+	if (sscanf(line, "%15s %x %c", kind, &mask, &extra) == 2 && (!strcmp(kind, "v1") || !strcmp(kind, "legacy")) && !(mask & ~((1u << 15) - 1)))
+		m->granted |= mask & TLUA_PERM_OPTIONAL;
 }
 
 static void tlua_readenabled(tlua_realm_t *r)
@@ -2567,11 +2709,12 @@ static void tlua_publish_detail(void)
 		tlua_detail_add(buf, sizeof(buf), "perm", line);
 	}
 	for (i = 0; r->events[i]; i++)
-		if (m->eventmask & (1u << i))
+		if (m->eventmask & (1ull << i))
 			tlua_detail_add(buf, sizeof(buf), "event", r->events[i]);
-	for (i = 0; i < TLua_Hooks_Count() && r == &tlua_server; i++)
+	for (i = 0; i < TLua_Hooks_CountRealm(r); i++)
 		if (m->hookmask[i >> 5] & (1u << (i & 31)))
-			tlua_detail_add(buf, sizeof(buf), "hook", TLua_Hooks_Name(i));
+			tlua_detail_add(buf, sizeof(buf), "hook", TLua_Hooks_NameRealm(r, i));
+
 	for (i = 0; i < tlua_numcmds; i++)
 		if (tlua_cmds[i].realm == r && !strcmp(tlua_cmds[i].mod, m->name))
 			tlua_detail_add(buf, sizeof(buf), "command", tlua_cmds[i].full);
@@ -2651,7 +2794,11 @@ tlua_mod_t *TLua_Find(tlua_realm_t *r, const char *name)
 static void tlua_stop(tlua_mod_t *m)
 {
 	if (m->L && m->state == TLUA_RUNNING)
+	{
+		tlua_nothrottle = true;
 		tlua_fire_one(m, "unload", NULL, NULL, NULL);
+		tlua_nothrottle = false;
+	}
 	m->killreason[0] = 0;
 	tlua_close(m);
 	m->state = TLUA_OFF;
@@ -2763,6 +2910,7 @@ void TLua_Rescan(tlua_realm_t *r)
 	}
 	tlua_readenabled(r);
 	tlua_updatestatus(r);
+	TLua_UI_SyncManifest(r);
 }
 
 void TLua_LoadAll(tlua_realm_t *r)
@@ -2971,14 +3119,14 @@ static void tlua_info_f(cmd_state_t *cmd)
 	if (m->error[0])
 		Con_Printf("  ^1error: %s^7\n", m->error);
 	for (i = 0; m->realm->events[i]; i++)
-		if (*tlua_maskof(m) & (1u << i))
+		if (*tlua_maskof(m) & (1ull << i))
 			Con_Printf("  listens to: %s\n", m->realm->events[i]);
 	for (i = 0; i < tlua_numcmds; i++)
 		if (tlua_cmds[i].realm == r && !strcmp(tlua_cmds[i].mod, m->name))
 			Con_Printf("  command: %s%s\n", tlua_cmds[i].full, tlua_cmds[i].fromserver ? " (a server may run it)" : "");
-	for (i = 0; r == &tlua_server && i < TLua_Hooks_Count(); i++)
+	for (i = 0; i < TLua_Hooks_CountRealm(r); i++)
 		if (m->hookmask[i >> 5] & (1u << (i & 31)))
-			Con_Printf("  hook: %s\n", TLua_Hooks_Name(i));
+			Con_Printf("  hook: %s\n", TLua_Hooks_NameRealm(r, i));
 	for (i = 0; i < m->numsettings; i++)
 		Con_Printf("  setting: %s%s_%s (%s, %s)\n", r->cmdprefix, m->name, m->settings[i].name, m->settings[i].type, m->settings[i].label);
 	for (i = 0; tlua_permissions[i].name; i++)
@@ -3041,29 +3189,49 @@ static void tlua_help_f(cmd_state_t *cmd)
 	Con_Printf("^2How to make a mod: https://github.com/dixonSolutions/Godnotic/blob/main/docs/MODDING.md^7\n");
 }
 
-// Grants are a local user choice, never supplied by a Lua mod. Store each
-// realm separately in <userdir>/luastate/, and publish only a fully written
-// file.
+// Was this mod installed from a link (luastate/<realm>/sources/<id>.txt holds
+// an http(s) URL)? Then Full engine access needs a second confirmation.
+static qbool tlua_fromurl(tlua_mod_t *m)
+{
+	char path[1100], buf[300];
+	tlua_statedir(m->realm, path, sizeof(path));
+	dp_strlcat(path, "sources/", sizeof(path));
+	dp_strlcat(path, m->name, sizeof(path));
+	dp_strlcat(path, ".txt", sizeof(path));
+	if (tlua_readstate(path, buf, sizeof(buf)) <= 0)
+		return false;
+	return !strncmp(buf, "https://", 8) || !strncmp(buf, "http://", 7);
+}
+
+// Grants are a local user choice, never supplied by a Lua mod or a server.
+// Tiers (docs/PLUGIN_STANDARD.md): standard is on with the mod; gamerules,
+// internet and engine_full are switches. "all" never includes engine_full,
+// and for a mod installed from a link engine_full needs "confirm" as well,
+// given within a minute of the first grant (which prints the warning).
+static char tlua_engine_pending[TLUA_NAME_LEN + 16];
+static double tlua_engine_pending_time;
+
 static void tlua_permission_f(cmd_state_t *cmd)
 {
 	tlua_realm_t *r = tlua_realmofcmd(cmd);
 	tlua_mod_t *m;
 	const char *action, *name;
-	char dir[1024], file[64], text[32];
+	char dir[1024], file[64], text[32], key[TLUA_NAME_LEN + 16];
 	unsigned mask;
 	int i;
 	if (Cmd_Argc(cmd) == 2)
 	{
 		if (TLua_Busy() || !(m = tlua_argmod(cmd, r))) return;
-		Con_Printf("Lua %s %s API: %s%s\n", TLUA_NOUN(r), m->name, m->scoped ? "1" : "legacy", m->manifest_error ? " (invalid manifest)" : "");
+		Con_Printf("Lua %s %s, API %s%s; tiers:\n", TLUA_NOUN(r), m->name, m->api ? va(text, sizeof(text), "%d", m->api) : "legacy", m->manifest_error ? " (invalid manifest)" : "");
 		for (i = 0; tlua_permissions[i].name; i++)
-			Con_Printf("  %s: %s%s\n", tlua_permissions[i].name, (m->granted & tlua_permissions[i].bit) ? "granted" : "denied", (m->requested & tlua_permissions[i].bit) ? " (requested)" : " (not requested)");
+			Con_Printf("  %-12s %s%s - %s\n", tlua_permissions[i].name, tlua_has(m, tlua_permissions[i].bit) ? "^2on^7" : "off",
+				(m->requested & tlua_permissions[i].bit) ? "" : " (not asked for)", tlua_permissions[i].help);
 		return;
 	}
 	if (tlua_remote_refused(cmd) || !(m = tlua_argmod(cmd, r))) return;
-	if (Cmd_Argc(cmd) != 4)
+	if (Cmd_Argc(cmd) != 4 && Cmd_Argc(cmd) != 5)
 	{
-		Con_Printf("usage: %s <name> [grant|revoke <permission>]\n", Cmd_Argv(cmd, 0));
+		Con_Printf("usage: %s <name> [grant|revoke <tier>[,<tier>...]|all [confirm]]\n", Cmd_Argv(cmd, 0));
 		return;
 	}
 	action = Cmd_Argv(cmd, 2); name = Cmd_Argv(cmd, 3);
@@ -3071,37 +3239,57 @@ static void tlua_permission_f(cmd_state_t *cmd)
 	{
 		TLua_Say("unknown action %s (grant or revoke)", action); return;
 	}
-	// one scope, a comma separated list, or "all" (everything it requests)
+	if (m->manifest_error && !strcmp(action, "grant"))
+	{
+		TLua_Say("%s: its manifest is invalid, nothing can be granted", m->name); return;
+	}
+	// tiers (or API 1/2 scope names, as their tier), comma separated, or "all"
 	mask = 0;
 	if (!strcmp(name, "all"))
-		mask = m->requested;
+		mask = !strcmp(action, "grant") ? (m->requested & TLUA_PERM_OPTIONAL & ~TLUA_TIER_ENGINE) : TLUA_PERM_OPTIONAL;
 	else
 	{
 		char list[256], *tok;
 		dp_strlcpy(list, name, sizeof(list));
 		for (tok = strtok(list, ","); tok; tok = strtok(NULL, ","))
 		{
-			for (i = 0; tlua_permissions[i].name; i++) if (!strcmp(tok, tlua_permissions[i].name)) break;
-			if (!tlua_permissions[i].name)
+			const tlua_permission_t *p = tlua_findperm(tok);
+			if (!p)
 			{
-				TLua_Say("unknown permission %s", tok); return;
+				TLua_Say("unknown tier %s (standard, gamerules, internet, engine_full)", tok); return;
 			}
-			if (!strcmp(action, "grant") && (!(m->requested & tlua_permissions[i].bit) || m->manifest_error))
+			if (!strcmp(action, "grant") && !(m->requested & p->bit))
 			{
-				TLua_Say("permission %s is not requested by %s, or its manifest is invalid", tok, m->name); return;
+				TLua_Say("%s does not ask for the %s tier (permissions: in its mod.txt)", m->name, p->name); return;
 			}
-			mask |= tlua_permissions[i].bit;
+			mask |= p->bit;
 		}
 	}
-	if (m->manifest_error && !strcmp(action, "grant"))
+	mask &= TLUA_PERM_OPTIONAL; // standard comes with turning the mod on
+	if (!strcmp(action, "grant") && (mask & TLUA_TIER_ENGINE) && !(m->granted & TLUA_TIER_ENGINE))
 	{
-		TLua_Say("%s: its manifest is invalid, nothing can be granted", m->name); return;
+		qbool confirmed = Cmd_Argc(cmd) == 5 && !strcmp(Cmd_Argv(cmd, 4), "confirm");
+		dpsnprintf(key, sizeof(key), "%s %s", r->kind, m->name);
+		Con_Printf(CON_WARN "Full engine access for %s: it can run any console command and change any setting except passwords and keys, as if you typed it.\n", m->name);
+		if (tlua_fromurl(m))
+		{
+			// installed from a link: a second, explicit confirmation
+			if (!confirmed || strcmp(tlua_engine_pending, key) || host.realtime - tlua_engine_pending_time > 60)
+			{
+				dp_strlcpy(tlua_engine_pending, key, sizeof(tlua_engine_pending));
+				tlua_engine_pending_time = host.realtime;
+				TLua_Say("%s was installed from a link: to give it full engine access, confirm with %s %s grant engine_full confirm", m->name, Cmd_Argv(cmd, 0), m->name);
+				return;
+			}
+		}
+		tlua_engine_pending[0] = 0;
 	}
 	mask = !strcmp(action, "grant") ? m->granted | mask : m->granted & ~mask;
+	mask &= TLUA_PERM_OPTIONAL;
 	tlua_grantpath(m, dir, sizeof(dir), file, sizeof(file));
 	dpsnprintf(text, sizeof(text), "%s %x\n", m->scoped ? "v1" : "legacy", mask);
 	if (!tlua_writestate(dir, file, text, true)) { TLua_Say("could not save permissions"); return; }
-	m->granted = mask;
+	m->granted = mask | TLUA_TIER_STANDARD;
 	if (r == &tlua_server)
 		TLua_Hooks_Changed();
 	TLua_Log(m, "%s %s", !strcmp(action, "grant") ? "granted" : "revoked", name);
@@ -3265,6 +3453,7 @@ void TLua_InitOnce(void)
 	Cmd_AddCommand(CF_CLIENT | CF_SERVER, "lua_help", tlua_help_f, "list the Lua mod manager commands (client mods and server mods)");
 	TLua_Hooks_Setup();
 	TLua_Pkg_Setup();
+	TLua_API_Setup();
 }
 
 static char tlua_lastselect[64];
@@ -3274,6 +3463,7 @@ void TLua_FrameStart(void)
 {
 	tlua_taint_frame();
 	TLua_Pkg_Frame();
+	TLua_UI_Frame();
 	if (tlua_detail_dirty || strcmp(lua_select.string, tlua_lastselect))
 	{
 		dp_strlcpy(tlua_lastselect, lua_select.string, sizeof(tlua_lastselect));

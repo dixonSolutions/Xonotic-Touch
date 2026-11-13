@@ -1,0 +1,7 @@
+id: round_hud
+title: Round timer (HUD half)
+version: 1.0
+author: Godnotic
+description: Shows the round and the time left that the round_timer server mod sends.
+api: 3
+realm: client

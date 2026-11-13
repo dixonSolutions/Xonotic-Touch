@@ -147,6 +147,16 @@ jobs:
       - name: Vendor, merge, resolve and hooks on throwaway repositories
         run: bash scripts/test-upstream-sync.sh
 
+  lua-mods:
+    name: Lua mods (generated API, examples, docs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generators current, every example and doc block compiles, manifests, archive builds reproducible
+        # without game data scripts/test-mods.sh runs its static checks only;
+        # docs/MODDING.md, "Testing your mod", runs the match scenarios locally
+        run: bash scripts/test-mods.sh
+
   godnotic-client:
     name: Godnotic cache, components and join guard
     runs-on: ubuntu-latest

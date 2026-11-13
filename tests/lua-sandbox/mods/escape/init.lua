@@ -105,7 +105,12 @@ local allowed = {on=1, command=1, cvar=1, setcvar=1, exec=1, realtime=1, modname
   -- API 2: timers and coroutines (they run the mod's own code, under its limits)
   after=1, every=1, cancel=1, spawn=1, sleep=1, apimax=1,
   -- where the touch HUD is (rectangles only, no game data)
-  reserved=1, freespot=1, setting=1}
+  reserved=1, freespot=1, setting=1,
+  -- API 3 (docs/LUA_API.md): every table and function of the generated list for
+  -- client mods; positions only through xt.entities under the offline-only rule
+  apiversion=1, hook=1, hooknames=1, json=1, time=1, game=1, locale=1, data=1, vec=1, forward=1,
+  vectoangles=1, channel=1, settings=1, menu=1, page=1, top=1, http=1, engine=1, view=1, hud=1,
+  touch=1, bind=1, unbind=1, effect=1, clipboard=1, vibrate=1, entities=1, offline=1, csqc=1}
 local extra = {}
 for k in pairs(xt) do if not allowed[k] then extra[#extra + 1] = k end end
 check("xt has only the documented functions (" .. table.concat(extra, ",") .. ")", #extra == 0)

@@ -1,0 +1,8 @@
+id: hit_feedback
+title: Hit feedback and kill feed
+version: 1.0
+author: Godnotic
+description: Damage numbers, a hit sound, and a restyled kill feed.
+api: 3
+realm: client
+setting.feed: bool 1 | Restyle the kill feed

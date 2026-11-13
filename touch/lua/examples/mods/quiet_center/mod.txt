@@ -1,0 +1,8 @@
+id: quiet_center
+title: Quiet centre messages
+version: 1.0
+author: Godnotic
+description: Hides centred messages you chose, and counts them.
+api: 3
+realm: client
+setting.words: text Prepare | Hide centre messages containing

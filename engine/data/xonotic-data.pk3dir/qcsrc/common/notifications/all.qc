@@ -1238,6 +1238,7 @@ void Local_Notification(MSG net_type, Notification net_name, ...count)
 		return;
 	}
 
+	if (touch_lua_notify_hook && touch_lua_notify_hook(net_type, notif, s1, s2, s3, s4, f1, f2, f3, f4)) return; // Touch: a Lua client mod hid it (client/touch_lua.qc)
 	switch (net_type)
 	{
 		case MSG_ANNCE:
