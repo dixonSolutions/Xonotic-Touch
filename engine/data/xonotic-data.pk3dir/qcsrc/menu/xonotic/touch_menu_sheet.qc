@@ -136,6 +136,15 @@ void TouchSheet_dropSavedFocus(vector pos)
 	}
 }
 
+// A list that has more rows than it shows scrolls itself under the finger.
+// One whose rows all fit (the LAN list, a short map list) is part of the
+// sheet: a drag on it scrolls the sheet, or a sheet whose list is taller
+// than the screen (Multiplayer's) could not be moved to Join from the list.
+bool TouchSheet_listScrolls(entity leaf)
+{
+	return leaf && leaf.instanceOfListBox && leaf.getTotalHeight(leaf) > 1.001;
+}
+
 void TouchSheet_mousePress(vector pos)
 {
 	TouchSheet_dropSavedFocus(pos);
@@ -153,7 +162,7 @@ void TouchSheet_mousePress(vector pos)
 		return;
 	}
 	entity leaf = TouchSheet_leafAt(pos);
-	if ((leaf && leaf.instanceOfListBox)
+	if (TouchSheet_listScrolls(leaf)
 		|| pos.y < f.Container_origin.y || pos.y > f.Container_origin.y + f.Container_size.y
 		|| pos.x < f.Container_origin.x || pos.x > f.Container_origin.x + f.Container_size.x)
 	{
@@ -353,7 +362,7 @@ bool TouchSheet_wheel(float key)
 	if (!TouchSheet_scrolls(f))
 		return false;
 	entity leaf = TouchSheet_leafAt(menuMousePos);
-	if (leaf && leaf.instanceOfListBox)
+	if (TouchSheet_listScrolls(leaf))
 		return false;
 	// Three rows a notch.
 	float d = TouchMenuScale_dpToUnits(3 * (TOUCH_MENU_ROW_DP + TOUCH_MENU_GAP_DP) * TouchMenuScale_size()) / conheight;
