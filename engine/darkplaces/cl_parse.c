@@ -1213,7 +1213,9 @@ static void CL_BeginDownloads(qbool aborteddownload)
 					// they'll be soon loaded, but make sure we apply freshly downloaded shaders from a curled pk3
 					Mod_FreeQ3Shaders();
 				}
+				TouchModel_PrecacheScope(1); // Touch: registered, loads when first used
 				cl.model_precache[cl.loadmodel_current] = Mod_ForName(cl.model_name[cl.loadmodel_current], false, false, cl.model_name[cl.loadmodel_current][0] == '*' ? cl.model_name[1] : NULL);
+				TouchModel_PrecacheScope(0); // Touch:
 			}
 			SCR_PopLoadingScreen(false);
 			if (cl.model_precache[cl.loadmodel_current] && cl.model_precache[cl.loadmodel_current]->Draw && cl.loadmodel_current == 1)
@@ -1336,7 +1338,9 @@ static void CL_BeginDownloads(qbool aborteddownload)
 				Mod_FreeQ3Shaders();
 			}
 
+			TouchModel_PrecacheScope(1); // Touch: registered, loads when first used
 			cl.model_precache[cl.downloadmodel_current] = Mod_ForName(cl.model_name[cl.downloadmodel_current], false, true, cl.model_name[cl.downloadmodel_current][0] == '*' ? cl.model_name[1] : NULL);
+			TouchModel_PrecacheScope(0); // Touch:
 			if (cl.downloadmodel_current == 1)
 			{
 				// we now have the worldmodel so we can set up the game world

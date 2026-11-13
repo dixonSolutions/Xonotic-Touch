@@ -99,7 +99,8 @@ typedef struct tlt_state_s
 	int signon_frame[SIGNONS + 1];
 	double ready_time;           // first game frame of the last load, 0 when not watching
 	double last_hostframe;
-	double worst_frame;          // longest host frame in the 3 s after it
+	double worst_frame;          // longest host frame in the 5 s after it
+	double worst_play;           // ... of those with no menu or dialog open
 	int frames_after;
 
 }
@@ -289,6 +290,7 @@ void TouchLoadTime_Frame(void)
 		Cvar_SetValueQuick(&touch_loadtime_game, touch_loadtime_game.integer + 1);
 		tlt.ready_time = now;
 		tlt.worst_frame = 0;
+		tlt.worst_play = 0;
 		tlt.frames_after = 0;
 		if (touch_loadtime.integer)
 		{
@@ -397,6 +399,26 @@ unsigned int TouchLoad_PicFlags(const char *path, unsigned int flags)
 }
 
 void (*touch_snd_loadsome)(void);
+void (*touch_model_loadsome)(void);
+
+qbool TouchModel_CSQCPrecache(prvm_prog_t *prog, model_t *m)
+{
+	int i;
+	if (!TouchModel_IsDeferred(m))
+		return false;
+	// as VM_CL_precache_model does for a loaded model
+	for (i = 0; i < MAX_MODELS; i++)
+	{
+		if (!cl.csqc_model_precache[i])
+		{
+			cl.csqc_model_precache[i] = m;
+			PRVM_G_FLOAT(OFS_RETURN) = -(i + 1);
+			return true;
+		}
+	}
+	VM_Warning(prog, "VM_CL_precache_model: no free models\n");
+	return true;
+}
 
 float TouchLoadTime_MaxFPS(float maxfps)
 {
@@ -416,13 +438,15 @@ double TouchLoadTime_SleepTime(double sleeptime)
 	{
 		if (tlt.last_hostframe > tlt.ready_time && now - tlt.last_hostframe > tlt.worst_frame)
 			tlt.worst_frame = now - tlt.last_hostframe;
+		if (tlt.last_hostframe > tlt.ready_time && key_dest == key_game && now - tlt.last_hostframe > tlt.worst_play)
+			tlt.worst_play = now - tlt.last_hostframe;
 		if (developer_loading.integer && tlt.last_hostframe > tlt.ready_time && now - tlt.last_hostframe > 0.03)
 			Con_Printf("LOADTIME long frame %.1f ms at %.0f ms after ready\n", (now - tlt.last_hostframe) * 1000.0, (now - tlt.ready_time) * 1000.0);
 		tlt.frames_after++;
-		if (now - tlt.ready_time >= 3)
+		if (now - tlt.ready_time >= 5)
 		{
 			if (touch_loadtime.integer)
-				Con_Printf("LOADTIME after_ready worst_frame=%.1f frames=%d (first 3 s of play)\n", tlt.worst_frame * 1000.0, tlt.frames_after);
+				Con_Printf("LOADTIME after_ready worst_frame=%.1f worst_play=%.1f frames=%d (first 5 s after the load; play = no menu or dialog open)\n", tlt.worst_frame * 1000.0, tlt.worst_play * 1000.0, tlt.frames_after);
 			tlt.ready_time = 0;
 		}
 	}
@@ -435,8 +459,15 @@ double TouchLoadTime_SleepTime(double sleeptime)
 	TLT_Signons(now);
 
 	// background work left by the load, once the game runs
-	if (cls.state == ca_connected && cls.signon == SIGNONS && !scr_loading && touch_snd_loadsome)
-		touch_snd_loadsome();
+	// what the load left: decoded while a menu or dialog is open (the welcome
+	// dialog after a join, the game menu); in play only what is used loads
+	if (cls.state == ca_connected && cls.signon == SIGNONS && !scr_loading && key_dest != key_game)
+	{
+		if (touch_model_loadsome)
+			touch_model_loadsome();
+		if (touch_snd_loadsome)
+			touch_snd_loadsome();
+	}
 
 	if (TouchLoadTime_Restless())
 	{

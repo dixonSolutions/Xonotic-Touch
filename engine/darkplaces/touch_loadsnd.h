@@ -9,7 +9,8 @@
 // snd_lazyload 1: a precache of a file that exists marks the sfx deferred and
 // returns; S_IsSoundPrecached counts it as precached. It is decoded the first
 // time it is started (S_StartSound, S_StaticSound) or its length is asked
-// for, and in the game the rest are decoded in the background within
+// for, and while a menu or dialog is open in the game (the welcome dialog
+// after a join, the game menu) the rest are decoded within
 // snd_lazyload_budget milliseconds per frame. A name with no file behind it
 // is loaded (and found missing) at once, as before, and so is a file bigger
 // than snd_lazyload_maxsize KiB: one decode of it cannot be split across
@@ -19,7 +20,7 @@
 
 static cvar_t snd_lazyload = {CF_CLIENT, "snd_lazyload", "1", "precached sounds are decoded when first played, or in the background during the game (Godnotic); 0 = all at precache"};
 static cvar_t snd_lazyload_maxsize = {CF_CLIENT, "snd_lazyload_maxsize", "48", "sound files bigger than this many KiB are decoded at precache even with snd_lazyload (one decode of a big file would be a long frame in the game)"};
-static cvar_t snd_lazyload_budget = {CF_CLIENT, "snd_lazyload_budget", "1", "milliseconds per frame spent decoding precached sounds not played yet, in the game (0 = only on first play)"};
+static cvar_t snd_lazyload_budget = {CF_CLIENT, "snd_lazyload_budget", "4", "milliseconds per frame spent decoding precached sounds not played yet while a menu or dialog is open in the game (0 = only on first play)"};
 
 // The size of the file S_LoadSound would read for name (sound/<name> or
 // <name>, a .wav also as .ogg, Touch_Opus_LoadFile's .opus for a .ogg), or -1

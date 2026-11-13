@@ -112,8 +112,9 @@ fresh_userdir() { # name
 	echo "$u"
 }
 
-# job cfg: wait for the menu, idle, run $1, wait for the game, quit 4 s later
-# (after the engine's 3 s after_ready line)
+# job cfg: wait for the menu, idle MENU_IDLE s, run $1, wait for the game,
+# leave the welcome dialog after 1 s and join, quit 5 s later (after the
+# engine's after_ready line, 5 s after the load)
 write_job() { # userdir command
 	cat > "$1/data/bench-job.cfg" <<EOF
 alias _bj_w0 "defer 0.05 _bj_wait"
@@ -121,7 +122,8 @@ alias _bj_w1 "defer $MENU_IDLE _bj_go"
 alias _bj_wait "_bj_w\$_touch_loadtime_menu"
 alias _bj_go "touch_loadtime_start; $2; _bj_gwait"
 alias _bj_g0 "defer 0.05 _bj_gwait"
-alias _bj_g1 "defer 4 quit"
+alias _bj_g1 "defer 1 _bj_play"
+alias _bj_play "togglemenu 0; cmd join; defer 5 quit"
 alias _bj_gwait "_bj_g\$_touch_loadtime_game"
 _bj_wait
 EOF

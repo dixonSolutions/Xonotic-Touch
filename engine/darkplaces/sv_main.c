@@ -1439,7 +1439,9 @@ int SV_ModelIndex(const char *s, int precachemode)
 				if (sv.state == ss_loading)
 				{
 					// running from SV_SpawnServer which is launched from the client console command interpreter
+					TouchModel_PrecacheScope(1); // Touch: registered, loads when first used
 					sv.models[i] = Mod_ForName (sv.model_precache[i], true, false, s[0] == '*' ? sv.worldname : NULL);
+					TouchModel_PrecacheScope(0); // Touch:
 				}
 				else
 				{
@@ -1610,6 +1612,7 @@ int SV_ParticleEffectIndex(const char *name)
 
 model_t *SV_GetModelByIndex(int modelindex)
 {
+	if (modelindex > 0 && modelindex < MAX_MODELS) TouchModel_Ensure(sv.models[modelindex]); // Touch: a lazily precached model loads here
 	return (modelindex > 0 && modelindex < MAX_MODELS) ? sv.models[modelindex] : NULL;
 }
 
@@ -1620,6 +1623,7 @@ model_t *SV_GetModelFromEdict(prvm_edict_t *ed)
 	if (!ed || ed->free)
 		return NULL;
 	modelindex = (int)PRVM_serveredictfloat(ed, modelindex);
+	if (modelindex > 0 && modelindex < MAX_MODELS) TouchModel_Ensure(sv.models[modelindex]); // Touch: a lazily precached model loads here
 	return (modelindex > 0 && modelindex < MAX_MODELS) ? sv.models[modelindex] : NULL;
 }
 

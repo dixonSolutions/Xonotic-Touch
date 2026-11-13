@@ -74,6 +74,18 @@ qbool TouchFont_LoadPendingOne(void);
 // played yet within snd_lazyload_budget; called once per host frame in game.
 extern void (*touch_snd_loadsome)(void);
 
+// model_shared.c (touch_loadmodel.h), mod_lazyload: Mod_ForName only
+// registers a model inside a precache scope; TouchModel_Ensure loads a model
+// registered that way (the model lookups call it); touch_model_loadsome
+// loads small ones in the game within mod_lazyload_budget.
+void TouchModel_PrecacheScope(int enter);
+struct model_s *TouchModel_Ensure(struct model_s *mod);
+qbool TouchModel_IsDeferred(struct model_s *mod);
+// VM_CL_precache_model after Mod_ForName: a registered model takes a CSQC
+// precache slot as a loaded one would; true when it did.
+qbool TouchModel_CSQCPrecache(struct prvm_prog_s *prog, struct model_s *m);
+extern void (*touch_model_loadsome)(void);
+
 // sbar.c's render module start caches ~112 Quake status bar pictures that
 // Xonotic does not have and never draws (its HUD is CSQC). With
 // touch_load_lazysbar 1 the start is remembered and run on the engine HUD's

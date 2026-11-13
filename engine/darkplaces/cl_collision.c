@@ -85,6 +85,7 @@ void CL_FindNonSolidLocation(const vec3_t in, vec3_t out, vec_t radius)
 
 model_t *CL_GetModelByIndex(int modelindex)
 {
+	if (modelindex < 0 && -(modelindex+1) < MAX_MODELS) TouchModel_Ensure(cl.csqc_model_precache[-(modelindex+1)]); else if (modelindex > 0 && modelindex < MAX_MODELS) TouchModel_Ensure(cl.model_precache[modelindex]); // Touch: a lazily precached model loads here
 	if(!modelindex)
 		return NULL;
 	if (modelindex < 0)
