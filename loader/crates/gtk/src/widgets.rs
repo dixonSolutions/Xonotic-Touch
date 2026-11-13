@@ -1334,7 +1334,7 @@ fn row_cells(app: &App, source: &str, pos: usize) -> Option<Map<String, Value>> 
 
 fn table(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
     let model = lv.borrow().model.clone();
-    // A list with `rowSelect` (the server list): a click chooses the row and shows it chosen,
+    // A list with `selection: single` (the server list): a click chooses the row and shows it chosen,
     // a second click in time joins (app::row_activated tells the two apart). Others activate.
     let selects = selects_rows(n);
     let cv = if selects {
@@ -1633,10 +1633,10 @@ fn card_grid(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
             p.set_paintable(gtk::gdk::Paintable::NONE);
         }
     });
-    // A list with `rowSelect` tells choosing from playing: one click or tap chooses the card
+    // A list with `selection: single` tells choosing from playing: one click or tap chooses the card
     // (event row/select), a second one on it within the double-click time plays it
     // (row/activate); app::row_activated keeps the time, so it survives the screen updating
-    // between the two. Scrolling does neither. Without `rowSelect` a click activates.
+    // between the two. Scrolling does neither. Without it a click activates.
     let gv = gtk::GridView::new(Some(gtk::NoSelection::new(Some(model))), Some(f));
     gv.set_single_click_activate(true);
     gv.set_min_columns(if app.narrow.get() { 1 } else { 2 });

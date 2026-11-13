@@ -179,7 +179,8 @@ class Engine:
             n = self.nodes[i]
             nodes.append(n)
             stack.extend(reversed(n["children"]))
-        return {"uib": 1, "t": "snapshot", "id": 2, "rev": self.rev, "root": "app", "nodes": copy.deepcopy(nodes)}
+        # rev 1: the engine's own counter depends on how many frames it took to get here
+        return {"uib": 1, "t": "snapshot", "id": 2, "rev": 1, "root": "app", "nodes": copy.deepcopy(nodes)}
 
     def lists(self):
         out = {}
@@ -205,7 +206,8 @@ class Engine:
 def renumber(base, steps):
     """Folded diffs chain from the base snapshot: base, base+1, ..."""
     rev = base["rev"]
-    for st in steps:
+    for i, st in enumerate(steps):
+        st["msg"]["id"] = 3 + i
         st["msg"]["base"] = rev
         rev += 1
         st["msg"]["rev"] = rev

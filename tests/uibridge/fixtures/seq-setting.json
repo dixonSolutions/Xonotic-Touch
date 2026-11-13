@@ -29,7 +29,7 @@
   "uib": 1,
   "t": "snapshot",
   "id": 2,
-  "rev": 25,
+  "rev": 1,
   "root": "app",
   "nodes": [
    {
@@ -460,9 +460,9 @@
    "msg": {
     "uib": 1,
     "t": "diff",
-    "id": 42,
-    "base": 25,
-    "rev": 26,
+    "id": 3,
+    "base": 1,
+    "rev": 2,
     "set": [
      {
       "id": "settings/split/video/tabs/view/fov",
@@ -488,9 +488,9 @@
    "msg": {
     "uib": 1,
     "t": "diff",
-    "id": 43,
-    "base": 26,
-    "rev": 27,
+    "id": 4,
+    "base": 2,
+    "rev": 3,
     "set": [
      {
       "id": "settings/split/video/tabs/view/fov",

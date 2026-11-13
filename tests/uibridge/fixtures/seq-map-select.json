@@ -29,7 +29,7 @@
   "uib": 1,
   "t": "snapshot",
   "id": 2,
-  "rev": 4,
+  "rev": 1,
   "root": "app",
   "nodes": [
    {
@@ -633,9 +633,9 @@
    "msg": {
     "uib": 1,
     "t": "diff",
-    "id": 8,
-    "base": 4,
-    "rev": 5,
+    "id": 3,
+    "base": 1,
+    "rev": 2,
     "set": [
      {
       "id": "home/tiles/sp",
@@ -725,9 +725,9 @@
    "msg": {
     "uib": 1,
     "t": "diff",
-    "id": 9,
-    "base": 5,
-    "rev": 6,
+    "id": 4,
+    "base": 2,
+    "rev": 3,
     "set": [
      {
       "id": "home/tiles/sp",
