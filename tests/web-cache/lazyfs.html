@@ -16,6 +16,10 @@ window.lazyfsTest = async () => {
   const boms = [[0xff, 0xfe], [0xfe, 0xff], [0xef, 0xbb, 0xbf]];
   const at = [CHUNK, CHUNK + (1 << 20), 7, 4096, 2 * CHUNK + 3, 3 * CHUNK];
   at.forEach((o, i) => data.set(boms[i % 3], o));
+  // Runs of alternating FE/FF across block and chunk starts: whichever
+  // byte a read begins at, it begins at something that looks like a mark.
+  for (const o of [2 * CHUNK + (1 << 20), CHUNK, 3 * CHUNK]) for (let i = -40; i < 40; i++) data[o + i] = (i & 1) ? 0xff : 0xfe;
+  at.push(2 * CHUNK + (1 << 20), 2 * CHUNK + (1 << 20) - 13, 2 * CHUNK + (1 << 20) - 14);
   const blobs = [];
   for (let o = 0; o < size; o += CHUNK) blobs.push(new Blob([data.slice(o, o + CHUNK)]));
   // A stand-in for Emscripten's FS: what create() uses.
@@ -41,6 +45,13 @@ window.lazyfsTest = async () => {
     for (let i = 0; i < n; i++) if (got[i] !== want[i]) return { ok: false, error: `byte ${o + i} differs` };
     checked += n;
   }
-  return { ok: true, checked, retries: XTLazyFS.stats.retries || 0 };
+  // A read that fails in the browser's storage is EIO to the engine, not an
+  // exception of some other kind.
+  const gone = { size: CHUNK, slice() { throw new DOMException('gone', 'NotReadableError'); } };
+  const bad = XTLazyFS.create(FS, '/t/bad.pk3', CHUNK, [gone], CHUNK);
+  let errno = 0;
+  try { bad.stream_ops.read({ node: bad }, heap, 0, 100, 0); } catch (e) { errno = e instanceof FS.ErrnoError ? e.errno : -1; }
+  if (errno !== 29) return { ok: false, error: `a failed read threw ${errno}, not EIO` };
+  return { ok: true, checked, eio: true };
 };
 </script>

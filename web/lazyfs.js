@@ -8,8 +8,8 @@
 // stored chunks (store.js: OPFS files or Cache API blobs, which live on disk,
 // not in memory):
 //
-//   - a synchronous XMLHttpRequest for a byte range of a blob: URL made from
-//     the stored chunk. Browsers still allow synchronous XHR on the main
+//   - a synchronous XMLHttpRequest for a blob: URL of just the bytes wanted
+//     (a slice of the stored chunk). Browsers still allow synchronous XHR on the main
 //     thread; with the "x-user-defined" charset its text is the bytes. It
 //     needs no worker, no SharedArrayBuffer (so no COOP/COEP headers, which
 //     GitHub Pages cannot send), no JSPI and no Asyncify.
@@ -17,8 +17,8 @@
 //     first): the engine's pk3 reader asks for 16 KiB at a time.
 //   - reads of a whole block or more go straight into the engine's memory.
 //
-// probe() checks that the browser answers such a request correctly (a range,
-// status 206, the right bytes); where it does not, the page copies the files
+// probe() checks that the browser answers such a request correctly (the
+// right bytes); where it does not, the page copies the files
 // into memory as before.
 'use strict';
 
@@ -34,45 +34,37 @@
   let touched = new Set(); // "path\tblock" read since takeTouched()
 
   // Text decoding sniffs a byte order mark before it looks at the charset:
-  // a range starting with FF FE, FE FF or EF BB BF comes back as UTF-16 or
-  // UTF-8, not as the bytes. So every blob gets PAD zero bytes in front, and
-  // a read whose text is not clean x-user-defined (the length, and every
-  // character below 0x80 or in U+F780-U+F7FF) is asked again starting one
-  // byte earlier: at the latest the zero padding, which is no BOM.
+  // a response starting with FF FE, FE FF or EF BB BF comes back as UTF-16
+  // or UTF-8, not as the bytes. So every read goes through a blob of its
+  // own: PAD zero bytes, then exactly the bytes wanted (a slice refers to
+  // the stored chunk, nothing is copied). A response always starts with
+  // zeros, whatever the data, and no Range header is involved.
   const PAD = 3;
   const ZEROS = new Uint8Array(PAD);
 
-  /** len bytes at off of the (padded) blob behind url, into dst at dstOff. */
-  function rangeRead(url, off, len, dst, dstOff) {
+  /** len bytes at off of blob, into dst at dstOff. Throws on any failure. */
+  function rangeRead(blob, off, len, dst, dstOff) {
     const t = global.performance.now();
-    for (let back = 0; back <= PAD + off && back <= PAD + 8; back++) {
-      const start = PAD + off - back;
-      if (start < 0) break;
+    const url = global.URL.createObjectURL(new global.Blob([ZEROS, blob.slice(off, off + len)]));
+    try {
       const x = new global.XMLHttpRequest();
       x.open('GET', url, false);
       x.overrideMimeType('text/plain; charset=x-user-defined');
-      x.setRequestHeader('Range', `bytes=${start}-${PAD + off + len - 1}`);
       x.send();
-      if (x.status !== 206) throw new Error(`storage read failed (HTTP ${x.status})`);
+      if (x.status !== 200) throw new Error(`storage read failed (HTTP ${x.status})`);
       const s = x.responseText;
-      if (s.length !== len + back) { stats.retries = (stats.retries || 0) + 1; continue; }
-      let clean = true;
-      for (let i = 0; i < back; i++) {
-        const c = s.charCodeAt(i);
-        if (c > 0x7f && (c < 0xf780 || c > 0xf7ff)) { clean = false; break; }
-      }
-      for (let i = 0; clean && i < len; i++) {
-        const c = s.charCodeAt(back + i);
-        if (c > 0x7f && (c < 0xf780 || c > 0xf7ff)) { clean = false; break; }
+      if (s.length !== len + PAD) throw new Error(`storage read failed (${s.length - PAD} of ${len} bytes at ${off})`);
+      for (let i = 0; i < len; i++) {
+        const c = s.charCodeAt(PAD + i);
+        if (c > 0x7f && (c < 0xf780 || c > 0xf7ff)) throw new Error(`storage read failed (not bytes at ${off + i})`);
         dst[dstOff + i] = c;
       }
-      if (!clean) { stats.retries = (stats.retries || 0) + 1; continue; }
-      stats.xhr++;
-      stats.bytes += len;
-      stats.ms += global.performance.now() - t;
-      return;
+    } finally {
+      global.URL.revokeObjectURL(url);
     }
-    throw new Error(`storage read failed (${len} bytes at ${off})`);
+    stats.xhr++;
+    stats.bytes += len;
+    stats.ms += global.performance.now() - t;
   }
 
   function cachePut(key, bytes) {
@@ -92,9 +84,7 @@
   function create(FS, path, size, blobs, chunk) {
     if (chunk % BLOCK) throw new Error('chunk size must be a multiple of ' + BLOCK);
     const id = ++nextId;
-    // A Blob made of other blobs refers to them: nothing is copied.
-    const urls = blobs.map((b) => global.URL.createObjectURL(new global.Blob([ZEROS, b])));
-    files.set(path, { id, blobs, urls, size, chunk });
+    files.set(path, { id, blobs, size, chunk });
     const slash = path.lastIndexOf('/');
     const dir = path.slice(0, slash);
     let cur = '';
@@ -125,12 +115,26 @@
       const pos = k * BLOCK;
       const c = Math.floor(pos / chunk);
       b = new Uint8Array(Math.min(BLOCK, size - pos));
-      rangeRead(urls[c], pos - c * chunk, b.length, b, 0);
+      rangeRead(blobs[c], pos - c * chunk, b.length, b, 0);
       cachePut(key, b);
       return b;
     };
     const ops = Object.assign({}, node.stream_ops);
-    ops.read = (stream, buffer, offset, length, position) => {
+    // A read the browser's storage fails (the chunk was removed under the
+    // page, a picked folder's file changed) is an I/O error to the engine,
+    // not an exception that stops the game.
+    const EIO = 29;
+    const readAll = (stream, buffer, offset, length, position) => {
+      try {
+        return read(stream, buffer, offset, length, position);
+      } catch (e) {
+        stats.errors = (stats.errors || 0) + 1;
+        stats.lastError = `${path}: ${e && e.message || e}`;
+        if (global.console) global.console.warn('Godnotic: ' + stats.lastError);
+        throw new FS.ErrnoError(EIO);
+      }
+    };
+    const read = (stream, buffer, offset, length, position) => {
       if (position >= size) return 0;
       const n = Math.min(length, size - position);
       const dst = new Uint8Array(buffer.buffer, buffer.byteOffset + offset, n);
@@ -146,7 +150,7 @@
           const c = Math.floor(pos / chunk);
           const len = Math.min(want, (c + 1) * chunk - pos);
           for (let j = k; j * BLOCK < pos + len; j++) touched.add(path + '\t' + j);
-          rangeRead(urls[c], pos - c * chunk, len, dst, done);
+          rangeRead(blobs[c], pos - c * chunk, len, dst, done);
           stats.byFile[path + ' (direct MB)'] = (stats.byFile[path + ' (direct MB)'] || 0) + len / 1e6;
           done += len;
           continue;
@@ -158,10 +162,11 @@
       }
       return n;
     };
+    ops.read = readAll;
     ops.write = () => { throw new FS.ErrnoError(2); };
     ops.mmap = () => { throw new FS.ErrnoError(2); };
     node.stream_ops = ops;
-    node.xtLazy = { id, urls, size };
+    node.xtLazy = { id, size };
     stats.files++;
     return node;
   }
@@ -171,7 +176,6 @@
     try {
       const lazy = FS.lookupPath(path).node.xtLazy;
       if (lazy) {
-        for (const u of lazy.urls) global.URL.revokeObjectURL(u);
         for (const [k, v] of [...cache]) if (k.startsWith(lazy.id + ':')) { cache.delete(k); cacheBytes -= v.length; }
       }
     } catch (e) { /* gone */ }
@@ -260,22 +264,15 @@
    */
   async function probe(blob) {
     if (!global.XMLHttpRequest || !global.URL || !global.URL.createObjectURL || !blob || blob.size < 64) return false;
-    const url = global.URL.createObjectURL(blob);
     try {
       const off = Math.floor(blob.size / 2);
       const want = new Uint8Array(await blob.slice(off, off + 16).arrayBuffer());
-      const x = new global.XMLHttpRequest();
-      x.open('GET', url, false);
-      x.overrideMimeType('text/plain; charset=x-user-defined');
-      x.setRequestHeader('Range', `bytes=${off}-${off + 15}`);
-      x.send();
-      if (x.status !== 206 || x.responseText.length !== 16) return false;
-      for (let i = 0; i < 16; i++) if ((x.responseText.charCodeAt(i) & 0xff) !== want[i]) return false;
+      const got = new Uint8Array(16);
+      rangeRead(blob, off, 16, got, 0);
+      for (let i = 0; i < 16; i++) if (got[i] !== want[i]) return false;
       return true;
     } catch (e) {
       return false;
-    } finally {
-      global.URL.revokeObjectURL(url);
     }
   }
 

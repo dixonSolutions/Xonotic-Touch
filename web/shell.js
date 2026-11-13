@@ -4,8 +4,10 @@
 // file is the "platform layer" that a phone or desktop OS would otherwise be:
 //
 //   data        downloads the game data once, in hash-checked 32 MiB chunks,
-//               into OPFS or the Cache API (store.js), then hands the files
-//               to the engine's MEMFS
+//               into the origin private file system (store.js), which the
+//               engine reads in place (lazyfs.js); or reads the stock packs
+//               from a Godnotic folder the player picked; or hands over to
+//               the installed app
 //   saves       mirrors the userdir (config.cfg, layouts) to IndexedDB
 //   display     canvas fills the page; render resolution = CSS size × scale
 //   GPU         WebGL 2 context forced opaque and high-performance; reports
@@ -38,10 +40,14 @@
   const store = {
     get(k, d) { try { const v = localStorage.getItem('xt.' + k); return v === null ? d : v; } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem('xt.' + k, String(v)); } catch (e) { /* private mode */ } },
+    del(k) { try { localStorage.removeItem('xt.' + k); } catch (e) { /* private mode */ } },
+    keys() { try { return Object.keys(localStorage).filter((k) => k.startsWith('xt.')).map((k) => k.slice(3)); } catch (e) { return []; } },
   };
 
-  // The music is no longer optional (one download with everything).
-  try { localStorage.removeItem('xt.music'); localStorage.removeItem('xt.allmaps'); } catch (e) { /* private mode */ }
+  // Keys of pages before this one (there is one download with everything,
+  // the music included, and nothing to choose).
+  store.del('music');
+  store.del('allmaps');
 
   const mq = (q) => { try { return matchMedia(q).matches; } catch (e) { return false; } };
   const hasTouch = (navigator.maxTouchPoints || 0) > 0 || mq('(any-pointer: coarse)');
@@ -89,8 +95,24 @@
   // writes where it got to into localStorage, and "closed" on a normal
   // close, so the next load can tell the player what happened instead of
   // silently starting over.
+  //
+  // Every page holds a Web Lock named after itself for as long as it lives:
+  // a breadcrumb whose page still holds its lock is another tab at work, not
+  // a page the browser closed, and "Clear data" can tell that another tab is
+  // playing.
+  const PAGE_ID = Math.random().toString(36).slice(2, 10);
+  const locks = navigator.locks && navigator.locks.request ? navigator.locks : null;
+  if (locks) { try { locks.request('xt-page-' + PAGE_ID, () => new Promise(() => {})).catch(() => {}); } catch (e) { /* not allowed here */ } }
+  /** The ids of other live pages of this site; null where that cannot be known. */
+  async function otherPages() {
+    if (!locks || !locks.query) return null;
+    try {
+      return ((await locks.query()).held || []).map((l) => l.name)
+        .filter((n) => n.startsWith('xt-page-') && n !== 'xt-page-' + PAGE_ID).map((n) => n.slice(8));
+    } catch (e) { return null; }
+  }
   function crumb(phase, extra) {
-    const c = Object.assign({ phase, t: Date.now(), build: CONFIG.build || '' }, extra || {});
+    const c = Object.assign({ phase, t: Date.now(), build: CONFIG.build || '', id: PAGE_ID }, extra || {});
     state.crumb = c;
     store.set('crumb', JSON.stringify(c));
   }
@@ -103,11 +125,14 @@
     const el = $('xt-st-error');
     if (el) el.textContent = text;
   }
-  function killedReason() {
+  // missing: is any game data still to download? (A breadcrumb left in the
+  // download phase says nothing once the download is complete.)
+  function killedReason(missing) {
     const c = prevCrumb;
-    if (!c || c.closed || c.phase === 'quit') return '';
+    if (!c || c.closed || c.phase === 'quit' || state.prevAlive) return '';
+    if (c.phase === 'download' && !missing) return '';
     const at = {
-      download: `while downloading (${c.done || 0} of ${c.total || '?'} pieces were saved; it carries on from there)`,
+      download: 'while downloading (what had arrived is kept; it carries on from there)',
       mount: 'while loading the game data',
       engine: 'while starting the game',
       running: 'during a game',
@@ -542,12 +567,6 @@
     return out;
   }
 
-  const PROFILE_LABEL = {
-    web: 'Standard (for every graphics chip)',
-    astc: 'Light (ASTC textures, Opus music: phones, tablets, Apple)',
-    full: 'Full download (as stored before maps on demand)',
-  };
-
   /**
    * Which profile this browser uses: ?profile=, the one chosen before (while
    * it is still offered and, for a "keep" profile, still whole), a returning
@@ -574,7 +593,10 @@
       return false;
     };
     const saved = store.get('profile', '');
-    if (saved && offered[saved]) {
+    // A set this GPU can no longer draw (another GPU, a driver without ASTC)
+    // is not kept.
+    const drawable = (name) => !(offered[name].gpu === 'astc' && !(gpu && gpu.astc));
+    if (saved && offered[saved] && drawable(saved)) {
       if (!offered[saved].keep || await keepWhole(saved)) return saved;
     }
     for (const [name, spec] of Object.entries(offered)) {
@@ -687,8 +709,17 @@
                 },
               });
             };
-            if (navigator.locks && navigator.locks.request) await navigator.locks.request('xt-data-download', { signal: controller.signal }, fetchAll);
-            else await fetchAll();
+            if (locks) {
+              let mine = false;
+              await locks.request('xt-data-download', { ifAvailable: true }, async (l) => { if (l) { mine = true; await fetchAll(); } });
+              if (!mine) {
+                el('label').textContent = 'Another tab is downloading the game data. This one carries on when it is done.';
+                await locks.request('xt-data-download', { signal: controller.signal }, async () => {
+                  el('label').textContent = label;
+                  await fetchAll();
+                });
+              }
+            } else await fetchAll();
             paint(true);
             return;
           } catch (e) {
@@ -878,7 +909,7 @@
   const lowMemory = (navigator.deviceMemory && navigator.deviceMemory <= 4) || touchOnly;
   const AHEAD_MAX = (lowMemory ? 160 : 384) * 1048576;
   const IDLE_CACHE = 16 * 1048576;
-  const hotKey = () => 'hot:' + state.profile;
+  const hotKey = () => 'hot:' + state.profile + (state.folder ? '+folder' : '');
   function hotList() { try { return JSON.parse(store.get(hotKey(), '{}')) || {}; } catch (e) { return {}; } }
   function remember(touched) {
     const hot = hotList();
@@ -950,12 +981,183 @@
     });
   }
 
+  const ua = navigator.userAgent || '';
+
+  // ------------------------------------------------ the installed app
+  //
+  // A page cannot look at the device's files or at another app's data, so it
+  // cannot find a Godnotic install by itself (docs/WEB.md, "An existing
+  // install"). What it can do: ask Chromium on Android whether the Godnotic
+  // app is installed (getInstalledRelatedApps: the web manifest names the
+  // app, the app names this site), and hand over to the app, which has the
+  // game data and the settings. Elsewhere there is no way to know, so the
+  // first visit offers the hand-over as a plain link.
+  const APP_PACKAGE = 'io.github.dixonsolutions.xonotictouch';
+  const isAndroid = /Android/i.test(ua);
+  const isChromium = !!navigator.userAgentData || /Chrom(e|ium)\//.test(ua);
+  const isLinux = !isAndroid && /Linux|X11/i.test(navigator.platform || ua);
+  function appHref() {
+    if (isAndroid && isChromium) {
+      // An intent URL names the package, and comes back here (with ?noapp)
+      // when the app is not installed after all.
+      const back = new URL(location.href);
+      back.searchParams.set('noapp', '1');
+      return `intent://open#Intent;scheme=godnotic;package=${APP_PACKAGE};S.browser_fallback_url=${encodeURIComponent(back.href)};end`;
+    }
+    return 'godnotic://open';
+  }
+  /** {known, href}: known when the browser says the app is installed. */
+  async function nativeApp() {
+    if (params.has('noapp')) return null;
+    let known = false;
+    if (navigator.getInstalledRelatedApps) {
+      try { known = (await navigator.getInstalledRelatedApps()).some((a) => a.id === APP_PACKAGE); } catch (e) { /* not top-level, or not allowed */ }
+    }
+    if (known || isAndroid || isLinux) return { known, href: appHref() };
+    return null;
+  }
+
+  // ------------------------------------------ an existing Godnotic folder
+  //
+  // Desktop Chromium only (showDirectoryPicker): the player picks the folder
+  // of an installed Godnotic (or Xonotic) once; the handle is kept in
+  // IndexedDB and the browser asks, or remembers, the permission on later
+  // visits. The stock packs in it (data, maps, music, fonts) are read in
+  // place, read only; this build's own files still come from the site.
+  const FOLDER_HINT = 'The Flatpak keeps it in ~/.var/app/io.github.dixonSolutions.XonoticTouch/data/xonotic-touch/data (type the path with Ctrl+L: the folder is hidden).';
+  /** "data", "maps", "music", "xoncompat", "font-unifont"…: which stock pack a file name is, '' for others. */
+  function packKind(name, whole) {
+    let m = /^xonotic-[^-]+-(data|maps|music|xoncompat)(-[0-9a-z_.]+)?\.pk3$/i.exec(name);
+    if (m) return whole && m[2] ? '' : m[1].toLowerCase();
+    m = /^(font-[a-z0-9]+)-[^-]+\.pk3$/i.exec(name);
+    return m ? m[1].toLowerCase() : '';
+  }
+  /** The shallowest directory under root (depth 4) with a data and a maps pk3. */
+  async function folderScan(root) {
+    let level = [root];
+    let seen = 0;
+    for (let depth = 0; depth <= 4 && level.length; depth++) {
+      const next = [];
+      for (const dir of level) {
+        const pk3 = new Map();
+        let config = null;
+        for await (const [name, h] of dir.entries()) {
+          if (++seen > 20000) return null;
+          if (h.kind === 'file') {
+            const kind = packKind(name, true);
+            if (kind && (!pk3.has(kind) || name > pk3.get(kind).name)) pk3.set(kind, { name, handle: h });
+            if (name === 'config.cfg') config = h;
+          } else if (!/\.pk3dir$/i.test(name) && name !== 'dlcache') next.push(h);
+        }
+        if (pk3.has('data') && pk3.has('maps')) return { dir, pk3, config };
+      }
+      level = next;
+    }
+    return null;
+  }
+  /** A pk3's central directory: null when the file is not a whole zip. */
+  async function zipDirectory(file) {
+    const tail = new Uint8Array(await file.slice(Math.max(0, file.size - 65557)).arrayBuffer());
+    for (let i = tail.length - 22; i >= 0; i--) {
+      if (tail[i] !== 0x50 || tail[i + 1] !== 0x4b || tail[i + 2] !== 5 || tail[i + 3] !== 6) continue;
+      const v = new DataView(tail.buffer, i);
+      const size = v.getUint32(12, true);
+      const off = v.getUint32(16, true);
+      if (off + size > file.size) return null;
+      return new Uint8Array(await file.slice(off, off + size).arrayBuffer());
+    }
+    return null;
+  }
+  const hasBytes = (hay, text) => {
+    const n = Array.from(text, (c) => c.charCodeAt(0));
+    outer: for (let i = 0; i + n.length <= hay.length; i++) {
+      for (let j = 0; j < n.length; j++) if (hay[i + j] !== n[j]) continue outer;
+      return true;
+    }
+    return false;
+  };
+  /** Check a picked folder and open its packs: {name, files: [{kind, name, file, size}], kinds, config}. */
+  async function folderOpen(root, gpu) {
+    const found = await folderScan(root);
+    if (!found) throw new Error(`No Godnotic game data in “${root.name}”: it needs xonotic-…-data.pk3 and xonotic-…-maps.pk3. ${FOLDER_HINT}`);
+    const files = [];
+    for (const [kind, { name, handle }] of found.pk3) {
+      const file = await handle.getFile();
+      const dir = await zipDirectory(file);
+      if (!dir) throw new Error(`${name} in that folder is not complete (still downloading in the app?)`);
+      if (kind === 'data' && hasBytes(dir, '.ktx') && !(gpu && gpu.astc)) {
+        throw new Error('That folder holds the phone data set (ASTC textures), which this device’s graphics chip cannot draw');
+      }
+      files.push({ kind, name, file, size: file.size });
+    }
+    const big = files.find((x) => x.kind === 'data');
+    if (typeof XTLazyFS === 'undefined' || !(await XTLazyFS.probe(big.file))) throw new Error('This browser cannot read game files in place from a folder');
+    return { name: root.name, files, kinds: new Set(files.map((x) => x.kind)), config: found.config };
+  }
+  function folderKv(mode, fn) {
+    return new Promise((resolve, reject) => {
+      const open = indexedDB.open('xt-folder', 1);
+      open.onupgradeneeded = () => open.result.createObjectStore('h');
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const db = open.result;
+        const tx = db.transaction('h', mode);
+        const rq = fn(tx.objectStore('h'));
+        tx.oncomplete = () => { db.close(); resolve(rq && rq.result); };
+        tx.onerror = tx.onabort = () => { db.close(); reject(tx.error); };
+      };
+    });
+  }
+  /** The folder chosen earlier: opened, or {pending} while the browser wants to be asked again, or null. */
+  async function folderAtStart(gpu) {
+    if (store.get('folder', '') !== '1' || typeof indexedDB === 'undefined') return null;
+    let h = null;
+    try { h = await folderKv('readonly', (s) => s.get('root')); } catch (e) { return null; }
+    if (!h) { store.del('folder'); return null; }
+    let perm = 'granted';
+    try { if (h.queryPermission) perm = await h.queryPermission({ mode: 'read' }); } catch (e) { perm = 'denied'; }
+    if (perm !== 'granted') return { pending: h, name: h.name };
+    try {
+      return await folderOpen(h, gpu);
+    } catch (e) {
+      problem(`The folder “${h.name}” cannot be used: ${e.message || e}. Using the browser’s own copy of the game data instead.`);
+      return null;
+    }
+  }
+  function mountFolder() {
+    if (!state.lazy) throw new Error('This browser cannot read game files in place from a folder. Stop using the folder in the menu.');
+    for (const x of state.folder.files) {
+      const path = `${BASEDIR}/data/${x.name}`;
+      const parts = [];
+      for (let off = 0; off < x.size; off += data.chunk) parts.push(x.file.slice(off, Math.min(x.size, off + data.chunk)));
+      XTLazyFS.create(Module.FS, path, x.size, parts, data.chunk);
+      mounts.set(path, { group: 'folder', size: x.size, name: x.name, path: 'data/' + x.name });
+      enginePaths.add(path);
+    }
+  }
+  // Settings to take over (a config.cfg from the folder, or one the player
+  // chose with "Import settings"): written into the userdir before the
+  // engine starts.
+  function importConfig() {
+    const text = store.get('import-config', '');
+    if (!text) return;
+    store.del('import-config');
+    try {
+      const path = `${USERDIR}/data/config.cfg`;
+      mkdirs(Module.FS, path);
+      Module.FS.writeFile(path, text);
+      syncFS(true);
+      toast('Settings imported.');
+    } catch (e) {
+      problem('Importing the settings failed: ' + (e && e.message || e));
+    }
+  }
+  const looksLikeConfig = (text) => text.length < 2e6 && /^\s*(seta?|bind)\s/m.test(text);
+
   // ------------------------------------------- storage: persistence, install
 
-  const ua = navigator.userAgent || '';
   const isIOS = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1);
   const isSafari = /^((?!chrome|chromium|crios|fxios|android|edg).)*safari/i.test(ua);
-  const installed = () => mq('(display-mode: standalone)') || mq('(display-mode: fullscreen)') || navigator.standalone === true;
   let installPrompt = null;
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
@@ -975,19 +1177,35 @@
   async function persisted() {
     try { return !!(navigator.storage && navigator.storage.persisted && await navigator.storage.persisted()); } catch (e) { return false; }
   }
-  // Best-effort storage is the browser's to clear under disk pressure; ask
-  // for it to be kept once there is something worth keeping.
-  // Firefox shows a prompt for this and resolves only when it is answered:
-  // callers must not wait for it.
-  let persistAsked = null;
-  function requestPersist() {
-    if (persistAsked) return persistAsked;
-    persistAsked = (async () => {
-      if (!navigator.storage || !navigator.storage.persist || await persisted()) return;
-      try { await navigator.storage.persist(); } catch (e) { /* not offered */ }
-      try { if (data) await showStorage(); } catch (e) { /* panel only */ }
-    })();
-    return persistAsked;
+  // Best-effort storage is the browser's to clear under disk pressure.
+  // Persistent storage is the player's choice, never the page's: the switch
+  // in the Storage popover calls persist() inside that click and shows what
+  // the browser answered (Chrome decides by itself, Firefox asks the player,
+  // nothing can take the answer back but the browser's own site settings).
+  const PERSIST_NO = /firefox/i.test(navigator.userAgent || '')
+    ? 'The browser did not allow it (its question was dismissed or blocked for this site). The game data stays, but the browser may clear it when the device runs short of space.'
+    : 'The browser did not allow it. It decides by itself, and says yes for sites that are installed (Install app), bookmarked or used often. The game data stays, but the browser may clear it when the device runs short of space.';
+  async function setPersist(sw) {
+    const out = $('xt-persist-text');
+    const can = !!(navigator.storage && navigator.storage.persist);
+    if (!sw.checked) {
+      if (await persisted()) {
+        sw.checked = true;
+        out.textContent = 'Only the browser can turn this off again: in its site settings for this page.';
+      }
+      return;
+    }
+    if (!can) { sw.checked = false; out.textContent = 'This browser has no persistent storage.'; return; }
+    sw.disabled = true;
+    out.textContent = 'Asking the browser…';
+    state.persistAnswer = 'pending';
+    try { await navigator.storage.persist(); } catch (e) { /* not offered */ }
+    const kept = await persisted();
+    state.persistAnswer = kept ? 'granted' : 'denied';
+    sw.disabled = false;
+    sw.checked = kept;
+    out.textContent = kept ? 'The browser keeps the game data until you delete it.' : PERSIST_NO;
+    if (data) showStorage().catch(() => {});
   }
 
   const BACKEND_LABEL = {
@@ -1007,18 +1225,24 @@
     const total = files.reduce((n, f) => n + f.size, 0);
     const est = await estimate();
     const kept = await persisted();
-    $('xt-st-backend').textContent = (BACKEND_LABEL[data.kind] || data.kind) + (data.why && data.why.length && data.kind !== 'opfs' ? ` (${data.why.join('; ')})` : '');
+    let where = (BACKEND_LABEL[data.kind] || data.kind) + (data.why && data.why.length && data.kind !== 'opfs' ? ` (${data.why.join('; ')})` : '');
+    const fold = state.folder;
+    if (fold) where = `Folder “${fold.name}” (read only, ${mb(fold.files.reduce((n, x) => n + x.size, 0))}) · ${where}`;
+    $('xt-st-backend').textContent = where;
+    $('xt-folder').hidden = !window.showDirectoryPicker || !!fold || !!state.folderPending;
+    $('xt-folder-stop').hidden = !fold && !state.folderPending;
     $('xt-st-stored').textContent = `${mb(used)} of ${mb(total)}` + (state.profile ? ` · ${state.profile === 'astc' ? 'ASTC set' : state.profile === 'full' ? 'full set' : 'standard set'}` : '');
     $('xt-st-quota').textContent = est && est.quota ? `${mb(est.usage || 0)} used of ${mb(est.quota)}` : 'not reported';
-    $('xt-st-persist').textContent = kept ? 'Yes, until you delete it' : 'No: may be cleared when space runs low';
+    const sw = $('xt-opt-persist');
+    $('xt-opt-persist-row').hidden = data.kind === 'memory' || !(navigator.storage && navigator.storage.persist);
+    if (!sw.disabled) sw.checked = kept;
+    if (!state.persistAnswer) $('xt-persist-text').textContent = kept ? 'The browser keeps the game data until you delete it.' : 'Off: the data stays between visits, but the browser may clear it when the device runs short of space.';
     const last = state.problem || (() => { try { return JSON.parse(store.get('problem', '') || 'null').text; } catch (e) { return ''; } })();
     $('xt-st-error').textContent = last || data.be.lastError || 'None';
     let why = '';
     if (!kept && data.kind !== 'memory') {
       if (isSafari) why = 'Safari deletes it after 7 days without a visit unless the page is on the Home Screen.';
-      else if (installPrompt) why = 'Installing the app keeps it.';
       else if (isIOS) why = 'To keep it, add this page to the Home Screen (Share, then Add to Home Screen) and play from there.';
-      else if (!installed()) why = 'Installing this page as an app (browser menu) keeps it.';
     }
     $('xt-storage-text').textContent = why;
   }
@@ -1031,7 +1255,7 @@
     const free = est.quota - (est.usage || 0);
     const fits = free > need * 1.05;
     el.textContent = fits ? `${mb(free)} free for this site.` : '';
-    if (!fits) problem(`Not enough space: this needs ${mb(need)} and the browser offers ${mb(free)} for this site. Free some disk space${navigator.storage && navigator.storage.persist ? ', or allow the site to store data persistently when asked' : ''}.`);
+    if (!fits) problem(`Not enough space: this needs ${mb(need)} and the browser offers ${mb(free)} for this site. Free some disk space${navigator.storage && navigator.storage.persist ? ', or turn on "Keep game data on this device" in the menu (some browsers then allow more)' : ''}.`);
     return fits;
   }
 
@@ -1158,8 +1382,6 @@
       const AC = window.AudioContext || window.webkitAudioContext;
       if (AC) { const probe = new AC(); state.sampleRate = probe.sampleRate; probe.close(); }
     } catch (e) { /* no audio device */ }
-    requestPersist().catch(() => {});
-
     $('xt-overlay').classList.add('xt-gone');
     canvas.focus({ preventScroll: true });
     state.started = true;
@@ -1214,7 +1436,7 @@
 
     status('Starting…');
     try {
-      data = await XTStore.Store.open({ preferCache: params.get('store') === 'cache' });
+      data = await XTStore.Store.open({ preferCache: params.get('store') === 'cache', writer: params.get('store') === 'opfs-worker' ? 'worker' : 'auto' });
     } catch (e) {
       return fail(e.message || String(e));
     }
@@ -1228,9 +1450,18 @@
       const name = await chooseProfile(list, gpu);
       profile = await loadProfile(name, list.profiles[name]);
     } catch (e) { return fail(e.message || String(e)); }
-    const files = profile.files;
+    // A Godnotic folder the player picked (Storage popover): its stock packs
+    // are read in place, and only the rest is kept in the browser.
+    const fold = await folderAtStart(gpu);
+    if (fold && fold.files) state.folder = fold;
+    else if (fold && fold.pending) state.folderPending = fold;
+    const files = state.folder ? profile.files.filter((f) => !(f.stock && state.folder.kinds.has(packKind(f.name)))) : profile.files;
     state.files = files;
     state.profile = profile.name;
+    {
+      const others = await otherPages();
+      state.prevAlive = !!(others && prevCrumb && prevCrumb.id && others.includes(prevCrumb.id));
+    }
     for (const f of files) if (f.group === 'map' && f.map) maps.byName.set(normMap(f.map), f);
     mark('manifest');
     // Claim this release's chunks before downloading any: another tab's
@@ -1241,6 +1472,7 @@
     // to choose. Files the host no longer serves (the full set's maps pk3)
     // only count when they are here.
     const startedKey = profile.name === 'web' ? 'started' : 'started-' + profile.name;
+    const idsKey = 'ids-' + profile.name;
     const hadStart = store.get(startedKey, '') === '1' || (profile.name === 'full' && store.get('started', '') === '1');
     const selected = () => files.filter((f) => f.hosted !== false);
 
@@ -1259,25 +1491,39 @@
     mark('checked');
     // Closed by the browser last time (memory, a discarded tab): say so,
     // even when nothing has to be downloaded again.
-    if (!missing.length && killedReason()) problem(killedReason());
+    if (!missing.length && killedReason(false)) problem(killedReason(false));
 
     if (missing.length) {
       // Why the page has to download, in one line (and the console).
       const allChunks = new Set(selected().flatMap((f) => f.chunks)).size;
       const firstInstall = missing.length === allChunks;
-      let reason = killedReason();
+      const total = selected().reduce((n, f) => n + f.size, 0);
+      // The release this browser last started with: when it is the same one
+      // and data is missing, the browser (or the player) removed it; that is
+      // not an update.
+      const sameRelease = hadStart && store.get(idsKey, '') === profile.ids.join(',');
+      // A page closed mid-download explains missing data best; closed at
+      // another time, it explains nothing about data that is gone.
+      const killed = killedReason(true);
+      let reason = prevCrumb && prevCrumb.phase === 'download' ? killed : '';
       if (!reason && data.kind === 'memory') reason = 'Nothing can be stored in this window, so the game data downloads on every visit.';
-      if (!reason && firstInstall && hadStart) reason = 'The game data is gone from this browser: it was cleared (site data deleted, or removed by the browser to free space, since it was not kept persistently).';
+      if (!reason && hadStart && (firstInstall || sameRelease)) {
+        reason = (firstInstall ? 'The game data is gone from this browser' : `${mb(sum(missing))} of the game data is gone from this browser`) +
+          ': the browser removed it (to free space, or because its site data was deleted). Downloading ' + (firstInstall ? 'it' : 'that part') + ' again.';
+      }
       if (!reason && !firstInstall && hadStart) reason = `An update: ${mb(sum(missing))} changed.`;
+      if (!reason) reason = killed;
       if (reason) problem(reason);
-      // A small update (new game code, a config): fetch it and go on. The
-      // question is for first installs and big downloads.
-      // Visitors who left the music out when it was optional get it the
-      // same way, whatever its size.
-      const onlyMusic = missing.every((c) => c.file.group === 'music');
-      if (!firstInstall && (sum(missing) <= SMALL_UPDATE || onlyMusic) && !params.has('ask')) {
+      // No question for a returning visitor whose data the browser removed
+      // (the same release as last time: only what is gone comes again), nor
+      // for an update that is small (new game code, a config) or a small
+      // part of the whole. The question is for first installs, big updates,
+      // and a Godnotic folder waiting for its permission.
+      const restore = hadStart && (firstInstall || sameRelease) && data.kind !== 'memory';
+      const small = !firstInstall && (sum(missing) <= SMALL_UPDATE || sum(missing) <= total / 4);
+      if ((restore || small) && !state.folderPending && !params.has('ask')) {
         try {
-          await runDownload(missing, 'Updating…');
+          await runDownload(missing, restore ? 'Downloading the game data again…' : 'Updating…');
         } catch (e) {
           if (!(e && e.name === 'AbortError')) problem(e.message || String(e));
         }
@@ -1299,6 +1545,31 @@
           $('xt-dl-reason').textContent = reason;
           $('xt-dl-go').textContent = already >= 1e6 ? 'Continue' : 'Download';
           await freeSpaceLine(need);
+          // Where the browser may not keep it, say so before the download.
+          $('xt-dl-keep').hidden = data.kind === 'memory' || await persisted();
+          // The installed app, or a folder waiting for its permission.
+          const app = hadStart ? null : await nativeApp();
+          $('xt-app').hidden = !app && !state.folderPending;
+          $('xt-app-text').hidden = !(app && app.known);
+          $('xt-app-open').hidden = !app;
+          if (app) {
+            $('xt-app-open').href = app.href;
+            $('xt-app-open').textContent = app.known ? 'Open the Godnotic app' : 'Have the Godnotic app? Open it';
+            $('xt-app-open').classList.toggle('adw-suggested', app.known);
+            $('xt-app-open').classList.toggle('adw-flat', !app.known);
+            $('xt-dl-go').classList.toggle('adw-suggested', !app.known);
+            state.app = app;
+          }
+          $('xt-folder-use').hidden = !state.folderPending;
+          if (state.folderPending) {
+            $('xt-folder-use').textContent = `Use the folder “${state.folderPending.name}”`;
+            $('xt-folder-use').onclick = async () => {
+              let p = 'denied';
+              try { p = await state.folderPending.pending.requestPermission({ mode: 'read' }); } catch (e) { /* dismissed */ }
+              if (p === 'granted') location.reload();
+              else toast('The browser did not allow reading that folder.');
+            };
+          }
         };
         await refresh();
         while (missing.length) {
@@ -1306,9 +1577,6 @@
           $('xt-dl-go').focus({ preventScroll: true });
           // ?autodownload (tests): no click.
           if (!params.has('autodownload')) await new Promise((resolve) => { $('xt-dl-go').onclick = resolve; });
-          // Asked inside the click: Firefox shows its prompt only then, and
-          // persistent storage gets the larger quota and is not evicted.
-          requestPersist().catch(() => {});
           try {
             await runDownload(missing, 'Downloading Godnotic…');
           } catch (e) {
@@ -1326,10 +1594,6 @@
           await refresh();
         }
       }
-      // Never awaited: Firefox answers persist() only when the player
-      // answers its permission prompt, and until then the game would not
-      // start (production did this: a finished download that hung at 100%).
-      requestPersist().catch(() => {});
     }
     mark('data-ready');
 
@@ -1339,6 +1603,7 @@
     mark('engine-ready');
     try {
       await mountUserdir();
+      importConfig();
       state.lazy = await decideLazy();
       // Lazy: everything stored costs nothing until read. In memory: the
       // core and the music; maps when they are played.
@@ -1346,10 +1611,12 @@
       const here = await Promise.all(files.map(async (f) => !(await data.missing([f])).length));
       files.forEach((f, i) => {
         if (!here[i]) return;
-        if (!state.lazy && f.group !== 'core' && f.group !== 'music') return;
+        // In memory: everything but the map packs (one at a time, when played).
+        if (!state.lazy && f.group === 'map') return;
         complete.push(f);
       });
       await mountData(complete);
+      if (state.folder) mountFolder();
     } catch (e) {
       problem('Loading the game data failed: ' + (e.message || e));
       return fail(e.message || String(e));
@@ -1357,6 +1624,7 @@
     mark('mounted');
     state.warming = warm(null).then(() => mark('warmed'));
     store.set(startedKey, 1);
+    store.set(idsKey, profile.ids.join(','));
     store.set('profile', profile.name);
     // Every file this start needs was there: drop what no page path that
     // started recently still lists (older releases' chunks, old layouts).
@@ -1395,8 +1663,59 @@
     }
     btn.disabled = false;
   };
+  $('xt-opt-persist').onchange = (e) => { setPersist(e.target).catch(() => {}); };
+  $('xt-folder').onclick = async () => {
+    const out = $('xt-verify-text');
+    let h;
+    try {
+      h = await window.showDirectoryPicker({ id: 'godnotic-data', mode: 'read' });
+    } catch (e) {
+      if (!e || e.name !== 'AbortError') out.textContent = 'The browser did not open that folder: ' + (e && e.message || e);
+      return;
+    }
+    out.textContent = 'Looking for the game data…';
+    try {
+      const f = await folderOpen(h, state.gpu);
+      await folderKv('readwrite', (s) => s.put(h, 'root'));
+      store.set('folder', 1);
+      if (f.config) {
+        const text = await (await f.config.getFile()).text();
+        const fresh = !store.keys().some((k) => k.startsWith('started'));
+        if (looksLikeConfig(text) && (fresh || confirm('Also use the settings (config.cfg) found in that folder? They replace the settings of the game in this browser.'))) store.set('import-config', text);
+      }
+      out.textContent = `Using ${f.files.map((x) => x.name).join(', ')}. Restarting…`;
+      location.reload();
+    } catch (e) {
+      out.textContent = (e && e.message || String(e)) + '.';
+    }
+  };
+  $('xt-folder-stop').onclick = async () => {
+    try { await folderKv('readwrite', (s) => s.delete('root')); } catch (e) { /* gone */ }
+    store.del('folder');
+    location.reload();
+  };
+  $('xt-import').onclick = () => $('xt-import-file').click();
+  $('xt-import-file').onchange = async (e) => {
+    const out = $('xt-verify-text');
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const text = file.size < 2e6 ? await file.text() : '';
+    if (!looksLikeConfig(text)) { out.textContent = 'That is not a Godnotic or Xonotic config.cfg.'; return; }
+    if (!confirm('Replace the settings of the game in this browser with this file? The page restarts.')) return;
+    store.set('import-config', text);
+    location.reload();
+  };
+  if (params.has('noapp')) setTimeout(() => toast('The Godnotic app is not installed on this device.', 6000), 0);
   $('xt-clear').onclick = async () => {
+    const others = await otherPages();
+    if (others && others.length) {
+      $('xt-verify-text').textContent = 'Godnotic is open in another tab or window. Close it first: clearing the data would stop its game.';
+      return;
+    }
     if (!confirm('Delete the downloaded game data from this browser? Your settings stay. The next start downloads it again.')) return;
+    // The player's own doing: the next visit is a first visit, with its
+    // question, not data "removed by the browser" that comes back unasked.
+    for (const k of store.keys()) if (/^(started|ids-|crumb$|problem$)/.test(k)) store.del(k);
     try {
       const root = await navigator.storage.getDirectory();
       await root.removeEntry(XTStore.NAME, { recursive: true });
@@ -1442,6 +1761,8 @@
     mounts,
     lazyStats: () => typeof XTLazyFS !== 'undefined' ? Object.assign({ cacheBytes: XTLazyFS.cacheBytes }, XTLazyFS.stats) : null,
     backgroundStatus,
+    folder: { packKind, folderScan, folderOpen, zipDirectory },
+    nativeApp,
   };
 
   main().catch((e) => fail(e && e.message || String(e)));

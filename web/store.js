@@ -14,8 +14,8 @@
 //                     path never deletes what another path (or an older
 //                     tab) still needs
 //
-// Where: the origin private file system (OPFS) where it is writable, else the
-// Cache API (keyed by name, never by the data host, so moving the data to
+// Where: the origin private file system (OPFS) where it is writable (from the
+// page, or from a worker where only that can write), else the Cache API (keyed by name, never by the data host, so moving the data to
 // another host keeps everything). Both live under "xt-data-v1", the name the
 // older layout used: pages from before this layout kept whole files there
 // ("<rev>-<path>" in OPFS, "<data url>?rev=&part=" in the Cache API), and
@@ -41,11 +41,85 @@
   // ------------------------------------------------------------ backends
   // A flat name -> bytes store: list, size (-1: absent), blob, write, remove.
 
-  async function opfsBackend(why = []) {
+  // Browsers whose OPFS has no createWritable() on the main thread (Safari
+  // before 26) can still write it from a worker, with
+  // createSyncAccessHandle(). The worker is made from this text, so the page
+  // needs no extra file. It writes in place (truncate, write, flush): a
+  // write cut short leaves a file of the wrong size, which the store treats
+  // as absent (has() compares sizes) and downloads again.
+  const WORKER_SOURCE = `
+    let dirp = null;
+    onmessage = async (e) => {
+      const { id, dir, name, bytes } = e.data;
+      try {
+        dirp = dirp || navigator.storage.getDirectory().then((r) => r.getDirectoryHandle(dir, { create: true }));
+        const fh = await (await dirp).getFileHandle(name, { create: true });
+        const h = await fh.createSyncAccessHandle();
+        try {
+          h.truncate(0);
+          let off = 0;
+          while (off < bytes.byteLength) {
+            const n = h.write(bytes.subarray(off), { at: off });
+            if (!n) throw new Error('short write');
+            off += n;
+          }
+          h.flush();
+        } finally {
+          h.close();
+        }
+        postMessage({ id });
+      } catch (err) {
+        postMessage({ id, error: { name: err && err.name || 'Error', message: err && err.message || String(err) } });
+      }
+    };`;
+
+  function workerWriter() {
+    let worker = null;
+    let next = 0;
+    const waiting = new Map();
+    const start = () => {
+      const url = global.URL.createObjectURL(new global.Blob([WORKER_SOURCE], { type: 'text/javascript' }));
+      worker = new global.Worker(url);
+      worker.onmessage = (e) => {
+        const w = waiting.get(e.data.id);
+        if (!w) return;
+        waiting.delete(e.data.id);
+        if (e.data.error) {
+          const err = new Error(e.data.error.message);
+          err.name = e.data.error.name;
+          w.reject(err);
+        } else w.resolve();
+      };
+      worker.onerror = (e) => {
+        for (const w of waiting.values()) w.reject(new Error('storage worker failed: ' + (e && e.message || 'error')));
+        waiting.clear();
+        worker = null;
+      };
+    };
+    return (name, bytes) => new Promise((resolve, reject) => {
+      if (!worker) start();
+      const id = ++next;
+      waiting.set(id, { resolve, reject });
+      // A copy: the caller reuses its buffer for the next chunk.
+      const copy = bytes.slice();
+      worker.postMessage({ id, dir: NAME, name, bytes: copy }, [copy.buffer]);
+    });
+  }
+
+  /**
+   * The origin private file system. writer: 'auto' writes with
+   * createWritable() on the main thread where it exists (Chrome, Edge,
+   * Firefox, Safari 26+) and from a worker with createSyncAccessHandle()
+   * otherwise (Safari 15.2-18); 'worker' forces the latter (tests).
+   */
+  async function opfsBackend(why = [], writer = 'auto') {
     const nav = global.navigator;
     if (!nav.storage || !nav.storage.getDirectory) { why.push('OPFS: not offered'); return null; }
     const FH = global.FileSystemFileHandle;
-    if (!FH || !('createWritable' in FH.prototype)) { why.push('OPFS: no createWritable (Safari before 26)'); return null; }
+    const mainWrites = !!(FH && 'createWritable' in FH.prototype);
+    const workerWrites = !!(FH && 'createSyncAccessHandle' in FH.prototype && global.Worker && global.URL && global.URL.createObjectURL);
+    const useWorker = writer === 'worker' ? workerWrites : !mainWrites && workerWrites;
+    if (!mainWrites && !useWorker) { why.push('OPFS: no way to write files here'); return null; }
     let dir;
     try {
       dir = await (await nav.storage.getDirectory()).getDirectoryHandle(NAME, { create: true });
@@ -54,26 +128,33 @@
       return null;
     }
     const files = new Map();
+    const viaWorker = useWorker ? workerWriter() : null;
     return {
       kind: 'opfs',
+      writer: useWorker ? 'worker' : 'main',
       async list() {
         const names = [];
         for await (const [name, h] of dir.entries()) if (h.kind === 'file') names.push(name);
         return names;
       },
       async size(name) {
-        try {
-          // Chunks never change once written: keep the File (a snapshot that
-          // reads from disk) for the mount that follows the check.
-          const f = await (await dir.getFileHandle(name)).getFile();
-          if (name.startsWith('c-')) files.set(name, f);
-          return f.size;
-        } catch (e) {
-          // Not there is -1. Anything else is a read failure: also treated as
-          // absent (the chunk is fetched again, never deleted), but kept for
-          // the Storage panel.
-          if (!e || (e.name !== 'NotFoundError' && e.name !== 'TypeMismatchError')) this.lastError = `${e && e.name}: ${e && e.message}`;
-          return -1;
+        // Not there is -1. Any other failure (the file is locked by a write
+        // in another tab, the disk hiccuped) is tried again before the
+        // chunk is taken as absent: then it is fetched again and written
+        // over, never deleted, and the Storage panel shows the error.
+        for (let attempt = 0; ; attempt++) {
+          try {
+            // Chunks never change once written: keep the File (a snapshot
+            // that reads from disk) for the mount that follows the check.
+            const f = await (await dir.getFileHandle(name)).getFile();
+            if (name.startsWith('c-')) files.set(name, f);
+            return f.size;
+          } catch (e) {
+            if (e && (e.name === 'NotFoundError' || e.name === 'TypeMismatchError')) return -1;
+            if (attempt < 2) { await sleep(40 * (attempt + 1)); continue; }
+            this.lastError = `${name.slice(0, 14)}…: ${e && e.name}: ${e && e.message}`;
+            return -1;
+          }
         }
       },
       async blob(name) {
@@ -83,6 +164,7 @@
       },
       async write(name, bytes) {
         files.delete(name);
+        if (viaWorker) return viaWorker(name, bytes);
         // createWritable() writes a swap file that replaces the entry on
         // close(): a reader never sees half a chunk.
         const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
@@ -179,11 +261,11 @@
      * when nothing is stored yet, that is before a first download).
      * store.why lists why a better backend was not used.
      */
-    static async open({ preferCache = false, chunk = 32 * 1024 * 1024, probe = 'auto', memoryOk = true } = {}) {
+    static async open({ preferCache = false, chunk = 32 * 1024 * 1024, probe = 'auto', memoryOk = true, writer = 'auto' } = {}) {
       const why = [];
       let opfs = null;
       if (!preferCache) {
-        try { opfs = await opfsBackend(why); } catch (e) { why.push('OPFS: ' + (e && e.message || e)); }
+        try { opfs = await opfsBackend(why, writer); } catch (e) { why.push('OPFS: ' + (e && e.message || e)); }
       }
       let cache = null;
       try { cache = await cacheBackend(); } catch (e) { why.push('Cache API: ' + (e && (e.name + ': ' + e.message) || e)); }
@@ -480,7 +562,7 @@
     /**
      * Delete what no live page path needs. Call only after a start that had
      * every chunk it needed. Every path that started within REF_MAX_AGE keeps
-     * all chunks of its manifests (music too, chosen or not); a manifest this
+     * all chunks of its manifests; a manifest this
      * store cannot read stops the prune altogether.
      */
     async prune(page, ids) {

@@ -59,10 +59,18 @@
     <section id="xt-download" class="adw-status" aria-labelledby="xt-dl-title" hidden>
       <p class="adw-title-1" id="xt-dl-title">Download Godnotic</p>
       <p class="adw-body dim">Every map, texture, sound and the music: <strong id="xt-dl-size">—</strong>, once. It stays in this browser for the next visit.</p>
+      <div id="xt-app" hidden>
+        <p class="adw-body" id="xt-app-text" hidden>Godnotic is installed on this device, with the game data and your settings: no download needed.</p>
+        <div class="adw-buttons">
+          <a class="adw-btn adw-pill" id="xt-app-open" href="godnotic://open" hidden>Open the Godnotic app</a>
+          <button class="adw-btn adw-pill adw-suggested" id="xt-folder-use" type="button" hidden>Use the Godnotic folder</button>
+        </div>
+      </div>
       <p class="adw-body adw-warning" id="xt-dl-reason" hidden></p>
       <p class="adw-body dim" id="xt-dl-resumed" hidden></p>
       <div class="adw-buttons"><button class="adw-btn adw-pill adw-suggested" id="xt-dl-go" type="button">Download</button></div>
       <p class="adw-caption dim" id="xt-dl-space"></p>
+      <p class="adw-caption dim" id="xt-dl-keep" hidden>The browser keeps it between visits unless it is set to delete site data when it closes, or it runs short of space and clears it. “Keep game data on this device” in the menu asks it not to.</p>
     </section>
 
     <section id="xt-progress" class="adw-status" hidden>
@@ -102,14 +110,22 @@
       <li class="adw-row"><span class="adw-row-title">Stored in</span><span class="adw-row-value" id="xt-st-backend">—</span></li>
       <li class="adw-row"><span class="adw-row-title">Game data</span><span class="adw-row-value" id="xt-st-stored">—</span></li>
       <li class="adw-row"><span class="adw-row-title">Space</span><span class="adw-row-value" id="xt-st-quota">—</span></li>
-      <li class="adw-row"><span class="adw-row-title">Kept</span><span class="adw-row-value" id="xt-st-persist">—</span></li>
+      <li class="adw-row" id="xt-opt-persist-row">
+        <label class="adw-row-title" for="xt-opt-persist">Keep game data on this device</label>
+        <input class="adw-switch" type="checkbox" role="switch" id="xt-opt-persist" aria-describedby="xt-persist-text">
+      </li>
       <li class="adw-row adw-row-wrap"><span class="adw-row-title">Last problem</span><span class="adw-row-value" id="xt-st-error">None</span></li>
     </ul>
+    <p class="adw-caption dim" id="xt-persist-text" aria-live="polite"></p>
     <p class="adw-caption dim" id="xt-storage-text"></p>
     <div class="adw-buttons adw-buttons-start">
       <button class="adw-btn" id="xt-install" type="button" hidden>Install app</button>
       <button class="adw-btn" id="xt-verify" type="button">Verify data</button>
       <button class="adw-btn adw-destructive" id="xt-clear" type="button">Clear data</button>
+      <button class="adw-btn" id="xt-folder" type="button" hidden>Use an existing Godnotic folder</button>
+      <button class="adw-btn" id="xt-folder-stop" type="button" hidden>Stop using the folder</button>
+      <button class="adw-btn" id="xt-import" type="button">Import settings</button>
+      <input id="xt-import-file" type="file" accept=".cfg,text/plain" hidden>
     </div>
     <p class="adw-caption dim" id="xt-verify-text" aria-live="polite"></p>
   </section>

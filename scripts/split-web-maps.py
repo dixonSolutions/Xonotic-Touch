@@ -160,6 +160,13 @@ def bsp_refs(data):
     ents = data[eoff:eoff + elen].decode('latin-1', 'replace')
     for key, value in re.findall(r'"([^"]*)"\s+"([^"]*)"', ents):
         value = value.strip()
+        if key.lower() == 'sky' and value:
+            # worldspawn "sky": the engine loads six sides, under the name as
+            # given and under env/ and gfx/env/ (R_LoadSkyBox).
+            for base in (value, 'env/' + value, 'gfx/env/' + value):
+                for side in SKY_SIDES:
+                    out.add(stem_of(base + side))
+                    out.add(stem_of(base + side.replace('_', '')))
         if '/' in value and not value.startswith('*'):
             out.add(stem_of(value))
             if key.lower().startswith('noise') or key.lower() == 'sound':

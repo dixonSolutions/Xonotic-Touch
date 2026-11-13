@@ -235,6 +235,7 @@ html, body {
 .adw-btn:active { filter: brightness(.9); }
 .adw-btn:disabled { opacity: .5; cursor: default; }
 .adw-btn[hidden] { display: none; }
+a.adw-btn { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
 .adw-btn.adw-pill { border-radius: 9999px; padding: 10px 32px; min-height: 44px; }
 .adw-btn.adw-suggested { background: var(--accent-bg); color: var(--accent-fg); }
 .adw-btn.adw-suggested:hover { filter: brightness(1.08); }

@@ -54,7 +54,7 @@ class FakeDir {
     if (!this.files.delete(name) && !this.dirs.delete(name)) throw new DOMException('gone', 'NotFoundError');
   }
   async *entries() {
-    for (const name of [...this.files.keys()]) yield [name, { kind: 'file' }];
+    for (const name of [...this.files.keys()]) yield [name, await this.getFileHandle(name)];
     for (const [name, d] of [...this.dirs]) yield [name, d];
   }
 }
@@ -217,7 +217,7 @@ Canvas.prototype.getContext = () => ({ RENDERER: 1, MAX_TEXTURE_SIZE: 2, getPara
  * Load web/store.js and web/shell.js the way the page does, in a fresh
  * context sharing `prof` (storage) with earlier loads: a reload.
  */
-function loadPage(prof, host, { search = '', engine = true, persist = false, astc = false, persistHangs = false } = {}) {
+function loadPage(prof, host, { search = '', engine = true, persist = false, astc = false, persistHangs = false, build = '', ua = 'test', platform = '', relatedApps, lazyfs = null } = {}) {
   const elements = new Map();
   const element = (id) => {
     if (!elements.has(id)) elements.set(id, id === 'canvas' ? new Canvas(id) : new Element(id));
@@ -225,6 +225,7 @@ function loadPage(prof, host, { search = '', engine = true, persist = false, ast
   };
   const config = { engine: 'a/godnotic.js', wasm: 'a/godnotic.wasm', manifest: host.path, dataUrl: '' };
   if (host.profiles) config.profiles = host.profiles;
+  if (build) config.build = build;
   element('xt-config').textContent = JSON.stringify(config);
   const commands = [];
   const shown = [];
@@ -241,13 +242,19 @@ function loadPage(prof, host, { search = '', engine = true, persist = false, ast
     requestAnimationFrame: (f) => setTimeout(f, 0),
     setTimeout: (f, ms) => setTimeout(f, Math.min(ms || 0, 5)), clearTimeout, setInterval: () => 0, clearInterval,
     matchMedia: () => ({ matches: false, addEventListener() {} }),
-    localStorage: { getItem: (k) => (prof.local.has(k) ? prof.local.get(k) : null), setItem: (k, v) => prof.local.set(k, String(v)) },
+    localStorage: new Proxy({}, {
+      get: (_, k) => ({ getItem: (n) => (prof.local.has(n) ? prof.local.get(n) : null), setItem: (n, v) => prof.local.set(n, String(v)), removeItem: (n) => prof.local.delete(n) })[k],
+      ownKeys: () => [...prof.local.keys()],
+      getOwnPropertyDescriptor: (_, k) => (prof.local.has(k) ? { enumerable: true, configurable: true, value: prof.local.get(k) } : undefined),
+    }),
     navigator: {
-      maxTouchPoints: 0, language: 'en', languages: ['en'], userAgent: 'test', sendBeacon() {},
+      maxTouchPoints: 0, language: 'en', languages: ['en'], userAgent: ua, platform, sendBeacon() {},
+      getInstalledRelatedApps: relatedApps ? async () => relatedApps : undefined,
       storage: {
         getDirectory: prof.root ? async () => prof.root : undefined,
-        persist: async () => { prof.persistAsked = (prof.persistAsked || 0) + 1; if (persistHangs) await new Promise(() => {}); return persist; },
-        persisted: async () => persist,
+        // The browser's answer: persist is what it grants when asked.
+        persist: async () => { prof.persistAsked = (prof.persistAsked || 0) + 1; if (persistHangs) await new Promise(() => {}); if (persist) prof.persisted = true; return !!prof.persisted; },
+        persisted: async () => !!prof.persisted,
         estimate: async () => ({ usage: 0, quota: 10e9 }),
       },
     },
@@ -276,6 +283,7 @@ function loadPage(prof, host, { search = '', engine = true, persist = false, ast
     confirm: () => true,
     WebAssembly: {},
   };
+  if (lazyfs) context.XTLazyFS = lazyfs;
   context.window = context;
   context.self = context;
   vm.createContext(context);
@@ -356,12 +364,14 @@ await test('first visit asks, downloads each chunk once, mounts; a reload makes 
   assert.equal(p.mounted.size, 4, 'all files mounted');
   assert.equal(sha(p.mounted.get('/game/data/maps.pk3')), host.files[2].sha256, 'assembled from chunks');
   assert.equal(blobFetches(host).length, 7, 'one request per chunk');
-  assert.ok(prof.persistAsked >= 1, 'persistent storage requested after the download');
+  assert.ok(!prof.persistAsked, 'the page never asks for persistent storage by itself');
+  assert.equal(p.element('xt-dl-keep').hidden, false, 'the first visit says the browser may not keep it');
   host.log.length = 0;
   const q = loadPage(prof, host);
   await ready(q, 'warm ready');
   assert.ok(!q.shown.includes('xt-download') && !q.shown.includes('xt-progress'), 'no dialog on reload');
   assert.equal(host.log.length, 0, 'warm start: zero data requests (manifest from storage too)');
+  assert.ok(!prof.persistAsked, 'nor on a warm start');
 });
 
 await test('changed game code: only that chunk, fetched without asking; the old one is pruned', async () => {
@@ -695,7 +705,7 @@ await test('a page closed by the browser mid-download says so next time and carr
   host.log.length = 0;
   const q = loadPage(prof, host); // the reload after the kill
   await ready(q, 'ready'); // the rest is small here: it carries on without asking
-  assert.match(q.page.state.problem, /closed this page while downloading/, 'the reason is kept for the Storage panel');
+  assert.match(q.page.state.problem, /closed this page while downloading \(what had arrived is kept/, 'the reason is kept for the Storage panel');
   assert.match(JSON.parse(prof.local.get('xt.problem')).text, /closed this page/);
   assert.ok(blobFetches(host).every((l) => !l.path.includes(data.chunks[0])), 'the stored chunk is not fetched again');
 });
@@ -713,13 +723,222 @@ await test('no storage at all (private window): memory only, says why, still pla
   await until(() => p.context.__started, 'plays');
 });
 
-await test('Firefox: a persist() prompt nobody answers does not stop the game from starting', async () => {
+await test('persistent storage is the player\'s switch: never asked by the page, the real answer shown', async () => {
+  const flip = async (p, on) => {
+    const sw = p.element('xt-opt-persist');
+    sw.checked = on;
+    p.page.state.persistAnswer = '';
+    sw.onchange({ target: sw });
+    if (on) await until(() => p.page.state.persistAnswer && p.page.state.persistAnswer !== 'pending', 'the browser answered');
+    else await new Promise((r) => setTimeout(r, 20));
+    return sw;
+  };
+  // A browser that says no (Chrome without engagement).
   const prof = profile();
   const host = makeProfiles({ web: { files: splitFiles(), defaultMap: 'stormkeep' } });
-  const p = loadPage(prof, host, { persistHangs: true });
+  const p = loadPage(prof, host, { persist: false });
   await firstVisit(p);
-  assert.ok(prof.persistAsked >= 1, 'asked');
-  await until(() => p.context.__started, 'started while the prompt is still open');
+  await until(() => p.context.__started, 'started');
+  assert.ok(!prof.persistAsked, 'download and start: persist() not called');
+  let sw = await flip(p, true);
+  assert.equal(prof.persistAsked, 1, 'asked once, by the switch');
+  assert.equal(sw.checked, false, 'the switch shows the real answer: no');
+  assert.match(p.element('xt-persist-text').textContent, /did not allow it/);
+  // A browser that says yes.
+  const q = loadPage(prof, host, { persist: true });
+  await ready(q, 'warm');
+  assert.equal(prof.persistAsked, 1, 'a reload does not ask');
+  sw = await flip(q, true);
+  assert.equal(sw.checked, true);
+  assert.match(q.element('xt-persist-text').textContent, /keeps the game data until you delete it/);
+  // It cannot be taken back from the page: the switch stays on and says so.
+  sw = await flip(q, false);
+  assert.equal(sw.checked, true, 'still persisted');
+  assert.match(q.element('xt-persist-text').textContent, /Only the browser can turn this off/);
+  // A prompt nobody answers (Firefox) blocks nothing.
+  const prof2 = profile();
+  const r = loadPage(prof2, host, { persistHangs: true });
+  await firstVisit(r);
+  await until(() => r.context.__started, 'started');
+  const sw2 = r.element('xt-opt-persist');
+  sw2.checked = true;
+  sw2.onchange({ target: sw2 });
+  await new Promise((res) => setTimeout(res, 20));
+  assert.equal(sw2.disabled, true, 'waiting for the answer');
+  assert.equal(r.page.state.started, true, 'the game goes on meanwhile');
+});
+
+await test('data the browser removed comes back by itself: only what is gone, no question', async () => {
+  const prof = profile();
+  const host = makeProfiles({ web: { files: splitFiles(), defaultMap: 'stormkeep' } });
+  await firstVisit(loadPage(prof, host));
+  // One pack evicted.
+  const dance = fileOf(host, 'maps-dance.pk3');
+  prof.root.dirs.get('xt-data-v1').files.delete('c-' + dance.chunks[1]);
+  host.log.length = 0;
+  const q = loadPage(prof, host);
+  await ready(q, 'restored');
+  assert.ok(!q.shown.includes('xt-download') && !failed(q), 'no question, no error');
+  assert.deepEqual(blobFetches(host).map((l) => l.path.split('/').pop()), [dance.chunks[1] + '.bin'], 'only the missing chunk');
+  assert.match(q.page.state.problem, /of the game data is gone from this browser: the browser removed it/);
+  assert.doesNotMatch(q.page.state.problem, /An update/);
+  // Everything evicted, the page's own notes (localStorage) still there.
+  prof.root.dirs.delete('xt-data-v1');
+  host.log.length = 0;
+  const r = loadPage(prof, host);
+  await ready(r, 'restored all');
+  assert.ok(!r.shown.includes('xt-download') && r.shown.includes('xt-progress'), 'downloads again with progress, no question');
+  assert.match(r.page.state.problem, /The game data is gone from this browser/);
+  assert.equal(new Set(blobFetches(host).map((l) => l.path)).size, new Set(host.files.flatMap((f) => f.chunks)).size, 'every chunk once');
+  // "Clear data" is the player's doing: the next visit asks, as a first one.
+  await r.element('xt-clear').onclick();
+  const t = loadPage(prof, host);
+  await until(() => t.shown.includes('xt-download'), 'question after Clear data');
+  assert.equal(t.element('xt-dl-title').textContent, 'Download Godnotic');
+  assert.equal(t.element('xt-dl-reason').hidden, true, 'no "removed by the browser" after the player cleared it');
+});
+
+await test('a new deploy with the same packs downloads nothing, even under a new manifest', async () => {
+  const prof = profile();
+  const host = makeHost(baseFiles());
+  const p = loadPage(prof, host, { build: '20261101-aaaaaaa' });
+  await until(() => p.shown.includes('xt-download'), 'dialog');
+  p.element('xt-dl-go').onclick();
+  await ready(p, 'ready');
+  host.log.length = 0;
+  const q = loadPage(prof, host, { build: '20261114-bbbbbbb' });
+  await ready(q, 'new build');
+  assert.equal(host.log.length, 0, 'a new page build: nothing asked of the data host');
+  // The same bytes listed by a new manifest (another order, a renamed file).
+  const again = baseFiles().reverse();
+  again[0].name = 'music-renamed.pk3';
+  const host2 = makeHost(again);
+  assert.notEqual(host2.id, host.id);
+  const r = loadPage(prof, host2, { build: '20261115-ccccccc' });
+  await ready(r, 'new manifest');
+  assert.equal(blobFetches(host2).length, 0, 'chunks are named by their content: none fetched again');
+  assert.ok(!r.shown.includes('xt-download'));
+});
+
+await test('a breadcrumb from a finished download, or from a tab still alive, is not reported as a kill', async () => {
+  const prof = profile();
+  const host = makeProfiles({ web: { files: splitFiles(), defaultMap: 'stormkeep' } });
+  await firstVisit(loadPage(prof, host));
+  prof.local.set('xt.crumb', JSON.stringify({ phase: 'download', t: Date.now(), id: 'other', done: 3, total: 9 }));
+  prof.local.delete('xt.problem');
+  const q = loadPage(prof, host);
+  await ready(q, 'warm');
+  assert.ok(!q.page.state.problem, 'everything is here: nothing to report');
+});
+
+await test('a visitor from when the music was optional gets it with "Updating…", no question', async () => {
+  const prof = profile();
+  const files = baseFiles();
+  const host = makeHost(files);
+  const s = await store(loadPage(prof, host, { engine: false }).context);
+  await dl(s, await s.missing(host.files.filter((f) => f.group !== 'music')), host);
+  prof.local.set('xt.started', '1');
+  prof.local.set('xt.music', '0');
+  host.log.length = 0;
+  const p = loadPage(prof, host);
+  await ready(p, 'ready');
+  assert.ok(!p.shown.includes('xt-download'), 'no question');
+  assert.ok(p.shown.includes('xt-progress'));
+  assert.equal(blobFetches(host).length, 2, 'the music arrives');
+  assert.ok(!prof.local.has('xt.music'), 'the old choice is forgotten');
+  assert.ok(!shellSource.includes('onlyMusic') && !storeSource.includes('chosen or not'), 'no music choice left in the loader');
+});
+
+await test('the installed app: offered instead of a download where the browser reports it', async () => {
+  const host = makeProfiles({ web: { files: splitFiles(), defaultMap: 'stormkeep' } });
+  const android = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/142.0.0.0 Mobile Safari/537.36';
+  const p = loadPage(profile(), host, { ua: android, relatedApps: [{ platform: 'play', id: 'io.github.dixonsolutions.xonotictouch' }] });
+  await until(() => p.shown.includes('xt-download'), 'dialog');
+  assert.equal(p.element('xt-app').hidden, false);
+  assert.equal(p.element('xt-app-text').hidden, false, 'says the app is installed');
+  assert.equal(p.element('xt-app-open').textContent, 'Open the Godnotic app');
+  assert.match(p.element('xt-app-open').href, /^intent:\/\/open#Intent;scheme=godnotic;package=io\.github\.dixonsolutions\.xonotictouch;S\.browser_fallback_url=https%3A%2F%2Fgame\.example%2Fweb%2F%3Fnoapp%3D1;end$/);
+  assert.ok(!p.context.__started, 'nothing downloads or starts until the player chooses');
+  // Chromium on Android without the app: a plain link, not a claim.
+  const q = loadPage(profile(), host, { ua: android, relatedApps: [] });
+  await until(() => q.shown.includes('xt-download'), 'dialog');
+  assert.equal(q.element('xt-app-text').hidden, true);
+  assert.equal(q.element('xt-app-open').textContent, 'Have the Godnotic app? Open it');
+  // Back from a hand-over that found no app: no offer.
+  const r = loadPage(profile(), host, { ua: android, relatedApps: [], search: '?noapp=1' });
+  await until(() => r.shown.includes('xt-download'), 'dialog');
+  assert.equal(r.element('xt-app').hidden, true);
+  // Desktop Linux (no way to know): the godnotic: link. Windows: nothing.
+  const l = loadPage(profile(), host, { ua: 'Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0', platform: 'Linux x86_64' });
+  await until(() => l.shown.includes('xt-download'), 'dialog');
+  assert.equal(l.element('xt-app-open').href, 'godnotic://open');
+  assert.equal(l.element('xt-app-text').hidden, true);
+  const w = loadPage(profile(), host, { ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/142.0.0.0', platform: 'Win32' });
+  await until(() => w.shown.includes('xt-download'), 'dialog');
+  assert.equal(w.element('xt-app').hidden, true);
+  // A returning visitor with data is never held up by any of it.
+  const prof = profile();
+  await firstVisit(loadPage(prof, host, { ua: android, relatedApps: [] }));
+  const again = loadPage(prof, host, { ua: android, relatedApps: [{ platform: 'play', id: 'io.github.dixonsolutions.xonotictouch' }] });
+  await ready(again, 'warm');
+  assert.ok(!again.shown.includes('xt-download'));
+});
+
+// A minimal zip: one stored entry and the end record, so the central
+// directory can be found and read.
+const zip = (entry, body = fill(2000, 5)) => {
+  const name = Buffer.from(entry);
+  const local = Buffer.alloc(30); local.writeUInt32LE(0x04034b50, 0); local.writeUInt32LE(body.length, 18); local.writeUInt32LE(body.length, 22); local.writeUInt16LE(name.length, 26);
+  const cd = Buffer.alloc(46); cd.writeUInt32LE(0x02014b50, 0); cd.writeUInt32LE(body.length, 20); cd.writeUInt32LE(body.length, 24); cd.writeUInt16LE(name.length, 28);
+  const end = Buffer.alloc(22); end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(1, 8); end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(46 + name.length, 12); end.writeUInt32LE(30 + name.length + body.length, 16);
+  return new Uint8Array(Buffer.concat([local, name, Buffer.from(body), cd, name, end]));
+};
+
+await test('an existing Godnotic folder: found below the picked folder, checked before it is used', async () => {
+  const host = makeProfiles({ web: { files: splitFiles(), defaultMap: 'stormkeep' } });
+  const p = loadPage(profile(), host, { engine: false, lazyfs: { probe: async () => true } });
+  const { packKind, folderOpen } = p.context.xt.folder;
+  assert.equal(packKind('xonotic-20261107-maps-0core.pk3'), 'maps');
+  assert.equal(packKind('xonotic-20261107-maps-0core.pk3', true), '', 'a split pack is not a whole one');
+  assert.equal(packKind('xonotic-0.8.6-data.pk3', true), 'data');
+  assert.equal(packKind('font-unifont-20261107.pk3', true), 'font-unifont');
+  assert.equal(packKind('zz-progs.pk3'), '');
+  const root = new FakeDir(); root.name = 'io.github.dixonSolutions.XonoticTouch';
+  const data = await (await (await root.getDirectoryHandle('data', { create: true })).getDirectoryHandle('xonotic-touch', { create: true })).getDirectoryHandle('data', { create: true });
+  await root.getDirectoryHandle('cache', { create: true });
+  data.files.set('xonotic-20261107-data.pk3', zip('textures/a.tga'));
+  data.files.set('xonotic-20261107-maps.pk3', zip('maps/stormkeep.bsp'));
+  data.files.set('xonotic-20260101-maps.pk3', zip('maps/old.bsp'));
+  data.files.set('xonotic-20261107-music.pk3', zip('sound/cdtracks/a.ogg'));
+  data.files.set('zz-progs.pk3', zip('progs.dat'));
+  data.files.set('config.cfg', new TextEncoder().encode('seta cl_name "x"\n'));
+  const f = await folderOpen(root, { astc: false });
+  assert.deepEqual([...f.files].map((x) => x.name).sort(), ['xonotic-20261107-data.pk3', 'xonotic-20261107-maps.pk3', 'xonotic-20261107-music.pk3'], 'the stock packs, the newest of each, nothing of the fork');
+  assert.deepEqual([...f.kinds].sort(), ['data', 'maps', 'music']);
+  assert.ok(f.config, 'its config.cfg is found');
+  // The phone set on a GPU without ASTC.
+  data.files.set('xonotic-20261107-data.pk3', zip('textures/a.ktx'));
+  await assert.rejects(folderOpen(root, { astc: false }), /phone data set/);
+  assert.ok(await folderOpen(root, { astc: true }), 'fine with ASTC');
+  // A pack still being written by the app.
+  data.files.set('xonotic-20261107-maps.pk3', fill(5000, 3));
+  await assert.rejects(folderOpen(root, { astc: true }), /not complete/);
+  // Some other folder.
+  const other = new FakeDir(); other.name = 'Documents';
+  other.files.set('notes.txt', new Uint8Array(3));
+  await assert.rejects(folderOpen(other, { astc: true }), /No Godnotic game data in “Documents”.*\.var\/app/);
+});
+
+await test('a saved ASTC profile is dropped when the GPU no longer has ASTC', async () => {
+  const prof = profile();
+  const host = makeProfiles({ web: { files: splitFiles(0) }, astc: { files: splitFiles(100), gpu: 'astc' } });
+  await firstVisit(loadPage(prof, host, { astc: true }));
+  assert.equal(prof.local.get('xt.profile'), 'astc');
+  const q = loadPage(prof, host, { astc: false });
+  await ready(q, 'ready on the standard set'); // small here, so it downloads without a question
+  assert.equal(q.page.state.profile, 'web');
+  assert.ok(q.mounted.has('/game/data/xonotic-data.pk3'));
 });
 
 await test('profile by GPU: ASTC gets the slim set, others the standard one; the choice is kept', async () => {
