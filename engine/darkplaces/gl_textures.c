@@ -745,6 +745,8 @@ static void r_textures_devicerestored(void)
 }
 
 
+#include "touch_assets_ktx.h" // Touch: ASTC textures (dds/foo.ktx)
+
 void R_Textures_Init (void)
 {
 	Cmd_AddCommand(CF_CLIENT, "gl_texturemode", &GL_TextureMode_f, "set texture filtering mode (GL_NEAREST, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR, etc); an additional argument 'force' forces the texture mode even in cases where it may not be appropriate");
@@ -772,6 +774,7 @@ void R_Textures_Init (void)
 	Cvar_RegisterVariable (&gl_texturecompression_reflectmask);
 	Cvar_RegisterVariable (&gl_texturecompression_sprites);
 	Cvar_RegisterVariable (&r_texture_dds_load_alphamode);
+	Touch_KTX_Init(); // Touch: ASTC textures
 	Cvar_RegisterVariable (&r_texture_dds_load_logfailure);
 	Cvar_RegisterVariable (&r_texture_dds_swdecode);
 
@@ -1765,6 +1768,7 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 
 	if (cls.state == ca_dedicated)
 		return NULL;
+	{ rtexture_t *ktx = Touch_KTX_Load(rtexturepool, filename, srgb, flags, hasalphaflag, avgcolor, miplevel); if (ktx) return ktx; } // Touch: ASTC textures
 
 #ifdef DP_ANDROID_KTX
 	// ELUAN: FIXME: separate this code
