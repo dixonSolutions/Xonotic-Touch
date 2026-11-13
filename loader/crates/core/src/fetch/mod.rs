@@ -270,7 +270,10 @@ pub fn state_file(dir: &Path, e: &Entry) -> PathBuf {
 
 /// Writes through a temporary file and a rename.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> bool {
-    let tmp = path.with_extension(format!("tmp{}", std::process::id()));
+    static SEQ: AtomicUsize = AtomicUsize::new(0);
+    let mut name = path.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+    name.push(format!(".tmp{}-{}", std::process::id(), SEQ.fetch_add(1, Ordering::SeqCst)));
+    let tmp = path.with_file_name(name);
     let ok = fs::File::create(&tmp).and_then(|mut f| f.write_all(bytes).and_then(|_| f.sync_all())).is_ok() && fs::rename(&tmp, path).is_ok();
     if !ok {
         let _ = fs::remove_file(&tmp);

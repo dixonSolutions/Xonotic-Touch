@@ -22,3 +22,7 @@ ureq = { version = "3", optional = true, default-features = false, features = ["
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[[test]]
+name = "fetch"
+required-features = ["http-ureq"]

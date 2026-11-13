@@ -1,0 +1,137 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! Test aids: render the window to a PNG, and a small script that drives the
+//! UI through its real widgets (a "click" activates the node's GtkButton or
+//! row, exactly what a pointer click does after hit-testing), for headless
+//! screenshots and end-to-end runs. Lines:
+//!
+//! ```text
+//! wait 500            milliseconds
+//! click <node id>     activate the widget of a node (or <node>:<action id> for an action button)
+//! row <list id> <n>   activate row n of a list
+//! scroll <list id> <n>  scroll a list so row n is visible
+//! back                the back event
+//! size 420 900        resize the window
+//! dark | light        colour scheme
+//! snapshot <file.png> render the window
+//! count <file>        append the number of mapped top-level windows of this process
+//! quit
+//! ```
+
+use crate::app::{self, App};
+use adw::prelude::*;
+use gtk::{gdk, glib, gsk};
+use std::collections::VecDeque;
+use std::rc::Rc;
+
+pub fn snapshot(w: &impl IsA<gtk::Widget>, path: &str) {
+    let w = w.as_ref();
+    let (width, height) = (w.width(), w.height());
+    let paintable = gtk::WidgetPaintable::new(Some(w));
+    let snap = gtk::Snapshot::new();
+    paintable.snapshot(&snap, width as f64, height as f64);
+    let Some(node) = snap.to_node() else {
+        eprintln!("snapshot: nothing drawn yet");
+        return;
+    };
+    let Some(renderer) = w.native().map(|n| n.renderer()).flatten() else { return };
+    let tex = renderer.render_texture(node, None::<&gsk::graphene::Rect>);
+    match tex.save_to_png(path) {
+        Ok(()) => println!("snapshot {width}x{height} -> {path}"),
+        Err(e) => eprintln!("snapshot failed: {e}"),
+    }
+}
+
+pub fn run(app: &App, file: &str) {
+    let lines: VecDeque<String> = std::fs::read_to_string(file).unwrap_or_default().lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')).map(str::to_string).collect();
+    step(Rc::downgrade(app), lines);
+}
+
+fn step(w: std::rc::Weak<app::Shared>, mut lines: VecDeque<String>) {
+    let Some(app) = w.upgrade() else { return };
+    let Some(line) = lines.pop_front() else { return };
+    let mut parts = line.split_whitespace();
+    let cmd = parts.next().unwrap_or("");
+    let args: Vec<&str> = parts.collect();
+    let mut delay = 60u64;
+    let win = app.ui.borrow().as_ref().map(|u| u.win.clone());
+    match cmd {
+        "wait" => delay = args.first().and_then(|a| a.parse().ok()).unwrap_or(500),
+        "click" => {
+            let w = args.first().and_then(|id| app.ui.borrow().as_ref().and_then(|u| u.activators.get(*id).cloned()));
+            match w {
+                Some(w) => {
+                    if let Some(r) = w.downcast_ref::<adw::ActionRow>() {
+                        r.emit_by_name::<()>("activated", &[]);
+                    } else if let Some(c) = w.downcast_ref::<gtk::CheckButton>() {
+                        c.set_active(!c.is_active());
+                    } else if let Some(s) = w.downcast_ref::<adw::SwitchRow>() {
+                        s.set_active(!s.is_active());
+                    } else {
+                        w.activate();
+                    }
+                }
+                None => eprintln!("script: no widget for {:?}", args.first()),
+            }
+            delay = 250;
+        }
+        "row" => {
+            let list = args.first().copied().unwrap_or("");
+            let n: u32 = args.get(1).and_then(|a| a.parse().ok()).unwrap_or(0);
+            let w = app.ui.borrow().as_ref().and_then(|u| u.activators.get(list).cloned());
+            if let Some(cv) = w.as_ref().and_then(|w| w.downcast_ref::<gtk::ColumnView>()) {
+                cv.emit_by_name::<()>("activate", &[&n]);
+            } else if let Some(gv) = w.as_ref().and_then(|w| w.downcast_ref::<gtk::GridView>()) {
+                gv.emit_by_name::<()>("activate", &[&n]);
+            }
+            delay = 250;
+        }
+        "scroll" => {
+            let list = args.first().copied().unwrap_or("");
+            let n: u32 = args.get(1).and_then(|a| a.parse().ok()).unwrap_or(0);
+            let w = app.ui.borrow().as_ref().and_then(|u| u.activators.get(list).cloned());
+            if let Some(cv) = w.as_ref().and_then(|w| w.downcast_ref::<gtk::ColumnView>()) {
+                cv.scroll_to(n, None::<&gtk::ColumnViewColumn>, gtk::ListScrollFlags::NONE, None);
+            } else if let Some(gv) = w.as_ref().and_then(|w| w.downcast_ref::<gtk::GridView>()) {
+                gv.scroll_to(n, gtk::ListScrollFlags::NONE, None);
+            }
+            delay = 200;
+        }
+        "back" => {
+            app::back(&app);
+            delay = 250;
+        }
+        "size" => {
+            if let (Some(win), Some(wd), Some(h)) = (&win, args.first().and_then(|a| a.parse().ok()), args.get(1).and_then(|a| a.parse().ok())) {
+                win.set_default_size(wd, h);
+                win.unmaximize();
+            }
+            delay = 400;
+        }
+        "dark" => adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceDark),
+        "light" => adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceLight),
+        "snapshot" => {
+            if let (Some(win), Some(p)) = (&win, args.first()) {
+                snapshot(win, p);
+            }
+        }
+        "count" => {
+            let n = gtk::Window::list_toplevels().iter().filter(|w| w.is_mapped()).count();
+            if let Some(p) = args.first() {
+                use std::io::Write;
+                if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(p) {
+                    let _ = writeln!(f, "{n}");
+                }
+            }
+            println!("toplevels {n}");
+        }
+        "quit" => {
+            if let Some(a) = win.and_then(|w| w.application()) {
+                a.quit();
+            }
+            return;
+        }
+        other => eprintln!("script: unknown command {other}"),
+    }
+    let _ = gdk::Display::default();
+    glib::timeout_add_local_once(std::time::Duration::from_millis(delay), move || step(w, lines));
+}
