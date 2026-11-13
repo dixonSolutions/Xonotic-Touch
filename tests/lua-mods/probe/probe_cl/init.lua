@@ -40,8 +40,12 @@ xt.command("count", function()
   table.sort(list)
   print("probe_cl: hud hooks " .. hud .. " overlay " .. overlay .. " csqc=" .. xt.csqc() .. " events " .. table.concat(list, ","))
   local ents = xt.entities()
-  local kinds = {}
-  for _, e in ipairs(ents) do kinds[e.kind] = (kinds[e.kind] or 0) + 1 end
+  local kinds, hidden = {}, 0
+  for _, e in ipairs(ents) do
+    kinds[e.kind] = (kinds[e.kind] or 0) + 1
+    if e.kind ~= "item" and not e.visible then hidden = hidden + 1 end
+  end
+  print("probe_cl: hidden listed " .. hidden)
   print("probe_cl: entities players=" .. (kinds.player or 0) .. " items=" .. (kinds.item or 0) .. " projectiles=" .. (kinds.projectile or 0) .. " offline=" .. tostring((xt.offline())))
 end, "counts")
 

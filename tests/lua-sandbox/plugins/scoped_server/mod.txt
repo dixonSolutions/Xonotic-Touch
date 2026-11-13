@@ -1,2 +1,2 @@
-api: 1
-permissions: commands, messages
+api: 3
+permissions: commands, gamerules

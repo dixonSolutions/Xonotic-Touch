@@ -77,17 +77,14 @@ mkdir -p "$UD/mods/notenabled" && echo 'print("SANDBOX FAIL notenabled ran")' > 
 
 cat > "$UD/data/sandbox.cfg" <<'EOF'
 defer 20 "lua_escape_selftest one two"
-defer 1 "lua_mod_permission scoped grant players"
+defer 1 "lua_mod_permission scoped grant all"
 defer 2 "lua_scoped_probe"
-defer 3 "lua_mod_permission scoped grant exec"
+defer 3 "lua_mod_permission scoped grant engine_full"
 defer 4 "lua_scoped_probe"
-defer 5 "lua_mod_permission scoped revoke exec"
-defer 6 "lua_mod_permission scoped revoke events"
-defer 7 "lua_scoped_probe"
+defer 5 "lua_mod_permission scoped revoke engine_full"
+defer 6 "lua_scoped_probe"
+defer 7 "lua_mod_permission scoped grant gamerules"
 defer 8 "_cl_lua_permissions"
-defer 9 "lua_scoped_probe"
-defer 10 "lua_mod_permission scoped revoke commands"
-defer 11 "lua_scoped_probe"
 defer 12 "lua_ns_a_b_c"
 defer 21 "lua_mods"
 defer 22 "lua_mod_disable escape"
@@ -115,16 +112,18 @@ expect_error() { # mod, reason substring
 	if grep -E "Lua mod $1 stopped: .*$2" "$LOG" > /dev/null; then ok "$1 stopped: $2"; else bad "$1 not stopped with '$2'"; grep "Lua mod $1" "$LOG"; fi
 }
 has() { grep -qF -- "$1" "$LOG"; }
-grep -q 'permission players is not requested' "$LOG" && ok "unrequested permission refused" || bad "unrequested permission accepted"
-grep -q 'PERMISSIONS PASS malformed grant file denied' "$LOG" && ok "malformed legacy grants fail closed" || bad "malformed legacy grants allowed"
-[ "$(grep -c 'PERMISSIONS PASS denied' "$LOG")" = 3 ] && ok "ungranted APIs denied" || bad "ungranted API denial failed"
-[ "$(grep -c 'PERMISSIONS exec allowed' "$LOG")" = 1 ] && ok "grant and revocation take effect" || bad "exec grant/revocation failed"
-[ "$(grep -c 'PERMISSIONS allowlist PASS' "$LOG")" = 4 ] && ok "grants do not bypass allowlists" || bad "allowlist check failed"
-[ "$(grep -c 'PERMISSIONS frames ' "$LOG")" = 4 ] && ok "revoked command not dispatched" || bad "command revocation failed"
-frames_after=$(grep 'PERMISSIONS frames ' "$LOG" | tail -2 | sed 's/.*PERMISSIONS frames //')
-[ "$(printf '%s\n' "$frames_after" | sort -u | wc -l)" = 1 ] && ok "event revocation takes effect" || bad "revoked events still dispatched"
-grep -q $'scoped\tv1\tevents,commands,cvar_write,exec,storage\tcommands' "$LOG" && ok "machine-readable status reflects revocation" || bad "permission status wrong"
-[ "$(cat "$G/scoped.txt")" = 'v1 0' ] && ok "revocation persisted" || bad "revocation was not persisted"
+# API 3 tiers: the old scopes are standard (no grant), engine_full is a switch
+for p in exec storage cvar_write; do has "TIERS $p allowed" && ok "standard tier: $p without a grant" || bad "standard tier: $p denied"; done
+has "TIERS exec ran" && ok "standard tier: the allowlisted command ran" || bad "allowlisted command did not run"
+has "TIERS engine denied" && ok "engine_full not granted at start" || bad "engine_full granted without a grant"
+[ "$(grep -c 'TIERS probe engine denied' "$LOG")" = 2 ] && ok "\"grant all\" does not grant engine_full; revoke takes it away" || bad "engine_full after grant all / revoke: $(grep -c 'TIERS probe engine denied' "$LOG") denials"
+[ "$(grep -c 'TIERS probe engine allowed' "$LOG")" = 1 ] && ok "engine_full granted (a local mod: one step)" || bad "engine_full grant did not take effect"
+grep -q 'TIERS private nil' "$LOG" && ok "engine_full: private cvars stay hidden" || bad "engine_full read a private cvar"
+[ "$(grep -c 'TIERS allowlist PASS' "$LOG")" = 3 ] && ok "the standard tier keeps the command allowlist" || bad "allowlist check failed"
+grep -q 'does not ask for the gamerules tier' "$LOG" && ok "a tier the manifest does not ask for cannot be granted" || bad "an unrequested tier was granted"
+grep -q $'scoped\tv1\tstandard,engine_full\tstandard' "$LOG" && ok "machine-readable status lists the tiers" || bad "permission status wrong"
+[ "$(cat "$G/scoped.txt")" = 'v1 0' ] && ok "revocation persisted" || bad "revocation was not persisted ($(cat "$G/scoped.txt"))"
+grep -q 'PERMISSIONS PASS malformed grant file' "$LOG" && ok "a malformed grant file leaves the standard tier only" || bad "malformed grant file broke the mod"
 grep -q 'PERMISSIONS FAIL' "$LOG" && bad "permission fixture failed"
 expect_error invalid_api "invalid or unsupported Lua API manifest"
 expect_error invalid_scope "invalid or unsupported Lua API manifest"
@@ -147,10 +146,8 @@ expect_error kill_tinsert "instruction limit|time limit"
 expect_error kill_tremove "instruction limit|time limit"
 expect_error kill_tsort "instruction limit|time limit"
 has "BOUNDS rep returned 0 0 0 ab-ab-ab" && ok "string.rep with an empty result returns at once" || bad "string.rep bound"
-# 2: legacy mods get the HUD set until granted more
-for p in exec storage cvar_write; do has "LEGACY $p denied" && ok "legacy mod: $p denied by default" || bad "legacy mod: $p not denied"; done
-for p in cvar_read state display events; do has "LEGACY $p allowed" && ok "legacy mod: $p allowed by default" || bad "legacy mod: $p not allowed"; done
-has "LEGACY exec ran" && bad "legacy mod ran a console command without a grant"
+# 2: legacy mods (no mod.txt) run at the standard tier
+for p in exec storage cvar_write cvar_read state display events; do has "LEGACY $p allowed" && ok "legacy mod: $p (standard tier)" || bad "legacy mod: $p not allowed"; done
 # 2: storage and code only through real files below the mod's own folder
 has "STORE old PASS" && ok "save through data -> ../.permissions refused" || bad "save through a symlinked data folder (old grants)"
 has "STORE new PASS" && ok "save through data -> luastate/mods/grants refused" || bad "save through a symlinked data folder (grants)"
@@ -169,10 +166,10 @@ has "NS PASS ns_a refused ns_a_b's cvar" && ok "ns_a cannot set ns_a_b's cvar" |
 has "NS PASS ns_a_b set its cvar" && ok "ns_a_b sets its own cvar" || bad "ns_a_b could not set its cvar"
 has "NS ns_a_b command ran" && ok "lua_ns_a_b_c runs ns_a_b's command" || bad "lua_ns_a_b_c did not run ns_a_b's command"
 has "NS FAIL" && bad "namespace fixture failed"
-has "FLOOD created 32" && ok "own cvars capped at 32 per mod" || bad "own cvar cap: $(grep -o 'FLOOD created [0-9]*' "$LOG")"
+has "FLOOD created 64" && ok "own cvars capped at 64 per mod" || bad "own cvar cap: $(grep -o 'FLOOD created [0-9]*' "$LOG")"
 CFG="$UD/data/config.cfg"
 if [ -f "$CFG" ] && grep -q lua_escape_test "$CFG"; then
-	grep -q lua_flood_ "$CFG" && bad "own cvars of a mod without storage were archived ($(grep -c lua_flood_ "$CFG"))" || ok "own cvars archived only with storage"
+	[ "$(grep -c lua_flood_ "$CFG")" -le 64 ] && ok "own cvars archived, at most 64 ($(grep -c lua_flood_ "$CFG"))" || bad "more than 64 own cvars archived"
 else
 	bad "config.cfg missing or without the storage-granted mod's cvar"
 fi
@@ -188,19 +185,19 @@ printf 'v1 2\n' > "$UD/luastate/plugins/grants/scoped_server.txt"
 cat > "$UD/data/server-permissions.cfg" <<'EOF'
 map stormkeep
 defer 3 "sv_lua_scoped_server_probe"
-defer 4 "sv_lua_mod_permission scoped_server grant messages"
+defer 4 "sv_lua_mod_permission scoped_server grant gamerules"
 defer 5 "sv_lua_scoped_server_probe"
-defer 6 "sv_lua_plugin_permission scoped_server revoke messages"
+defer 6 "sv_lua_plugin_permission scoped_server revoke gamerules"
 defer 7 "sv_lua_scoped_server_probe"
 defer 9 "quit"
 EOF
 SERVER_LOG="$WORK/server.log"
 run_engine "$SERVER_LOG" -userdir "$UD" +exec server-permissions.cfg
 [ "$?" = 0 ] && ok "server realm exited cleanly" || bad "server realm did not exit cleanly"
-[ "$(grep -c 'SERVER PERMISSIONS denied' "$SERVER_LOG")" = 2 ] && ok "server message permission denied before grant and after revoke" || bad "server message revocation failed"
-[ "$(grep -c 'SERVER PERMISSIONS allowed' "$SERVER_LOG")" = 1 ] && ok "server message grant worked" || bad "server message grant failed"
+[ "$(grep -c 'SERVER PERMISSIONS denied' "$SERVER_LOG")" = 2 ] && ok "server gamerules tier denied before grant and after revoke" || bad "server gamerules revocation failed"
+[ "$(grep -c 'SERVER PERMISSIONS allowed' "$SERVER_LOG")" = 1 ] && ok "server gamerules grant worked" || bad "server gamerules grant failed"
 grep -q 'SERVER PERMISSIONS FAIL' "$SERVER_LOG" && bad "server permission fixture failed"
-[ "$(cat "$UD/luastate/plugins/grants/scoped_server.txt")" = 'v1 2' ] && ok "server grant stored separately" || bad "server grant storage wrong"
+[ "$(cat "$UD/luastate/plugins/grants/scoped_server.txt")" = 'v1 0' ] && ok "server grant stored separately" || bad "server grant storage wrong ($(cat "$UD/luastate/plugins/grants/scoped_server.txt"))"
 
 # --- 3: a server's text -----------------------------------------------------
 # A demo is what a server sends: here one svc_stufftext that tries to switch a
@@ -213,12 +210,14 @@ printf 'remote_cmd\n' > "$RUD/mods/enabled.txt"
 python3 - "$RUD/data/stuff.dem" <<'EOF'
 import struct, sys
 text = (b"lua_mod_enable victim\n"
-        b"lua_memory_mb 64\n"
-        b"lua_time_ms 250\n"
+        b"lua_memory_mb 200\n"
+        b"lua_time_ms 900\n"
         b"cl_lua_enable 0\n"
         b"lua_remote_cmd_plain\n"
         b"lua_remote_cmd_open\n"
         b"lua_mod_permission remote_cmd grant exec\n"
+        b"lua_mod_permission remote_cmd grant engine_full\n"
+        b"lua_mod_permission remote_cmd grant engine_full confirm\n"
         b"sv_lua_plugin_permission anything grant exec\n"
         b"sv_lua_mod_permission anything grant exec\n"
         b"defer 2 \"lua_mod_enable victim\"\n"
@@ -246,8 +245,8 @@ run_engine "$REMOTE_LOG" -userdir "$RUD" +exec remote.cfg
 [ "$?" = 0 ] && ok "remote run exited cleanly" || bad "remote run did not exit cleanly"
 rhas() { grep -qF -- "$1" "$REMOTE_LOG"; }
 rhas 'lua_remote_cmd_plain: refused' && ok "the stuffed text reached the console (and was refused)" || bad "the demo's text never ran (is the demo test valid?)"
-grep -qE 'lua_memory_mb(.\[m)?"? is "16"' "$REMOTE_LOG" && ok "server text cannot raise lua_memory_mb" || bad "lua_memory_mb changed by server text: $(grep -o 'lua_memory_mb.* is "[0-9]*"' "$REMOTE_LOG")"
-grep -qE 'lua_time_ms(.\[m)?"? is "40"' "$REMOTE_LOG" && ok "server text cannot raise lua_time_ms" || bad "lua_time_ms changed by server text"
+grep -qE 'lua_memory_mb(.\[m)?"? is "64"' "$REMOTE_LOG" && ok "server text cannot change lua_memory_mb" || bad "lua_memory_mb changed by server text: $(grep -o 'lua_memory_mb.* is "[0-9]*"' "$REMOTE_LOG")"
+grep -qE 'lua_time_ms(.\[m)?"? is "100"' "$REMOTE_LOG" && ok "server text cannot change lua_time_ms" || bad "lua_time_ms changed by server text"
 grep -qE 'cl_lua_enable(.\[m)?"? is "1"' "$REMOTE_LOG" && ok "server text cannot turn mods off" || bad "cl_lua_enable changed by server text"
 first_victim=$(grep -n "VICTIM ran" "$REMOTE_LOG" | head -1 | cut -d: -f1)
 marker=$(grep -n "REMOTE local enable next" "$REMOTE_LOG" | grep -v echo | head -1 | cut -d: -f1)
@@ -257,7 +256,7 @@ marker=$(grep -n "REMOTE local enable next" "$REMOTE_LOG" | grep -v echo | head 
 rhas "REMOTE FAIL plain ran" && bad "server text ran a mod command" || ok "server text cannot run a mod command"
 rhas "REMOTE open ran" && ok "a command the mod opened to servers runs" || bad "fromserver command did not run"
 rhas "REMOTE plain-local ran" && ok "mod commands run locally once the server's text is gone" || bad "local mod command refused"
-[ ! -e "$RUD/luastate/mods/grants/remote_cmd.txt" ] && ok "server text cannot grant permissions" || bad "server text wrote a grant"
+[ ! -e "$RUD/luastate/mods/grants/remote_cmd.txt" ] && ok "server text cannot grant tiers, engine_full included (confirm or not)" || bad "server text wrote a grant"
 
 # --- 1b: crash-loop protection ------------------------------------------------
 # Kill the engine (SIGKILL) while a mod's init.lua runs, then start again.

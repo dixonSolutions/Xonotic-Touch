@@ -172,10 +172,10 @@ between "STEP review" "STEP confirm" "draws on the hud event" && ok "the review 
 if between "STEP review" "STEP confirm" "pkgmod "; then bad "pkgmod listed before lua_install_confirm"; else ok "nothing written before lua_install_confirm"; fi
 between "STEP confirm" "STEP enable-missing" "installed pkgmod: it is off and has no permissions" && ok "installed off, nothing granted" || bad "install message wrong"
 grep -aqE "^ *pkgmod +off" "$LOG" && ok "the installed mod is listed off" || bad "pkgmod not listed off"
-between "STEP enable-missing" "STEP data" "permissions not granted: events, display" && ok "enabling names every missing permission" || bad "missing permissions not all named"
+between "STEP enable-missing" "STEP data" "permissions not granted: internet" && ok "enabling names the tiers still off" || bad "missing tiers not named"
 between "STEP enable-missing" "STEP data" "granted all, restarted: running" && ok "grant all restarts a mod stopped for permissions" || bad "no restart after grant"
-between "STEP update" "STEP folder" "NEW storage" && ok "update review marks the new permission" || bad "new permission not marked"
-between "STEP update" "STEP folder" "asks for new permissions, not granted: storage" && ok "update says the new permission stays ungranted" || bad "update message wrong"
+between "STEP update" "STEP folder" "NEW engine_full" && ok "update review marks the new tier" || bad "new tier not marked"
+between "STEP update" "STEP folder" "asks for new permissions, not granted: engine_full" && ok "update says the new tier stays off" || bad "update message wrong"
 [ "$(cat "$UD/mods/pkgmod/data/size.txt" 2>/dev/null)" = keep-me ] && ok "update kept the mod's data/" || bad "update lost data/"
 between "STEP update" "STEP folder" "version: 2.0" && ok "update installed version 2.0" || bad "version not updated"
 has "installed pkgfolder: it is off" && ok "install from a folder" || bad "folder install failed"

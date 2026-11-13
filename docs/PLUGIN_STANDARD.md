@@ -339,3 +339,42 @@ above still holds (a dead mod process is just a stopped mod).
 Examples: [`touch/lua/examples`](../touch/lua/examples) — `mods/hud_widget` (HUD widget
 with settings), the server mods `plugins/damage_scale` (a write hook) and
 `plugins/leader_watch` (a coroutine doing continuous work), and the API 1 ones.
+
+## 12. API 3: tiers
+
+API level 3 (`api: 3`; this engine runs 1 to 3, `xt.apimax` is 3) replaces the scopes of
+section 5 with four tiers; the details and every function are in
+[LUA_API.md](LUA_API.md).
+
+| Tier | Bit in the grant file | Turned on | Allows |
+|---|---|---|---|
+| `standard` | 0 (always on) | with the mod, no prompt | everything a normal mod does (every API 1/2 scope except `hooks_write`) |
+| `gamerules` | 12 (was `hooks_write`) | a switch | hook outputs and cancelling; changing players, entities and the match (server) |
+| `internet` | 13 | a switch | `xt.http` to the hosts of the manifest's `http:` line |
+| `engine_full` | 14 | a switch with a warning | `xt.engine.cmd`, `xt.engine.cvar`, `xt.engine.setcvar`; private cvars stay hidden |
+
+* **Manifests.** `permissions:` takes tier names (API 3) or the old scope names, which
+  map onto tiers; `reason.<tier>` or `reason.<scope>` (the first given for a tier is
+  shown). New keys: `http: host, host` (where `xt.http` may go), `setting.<name>.desc`,
+  `setting.<name>.group`, and the setting types `int`, `float`, `color` (six hex digits)
+  and `key` (a key name). A folder with only `init.lua` runs at the standard tier.
+* **Grants.** Stored as before (`luastate/<realm>/grants/<id>.txt`, `v1 <hex>`): the bits
+  above keep their API 1/2 positions, so existing grant files mean the same thing
+  (`hooks_write` granted = `gamerules` on). `lua_mod_permission <id> grant <tier>|all`;
+  `all` never includes `engine_full`; for a mod installed from a link, `engine_full`
+  needs `... grant engine_full confirm` within a minute of the first grant, which prints
+  the warning. Like every manager command, none of this can come from a server.
+* **Lifecycle.** Unchanged (section 4), except that turning a mod on is all it needs for
+  the standard tier.
+* **Hooks (section 6).** Client mods can now subscribe to the client program's hooks
+  too (54 of them, [LUA_HOOKS.md](LUA_HOOKS.md)); they exist while this game's own
+  client code runs (`xt.csqc()`). On the client only the drawing hooks are writable,
+  with the standard tier. A hook's arguments now reach the engine in one builtin call
+  (`touch_lua_hook_run`, #1753; `touch_lua_hook_more`, #1754, for arguments past the
+  seventh) instead of one per argument; the API 2 builtins #1741-#1746 stay for game
+  code built before.
+* **Stability (section 8)** covers every API 3 entry point: callbacks the engine keeps
+  (buttons, pages, channels, HTTP answers, chat commands) run under the same limits as
+  events, plus a per-mod budget per frame (`lua_frame_ms`: calls past it are skipped for
+  that frame). Handles to engine objects are checked on every use; no API returns a
+  pointer. While a mod's code runs, no hook or event is delivered to any mod.

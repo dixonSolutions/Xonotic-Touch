@@ -503,3 +503,89 @@ and `touch_lua54/` (Lua 5.4.8 from lua.org, MIT, unmodified). The game side is
 `qcsrc/server/touch_lua.qc` and the generated `qcsrc/server/touch_lua_hooks.qc`.
 `scripts/test-lua-packages.sh` tests packages, the archive attacks, updates,
 uninstall, server text and the hook bridge in a bot match.
+
+## API level 3: tiers, the generated reference, the cookbook
+
+API level 3 (`api: 3` in `mod.txt`; older levels keep working) replaces the permission
+scopes above with four **tiers** a player understands at a glance:
+
+| Tier | Turned on | Allows |
+|---|---|---|
+| `standard` | with the mod: one tap, no prompt | events and hooks (read), drawing, HUD panels, touch buttons and binds, sounds, effects, its own settings, storage and pages, reading game settings, the curated console commands, chat and notifications, messages with the server you joined |
+| `gamerules` | a switch | server mods: hook outputs and cancelling, changing players and entities, spawning, votes, map and match control, bots, kicks and bans (games you host) |
+| `internet` | a switch | HTTPS to the hosts the manifest lists (`http: host, host`) |
+| `engine_full` | a switch with a warning | any console command, any setting except passwords and keys; never by "grant all"; a mod installed from a link needs a second confirmation |
+
+A folder with only an `init.lua` runs at the standard tier. API 1/2 scope names in a
+manifest still work: they map onto these tiers (`hooks_write` is `gamerules`, every
+other scope is `standard`), and grants already stored keep their meaning.
+
+* **[LUA_API.md](LUA_API.md)**: every function (generated from
+  `scripts/lua_api_table.py`), with its tier, where it works (public servers, the web),
+  its limits; the events; entity handles; client mods on public servers; messages
+  between server and client mods; UI descriptions (settings and menu pages).
+* **[LUA_HOOKS.md](LUA_HOOKS.md)**: the game's hooks, server and client (generated).
+* **[MOD_COOKBOOK.md](MOD_COOKBOOK.md)**: recipes, each a tested example in
+  [`touch/lua/examples`](../touch/lua/examples).
+
+## Testing your mod
+
+* **Watch it.** `print(...)` lines go to the console as `[yourmod] ...` and to the mod's
+  log: `lua_mod_log <mod>` shows the last 40 lines and errors. `lua_mod_top` shows what
+  every mod costs (CPU per second, calls, calls skipped by the frame budget, memory).
+* **Change and reload.** Edit the files in `<userdir>/mods/<mod>/` (or `plugins/` for a
+  server mod) and run `lua_mod_reload <mod>` (`sv_lua_plugin_reload <mod>`): the state
+  starts fresh, its errors are cleared.
+* **Without a touchscreen or a keyboard.** `lua_mod_simulate finger <0-9> <x> <y> 1`
+  puts a finger down (2D units, as `xt.draw`), `... 0` lifts it; `lua_mod_simulate key
+  <name> 1` / `0` presses a key. Pages: `lua_pages`, `lua_page_json <id>`,
+  `lua_page_event <id> <row> change|press|select [value]` act as a menu would.
+* **Common errors.**
+
+  | Message | Meaning |
+  |---|---|
+  | `permission denied: the gamerules tier is not turned on for this mod` | turn the tier on in Settings > Mods (or `lua_mod_permission <mod> grant gamerules`) |
+  | `permission denied: needs the internet tier (add "permissions: internet" to mod.txt)` | the manifest does not ask for it |
+  | `instruction limit` / `time limit` | a loop that never yields: use `xt.spawn` + `xt.sleep`, `xt.every`, or the `frame` event |
+  | `memory limit (64 MB)` | the mod keeps too much; `lua_memory_mb` raises the limit |
+  | `hook budget: ... ms in hook calls in one frame` | a hook handler does too much work per frame |
+  | `stale entity handle` | the entity was removed (or its slot reused): check `h:valid()` |
+  | `xt.draw works only inside drawing events` | draw in `hud`, `draw`, `hud_overlay`, `scoreboard`, or a HUD panel's `draw` |
+  | `channel:send: the value is over 1024 bytes as JSON` | send less, or split it |
+  | `did not finish loading last time` | the game died while it loaded: turning it on again retries |
+
+* **The example suite.** `scripts/test-mods.sh` checks the generators, the Lua syntax of
+  every example and every ```` ```lua ```` block in these docs, the manifests, and that
+  the example archives build the same twice; with a basedir it also installs every
+  example through the installer, plays a headless bot match and checks what each one
+  does:
+
+  ```
+  export PATH=~/.cache/xt-assets/bin:$PATH DP_LINK_JPEG=dlopen
+  . scripts/lib/xonotic-shlib.sh && xonotic_compile_qc_only && xonotic_compile_engine_only
+  mkdir -p /tmp/base/data && ln -s /path/to/xonotic/data/*.pk3 /tmp/base/data/
+  ln -s "$PWD/engine/data/xonotic-data.pk3dir" /tmp/base/data/zzz-this-checkout.pk3dir
+  BASEDIR=/tmp/base scripts/test-mods.sh
+  ```
+
+  The game code linked into the basedir must be this checkout's, under a name that sorts
+  last, or the hooks run against an older copy. `scripts/bench-lua-hooks.sh` measures
+  the hook bridge's cost per call.
+
+## Publishing a mod
+
+* **The zip.** Zip the mod's folder (`mymod/mod.txt`, `mymod/init.lua`, ...): the
+  archive may hold the files at its top level or in one top folder. Allowed: `.lua .txt
+  .md .json .png .tga .jpg .jpeg .ogg .wav` and `LICENSE COPYING README AUTHORS`, up to
+  256 files, 1 MB each, 8 MB in all, no `data/` folder (that is the player's).
+  `scripts/build-example-mods.sh` shows a reproducible way to build one.
+* **Versions.** `version:` is yours (shown, never compared). `api: 3` says which API
+  level you wrote it for; a game that runs an older level refuses it with *needs API 3*.
+  Levels only add, so a mod for level 2 keeps running.
+* **The link.** Publish over HTTPS and give the sha256 with it:
+  `https://example.org/mymod.zip#sha256=<64 hex digits>`. Players paste that into
+  Settings > Mods > *Install from a link* (or `lua_mod_install <link>`); a different
+  file is refused. `update: https://...` in `mod.txt` is where `lua_mod_update` looks.
+* **Asking for tiers.** Ask only for what the mod needs, with a `reason.<tier>:` line for
+  each; the review shows them. `engine_full` from a link needs the player to confirm
+  twice, so prefer the curated functions.

@@ -13,7 +13,7 @@
 # BASEDIR is a Xonotic basedir (data/*.pk3) whose game code is this checkout's
 # (link engine/data/xonotic-data.pk3dir into data/ under a name that sorts
 # last). ENGINE defaults to engine/darkplaces/darkplaces-sdl; KEEP=1 keeps the
-# logs; ONLY=<scenario> runs one of: install, persist. See docs/MODDING.md,
+# logs; ONLY=<scenario> runs one of: install, persist, online. See docs/MODDING.md,
 # "Testing your mod".
 set -uo pipefail
 
@@ -77,7 +77,7 @@ MAP="${MAP:-stormkeep}"
 run_engine() { # log, timeout, args...
 	local log="$1" t="$2"; shift 2
 	SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy timeout -k 10 "$t" "$ENGINE" -xonotic -nosound \
-		-basedir "$BASEDIR" -userdir "$UD" +vid_width 1280 +vid_height 720 +vid_fullscreen 0 "$@" > "$log" 2>&1
+		-basedir "$BASEDIR" -userdir "${RUN_UD:-$UD}" +vid_width 1280 +vid_height 720 +vid_fullscreen 0 "$@" > "$log" 2>&1
 }
 
 # a receiver for leaderboard_http (POST bodies to a file)
@@ -186,7 +186,7 @@ if [ -z "${ONLY:-}" ] || [ "${ONLY:-}" = install ]; then
 	check "scenario 1: the engine ran the match and quit cleanly (exit $RC)" "$([ "$RC" = 0 ] && echo 0 || echo 1)"
 	n=$(grep -ac "installed" "$LOG1"); check "installer: every example and fixture installed ($n)" "$([ "$n" -ge 21 ] && echo 0 || echo 1)"
 	for m in $CLIENT_MODS probe_cl; do has "$LOG1" "Lua mod $m loaded"; check "$m loads (standard tier: no grant asked)" $?; done
-	for m in $SERVER_MODS probe_sv; do has "$LOG1" "Lua plugin $m loaded"; check "$m loads" $?; done
+	for m in $SERVER_MODS probe_sv; do has "$LOG1" "Lua (plugin|server mod) $m loaded"; check "$m loads" $?; done
 	# examples, by what they do
 	has "$LOG1" "panel_clock: drawn at"; check "panel_clock: HUD panel drawn" $?
 	has "$LOG1" "panel_clock: seconds change false"; check "panel_clock: a settings page switch reaches the mod's callback" $?
@@ -225,9 +225,9 @@ if [ -z "${ONLY:-}" ] || [ "${ONLY:-}" = install ]; then
 	has "$LOG1" "ticker: every 3" && ! has "$LOG1" "ticker: every 4"; check "ticker: xt.every stops when it returns false" $?
 	has "$LOG1" "ticker: after 4 s"; check "ticker: xt.after" $?
 	# the misbehaving trio and a hot client hook: stopped, everyone else goes on
-	has "$LOG1" "Lua plugin bad_loop stopped: (time limit|instruction limit)"; check "bad_loop: an endless loop is stopped by the limits" $?
-	has "$LOG1" "Lua plugin bad_hook stopped: .*attempt to index"; check "bad_hook: an error in a hook stops only that mod" $?
-	has "$LOG1" "Lua plugin bad_hog stopped: memory limit"; check "bad_hog: the memory limit stops a hog" $?
+	has "$LOG1" "Lua (plugin|server mod) bad_loop stopped: (time limit|instruction limit)"; check "bad_loop: an endless loop is stopped by the limits" $?
+	has "$LOG1" "Lua (plugin|server mod) bad_hook stopped: .*attempt to index"; check "bad_hook: an error in a hook stops only that mod" $?
+	has "$LOG1" "Lua (plugin|server mod) bad_hog stopped: memory limit"; check "bad_hog: the memory limit stops a hog" $?
 	has "$LOG1" "Lua mod bad_clhook stopped: (time limit|hook budget)"; check "bad_clhook: a runaway client hook is stopped" $?
 	n=$(grep -ac "ticker: loop" "$LOG1"); check "the others keep running after the bad ones stopped (ticker loops: $n)" "$([ "$n" -ge 4 ] && echo 0 || echo 1)"
 	# the probes
@@ -279,6 +279,40 @@ if [ -z "${ONLY:-}" ] || [ "${ONLY:-}" = persist ]; then
 	has "$LOG2" "mod_menu: page registered with 1 notes"; check "mod_menu: its storage survived a restart" $?
 	left=$(ls "$UD/mods" "$UD/plugins" 2>/dev/null | grep -vE "^(enabled.txt|$|/.*:)" | grep -v ":" | tr '\n' ' ')
 	check "uninstall removed every example's folder (left: ${left:-none})" "$([ -z "$left" ] && echo 0 || echo 1)"
+fi
+
+# 3. online: a dedicated server in another process, the client over UDP. The
+# offline-only rule must be closed, and channels must work over the network.
+if [ -z "${ONLY:-}" ] || [ "${ONLY:-}" = online ]; then
+	SUD="$WORK/server"
+	OUD="$WORK/online"
+	mkdir -p "$SUD/plugins" "$SUD/data" "$OUD/mods" "$OUD/data"
+	cp -r "$ROOT/touch/lua/examples/plugins/round_timer" "$SUD/plugins/"
+	echo round_timer > "$SUD/plugins/enabled.txt"
+	cp -r "$ROOT/touch/lua/examples/mods/round_hud" "$ROOT/tests/lua-mods/probe/probe_cl" "$ROOT/touch/lua/examples/mods/radar" "$OUD/mods/"
+	printf 'round_hud\nprobe_cl\nradar\n' > "$OUD/mods/enabled.txt"
+	PORT=$((26200 + RANDOM % 500))
+	printf 'set bot_number 4\nset skill 8\nset g_warmup 0\nset slowmo 2\nset sv_public 0\nport %s\nmap %s\n' "$PORT" "$MAP" > "$SUD/data/server.cfg"
+	SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy timeout -k 10 150 "$ENGINE" -xonotic -nosound -dedicated \
+		-basedir "$BASEDIR" -userdir "$SUD" +exec server.cfg > "$WORK/server.log" 2>&1 &
+	SPID=$!
+	cat > "$OUD/data/online.cfg" <<EOF
+defer 12 "connect 127.0.0.1:$PORT"
+defer 30 "togglemenu 0"
+defer 31 "cmd join"
+defer 32 "togglemenu 0"
+defer 50 "lua_probe_cl_count"
+defer 51 "quit"
+EOF
+	OLOG="$WORK/online.log"
+	RUN_UD="$OUD" run_engine "$OLOG" 120 +exec online.cfg
+	check "scenario 3: the client joined a dedicated server and quit cleanly" $?
+	kill "$SPID" 2>/dev/null; wait "$SPID" 2>/dev/null
+	has "$OLOG" "probe_cl: entities players=[0-9]+ .* offline=false"; check "online: the offline-only rule is closed" $?
+	has "$OLOG" "probe_cl: hidden listed 0"; check "online: no player or projectile behind a wall or off screen is listed" $?
+	has "$OLOG" "radar: offline=false"; check "online: the radar sees the rule closed" $?
+	has "$OLOG" "round_hud: round [0-9]+, [0-9]+ s left"; check "online: a server mod's messages reach the client mod over the network" $?
+	has "$WORK/server.log" "round_timer: hello from player"; check "online: the client mod's hello reaches the dedicated server" $?
 fi
 
 echo
