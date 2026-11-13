@@ -8,6 +8,7 @@
 #include "commandbutton.qh"
 #include "leavematchbutton.qh"
 #include "button.qh"
+#include "dialog_touch_lan.qh" // Touch: LAN games
 
 entity makeXonoticServerListTab()
 {
@@ -33,10 +34,13 @@ void XonoticServerListTab_fill(entity me)
 			e.onClick = ServerList_Categories_Click;
 		/* FILTER CONTROLS */
 		me.TD(me, 1, 0.5, e = makeXonoticTextLabel(1, _("Filter:")));
-		me.TD(me, 1, 2, e = makeXonoticInputBox(0, string_null));
+		me.TD(me, 1, 1.4, e = makeXonoticInputBox(0, string_null)); // Touch: 0.6 narrower for LAN
 			e.onChange = ServerList_Filter_Change;
 			e.onChangeEntity = slist;
 			slist.controlledTextbox = e;
+		me.TD(me, 1, 0.6, e = makeXonoticCheckBox_T(0, "net_slist_lan_only", _("LAN"), _("Only games on this Wi-Fi or network, found without a master server"))); // Touch
+			e.onClickEntity = slist; // Touch
+			e.onClick = TouchLan_LanOnly_Click; // Touch
 	me.gotoRC(me, 0.5, 0.8 + 0.5 + 2);
 		me.TD(me, 1, 0.6, e = makeXonoticCheckBox_T(0, "menu_slist_showempty", ZCTX(_("SRVS^Empty")),
 			_("Show empty servers")));
@@ -72,7 +76,7 @@ void XonoticServerListTab_fill(entity me)
 
 	me.gotoRC(me, me.rows - 2, 0);
 		me.TD(me, 1, 0.6, e = makeXonoticTextLabel(0, _("Address:")));
-		me.TD(me, 1, 2.9, e = makeXonoticInputBox(0, string_null));
+		me.TD(me, 1, 1.9, e = makeXonoticInputBox(0, string_null)); // Touch: 1 narrower for Host LAN
 			e.onEnter = ServerList_Connect_Click;
 			e.onEnterEntity = slist;
 			e.onChange = ServerList_Update_favoriteButton;
@@ -87,6 +91,11 @@ void XonoticServerListTab_fill(entity me)
 			e.onClick = ServerList_Info_Click;
 			e.onClickEntity = slist;
 			slist.infoButton = e;
+	me.gotoRC(me, me.rows - 2, 0.6 + 1.9 + 1.5 + 1.5); // Touch: after Info
+		me.TD(me, 1, 1, e = makeXonoticButton_T(_("Host LAN..."), '0.55 1 0.55', _("Host a game for this Wi-Fi or network"))); // Touch
+			e.onClick = TouchLan_OpenHost; // Touch
+			e.onClickEntity = slist; // Touch
+			setDependent(e, "touch_lan_available", 1, 1); // Touch: not in the browser
 	me.TR(me);
 		me.TD(me, 1, me.columns * 0.5, e = makeXonoticLeaveMatchButton('0 0 0', 0));
 		me.TD(me, 1, me.columns * 0.5, e = makeXonoticButton(_("Join!"), '0 1 0'));

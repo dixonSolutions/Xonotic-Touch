@@ -1,4 +1,5 @@
 #include "serverlist.qh"
+#include "dialog_touch_lan.qh" // Touch: LAN games
 
 #include "checkbox.qh"
 #include "inputbox.qh"
@@ -136,6 +137,8 @@ int CategoryForEntry(int entry)
 	}
 
 	if(modtype != "xonotic") { impure += autocvar_menu_slist_modimpurity; }
+
+	if(TouchLan_Category(entry)) { return CAT_LAN; } // Touch: LAN games first
 
 	// check if this server is favorited
 	if(gethostcachenumber(SLIST_FIELD_ISFAVORITE, entry)) { return CAT_FAVORITED; }
@@ -765,6 +768,7 @@ void XonoticServerList_resizeNotify(entity me, vector relOrigin, vector relSize,
 }
 void ServerList_Connect_Click(entity btn, entity me)
 {
+	if (TouchLan_Connect(me.ipAddressBox.text)) return; // Touch: password prompt for a locked game
 	if (me.ipAddressBox.text != "")
 		localcmd(sprintf("connect %s\n", me.ipAddressBox.text));
 }
@@ -1047,6 +1051,7 @@ void XonoticServerList_drawListBoxItem(entity me, int i, vector absSize, bool is
 			draw_Picture(iconPos, "icon_stats1", iconSize, '1 1 1', 1);
 	}
 
+	TouchLan_DrawLock(i, iconPos, iconSize); // Touch: password-protected game
 	if(isFocused && me.mouseOverIcons && !me.tooltip)
 	{
 		string t = "";

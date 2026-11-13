@@ -95,6 +95,7 @@
 #include <menu/xonotic/dialog_touch_esp.qh> // Touch
 #include <menu/xonotic/dialog_touch_gamemenu.qh>
 #include <menu/xonotic/dialog_touch_mods.qh> // Touch: Lua mods tab
+#include <menu/xonotic/dialog_touch_lan.qh> // Touch: LAN games
 #include <menu/xonotic/dialog_touch_privacy.qh> // Touch
 #include <menu/xonotic/dialog_uid2name.qh>
 #include <menu/xonotic/dialog_welcome.qh>

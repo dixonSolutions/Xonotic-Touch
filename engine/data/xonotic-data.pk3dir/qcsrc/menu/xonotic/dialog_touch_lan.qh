@@ -1,0 +1,78 @@
+#pragma once
+
+// LAN games (docs/LAN.md; the engine side is engine/darkplaces/touch_lan.c).
+//
+// TouchLanHost: host a game for the local network from the menu, with
+// finger-sized controls: name, mode, map, bots, slots, port, password and the
+// touch assists it allows. Start checks the port at once (the engine's
+// _touch_lan_portcheck) and offers the next free one; while hosting the screen
+// shows every address others can join and who is in. Reached from the server
+// list ("Host LAN…") and from the touch game menu.
+//
+// TouchLanPassword: the engine opens it (menu_cmd directmenu TouchLanPassword
+// required|wrong <address>) when a server refuses a join for want of the
+// right password, and the server list opens it before joining a locked game
+// whose password this device does not know.
+//
+// The server list's own pieces (LAN category, lock, LAN-only checkbox) are
+// small hooks in serverlist.qc and dialog_multiplayer_join.qc calling the
+// functions at the end of this file.
+
+#include "rootdialog.qh"
+#include "textlabel.qh"
+#include "touchbutton.qh"
+
+CLASS(GodnoticLanHostDialog, XonoticRootDialog)
+	METHOD(GodnoticLanHostDialog, fill, void(entity));
+	ATTRIB(GodnoticLanHostDialog, title, string, _("Host a LAN game"));
+	ATTRIB(GodnoticLanHostDialog, color, vector, SKINCOLOR_DIALOG_MULTIPLAYER);
+	ATTRIB(GodnoticLanHostDialog, intendedWidth, float, 0.9);
+	ATTRIB(GodnoticLanHostDialog, rows, float, 18);
+	ATTRIB(GodnoticLanHostDialog, columns, float, 6);
+	ATTRIB(GodnoticLanHostDialog, name, string, "TouchLanHost");
+ENDCLASS(GodnoticLanHostDialog)
+
+CLASS(GodnoticLanPasswordDialog, XonoticRootDialog)
+	METHOD(GodnoticLanPasswordDialog, fill, void(entity));
+	METHOD(GodnoticLanPasswordDialog, readInputArgs, void(entity, int));
+	METHOD(GodnoticLanPasswordDialog, showNotify, void(entity));
+	ATTRIB(GodnoticLanPasswordDialog, title, string, _("Password"));
+	ATTRIB(GodnoticLanPasswordDialog, color, vector, SKINCOLOR_DIALOG_MULTIPLAYER);
+	ATTRIB(GodnoticLanPasswordDialog, intendedWidth, float, 0.7);
+	ATTRIB(GodnoticLanPasswordDialog, rows, float, 9);
+	ATTRIB(GodnoticLanPasswordDialog, columns, float, 4);
+	ATTRIB(GodnoticLanPasswordDialog, name, string, "TouchLanPassword");
+	ATTRIB(GodnoticLanPasswordDialog, lanAddress, string);
+	ATTRIB(GodnoticLanPasswordDialog, lanMessage, entity);
+	ATTRIB(GodnoticLanPasswordDialog, lanInput, entity);
+ENDCLASS(GodnoticLanPasswordDialog)
+
+// A label whose text follows the hosting state (role: TOUCH_LAN_*).
+CLASS(GodnoticLanLabel, XonoticTextLabel)
+	METHOD(GodnoticLanLabel, draw, void(entity));
+	ATTRIB(GodnoticLanLabel, lanRole, int, 0);
+	ATTRIB(GodnoticLanLabel, lanText, string);
+	ATTRIB(GodnoticLanLabel, allowColors, bool, true);
+	ATTRIB(GodnoticLanLabel, allowCut, bool, true);
+ENDCLASS(GodnoticLanLabel)
+
+// Start / Stop: greyed out when they cannot act.
+CLASS(GodnoticLanButton, GodnoticButton)
+	METHOD(GodnoticLanButton, draw, void(entity));
+	ATTRIB(GodnoticLanButton, lanRole, int, 0);
+ENDCLASS(GodnoticLanButton)
+
+// Server list hooks.
+// The server list's Join: false to go ahead, true when it opened the password
+// prompt instead (a locked game whose password this device does not know).
+bool TouchLan_Connect(string address);
+// The LAN category for a private-network server; CAT_LAN or 0.
+int TouchLan_Category(int entry);
+// Draw the lock of a password-protected game in the icon column.
+void TouchLan_DrawLock(int entry, vector pos, vector size);
+// Open the Host screen (a button's onClick).
+void TouchLan_OpenHost(entity btn, entity me);
+// The server list's LAN checkbox changed: search again.
+void TouchLan_LanOnly_Click(entity box, entity slist);
+// mainwindow.qc: add the two dialogs.
+void TouchLan_ConfigureDialogs(entity mainwindow);

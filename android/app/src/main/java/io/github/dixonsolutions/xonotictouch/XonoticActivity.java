@@ -120,6 +120,7 @@ public final class XonoticActivity extends SDLActivity {
             netStateWatch.interrupt();
         }
         KeepAliveService.stop(this);
+        LanLocks.release();
         EngineSwap.unregister();
         super.onDestroy();
     }
@@ -702,6 +703,7 @@ public final class XonoticActivity extends SDLActivity {
                 }
                 String now = kind + "\n" + text;
                 boolean idle = kind.equals("idle") || kind.isEmpty();
+                LanLocks.hosting(this, kind.equals("hosting")); // LAN game: Wi-Fi locks while hosting
                 KeepAliveService.engineBusy = !idle;
                 if (!now.equals(shown)) {
                     if (idle) {

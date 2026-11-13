@@ -27,6 +27,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // for secure rcon authentication
 #include "hmac.h"
 #include "mdfour.h"
+#include "touch_lan.h" // Touch: LAN games
 #include <time.h>
 
 #define QWMASTER_PORT 27000
@@ -631,6 +632,7 @@ static inline void ServerList_BuildDPServerQuery(char *buffer, size_t buffersize
 	base64_encode(hash, 16, sizeof(hash));
 	dpsnprintf(buffer, buffersize, "\377\377\377\377getstatus %.22s%" PRIx64, hash, timestamp);
 }
+void TouchLAN_BuildQuery(char *buffer, size_t buffersize, double querytime) { ServerList_BuildDPServerQuery(buffer, buffersize, querytime); } // Touch:
 
 static void NetConn_BuildChallengeString(char *buffer, int bufferlength);
 void ServerList_QueryList(qbool resetcache, qbool querydp, qbool queryqw, qbool consoleoutput)
@@ -682,6 +684,7 @@ void ServerList_QueryList(qbool resetcache, qbool querydp, qbool queryqw, qbool 
 
 	//_ServerList_Test();
 
+	if (!TouchLAN_LanOnly()) // Touch: a LAN-only list asks no master server
 	NetConn_QueryMasters(querydp, queryqw);
 
 	// Generate new DP server query key string
@@ -722,6 +725,7 @@ void ServerList_QueryList(qbool resetcache, qbool querydp, qbool queryqw, qbool 
 
 			// search LAN for DarkPlaces servers
 			NetConn_WriteString(cl_sockets[i], dpquery, &broadcastaddress);
+			TouchLAN_Broadcast(cl_sockets[i]); // Touch: every interface, LAN ports, repeats
 		}
 
 		if (queryqw)
@@ -2196,6 +2200,7 @@ static int NetConn_ClientParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 			// TODO: add userinfo stuff here instead of using NQ commands?
 			memcpy(senddata, "\377\377\377\377", 4);
 			dpsnprintf(senddata+4, sizeof(senddata)-4, "connect\\protocol\\darkplaces 3\\protocols\\%s%s\\challenge\\%s", protocolnames, cls.connect_userinfo, string + 10);
+			TouchLAN_AppendConnect(senddata + 4, sizeof(senddata) - 4, string + 10, peeraddress); // Touch: join password proof
 			NetConn_WriteString(mysocket, senddata, peeraddress);
 			return true;
 		}
@@ -2220,6 +2225,7 @@ static int NetConn_ClientParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 			length = min(length - 7, (int)sizeof(cl_connect_status) - 1);
 			dpsnprintf(cl_connect_status, sizeof(cl_connect_status), "Connect: rejected, %.*s", length, string);
 			Con_Printf(CON_ERROR "Connect: rejected by %s\n" CON_ERROR "%.*s\n", addressstring2, length, string);
+			TouchLAN_Rejected(string, length, peeraddress); // Touch: password prompt
 			return true;
 		}
 #ifdef CONFIG_MENU
@@ -2727,6 +2733,7 @@ void NetConn_ClientFrame(void)
 	lhnetaddress_t peeraddress;
 	unsigned char readbuffer[NET_HEADERSIZE+NET_MAXMESSAGE];
 
+	TouchLAN_Frame(); // Touch: LAN search repeats, host status
 	NetConn_UpdateSockets();
 
 	if (cls.connect_trying && cls.connect_nextsendtime < host.realtime)
@@ -2836,6 +2843,7 @@ static qbool NetConn_BuildStatusResponse(const char* challenge, char* out_msg, s
 				*p++ = *q;
 		*p = 0;
 	}
+	TouchLAN_StatusFlags(qcstatus, sizeof(qcstatus)); // Touch: lock on password-protected games
 
 	/// \TODO: we should add more information for the full status string
 	crypto_idstring = Crypto_GetInfoResponseDataString();
@@ -3402,6 +3410,7 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 				NetConn_WriteString(mysocket, "\377\377\377\377reject Wrong game protocol.", peeraddress);
 				return true;
 			}
+			if (TouchLAN_RefuseJoin(mysocket, peeraddress, string)) return true; // Touch: join password
 
 			// see if this is a duplicate connection request or a disconnected
 			// client who is rejoining to the same client slot
@@ -4245,6 +4254,7 @@ void NetConn_Init(void)
 	LHNET_Init();
 	if (Thread_HasThreads())
 		netconn_mutex = Thread_CreateMutex();
+	TouchLAN_Init(); // Touch: LAN games
 }
 
 void NetConn_Shutdown(void)
