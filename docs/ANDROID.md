@@ -172,7 +172,12 @@ end a match, a join or a download:
 * **First-launch data download**: carries on; when it finishes while away, a
   notification says the game is ready and the next return starts it.
 * **Local game**: paused while away (the engine waits for the return, using
-  no CPU) and running again on return. In the main menu with nothing going
+  no CPU) and running again on return.
+* **Hosting a LAN game** (or any game with more than one player slot): keeps
+  running, like a connection, so the players on it are not timed out. The
+  engine writes `hosting` to `touch_netstate`; the foreground service keeps
+  the process, and `LanLocks` holds a Wi-Fi multicast lock and a low-latency
+  Wi-Fi lock until hosting stops ([LAN.md](LAN.md)). In the main menu with nothing going
   on, the engine waits the same way.
 
 While the engine is connected, joining or downloading (it writes the state to
@@ -211,7 +216,8 @@ The merged manifest (`aapt2 dump permissions`) declares exactly:
 | `ACCESS_NETWORK_STATE` | the mobile-data setting |
 | `POST_NOTIFICATIONS` | download and staying-connected notifications (Android 13+) |
 | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`, `FOREGROUND_SERVICE_SPECIAL_USE` | `KeepAliveService`: the data download, and a server connection kept while in the background |
-| `WAKE_LOCK` | the CPU keeps running with the screen off while connected, joining or downloading |
+| `WAKE_LOCK` | the CPU keeps running with the screen off while connected, joining, downloading or hosting a LAN game |
+| `CHANGE_WIFI_MULTICAST_STATE` | `LanLocks`: while hosting a LAN game, lets the Wi-Fi driver pass other players' broadcast search through ([LAN.md](LAN.md)) |
 | `REQUEST_INSTALL_PACKAGES` | the self-updater hands its APK to `PackageInstaller` |
 | `UPDATE_PACKAGES_WITHOUT_USER_ACTION` | later updates without the confirm dialog (Android 12+) |
 

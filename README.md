@@ -109,6 +109,7 @@ First launch downloads game data into the platform writable dir (see [docs/RELEA
 - [docs/SCREEN.md](docs/SCREEN.md) — landscape screen calculation
 - [docs/CONTROLS.md](docs/CONTROLS.md) — touch controls and presets
 - [docs/SETUP.md](docs/SETUP.md) — first-run wizard, download progress, OSK, touch menus
+- [docs/LAN.md](docs/LAN.md) — LAN games: host from the menu, find games on your network, optional password
 
 Architecture, measured checks and unfinished work: [Godnotic delivery record](docs/GODNOTIC.md).
 

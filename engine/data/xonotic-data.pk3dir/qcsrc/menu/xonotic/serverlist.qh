@@ -131,7 +131,7 @@ float m_gethostcachecategory(float entry);
 
 
 // fields for category entities
-const int MAX_CATEGORIES = 9;
+const int MAX_CATEGORIES = 10; // Touch: + CAT_LAN
 const int CATEGORY_FIRST = 1;
 entity categories[MAX_CATEGORIES];
 int category_ent_count;
@@ -148,6 +148,7 @@ int category_item[MAX_CATEGORIES];
 int category_draw_count;
 
 #define SLIST_CATEGORIES \
+	SLIST_CATEGORY(CAT_LAN,          "",            "",             CTX(_("SLCAT^LAN"))) /* Touch: LAN games first */ \
 	SLIST_CATEGORY(CAT_FAVORITED,    "",            "",             CTX(_("SLCAT^Favorites"))) \
 	SLIST_CATEGORY(CAT_RECOMMENDED,  "",            "",             CTX(_("SLCAT^Recommended"))) \
 	SLIST_CATEGORY(CAT_NORMAL,       "",            "CAT_SERVERS",  CTX(_("SLCAT^Normal Servers"))) \

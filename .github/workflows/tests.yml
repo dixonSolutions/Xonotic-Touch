@@ -91,6 +91,14 @@ jobs:
       - name: Runs off platforms held back; bridges, stairs, walls and lower floors left alone
         run: bash scripts/test-touch-ledge.sh
 
+  lan-logic:
+    name: LAN games logic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Broadcast addresses, LAN ranges, the lock key, password rejects, port lists
+        run: bash scripts/test-lan-logic.sh
+
   release-changelog:
     name: Release changelog
     runs-on: ubuntu-latest

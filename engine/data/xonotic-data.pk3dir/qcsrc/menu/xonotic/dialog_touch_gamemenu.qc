@@ -77,4 +77,9 @@ void GodnoticGameMenuDialog_fill(entity me)
 	me.TR(me);
 		me.TD(me, 1.5, 1, e = TouchGameMenu_SubButton(_("Profile"), "profile"));
 		me.TD(me, 1.5, 1, e = makeGodnoticCommandButton(_("Quit"), '1 0 0', "menu_showquitdialog", 0));
+	me.TR(me);
+	me.TR(me);
+		// Host a game for the LAN, or while hosting see who is in, the addresses and Stop.
+		me.TD(me, 1.5, 2, e = TouchGameMenu_SubButton(_("LAN game: host, players, stop"), "TouchLanHost"));
+			setDependent(e, "touch_lan_available", 1, 1);
 }

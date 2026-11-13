@@ -20,6 +20,10 @@ surface on the return, before the engine hears of it.
 With nothing to keep going -- no server, no join, no download -- and in a
 local game, the main thread waits for the return as it always did: a local
 match is paused while the player is away, and an idle menu costs nothing.
+A game others can join (maxplayers > 1: the LAN Host screen, or Create)
+keeps running instead, like a connection: the players on it would otherwise
+time out. touch_netstate then says "hosting", and XonoticActivity holds a
+Wi-Fi lock and a multicast lock (LanLocks.java) for as long as it does.
 
 <userdir>/data/touch_netstate tells the Java side what the engine is doing
 (XonoticActivity.watchNetState), which keeps the process alive with a
@@ -119,6 +123,16 @@ static void publish_netstate(void)
 		dpsnprintf(state, sizeof(state), "joining\nJoining %s%s\n", addr, Curl_Running() ? ", downloading" : "");
 	else if (remote && cls.state == ca_connected)
 		dpsnprintf(state, sizeof(state), "connected\nConnected to %s%s%s\n", addr, cl.worldbasename[0] ? " - " : "", cl.worldbasename);
+	else if (sv.active && svs.maxclients > 1 && !cls.demoplayback)
+	{
+		// A LAN game others can join (touch_lan.c): it must keep running, and
+		// the Java side holds Wi-Fi and multicast locks while it does.
+		char portstr[16] = "";
+		cvar_t *port = Cvar_FindVar(&cvars_all, "touch_lan_port", ~0);
+		if (port && port->integer > 0)
+			dpsnprintf(portstr, sizeof(portstr), " on port %d", port->integer);
+		dpsnprintf(state, sizeof(state), "hosting\nHosting a LAN game%s%s%s\n", portstr, cl.worldbasename[0] ? " - " : "", cl.worldbasename);
+	}
 	else if (Curl_Running())
 		dp_strlcpy(state, "downloading\nDownloading\n", sizeof(state));
 	else
@@ -141,8 +155,8 @@ static void publish_netstate(void)
 static void wait_while_idle(void)
 {
 	SDL_Event event;
-	if (!away || (netstate_busy && !sv.active))
-		return;
+	if (!away || (netstate_busy && (!sv.active || svs.maxclients > 1)))
+		return; // a server, a join, a download, or a LAN game we host: keep going
 	Con_Printf(sv.active ? "Android: local game paused in the background\n" : "Android: idle in the background\n");
 	while (host.state == host_active)
 	{
