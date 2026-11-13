@@ -243,9 +243,9 @@ the sticky header, section 4.10). Children: content and containers.
 | `actionbar` | `align` | sticky bar at the bottom: buttons (Play, Join, Apply). At most one, the screen's last child |
 | `row` | `wrap` (bool), `align` (`start`, `center`, `end`, `spread`) | small items side by side (buttons, chips, a control and its label) |
 | `grid` | `minItem` (dp, a hint for the narrowest card, default 160), `maxColumns`, `scroll` (`vertical` default, `horizontal` for a carousel) | cards |
-| `tabs` | `style` (`tabs`, `segmented`), `value` (selected pane's key), `bind` | `pane` nodes |
-| `pane` | `key`, `label`, `icon`, `badge` | content of one tab |
-| `split` | `detailOpen` (bool) | two children: list, then detail. Wide screens show both; narrow ones show the detail as a pushed page when `detailOpen` |
+| `tabs` | `style` (`tabs`, `segmented`), `presentation` (`horizontal`), `swipe` (bool: swiping the content changes tab where no horizontal control is under the finger), `value` (selected pane's key), `bind` | `pane` nodes |
+| `pane` | `key`, `label`, `icon`, `subtitle`, `badge` | content of one tab; only the selected pane has children |
+| `split` | `style` (`list-detail` default, `vertical-tabs`), `value`, `bind`, `detailOpen` (bool) | `list-detail`: two children, list then detail. `vertical-tabs`: `pane` children, the selected one (by `value`) has content (section 4.11) |
 | `form` | `submit` (action), `error` (form-level message) | controls; each control may carry `error` |
 
 ### 4.4 Content
@@ -445,6 +445,32 @@ half a screen), recycling row and card widgets.
 | sticky section headers | item decoration or sticky-header layout manager | `GtkListHeaderFactory` sections | own |
 | header, toolbar, tab strip | `CoordinatorLayout` + `AppBarLayout` (collapsing) | `AdwToolbarView` top bars (`AdwHeaderBar`, `AdwViewSwitcher`) | own |
 | action bar | bottom bar in the `CoordinatorLayout` | `AdwToolbarView` bottom bar | own |
+
+### 4.11 Settings: vertical tabs with horizontal sub-tabs
+
+Settings is one screen whose content is a `split` with `style: "vertical-tabs"`:
+
+- its `pane` children are the sections (Video, Audio, Game, Input, Controls, ESP, Player,
+  Privacy, Updates, Data, Menu, Mods), each with `label`, `icon` and a one-line `subtitle`;
+- `value` is the selected section; choosing another sends `ev: "value"` on the split
+  with that key (the engine then fills the new pane and empties the old one);
+- wide screens: the section list is a sticky column on the left, the selected pane's
+  content on the right; both scroll independently;
+- narrow or short screens (`widthClass` compact): one column. When `detailOpen` is false the
+  section list is the page; choosing a section sets `detailOpen` and the pane shows as
+  its own page with a back arrow; `back` returns to the list (the engine clears
+  `detailOpen`);
+- a section with sub-pages (Video: Display, Effects, View; Controls: Controls, HUD,
+  Aim, Auto-shoot, Tactics; Player: Profile, Colours; Mods: Client mods, Server mods,
+  Pages from mods) holds a `tabs` node with `presentation: "horizontal"`: a sticky tab
+  bar at the top of the content pane, scrollable sideways when the labels do not fit;
+  `swipe: true` allows swiping between sub-pages where no slider or other horizontal
+  control is under the finger. Small sections have no sub-tabs.
+
+| | Android | GTK 4 / libadwaita | QuakeC |
+| --- | --- | --- | --- |
+| `split` vertical-tabs | `NavigationRailView` or a side `RecyclerView` + content; one column with a pushed fragment when compact | `AdwNavigationSplitView` with a sidebar list | left column of tab buttons |
+| `tabs` horizontal | `TabLayout` (scrollable) + `ViewPager2` | `AdwViewSwitcher` / `AdwTabBar` in a top bar | sticky strip of tab buttons |
 
 ## 5. Hints
 

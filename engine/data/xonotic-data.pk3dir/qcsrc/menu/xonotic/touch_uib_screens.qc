@@ -145,8 +145,18 @@ void UIB_DropLast(bool modal)
 	else strcpy(uibn_stack, out);
 }
 
+bool uib_narrow;  // the QuakeC renderer's own layout is one column
+
 void UIB_Back()
 {
+	if (uibn_modal == "" && UIB_TopScreen() == "settings" && UIB_VMf("settings.open")
+		&& (uib_caps("widthClass") == "compact" || uib_narrow))
+	{
+		// one column: back from a section to the list of sections
+		UIB_VMSet("settings.open", "0");
+		UIB_RebuildAll();
+		return;
+	}
 	if (uibn_modal != "")
 		UIB_DropLast(true);
 	else if (tokenize_console(uibn_stack) > 1)

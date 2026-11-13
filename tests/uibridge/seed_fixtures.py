@@ -514,6 +514,10 @@ def own(tree, id):
 
 def write(name, f):
     os.makedirs(OUT, exist_ok=True)
+    path = os.path.join(OUT, name + ".json")
+    # the engine writes most fixtures itself (scripts/uib-fixtures.py); seeds fill the rest
+    if os.path.exists(path) and '"generated": "engine"' in open(path, encoding="utf-8").read():
+        return
     with open(os.path.join(OUT, name + ".json"), "w", encoding="utf-8") as fh:
         json.dump(f, fh, indent=1, ensure_ascii=False)
         fh.write("\n")
@@ -545,7 +549,6 @@ def main():
     write("password-dialog", fixture("password-dialog", "Password prompt dialog.",
                                      app([h, mp_screen(lan=True)], modal=[password_dialog()]), rows=srows))
     write("settings", fixture("settings", "Settings root: twelve sections including Mods, and Advanced.", app([h, settings_root()])))
-    write("settings-video", fixture("settings-video", "Settings > Video bound to real cvars.", app([h, settings_root(), settings_video()])))
     write("settings-mods", fixture("settings-mods", "Settings > Mods: client and server mods, install, how-to link, mod pages.",
                                    app([h, settings_root(), settings_mods()]), rows=MOD_ROWS))
     write("mod-page", fixture("mod-page", "A page contributed by a mod (origin mod:radar).",
@@ -585,9 +588,6 @@ def main():
     # 3. a setting changing
     sb = app([h, settings_root(), settings_video(100)])
     s2 = settings_video(110)
-    write("seq-setting", fixture("seq-setting", "Field of view changed (by the renderer, then the console): value diffs.",
-                                 sb, steps=[{"delay": 0.5, "msg": diff(1, [own(s2, "settings.video/view/fov")]), "note": "fov 110"},
-                                            {"delay": 0.5, "msg": diff(2, [own(settings_video(90), "settings.video/view/fov")]), "note": "fov 90 from console"}]))
     # 4. a dialog opening and closing
     db = app([h])
     with_d = app([h], modal=[quit_dialog()])

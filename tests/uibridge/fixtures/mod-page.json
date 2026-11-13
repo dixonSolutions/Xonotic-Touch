@@ -1,12 +1,35 @@
 {
  "name": "mod-page",
  "description": "A page contributed by a mod (origin mod:radar).",
- "generated": "seed",
+ "generated": "engine",
+ "caps": {
+  "nodes": [],
+  "hints": [],
+  "width": 1280,
+  "height": 720,
+  "dpi": 96,
+  "widthClass": "expanded",
+  "heightClass": "medium",
+  "input": [
+   "mouse",
+   "keyboard"
+  ],
+  "locale": "en",
+  "reducedMotion": false,
+  "powerSave": false,
+  "thermal": "nominal",
+  "insets": {
+   "top": 0,
+   "right": 0,
+   "bottom": 0,
+   "left": 0
+  }
+ },
  "snapshot": {
   "uib": 1,
   "t": "snapshot",
   "id": 2,
-  "rev": 1,
+  "rev": 35,
   "root": "app",
   "nodes": [
    {
@@ -17,7 +40,6 @@
      "stack": [
       "home",
       "settings",
-      "settings.mods",
       "mods.page.radar.main"
      ],
      "modal": [],
@@ -27,7 +49,6 @@
     "children": [
      "home",
      "settings",
-     "settings.mods",
      "mods.page.radar.main"
     ]
    },
@@ -46,7 +67,8 @@
        "style": "secondary",
        "confirm": {
         "title": "Quit Godnotic?",
-        "ok": "Quit"
+        "ok": "Quit",
+        "destructive": false
        }
       }
      ]
@@ -98,11 +120,6 @@
       "style": "primary"
      },
      "actions": [
-      {
-       "id": "quick",
-       "label": "Quick match",
-       "icon": "players"
-      },
       {
        "id": "sp",
        "label": "Choose…",
@@ -197,365 +214,190 @@
      "kind": "page"
     },
     "children": [
-     "settings/sections",
+     "settings/split",
      "settings/advanced"
     ]
    },
    {
-    "id": "settings/sections",
-    "type": "grid",
+    "id": "settings/split",
+    "type": "split",
     "props": {
-     "minItem": 240
+     "style": "vertical-tabs",
+     "bind": "vm:settings.section",
+     "value": "mods",
+     "detailOpen": true
     },
     "children": [
-     "settings/sections/video",
-     "settings/sections/audio",
-     "settings/sections/game",
-     "settings/sections/input",
-     "settings/sections/touch",
-     "settings/sections/esp",
-     "settings/sections/player",
-     "settings/sections/privacy",
-     "settings/sections/updates",
-     "settings/sections/data",
-     "settings/sections/menu",
-     "settings/sections/mods"
+     "settings/split/video",
+     "settings/split/audio",
+     "settings/split/game",
+     "settings/split/input",
+     "settings/split/touch",
+     "settings/split/esp",
+     "settings/split/player",
+     "settings/split/privacy",
+     "settings/split/updates",
+     "settings/split/data",
+     "settings/split/menu",
+     "settings/split/mods"
     ]
    },
    {
-    "id": "settings/sections/video",
-    "type": "card",
+    "id": "settings/split/video",
+    "type": "pane",
     "props": {
-     "title": "Video",
-     "subtitle": "Quality, field of view, frame rate",
+     "key": "video",
+     "label": "Video",
      "icon": "video",
-     "density": "compact",
-     "primary": {
-      "id": "settings.video",
-      "label": "Video",
-      "icon": "chevron"
-     }
+     "subtitle": "Resolution, effects, field of view"
     },
     "children": []
    },
    {
-    "id": "settings/sections/audio",
-    "type": "card",
+    "id": "settings/split/audio",
+    "type": "pane",
     "props": {
-     "title": "Audio",
-     "subtitle": "Volume, music, voice",
+     "key": "audio",
+     "label": "Audio",
      "icon": "audio",
-     "density": "compact",
-     "primary": {
-      "id": "settings.audio",
-      "label": "Audio",
-      "icon": "chevron"
-     }
+     "subtitle": "Volume, music, hit sounds"
     },
     "children": []
    },
    {
-    "id": "settings/sections/game",
-    "type": "card",
+    "id": "settings/split/game",
+    "type": "pane",
     "props": {
-     "title": "Game",
-     "subtitle": "Crosshair, HUD, messages",
+     "key": "game",
+     "label": "Game",
      "icon": "game",
-     "density": "compact",
-     "primary": {
-      "id": "settings.game",
-      "label": "Game",
-      "icon": "chevron"
-     }
+     "subtitle": "Crosshair, weapons, content"
     },
     "children": []
    },
    {
-    "id": "settings/sections/input",
-    "type": "card",
+    "id": "settings/split/input",
+    "type": "pane",
     "props": {
-     "title": "Input",
-     "subtitle": "Mouse, keyboard and gamepad",
+     "key": "input",
+     "label": "Input",
      "icon": "input",
-     "density": "compact",
-     "primary": {
-      "id": "settings.input",
-      "label": "Input",
-      "icon": "chevron"
-     }
+     "subtitle": "Mouse, keyboard and keys"
     },
     "children": []
    },
    {
-    "id": "settings/sections/touch",
-    "type": "card",
+    "id": "settings/split/touch",
+    "type": "pane",
     "props": {
-     "title": "Touch controls",
-     "subtitle": "Presets, HUD, aim assist, auto-shoot, tactics",
+     "key": "touch",
+     "label": "Controls",
      "icon": "touch",
-     "density": "compact",
-     "primary": {
-      "id": "settings.touch",
-      "label": "Touch controls",
-      "icon": "chevron"
-     }
+     "subtitle": "Presets, HUD, aim assist, auto-shoot, tactics"
     },
     "children": []
    },
    {
-    "id": "settings/sections/esp",
-    "type": "card",
+    "id": "settings/split/esp",
+    "type": "pane",
     "props": {
-     "title": "ESP",
-     "subtitle": "Offline matches only",
+     "key": "esp",
+     "label": "ESP",
      "icon": "esp",
-     "density": "compact",
-     "primary": {
-      "id": "settings.esp",
-      "label": "ESP",
-      "icon": "chevron"
-     }
+     "subtitle": "Offline matches only"
     },
     "children": []
    },
    {
-    "id": "settings/sections/player",
-    "type": "card",
+    "id": "settings/split/player",
+    "type": "pane",
     "props": {
-     "title": "Player",
-     "subtitle": "Name, model, colours",
+     "key": "player",
+     "label": "Player",
      "icon": "player",
-     "density": "compact",
-     "primary": {
-      "id": "settings.player",
-      "label": "Player",
-      "icon": "chevron"
-     }
+     "subtitle": "Name and colours"
     },
     "children": []
    },
    {
-    "id": "settings/sections/privacy",
-    "type": "card",
+    "id": "settings/split/privacy",
+    "type": "pane",
     "props": {
-     "title": "Privacy",
-     "subtitle": "Statistics and identity",
+     "key": "privacy",
+     "label": "Privacy",
      "icon": "privacy",
-     "density": "compact",
-     "primary": {
-      "id": "settings.privacy",
-      "label": "Privacy",
-      "icon": "chevron"
-     }
+     "subtitle": "Statistics and identity"
     },
     "children": []
    },
    {
-    "id": "settings/sections/updates",
-    "type": "card",
+    "id": "settings/split/updates",
+    "type": "pane",
     "props": {
-     "title": "Updates",
-     "subtitle": "Channel and checks",
+     "key": "updates",
+     "label": "Updates",
      "icon": "update",
-     "density": "compact",
-     "primary": {
-      "id": "settings.updates",
-      "label": "Updates",
-      "icon": "chevron"
-     }
+     "subtitle": "What is new"
     },
     "children": []
    },
    {
-    "id": "settings/sections/data",
-    "type": "card",
+    "id": "settings/split/data",
+    "type": "pane",
     "props": {
-     "title": "Data",
-     "subtitle": "Game data, downloads, cache",
+     "key": "data",
+     "label": "Data",
      "icon": "data",
-     "density": "compact",
-     "primary": {
-      "id": "settings.data",
-      "label": "Data",
-      "icon": "chevron"
-     }
+     "subtitle": "Game data and downloads"
     },
     "children": []
    },
    {
-    "id": "settings/sections/menu",
-    "type": "card",
+    "id": "settings/split/menu",
+    "type": "pane",
     "props": {
-     "title": "Menu",
-     "subtitle": "Size and layout",
+     "key": "menu",
+     "label": "Menu",
      "icon": "menu",
-     "density": "compact",
-     "primary": {
-      "id": "settings.menu",
-      "label": "Menu",
-      "icon": "chevron"
-     }
+     "subtitle": "Size and layout"
     },
     "children": []
    },
    {
-    "id": "settings/sections/mods",
-    "type": "card",
+    "id": "settings/split/mods",
+    "type": "pane",
     "props": {
-     "title": "Mods",
-     "subtitle": "Client and server mods, pages from mods",
+     "key": "mods",
+     "label": "Mods",
      "icon": "mods",
-     "density": "compact",
-     "primary": {
-      "id": "settings.mods",
-      "label": "Mods",
-      "icon": "chevron"
-     }
-    },
-    "children": []
-   },
-   {
-    "id": "settings/advanced",
-    "type": "button",
-    "props": {
-     "label": "Advanced settings",
-     "action": {
-      "id": "settings.advanced",
-      "label": "Advanced settings",
-      "icon": "more",
-      "style": "link"
-     },
-     "help": "Every option, in the classic settings dialogs"
-    },
-    "children": []
-   },
-   {
-    "id": "settings.mods",
-    "type": "screen",
-    "props": {
-     "title": "Mods",
-     "kind": "page"
+     "subtitle": "Client and server mods, pages from mods"
     },
     "children": [
-     "settings.mods/client",
-     "settings.mods/server",
-     "settings.mods/install",
-     "settings.mods/pages"
+     "settings/split/mods/install",
+     "settings/split/mods/tabs"
     ]
    },
    {
-    "id": "settings.mods/client",
-    "type": "section",
-    "props": {
-     "title": "Client mods",
-     "subtitle": "Run in your game only"
-    },
-    "children": [
-     "settings.mods/client/list"
-    ]
-   },
-   {
-    "id": "settings.mods/client/list",
-    "type": "list",
-    "props": {
-     "source": "mods.client",
-     "display": "rows",
-     "density": "compact",
-     "state": "ready",
-     "count": 2,
-     "columns": [
-      {
-       "key": "name",
-       "type": "text",
-       "label": "Mod",
-       "width": "fill"
-      },
-      {
-       "key": "version",
-       "type": "text",
-       "label": "Version",
-       "priority": 3
-      },
-      {
-       "key": "enabled",
-       "type": "bool",
-       "label": "On"
-      }
-     ],
-     "rowPrimary": {
-      "id": "mod.open",
-      "label": "Details",
-      "icon": "info"
-     },
-     "empty": {
-      "title": "No mods yet",
-      "text": "Install one from a file or a link.",
-      "icon": "mods"
-     }
-    },
-    "children": []
-   },
-   {
-    "id": "settings.mods/server",
-    "type": "section",
-    "props": {
-     "title": "Server mods",
-     "subtitle": "Run in games you host"
-    },
-    "children": [
-     "settings.mods/server/list"
-    ]
-   },
-   {
-    "id": "settings.mods/server/list",
-    "type": "list",
-    "props": {
-     "source": "mods.server",
-     "display": "rows",
-     "density": "compact",
-     "state": "ready",
-     "count": 1,
-     "columns": [
-      {
-       "key": "name",
-       "type": "text",
-       "label": "Mod",
-       "width": "fill"
-      },
-      {
-       "key": "enabled",
-       "type": "bool",
-       "label": "On"
-      }
-     ],
-     "rowPrimary": {
-      "id": "mod.open",
-      "label": "Details",
-      "icon": "info"
-     }
-    },
-    "children": []
-   },
-   {
-    "id": "settings.mods/install",
+    "id": "settings/split/mods/install",
     "type": "row",
     "props": {
      "wrap": true
     },
     "children": [
-     "settings.mods/install/file",
-     "settings.mods/install/link",
-     "settings.mods/install/howto"
+     "settings/split/mods/install/file",
+     "settings/split/mods/install/link",
+     "settings/split/mods/install/howto"
     ]
    },
    {
-    "id": "settings.mods/install/file",
+    "id": "settings/split/mods/install/file",
     "type": "button",
     "props": {
      "label": "Install from file",
+     "style": "tonal",
      "action": {
       "id": "mods.install.file",
-      "label": "Install from file",
+      "label": "",
       "icon": "folder",
       "kind": "file",
       "accept": [
@@ -563,13 +405,12 @@
        "zip",
        "pk3"
       ]
-     },
-     "style": "tonal"
+     }
     },
     "children": []
    },
    {
-    "id": "settings.mods/install/link",
+    "id": "settings/split/mods/install/link",
     "type": "button",
     "props": {
      "label": "Install from link",
@@ -583,7 +424,7 @@
     "children": []
    },
    {
-    "id": "settings.mods/install/howto",
+    "id": "settings/split/mods/install/howto",
     "type": "button",
     "props": {
      "label": "How to make a mod",
@@ -599,21 +440,67 @@
     "children": []
    },
    {
-    "id": "settings.mods/pages",
-    "type": "section",
+    "id": "settings/split/mods/tabs",
+    "type": "tabs",
     "props": {
-     "title": "Pages from mods"
+     "style": "tabs",
+     "presentation": "horizontal",
+     "swipe": true,
+     "bind": "vm:settings.mods.tab",
+     "value": "pages"
     },
     "children": [
-     "settings.mods/pages/radar"
+     "settings/split/mods/tabs/client",
+     "settings/split/mods/tabs/server",
+     "settings/split/mods/tabs/pages"
     ]
    },
    {
-    "id": "settings.mods/pages/radar",
+    "id": "settings/split/mods/tabs/client",
+    "type": "pane",
+    "props": {
+     "key": "client",
+     "label": "Client mods"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/mods/tabs/server",
+    "type": "pane",
+    "props": {
+     "key": "server",
+     "label": "Server mods"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/mods/tabs/pages",
+    "type": "pane",
+    "props": {
+     "key": "pages",
+     "label": "Pages from mods"
+    },
+    "children": [
+     "settings/split/mods/tabs/pages/pages"
+    ]
+   },
+   {
+    "id": "settings/split/mods/tabs/pages/pages",
+    "type": "section",
+    "props": {
+     "title": "Pages from mods",
+     "sticky": true
+    },
+    "children": [
+     "settings/split/mods/tabs/pages/pages/radar.main"
+    ]
+   },
+   {
+    "id": "settings/split/mods/tabs/pages/pages/radar.main",
     "type": "card",
     "props": {
      "title": "Radar",
-     "subtitle": "Settings page from the mod Radar",
+     "subtitle": "From the mod radar",
      "icon": "mods",
      "primary": {
       "id": "modpage.radar.main",
@@ -624,11 +511,24 @@
     "children": []
    },
    {
+    "id": "settings/advanced",
+    "type": "button",
+    "props": {
+     "label": "Advanced settings",
+     "action": {
+      "id": "settings.advanced",
+      "label": "Advanced settings",
+      "icon": "more"
+     },
+     "style": "link"
+    },
+    "children": []
+   },
+   {
     "id": "mods.page.radar.main",
     "type": "screen",
     "props": {
      "title": "Radar",
-     "subtitle": "From the mod Radar",
      "kind": "page"
     },
     "children": [
@@ -644,8 +544,7 @@
     },
     "children": [
      "mods.page.radar.main/general/range",
-     "mods.page.radar.main/general/teammates",
-     "mods.page.radar.main/general/about"
+     "mods.page.radar.main/general/teammates"
     ],
     "origin": "mod:radar"
    },
@@ -655,12 +554,10 @@
     "props": {
      "label": "Range",
      "bind": "mod:radar.range",
-     "value": 2000,
      "min": 500,
      "max": 8000,
      "step": 100,
-     "format": "int",
-     "unit": "qu"
+     "value": 2000
     },
     "children": [],
     "origin": "mod:radar"
@@ -675,55 +572,6 @@
     },
     "children": [],
     "origin": "mod:radar"
-   },
-   {
-    "id": "mods.page.radar.main/general/about",
-    "type": "text",
-    "props": {
-     "body": "Radar draws a minimap with nearby players.",
-     "style": "caption"
-    },
-    "children": [],
-    "origin": "mod:radar"
-   }
-  ]
- },
- "rows": {
-  "mods.client": [
-   {
-    "key": "radar",
-    "cells": {
-     "id": "radar",
-     "name": "Radar",
-     "version": "1.2.0",
-     "enabled": true,
-     "state": "ok",
-     "tier": "read"
-    }
-   },
-   {
-    "key": "killfeed-plus",
-    "cells": {
-     "id": "killfeed-plus",
-     "name": "Killfeed+",
-     "version": "0.4.1",
-     "enabled": false,
-     "state": "stopped",
-     "tier": "read"
-    }
-   }
-  ],
-  "mods.server": [
-   {
-    "key": "lowgrav",
-    "cells": {
-     "id": "lowgrav",
-     "name": "Low gravity",
-     "version": "1.0.0",
-     "enabled": true,
-     "state": "ok",
-     "tier": "write"
-    }
    }
   ]
  }

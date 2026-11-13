@@ -21,55 +21,130 @@ string UIB_Opts4(string v1, string l1, string v2, string l2, string v3, string l
 	return strcat("[", UIB_Opt(v1, l1), ",", UIB_Opt(v2, l2), ",", strcat(UIB_Opt(v3, l3), ",", UIB_Opt(v4, l4), "]"));
 }
 
-void UIB_SettingsCard(string key, string title, string icon, string sub)
+// The sections: key, label, icon, one-line summary
+const int UIB_NSECTIONS = 12;
+string UIB_SecKey(int i)
 {
-	UIB_Open(key, "card");
-		uib_s("title", title);
-		uib_s("subtitle", sub);
-		uib_s("icon", icon);
-		uib_s("density", "compact");
-		uib_j("primary", UIB_A(strcat("settings.", key), title, "chevron"));
-	UIB_Close();
+	switch (i)
+	{
+		case 0: return "video"; case 1: return "audio"; case 2: return "game"; case 3: return "input";
+		case 4: return "touch"; case 5: return "esp"; case 6: return "player"; case 7: return "privacy";
+		case 8: return "updates"; case 9: return "data"; case 10: return "menu"; case 11: return "mods";
+	}
+	return "video";
 }
 
+string UIB_SecLabel(string k)
+{
+	switch (k)
+	{
+		case "video": return _("Video"); case "audio": return _("Audio"); case "game": return _("Game");
+		case "input": return _("Input"); case "touch": return _("Controls"); case "esp": return _("ESP");
+		case "player": return _("Player"); case "privacy": return _("Privacy"); case "updates": return _("Updates");
+		case "data": return _("Data"); case "menu": return _("Menu"); case "mods": return _("Mods");
+	}
+	return k;
+}
+
+string UIB_SecIcon(string k)
+{
+	switch (k)
+	{
+		case "updates": return "update";
+		case "touch": return "touch";
+		case "player": return "player";
+	}
+	return k;
+}
+
+string UIB_SecHelp(string k)
+{
+	switch (k)
+	{
+		case "video": return _("Resolution, effects, field of view");
+		case "audio": return _("Volume, music, hit sounds");
+		case "game": return _("Crosshair, weapons, content");
+		case "input": return _("Mouse, keyboard and keys");
+		case "touch": return _("Presets, HUD, aim assist, auto-shoot, tactics");
+		case "esp": return _("Offline matches only");
+		case "player": return _("Name and colours");
+		case "privacy": return _("Statistics and identity");
+		case "updates": return _("What is new");
+		case "data": return _("Game data and downloads");
+		case "menu": return _("Size and layout");
+		case "mods": return _("Client and server mods, pages from mods");
+	}
+	return "";
+}
+
+void UIB_SecContent(string k);
+
+// Settings: vertical tabs (a split whose panes are the sections). Only the selected
+// section has content; its sub-pages are horizontal tabs inside it.
 void UIB_BuildSettingsRoot()
 {
+	string sel = UIB_VM("settings.section");
+	if (sel == "") sel = "video";
 	if (!UIB_Screen("settings", _("Settings")))
 		return;
 	uib_s("kind", "page");
-	UIB_Open("sections", "grid");
-		uib_f("minItem", 240);
-		UIB_SettingsCard("video", _("Video"), "video", _("Quality, field of view, frame rate"));
-		UIB_SettingsCard("audio", _("Audio"), "audio", _("Volume, music, hit sounds"));
-		UIB_SettingsCard("game", _("Game"), "game", _("Crosshair, weapons, messages"));
-		UIB_SettingsCard("input", _("Input"), "input", _("Mouse, keyboard and keys"));
-		UIB_SettingsCard("touch", _("Touch controls"), "touch", _("Presets, HUD, aim assist, auto-shoot, tactics"));
-		UIB_SettingsCard("esp", _("ESP"), "esp", _("Offline matches only"));
-		UIB_SettingsCard("player", _("Player"), "player", _("Name and colours"));
-		UIB_SettingsCard("privacy", _("Privacy"), "privacy", _("Statistics and identity"));
-		UIB_SettingsCard("updates", _("Updates"), "update", _("What is new"));
-		UIB_SettingsCard("data", _("Data"), "data", _("Game data and downloads"));
-		UIB_SettingsCard("menu", _("Menu"), "menu", _("Size and layout"));
-		UIB_SettingsCard("mods", _("Mods"), "mods", _("Client and server mods, pages from mods"));
+	UIB_Open("split", "split");
+		uib_s("style", "vertical-tabs");
+		uib_s("bind", "vm:settings.section");
+		uib_s("value", sel);
+		uib_b("detailOpen", UIB_VMf("settings.open"));
+		for (int i = 0; i < UIB_NSECTIONS; ++i)
+		{
+			string k = UIB_SecKey(i);
+			UIB_Open(k, "pane");
+				uib_s("key", k);
+				uib_s("label", UIB_SecLabel(k));
+				uib_s("icon", UIB_SecIcon(k));
+				uib_s("subtitle", UIB_SecHelp(k));
+				if (k == sel)
+					UIB_SecContent(k);
+			UIB_Close();
+		}
 	UIB_Close();
 	UIB_Button("advanced", _("Advanced settings"), UIB_A("settings.advanced", _("Advanced settings"), "more"), "link");
 	UIB_Done();
 }
 
-bool UIB_Page(string id, string title)
+// Horizontal sub-tabs of a section: UIB_SubTabs, then per sub-page
+// if (UIB_SubTab(key, label)) { content } UIB_Close(); then UIB_Close().
+string uib_subsel;
+bool uib_subfirst;
+void UIB_SubTabs(string sec)
 {
-	if (!UIB_Screen(id, title))
-		return false;
-	uib_s("kind", "page");
-	uib_j("header", "{\"collapsible\":true}");
-	return true;
+	string v = UIB_VM(strcat("settings.", sec, ".tab"));
+	strcpy(uib_subsel, v);
+	uib_subfirst = true;
+	UIB_Open("tabs", "tabs");
+		uib_s("style", "tabs");
+		uib_s("presentation", "horizontal");
+		uib_b("swipe", 1);
+		uib_s("bind", strcat("vm:settings.", sec, ".tab"));
 }
 
-void UIB_BuildVideo()
+bool UIB_SubTab(string key, string label)
 {
-	if (!UIB_Page("settings.video", _("Video"))) return;
-	UIB_Section("quality", _("Quality"), true);
-		UIB_Choice("preset", _("Effects"), "vm:video.preset", "segmented", UIB_Opts4("low", _("Low"), "med", _("Medium"), "high", _("High"), "ultra", _("Ultra")), _("Particles, decals and lights"));
+	if (uib_subfirst && uib_subsel == "")
+		strcpy(uib_subsel, key);
+	if (uib_subfirst)
+		uib_s("value", uib_subsel);   // on the tabs node, still open
+	uib_subfirst = false;
+	UIB_Open(key, "pane");
+		uib_s("key", key);
+		uib_s("label", label);
+	return key == uib_subsel;
+}
+
+
+void UIB_SecVideo()
+{
+	UIB_SubTabs("video");
+	if (UIB_SubTab("display", _("Display")))
+	{
 		UIB_Slider("scale", _("Resolution"), "cvar:r_viewscale", 0.5, 1, 0.05, "percent", _("Lower is faster and less sharp"));
 		UIB_Switch("dynscale", _("Lower the resolution when the frame rate drops"), "cvar:r_viewscale_fpsscaling", "");
 		UIB_Choice("maxfps", _("Frame rate limit"), "cvar:cl_maxfps", "segmented", UIB_Opts4("30", "30", "60", "60", "120", "120", "0", _("None")), "");
@@ -78,19 +153,24 @@ void UIB_BuildVideo()
 			uib_s("bind", "cvar:vid_vsync");
 			UIB_Apply("video");
 		UIB_Close();
+	}
 	UIB_Close();
-	UIB_Section("view", _("View"), true);
+	if (UIB_SubTab("effects", _("Effects")))
+		UIB_Choice("preset", _("Effects"), "vm:video.preset", "segmented", UIB_Opts4("low", _("Low"), "med", _("Medium"), "high", _("High"), "ultra", _("Ultra")), _("Particles, decals and lights"));
+	UIB_Close();
+	if (UIB_SubTab("view", _("View")))
+	{
 		UIB_Slider("fov", _("Field of view"), "cvar:fov", 60, 130, 1, "deg", "");
 		UIB_Slider("contrast", _("Contrast"), "cvar:v_contrast", 0.5, 3, 0.05, "float2", "");
 		UIB_Slider("brightness", _("Brightness"), "cvar:v_brightness", 0, 0.5, 0.01, "float2", "");
 		UIB_Switch("showfps", _("Show the frame rate"), "cvar:showfps", "");
+	}
 	UIB_Close();
-	UIB_Done();
+	UIB_Close();
 }
 
-void UIB_BuildAudio()
+void UIB_SecAudio()
 {
-	if (!UIB_Page("settings.audio", _("Audio"))) return;
 	UIB_Section("volume", _("Volume"), true);
 		UIB_Slider("master", _("Master"), "cvar:volume", 0, 1, 0.05, "percent", "");
 		UIB_Slider("music", _("Music"), "cvar:bgmvolume", 0, 1, 0.05, "percent", "");
@@ -100,12 +180,10 @@ void UIB_BuildAudio()
 		UIB_Choice("hitsound", _("Hit sound"), "cvar:cl_hitsound", "segmented", UIB_Opts4("0", _("Off"), "1", _("On"), "2", _("Lower"), "3", _("Higher")), _("A sound when you hit an enemy; Lower and Higher change with the damage"));
 		UIB_Switch("mute", _("Mute when the game is in the background"), "cvar:snd_mutewhenidle", "");
 	UIB_Close();
-	UIB_Done();
 }
 
-void UIB_BuildGame()
+void UIB_SecGame()
 {
-	if (!UIB_Page("settings.game", _("Game"))) return;
 	UIB_Section("crosshair", _("Crosshair"), true);
 		UIB_Slider("size", _("Size"), "cvar:crosshair_size", 0.1, 1, 0.05, "float2", "");
 		UIB_Slider("alpha", _("Opacity"), "cvar:crosshair_alpha", 0.1, 1, 0.05, "percent", "");
@@ -116,7 +194,6 @@ void UIB_BuildGame()
 	UIB_Section("content", _("Content"), true);
 		UIB_Switch("gentle", _("Gentle mode"), "cvar:cl_gentle", _("No blood or gibs"));
 	UIB_Close();
-	UIB_Done();
 }
 
 string UIB_KeyCmd(int i)
@@ -139,9 +216,8 @@ string UIB_KeyName(int i)
 	return "";
 }
 
-void UIB_BuildInput()
+void UIB_SecInput()
 {
-	if (!UIB_Page("settings.input", _("Input"))) return;
 	UIB_Section("mouse", _("Mouse"), true);
 		UIB_Slider("sens", _("Sensitivity"), "cvar:sensitivity", 0.5, 20, 0.1, "float1", "");
 		UIB_Switch("invert", _("Invert vertical look"), "vm:input.invert", "");
@@ -167,55 +243,64 @@ void UIB_BuildInput()
 			UIB_Close();
 		}
 	UIB_Close();
-	UIB_Done();
 }
 
-void UIB_BuildTouch()
+void UIB_SecTouch()
 {
-	if (!UIB_Page("settings.touch", _("Touch controls"))) return;
-	UIB_Section("preset", _("Preset"), true);
+	UIB_SubTabs("touch");
+	if (UIB_SubTab("controls", _("Controls")))
+	{
 		UIB_Choice("preset", _("Preset"), "cvar:touch_preset", "cards", strcat("[", UIB_Opt("balanced", _("Balanced")), ",", UIB_Opt("casual", _("Casual")), ",",
 			strcat(UIB_Opt("competitive", _("Competitive")), ",", UIB_Opt("minimal", _("Minimal")), ",", UIB_Opt("left", _("Left-handed")), "]")), _("A starting point; every setting below can still be changed"));
 		UIB_Button("reset", _("Apply the preset again"), UIB_A("touch.preset", _("Apply the preset again"), "refresh"), "tonal");
-	UIB_Close();
-	UIB_Section("hud", _("Controls and HUD"), true);
 		UIB_Slider("scale", _("Control size"), "cvar:touch_scale", 0.6, 1.6, 0.05, "x", "");
-		UIB_Slider("opacity", _("Opacity"), "cvar:touch_opacity", 0.2, 1, 0.05, "percent", "");
-		UIB_Slider("hudscale", _("HUD size"), "cvar:touch_hud_scale", 0.6, 1.6, 0.05, "x", "");
 		UIB_Choice("fire", _("Fire button"), "cvar:touch_fire_mode", "segmented", UIB_Opts2("0", _("Hold"), "1", _("Toggle")), "");
 		UIB_Choice("hand", _("Handedness"), "cvar:touch_handedness", "segmented", UIB_Opts2("0", _("Right"), "1", _("Left")), "");
 		UIB_Switch("dodge", _("Dodge button"), "cvar:touch_dodge_visible", "");
+	}
 	UIB_Close();
-	UIB_Section("aim", _("Aim"), true);
+	if (UIB_SubTab("hud", _("HUD")))
+	{
+		UIB_Slider("opacity", _("Opacity"), "cvar:touch_opacity", 0.2, 1, 0.05, "percent", "");
+		UIB_Slider("hudscale", _("HUD size"), "cvar:touch_hud_scale", 0.6, 1.6, 0.05, "x", "");
+		UIB_Switch("weplist", _("Weapon bar"), "cvar:touch_weplist_visible", "");
+	}
+	UIB_Close();
+	if (UIB_SubTab("aim", _("Aim")))
+	{
 		UIB_Slider("sens", _("Look speed"), "cvar:touch_sens_base", 0.2, 4, 0.05, "x", "");
 		UIB_Switch("invert", _("Invert vertical look"), "cvar:touch_invert_y", "");
 		UIB_Switch("assist", _("Aim assist"), "cvar:cl_touch_aimassist", _("Aim slows over an enemy and is pulled toward one while you aim"));
 		UIB_Slider("strength", _("Pull"), "cvar:cl_touch_aimassist_strength", 0, 1, 0.05, "percent", "");
 		UIB_Switch("ring", _("Show the target ring"), "cvar:cl_touch_aim_ring", "");
+	}
 	UIB_Close();
-	UIB_Section("auto", _("Auto-shoot"), true);
+	if (UIB_SubTab("auto", _("Auto-shoot")))
+	{
 		UIB_Switch("autoshoot", _("Fire automatically at enemies"), "cvar:cl_touch_autoshoot", "");
 		UIB_Switch("autoswitch", _("Switch weapons for the situation"), "cvar:cl_touch_autoswitch", "");
 		UIB_Switch("autododge", _("Dodge incoming fire"), "cvar:cl_touch_autododge", "");
+	}
 	UIB_Close();
-	UIB_Section("tactics", _("Tactics (local matches)"), true);
+	if (UIB_SubTab("tactics", _("Tactics")))
+	{
+		UIB_Text("note", _("Tactics play for you in matches on this device only."), "caption");
 		UIB_Switch("position", _("Move to good positions"), "cvar:cl_touch_practice_position", "");
 		UIB_Switch("objectives", _("Play the objective"), "cvar:cl_touch_practice_objectives", "");
 		UIB_Switch("threat", _("Watch the biggest threat"), "cvar:cl_touch_practice_threat", "");
+	}
 	UIB_Close();
-	UIB_Done();
+	UIB_Close();
 }
 
-void UIB_BuildESP()
+void UIB_SecESP()
 {
-	if (!UIB_Page("settings.esp", _("ESP"))) return;
 	UIB_Open("note", "text");
 		uib_s("body", _("ESP shows players through walls. It works only in matches on this device (Singleplayer and games you host); on other servers it stays off."));
 		uib_s("style", "note");
 	UIB_Close();
 	UIB_Switch("enabled", _("ESP in local matches"), "cvar:cl_touch_esp_enabled", "");
 	UIB_Switch("seethrough", _("Outline enemies behind walls"), "cvar:cl_touch_practice_seethrough", "");
-	UIB_Done();
 }
 
 string UIB_ColourHex(int i)
@@ -247,9 +332,11 @@ string UIB_Palette()
 	return strcat(s, "]");
 }
 
-void UIB_BuildPlayer()
+void UIB_SecPlayer()
 {
-	if (!UIB_Page("settings.player", _("Player"))) return;
+	UIB_SubTabs("player");
+	if (UIB_SubTab("profile", _("Profile")))
+	{
 	UIB_Open("name", "field");
 		uib_s("label", _("Name"));
 		uib_s("bind", "cvar:_cl_name");
@@ -257,6 +344,11 @@ void UIB_BuildPlayer()
 		uib_f("maxLength", 32);
 		UIB_Apply("reconnect");
 	UIB_Close();
+	UIB_Button("model", _("Player model"), UIB_A("settings.model", _("Player model"), "player"), "tonal");
+	}
+	UIB_Close();
+	if (UIB_SubTab("colours", _("Colours")))
+	{
 	float c = cvar("_cl_color");
 	UIB_Open("shirt", "colour");
 		uib_s("label", _("Shirt colour"));
@@ -272,34 +364,30 @@ void UIB_BuildPlayer()
 		uib_j("palette", UIB_Palette());
 		UIB_Apply("reconnect");
 	UIB_Close();
-	UIB_Button("model", _("Player model"), UIB_A("settings.model", _("Player model"), "player"), "tonal");
-	UIB_Done();
+	}
+	UIB_Close();
+	UIB_Close();
 }
 
-void UIB_BuildPrivacy()
+void UIB_SecPrivacy()
 {
-	if (!UIB_Page("settings.privacy", _("Privacy"))) return;
 	UIB_Text("note", _("Nothing is shared with XonStat unless you turn it on here."), "caption");
 	UIB_Choice("tracking", _("Statistics"), "cvar:cl_allow_uidtracking", "segmented", UIB_Opts2("0", _("Off"), "1", _("On")), _("Lets XonStat link your matches to your player ID"));
 	UIB_Choice("ranking", _("Rankings"), "cvar:cl_allow_uidranking", "segmented", UIB_Opts2("0", _("Off"), "1", _("On")), _("Lets your player ID appear in leaderboards"));
 	UIB_Choice("name", _("Show my name in records"), "cvar:cl_allow_uid2name", "segmented", UIB_Opts2("0", _("Off"), "1", _("On")), "");
-	UIB_Done();
 }
 
-void UIB_BuildUpdates()
+void UIB_SecUpdates()
 {
-	if (!UIB_Page("settings.updates", _("Updates"))) return;
 	UIB_Text("version", sprintf(_("Version %s"), cvar_string("g_xonoticversion")), "title");
 	string url = cvar_string("_touch_update_changelog_url");
 	if (substring(url, 0, 8) == "https://")
 		UIB_Button("changes", _("What is new"), UIB_ALink("updates.changes", _("What is new"), "info", url), "link");
 	UIB_Text("how", _("Updates arrive through your app store, Flatpak or the web page; the game data updates itself."), "caption");
-	UIB_Done();
 }
 
-void UIB_BuildData()
+void UIB_SecData()
 {
-	if (!UIB_Page("settings.data", _("Data"))) return;
 	string err = cvar_string("_touch_asset_fetch_error");
 	UIB_Open("status", "status");
 		bool active = cvar("_touch_asset_fetch_active");
@@ -311,16 +399,13 @@ void UIB_BuildData()
 		if (!active) uib_j("primary", UIB_A("data.fetch", (ready ? _("Check for new data") : _("Download")), "download"));
 	UIB_Close();
 	UIB_Switch("background", _("Download in the background"), "cvar:_touch_asset_fetch_background", "");
-	UIB_Done();
 }
 
-void UIB_BuildMenuSettings()
+void UIB_SecMenuSettings()
 {
-	if (!UIB_Page("settings.menu", _("Menu"))) return;
 	UIB_Slider("size", _("Menu size"), "cvar:menu_touch_size", 0.7, 1.5, 0.05, "x", _("Applies the next time the menu opens"));
 	UIB_Switch("uib", _("New menu"), "cvar:menu_touch_uib", _("The card menu described once and drawn here, on the web and natively"));
 	UIB_Switch("quitdialog", _("Ask before quitting"), "cvar:menu_showquitdialog", "");
-	UIB_Done();
 }
 
 // ---------------------------------------------------------------- mods
@@ -373,13 +458,10 @@ void UIB_ModList(string key, string title, string sub, string source)
 	UIB_Close();
 }
 
-void UIB_BuildMods()
+void UIB_SecMods()
 {
 	UIB_ModRows("mods.client", "_cl_lua_mods");
 	UIB_ModRows("mods.server", "_sv_lua_plugins");
-	if (!UIB_Page("settings.mods", _("Mods"))) return;
-	UIB_ModList("client", _("Client mods"), _("Run in your game only"), "mods.client");
-	UIB_ModList("server", _("Server mods"), _("Run in games you host"), "mods.server");
 	UIB_Open("install", "row");
 		uib_b("wrap", 1);
 		UIB_Open("file", "button");
@@ -390,9 +472,17 @@ void UIB_BuildMods()
 		UIB_Button("link", _("Install from link"), UIB_A("mods.install.link", _("Install from link"), "link"), "tonal");
 		UIB_Button("howto", _("How to make a mod"), UIB_ALink("mods.howto", _("How to make a mod"), "help", "https://github.com/dixonSolutions/Godnotic/blob/main/docs/MODDING.md"), "link");
 	UIB_Close();
+	UIB_SubTabs("mods");
+	if (UIB_SubTab("client", _("Client mods")))
+		UIB_ModList("client", _("Client mods"), _("Run in your game only"), "mods.client");
+	UIB_Close();
+	if (UIB_SubTab("server", _("Server mods")))
+		UIB_ModList("server", _("Server mods"), _("Run in games you host"), "mods.server");
+	UIB_Close();
 	string pages = uib_modpages();
 	int n = tokenizebyseparator(pages, "\n");
-	if (n > 0 && argv(0) != "")
+	bool sel = UIB_SubTab("pages", _("Pages from mods"));
+	if (sel && n > 0 && argv(0) != "")
 	{
 		UIB_Section("pages", _("Pages from mods"), true);
 			for (int i = 0; i < n && i < 16; ++i)
@@ -413,7 +503,29 @@ void UIB_BuildMods()
 			}
 		UIB_Close();
 	}
-	UIB_Done();
+	else if (sel)
+		UIB_Text("none", _("Mods with settings pages show them here."), "caption");
+	UIB_Close();
+	UIB_Close();
+}
+
+void UIB_SecContent(string k)
+{
+	switch (k)
+	{
+		case "video": UIB_SecVideo(); return;
+		case "audio": UIB_SecAudio(); return;
+		case "game": UIB_SecGame(); return;
+		case "input": UIB_SecInput(); return;
+		case "touch": UIB_SecTouch(); return;
+		case "esp": UIB_SecESP(); return;
+		case "player": UIB_SecPlayer(); return;
+		case "privacy": UIB_SecPrivacy(); return;
+		case "updates": UIB_SecUpdates(); return;
+		case "data": UIB_SecData(); return;
+		case "menu": UIB_SecMenuSettings(); return;
+		case "mods": UIB_SecMods(); return;
+	}
 }
 
 void UIB_BuildModDetail()
@@ -422,7 +534,8 @@ void UIB_BuildModDetail()
 	UIB_Lines(cvar_string("_lua_detail"));
 	string title = sel, state = "", ver = "", author = "", desc = "", err = "";
 	bool enabled = false;
-	if (!UIB_Page("mods.detail", sel)) return;
+	if (!UIB_Screen("mods.detail", sel)) return;
+	uib_s("kind", "detail");
 	UIB_Open("perms", "section");
 	uib_s("title", _("Permissions"));
 	uib_b("sticky", 1);
@@ -486,30 +599,20 @@ void UIB_BuildSettings(string id)
 	switch (id)
 	{
 		case "settings": UIB_BuildSettingsRoot(); return;
-		case "settings.video": UIB_BuildVideo(); return;
-		case "settings.audio": UIB_BuildAudio(); return;
-		case "settings.game": UIB_BuildGame(); return;
-		case "settings.input": UIB_BuildInput(); return;
-		case "settings.touch": UIB_BuildTouch(); return;
-		case "settings.esp": UIB_BuildESP(); return;
-		case "settings.player": UIB_BuildPlayer(); return;
-		case "settings.privacy": UIB_BuildPrivacy(); return;
-		case "settings.updates": UIB_BuildUpdates(); return;
-		case "settings.data": UIB_BuildData(); return;
-		case "settings.menu": UIB_BuildMenuSettings(); return;
-		case "settings.mods": UIB_BuildMods(); return;
 		case "mods.detail": UIB_BuildModDetail(); return;
 		case "mods.link": UIB_BuildModLink(); return;
 	}
 	// mods.page.<mod>.<page> is built by the engine from the mod's description
 }
 
-
 bool UIB_SettingsAction(string node, string a, string payload)
 {
 	if (substring(a, 0, 9) == "settings." && a != "settings.advanced" && a != "settings.model")
 	{
-		UIB_Push(a);
+		UIB_VMSet("settings.section", substring(a, 9, -1));
+		UIB_VMSet("settings.open", "1");
+		if (UIB_TopScreen() != "settings") UIB_Push("settings");
+		else UIB_RebuildAll();
 		return true;
 	}
 	if (substring(a, 0, 8) == "modpage.")
@@ -564,32 +667,38 @@ bool UIB_SettingsAction(string node, string a, string payload)
 
 bool UIB_SettingsValue(string node, string value)
 {
-	switch (node)
+	string bind = uib_get(node, "bind");
+	switch (bind)
 	{
-		case "settings.player/shirt":
-		case "settings.player/pants":
+		case "vm:player.shirt":
+		case "vm:player.pants":
 		{
 			float c = cvar("_cl_color");
 			float shirt = floor(c / 16), pants = c - 16 * shirt;
-			if (node == "settings.player/shirt") shirt = UIB_ColourIndex(value);
+			if (bind == "vm:player.shirt") shirt = UIB_ColourIndex(value);
 			else pants = UIB_ColourIndex(value);
 			cvar_set("_cl_color", ftos(shirt * 16 + pants));
 			UIB_RebuildAll();
 			return true;
 		}
-		case "settings.video/quality/preset":
+		case "vm:video.preset":
 			UIB_VMSet("video.preset", value);
 			localcmd(sprintf("\nexec effects-%s.cfg\n", value));
 			UIB_RebuildAll();
 			return true;
-		case "settings.input/mouse/invert":
+		case "vm:input.invert":
 			UIB_VMSet("input.invert", value);
 			cvar_set("m_pitch", ftos((value == "1" ? -1 : 1) * fabs(cvar("m_pitch"))));
 			UIB_RebuildAll();
 			return true;
-		case "mods.link/form/url": UIB_VMSet("mods.url", value); return true;
+		case "vm:settings.section":
+			UIB_VMSet("settings.section", value);
+			UIB_VMSet("settings.open", "1");
+			UIB_RebuildAll();
+			return true;
+		case "vm:mods.url": UIB_VMSet("mods.url", value); return true;
 	}
-	if (substring(node, 0, 20) == "settings.input/keys/")
+	if (substring(bind, 0, 7) == "vm:key.")
 	{
 		// value: key names separated by spaces (the engine joined the array)
 		string cmd = uib_get(node, "command");
@@ -608,9 +717,9 @@ bool UIB_SettingsValue(string node, string value)
 
 bool UIB_SettingsRow(string node, string row, string json)
 {
-	if (node == "settings.mods/client/list" || node == "settings.mods/server/list")
+	if (node == "settings/split/mods/tabs/client/client/list" || node == "settings/split/mods/tabs/server/server/list")
 	{
-		bool server = node == "settings.mods/server/list";
+		bool server = node == "settings/split/mods/tabs/server/server/list";
 		UIB_VMSet("mods.sel", row);
 		UIB_VMSet("mods.realm", server ? "server" : "client");
 		cvar_set("_lua_select", strcat((server ? "plugin " : "mod "), row));

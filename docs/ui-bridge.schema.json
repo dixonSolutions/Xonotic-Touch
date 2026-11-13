@@ -1598,6 +1598,15 @@
            "segmented"
           ]
          },
+         "presentation": {
+          "type": "string",
+          "enum": [
+           "horizontal"
+          ]
+         },
+         "swipe": {
+          "type": "boolean"
+         },
          "value": {
           "type": "string",
           "maxLength": 4096
@@ -1864,8 +1873,37 @@
          "live": {
           "type": "boolean"
          },
+         "style": {
+          "type": "string",
+          "enum": [
+           "list-detail",
+           "vertical-tabs"
+          ]
+         },
+         "value": {
+          "type": "string",
+          "maxLength": 4096
+         },
          "detailOpen": {
           "type": "boolean"
+         },
+         "bind": {
+          "type": "string",
+          "pattern": "^(cvar|vm|mod):[^\\s]{1,120}$"
+         },
+         "error": {
+          "type": "string",
+          "maxLength": 4096
+         },
+         "apply": {
+          "type": "string",
+          "enum": [
+           "immediate",
+           "video",
+           "sound",
+           "reconnect",
+           "restart"
+          ]
          }
         },
         "additionalProperties": false
