@@ -749,15 +749,22 @@ void UIB_BuildPause()
 			uib_s("accent", "ember");
 			uib_s("density", "compact");
 			uib_push("badges", pw ? UIB_Badge("lock", _("Password set"), "warning") : UIB_Badge("unlock", _("Open"), "neutral"));
-			int n = tokenize_console(addrs);
-			string first = n ? argv(0) : "";
-			for (int i = 0; i < n && i < 4; ++i)
-				uib_push("meta", UIB_Chip(((UIB_AddrLabel(argv(i)) == _("VPN")) ? "vpn" : "wifi"), strcat(UIB_AddrLabel(argv(i)), " ", argv(i))));
+			int n = min(4, tokenizebyseparator(addrs, " "));
+			for (int i = 0; i < n; ++i)
+				uib_ids[8 + i] = strzone(argv(i));
+			string first = n ? uib_ids[8] : "";
+			for (int i = 0; i < n; ++i)
+			{
+				string lab = UIB_AddrLabel(uib_ids[8 + i]);   // tokenizes: the addresses were copied first
+				uib_push("meta", UIB_Chip(((lab == _("VPN")) ? "vpn" : "wifi"), strcat(lab, " ", uib_ids[8 + i])));
+			}
 			if (first != "")
 			{
 				uib_j("primary", UIB_AText("host.share", _("Share"), "share", "share", strcat("godnotic://join/", first)));
 				uib_push("actions", UIB_AText("host.copy", _("Copy address"), "copy", "copy", first));
 			}
+			for (int i = 0; i < n; ++i)
+				strunzone(uib_ids[8 + i]);
 		UIB_Close();
 	}
 	UIB_Open("match", "card");
@@ -908,6 +915,8 @@ void UIB_Init()
 	uib_inited = true;
 	uib_reset();
 	registercvar("_uib_server_name", "", 0);
+	registercvar("_uib_debug_open", "", 0);
+	registercvar("_uib_debug_toast", "", 0);
 	UIB_RecentRows();
 	strcpy(uibn_context, "");
 	UIB_Context();
@@ -919,6 +928,19 @@ void UIB_Tick()
 	if (!uib_inited)
 		return;
 	UIB_Context();
+	// test hooks (scripts/test-uibridge.sh, screenshot tours): open a modal, show a toast
+	string dbg = cvar_string("_uib_debug_open");
+	if (dbg != "")
+	{
+		cvar_set("_uib_debug_open", "");
+		UIB_Modal(dbg);
+	}
+	dbg = cvar_string("_uib_debug_toast");
+	if (dbg != "")
+	{
+		cvar_set("_uib_debug_toast", "");
+		uib_toast(dbg, "success", "check", 4);
+	}
 	// time-varying screens
 	string top = UIB_TopScreen();
 	if ((top == "pause" || top == "mods.detail" || top == "settings.data") && time > uib_next_tick)
