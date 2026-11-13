@@ -60,6 +60,17 @@ void TouchNet_CurlProgress(int index, double bytes);
 void TouchCurl_Init(void);
 void TouchNet_CurlText(char *text, size_t size, int index, const char *filename, qbool queued, double progress, double speed);
 
+// sv_send.c: keep a client's datagrams inside its path MTU (a VPN's 1280,
+// say) so they are never IP fragments; net_mtu sets it by hand
+void TouchNet_ClampDatagram(struct netconn_s *conn, int *maxsize, int *maxsize2);
+
+// cl_main.c CL_DisconnectEx: a lost connection is joined again
+void TouchNet_Disconnecting(qbool kicked, const char *reason);
+// touch_android.c: the app went to the background / came back
+void TouchNet_Away(qbool away);
+// what the automatic reconnect is doing, or NULL when nothing
+const char *TouchNet_ReconnectState(void);
+
 // trace (NetConn_Read / NetConn_Write)
 void TouchNet_TracePacket(struct lhnetsocket_s *mysocket, const void *data, int length, const struct lhnetaddress_s *peeraddress, int sent);
 

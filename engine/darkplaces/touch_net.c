@@ -44,6 +44,7 @@ the wire format and the measurements.
 #include "libcurl.h"
 #include "sv_demo.h"
 #include "touch_net.h"
+#include "touch_lan.h"
 
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 #include <sys/select.h>
@@ -51,10 +52,11 @@ the wire format and the measurements.
 #endif
 
 static cvar_t net_reliable_window = {CF_CLIENT | CF_SERVER, "net_reliable_window", "32", "reliable 1 KB fragments in flight to a peer that supports it (Godnotic, Insanotic); 0 or 1 = one per round trip, as stock DarkPlaces"};
-static cvar_t net_reliable_rto_min = {CF_CLIENT | CF_SERVER, "net_reliable_rto_min", "0.05", "shortest wait in seconds before a windowed reliable fragment is sent again"};
+static cvar_t net_reliable_rto_min = {CF_CLIENT | CF_SERVER, "net_reliable_rto_min", "0.2", "shortest wait in seconds before a windowed reliable fragment is sent again (a peer answers in its next frame, which on a busy listen server or a phone can take 100 ms)"};
 static cvar_t net_reliable_rto_max = {CF_CLIENT | CF_SERVER, "net_reliable_rto_max", "1", "longest wait in seconds before a windowed reliable fragment is sent again (stock DarkPlaces always waits 1)"};
 static cvar_t net_signon_fast = {CF_CLIENT | CF_SERVER, "net_signon_fast", "1", "during a client's signon, wake up for its packets and answer at once instead of at the next frame or server tick (Godnotic); 0 = stock timing"};
-static cvar_t touch_net_trace = {CF_CLIENT | CF_SERVER, "touch_net_trace", "0", "print every packet of a join with a timestamp (Godnotic, for scripts/net-trace-report.py)"};
+static cvar_t net_mtu = {CF_SERVER, "net_mtu", "0", "path MTU in bytes for clients' datagrams (Godnotic): 0 = the route's MTU to each client, as the system knows it (a VPN interface's 1280, say); no datagram is then an IP fragment"};
+static cvar_t touch_net_trace = {CF_CLIENT | CF_SERVER, "touch_net_trace", "0", "print every packet of a join with a timestamp (Godnotic, for scripts/net-trace-report.py); 2 = every packet, in the game too"};
 
 #define TN_MAXWINDOW 64     // fragments in flight, and the receiver's reorder slots
 #define TN_RING 160         // fragments queued to send (sent or not): 160 KB
@@ -114,6 +116,7 @@ static double tn_frame_work;    // client frame work since the last trace line
 static int tn_last_signon = -1;
 
 static void TN_TraceSignon(void);
+static void TN_StayConnected(void);
 
 static tn_conn_t *TN_Find(netconn_t *conn)
 {
@@ -137,6 +140,7 @@ static tn_conn_t *TN_Create(netconn_t *conn, int window)
 	t->window = bound(2, window, TN_MAXWINDOW);
 	// sequences carry on from where the connection is (0 on a new one)
 	t->base = t->sendnext = t->tail = conn->nq.sendSequence;
+	conn->sendMessageLength = 0;
 	t->next = tn_list;
 	tn_list = t;
 	return t;
@@ -150,6 +154,7 @@ void TouchNet_Close(netconn_t *conn)
 		if (t->conn == conn)
 		{
 			*p = t->next;
+			conn->sendMessageLength = 0; // the hold marker (TN_Hold) goes too
 			if (t->ready)
 				Mem_Free(t->ready);
 			Mem_Free(t->ring);
@@ -231,6 +236,7 @@ void TouchNet_Established(netconn_t *conn)
 			t->rttvar = tn_accept_rtt / 2;
 		}
 	}
+	TouchLAN_Joined(&conn->peeraddress);
 	if (touch_net_trace.integer)
 		Con_Printf("NETTRACE cl %.3f est window=%d rtt=%.1f\n", Sys_DirtyTime() * 1000.0, tn_accept_window, tn_accept_rtt * 1000.0);
 	tn_accept_window = 0;
@@ -404,6 +410,24 @@ static qbool TN_Queue(tn_conn_t *t, const unsigned char *data, int length)
 	return true;
 }
 
+// Whether the next reliable message is taken now. While a window's worth is
+// queued, new messages wait in conn->message, where they pile up compactly
+// exactly as behind a stock sender's one message in flight (and overflow it
+// at the same 64 KB). conn->sendMessageLength says so to sv_send.c, which
+// writes a reliable message into the server demo only when it is taken; the
+// stock sender below never sends, and conn->lastSendTime is kept fresh so its
+// one-second resend never fires on that marker.
+static void TN_Hold(tn_conn_t *t)
+{
+	if ((int)(t->tail - t->base) >= t->window)
+	{
+		t->conn->sendMessageLength = 1;
+		t->conn->lastSendTime = host.realtime;
+	}
+	else
+		t->conn->sendMessageLength = 0;
+}
+
 int TouchNet_SendReliable(netconn_t *conn, qbool suppress, int rate, int burstsize, int *totallen)
 {
 	tn_conn_t *t = TN_Find(conn);
@@ -411,10 +435,7 @@ int TouchNet_SendReliable(netconn_t *conn, qbool suppress, int rate, int burstsi
 		return 0;
 	t->rate = rate;
 	t->burstsize = burstsize;
-	// the stock sender below never sends: its buffer stays empty, which also
-	// tells sv_send.c a new reliable message may go into the demo now
-	conn->sendMessageLength = 0;
-	if (!suppress && conn->message.cursize)
+	if (!suppress && conn->message.cursize && !conn->sendMessageLength)
 	{
 		if (developer_networking.integer && conn == cls.netcon)
 		{
@@ -441,6 +462,7 @@ int TouchNet_SendReliable(netconn_t *conn, qbool suppress, int rate, int burstsi
 		t->dupacks = 0;
 	}
 	*totallen += TN_FillWindow(t);
+	TN_Hold(t);
 	return 0;
 }
 
@@ -528,6 +550,7 @@ static int TN_Ack(tn_conn_t *t, unsigned int a, double newtimeout)
 	}
 	// anything else is stale or bogus: ignored
 	conn->nq.ackSequence = t->base;
+	TN_Hold(t);
 	TN_Cleartime(conn, t->rate, t->burstsize, total);
 	return 1;
 }
@@ -813,7 +836,10 @@ static void TN_TraceSignon(void)
 
 void TouchNet_Frame(double worktime)
 {
-	if (!touch_net_trace.integer || cls.state == ca_dedicated)
+	if (cls.state == ca_dedicated)
+		return;
+	TN_StayConnected();
+	if (!touch_net_trace.integer)
 		return;
 	TN_TraceSignon();
 	if (TN_Counting())
@@ -844,8 +870,10 @@ void TouchNet_TracePacket(lhnetsocket_t *mysocket, const void *data, int length,
 	 && ((TN_ClientInSignon() && mysocket == cls.netcon->mysocket && !LHNETADDRESS_Compare(peeraddress, &cls.netcon->peeraddress))
 	  || (cls.connect_trying && !LHNETADDRESS_Compare(peeraddress, &cls.connect_address))))
 		side = "cl";
-	else if (sv.active && TN_ServerHasSignon())
+	else if (sv.active && (TN_ServerHasSignon() || touch_net_trace.integer >= 2))
 		side = "sv";
+	else if (touch_net_trace.integer >= 2 && cls.netcon && mysocket == cls.netcon->mysocket)
+		side = "cl";
 	else
 		return;
 	if (d[0] == 255 && d[1] == 255 && d[2] == 255 && d[3] == 255)
@@ -892,6 +920,352 @@ void TouchNet_TracePacket(lhnetsocket_t *mysocket, const void *data, int length,
 		text[n] = 0;
 	}
 	Con_Printf("NETTRACE %s %.3f %s %s %d %u %s w=%.1f\n", side, Sys_DirtyTime() * 1000.0, sent ? "tx" : "rx", kind, length, seq, text[0] ? text : "-", TN_WorkMs());
+}
+
+/*
+==============
+Staying connected: reconnect, away
+==============
+A connection that is lost (timed out, or silent for net_reconnect_silence
+seconds; 3 s after this device's address changed or its frames stopped,
+as when Android froze the app) is joined again automatically, with the
+same address and, for a LAN game, the password typed this session. A
+server that sends the player away (kick, shutdown, full) is not: its
+reason stays in _net_reconnect_state for the UI. Away in the background
+(Android, touch_android.c), the player goes to the spectators after
+net_away_spectate seconds and back into the game on return, and is
+disconnected cleanly after net_away_limit seconds.
+*/
+
+static cvar_t net_reconnect = {CF_CLIENT | CF_ARCHIVE, "net_reconnect", "1", "join the same server again automatically when the connection is lost (Godnotic)"};
+static cvar_t net_reconnect_tries = {CF_CLIENT | CF_ARCHIVE, "net_reconnect_tries", "5", "automatic reconnect attempts, 1 s, 2 s, 4 s ... apart"};
+static cvar_t net_reconnect_silence = {CF_CLIENT | CF_ARCHIVE, "net_reconnect_silence", "30", "seconds without a packet from the server before the connection counts as lost (3 after the address changed or the game was frozen); 0 = only the stock timeout"};
+static cvar_t net_reconnect_state = {CF_CLIENT | CF_READONLY, "_net_reconnect_state", "", "empty, or what the automatic reconnect is doing or why it gave up (for the UI)"};
+static cvar_t net_away_spectate = {CF_CLIENT | CF_ARCHIVE, "net_away_spectate", "20", "seconds in the background in a match before going to the spectators (back into the game on return); 0 = stay a player"};
+static cvar_t net_away_limit = {CF_CLIENT | CF_ARCHIVE, "net_away_limit", "600", "seconds connected in the background before disconnecting cleanly; 0 = no limit"};
+
+static struct
+{
+	char addr[128];       // the server to join again
+	int tries;
+	double next;          // realtime of the next attempt; 0 = none planned
+	qbool user;           // the player disconnected or cancelled
+	char localip[64];     // this device's address toward the server
+	double next_check;
+	double quick_until;   // short silence limit until then (after a freeze)
+	double last_frame;
+	qbool away;
+	double away_since;
+	qbool spectated;
+}
+tn_rc;
+
+static void TN_SetState(const char *text)
+{
+	if (strcmp(net_reconnect_state.string, text))
+		Cvar_SetQuick(&net_reconnect_state, text);
+}
+
+// this device's address toward the server (a connected UDP socket's), "" if unknown
+static void TN_LocalAddress(const lhnetaddress_t *peer, char *out, size_t size);
+
+void TouchNet_Disconnecting(qbool kicked, const char *reason)
+{
+	char addr[128], line[256];
+	if (cls.state == ca_dedicated || !cls.netcon || sv.active || cls.demoplayback)
+		return;
+	if (!LHNETADDRESS_ToString(&cls.netcon->peeraddress, addr, sizeof(addr), true))
+		return;
+	tn_rc.spectated = false;
+	// lost: timed out, silent, or dropped while this process was frozen (a
+	// server that timed us out says only "Server disconnected", which then
+	// arrives in the first frame after the freeze)
+	if (kicked && reason && (!strncmp(reason, "Connection timed out", 20) || !strncmp(reason, "Lost connection", 15)
+		|| (!strcmp(reason, "Server disconnected") && tn_rc.last_frame > 0 && (Sys_DirtyTime() - tn_rc.last_frame > 5 || host.realtime < tn_rc.quick_until)))
+	 && net_reconnect.integer && !tn_rc.user)
+	{
+		if (strcmp(tn_rc.addr, addr))
+			tn_rc.tries = 0;
+		dp_strlcpy(tn_rc.addr, addr, sizeof(tn_rc.addr));
+		tn_rc.next = host.realtime + (tn_rc.tries ? (double)(1 << min(tn_rc.tries - 1, 5)) : 0.2);
+		Con_Printf("%s: joining %s again\n", reason, addr);
+		dpsnprintf(line, sizeof(line), "Reconnecting to %s...", addr);
+		TN_SetState(line);
+		return;
+	}
+	tn_rc.next = 0;
+	tn_rc.tries = 0;
+	if (kicked && reason)
+	{
+		dpsnprintf(line, sizeof(line), "Disconnected by %s: %s", addr, reason);
+		TN_SetState(line);
+	}
+}
+
+static void TouchNet_ReconnectCancel_f(cmd_state_t *cmd)
+{
+	if (tn_rc.next)
+		Con_Printf("Not joining %s again.\n", tn_rc.addr);
+	tn_rc.next = 0;
+	tn_rc.tries = 0;
+	TN_SetState("");
+}
+
+// touch_android.c, and the touch_away command for tests on desktop
+void TouchNet_Away(qbool away)
+{
+	if (away == tn_rc.away)
+		return;
+	tn_rc.away = away;
+	if (away)
+	{
+		tn_rc.away_since = host.realtime;
+		return;
+	}
+	// back: into the game again if we went to the spectators for the player
+	if (tn_rc.spectated && cls.state == ca_connected && cls.netcon && cls.signon == SIGNONS)
+	{
+		Con_Printf("Back: joining the game again\n");
+		Cbuf_AddText(cmd_local, "cmd join\n");
+	}
+	tn_rc.spectated = false;
+	// a frozen process may have missed packets: listen closely for a while
+	tn_rc.quick_until = host.realtime + 10;
+}
+
+static void TouchNet_Away_f(cmd_state_t *cmd)
+{
+	TouchNet_Away(Cmd_Argc(cmd) > 1 && atoi(Cmd_Argv(cmd, 1)) != 0);
+}
+
+const char *TouchNet_ReconnectState(void)
+{
+	return tn_rc.next ? net_reconnect_state.string : NULL;
+}
+
+static void TN_StayConnected(void)
+{
+	double now = host.realtime, silence;
+	double gap = Sys_DirtyTime() - tn_rc.last_frame;
+	char ip[64], line[256];
+	qbool remote = cls.state == ca_connected && cls.netcon && !sv.active && !cls.demoplayback;
+	if (tn_rc.last_frame > 0 && gap > 5)
+		tn_rc.quick_until = now + 10; // the frames stopped (the app was frozen)
+	tn_rc.last_frame = Sys_DirtyTime();
+
+	if (remote && cls.signon == SIGNONS)
+	{
+		// in: forget the attempts
+		if (tn_rc.tries || tn_rc.next)
+		{
+			tn_rc.tries = 0;
+			tn_rc.next = 0;
+			TN_SetState("");
+		}
+		tn_rc.user = false;
+		LHNETADDRESS_ToString(&cls.netcon->peeraddress, tn_rc.addr, sizeof(tn_rc.addr), true);
+		// this device's address toward the server, every 2 s
+		if (now >= tn_rc.next_check)
+		{
+			tn_rc.next_check = now + 2;
+			TN_LocalAddress(&cls.netcon->peeraddress, ip, sizeof(ip));
+			if (ip[0] && tn_rc.localip[0] && strcmp(ip, tn_rc.localip))
+			{
+				Con_Printf("This device's address changed (%s -> %s)\n", tn_rc.localip, ip);
+				tn_rc.localip[0] = 0;
+				CL_DisconnectEx(true, "Lost connection to server (this device's address changed)");
+				return;
+			}
+			if (ip[0])
+				dp_strlcpy(tn_rc.localip, ip, sizeof(tn_rc.localip));
+		}
+		silence = now < tn_rc.quick_until ? 3 : net_reconnect_silence.value;
+		if (net_reconnect_silence.value > 0 && net_reconnect.integer && now - cls.netcon->lastMessageTime > silence)
+		{
+			CL_DisconnectEx(true, "Lost connection to server (nothing from it for %.0f s)", now - cls.netcon->lastMessageTime);
+			return;
+		}
+		if (tn_rc.away)
+		{
+			if (net_away_spectate.value > 0 && !tn_rc.spectated && now - tn_rc.away_since > net_away_spectate.value)
+			{
+				Con_Printf("In the background for %.0f s: going to the spectators\n", now - tn_rc.away_since);
+				Cbuf_AddText(cmd_local, "cmd spectate\n");
+				tn_rc.spectated = true;
+			}
+			if (net_away_limit.value > 0 && now - tn_rc.away_since > net_away_limit.value)
+			{
+				dpsnprintf(line, sizeof(line), "Left %s after %.0f minutes in the background", tn_rc.addr, net_away_limit.value / 60);
+				tn_rc.user = true;
+				CL_DisconnectEx(false, "%s", line);
+				TN_SetState(line);
+				return;
+			}
+		}
+	}
+	else if (!remote)
+		tn_rc.localip[0] = 0;
+
+	// the planned attempt
+	if (tn_rc.next && now >= tn_rc.next && cls.state != ca_connected && !cls.connect_trying)
+	{
+		if (tn_rc.tries >= max(1, net_reconnect_tries.integer))
+		{
+			dpsnprintf(line, sizeof(line), "Could not reconnect to %s", tn_rc.addr);
+			Con_Printf("%s\n", line);
+			TN_SetState(line);
+			tn_rc.next = 0;
+			tn_rc.tries = 0;
+			return;
+		}
+		tn_rc.tries++;
+		dpsnprintf(line, sizeof(line), "Reconnecting to %s (attempt %d of %d)...", tn_rc.addr, tn_rc.tries, max(1, net_reconnect_tries.integer));
+		TN_SetState(line);
+		dpsnprintf(line, sizeof(line), "connect \"%s\"\n", tn_rc.addr);
+		Cbuf_AddText(cmd_local, line);
+		// the next one if this does not get in (connect retries for 10 s)
+		tn_rc.next = now + 12 + (double)(1 << min(tn_rc.tries - 1, 5));
+	}
+}
+
+/*
+==============
+Path MTU
+==============
+*/
+
+#ifdef TOUCHNET_SELECT
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#endif
+
+#define TN_MTUCACHE 64
+static struct { netconn_t *conn; int mtu; double when; } tn_mtu[TN_MTUCACHE];
+
+// the MTU of the route to a peer: a connected UDP socket's IP_MTU (Linux,
+// Android); 0 when unknown
+static int TN_RouteMTU(const lhnetaddress_t *peer)
+{
+#if defined(TOUCHNET_SELECT) && defined(__linux__) && defined(IP_MTU)
+	char text[128], *colon, *name;
+	int fd, mtu = 0, v6;
+	socklen_t len = sizeof(mtu);
+	struct sockaddr_storage ss;
+	socklen_t sslen;
+	lhnetaddresstype_t type = LHNETADDRESS_GetAddressType(peer);
+	if (type != LHNETADDRESSTYPE_INET4 && type != LHNETADDRESSTYPE_INET6)
+		return 0;
+	if (!LHNETADDRESS_ToString(peer, text, sizeof(text), false))
+		return 0;
+	v6 = type == LHNETADDRESSTYPE_INET6;
+	memset(&ss, 0, sizeof(ss));
+	name = text;
+	if (v6)
+	{
+		struct sockaddr_in6 *a = (struct sockaddr_in6 *)&ss;
+		if (*name == '[')
+			name++;
+		if ((colon = strchr(name, ']')))
+			*colon = 0;
+		a->sin6_family = AF_INET6;
+		a->sin6_port = htons(26000);
+		if (inet_pton(AF_INET6, name, &a->sin6_addr) != 1)
+			return 0;
+		sslen = sizeof(*a);
+	}
+	else
+	{
+		struct sockaddr_in *a = (struct sockaddr_in *)&ss;
+		if ((colon = strchr(name, ':')))
+			*colon = 0;
+		a->sin_family = AF_INET;
+		a->sin_port = htons(26000);
+		if (inet_pton(AF_INET, name, &a->sin_addr) != 1)
+			return 0;
+		sslen = sizeof(*a);
+	}
+	fd = socket(v6 ? AF_INET6 : AF_INET, SOCK_DGRAM, 0);
+	if (fd < 0)
+		return 0;
+	if (connect(fd, (struct sockaddr *)&ss, sslen) < 0
+	 || getsockopt(fd, v6 ? IPPROTO_IPV6 : IPPROTO_IP, v6 ? IPV6_MTU : IP_MTU, &mtu, &len) < 0)
+		mtu = 0;
+	close(fd);
+	return mtu;
+#else
+	(void)peer;
+	return 0;
+#endif
+}
+
+static void TN_LocalAddress(const lhnetaddress_t *peer, char *out, size_t size)
+{
+	out[0] = 0;
+#if defined(TOUCHNET_SELECT)
+	{
+		char text[128], *colon;
+		struct sockaddr_in a, local;
+		socklen_t len = sizeof(local);
+		int fd;
+		if (LHNETADDRESS_GetAddressType(peer) != LHNETADDRESSTYPE_INET4 || !LHNETADDRESS_ToString(peer, text, sizeof(text), true))
+			return;
+		if ((colon = strchr(text, ':')))
+			*colon = 0;
+		memset(&a, 0, sizeof(a));
+		a.sin_family = AF_INET;
+		a.sin_port = htons(26000);
+		if (inet_pton(AF_INET, text, &a.sin_addr) != 1 || (fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
+			return;
+		if (connect(fd, (struct sockaddr *)&a, sizeof(a)) == 0 && getsockname(fd, (struct sockaddr *)&local, &len) == 0)
+			inet_ntop(AF_INET, &local.sin_addr, out, (socklen_t)size);
+		close(fd);
+	}
+#else
+	(void)peer; (void)size;
+#endif
+}
+
+void TouchNet_ClampDatagram(netconn_t *conn, int *maxsize, int *maxsize2)
+{
+	int i, slot = -1, mtu, limit, overhead;
+	if (!conn || LHNETADDRESS_GetAddressType(&conn->peeraddress) == LHNETADDRESSTYPE_LOOP)
+		return;
+	mtu = net_mtu.integer;
+	if (mtu <= 0)
+	{
+		for (i = 0; i < TN_MTUCACHE; i++)
+		{
+			if (tn_mtu[i].conn == conn)
+			{
+				slot = i;
+				break;
+			}
+			if (slot < 0 && (!tn_mtu[i].conn || host.realtime - tn_mtu[i].when > 60))
+				slot = i;
+		}
+		if (slot < 0)
+			slot = 0;
+		// asked once, and again every 10 s (a VPN may come up or go down)
+		if (tn_mtu[slot].conn != conn || host.realtime - tn_mtu[slot].when > 10)
+		{
+			tn_mtu[slot].conn = conn;
+			tn_mtu[slot].mtu = TN_RouteMTU(&conn->peeraddress);
+			tn_mtu[slot].when = host.realtime;
+		}
+		mtu = tn_mtu[slot].mtu;
+	}
+	if (mtu <= 0)
+		return;
+	// IP and UDP headers, the 8 bytes of DarkPlaces' own, and crypto's
+	overhead = (LHNETADDRESS_GetAddressType(&conn->peeraddress) == LHNETADDRESSTYPE_INET6 ? 48 : 28) + NET_HEADERSIZE
+		+ (conn->crypto.authenticated ? CRYPTO_HEADERSIZE : 0);
+	limit = max(mtu - overhead, 512);
+	if (*maxsize > limit)
+		*maxsize = limit;
+	if (*maxsize2 > limit)
+		*maxsize2 = limit;
 }
 
 /*
@@ -947,9 +1321,9 @@ static void TouchNet_Status_f(cmd_state_t *cmd)
 {
 	tn_conn_t *t;
 	for (t = tn_list; t; t = t->next)
-		Con_Printf("%-21s window=%d inflight=%u queued=%u srtt=%.1fms rto=%.0fms fastretx=%d timeouts=%d held=%d dup=%d\n",
-			t->conn->address, t->window, t->sendnext - t->base, t->tail - t->sendnext, t->srtt * 1000.0, TN_RTO(t) * 1000.0,
-			t->fastretransmits, t->timeouts, t->heldahead, t->dupdata);
+		Con_Printf("%-21s window=%d (now %d) inflight=%u queued=%u srtt=%.1fms rto=%.0fms fastretx=%d timeouts=%d held=%d dup=%d rate=%d clear=%+.0fms recv=%u base=%u\n",
+			t->conn->address, t->window, TN_EffectiveWindow(t), t->sendnext - t->base, t->tail - t->sendnext, t->srtt * 1000.0, TN_RTO(t) * 1000.0,
+			t->fastretransmits, t->timeouts, t->heldahead, t->dupdata, t->rate, (t->conn->cleartime - host.realtime) * 1000.0, t->conn->nq.receiveSequence, t->base);
 }
 
 void TouchNet_Init(void)
@@ -959,6 +1333,15 @@ void TouchNet_Init(void)
 	Cvar_RegisterVariable(&net_reliable_rto_max);
 	Cvar_RegisterVariable(&net_signon_fast);
 	Cvar_RegisterVariable(&touch_net_trace);
+	Cvar_RegisterVariable(&net_mtu);
+	Cvar_RegisterVariable(&net_reconnect);
+	Cvar_RegisterVariable(&net_reconnect_tries);
+	Cvar_RegisterVariable(&net_reconnect_silence);
+	Cvar_RegisterVariable(&net_reconnect_state);
+	Cvar_RegisterVariable(&net_away_spectate);
+	Cvar_RegisterVariable(&net_away_limit);
+	Cmd_AddCommand(CF_CLIENT, "net_reconnect_cancel", TouchNet_ReconnectCancel_f, "stop the automatic reconnect");
+	Cmd_AddCommand(CF_CLIENT, "touch_away", TouchNet_Away_f, "1: the game is in the background (as on Android), 0: back (for tests on desktop)");
 	TouchCurl_Init();
 	Cmd_AddCommand(CF_SHARED, "net_reliable_status", TouchNet_Status_f, "windowed reliable connections: window, round trip, retransmits (Godnotic)");
 }
