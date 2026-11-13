@@ -7,6 +7,15 @@
 #include "draw.h"
 #include "ft2.h"
 #include "utf8lib.h"
+// OBJ_COMMON also goes into the dedicated server, which is built without SDL.
+#if defined(__has_include)
+# if __has_include(<SDL.h>)
+#  include <SDL.h>
+#  if SDL_VERSION_ATLEAST(2, 0, 14)
+#   define TOUCHUI_SDL_LOCALE 1
+#  endif
+# endif
+#endif
 
 cvar_t touch_kb_height = {CF_CLIENT | CF_ARCHIVE, "touch_kb_height", "0.46", "fraction of sheet height used by the touch keyboard"};
 cvar_t touch_kb_gap = {CF_CLIENT | CF_ARCHIVE, "touch_kb_gap", "0.008", "gap between keys as a fraction of sheet width"};
@@ -18,6 +27,9 @@ cvar_t touch_kb_hold_time = {CF_CLIENT | CF_ARCHIVE, "touch_kb_hold_time", "0.45
 cvar_t touch_conui_shade = {CF_CLIENT | CF_ARCHIVE, "touch_conui_shade", "0.62", "console sheet background shade alpha"};
 cvar_t touch_conui_palette_file = {CF_CLIENT | CF_ARCHIVE, "touch_conui_palette_file", "touch/console_palette.txt", "file of preset console commands for the COMMANDS tab"};
 /* Not archived: touch/xonotic.cfg sets it each start, like scr_loadingscreen_picture. */
+cvar_t touch_menu_keyboard = {CF_CLIENT | CF_ARCHIVE, "touch_menu_keyboard", "0", "keyboard for menu text fields on a touch screen: 0 = automatic (the game's own keys for languages written in Latin letters, with no keyboard attached; the system keyboard and its input methods for Chinese, Japanese, Korean, Cyrillic, Greek and others), 1 = the game's own keys, 2 = the system keyboard"};
+static cvar_t touch_menu_keys_top = {CF_CLIENT | CF_READONLY, "_touch_menu_keys_top", "0", "top of the engine's keys under a menu text field, as a fraction of the screen height; 0 while they are not shown (touch_menu_sheet.qc reads it)"};
+static cvar_t touch_menu_keys_ask = {CF_CLIENT, "_touch_menu_keys_ask", "0", "set by the menu: 1 when a tap lands on a text field (the engine's keys come back after DONE), -1 when Back puts them away"};
 cvar_t touch_conback_picture = {CF_CLIENT, "touch_conback_picture", "", "console background picture used instead of gfx/conback when it loads (empty = gfx/conback); a name only this build ships, since downloaded data carries its own gfx/conback"};
 #define TOUCHUI_MAX_FINGERS 11
 
@@ -139,17 +151,21 @@ static float touchui_sheet_x, touchui_sheet_y, touchui_sheet_w, touchui_sheet_h;
  * row it is taken back.
  */
 static const struct { char base; const char *variants; } touchui_variant_table[] = {
-	{ 'a', "àáâäæãåā" }, { 'A', "ÀÁÂÄÆÃÅĀ" },
-	{ 'e', "èéêëē" },    { 'E', "ÈÉÊËĒ" },
-	{ 'i', "ìíîïī" },    { 'I', "ÌÍÎÏĪ" },
-	{ 'o', "òóôöõøœō" }, { 'O', "ÒÓÔÖÕØŒŌ" },
-	{ 'u', "ùúûüū" },    { 'U', "ÙÚÛÜŪ" },
-	{ 'c', "çćč" },      { 'C', "ÇĆČ" },
-	{ 'n', "ñń" },       { 'N', "ÑŃ" },
-	{ 's', "ßśš" },      { 'S', "ẞŚŠ" },
-	{ 'y', "ýÿ" },       { 'Y', "ÝŸ" },
-	{ 'z', "žźż" },      { 'Z', "ŽŹŻ" },
-	{ 'l', "ł" },        { 'L', "Ł" },
+	{ 'a', "àáâäæãåāąă" }, { 'A', "ÀÁÂÄÆÃÅĀĄĂ" },
+	{ 'e', "èéêëēęě" },    { 'E', "ÈÉÊËĒĘĚ" },
+	{ 'i', "ìíîïīı" },     { 'I', "ÌÍÎÏĪİ" },
+	{ 'o', "òóôöõøœōő" },  { 'O', "ÒÓÔÖÕØŒŌŐ" },
+	{ 'u', "ùúûüūůű" },    { 'U', "ÙÚÛÜŪŮŰ" },
+	{ 'c', "çćč" },        { 'C', "ÇĆČ" },
+	{ 'n', "ñńň" },        { 'N', "ÑŃŇ" },
+	{ 's', "ßśšşș" },      { 'S', "ẞŚŠŞȘ" },
+	{ 't', "ťțþ" },        { 'T', "ŤȚÞ" },
+	{ 'd', "ďđð" },        { 'D', "ĎĐÐ" },
+	{ 'r', "řŕ" },         { 'R', "ŘŔ" },
+	{ 'g', "ğ" },          { 'G', "Ğ" },
+	{ 'y', "ýÿ" },         { 'Y', "ÝŸ" },
+	{ 'z', "žźż" },        { 'Z', "ŽŹŻ" },
+	{ 'l', "łľ" },         { 'L', "ŁĽ" },
 	{ '-', "–—" },
 	{ '\'', "‘’" },
 	{ '"', "“”" },
@@ -159,7 +175,7 @@ static const struct { char base; const char *variants; } touchui_variant_table[]
 	{ '.', "…" },
 };
 #define TOUCHUI_VARIANT_COUNT ((int)(sizeof(touchui_variant_table) / sizeof(touchui_variant_table[0])))
-#define TOUCHUI_POPUP_MAX 10
+#define TOUCHUI_POPUP_MAX 12
 
 typedef struct touchui_popup_s
 {
@@ -328,6 +344,9 @@ void TouchUI_RegisterCvars(void)
 	Cvar_RegisterVariable(&touch_conui_shade);
 	Cvar_RegisterVariable(&touch_conui_palette_file);
 	Cvar_RegisterVariable(&touch_conback_picture);
+	Cvar_RegisterVariable(&touch_menu_keyboard);
+	Cvar_RegisterVariable(&touch_menu_keys_top);
+	Cvar_RegisterVariable(&touch_menu_keys_ask);
 }
 
 void TouchUI_Init(void)
@@ -398,9 +417,112 @@ qbool TouchUI_KeysShown(touchui_sheet_t kind)
 	return ctx == 2; /* touch controls on, no keyboard */
 }
 
+/*
+ * Menu text fields: the engine's keys instead of the system keyboard
+ * (touch_ui.h). One keyboard everywhere, with the hold row for accents, and
+ * nothing typed into a field ever reaches the system's input method.
+ */
+static qbool touchui_menu_dismissed;   /* DONE: away until a tap lands on a field */
+static qbool touchui_menu_was_up;
+static qbool touchui_layout_menu;      /* TouchUI_LayoutKeyboard lays out the menu's rows */
+static qbool touchui_processing_menu;  /* the last layout was the menu keys */
+static float touchui_menu_top;         /* top of the menu keys, sheet units */
+static unsigned int touchui_menu_seen, touchui_menu_foreign; /* fingers, and those that landed off the keys */
+
+/* Languages whose letters the keys (with the hold row) type: ISO 639 codes. */
+static qbool TouchUI_LatinLanguage(const char *code)
+{
+	static const char *latin[] = {
+		"en", "de", "fr", "es", "it", "pt", "nl", "sv", "da", "fi", "nb", "nn", "no", "is",
+		"ca", "gl", "eu", "ast", "oc", "pl", "cs", "sk", "hu", "ro", "tr", "hr", "sl", "bs",
+		"sq", "et", "id", "ms", "la", "ga", "cy", "eo", "af", "sw", "fil", "tl", NULL
+	};
+	char lang[8];
+	size_t i;
+	int k;
+	if (!code || !code[0])
+		return true; /* unknown: the stock English */
+	for (i = 0; i < sizeof(lang) - 1 && code[i] && code[i] != '_' && code[i] != '-' && code[i] != '.'; i++)
+		lang[i] = (char)tolower((unsigned char)code[i]);
+	lang[i] = 0;
+	for (k = 0; latin[k]; k++)
+		if (!strcmp(lang, latin[k]))
+			return true;
+	return false;
+}
+
+/* The game's language (prvm_language) and the system's first one both
+ * written in Latin letters. A Japanese system with the game in English still
+ * gets the system keyboard: names and chat are typed in the system's language. */
+static qbool TouchUI_LatinLocale(void)
+{
+	cvar_t *lang = Cvar_FindVar(&cvars_all, "prvm_language", ~0);
+	if (lang && lang->string[0] && strcmp(lang->string, "dump") && !TouchUI_LatinLanguage(lang->string))
+		return false;
+#ifdef TOUCHUI_SDL_LOCALE
+	{
+		static double checked = -1000;
+		static qbool latin_sys = true;
+		if (host.realtime - checked > 10 || host.realtime < checked)
+		{
+			SDL_Locale *loc = SDL_GetPreferredLocales();
+			checked = host.realtime;
+			latin_sys = !loc || !loc[0].language || TouchUI_LatinLanguage(loc[0].language);
+			if (loc)
+				SDL_free(loc);
+		}
+		return latin_sys;
+	}
+#else
+	return true;
+#endif
+}
+
+static qbool TouchUI_MenuKeysWanted(void)
+{
+	if (touch_menu_keyboard.integer == 1)
+		return true;
+	if (touch_menu_keyboard.integer == 2)
+		return false;
+	/* A keyboard to type on: no keys over the menu. */
+	if (VID_HasKeyboard())
+		return false;
+	return TouchUI_LatinLocale();
+}
+
+qbool TouchUI_MenuKeysUp(void)
+{
+	keydest_t kd = (key_consoleactive & KEY_CONSOLEACTIVE_USER) ? key_console : key_dest;
+	qbool up;
+	/* 1: a tap on a field brings them back; -1: Back put them away. */
+	if (touch_menu_keys_ask.integer)
+	{
+		touchui_menu_dismissed = touch_menu_keys_ask.integer < 0;
+		Cvar_SetValueQuick(&touch_menu_keys_ask, 0);
+	}
+	/* The field let go: the next one gets the keys again. */
+	if (!vid_touchscreen_showkeyboard.integer)
+		touchui_menu_dismissed = false;
+	up = (kd == key_menu || kd == key_menu_grabbed) && vid_touchscreen.integer
+		&& vid_touchscreen_showkeyboard.integer && !touchui_menu_dismissed && TouchUI_MenuKeysWanted();
+	if (!up && touchui_menu_was_up)
+	{
+		TouchUI_ResetInputState();
+		touchui_menu_seen = touchui_menu_foreign = 0;
+		touchui_layer = TOUCHUI_LAYER_ABC;
+	}
+	if (!up && touch_menu_keys_top.value != 0)
+		Cvar_SetValueQuick(&touch_menu_keys_top, 0);
+	touchui_menu_was_up = up;
+	return up;
+}
+
 qbool TouchUI_EngineKeysUp(void)
 {
 	keydest_t keydest = (key_consoleactive & KEY_CONSOLEACTIVE_USER) ? key_console : key_dest;
+	/* A menu text field with the engine's keys: no system keyboard over them. */
+	if (TouchUI_MenuKeysUp() && !VID_HasKeyboard())
+		return true;
 	if (keydest != key_console && keydest != key_message)
 		return false;
 	/* A listed keyboard types through SDL text input, which has to stay on. */
@@ -580,7 +702,7 @@ static int TouchUI_LayoutKeyboard(float x, float y, float w, float h,
 	touchui_item_t *out, int maxout, int n)
 {
 	float gap = TouchUI_KeyGap(w);
-	float row_h = h / 6.0f;
+	float row_h = h / (touchui_layout_menu ? 5.0f : 6.0f);
 	float th = bound(12.0f, row_h * 0.40f, 26.0f);
 	int r, c, len, i;
 	float key_w, ky, kh, ax, aw;
@@ -638,6 +760,45 @@ static int TouchUI_LayoutKeyboard(float x, float y, float w, float h,
 					chbuf, th, TOUCHUI_STYLE_GLASS, TOUCHUI_ACT_CHAR, (unsigned char)chbuf[0]);
 			}
 		}
+	}
+
+	/* Menu text field: one row under the letters. A tap in the field
+	 * places the cursor, so no arrows; DONE puts the keys away. */
+	if (touchui_layout_menu)
+	{
+		struct { const char *lab; touchui_action_t act; int arg; float weight; touchui_style_t st; } acts[] = {
+			{ "?123", TOUCHUI_ACT_LAYER_SYM, 0, 1.2f, TOUCHUI_STYLE_ACCENT },
+			{ "SHIFT", TOUCHUI_ACT_LAYER_SHIFT, 0, 1.3f, TOUCHUI_STYLE_GLASS },
+			{ "SPACE", TOUCHUI_ACT_CHAR, ' ', 3.6f, TOUCHUI_STYLE_GLASS },
+			{ "BKSP", TOUCHUI_ACT_BKSP_HOLD, K_BACKSPACE, 1.4f, TOUCHUI_STYLE_GLASS },
+			{ "DONE", TOUCHUI_ACT_DONE, 0, 1.3f, TOUCHUI_STYLE_DIM },
+			{ "ENTER", TOUCHUI_ACT_KEY, K_ENTER, 1.5f, TOUCHUI_STYLE_ACCENT },
+		};
+		int nacts = (int)(sizeof(acts) / sizeof(acts[0]));
+		float total = 0;
+		if (touchui_layer == TOUCHUI_LAYER_SYM)
+		{
+			acts[0].lab = "ABC";
+			acts[0].act = TOUCHUI_ACT_LAYER_ABC;
+		}
+		if (touchui_layer == TOUCHUI_LAYER_SHIFT)
+		{
+			acts[1].lab = "SHIFT*";
+			acts[1].st = TOUCHUI_STYLE_ACCENT;
+		}
+		ky = y + 4.0f * row_h + gap;
+		kh = row_h - gap * 2.0f;
+		for (i = 0; i < nacts; i++)
+			total += acts[i].weight;
+		ax = x + gap;
+		for (i = 0; i < nacts; i++)
+		{
+			aw = (w - gap * (float)(nacts + 1)) * (acts[i].weight / total);
+			TouchUI_PushItem(out, &n, maxout, ax, ky, aw, kh,
+				acts[i].lab, th * 0.9f, acts[i].st, acts[i].act, acts[i].arg);
+			ax += aw + gap;
+		}
+		return n;
 	}
 
 	/* Modifier + action row */
@@ -1008,6 +1169,32 @@ static int TouchUI_LayoutMouseSheet(touchui_sheet_t kind, float x, float y, floa
 	return TouchUI_LayoutPopup(out, maxout, n);
 }
 
+/* The menu's keys along the bottom: five rows of finger-sized keys, about
+ * 42% of the screen, never over 55%. */
+static int TouchUI_LayoutMenuKeys(float x, float y, float w, float h,
+	touchui_item_t *out, int maxout)
+{
+	float dp = TouchUI_ConPerDp();
+	float gap = TouchUI_KeyGap(w);
+	float px2con = vid.mode.height > 0 ? vid_conheight.value / (float)vid.mode.height : 1.0f;
+	float key = max(TOUCHUI_MIN_KEY_DP * dp, touch_kb_minkey_px.value * px2con);
+	float kb_h = min(max(5.0f * (key + gap * 2.0f), h * 0.42f), h * 0.55f);
+	float top;
+	int n;
+	n = 0;
+	/* An opaque plate first, under the keys: drawn after the menu, so the
+	 * menu does not show between and through them. */
+	TouchUI_PushItem(out, &n, maxout, x, y + h - kb_h, w, kb_h, " ", 1.0f, TOUCHUI_STYLE_PLATE, TOUCHUI_ACT_NONE, 0);
+	touchui_layout_menu = true;
+	n = TouchUI_LayoutKeyboard(x, y + h - kb_h, w, kb_h, out, maxout, n);
+	touchui_layout_menu = false;
+	touchui_menu_top = y + h - kb_h;
+	top = vid_conheight.value > 0 ? touchui_menu_top / vid_conheight.value : 0;
+	if (fabs(touch_menu_keys_top.value - top) > 0.0005f)
+		Cvar_SetValueQuick(&touch_menu_keys_top, top);
+	return TouchUI_LayoutPopup(out, maxout, n);
+}
+
 int TouchUI_LayoutSheet(touchui_sheet_t kind, float x, float y, float w, float h,
 	touchui_item_t *out, int maxout)
 {
@@ -1021,6 +1208,9 @@ int TouchUI_LayoutSheet(touchui_sheet_t kind, float x, float y, float w, float h
 	touchui_sheet_y = y;
 	touchui_sheet_w = w;
 	touchui_sheet_h = h;
+	touchui_processing_menu = kind == TOUCHUI_SHEET_MENU;
+	if (kind == TOUCHUI_SHEET_MENU)
+		return TouchUI_LayoutMenuKeys(x, y, w, h, out, maxout);
 	if (!vid_touchscreen.integer && kind != TOUCHUI_SHEET_PREVIEW)
 		return TouchUI_LayoutMouseSheet(kind, x, y, w, h, out, maxout);
 
@@ -1153,6 +1343,10 @@ static void TouchUI_FireAction(const touchui_item_t *it, double realtime)
 	case TOUCHUI_ACT_TAB_KEYS:
 		touchui_tab = TOUCHUI_TAB_KEYS;
 		break;
+	case TOUCHUI_ACT_DONE:
+		touchui_menu_dismissed = true;
+		touchui_popup.open = false;
+		break;
 	case TOUCHUI_ACT_KB_TOGGLE:
 		TouchUI_ToggleKeys();
 		if (TouchUI_KeysShown(TOUCHUI_SHEET_CONSOLE))
@@ -1207,6 +1401,25 @@ qbool TouchUI_ProcessFinger(int finger, float fx, float fy, qbool finger_down,
 	if (finger < 0 || finger >= TOUCHUI_MAX_FINGERS)
 		return false;
 	bit = 1u << finger;
+
+	/* The menu's keys take only fingers that land on them: one that pressed
+	 * the menu and slides down over them types nothing. */
+	if (touchui_processing_menu)
+	{
+		if (!finger_down)
+			touchui_menu_seen &= ~bit, touchui_menu_foreign &= ~bit;
+		else
+		{
+			if (!(touchui_menu_seen & bit))
+			{
+				touchui_menu_seen |= bit;
+				if (fy < touchui_menu_top)
+					touchui_menu_foreign |= bit;
+			}
+			if (touchui_menu_foreign & bit)
+				return false;
+		}
+	}
 
 	if (!finger_down)
 	{
@@ -1328,6 +1541,13 @@ void TouchUI_DrawGlassItem(const touchui_item_t *it, float pressed, float opacit
 		b = 0.22f;
 	}
 
+	if (it->style == TOUCHUI_STYLE_PLATE)
+	{
+		/* Behind the menu's keys: the menu under them does not show through. */
+		DrawQ_Fill(it->x, it->y, it->w, it->h, 0.02f, 0.04f, 0.08f, 1.0f, 0);
+		DrawQ_Fill(it->x, it->y, it->w, 1, TOUCHUI_GLASS_R, TOUCHUI_GLASS_G, TOUCHUI_GLASS_B, 0.30f, 0);
+		return;
+	}
 	if (it->style == TOUCHUI_STYLE_POPUP || it->style == TOUCHUI_STYLE_POPUP_SEL)
 	{
 		/* Opaque, so the keys it covers do not show through. */

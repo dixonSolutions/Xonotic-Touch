@@ -9,17 +9,19 @@
 // this launcher instead: the GODNOTIC banner (the menu background) on top,
 // big tiles under it, and each tile opens the same stock dialog as a sheet
 // over it (touch_menu_sheet.qc). Closing a sheet comes back here; Android's
-// Back closes the top sheet (K_ESCAPE, Dialog_keyDown).
+// Back closes the top sheet (K_ESCAPE, Dialog_keyDown); on the launcher
+// itself it asks whether to quit (the stock Quit dialog, where Back is No).
 #include "dialog.qh"
 CLASS(GodnoticLauncherDialog, XonoticDialog)
 	METHOD(GodnoticLauncherDialog, fill, void(entity));
+	METHOD(GodnoticLauncherDialog, keyDown, float(entity, float, float, float));
 	ATTRIB(GodnoticLauncherDialog, title, string, "");
 	ATTRIB(GodnoticLauncherDialog, titleFontSize, float, 0);
 	ATTRIB(GodnoticLauncherDialog, closable, bool, false);
 	ATTRIB(GodnoticLauncherDialog, backgroundImage, string, string_null);
 	ATTRIB(GodnoticLauncherDialog, color, vector, SKINCOLOR_DIALOG_SETTINGS);
 	ATTRIB(GodnoticLauncherDialog, intendedWidth, float, 1);
-	ATTRIB(GodnoticLauncherDialog, rows, float, 5);
+	ATTRIB(GodnoticLauncherDialog, rows, float, 4);
 	ATTRIB(GodnoticLauncherDialog, columns, float, 6);
 	ATTRIB(GodnoticLauncherDialog, name, string, "TouchLauncher");
 	ATTRIB(GodnoticLauncherDialog, singleplayerDialog, entity);
@@ -28,6 +30,7 @@ CLASS(GodnoticLauncherDialog, XonoticDialog)
 	ATTRIB(GodnoticLauncherDialog, settingsDialog, entity);
 	ATTRIB(GodnoticLauncherDialog, creditsDialog, entity);
 	ATTRIB(GodnoticLauncherDialog, quitDialog, entity);
+	ATTRIB(GodnoticLauncherDialog, quitTile, entity);
 ENDCLASS(GodnoticLauncherDialog)
 
 entity touch_launcher;

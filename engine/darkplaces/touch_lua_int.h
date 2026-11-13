@@ -1,6 +1,7 @@
 /*
 Godnotic: shared internals of the Lua sandbox (touch_lua.c) and its two
-realms, client mods (touch_lua_cl.c) and server plugins (touch_lua_sv.c).
+realms, client mods (touch_lua_cl.c) and server mods (touch_lua_sv.c; the
+code calls them plugins).
 */
 #ifndef TOUCH_LUA_INT_H
 #define TOUCH_LUA_INT_H
@@ -115,7 +116,7 @@ typedef struct tlua_mod_s
 
 typedef struct tlua_realm_s
 {
-	const char *kind;               // "mod" / "plugin"
+	const char *kind;               // "mod" / "plugin" (machine-readable; users see TLUA_NOUN)
 	const char *subdir;             // "mods" / "plugins"
 	const char *cmdprefix;          // commands and cvars of a mod: <prefix><mod>_<name>, <name> without '_'
 	unsigned cmdflags;              // CF_CLIENT / CF_SERVER
@@ -131,6 +132,11 @@ typedef struct tlua_realm_s
 } tlua_realm_t;
 
 extern tlua_realm_t tlua_client, tlua_server;
+
+// What users read for a realm's packages: "mod" (client mods) or "server mod".
+// kind, the plugins/ folder, _lua_select and the "realm" detail field keep
+// saying "plugin": the menu and existing installs read those.
+#define TLUA_NOUN(r) ((r) == &tlua_server ? "server mod" : "mod")
 
 // The mod whose code is running now (NULL between calls).
 extern tlua_mod_t *tlua_current;

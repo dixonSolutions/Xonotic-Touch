@@ -1026,7 +1026,7 @@ static void tlua_pkg_print(void)
 	int i;
 	unsigned added = 0;
 	char num[16];
-	Con_Printf("\n^3%s Lua %s ^7%s^3 from %s^7\n", p->update ? "Update of" : "New", p->realm->kind, m->name, p->source);
+	Con_Printf("\n^3%s Lua %s ^7%s^3 from %s^7\n", p->update ? "Update of" : "New", TLUA_NOUN(p->realm), m->name, p->source);
 	Con_Printf("  title: %s\n", m->title[0] ? m->title : m->name);
 	if (m->version[0] || p->update)
 		Con_Printf("  version: %s%s%s%s\n", m->version[0] ? m->version : "?", p->update ? " (installed: " : "", p->update ? (p->oldversion[0] ? p->oldversion : "?") : "", p->update ? ")" : "");
@@ -1307,14 +1307,43 @@ static void tlua_pkg_begin(tlua_realm_t *r, const char *arg, const char *pinarg)
 // Writing it: <realm>/.install.tmp/, then renamed into place
 
 #ifndef _WIN32
+// whether the last tlua_rmtree with keepdata found a data/ worth keeping
+static qbool tlua_rmtree_kept;
+
+// is <fd>/<name> a real folder (not a symlink) with something in it
+static qbool tlua_dir_has_entries(int fd, const char *name)
+{
+	int dfd = openat(fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+	DIR *d;
+	struct dirent *ent;
+	qbool any = false;
+	if (dfd < 0)
+		return false;
+	if (!(d = fdopendir(dfd)))
+	{
+		close(dfd);
+		return false;
+	}
+	while ((ent = readdir(d)))
+		if (strcmp(ent->d_name, ".") && strcmp(ent->d_name, ".."))
+		{
+			any = true;
+			break;
+		}
+	closedir(d);
+	return any;
+}
+
 // removes a folder below parentfd without following any symlink in it;
-// keepdata keeps its top-level data/ (and so the folder itself)
+// keepdata keeps its top-level data/ (and so the folder itself) when there
+// is anything in it: a mod that never saved anything leaves no empty folder
 static qbool tlua_rmtree(int parentfd, const char *name, int depth, qbool keepdata)
 {
 	int fd;
 	DIR *d;
 	struct dirent *ent;
 	qbool ok = true;
+	qbool kept = false;
 	if (depth > 16)
 		return false;
 	fd = openat(parentfd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
@@ -1335,8 +1364,11 @@ static qbool tlua_rmtree(int parentfd, const char *name, int depth, qbool keepda
 		struct stat st;
 		if (!strcmp(ent->d_name, ".") || !strcmp(ent->d_name, ".."))
 			continue;
-		if (keepdata && depth == 0 && !strcmp(ent->d_name, "data"))
+		if (keepdata && depth == 0 && !strcmp(ent->d_name, "data") && tlua_dir_has_entries(dirfd(d), ent->d_name))
+		{
+			kept = true;
 			continue;
+		}
 		if (fstatat(dirfd(d), ent->d_name, &st, AT_SYMLINK_NOFOLLOW))
 		{
 			ok = false;
@@ -1348,7 +1380,9 @@ static qbool tlua_rmtree(int parentfd, const char *name, int depth, qbool keepda
 			ok = false;
 	}
 	closedir(d);
-	if (!keepdata && unlinkat(parentfd, name, AT_REMOVEDIR))
+	if (depth == 0)
+		tlua_rmtree_kept = kept;
+	if (!kept && unlinkat(parentfd, name, AT_REMOVEDIR))
 		ok = false;
 	return ok;
 }
@@ -1618,7 +1652,7 @@ static void tlua_uninstall_f(cmd_state_t *cmd)
 	TLua_Rescan(r);
 	if (!(m = TLua_Find(r, name)))
 	{
-		TLua_Say("%s: no %s named %s", Cmd_Argv(cmd, 0), r->kind, name);
+		TLua_Say("%s: no %s named %s", Cmd_Argv(cmd, 0), TLUA_NOUN(r), name);
 		return;
 	}
 	m->enabled = false;
@@ -1642,7 +1676,11 @@ static void tlua_uninstall_f(cmd_state_t *cmd)
 	TLua_Pkg_Forget(r, name);
 	TLua_Rescan(r);
 	TLua_Hooks_Changed();
-	TLua_Say("^2Lua:^7 uninstalled %s %s%s", r->kind, name, keepdata ? " (kept its data/ folder)" : " (its code, data, grants and source record are gone)");
+#ifndef _WIN32
+	if (keepdata && !tlua_rmtree_kept)
+		keepdata = false; // it had no saved data: nothing was kept, not even an empty folder
+#endif
+	TLua_Say("^2Lua:^7 uninstalled %s %s%s", TLUA_NOUN(r), name, keepdata ? " (kept its data/ folder)" : " (its code, data, grants and source record are gone)");
 }
 
 static void tlua_update_f(cmd_state_t *cmd)
@@ -1660,7 +1698,7 @@ static void tlua_update_f(cmd_state_t *cmd)
 	TLua_Rescan(r);
 	if (!(m = TLua_Find(r, Cmd_Argv(cmd, 1))))
 	{
-		TLua_Say("%s: no %s named %s", Cmd_Argv(cmd, 0), r->kind, Cmd_Argv(cmd, 1));
+		TLua_Say("%s: no %s named %s", Cmd_Argv(cmd, 0), TLUA_NOUN(r), Cmd_Argv(cmd, 1));
 		return;
 	}
 	if (Cmd_Argc(cmd) >= 3)
@@ -1741,10 +1779,14 @@ void TLua_Pkg_Setup(void)
 	Cmd_AddCommand(CF_CLIENT, "lua_mod_install", tlua_install_f, "review a Lua client mod package (.zip, folder or https:// URL[#sha256=...]) before installing it");
 	Cmd_AddCommand(CF_CLIENT, "lua_mod_update", tlua_update_f, "fetch a Lua client mod again from where it came from (or a given file or URL) and review it");
 	Cmd_AddCommand(CF_CLIENT, "lua_mod_uninstall", tlua_uninstall_f, "remove a Lua client mod (folder, grants, record; keepdata keeps its data/)");
-	Cmd_AddCommand(CF_SERVER, "sv_lua_plugin_install", tlua_install_f, "review a Lua server plugin package (.zip, folder or https:// URL[#sha256=...]) before installing it");
-	Cmd_AddCommand(CF_SERVER, "sv_lua_plugin_update", tlua_update_f, "fetch a Lua server plugin again from where it came from (or a given file or URL) and review it");
-	Cmd_AddCommand(CF_SERVER, "sv_lua_plugin_uninstall", tlua_uninstall_f, "remove a Lua server plugin (folder, grants, record; keepdata keeps its data/)");
-	Cmd_AddCommand(CF_CLIENT | CF_SERVER, "lua_install_confirm", tlua_confirm_f, "install the package lua_mod_install / sv_lua_plugin_install showed (it stays off, nothing is granted)");
+	Cmd_AddCommand(CF_SERVER, "sv_lua_mod_install", tlua_install_f, "review a Lua server mod package (.zip, folder or https:// URL[#sha256=...]) before installing it");
+	Cmd_AddCommand(CF_SERVER, "sv_lua_mod_update", tlua_update_f, "fetch a Lua server mod again from where it came from (or a given file or URL) and review it");
+	Cmd_AddCommand(CF_SERVER, "sv_lua_mod_uninstall", tlua_uninstall_f, "remove a Lua server mod (folder, grants, record; keepdata keeps its data/)");
+	// old names, kept so scripts and configs go on working
+	Cmd_AddCommand(CF_SERVER, "sv_lua_plugin_install", tlua_install_f, "old name of sv_lua_mod_install");
+	Cmd_AddCommand(CF_SERVER, "sv_lua_plugin_update", tlua_update_f, "old name of sv_lua_mod_update");
+	Cmd_AddCommand(CF_SERVER, "sv_lua_plugin_uninstall", tlua_uninstall_f, "old name of sv_lua_mod_uninstall");
+	Cmd_AddCommand(CF_CLIENT | CF_SERVER, "lua_install_confirm", tlua_confirm_f, "install the package lua_mod_install / sv_lua_mod_install showed (it stays off, nothing is granted)");
 	Cmd_AddCommand(CF_CLIENT | CF_SERVER, "lua_install_cancel", tlua_cancel_f, "drop the pending Lua install or download");
 	Cmd_AddCommand(CF_CLIENT | CF_SERVER, "lua_install_status", tlua_status_f, "what the pending Lua install is doing");
 }

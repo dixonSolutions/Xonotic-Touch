@@ -5,6 +5,8 @@
 #include "slider.qh"
 #include "textslider.qh"
 #include "serverlist.qh"
+#include "maplist.qh"
+#include "touch_menu_vgrid.qh"
 #include <common/mapinfo.qh>
 
 // label roles
@@ -230,7 +232,6 @@ void GodnoticLanHostDialog_fill(entity me)
 			e.fontSize = TOUCH_LAN_FONT;
 			e.saveImmediately = true;
 	me.TR(me);
-	me.TR(me);
 		me.TD(me, 1, 1.4, TouchLan_text(_("Game mode:")));
 		me.TD(me, 1, 1.6, e = makeXonoticTextSlider("touch_lan_gametype"));
 			e.fontSize = TOUCH_LAN_FONT;
@@ -260,7 +261,6 @@ void GodnoticLanHostDialog_fill(entity me)
 			}
 			e.configureXonoticTextSliderValues(e);
 	me.TR(me);
-	me.TR(me);
 		me.TD(me, 1, 1.4, TouchLan_text(_("Bots:")));
 		me.TD(me, 1, 1.6, e = makeXonoticSlider(0, 16, 1, "touch_lan_bots"));
 			e.fontSize = TOUCH_LAN_FONT;
@@ -268,14 +268,22 @@ void GodnoticLanHostDialog_fill(entity me)
 		me.TD(me, 1, 2.2, e = makeXonoticSlider(2, 32, 1, "touch_lan_maxplayers"));
 			e.fontSize = TOUCH_LAN_FONT;
 	me.TR(me);
-	me.TR(me);
 		me.TD(me, 1, 1.4, TouchLan_text(_("Port:")));
 		me.TD(me, 1, 1.6, e = makeXonoticInputBox(0, "touch_lan_host_port"));
 			e.fontSize = TOUCH_LAN_FONT;
 			e.saveImmediately = true;
+			e.tooltip = _("UDP; 26000 unless it is taken");
 			touchLan_portBox = e;
-		me.TD(me, 1, 3, TouchLan_text(_("^8UDP; 26000 unless it is taken")));
-	me.TR(me);
+		me.TD(me, 1, 1.1, TouchLan_text(_("Assists:")));
+		me.TD(me, 1, 1.9, e = makeXonoticTextSlider("touch_lan_assist"));
+			e.fontSize = TOUCH_LAN_FONT;
+			e.valueSpace = 0.55;
+			e.tooltip = _("The touch assists players in this game may use");
+			e.addValue(e, _("All allowed"), "7");
+			e.addValue(e, _("No auto-shoot"), "5");
+			e.addValue(e, _("Aim assist only"), "1");
+			e.addValue(e, _("None"), "0");
+			e.configureXonoticTextSliderValues(e);
 	me.TR(me);
 		me.TD(me, 1, 1.4, TouchLan_text(_("Password:")));
 		me.TD(me, 1, 1.6, e = makeXonoticInputBox(0, string_null));
@@ -292,36 +300,23 @@ void GodnoticLanHostDialog_fill(entity me)
 		me.TDempty(me, 1.4);
 		me.TD(me, 1, 4.6, TouchLan_label(TOUCH_LAN_PASSWORD_NOTE));
 	me.TR(me);
-	me.TR(me);
-		me.TD(me, 1, 1.4, TouchLan_text(_("Touch assists:")));
-		me.TD(me, 1, 4.6, e = makeXonoticTextSlider("touch_lan_assist"));
-			e.fontSize = TOUCH_LAN_FONT;
-			e.valueSpace = 0.4;
-			e.addValue(e, _("All allowed"), "7");
-			e.addValue(e, _("No auto-shoot"), "5");
-			e.addValue(e, _("Aim assist only"), "1");
-			e.addValue(e, _("None"), "0");
-			e.configureXonoticTextSliderValues(e);
-	me.TR(me);
-	me.TR(me);
 		me.TD(me, 1, me.columns, TouchLan_label(TOUCH_LAN_STATUS));
 	me.TR(me);
-		me.TD(me, 1, me.columns, TouchLan_label(TOUCH_LAN_ADDRESSES));
-	me.TR(me);
-		me.TD(me, 1, me.columns, TouchLan_label(TOUCH_LAN_PLAYERS));
+		me.TD(me, 1, me.columns / 2, TouchLan_label(TOUCH_LAN_ADDRESSES));
+		me.TD(me, 1, me.columns / 2, TouchLan_label(TOUCH_LAN_PLAYERS));
 
-	me.gotoRC(me, me.rows - 1.6, 0);
-		me.TD(me, 1.6, 2, e = NEW(GodnoticLanButton));
+	me.gotoRC(me, me.rows - 1.3, 0);
+		me.TD(me, 1.3, 2, e = NEW(GodnoticLanButton));
 			e.configureXonoticButton(e, _("Start hosting"), '0.55 1 0.55', string_null);
 			e.lanRole = TOUCH_LAN_START;
 			e.onClick = TouchLan_Start;
 			e.onClickEntity = me;
-		me.TD(me, 1.6, 2, e = NEW(GodnoticLanButton));
+		me.TD(me, 1.3, 2, e = NEW(GodnoticLanButton));
 			e.configureXonoticButton(e, _("Stop hosting"), '1 0.55 0.55', string_null);
 			e.lanRole = TOUCH_LAN_STOP;
 			e.onClick = TouchLan_Stop;
 			e.onClickEntity = me;
-		me.TD(me, 1.6, 2, e = makeGodnoticButton(_("Back"), '0 0 0'));
+		me.TD(me, 1.3, 2, e = makeGodnoticButton(_("Back"), '0 0 0'));
 			e.onClick = TouchLan_Close;
 			e.onClickEntity = me;
 }
@@ -377,23 +372,21 @@ void GodnoticLanPasswordDialog_fill(entity me)
 			e.lanRole = -1; // text set by readInputArgs
 			me.lanMessage = e;
 	me.TR(me);
-	me.TR(me);
 		me.TD(me, 1.3, me.columns, e = makeXonoticInputBox(0, string_null));
 			e.fontSize = TOUCH_LAN_FONT * 1.2;
 			e.onEnter = TouchLan_PasswordJoinEnter;
 			e.onEnterEntity = me;
 			me.lanInput = e;
-	me.TR(me);
-	me.TR(me);
+	me.gotoRC(me, 2.5, 0);
 		me.TD(me, 1, me.columns, e = makeXonoticCheckBox(0, "cl_touch_lan_password_remember", _("Remember it on this device (kept as plain text)")));
 			e.fontSize = TOUCH_LAN_FONT;
 	me.TR(me);
 		me.TD(me, 1, me.columns, TouchLan_text(_("^8Sent to this game's host only, as a proof, never as text.")));
-	me.gotoRC(me, me.rows - 1.6, 0);
-		me.TD(me, 1.6, me.columns / 2, e = makeGodnoticButton(_("Join"), '0.55 1 0.55'));
+	me.gotoRC(me, me.rows - 1.3, 0);
+		me.TD(me, 1.3, me.columns / 2, e = makeGodnoticButton(_("Join"), '0.55 1 0.55'));
 			e.onClick = TouchLan_PasswordJoin;
 			e.onClickEntity = me;
-		me.TD(me, 1.6, me.columns / 2, e = makeGodnoticButton(_("Cancel"), '0 0 0'));
+		me.TD(me, 1.3, me.columns / 2, e = makeGodnoticButton(_("Cancel"), '0 0 0'));
 			e.onClick = TouchLan_Close;
 			e.onClickEntity = me;
 }
@@ -484,4 +477,163 @@ void TouchLan_ConfigureDialogs(entity me)
 	i = NEW(GodnoticLanPasswordDialog);
 	i.configureDialog(i);
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
+}
+
+// ---------------------------------------------------------------- Create: LAN
+//
+// Multiplayer > Create hosts on the LAN when its LAN box is ticked: the port
+// (26000 unless taken) and an optional password with a switch, an open lock
+// when no password applies and a closed one when it does. Start then sets
+// up the LAN server as the Host screen did and starts the chosen map.
+
+entity touchCreate_port, touchCreate_pass;
+
+void GodnoticLanLock_draw(entity me)
+{
+	bool locked = cvar("touch_lan_create_password") && ((touchCreate_pass && touchCreate_pass.text != "") || cvar("touch_lan_host_password_set"));
+	vector col = locked ? '1 0.85 0.3' : '0.7 0.8 0.9';
+	float a = cvar("touch_lan_create") ? 1 : 0.35;
+	// A square box, centred in the item.
+	float w = me.size.x, h = me.size.y;
+	float side = min(w, h) * 0.8;
+	vector sz = eX * (side / w) + eY * (side / h);
+	vector pos = eX * (0.5 * (1 - sz.x)) + eY * (0.5 * (1 - sz.y));
+	draw_Fill(pos + eX * sz.x * 0.2 + eY * sz.y * 0.45, eX * sz.x * 0.6 + eY * sz.y * 0.45, col, a);
+	// The shackle: shut over the body, or lifted and open on the right.
+	float lift = locked ? 0 : 0.12;
+	vector post = eX * sz.x * 0.1 + eY * sz.y * 0.3;
+	draw_Fill(pos + eX * sz.x * 0.3 + eY * sz.y * (0.15 - lift), post, col, a);
+	if (locked)
+		draw_Fill(pos + eX * sz.x * 0.6 + eY * sz.y * 0.15, post, col, a);
+	draw_Fill(pos + eX * sz.x * 0.3 + eY * sz.y * (0.1 - lift), eX * sz.x * 0.4 + eY * sz.y * 0.08, col, a);
+}
+
+void TouchCreate_Start(entity btn, entity maplist)
+{
+	if (cvar("touch_lan_create") && TouchLan_Available())
+	{
+		if (touchCreate_port)
+			touchCreate_port.saveCvars(touchCreate_port);
+		string portstr = cvar_string("touch_lan_host_port");
+		float port = stof(portstr);
+		if (portstr == "" || port != floor(port) || port < 1024 || port > 65535)
+		{
+			TouchLan_SetMessage(_("^1The port must be a whole number from 1024 to 65535; 26000 is the usual one."));
+			return;
+		}
+		cvar_set("_touch_lan_portcheck", ftos(port));
+		if (!cvar("_touch_lan_port_free"))
+		{
+			float next = cvar("_touch_lan_port_suggest");
+			if (next != port)
+			{
+				cvar_set("touch_lan_host_port", ftos(next));
+				if (touchCreate_port)
+					touchCreate_port.loadCvars(touchCreate_port);
+				TouchLan_SetMessage(sprintf(_("^3Port %d is in use by another game or app on this device. Switched to %d: press Start again."), port, next));
+			}
+			else
+				TouchLan_SetMessage(sprintf(_("^1Port %d is in use and none of the next ones is free. Choose another port."), port));
+			return;
+		}
+		if (!cvar("touch_lan_create_password"))
+			cvar_set("touch_lan_host_password", "");
+		else if (touchCreate_pass && touchCreate_pass.text != "")
+		{
+			cvar_set("touch_lan_host_password", touchCreate_pass.text);
+			touchCreate_pass.setText(touchCreate_pass, "");
+		}
+		localcmd(sprintf("\nport %d\n", port));
+		// sv_public 0: answers the LAN search and registers with no master.
+		localcmd("sv_public 0\nsv_status_privacy 1\n");
+		localcmd("touch_lan_host_password_apply\n");
+		TouchLan_SetMessage("");
+	}
+	MapList_LoadMap(btn, maplist);
+}
+
+void TouchCreate_Picked(string bsp)
+{
+	entity ml = find(NULL, classname, "XonoticMapList");
+	if (!ml)
+		return;
+	for (int i = 0; i < MapInfo_count; ++i)
+		if (MapInfo_BSPName_ByID(i) == bsp)
+		{
+			ml.setSelected(ml, i);
+			return;
+		}
+}
+
+void TouchCreate_Pictures(entity btn, entity me)
+{
+	TouchMapPick_Open(btn, TouchCreate_Picked, false);
+}
+
+void TouchCreate_Reflow(entity me)
+{
+	if (!touch_menu_on)
+		return;
+	registercvar("touch_lan_create", "0", CVAR_SAVE);
+	registercvar("touch_lan_create_password", "0", CVAR_SAVE);
+	// Room on the left: the game type list 4 rows shorter, what is under it
+	// 4 rows up (the rows stay clear of the pinned Mutators / Start rows).
+	float d = 4 * me.itemSpacing.y;
+	float listbottom = me.itemOrigin.y + 12 * me.itemSpacing.y;
+	float bottomrow = me.itemOrigin.y + (me.rows - 1.5) * me.itemSpacing.y;
+	for (entity e = me.firstChild; e; e = e.nextSibling)
+	{
+		if (e.Container_origin.x > 0.45 || e.Container_origin.y > bottomrow)
+			continue;
+		if (e.instanceOfListBox)
+			e.Container_size_y -= d;
+		else if (e.Container_origin.y > listbottom)
+			e.Container_origin_y -= d;
+	}
+	entity e;
+	me.gotoRC(me, 17.5, 0);
+		me.TD(me, 1, 0.9, e = makeXonoticCheckBox_T(0, "touch_lan_create", _("LAN"), _("Host for this Wi-Fi or network: others find the game under LAN")));
+			setDependent(e, "touch_lan_available", 1, 1);
+		me.TD(me, 1, 0.5, e = makeXonoticTextLabel(1, _("Port:")));
+		me.TD(me, 1, 1.1, e = touchCreate_port = makeXonoticInputBox(0, "touch_lan_host_port"));
+			e.saveImmediately = true;
+			e.tooltip = _("UDP; 26000 unless it is taken");
+			setDependent(e, "touch_lan_create", 1, 1);
+		me.TD(me, 1, 0.4, e = NEW(GodnoticLanLock));
+	me.gotoRC(me, 18.5, 0);
+		me.TD(me, 1, 1.3, e = makeXonoticCheckBox_T(0, "touch_lan_create_password", _("Password"), _("Only players who know it can join")));
+			setDependent(e, "touch_lan_create", 1, 1);
+		me.TD(me, 1, 1.6, e = touchCreate_pass = makeXonoticInputBox(0, string_null));
+			setDependent(e, "touch_lan_create_password", 1, 1);
+	me.gotoRC(me, 19.5, 0);
+		me.TD(me, 1, 2.9, TouchLan_label(TOUCH_LAN_STATUS));
+	// Maps with their pictures: a grid picker over the Maplist header.
+	for (entity h = me.firstChild; h; h = h.nextSibling)
+		if (h.instanceOfLabel && !h.instanceOfButton && h.text == _("Maplist") && h.Container_origin.x > 0.45)
+		{
+			h.Container_size_x *= 0.5;
+			entity b = makeGodnoticButton(_("Pictures..."), '0.6 0.85 1');
+			b.onClick = TouchCreate_Pictures;
+			b.onClickEntity = me;
+			me.addItem(me, b, h.Container_origin + eX * h.Container_size.x, h.Container_size, 1);
+			break;
+		}
+	// Start hosts on the LAN when the box is ticked.
+	if (me.mapListBox && me.mapListBox.startButton)
+		me.mapListBox.startButton.onClick = TouchCreate_Start;
+}
+
+entity TouchLan_StatusLabel()
+{
+	return TouchLan_label(TOUCH_LAN_ADDRESSES);
+}
+
+entity TouchLan_StopButton()
+{
+	entity e = NEW(GodnoticLanButton);
+	e.configureXonoticButton(e, _("Stop LAN"), '1 0.55 0.55', string_null);
+	e.lanRole = TOUCH_LAN_STOP;
+	e.onClick = TouchLan_Stop;
+	e.onClickEntity = e;
+	return e;
 }

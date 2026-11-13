@@ -1,4 +1,5 @@
 #include "button.qh"
+#include <menu/xonotic/touch_menu_scale.qh> // Touch
 
 	void Button_resizeNotify(entity me, vector relOrigin, vector relSize, vector absOrigin, vector absSize)
 	{
@@ -129,6 +130,7 @@
 				{
 					bOrigin = eY * (0.5 * (1 - me.realFontSize.y)) + eX * (0.5 * (me.keepspaceLeft - me.realFontSize.x));
 					bSize = me.realFontSize;
+					if (touch_menu_on) { bSize = TouchMenuSkin_box(me, bSize); bOrigin = touch_menu_box_origin; } // Touch: a finger-sized box, touch_menu_scale.qc
 				}
 				if (me.disabled)
 					draw_Picture(bOrigin, strcat(me.src, "_d", me.srcSuffix), bSize, me.colorD, 1);

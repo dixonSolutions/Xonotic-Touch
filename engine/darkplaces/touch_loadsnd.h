@@ -18,6 +18,8 @@
 // (snd_lazyload_async, touch_loadogg.h), any other at precache as before.
 
 
+#include "touch_warm.h"
+
 static cvar_t snd_lazyload = {CF_CLIENT, "snd_lazyload", "1", "precached sounds are decoded when first played, or in the background during the game (Godnotic); 0 = all at precache"};
 static cvar_t snd_lazyload_maxsize = {CF_CLIENT, "snd_lazyload_maxsize", "48", "sound files bigger than this many KiB are decoded at precache even with snd_lazyload (one decode of a big file would be a long frame in the game)"};
 static cvar_t snd_lazyload_budget = {CF_CLIENT, "snd_lazyload_budget", "4", "milliseconds per frame spent decoding precached sounds not played yet while a menu or dialog is open in the game (0 = only on first play)"};
@@ -142,6 +144,29 @@ qbool TouchSnd_PreloadName(const char *name)
 		}
 	}
 	return false;
+}
+
+// touch_warm.c: decode a sound while the menu is idle, before the game
+// that will precache it; 1 decoded now, 0 already decoded, -1 none
+int TouchSnd_WarmName(const char *name)
+{
+	sfx_t *sfx;
+	qbool had;
+	if (snd_renderbuffer == NULL || nosound.integer)
+		return -1;
+	// as a level sound: the next game's S_ClearUsed and purge free it unless
+	// that game precaches it (a menu sound would never be freed)
+	if (!(sfx = S_PrecacheSound(name, false, true)))
+		return -1;
+	had = sfx->fetcher != NULL && !(sfx->flags & TOUCH_SFXFLAG_DEFERRED);
+	if (sfx->flags & TOUCH_SFXFLAG_DEFERRED)
+		TouchSnd_Ensure(sfx);
+	if (!sfx->fetcher)
+		return -1;
+	if (had)
+		return 0;
+	sfx->flags |= TOUCH_SFXFLAG_PRELOADED;
+	return 1;
 }
 
 // once per host frame in the game (touch_loadtime.c)

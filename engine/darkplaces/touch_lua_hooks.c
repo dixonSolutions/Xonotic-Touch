@@ -47,8 +47,8 @@ Builtins (server VM only; the QC checks for the engine first):
 #include "touch_lua_int.h"
 #include "touch_lua_hooks_gen.h"
 
-static cvar_t lua_hook_ms = {CF_SERVER | CF_ARCHIVE, "lua_hook_ms", "5", "time limit in milliseconds of each hook call into a Lua plugin (0.1-40)"};
-static cvar_t lua_hook_frame_ms = {CF_SERVER | CF_ARCHIVE, "lua_hook_frame_ms", "25", "time a Lua plugin may spend in hook calls per frame, in milliseconds (1-200); past it the plugin is stopped"};
+static cvar_t lua_hook_ms = {CF_SERVER | CF_ARCHIVE, "lua_hook_ms", "5", "time limit in milliseconds of each hook call into a Lua server mod (0.1-40)"};
+static cvar_t lua_hook_frame_ms = {CF_SERVER | CF_ARCHIVE, "lua_hook_frame_ms", "25", "time a Lua server mod may spend in hook calls per frame, in milliseconds (1-200); past it the server mod is stopped"};
 
 void TLua_Guard(struct cvar_s *var);
 void TLua_RegisterCvar(struct cvar_s *var);
@@ -564,7 +564,7 @@ static void VM_SV_touch_lua_hook_gen(prvm_prog_t *prog)
 	if ((int)PRVM_G_FLOAT(OFS_PARM0) != TLUA_HOOKS_GEN_SIGNATURE)
 	{
 		if (!tlua_hook_warned)
-			Con_Printf(CON_WARN "Lua: the game code's hook list does not match this engine's (run scripts/gen-lua-hooks.py and rebuild both); plugins get no hooks\n");
+			Con_Printf(CON_WARN "Lua: the game code's hook list does not match this engine's (run scripts/gen-lua-hooks.py and rebuild both); server mods get no hooks\n");
 		tlua_hook_warned = true;
 		PRVM_G_FLOAT(OFS_RETURN) = -1;
 		return;
@@ -648,6 +648,6 @@ void TLua_Hooks_Setup(void)
 	TLua_RegisterCvar(&lua_hook_frame_ms);
 	TLua_Guard(&lua_hook_ms);
 	TLua_Guard(&lua_hook_frame_ms);
-	Cmd_AddCommand(CF_SERVER, "sv_lua_hooks", tlua_hooks_f, "list the game's mutator hooks Lua plugins subscribe to, with call counts and cost (all: every hook)");
+	Cmd_AddCommand(CF_SERVER, "sv_lua_hooks", tlua_hooks_f, "list the game's mutator hooks Lua server mods subscribe to, with call counts and cost (all: every hook)");
 	Cmd_AddCommand(CF_SERVER, "sv_lua_hooks_resetstats", tlua_hooks_reset_f, "zero the hook call counters sv_lua_hooks shows");
 }

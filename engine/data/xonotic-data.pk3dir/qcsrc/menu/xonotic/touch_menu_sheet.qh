@@ -23,11 +23,47 @@
 // dialog, stock or ours, gets it without a line of its own.
 
 const float TOUCH_SHEET_SLOP_DP = 10;
+// The scroll indicator: width and inset from the scroller's edge, in dp.
+const float TOUCH_SCROLL_BAR_DP = 3.5;
+const float TOUCH_SCROLL_INSET_DP = 4;
 
 .float touch_sheet_h;     // full height, fraction of the layout height; 0 not set up
 .float touch_sheet_min;   // lowest origin.y (scrolled to the bottom)
 .float touch_sheet_max;   // highest origin.y (top)
 .float touch_sheet_was_shown;
+
+// ---- Scrollers (the reusable gesture API) ------------------------------
+//
+// On a touch device every press in the menu goes through TouchSheet_mouse*
+// (menu.qc). A press is held back until it is a tap or a drag:
+//  - tap: the finger lifts within TOUCH_SHEET_SLOP_DP of where it landed;
+//    the item under it then gets its press and release together (a list
+//    row is selected only now, a button fires only now);
+//  - vertical drag: the innermost scroller under the finger that can still
+//    move that way follows the finger 1:1 (never the item it started on:
+//    nothing is pressed, selected or lit); at its end the rest of the drag
+//    goes to the next scroller out; on release it flings with momentum and
+//    stops at its end (TouchScroll_flingFrame);
+//  - sideways drag: the item under the finger gets the press after all
+//    (sliders follow the finger);
+//  - a press that stops a fling does only that.
+// Where nothing under the finger can scroll, the press goes straight on.
+//
+// A scroller is any menu item that sets these four (sheets, root dialogs,
+// and list boxes get them in TouchScroll_adopt):
+.float(entity me) touch_scroll_get;      // offset scrolled, 0 = top, own units
+.float(entity me) touch_scroll_max;      // largest offset (0: nothing to scroll)
+.void(entity me, float off) touch_scroll_set; // scroll to off (clamp it)
+.float(entity me) touch_scroll_unit;     // main-window height of one unit
+.void(entity me) touch_scroll_end;       // optional: a drag or fling ended
+.float touch_scroll_bar;                 // indicator emphasis (kept here)
+.float touch_scroll_lastoff;
+// The thin rounded indicator, inside the box o..o+s (main-window units) at
+// its right edge: total content of which view shows, scrolled by pos.
+void TouchScroll_drawBar(vector o, vector s, float view, float total, float pos, float alpha);
+// The innermost scroller at or above leaf that can move in dir (+1 towards
+// its end, -1 back; 0 any room).
+entity TouchScroll_find(entity leaf, float dir);
 
 // menu.qc routes the main window's mouse calls through these.
 void TouchSheet_mousePress(vector pos);
@@ -36,5 +72,30 @@ void TouchSheet_mouseRelease(vector pos);
 // menu.qc, around main.draw: scrim, setup, fling and focus; then the scroll bar.
 void TouchSheet_preDraw();
 void TouchSheet_postDraw();
-// m_keydown: the mouse wheel over a tall sheet (not over a list) scrolls it.
+// m_keydown: the mouse wheel over a tall sheet (not over a list) scrolls it;
+// Back (Escape) with the engine's keys up for a text field puts them away.
 bool TouchSheet_wheel(float key);
+// m_draw: the pointer over the engine's keys (touch_ui.c) is not over the
+// menu, so it does not move the focus off the field being typed in.
+bool TouchSheet_overKeys(vector pos);
+
+// Pinned chrome. While a sheet scrolls, its title bar (with the close
+// button) stays at the top of the screen and its action row (OK, Apply,
+// Join!, Start) at the bottom; only what is between them moves.
+//
+// The action row is found, not marked: in the dialog, or through each tab
+// controller at its bottom in the tab it shows, the lowest row, when every
+// control in it is a button (labels may sit beside them). The row above it
+// comes along when it also holds a button and nothing but buttons, labels
+// and text fields (Multiplayer's address, Info and Host LAN). A dialog or
+// tab that sets touch_sheet_nopin keeps its rows in the scroll.
+.float touch_sheet_nopin;
+// A control in a dialog's title bar (Settings' "< Back"): it stays there
+// with the title while the sheet scrolls.
+.float touch_sheet_titlebar;
+// A dialog changed its intendedHeight after it was built: centre it again
+// and work out its scrolling anew.
+void TouchSheet_resized(entity e);
+// Container_draw (item/container.qc), after it entered child e of me: true
+// when e is pinned and is drawn later, over the scrolled content.
+bool TouchSheet_drawLater(entity me, entity e);
