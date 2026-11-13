@@ -14,6 +14,7 @@
 #include "touch_aim.h" // Touch: offline practice markers
 #include "touch_lua.h" // Touch: Lua mods and plugins
 #include "touch_shellbtn.h" // Touch: console button
+#include "touch_warm.h" // Touch: menu-idle warm-up
 #ifdef CONFIG_VIDEO_CAPTURE
 #include "cap_avi.h"
 #include "cap_ogg.h"
@@ -856,6 +857,7 @@ void CL_Screen_Shutdown(void)
 void CL_Screen_Init(void)
 {
 	int i;
+	TouchWarm_Init(); // Touch: menu-idle warm-up of the next game (touch_warm.c)
 	Cvar_RegisterVariable (&scr_fov);
 	Cvar_RegisterVariable (&scr_viewsize);
 	Cvar_RegisterVariable (&scr_conalpha);
@@ -2470,6 +2472,7 @@ void CL_UpdateScreen(void)
 #endif
 
 	TouchLoadTime_Frame(); // Touch: first menu and game frames
+	TouchWarm_Frame(); // Touch: menu-idle warm-up of the next game
 	qglFlush(); // ensure that the commands are submitted to the GPU before we do other things
 	VID_Finish();
 }

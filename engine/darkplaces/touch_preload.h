@@ -26,6 +26,8 @@
 // millisecond each to compile and link on the Mali-G68 (Android keeps its own
 // shader cache), so a program binary cache would buy nothing measurable there.
 
+#include "touch_warm.h"
+
 static cvar_t touch_preload = {CF_CLIENT, "touch_preload", "1", "load what earlier games on this map loaded late (models, sounds, GLSL shaders) under the loading screen before the first game frame, and record what this game loads late (Godnotic); 0 = neither"};
 static cvar_t touch_preload_budget = {CF_CLIENT, "touch_preload_budget", "4000", "milliseconds the preload may add to a map load at most"};
 static cvar_t touch_preload_keep = {CF_CLIENT, "touch_preload_keep", "4", "an entry of a map's preload list is dropped once that many games on the map did not need it"};
@@ -267,6 +269,10 @@ void TouchPreload_PicEnd(const char *name, unsigned int cachepicflags)
 	if (tp_pic_depth <= 0 || --tp_pic_depth > 0)
 		return;
 	tp_pic_loads++;
+	// a persistent picture a map load spent time on (CSQC's precaches):
+	// touch_warm loads it while the menu is idle before the next game
+	if (tlt.loading && !(cachepicflags & CACHEPICFLAG_NOTPERSISTENT))
+		TouchWarm_PicLoaded(name, cachepicflags, Sys_DirtyTime() - tp_pic_begin);
 	// the replay loads it persistent, so it is not unloaded before its use
 	dpsnprintf(entry, sizeof(entry), "%u %s", cachepicflags & ~CACHEPICFLAG_NOTPERSISTENT, name);
 	TouchPreload_Loaded('p', entry, Sys_DirtyTime() - tp_pic_begin);
@@ -345,6 +351,46 @@ static void TP_Replay(void)
 	if (touch_loadtime.integer || developer_loading.integer)
 		Con_Printf("LOADTIME preload %s list=%d models=%d (%.1f ms) pics=%d (%.1f ms) shaders=%d (%.1f ms) sounds=%d (%.1f ms) over_budget=%d\n",
 			have ? "map" : (touch_preload_seed.integer ? "seed" : "none"), tp.count, n[0], spent[0] * 1000.0, n[1], spent[1] * 1000.0, n[2], spent[2] * 1000.0, n[3], spent[3] * 1000.0, skipped);
+}
+
+// touch_warm.c: the entries the next game on map would preload (its list,
+// or the seed when it has none), without opening the list as a game does;
+// returns how many were passed to fn
+int TouchPreload_ForEach(const char *map, void (*fn)(char kind, const char *name, void *ctx), void *ctx)
+{
+	char path[MAX_QPATH + 32];
+	char *text, *p;
+	int i, n = 0;
+	if (!touch_preload.integer || !map || !map[0])
+		return 0;
+	TP_Path(path, sizeof(path), map);
+	if ((text = (char *)FS_LoadFile(path, tempmempool, true, NULL)))
+	{
+		for (p = text; *p; )
+		{
+			char kind, name[TP_NAMELEN + 64];
+			int age;
+			float cost;
+			char *eol = strchr(p, '\n');
+			if (eol)
+				*eol = 0;
+			if (p[0] != '/' && sscanf(p, "%c %d %f %191[^\r\n]", &kind, &age, &cost, name) == 4 && (kind == 'm' || kind == 'g' || kind == 's' || kind == 'p'))
+			{
+				fn(kind, name, ctx);
+				n++;
+			}
+			if (!eol)
+				break;
+			p = eol + 1;
+		}
+		Mem_Free(text);
+		return n;
+	}
+	if (!touch_preload_seed.integer)
+		return 0;
+	for (i = 0; tp_seed[i]; i++, n++)
+		fn(tp_seed[i][0], tp_seed[i] + 2, ctx);
+	return n;
 }
 
 // once per host frame
