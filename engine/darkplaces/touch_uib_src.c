@@ -210,6 +210,7 @@ static const char *server_net(const char *cname)
 	return "internet";
 }
 
+#ifdef CONFIG_MENU
 static unsigned server_sig(void)
 {
 	unsigned h = 2166136261u ^ serverlist_cachecount;
@@ -325,6 +326,13 @@ static void build_players(source_t *s)
 }
 
 // ---------------------------------------------------------------- maps
+
+#else
+// Dedicated server (make sv-release): there is no server browser cache.
+static unsigned server_sig(void) { return 1; }
+static void build_servers(source_t *s) { freerows(s); }
+static void build_players(source_t *s) { freerows(s); }
+#endif
 
 static void build_maps(source_t *s)
 {
