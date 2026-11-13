@@ -100,6 +100,7 @@ First launch downloads game data into the platform writable dir (see [docs/RELEA
 ## Docs
 
 - [docs/ANDROID.md](docs/ANDROID.md) — Android APK: what the port needed, signing, first-launch download
+- [docs/PHONE_ASSETS.md](docs/PHONE_ASSETS.md) — the phone pack set: ASTC textures, zstd pk3 entries, Opus music
 - [docs/RELEASES.md](docs/RELEASES.md) — Flatpak + Click, CI, GitHub Releases
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — technical overview
 - [docs/MAINTAINING.md](docs/MAINTAINING.md) — source maintainer guide

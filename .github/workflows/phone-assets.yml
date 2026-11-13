@@ -1,0 +1,112 @@
+name: Phone assets
+
+# Builds the phone pack set (docs/PHONE_ASSETS.md) from the official data the
+# Android app installs, and publishes it to the "phone-assets" release:
+# <pack>-phone.pk3 for each official pack plus phone-manifest.json and
+# phone-sizes.md. The packs are too big for the repository and take ~30
+# minutes to make, so they are built here and never committed.
+#
+# Weekly, it only rebuilds when the autobuild archive changed (its ETag is in
+# the published manifest). A manual run rebuilds anyway.
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Rebuild even when the autobuild archive did not change
+        type: boolean
+        default: true
+  schedule:
+    - cron: '17 4 * * 1'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: phone-assets
+  cancel-in-progress: false
+
+env:
+  TAG: phone-assets
+  SOURCE_URL: https://beta.xonotic.org/autobuild/Xonotic-latest.zip
+  # the public autobuild login GameData.java and fetch-assets-posix.sh use
+  SOURCE_AUTH: 'xonotic:g-23'
+  ASTCENC_VERSION: 5.7.1
+  ASTCENC_SHA256: f1d576f0801e7701548da78d782f4bf70dfde3673a238d1a2ac0ebd3511b2f37
+
+jobs:
+  build:
+    name: Repack for phones
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Has the source changed?
+        id: source
+        run: |
+          etag=$(curl -sfI -u "$SOURCE_AUTH" "$SOURCE_URL" | tr -d '\r' | sed -n 's/^etag: *//Ip')
+          echo "etag=$etag" >> "$GITHUB_OUTPUT"
+          old=$(gh release download "$TAG" -p phone-manifest.json -O - 2>/dev/null \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin).get("meta", {}).get("source_etag", ""))' || true)
+          echo "autobuild ETag $etag, published $old"
+          if [ "${{ github.event_name }}" = schedule ] && [ -n "$etag" ] && [ "$etag" = "$old" ]; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.source.outputs.build == 'true'
+        with:
+          python-version: '3.14'
+
+      - name: Tools
+        if: steps.source.outputs.build == 'true'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q ffmpeg
+          python -m pip install -q numpy
+          curl -sfL -o astcenc.zip \
+            "https://github.com/ARM-software/astc-encoder/releases/download/$ASTCENC_VERSION/astcenc-$ASTCENC_VERSION-linux-x64.zip"
+          echo "$ASTCENC_SHA256  astcenc.zip" | sha256sum -c -
+          unzip -q -o astcenc.zip -d "$RUNNER_TEMP/astcenc"
+          echo "ASTCENC=$RUNNER_TEMP/astcenc/bin/astcenc-avx2" >> "$GITHUB_ENV"
+          df -h "$RUNNER_TEMP"
+
+      - name: Official packs
+        if: steps.source.outputs.build == 'true'
+        run: |
+          curl -sfL --retry 3 -u "$SOURCE_AUTH" -o "$RUNNER_TEMP/src.zip" "$SOURCE_URL"
+          mkdir -p "$RUNNER_TEMP/src"
+          unzip -q -j "$RUNNER_TEMP/src.zip" 'Xonotic/data/*.pk3' -d "$RUNNER_TEMP/src"
+          rm "$RUNNER_TEMP/src.zip"
+          ls -l "$RUNNER_TEMP/src"
+
+      - name: Repack
+        if: steps.source.outputs.build == 'true'
+        run: |
+          python scripts/repack-phone-assets.py -o "$RUNNER_TEMP/out" \
+            --meta source_url="$SOURCE_URL" --meta source_etag="${{ steps.source.outputs.etag }}" \
+            --meta built_from="$GITHUB_SHA" \
+            --meta base_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/" \
+            "$RUNNER_TEMP"/src/*.pk3
+          cat "$RUNNER_TEMP/out/phone-sizes.md" >> "$GITHUB_STEP_SUMMARY"
+          ls -l "$RUNNER_TEMP/out"
+
+      - name: Publish
+        if: steps.source.outputs.build == 'true'
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --prerelease --latest=false --title "Phone assets" \
+              --notes "ASTC/zstd repack of the official Xonotic data for phones, made by .github/workflows/phone-assets.yml. See docs/PHONE_ASSETS.md."
+          fi
+          # the manifest after its packs, so a reader never sees it first; then
+          # the packs of an older autobuild, which it no longer names, go
+          gh release upload "$TAG" "$RUNNER_TEMP"/out/*.pk3 "$RUNNER_TEMP/out/phone-sizes.md" --clobber
+          gh release upload "$TAG" "$RUNNER_TEMP/out/phone-manifest.json" --clobber
+          new=$(cd "$RUNNER_TEMP/out" && ls)
+          for old in $(gh release view "$TAG" --json assets --jq '.assets[].name'); do
+            echo "$new" | grep -qxF "$old" || gh release delete-asset "$TAG" "$old" --yes
+          done

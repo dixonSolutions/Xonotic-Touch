@@ -600,3 +600,23 @@ data with it.
 keytool -genkeypair -v -keystore release.keystore -alias xonotictouch \
   -keyalg RSA -keysize 2048 -validity 10000
 ```
+
+## TODO: the phone pack set
+
+`scripts/repack-phone-assets.py` and `.github/workflows/phone-assets.yml`
+publish an ASTC/zstd/Opus repack of the autobuild data to the `phone-assets`
+release ([PHONE_ASSETS.md](PHONE_ASSETS.md)): faster map loads, sharper
+textures on GPUs without S3TC, ~9 % less to download. The engine already reads
+it. What `GameData.java` (owned by the first-launch download work) still has
+to do:
+
+- When the GPU has `GL_KHR_texture_compression_astc_ldr` (query the GLES
+  extension string; without it the set has no usable world textures), fetch
+  `https://github.com/dixonSolutions/xonotic-touch/releases/download/phone-assets/phone-manifest.json`
+  instead of `Xonotic-latest.zip`.
+- Download each `packs[].file` from `meta.base_url`, check `size` and
+  `sha256`, and install it as `packs[].install_as` in `data/`.
+- Fall back to the autobuild zip when the manifest is missing or a pack fails.
+- `meta.source_etag` is the ETag of the `Xonotic-latest.zip` it was made from,
+  if the app wants to tell whether its data is current.
+
