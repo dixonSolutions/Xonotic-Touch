@@ -1,0 +1,78 @@
+#ifndef TOUCH_LOADTIME_H
+#define TOUCH_LOADTIME_H
+
+// Godnotic: where start-up and map loading spend their time.
+//
+// Phases are timed always (a clock read per call, nothing printed); with
+// touch_loadtime 1 a table is printed when the main menu first shows and when
+// a load reaches its first game frame. Times are inclusive: a model load
+// contains the image decodes and uploads it does. Nested calls of one phase
+// count once (the outermost).
+
+typedef enum touch_lt_phase_e
+{
+	TLT_FS_INIT,       // FS_Init: game dirs, pk3 mounting and indexing
+	TLT_CONFIG,        // startup configs (quake.rc, default.cfg, ...)
+	TLT_VIDEO,         // window and GL context
+	TLT_SOUND_INIT,    // sound device
+	TLT_MENU_INIT,     // MR_Init: menu progs and m_init
+	TLT_FONT,          // LoadFont (font files, size setup)
+	TLT_PROGS,         // PRVM_Prog_Load (all three VMs)
+	TLT_SPAWN,         // SV_SpawnServer
+	TLT_CSQC,          // CL_VM_Init (client progs and CSQC_Init)
+	TLT_DEFLATE,       // csprogs.dat deflate for downloads
+	TLT_MODEL,         // Mod_LoadModel
+	TLT_LIGHTMAP,      // q3bsp lightmaps
+	TLT_Q3SHADER,      // scripts/*.shader parsing
+	TLT_SOUND,         // S_LoadSound (decode)
+	TLT_IMAGE,         // loadimagepixelsbgra (file read + decode)
+	TLT_DDS,           // R_LoadTextureDDSFile (dds/ktx read + upload)
+	TLT_TEXUPLOAD,     // R_UploadFullTexture
+	TLT_SHADER,        // GLSL compile and link
+	TLT_FILEREAD,      // FS_LoadFile (open, read, inflate)
+	TLT_COUNT
+}
+touch_lt_phase_t;
+
+typedef enum touch_lt_counter_e
+{
+	TLC_FS_LOOKUP,     // FS_FindFile calls
+	TLC_FS_MISS,       // ... that found nothing
+	TLC_FS_DIRSTAT,    // stat() of a loose directory candidate
+	TLC_FILES_LOADED,  // FS_LoadFile successes
+	TLC_COUNT
+}
+touch_lt_counter_t;
+
+void TouchLoadTime_Begin(int phase);
+void TouchLoadTime_End(int phase);
+void TouchLoadTime_Count(int counter);
+void TouchLoadTime_AddBytes(long long bytes);
+
+// Times the rest of the enclosing block (GCC/Clang cleanup attribute; other
+// compilers just do not time it).
+#if defined(__GNUC__) || defined(__clang__)
+typedef struct touch_lt_scope_s { int phase; } touch_lt_scope_t;
+static inline void TouchLoadTime_ScopeEnd(touch_lt_scope_t *s) { TouchLoadTime_End(s->phase); }
+#define TOUCH_LT_CAT2(a, b) a##b
+#define TOUCH_LT_CAT(a, b) TOUCH_LT_CAT2(a, b)
+#define TOUCH_LT_SCOPE(p) touch_lt_scope_t TOUCH_LT_CAT(touch_lt_scope_, __LINE__) __attribute__((cleanup(TouchLoadTime_ScopeEnd), unused)) = { ((void)TouchLoadTime_Begin(p), (p)) }
+#else
+#define TOUCH_LT_SCOPE(p) ((void)0)
+#endif
+
+void TouchLoadTime_Init(void);
+// After every drawn frame: notices the menu's first frame and a load's first
+// game frame.
+void TouchLoadTime_Frame(void);
+// Once per host frame, with the time the main loop is about to sleep: returns
+// the time it may sleep (0 with a local server, 1 ms with a remote one, while
+// the handshake runs and touch_load_restless is 1).
+double TouchLoadTime_SleepTime(double sleeptime);
+// True while a connection or load is in progress and the client frame should
+// run every host frame (no frame limiter).
+qbool TouchLoadTime_Restless(void);
+// CL_Frame's frame limit: 0 (none) while restless.
+float TouchLoadTime_MaxFPS(float maxfps);
+
+#endif

@@ -409,6 +409,7 @@ model_t *Mod_LoadModel(model_t *mod, qbool crash, qbool checkdisk)
 	void *buf;
 	fs_offset_t filesize = 0;
 	char vabuf[1024];
+	TOUCH_LT_SCOPE(TLT_MODEL); // Touch: load-time phases
 
 	mod->used = true;
 
@@ -1478,6 +1479,7 @@ void Mod_LoadQ3Shaders(void)
 	unsigned long custsurfaceflags[256]; 
 	int numcustsurfaceflags;
 	qbool dpshaderkill;
+	TOUCH_LT_SCOPE(TLT_Q3SHADER); // Touch: load-time phases
 
 	Mod_FreeQ3Shaders();
 

@@ -282,6 +282,7 @@ Host_InitLocal
 extern cvar_t r_texture_jpeg_fastpicmip;
 static void Host_InitLocal (void)
 {
+	TouchLoadTime_Init(); // Touch: load-time phases and restless loading
 	Cmd_AddCommand(CF_SHARED, "quit", Host_Quit_f, "quit the game");
 	Cmd_AddCommand(CF_SHARED, "version", Host_Version_f, "print engine version");
 	Cmd_AddCommand(CF_SHARED, "saveconfig", Host_SaveConfig_f, "save settings to config.cfg (or a specified filename) immediately (also automatic when quitting)");
@@ -469,7 +470,9 @@ void Host_Init (void)
 	COM_Init_Commands();
 
 	// initialize filesystem (including fs_basedir, fs_gamedir, -game, scr_screenshot_name, gamename)
+	TouchLoadTime_Begin(TLT_FS_INIT); // Touch: load-time phases
 	FS_Init();
+	TouchLoadTime_End(TLT_FS_INIT); // Touch: load-time phases
 
 	// initialize process nice level
 	Sys_InitProcessNice();
@@ -503,14 +506,18 @@ void Host_Init (void)
 
 	// here comes the not so critical stuff
 
+	TouchLoadTime_Begin(TLT_CONFIG); // Touch: load-time phases
 	Host_AddConfigText(cmd_local);
 	// Godnotic: queued behind every startup config, including the
 	// launcher's +exec config.cfg and touch/startup.cfg (see touch_hud.c).
 	if (cls.state != ca_dedicated)
 		Cbuf_AddText(cmd_local, "_touch_restore_viewmodel\n");
 	Cbuf_Execute(cmd_local->cbuf); // cannot be in Host_AddConfigText as that would cause Host_LoadConfig_f to loop!
+	TouchLoadTime_End(TLT_CONFIG); // Touch: load-time phases
 
+	TouchLoadTime_Begin(TLT_VIDEO); // Touch: load-time phases
 	CL_StartVideo();
+	TouchLoadTime_End(TLT_VIDEO); // Touch: load-time phases
 
 	Log_Start();
 
@@ -518,9 +525,13 @@ void Host_Init (void)
 	{
 		// put up the loading image so the user doesn't stare at a black screen...
 		SCR_BeginLoadingPlaque(true);
+		TouchLoadTime_Begin(TLT_SOUND_INIT); // Touch: load-time phases
 		S_Startup();
+		TouchLoadTime_End(TLT_SOUND_INIT); // Touch: load-time phases
 #ifdef CONFIG_MENU
+		TouchLoadTime_Begin(TLT_MENU_INIT); // Touch: load-time phases
 		MR_Init();
+		TouchLoadTime_End(TLT_MENU_INIT); // Touch: load-time phases
 #endif
 	}
 

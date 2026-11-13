@@ -998,6 +998,7 @@ static void R_UploadFullTexture(gltexture_t *glt, const unsigned char *data)
 	int i, mip = 0, width, height, depth;
 	GLint oldbindtexnum = 0;
 	const unsigned char *prevbuffer;
+	TOUCH_LT_SCOPE(TLT_TEXUPLOAD); // Touch: load-time phases
 	prevbuffer = data;
 
 	// error out if a stretch is needed on special texture types
@@ -1765,6 +1766,7 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 	int strsize;
 	KTX_dimensions sizes;
 #endif
+	TOUCH_LT_SCOPE(TLT_DDS); // Touch: load-time phases
 
 	if (cls.state == ca_dedicated)
 		return NULL;

@@ -1209,6 +1209,7 @@ static void Sys_Frame(void)
 #endif
 	sleeptime = Host_Frame(time);
 	sleeptime -= Sys_DirtyTime() - host.dirtytime; // execution time
+	sleeptime = TouchLoadTime_SleepTime(sleeptime); // Touch: no sleep while a game loads
 #ifdef __ANDROID__
 	// The frame's work, without the vsync wait inside the swap, against the
 	// frame it has to fit: cl_maxfps, else the panel's refresh.

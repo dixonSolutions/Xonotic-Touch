@@ -347,6 +347,7 @@ void LoadFont(qbool override, const char *name, dp_font_t *fnt, float scale, flo
 	char widthfile[MAX_QPATH];
 	char *widthbuf;
 	fs_offset_t widthbufsize;
+	TOUCH_LT_SCOPE(TLT_FONT); // Touch: load-time phases
 
 	if(override || !fnt->texpath[0])
 	{

@@ -1742,7 +1742,9 @@ static void SV_Prepare_CSQC(void)
 
 		Con_DPrint("Compressing csprogs.dat\n");
 		//unsigned char *FS_Deflate(const unsigned char *data, size_t size, size_t *deflated_size, int level, mempool_t *mempool);
+		TouchLoadTime_Begin(TLT_DEFLATE); // Touch: load-time phases
 		svs.csqc_progdata_deflated = FS_Deflate(svs.csqc_progdata, progsize, &deflated_size, -1, sv_mempool);
+		TouchLoadTime_End(TLT_DEFLATE); // Touch: load-time phases
 		svs.csqc_progsize_deflated = (int)deflated_size;
 		if(svs.csqc_progdata_deflated)
 		{
@@ -1822,6 +1824,7 @@ void SV_SpawnServer (const char *map)
 	char modelname[sizeof(sv.worldname)];
 	const char *canonicalname;
 	char vabuf[1024];
+	TOUCH_LT_SCOPE(TLT_SPAWN); // Touch: load-time phases
 
 	Con_Printf("SpawnServer: %s\n", map);
 

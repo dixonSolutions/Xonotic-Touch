@@ -150,6 +150,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "csprogs.h"
 #include "glquake.h"
 #include "palette.h"
+#include "touch_loadtime.h" // Touch: load-time phases and restless loading
 
 extern qbool noclip_anglehack;
 
