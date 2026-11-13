@@ -7,7 +7,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 src=android/app/src/main/java/io/github/dixonsolutions/xonotictouch
-bad=$(grep -nE '(^|[^.[:alnum:]_])R\.[a-z]+\.[A-Za-z_]' "$src"/*.java | grep -v '^[^:]*HostRes\.java:' || true)
+kt=android/app/src/main/kotlin/io/github/dixonsolutions/xonotictouch
+bad=$(grep -rnE '(^|[^.[:alnum:]_])R\.[a-z]+\.[A-Za-z_]' "$src" "$kt" --include='*.java' --include='*.kt' | grep -v '^[^:]*HostRes\.java:' || true)
 if [ -n "$bad" ]; then
     echo "App code uses R.* ids, which point into the installed host's resource table:" >&2
     echo "$bad" >&2

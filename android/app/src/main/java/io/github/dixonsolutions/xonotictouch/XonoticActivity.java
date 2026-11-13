@@ -8,6 +8,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.InputDevice;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -55,6 +56,10 @@ public final class XonoticActivity extends SDLActivity {
     /** One update download at a time, whoever asked for it. */
     private final AtomicBoolean downloading = new AtomicBoolean();
     private InputManager inputManager;
+    /** The native interface over the SDL surface (fe/FrontendHost.kt); null when the QuakeC menu is in charge. */
+    private io.github.dixonsolutions.xonotictouch.fe.FrontendHost frontend;
+    /** Decided before the engine starts: getArguments() passes touch_native_frontend from it. */
+    private boolean nativeUi;
     /** Last state handed to the engine, so logcat only hears about changes. */
     private int reportedInputState = -1;
     private final InputManager.InputDeviceListener inputDeviceListener =
@@ -83,6 +88,7 @@ public final class XonoticActivity extends SDLActivity {
         if (baseDir == null) {
             baseDir = new GameData(this).baseDir().getAbsolutePath();
         }
+        nativeUi = nativeUiWanted(new File(baseDir));
         andysuBridge = new AndySUBridge(this, new File(baseDir));
         andysuBridge.publish();
         // The host may stage a live update as soon as its activity resumes.
@@ -93,13 +99,76 @@ public final class XonoticActivity extends SDLActivity {
         // The boot screen's banner stays up over the SDL surface until the
         // engine has drawn its first frame: no black between the two.
         getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(BootSplash.BACKGROUND));
-        BootSplash.coverUntilFirstFrame(this);
+        if (nativeUi) {
+            // The native interface's skeleton is the cover now: Home appears
+            // at once and the engine starts behind it (fe/FrontendHost.kt).
+            try {
+                frontend = new io.github.dixonsolutions.xonotictouch.fe.FrontendHost(this, new File(baseDir));
+                frontend.install();
+                frontend.handleJoinLink(getIntent() != null ? getIntent().getData() : null);
+            } catch (RuntimeException | LinkageError e) {
+                Log.e("Godnotic", "Native UI could not start; the QuakeC menu is in charge", e);
+                frontend = null;
+                BootSplash.coverUntilFirstFrame(this);
+            }
+        } else {
+            BootSplash.coverUntilFirstFrame(this);
+        }
         watchSoftKeyboard();
         watchInputDevices();
         startUpdateService();
         modImport = new ModImport(this, new File(baseDir)); // Settings → Mobile → Mods → Import mod
         modImport.start();
         watchNetState();
+    }
+
+    /**
+     * The native interface, unless this build's resident bridge predates it
+     * (an AndySU engine swap can pair a new dex with an old libnativeui.so)
+     * or the player turned it off (a file {@code no-native-ui} in the basedir,
+     * for now; the QuakeC menu is then in charge exactly as before).
+     */
+    private static boolean nativeUiWanted(File base) {
+        try {
+            if (new File(base, "no-native-ui").exists()) {
+                return false;
+            }
+            return NativeBridge.getFrontendVersion() >= 1;
+        } catch (RuntimeException | LinkageError e) {
+            return false;
+        }
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        // A native screen takes every key but the volume ones while it shows;
+        // nothing reaches the engine behind it.
+        if (frontend != null) {
+            try {
+                if (frontend.dispatchKey(event)) {
+                    return true;
+                }
+            } catch (RuntimeException e) {
+                Log.e("Godnotic", "Native UI key handling failed", e);
+            }
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (frontend != null && intent != null) {
+            frontend.handleJoinLink(intent.getData());
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        if (frontend != null) {
+            frontend.onPause();
+        }
+        super.onPause();
     }
 
     @Override
@@ -125,6 +194,9 @@ public final class XonoticActivity extends SDLActivity {
         }
         KeepAliveService.stop(this);
         LanLocks.release();
+        if (frontend != null) {
+            frontend.onDestroy();
+        }
         EngineSwap.unregister();
         super.onDestroy();
     }
@@ -132,6 +204,9 @@ public final class XonoticActivity extends SDLActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (frontend != null) {
+            frontend.onResume();
+        }
         reportInputDevices();
         recheckUpdateIfStale();
         autoDownloadIfDue();
@@ -761,6 +836,12 @@ public final class XonoticActivity extends SDLActivity {
             "-userdir", GameData.userDir(new File(baseDir)).getAbsolutePath()));
         // The Touch config chain packaging/start.sh runs on Linux.
         args.addAll(GameData.startupArguments(this, new File(baseDir)));
+        if (nativeUi) {
+            // the engine lets the native interface own the menu once it attaches
+            args.add("+set");
+            args.add("touch_native_frontend");
+            args.add("1");
+        }
         args.addAll(extraArguments());
         return args.toArray(new String[0]);
     }
