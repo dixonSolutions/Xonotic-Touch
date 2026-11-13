@@ -63,6 +63,10 @@ static inline void TouchLoadTime_ScopeEnd(touch_lt_scope_t *s) { TouchLoadTime_E
 
 void TouchLoadTime_Init(void);
 
+// ft2.c (touch_loadfont.h): render one font size left for later by
+// r_font_lazysizes; false when none is left.
+qbool TouchFont_LoadPendingOne(void);
+
 // sbar.c's render module start caches ~112 Quake status bar pictures that
 // Xonotic does not have and never draws (its HUD is CSQC). With
 // touch_load_lazysbar 1 the start is remembered and run on the engine HUD's

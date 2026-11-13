@@ -85,6 +85,7 @@ typedef struct tlt_state_s
 	double init_time;            // Sys_DirtyTime at TouchLoadTime_Init... see first_time
 	double first_time;           // first clock read of the process (first Begin)
 	qbool menu_reported;
+	double menu_time;
 
 	qbool loading;               // a load is being timed
 	double load_start;
@@ -257,9 +258,18 @@ void TouchLoadTime_Frame(void)
 
 	TLT_Signons(now);
 
+	// font sizes r_font_lazysizes left for later: all of them under a load's
+	// loading screen (the HUD draws most of them in its first frame), else
+	// one per frame once the main menu has been up a moment
+	if (scr_loading && (tlt.loading || cls.state == ca_connected))
+		while (TouchFont_LoadPendingOne());
+	else if (tlt.menu_reported && key_dest == key_menu && cls.state != ca_connected && now - tlt.menu_time > 0.5)
+		TouchFont_LoadPendingOne();
+
 	if (!tlt.menu_reported && host.state == host_active && !scr_loading && key_dest == key_menu)
 	{
 		tlt.menu_reported = true;
+		tlt.menu_time = now;
 		Cvar_SetValueQuick(&touch_loadtime_menu, 1);
 		if (touch_loadtime.integer)
 		{
