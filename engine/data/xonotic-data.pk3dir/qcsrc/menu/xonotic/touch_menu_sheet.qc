@@ -391,10 +391,10 @@ void TouchSheet_drawPins()
 		TouchSheet_drawFrameBand(f, touch_pin_top, (f.touch_sheet_max - f.Container_origin.y) / h, y1, (touch_pin_top > 0.0001) ? y1 : -1);
 	}
 	// The action row's band, where the sheet's bottom is when scrolled to the end.
-	if (touch_pin_ftr_top < 1 && touch_pin_bot < -0.0001)
+	if (touch_pin_ftr_top < 1)
 	{
 		float y0 = (touch_pin_ftr_top - f.Container_origin.y) / h;
-		TouchSheet_drawFrameBand(f, touch_pin_bot, y0, (1 - TouchSheet_margin() - f.Container_origin.y) / h, y0);
+		TouchSheet_drawFrameBand(f, touch_pin_bot, y0, (1 - TouchSheet_margin() - f.Container_origin.y) / h, (touch_pin_bot < -0.0001) ? y0 : -1);
 	}
 	TouchSheet_drawPinned(2);
 	TouchSheet_drawPinned(1);
@@ -729,7 +729,9 @@ void TouchSheet_mousePress(vector pos)
 		return;
 	}
 	touch_g_pending = true;
-	touch_g_leaf = leaf;
+	// On a pinned band the content under it is not what the finger holds:
+	// the sheet is.
+	touch_g_leaf = touch_sheet_swallow ? TouchSheet_front() : leaf;
 	touch_g_p0 = pos;
 }
 

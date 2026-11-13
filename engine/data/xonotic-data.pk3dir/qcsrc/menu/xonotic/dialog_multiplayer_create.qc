@@ -1,4 +1,5 @@
 #include "dialog_multiplayer_create.qh"
+#include "dialog_touch_lan.qh" // Touch
 
 #include "dialog_multiplayer_create_mapinfo.qh"
 #include "dialog_multiplayer_create_mutators.qh"
@@ -214,6 +215,7 @@ void XonoticServerCreateTab_fill(entity me)
 			me.mapListBox.startButton = e;
 
 	GameType_ConfigureSliders_for_CurrentGametype(me);
+	TouchCreate_Reflow(me); // Touch: the LAN box, port and password (dialog_touch_lan.qc)
 }
 
 void XonoticServerCreateTab_gameTypeChangeNotify(entity me)

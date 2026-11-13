@@ -76,3 +76,13 @@ void TouchLan_OpenHost(entity btn, entity me);
 void TouchLan_LanOnly_Click(entity box, entity slist);
 // mainwindow.qc: add the two dialogs.
 void TouchLan_ConfigureDialogs(entity mainwindow);
+
+// Multiplayer > Create's LAN box (end of XonoticServerCreateTab_fill).
+void TouchCreate_Reflow(entity me);
+// Its lock: open when no password applies, shut when one does.
+CLASS(GodnoticLanLock, MenuItem)
+	METHOD(GodnoticLanLock, draw, void(entity));
+ENDCLASS(GodnoticLanLock)
+// The in-game menu's LAN row: what is being hosted (or nothing), and Stop.
+entity TouchLan_StatusLabel();
+entity TouchLan_StopButton();
