@@ -364,6 +364,11 @@ static void TouchWarm_Status_f(cmd_state_t *cmd)
 	Con_Printf("touch_warm: target \"%s\", prepared \"%s\" %d/%d%s%s, %.1f ms of work; idle %.1f s\n",
 		TW_Target(), tw.map, tw.next, tw.count, tw.done ? " done" : "", tw.dropped ? " (dropped: low memory)" : "",
 		tw.spent * 1000.0, host.realtime - tw.last_input);
+	// why it would not run now: every gate of TW_MayRun
+	Con_Printf("touch_warm: gates: enabled %d dropped %d state %d server %d demo %d console %d hidden %d active %d powersave %d thermal %d/%d idle %.1f/%.1f -> %s\n",
+		touch_warm.integer, tw.dropped, (int)cls.state, (int)sv.active, (int)cls.demoplayback, key_consoleactive, (int)vid_hidden, (int)vid_activewindow,
+		touch_device_powersave.integer, touch_device_thermal.integer, touch_warm_maxthermal.integer,
+		host.realtime - tw.last_input, touch_warm_idle.value, TW_MayRun() ? "runs" : "waits");
 }
 
 #ifdef TOUCH_WARM_SDL

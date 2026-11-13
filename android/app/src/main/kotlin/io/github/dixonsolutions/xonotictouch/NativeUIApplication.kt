@@ -32,6 +32,53 @@ object NativeBridge {
     /** True once the engine has put its first frame on screen. */
     @JvmStatic
     fun framePresented(): Boolean = available && presented()
+
+    // ---- Front-end bridge (bridge.c, docs/FRONTEND_BRIDGE.md) -------------
+    // Natives an older libnativeui.so lacks: every call is guarded, so a new
+    // dex over an old resident bridge (an AndySU engine swap mixes them)
+    // only means "no native front end".
+    private external fun feVersion(): Int
+    private external fun feTakeBytes(all: Boolean): ByteArray?
+    private external fun feBeat()
+    private external fun feCancel()
+
+    /** Protocol version of the resident bridge; 0 when it predates the front-end bridge. */
+    @JvmStatic
+    val frontendVersion: Int by lazy {
+        if (!available) 0 else try { feVersion() } catch (e: UnsatisfiedLinkError) { 0 }
+    }
+
+    /** Called by bridge.c on the engine thread when a snapshot or event is waiting. */
+    @Volatile @JvmStatic var onDirty: Runnable? = null
+
+    @JvmStatic
+    fun onFrontendDirty() {
+        onDirty?.run()
+    }
+
+    /** Topics that changed (all of them with [all]) and pending events: "topic\u001fjson" records. */
+    @JvmStatic
+    fun frontendTake(all: Boolean): List<Pair<String, String>> {
+        if (frontendVersion == 0) return emptyList()
+        val bytes = try { feTakeBytes(all) } catch (e: UnsatisfiedLinkError) { null } ?: return emptyList()
+        val out = ArrayList<Pair<String, String>>()
+        for (rec in String(bytes, Charsets.UTF_8).split('\u001e')) {
+            val sep = rec.indexOf('\u001f')
+            if (sep > 0) out.add(rec.substring(0, sep) to rec.substring(sep + 1))
+        }
+        return out
+    }
+
+    @JvmStatic
+    fun frontendBeat() {
+        if (frontendVersion > 0) try { feBeat() } catch (e: UnsatisfiedLinkError) {}
+    }
+
+    /** Cancel a join, read by the engine between the items of a map load. */
+    @JvmStatic
+    fun frontendCancel() {
+        if (frontendVersion > 0) try { feCancel() } catch (e: UnsatisfiedLinkError) {}
+    }
 }
 
 /**

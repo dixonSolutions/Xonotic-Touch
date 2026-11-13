@@ -5315,6 +5315,7 @@ static void MP_KeyEvent (int key, int ascii, qbool downevent)
 {
 	prvm_prog_t *prog = MVM_prog;
 
+	{ extern qbool TouchFE_MenuHidden(void); if (TouchFE_MenuHidden()) return; } // Touch: the native front end owns the menu (touch_frontend.c)
 	if (setjmp(mp_abort))
 		return;
 
@@ -5335,6 +5336,7 @@ static void MP_Draw (void)
 	// don't crash if we draw a frame between prog shutdown and restart, see Host_LoadConfig_f
 	if (!prog->loaded)
 		return;
+	{ extern qbool TouchFE_MenuHidden(void); if (TouchFE_MenuHidden()) return; } // Touch: the native front end owns the menu (touch_frontend.c)
 
 	if (setjmp(mp_abort))
 		return;

@@ -427,7 +427,7 @@ void VM_uib_loadinfo(prvm_prog_t *prog)
 			dp_strlcpy(file, cls.qw_downloadname, sizeof(file));
 		}
 	}
-	else if (cls.connect_remainingtries > 0)
+	else if (cls.connect_trying) // not connect_remainingtries: a refused or cancelled join leaves it set
 		state = "connecting";
 	else if (nd)
 		state = "downloading";

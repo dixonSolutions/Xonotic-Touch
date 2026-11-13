@@ -296,6 +296,51 @@ rounded-corner insets and the density through the JNI command queue
 drains. The old Android `>_` button and its dialogs are gone; plugins are
 managed with the `lua_mod*` console commands and the in-game Mods dialog.
 
+## The native interface
+
+Outside a match the player sees Android views, not the engine's QuakeC menu
+(`android/app/src/main/kotlin/.../fe/`). The screens are described once by the
+menu VM through the UI bridge ([UI_BRIDGE.md](UI_BRIDGE.md)) and drawn here with
+native components; the engine side of the transport is
+[FRONTEND_BRIDGE.md](FRONTEND_BRIDGE.md).
+
+* **One overlay, one activity.** `FrontendHost` adds one view tree over the SDL
+  surface in `XonoticActivity`. While it shows it takes every touch and key
+  (`dispatchKeyEvent`; Back included) and nothing reaches the engine; during
+  play it is `GONE` and the engine has the surface and input as before. Text
+  fields use Android's IME. Behind an opaque native screen the engine draws
+  nothing and idles at `cl_maxidlefps` (after a 45 s window in which
+  `touch_warm` prepares the next game at full rate); sound and the network go on.
+* **Launch is one screen.** The system splash (Android 12+, black), the boot
+  activity and the game's window show the same banner at the same place on the
+  same black (`BootSplash.view`); there are no activity animations, the game's
+  window has no preview (`Theme.XonoticGame`), and the boot activity hands over
+  only after its banner's first frame. Home replaces the banner with one fade.
+  Measured on the Tab Active5: `am start -W` TotalTime 230-330 ms, banner drawn
+  50-140 ms after `XonoticActivity.onCreate`, Home at 0.8-1.2 s.
+* **Renderer.** `UibClient` reads the bridge's snapshots and diffs into a store
+  and drives `ViewRenderer` through `UiRenderer` (create/update/remove, navigate,
+  dialog, toast, rows, images): the seam the Rust loader core will drive later.
+  Lists and card grids are `RecyclerView`s over windows of rows; sticky header,
+  toolbar, section headers and action bar; vector icons (`Icons.kt`); headings in
+  Xolonium from the game data.
+* **Without the engine's UI bridge** (a build without `touch_uib*.c`), the
+  bridge's own Home and pause descriptions ship as assets (`assets/fe/`) and
+  their actions map to engine commands; Singleplayer, Multiplayer, Settings and
+  Credits open the QuakeC screens with a "Godnotic menu" pill back.
+* **Falling back.** No `libnativeui.so` with the front-end bridge (an AndySU
+  engine swap can pair an old resident bridge with a new engine), an engine
+  without `touch_frontend.c`, `<basedir>/no-native-ui`, or any exception in the
+  native layer: the overlay goes and the QuakeC menu is in charge, as before.
+  The engine also takes the menu back by itself when the UI stops beating for
+  4 s. On an old AndySU host the Kotlin and native code arrive with a payload
+  update; the theme and manifest changes (black splash, no preview window, the
+  `godnotic://join` link) need a full APK install.
+* **Platform state for the engine**: thermal status, battery saver and the map
+  Home's Play starts go to `touch_warm` (`touch_device_thermal`,
+  `touch_device_powersave`, `touch_warm_map`); `onTrimMemory`/`onLowMemory` send
+  `touch_warm_drop`.
+
 ## What the app does on first launch
 
 `BootActivity` runs before the engine, because darkplaces scans its basedir
@@ -308,7 +353,7 @@ during `FS_Init` and would not see anything Java staged afterwards.
    directory from the autobuild server with HTTP Range requests (the archive
    is never stored), and the setup step shows what the download costs, how
    much space is free (it refuses to start without room for it, and says how
-   much to free), and offers the music pack, off by default. Each pk3 under
+   much to free). The music pack is part of the game data and always fetched. Each pk3 under
    `Xonotic/data/` then comes from its own byte range straight into its final
    file: data, maps, nexcompat, xoncompat and the two fonts, about 1.05 GB,
    plus 106 MB with music. The big pk3s are stored in the zip, so they are cut
@@ -329,10 +374,10 @@ the setup starts over rather than mixing two builds, and every range request
 carries `If-Range`, so a build that changes mid-download is caught at once.
 The parts an older release staged in `files/download` are deleted.
 
-**Music later.** While the music pack is missing, a long press on the launcher
-icon offers **Download music** (a dynamic shortcut, built in code like the boot
-screen), which opens the setup step for just that pack, with **Not now** to go
-straight into the game.
+**Music.** There is no music choice: an install without the music pack (from
+before it was always part of the data) gets the setup step for just that pack
+at the next start, with **Not now** to play first; the old "Download music"
+launcher shortcut is removed.
 
 **Asking once.** Download (or Use mobile data) is remembered in the
 `boot-download` preferences until the data is in: a Quit, a kill or a lost

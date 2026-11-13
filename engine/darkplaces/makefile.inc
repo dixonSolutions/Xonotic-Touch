@@ -48,6 +48,7 @@ OBJ_COMMON= \
 	touch_assist.o \
 	touch_lan.o \
 	touch_net.o \
+	touch_frontend.o \
 	touch_pause.o \
 	touch_nade.o \
 	touch_android.o \

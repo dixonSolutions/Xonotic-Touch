@@ -1,10 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Xonotic's own dark chrome, so the boot screen does not flash white
-         before the engine takes over the surface. -->
+    <!-- The one look from the icon tap to Home: black, no window animations. -->
     <style name="Theme.XonoticBoot" parent="android:style/Theme.Material.NoActionBar">
-        <item name="android:windowBackground">#12141A</item>
+        <!-- Black: the banner screen, the engine's loading picture and the
+             native interface all sit on black, so the hand-offs between them
+             show no change of colour. -->
+        <item name="android:windowBackground">#000000</item>
+        <!-- No slide or zoom between the boot screen and the game: one screen. -->
+        <item name="android:windowAnimationStyle">@null</item>
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+
+    <!-- The game's window: no preview window of its own, so the boot screen's
+         banner stays on screen until the game draws the same banner. -->
+    <style name="Theme.XonoticGame" parent="Theme.XonoticBoot">
+        <item name="android:windowDisablePreview">true</item>
     </style>
 </resources>
