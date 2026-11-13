@@ -147,7 +147,7 @@
     "type": "card",
     "props": {
      "title": "Multiplayer",
-     "subtitle": "Internet, LAN and hosting",
+     "subtitle": "Find a game or join by address",
      "icon": "multiplayer",
      "image": "pk3:gfx/menu/luma/gametype_ctf",
      "aspect": "16:9",

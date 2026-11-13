@@ -127,7 +127,7 @@ TYPES = {
     "divider": {},
     "status": {"body": S, "progress": FRAC, "indeterminate": B, "primary": ref("action")},
     "progress": {"value": FRAC, "indeterminate": B, "detail": S, "cancel": ref("action")},
-    "switch": {**CONTROL, "value": B},
+    "switch": {**CONTROL, "value": B, "style": enum("switch", "checkbox")},
     "slider": {**CONTROL, "value": N, "min": N, "max": N, "step": N, "format": FORMAT, "unit": S,
                "marks": {"type": "array", "items": ref("mark"), "maxItems": 16}},
     "stepper": {**CONTROL, "value": N, "min": N, "max": N, "step": N, "format": FORMAT, "unit": S},
