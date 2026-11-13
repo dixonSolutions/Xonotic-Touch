@@ -140,8 +140,28 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
                 }
             }
             if (attached && resumed) NativeBridge.frontendBeat()
+            if (attached && resumed) checkStuck()
             main.postDelayed(this, if (skeleton != null) 50 else 1000)
         }
+    }
+
+    private var stuckSince = 0L
+
+    /**
+     * The engine is in the menu but the described screen is still a loading
+     * screen (seen after leaving a match): ask for a fresh snapshot after 4 s,
+     * and if it stays, hand the menu to QuakeC rather than leave the player on
+     * a screen that will not go.
+     */
+    private fun checkStuck() {
+        val top = screens.lastOrNull() ?: return
+        val kind = client?.store?.node(top)?.str("kind") ?: ""
+        val stuck = app.str("state") == "menu" && kind == "loading" && root.visibility == View.VISIBLE
+        val now = SystemClock.elapsedRealtime()
+        if (!stuck) { stuckSince = 0; return }
+        if (stuckSince == 0L) { stuckSince = now; return }
+        if (now - stuckSince in 4000..4999) { Log.w(tag, "Native UI: loading screen over the menu; asking for a snapshot"); client?.sync() }
+        if (now - stuckSince > 9000) fallBack("a loading screen stayed over the menu")
     }
 
     /** The QuakeC menu is in charge for this session. */
