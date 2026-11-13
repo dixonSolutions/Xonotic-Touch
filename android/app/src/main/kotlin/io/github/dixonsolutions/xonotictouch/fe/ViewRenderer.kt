@@ -510,6 +510,8 @@ class ViewRenderer(
             val ref = p.str("image")
             val photo = ref.isNotEmpty() && isPhoto(ref)
             titleV.text = title(p)
+            // words are never broken: one line for one word (autosize shrinks it), two for more
+            titleV.maxLines = if (title(p).trim().contains(' ')) 2 else 1
             subtitle.text = p.str("subtitle")
             subtitle.visibility = if (subtitle.text.isEmpty()) View.GONE else View.VISIBLE
             badges.removeAllViews()
@@ -629,6 +631,7 @@ class ViewRenderer(
         val img = RoundImage(ctx, 20f)
         val info = Kit.column(ctx, 10f)
         val titleV = Kit.text(ctx, "", Theme.SP_DISPLAY, Theme.TEXT, bold = true)
+        titleV.typeface = Theme.display
         val sub = Kit.text(ctx, "", Theme.SP_BODY, Theme.TEXT_MUTED)
         val badges = FlowGrid(ctx, 0, dp(6f), wrap = true)
         val attrs = Kit.column(ctx, 4f)

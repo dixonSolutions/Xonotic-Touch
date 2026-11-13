@@ -75,6 +75,8 @@ class UibClient(private val renderer: UiRenderer, private val send: (String) -> 
     private var shownStack: List<String> = emptyList()
     private var shownModal: List<String> = emptyList()
     private var nextId = 1L
+    /** Called after every snapshot or diff that applied (the platform reads things off the store). */
+    var onChanged: ((UibStore) -> Unit)? = null
 
     private fun msg(t: String, body: Map<String, Any?>): String =
         Json.write(linkedMapOf<String, Any?>("uib" to 1, "t" to t, "id" to nextId++) + body)
@@ -97,12 +99,14 @@ class UibClient(private val renderer: UiRenderer, private val send: (String) -> 
                 store.snapshot(m)
                 if (!store.consistent()) { sync(); return }
                 rebuildAll()
+                onChanged?.invoke(store)
             }
             "diff" -> {
                 val changed = LinkedHashSet<String>()
                 val deleted = LinkedHashSet<String>()
                 if (!store.diff(m, changed, deleted) || !store.consistent()) { sync(); return }
                 applyChanges(changed, deleted)
+                onChanged?.invoke(store)
             }
             "rows" -> renderer.listRows(m.str("source"), m.int("offset"), m.int("total"), m["rows"].list().map { it.obj() })
             "source" -> renderer.listRows(m.str("source"), 0, m.int("total"), emptyList())

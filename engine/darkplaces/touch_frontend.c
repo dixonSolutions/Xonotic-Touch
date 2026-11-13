@@ -1475,7 +1475,20 @@ qbool TouchFE_SkipDraw(void)
 double TouchFE_MaxFPS(double maxfps)
 {
 	extern cvar_t cl_maxidlefps;
-	if (fe_covered() >= 1 && cl_maxidlefps.value > 0 && (maxfps <= 0 || maxfps > cl_maxidlefps.value))
+	static double since;
+	int c = fe_covered();
+	if (!c)
+	{
+		since = 0;
+		return maxfps;
+	}
+	if (!since)
+		since = host.realtime;
+	// The first 45 s behind a covering screen run at the normal rate (nothing
+	// is drawn): touch_warm prepares the next game a slice per frame then.
+	if (host.realtime - since < 45 && Cvar_VariableValue(&cvars_all, "touch_warm", ~0))
+		return maxfps;
+	if (cl_maxidlefps.value > 0 && (maxfps <= 0 || maxfps > cl_maxidlefps.value))
 		return cl_maxidlefps.value;
 	return maxfps;
 }

@@ -213,7 +213,14 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         attached = true
         NativeBridge.frontendBeat()
         NativeBridge.enqueue(FeArgs.command("attach", "1"))
-        if (app.bool("ui_bridge")) c.hello(caps())
+        if (app.bool("ui_bridge")) {
+            // touch_warm prepares the map Home's Play starts: the hero's picture names it
+            c.onChanged = { st ->
+                val ref = st.nodes.values.firstOrNull { it.type == "hero" }?.str("image") ?: ""
+                if (ref.startsWith("pk3:maps/")) reportPower("touch_warm_map", ref.removePrefix("pk3:maps/"))
+            }
+            c.hello(caps())
+        }
         else {
             stopgap = StopgapActions(activity, c)
             // touch_warm prepares what Play starts while Home is idle
