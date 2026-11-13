@@ -76,3 +76,6 @@ android/local.properties
 
 # Vercel CLI link and build cache
 .vercel/
+
+# Agent worktrees are local to one machine
+.claude/worktrees/

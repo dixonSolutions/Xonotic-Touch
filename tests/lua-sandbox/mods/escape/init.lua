@@ -30,6 +30,8 @@ check("load chunk cannot see io", load("return io")() == nil)
 local h = require("sub.helper")
 check("require own file", type(h) == "table" and h.value == 42)
 check("require cached", require("sub.helper") == h)
+-- a second argument used to be taken for the loaded table and crashed the engine
+check("require ignores extra arguments", select(2, pcall(require, "sub.helper", 12345)) == h)
 check("require ../ refused", fails(require, "../escape/init"))
 check("require /etc/passwd refused", fails(require, "/etc/passwd"))
 check("require dotdot refused", fails(require, "sub..helper"))

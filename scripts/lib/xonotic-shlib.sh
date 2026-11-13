@@ -2,15 +2,13 @@
 # Shared helpers for Godnotic scripts.
 set -euo pipefail
 
+# Resolved once, while the path this file was sourced by still means something:
+# xonotic_root runs inside $(...), where setting ROOT is lost, and after a
+# helper has changed directory a relative BASH_SOURCE points nowhere.
+XONOTIC_SHLIB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
 xonotic_root() {
-    if [ -n "${ROOT:-}" ]; then
-        printf '%s\n' "$ROOT"
-        return 0
-    fi
-    local here
-    here="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-    ROOT="$here"
-    printf '%s\n' "$ROOT"
+    printf '%s\n' "${ROOT:-$XONOTIC_SHLIB_ROOT}"
 }
 
 xonotic_bin() {
