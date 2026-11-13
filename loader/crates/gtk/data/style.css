@@ -6,15 +6,15 @@
 @define-color gn_blue #3fa9f5;
 
 .gn-hero { border-radius: 20px; min-height: 220px; }
-.gn-hero-shade { background: linear-gradient(to top, rgba(0,0,0,0.78), rgba(0,0,0,0.05) 70%); border-radius: 20px; }
-.gn-hero .gn-hero-title { color: white; font-size: 34px; font-weight: 900; letter-spacing: 2px; }
+.gn-hero-shade { background: linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.35) 55%, rgba(0,0,0,0.05)); border-radius: 20px; }
+.gn-hero .gn-hero-title { color: white; font-size: 34px; font-weight: 900; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }
 .gn-hero .gn-hero-sub { color: rgba(255,255,255,0.86); font-size: 15px; }
 .gn-hero .gn-chip { background: rgba(255,255,255,0.16); color: white; }
 .gn-hero-frame { border-radius: 20px; box-shadow: 0 8px 28px alpha(@gn_ember, 0.18); }
 
 button.gn-play, button.suggested-action.gn-play {
   background: linear-gradient(180deg, #ff8a4a, @gn_ember);
-  color: #1d0a02; font-weight: 900; font-size: 18px; letter-spacing: 3px;
+  color: #1d0a02; font-weight: 800; font-size: 16px;
   min-height: 52px; min-width: 180px; border-radius: 999px; padding: 0 28px;
   box-shadow: 0 4px 14px alpha(@gn_ember, 0.35);
   transition: box-shadow 200ms ease, background 200ms ease;
@@ -60,7 +60,7 @@ columnview.gn-dense { font-size: 14px; }
 .gn-from-mod { font-size: 12px; opacity: 0.75; }
 
 /* Narrow windows (phones): comfortable thumbs. */
-.gn-narrow button.gn-play { min-height: 60px; font-size: 20px; }
+.gn-narrow button.gn-play { min-height: 56px; font-size: 17px; }
 .gn-narrow .gn-hero .gn-hero-title { font-size: 28px; }
 .gn-hero button.pill, .gn-hero button.pill:hover { background: rgba(255,255,255,0.18); color: white; }
 .gn-hero button.pill:hover { background: rgba(255,255,255,0.28); }

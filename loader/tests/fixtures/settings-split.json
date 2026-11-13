@@ -1,0 +1,602 @@
+{
+ "name": "settings-split (loader, provisional until work/uibridge ships its own)",
+ "generated": "loader",
+ "snapshot": {
+  "uib": 1,
+  "t": "snapshot",
+  "id": 2,
+  "rev": 1,
+  "root": "app",
+  "nodes": [
+   {
+    "id": "app",
+    "type": "app",
+    "props": {
+     "title": "Godnotic",
+     "stack": [
+      "home",
+      "settings"
+     ],
+     "modal": [],
+     "canBack": true,
+     "context": "menu"
+    },
+    "children": [
+     "home",
+     "settings"
+    ]
+   },
+   {
+    "id": "home",
+    "type": "screen",
+    "props": {
+     "title": "Godnotic",
+     "kind": "home",
+     "background": "asset:background",
+     "actions": [
+      {
+       "id": "quit",
+       "label": "Quit",
+       "icon": "quit",
+       "style": "secondary",
+       "confirm": {
+        "title": "Quit Godnotic?",
+        "ok": "Quit"
+       }
+      }
+     ]
+    },
+    "children": [
+     "home/banner",
+     "home/hero",
+     "home/tiles"
+    ]
+   },
+   {
+    "id": "home/banner",
+    "type": "image",
+    "props": {
+     "ref": "asset:banner",
+     "aspect": "21:9",
+     "fit": "contain",
+     "alt": "Godnotic"
+    },
+    "children": []
+   },
+   {
+    "id": "home/hero",
+    "type": "hero",
+    "props": {
+     "title": "Play",
+     "subtitle": "Continue: Stormkeep \u00b7 Deathmatch \u00b7 4 bots",
+     "image": "pk3:maps/stormkeep",
+     "aspect": "16:9",
+     "featured": true,
+     "meta": [
+      {
+       "icon": "map",
+       "text": "Stormkeep"
+      },
+      {
+       "icon": "mode",
+       "text": "Deathmatch"
+      },
+      {
+       "icon": "bot",
+       "text": "4 bots"
+      }
+     ],
+     "primary": {
+      "id": "play",
+      "label": "Play",
+      "icon": "play",
+      "style": "primary"
+     },
+     "actions": [
+      {
+       "id": "quick",
+       "label": "Quick match",
+       "icon": "players"
+      },
+      {
+       "id": "sp",
+       "label": "Choose\u2026",
+       "icon": "map"
+      }
+     ]
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles",
+    "type": "grid",
+    "props": {
+     "minItem": 200
+    },
+    "children": [
+     "home/tiles/sp",
+     "home/tiles/mp",
+     "home/tiles/settings",
+     "home/tiles/credits"
+    ]
+   },
+   {
+    "id": "home/tiles/sp",
+    "type": "card",
+    "props": {
+     "title": "Singleplayer",
+     "subtitle": "Bots, your rules",
+     "icon": "singleplayer",
+     "image": "pk3:gfx/menu/luma/gametype_dm",
+     "aspect": "16:9",
+     "primary": {
+      "id": "sp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/mp",
+    "type": "card",
+    "props": {
+     "title": "Multiplayer",
+     "subtitle": "Find a game or join by address",
+     "icon": "multiplayer",
+     "image": "pk3:gfx/menu/luma/gametype_ctf",
+     "aspect": "16:9",
+     "primary": {
+      "id": "mp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/settings",
+    "type": "card",
+    "props": {
+     "title": "Settings",
+     "subtitle": "Video, controls, Mods",
+     "icon": "settings",
+     "primary": {
+      "id": "settings",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/credits",
+    "type": "card",
+    "props": {
+     "title": "Credits",
+     "subtitle": "The people behind Xonotic and Godnotic",
+     "icon": "credits",
+     "primary": {
+      "id": "credits",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings",
+    "type": "screen",
+    "props": {
+     "title": "Settings"
+    },
+    "children": [
+     "settings/split"
+    ]
+   },
+   {
+    "id": "settings/split",
+    "type": "split",
+    "props": {
+     "hints": [
+      "vertical-tabs"
+     ],
+     "detailOpen": true
+    },
+    "children": [
+     "settings/split/nav",
+     "settings/split/detail"
+    ]
+   },
+   {
+    "id": "settings/split/nav",
+    "type": "section",
+    "props": {
+     "title": "Settings"
+    },
+    "children": [
+     "settings/sections/video",
+     "settings/sections/audio",
+     "settings/sections/game",
+     "settings/sections/input",
+     "settings/sections/touch",
+     "settings/sections/esp",
+     "settings/sections/player",
+     "settings/sections/privacy",
+     "settings/sections/updates",
+     "settings/sections/data",
+     "settings/sections/menu",
+     "settings/sections/mods"
+    ]
+   },
+   {
+    "id": "settings/sections/video",
+    "type": "row",
+    "props": {
+     "title": "Video",
+     "icon": "video",
+     "primary": {
+      "id": "settings.video",
+      "label": "Video",
+      "icon": "chevron"
+     },
+     "selected": true
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/audio",
+    "type": "row",
+    "props": {
+     "title": "Audio",
+     "icon": "audio",
+     "primary": {
+      "id": "settings.audio",
+      "label": "Audio",
+      "icon": "chevron"
+     },
+     "selected": false
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/game",
+    "type": "row",
+    "props": {
+     "title": "Game",
+     "icon": "game",
+     "primary": {
+      "id": "settings.game",
+      "label": "Game",
+      "icon": "chevron"
+     },
+     "selected": false
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/input",
+    "type": "row",
+    "props": {
+     "title": "Input",
+     "icon": "input",
+     "primary": {
+      "id": "settings.input",
+      "label": "Input",
+      "icon": "chevron"
+     },
+     "selected": false
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/touch",
+    "type": "row",
+    "props": {
+     "title": "Touch controls",
+     "icon": "touch",
+     "primary": {
+      "id": "settings.touch",
+      "label": "Touch controls",
+      "icon": "chevron"
+     },
+     "selected": false
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/esp",
+    "type": "row",
+    "props": {
+     "title": "ESP",
+     "icon": "esp",
+     "primary": {
+      "id": "settings.esp",
+      "label": "ESP",
+      "icon": "chevron"
+     },
+     "selected": false
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/player",
+    "type": "row",
+    "props": {
+     "title": "Player",
+     "icon": "player",
+     "primary": {
+      "id": "settings.player",
+      "label": "Player",
+      "icon": "chevron"
+     },
+     "selected": false
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/privacy",
+    "type": "row",
+    "props": {
+     "title": "Privacy",
+     "icon": "privacy",
+     "primary": {
+      "id": "settings.privacy",
+      "label": "Privacy",
+      "icon": "chevron"
+     },
+     "selected": false
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/updates",
+    "type": "row",
+    "props": {
+     "title": "Updates",
+     "icon": "update",
+     "primary": {
+      "id": "settings.updates",
+      "label": "Updates",
+      "icon": "chevron"
+     },
+     "selected": false
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/data",
+    "type": "row",
+    "props": {
+     "title": "Data",
+     "icon": "data",
+     "primary": {
+      "id": "settings.data",
+      "label": "Data",
+      "icon": "chevron"
+     },
+     "selected": false
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/menu",
+    "type": "row",
+    "props": {
+     "title": "Menu",
+     "icon": "menu",
+     "primary": {
+      "id": "settings.menu",
+      "label": "Menu",
+      "icon": "chevron"
+     },
+     "selected": false
+    },
+    "children": []
+   },
+   {
+    "id": "settings/sections/mods",
+    "type": "row",
+    "props": {
+     "title": "Mods",
+     "icon": "mods",
+     "primary": {
+      "id": "settings.mods",
+      "label": "Mods",
+      "icon": "chevron"
+     },
+     "selected": false
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/detail",
+    "type": "tabs",
+    "props": {
+     "title": "Video",
+     "style": "tabs",
+     "value": "quality"
+    },
+    "children": [
+     "settings.video/quality/pane",
+     "settings.video/view/pane"
+    ]
+   },
+   {
+    "id": "settings.video/quality/pane",
+    "type": "pane",
+    "props": {
+     "key": "quality",
+     "label": "Quality"
+    },
+    "children": [
+     "settings.video/quality"
+    ]
+   },
+   {
+    "id": "settings.video/view/pane",
+    "type": "pane",
+    "props": {
+     "key": "view",
+     "label": "View"
+    },
+    "children": [
+     "settings.video/view"
+    ]
+   },
+   {
+    "id": "settings.video/quality",
+    "type": "section",
+    "props": {
+     "title": "Quality",
+     "sticky": true
+    },
+    "children": [
+     "settings.video/quality/preset",
+     "settings.video/quality/scale",
+     "settings.video/quality/maxfps",
+     "settings.video/quality/vsync"
+    ]
+   },
+   {
+    "id": "settings.video/quality/preset",
+    "type": "choice",
+    "props": {
+     "label": "Quality",
+     "bind": "vm:video.preset",
+     "value": "medium",
+     "style": "segmented",
+     "options": [
+      {
+       "value": "low",
+       "label": "Low"
+      },
+      {
+       "value": "medium",
+       "label": "Medium"
+      },
+      {
+       "value": "high",
+       "label": "High"
+      },
+      {
+       "value": "ultra",
+       "label": "Ultra"
+      }
+     ],
+     "apply": "video"
+    },
+    "children": []
+   },
+   {
+    "id": "settings.video/quality/scale",
+    "type": "slider",
+    "props": {
+     "label": "Resolution scale",
+     "bind": "cvar:r_viewscale",
+     "value": 1.0,
+     "min": 0.5,
+     "max": 1.0,
+     "step": 0.05,
+     "format": "percent"
+    },
+    "children": []
+   },
+   {
+    "id": "settings.video/quality/maxfps",
+    "type": "choice",
+    "props": {
+     "label": "Frame rate limit",
+     "bind": "cvar:cl_maxfps",
+     "value": "60",
+     "style": "segmented",
+     "options": [
+      {
+       "value": "30",
+       "label": "30"
+      },
+      {
+       "value": "60",
+       "label": "60"
+      },
+      {
+       "value": "90",
+       "label": "90"
+      },
+      {
+       "value": "120",
+       "label": "120"
+      },
+      {
+       "value": "0",
+       "label": "Unlimited"
+      }
+     ]
+    },
+    "children": []
+   },
+   {
+    "id": "settings.video/quality/vsync",
+    "type": "switch",
+    "props": {
+     "label": "Vertical sync",
+     "bind": "cvar:vid_vsync",
+     "value": true,
+     "apply": "video"
+    },
+    "children": []
+   },
+   {
+    "id": "settings.video/view",
+    "type": "section",
+    "props": {
+     "title": "View",
+     "sticky": true
+    },
+    "children": [
+     "settings.video/view/fov",
+     "settings.video/view/gamma",
+     "settings.video/view/bob"
+    ]
+   },
+   {
+    "id": "settings.video/view/fov",
+    "type": "slider",
+    "props": {
+     "label": "Field of view",
+     "bind": "cvar:fov",
+     "value": 100,
+     "min": 60,
+     "max": 130,
+     "step": 1,
+     "format": "deg"
+    },
+    "children": []
+   },
+   {
+    "id": "settings.video/view/gamma",
+    "type": "slider",
+    "props": {
+     "label": "Brightness",
+     "bind": "cvar:v_contrast",
+     "value": 1.0,
+     "min": 0.5,
+     "max": 3.0,
+     "step": 0.05,
+     "format": "float2"
+    },
+    "children": []
+   },
+   {
+    "id": "settings.video/view/bob",
+    "type": "switch",
+    "props": {
+     "label": "View bobbing",
+     "bind": "cvar:cl_bob",
+     "value": false
+    },
+    "children": []
+   }
+  ]
+ }
+}

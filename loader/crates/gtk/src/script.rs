@@ -14,6 +14,9 @@
 //! dark | light        colour scheme
 //! snapshot <file.png> render the window
 //! count <file>        append the number of mapped top-level windows of this process
+//! join <addr> [pw]    start a session joining a server (as a godnotic:// link would)
+//! play                start the game the classic way
+//! waitvisible <ms>    wait until the window shows again (the session ended)
 //! quit
 //! ```
 
@@ -99,6 +102,27 @@ fn step(w: std::rc::Weak<app::Shared>, mut lines: VecDeque<String>) {
         "back" => {
             app::back(&app);
             delay = 250;
+        }
+        "join" => {
+            let addr = args.first().and_then(|a| godnotic_core::link::parse_join(a));
+            if let Some(addr) = addr {
+                let password = args.get(1).map(|p| p.to_string());
+                crate::session_ui::start(&app, godnotic_core::session::Action::Connect { address: addr, password });
+            }
+            delay = 300;
+        }
+        "play" => {
+            crate::session_ui::start(&app, godnotic_core::session::Action::Play);
+            delay = 300;
+        }
+        "waitvisible" => {
+            // Polls until the window is shown again (the game ended), up to N ms.
+            let left: i64 = args.first().and_then(|a| a.parse().ok()).unwrap_or(30000);
+            let shown = win.as_ref().is_some_and(|w| w.is_visible());
+            if !shown && left > 0 {
+                lines.push_front(format!("waitvisible {}", left - 200));
+                delay = 200;
+            }
         }
         "size" => {
             if let (Some(win), Some(wd), Some(h)) = (&win, args.first().and_then(|a| a.parse().ok()), args.get(1).and_then(|a| a.parse().ok())) {

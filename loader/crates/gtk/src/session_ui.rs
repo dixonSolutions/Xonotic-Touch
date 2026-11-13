@@ -57,6 +57,7 @@ pub fn start(app: &App, action: Action) {
     let gapp = win.application();
     let hold = std::cell::RefCell::new(gapp.as_ref().map(|a| a.hold()));
     win.set_visible(false);
+    println!("session started: window hidden");
     let pid = glib::Pid(child.id() as i32);
     std::mem::forget(child); // reaped by the child watch below, not by std
     let w = Rc::downgrade(app);
@@ -66,6 +67,7 @@ pub fn start(app: &App, action: Action) {
         let (code, signalled) = if libc::WIFSIGNALED(status) { (128 + libc::WTERMSIG(status), true) } else { (libc::WEXITSTATUS(status), false) };
         let text = std::fs::read_to_string(&result).ok();
         let out = Outcome::parse(text.as_deref(), code, signalled, &log);
+        println!("session ended: kind={} exit={} reason={}", out.kind, out.exit_code, out.reason);
         if let Some(u) = app.ui.borrow().as_ref() {
             u.win.present();
         }

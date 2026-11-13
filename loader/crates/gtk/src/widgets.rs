@@ -201,7 +201,7 @@ pub fn screen(app: &App, store: &Store, s: &Node) -> gtk::Widget {
     }
 
     // One scrolling region: a list that fills the screen scrolls by itself; everything else in one scrolled column.
-    let big_list = body.iter().position(|n| n.kind == "list" && body.len() <= 2);
+    let big_list = body.iter().position(|n| (n.kind == "list" && body.len() <= 2) || (n.kind == "split" && body.len() == 1));
     let content: gtk::Widget = match big_list {
         Some(i) => {
             let v = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -363,7 +363,7 @@ pub fn node(app: &App, store: &Store, n: &Node) -> gtk::Widget {
         "status" => status(app, n),
         "progress" => progress(app, n),
         "tabs" => tabs(app, store, n),
-        "split" => container(app, store, n, gtk::Orientation::Vertical).upcast(),
+        "split" => split(app, store, n),
         "field" => entry(app, n),
         "button" => {
             let mut a = n.obj("action").cloned().unwrap_or_default();
@@ -664,7 +664,9 @@ fn control_row(app: &App, n: &Node) -> gtk::Widget {
             let opts: Vec<(String, String)> = n.arr("options").iter().filter_map(|o| Some((o.get("value")?.as_str()?.to_string(), o.get("label").and_then(Value::as_str).unwrap_or("").to_string()))).collect();
             let cur = n.str("value").unwrap_or_default();
             let style = n.str("style").unwrap_or_default();
-            if (style == "segmented" || (style.is_empty() && opts.len() <= 3)) && !opts.is_empty() {
+            // Segmented on wide windows; a drop-down when the segments would not fit (narrow, many options).
+            let fits = !app.narrow.get() || opts.len() <= 3;
+            if (style == "segmented" || (style.is_empty() && opts.len() <= 3)) && !opts.is_empty() && fits {
                 let r = adw::ActionRow::builder().title(&title).subtitle(&sub).build();
                 let g = adw::ToggleGroup::new();
                 g.set_valign(gtk::Align::Center);
@@ -796,7 +798,10 @@ fn card(app: &App, n: &Node) -> gtk::Button {
         b.add_css_class("gn-selected");
     }
     let v = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    match n.str("image") {
+    // Map shots are pictures; other artwork (mode emblems) gives way to the card's symbolic icon,
+    // so every card on a screen looks alike.
+    let image = n.str("image").filter(|r| r.starts_with("pk3:maps/") || n.str("icon").is_none());
+    match image {
         Some(r) => {
             let p = picture(app, &r, 480, 270);
             // Map shots fill the card; artwork (mode icons) is shown whole.
@@ -984,12 +989,20 @@ fn progress(app: &App, n: &Node) -> gtk::Widget {
     v.upcast()
 }
 
+/// Horizontal tabs: an inline switcher fixed at the top, each pane scrolling under it.
 fn tabs(app: &App, store: &Store, n: &Node) -> gtk::Widget {
     let stack = adw::ViewStack::new();
     for p in store.children(&n.id) {
-        let content = container(app, store, p, gtk::Orientation::Vertical);
+        let col = container(app, store, p, gtk::Orientation::Vertical);
+        col.set_spacing(18);
+        col.set_margin_top(12);
+        col.set_margin_bottom(24);
+        col.set_margin_start(16);
+        col.set_margin_end(16);
+        let clamp = adw::Clamp::builder().maximum_size(900).child(&col).build();
+        let sw = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).child(&clamp).vexpand(true).build();
         let key = p.str("key").unwrap_or_else(|| p.id.clone());
-        let page = stack.add_titled(&content, Some(&key), &p.title());
+        let page = stack.add_titled(&sw, Some(&key), &p.title());
         if let Some(i) = p.str("icon").and_then(|i| icon(&i)) {
             page.set_icon_name(Some(i));
         }
@@ -997,7 +1010,10 @@ fn tabs(app: &App, store: &Store, n: &Node) -> gtk::Widget {
     if let Some(v) = n.str("value") {
         stack.set_visible_child_name(&v);
     }
-    let sw = adw::ViewSwitcher::builder().stack(&stack).policy(adw::ViewSwitcherPolicy::Wide).build();
+    let sw = adw::InlineViewSwitcher::builder().stack(&stack).display_mode(adw::InlineViewSwitcherDisplayMode::Labels).build();
+    sw.set_halign(gtk::Align::Center);
+    sw.set_margin_top(6);
+    sw.set_margin_bottom(6);
     let w = Rc::downgrade(app);
     let id = n.id.clone();
     stack.connect_visible_child_name_notify(move |s| {
@@ -1005,10 +1021,79 @@ fn tabs(app: &App, store: &Store, n: &Node) -> gtk::Widget {
             value(&a, &id, json!(v.to_string()));
         }
     });
-    let b = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    b.append(&sw);
-    b.append(&stack);
-    b.upcast()
+    let tv = adw::ToolbarView::new();
+    tv.add_top_bar(&sw);
+    tv.set_content(Some(&stack));
+    tv.set_vexpand(true);
+    tv.upcast()
+}
+
+/// Vertical tabs (Settings): a sidebar of sections, the selected one beside it;
+/// one column with the section pushed on narrow windows (AdwNavigationSplitView).
+fn split(app: &App, store: &Store, n: &Node) -> gtk::Widget {
+    let kids = store.children(&n.id);
+    let (Some(list), detail) = (kids.first(), kids.get(1)) else { return container(app, store, n, gtk::Orientation::Vertical).upcast() };
+    let lb = gtk::ListBox::new();
+    lb.add_css_class("navigation-sidebar");
+    lb.set_selection_mode(gtk::SelectionMode::Single);
+    let items = store.children(&list.id);
+    let mut selected = None;
+    for (i, it) in items.iter().enumerate() {
+        if it.hidden() {
+            continue;
+        }
+        let r = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        r.set_margin_top(10);
+        r.set_margin_bottom(10);
+        if let Some(ic) = it.str("icon").and_then(|i| icon(&i)) {
+            r.append(&gtk::Image::from_icon_name(ic));
+        }
+        r.append(&label(&it.title(), &[]));
+        lb.append(&r);
+        if it.bool("selected").unwrap_or(false) {
+            selected = Some(i);
+        }
+    }
+    if let Some(i) = selected {
+        lb.select_row(lb.row_at_index(i as i32).as_ref());
+    }
+    let actions: Vec<(String, Map<String, Value>)> = items.iter().filter(|i| !i.hidden()).map(|i| (i.id.clone(), i.obj("primary").or_else(|| i.obj("action")).cloned().unwrap_or_default())).collect();
+    let w = Rc::downgrade(app);
+    lb.connect_row_activated(move |_, row| {
+        if let (Some(a), Some((id, act))) = (w.upgrade(), actions.get(row.index() as usize)) {
+            if act.str_of("id").is_some() {
+                invoke(&a, id, act);
+            } else {
+                value(&a, id, json!(true));
+            }
+        }
+    });
+    let side_sw = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).child(&lb).vexpand(true).build();
+    let sidebar = adw::NavigationPage::builder().title(list.title()).child(&side_sw).tag("sidebar").build();
+    let content_w: gtk::Widget = match detail {
+        Some(d) if d.kind == "tabs" => tabs(app, store, d),
+        Some(d) => {
+            let col = gtk::Box::new(gtk::Orientation::Vertical, 18);
+            col.set_margin_top(12);
+            col.set_margin_bottom(24);
+            col.set_margin_start(16);
+            col.set_margin_end(16);
+            for k in store.children(&d.id) {
+                if !k.hidden() {
+                    col.append(&node(app, store, k));
+                }
+            }
+            let clamp = adw::Clamp::builder().maximum_size(900).child(&col).build();
+            gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).child(&clamp).vexpand(true).build().upcast()
+        }
+        None => adw::StatusPage::builder().title("Choose a section").build().upcast(),
+    };
+    let content = adw::NavigationPage::builder().title(detail.map(|d| d.title()).unwrap_or_default()).child(&content_w).tag("detail").build();
+    let sv = adw::NavigationSplitView::builder().sidebar(&sidebar).content(&content).min_sidebar_width(200.0).max_sidebar_width(280.0).build();
+    sv.set_collapsed(app.narrow.get());
+    sv.set_show_content(n.bool("detailOpen").unwrap_or(true));
+    sv.set_vexpand(true);
+    sv.upcast()
 }
 
 /// A detail header: big picture, title, attributes, description, actions.
