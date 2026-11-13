@@ -1,134 +1,112 @@
-# Godnotic client architecture and delivery record
+# Godnotic: architecture and what has been verified
 
-Godnotic uses a DarkPlaces client, QuakeC game code and a bounded Lua plugin
-runtime. This document distinguishes implemented work, measured evidence and
-remaining work. It is not a claim that downloads or map loads take milliseconds.
-Network throughput, pack size, storage latency and shader compilation set hard
-lower bounds. Warm cache checks can be very short; a first 1 GB download cannot.
+Godnotic is a touch-first client built on Xonotic: the DarkPlaces engine, Xonotic's
+QuakeC game code, a sandboxed Lua plugin runtime, and a native front end per platform.
+This page says how the pieces fit and, for each area, what has been measured or tested
+and what has not. It makes no claim that a first download or a cold map load takes
+milliseconds: network throughput, pack size, storage latency and decode time set lower
+bounds. A warm relaunch is about a second on a tablet; a cold map load is seconds.
 
-## Components and ownership
+## Repositories
 
 | Repository | Owns | Consumers |
 | --- | --- | --- |
-| `dixonSolutions/Godnotic` | Packaging, native frontends, web loader, release/update channels | Android, Flatpak, Ubuntu Touch, Pages, Vercel |
-| `dixonSolutions/Godnotic-darkplaces` | Godnotic engine, renderer hooks, Lua sandbox | Main repository via a pinned component revision |
-| `dixonSolutions/Godnotic-data` | Game code, configs, reproducible pack tools and manifests | Main repository and runtime content downloads |
-| `dixonSolutions/Godnotic-data` releases `data-slim`, `data-<date>` | The slim pk3 archive the app streams, and the pinned full set | Android (`godnotic-data-url.txt`, `godnotic-data-full-url.txt`), Linux, web |
+| `dixonSolutions/Godnotic` | Packaging, native front ends, web loader, releases and update channels | Android, Flatpak, Ubuntu Touch, Pages, Vercel |
+| `dixonSolutions/Godnotic-darkplaces` | The engine | Carried here in `engine/darkplaces` at the commit pinned in `components.json` |
+| `dixonSolutions/Godnotic-data` | Game code and configs; the data packs as releases (`data-<date>` full, `data-slim` repacked) | Carried here in `engine/data/xonotic-data.pk3dir`; clients download the packs |
 
-Imported upstream code keeps its license notices and source attribution. Stable
-Android/Flatpak/OpenStore identifiers and AndySU keys are compatibility contracts,
-not display branding. Renaming those in place would create a different application
-and strand installed users. Public names, wordmarks, icons and repository URLs use
-Godnotic; compatibility aliases remain until a separately tested migration retires
-them. In particular existing live Android clients select an exact legacy APK name.
+CI fails a `main` whose engine or game code differs from its pins.
+`scripts/component-push.sh` publishes a change made here to its component repository
+and pins it; a commit made in a component repository is built inside this one, then
+imported, tested, merged and released by `component-sync.yml` (see AGENTS.md). That
+workflow's schedule has not been seen to fire on its own; a run started by hand works.
+Upstream Xonotic is merged only by hand (`upstream-watch.yml`, docs/UPSTREAM_SYNC.md).
 
-Engine and game code are carried in the main checkout at the commits pinned in
-`components.json`, and CI refuses a main that differs from its pins.
-`scripts/component-push.sh` publishes a change made here to its component
-repository; `component-sync.yml` imports, builds, tests, merges and releases a
-commit made there (see AGENTS.md). Direct upstream Xonotic refreshes and pack rebuilds are
-manual, rather than scheduled release producers. AndySU signature renewal remains
-scheduled because installed clients reject expired manifests.
+Android, Flatpak and OpenStore package identifiers, data directory names, live-update
+asset names and browser storage keys still carry the project's earlier name. They are
+compatibility contracts: changing one makes a different application and strands
+installed users. Everything a player sees says Godnotic.
 
-## Native UI
+## Front ends
 
-Android now has a Kotlin native console and client-plugin panel over the SDL game
-surface. JNI places commands into a bounded resident queue; only the engine thread
-pumps that queue into the engine command buffer. Native dialogs never access live
-engine structures from Android's UI thread. The resident bridge survives an AndySU
-engine replacement. New Android Application wiring needs a normal APK update on an
-old frozen AndySU host before that host can create the native overlay.
+- **Android**: a Kotlin/Java boot activity (banner, data download as a foreground
+  service with progress and "ready" notifications, metered-network choice, automatic
+  resume), then the engine's SDL surface. The banner stays up until the engine's first
+  lit frame. JNI passes commands through a bounded queue pumped by the engine thread.
+- **Linux**: a Kotlin/Native GTK 4 / libadwaita launcher (Play, Mods, Host, Data,
+  Settings). Its Data page uses the same ranged, resumable, CRC-checked downloader as
+  Android (`launcher/core`, 30 tests); `packaging/start.sh` and the fetch scripts remain
+  the fallback where the launcher is not used (Ubuntu Touch starts them directly).
+- **Web**: an HTML/CSS loader over the engine compiled to WebAssembly (docs/WEB.md).
+  GTK cannot run on static hosting (Broadway needs a server process), so the browser
+  front end is plain HTML with the same layout as the Android boot screen.
+- **In the engine, on every platform**: the console button (top right in menus, beside
+  MENU in a match) opens the engine console with its own on-screen keys; the touch
+  menu (tile launcher, 48 dp rows, sheets that scroll) is QuakeC; the HUD is CSQC.
 
-Linux already used Kotlin/Native with GTK 4 and libadwaita, not a Rust loader.
-Its mod switches and settings now save in order with unique temporary files,
-retain enabled entries for unavailable folders, restore failed toggles, and reject
-stale background scans. Keeping this working launcher avoids a second state machine.
-A Rust service can be introduced behind a versioned protocol if a real need remains;
-there is no Rust launcher to repair in the current source tree.
+Verified on a Galaxy Tab Active5: first launch with no popups, the download screen and
+its background behaviour, the console, the touch menu's taps, drags and size setting,
+a full bot match. Not verified: a phone-sized device, rotation and display cutouts,
+themed icons, the launcher's GTK pages by hand, the console button on Linux and web.
 
-The Android console currently shows submitted-command history, not a live engine
-log. The native panels cover console and plugins, not every QuakeC game widget.
-Converting every menu, hosting, downloads, update screen and in-game widget requires
-further view-model and event-schema work; it must not be described as completed.
+## Game data
+
+Phones download the slim set: ASTC textures, zstd pack entries, Opus music, JPEGs
+re-encoded within a measured tolerance, editor-only files left out; 390 MB against
+1046 MB for the stock packs (docs/PHONE_ASSETS.md). The app asks the GPU for ASTC
+first and takes the full set otherwise. Each published set was compared in the engine
+against the full set (eight maps, four cameras each) and every entry checked against
+its CRC; the first attempt at the JPEG step failed that comparison and was not
+published. Desktop and web still use the full set.
+
+## Start-up and loading
+
+Fonts, menu pictures, sounds and models load on first use; what a map loaded late is
+recorded and loaded under its next loading screen; loose-directory lookups are cached;
+the renderer no longer restarts on GPUs without S3TC. On the tablet, warm and
+throttled: menu ready 1.2 s after process start (5.0 s with the switches off), a
+stormkeep bot match 4.6-5.0 s after the tap (13.4 s), worst frame in the first
+seconds of play 61-100 ms. Every change has a cvar to turn it off
+(`touch_loadtime 1` prints the phase tables). Joining over a real network is still
+bound by the stock stop-and-wait handshake.
+
+## LAN games
+
+Host from the menu (port 26000 by default, optional password answered by challenge,
+never sent), find games with the LAN filter without a master server, join by tapping.
+Tested between the tablet and a desktop on one network in both directions, including
+the host in the background. docs/LAN.md has the security notes: the password is a
+shared secret for a trusted network.
 
 ## Plugins
 
-The existing Lua 5.4 runtime supplies separate client and server realms, event
-subscriptions and namespaced console commands. Memory, instruction and wall-time
-limits disable runaway loops; errors disable that plugin while the engine continues.
-This is bounded execution, not an absolute guarantee against every native engine bug.
+Lua 5.4 in a sandbox with separate client and server realms; a plugin error or a
+budget overrun stops that plugin and never the game. docs/PLUGIN_STANDARD.md is the
+package and manifest standard; docs/LUA_HOOKS.md lists the 172 game hooks bridged
+from Xonotic's mutator system (generated by `scripts/gen-lua-hooks.py`). Packages
+install from a file or an HTTPS link, are checked whole before anything is written,
+and start with nothing granted; turning one on shows what it asks for and why. A
+server can neither install nor drive the manager. Native executable plugins are out
+of scope: native code cannot be sandboxed inside the engine process (the standard
+sketches an out-of-process protocol as a proposal only). Covered by
+`scripts/test-lua-sandbox.sh` and `scripts/test-lua-packages.sh`, which need game data
+and are not CI jobs; the manager was exercised on the tablet, where it could not yet
+be shown that a write hook changes damage only with its permission.
 
-Versioned manifest permissions and persisted user grants sit below the existing
-realm allowlists. Importing a manifest never grants it privileges. See
-[MODDING.md](MODDING.md) for the exact syntax, commands, limits and compatibility
-behavior. Executable native plugins are not part of the Lua sandbox standard;
-launching an arbitrary executable would require a separate process protocol and OS
-isolation. File import already exists on Android. A cross-platform remote installer,
-confirmation UI, uninstall and executable-plugin protocol remain work to complete.
+## Privacy
 
-## Browser choice and caching
+No first-run dialogs. A fresh install shares nothing with XonStat (the three
+identity and statistics settings start off; an install that had opted in keeps its
+choice); Settings > Mobile > Privacy has the switches and the terms. The game still
+fetches Xonotic's `checkupdate.txt` at each start, which also supplies the banned
+server list and carries no player identifier.
 
-The deployable browser client uses HTML/CSS native browser controls for loading and
-QuakeC for in-game UI. GTK Broadway is a remote-display protocol using a running
-GTK process, `gtk4-broadwayd` and WebSockets. It is not a client-only libadwaita
-runtime that can be uploaded to static Pages. The browser retains its existing
-cache namespace during rebranding; changing a cache name needlessly reinstalls
-assets. A new web origin cannot directly read the old origin's private OPFS/IDB
-storage, so keeping the old host alias is necessary for existing browser installs.
+## Not done
 
-Downloads must identify immutable content independently of an app build. A failed
-or canceled transfer may retain verified complete chunks, never a partially written
-file under a completed cache key. A warm restart must issue no requests for cached
-pack payloads. Data pruning runs only after all required files have mounted.
-
-## Pack optimization
-
-The previous repacker could expand already-compressed files and ASTC conversions.
-The new default compares each candidate's compressed payload and filename overhead
-with the original. If the candidate grows, it keeps the original compressed bytes,
-name and content. DDS symlinks follow only conversions that were actually accepted.
-This permits a mixed DDS/ASTC pack without dangling references. `--allow-growth`
-explicitly selects the old conversion preference for GPU-load experiments.
-
-Lossless zstd recompression can improve transfer and decode time without lowering
-quality. ASTC, reduced mip sizes and Opus are separate quality/compatibility choices;
-the web and devices without ASTC or Opus support must retain compatible formats.
-Do not ship a phone pack as a universal pack without testing those decoders.
-
-`--profile slim` is the set phones download: 10x10 world textures at most 512 px,
-8x6 model and 6x6 normal-map blocks, 4x4 for the 2D graphics, 64 kbit/s Opus music,
-and no nexcompat pack. `--profile full` keeps the desktop-sized defaults. The size
-table in [PHONE_ASSETS.md](PHONE_ASSETS.md) records what the published set measures.
-
-## Research references
-
-- [Insanotic source](https://github.com/luohoa97/insanotic): disk-backed resumable
-  downloads, bounded native UI state and pack verification are useful concepts;
-  no upstream files are copied into Godnotic by hand.
-- [Android JNI guidance](https://developer.android.com/ndk/guides/jni-tips): keep
-  UI work on managed threads, minimize cross-thread shared state and distinguish
-  JNI's modified UTF-8 from engine UTF-8.
-- [GTK Broadway](https://docs.gtk.org/gtk4/broadway.html): server process and
-  WebSocket requirement rules out static Pages hosting of this GTK backend.
-- [GitHub repository renames](https://docs.github.com/en/repositories/creating-and-managing-repositories/renaming-a-repository): Git URLs redirect, project Pages
-  URLs are an explicit exception. Update feeds and existing Flatpak remotes need
-  validation during the rename.
-
-## Verification and remaining acceptance criteria
-
-| Area | Evidence / acceptance |
-| --- | --- |
-| Launcher core | JVM tests pass, including ordered toggles, failed saves and missing-folder entries |
-| GTK launcher | x86_64 native build passes; ARM Linux runtime was unavailable locally |
-| Android JNI | x86_64 APK builds; emulator enabled and disabled an actual Lua plugin through native controls |
-| ARM Android | Must compile and exercise on the physical tablet; not inferred from an x86 emulator |
-| Lua isolation | Actual engine harness exercises escapes, runaway loops and permission denial/revocation |
-| Web downloads | Behavioral tests must cover cache reuse, canceled transfers and resuming verified chunks |
-| Pack format | Round-trip bytes, checksums, symlinks, accepted and rejected conversions |
-| Server join/rendering | A local server/client smoke and public-server/device joins are required; no unmeasured rendering-speed claim |
-| Battery/performance | Compare identical maps, settings and frame caps; collect cold/warm time, RSS and power/thermal evidence |
-| Ubuntu Touch | Confined launcher regression tests; actual UT hardware validation remains separate |
-
-Full replacement of every widget, a Rust download supervisor, universal remote
-plugin installation, executable plugin isolation, public server rendering A/B and
-long-running battery measurements are not implied by the foundational changes.
+- A phone-sized device has not been used; menu sizes there come from offscreen runs.
+- Dialog title bars and action rows scroll with their content; drawn checkboxes are
+  small inside their 48 dp hit areas; menu text fields use the system keyboard.
+- Web: all data is copied into browser memory at start, and the first visit downloads
+  everything before play.
+- The windowed reliable channel for faster joins between Godnotic peers.
+- Ubuntu Touch hardware validation; a Windows build of the plugin runtime.
