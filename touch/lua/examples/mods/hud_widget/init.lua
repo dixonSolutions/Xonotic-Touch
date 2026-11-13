@@ -28,7 +28,11 @@ xt.on("hud", function(w, h)
   local bh, gap = 18, 4
   -- xt.freespot gives a place clear of chat, the scores, the console button
   -- and the touch sticks and buttons (xt.reserved lists those areas)
-  local x, y = xt.freespot(width, bh * 2 + gap, setting("side", "left"))
+  -- Asked with a margin all round and drawn inside it, so the bars keep
+  -- clear of whatever is next to the spot (the stock ammo number).
+  local m = 10
+  local x, y = xt.freespot(width + 2 * m, bh * 2 + gap + 2 * m, setting("side", "left"))
+  x, y = x + m, y + m
   bar(x, y, width, bh, me.health / 100, 0.9, 0.25, 0.25, "health " .. me.health, numbers)
   bar(x, y + bh + gap, width, bh, me.armor / 100, 0.3, 0.6, 1.0, "armor " .. me.armor, numbers)
 end)

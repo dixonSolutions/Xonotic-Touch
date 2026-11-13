@@ -1407,6 +1407,7 @@ static void IN_Move_TouchScreen_Xonotic(void)
 				VID_SyncTouchFinger();
 			Vid_ClearAllTouchscreenAreas(0);
 		}
+		if (TouchUI_MenuKeysUp()) { VID_SheetMouseFinger(true); VID_TouchTextSheet(TOUCHUI_SHEET_MENU, buttons); } // Touch: the engine's keys for a menu text field (touch_ui.c)
 		break;
 	}
 	// No "keyboard showing" clamp here, unlike the Quake path below: it moved

@@ -1,15 +1,18 @@
-# Godnotic plugin standard (API 2)
+# Godnotic mod package standard (API 2)
 
-This is the standard for Lua **client mods** and **server plugins**: what a package
+This is the standard for Lua **client mods** and **server mods**: what a package
 is, what its manifest says, how it is installed, reviewed, enabled, updated and
 removed, what each permission allows, which events and hooks it can use, how it
-does continuous work, and what the engine promises when a plugin misbehaves.
+does continuous work, and what the engine promises when a mod misbehaves.
+(This file keeps its old name, `PLUGIN_STANDARD.md`, so existing links work.)
 The API reference for the functions themselves is [MODDING.md](MODDING.md); every
 game hook is listed in [LUA_HOOKS.md](LUA_HOOKS.md) (generated).
 
 "Mod" below means either kind unless the realm matters: a **client mod** runs in your
-game (`<userdir>/mods/<name>/`), a **server plugin** runs on a server this engine
-hosts (`<userdir>/plugins/<name>/`).
+game, on this device (`<userdir>/mods/<name>/`); a **server mod** runs in games you
+host, on a server this engine runs (`<userdir>/plugins/<name>/`: the folder keeps its
+old name for compatibility). Server mods are managed with `sv_lua_mods` and
+`sv_lua_mod_*`; the older names `sv_lua_plugins` and `sv_lua_plugin_*` still work.
 
 ## 1. Package format
 
@@ -71,7 +74,7 @@ setting.numbers: bool 1 | Show the numbers
 | `id` | API 2: should | the install name: `a-z 0-9 _`, up to 32 characters. It names the folder, the commands (`lua_<id>_…`) and the cvars. It must equal the folder name; without it the installer uses the archive's top folder, then the file name |
 | `title`, `version`, `author`, `description`, `homepage` | no | shown in the manager. `version` is free text; the manager compares nothing, it shows old and new |
 | `api` | yes (from API 1) | the API level the mod is written for (section 3). No `api:` line = a **legacy** mod |
-| `realm` | no | `client`, `server` or `both`. A `server` package is refused by `lua_mod_install` and a `client` one by `sv_lua_plugin_install`; `both` may be installed with either |
+| `realm` | no | `client`, `server` or `both`. A `server` package is refused by `lua_mod_install` and a `client` one by `sv_lua_mod_install`; `both` may be installed with either |
 | `main` | no | the entry point; only `init.lua` exists in this standard (reserved for later) |
 | `permissions` | no | the scopes it asks for, comma or space separated (section 5) |
 | `reason.<scope>` | should | one line telling the user why it needs that scope; shown at install and in the manager |
@@ -81,7 +84,7 @@ setting.numbers: bool 1 | Show the numbers
 **Settings.** `setting.<name>: <type> <default> [args] | <label>`, `<name>` `a-z 0-9`.
 Types: `bool` (`0`/`1`), `number <default> <min> <max> [step]`, `choice <default>
 <option> <option>…` (2 to 8), `text <default…>`. The engine creates the cvar
-`lua_<id>_<name>` (`sv_lua_<id>_<name>` for plugins) with the default, saved in the
+`lua_<id>_<name>` (`sv_lua_<id>_<name>` for server mods) with the default, saved in the
 config; the manager's **Settings** page edits it; the mod reads it with
 `xt.setting("<name>")` (no permission needed: it is its own).
 
@@ -150,7 +153,7 @@ again is the retry).
 | `hooks_write` | 2 | changing a hook's declared outputs and cancelling a hook that allows it (server) |
 
 `hooks_write` is separate from `hooks` on purpose: watching the game and changing
-its rules are different decisions. Without `hooks_write` a plugin's handlers still
+its rules are different decisions. Without `hooks_write` a server mod's handlers still
 run and see everything; what they set is ignored.
 
 A call without its scope raises `permission denied: <scope>; not granted yet:
@@ -183,11 +186,11 @@ xt.hook("ForbidThrowCurrentWeapon", function(h) return true end) -- cancel: need
 
 * **outputs**: the arguments the game declares `o(…)` may be changed (numbers,
   booleans, vectors, strings; never entities). NaN and infinities are ignored.
-  Plugins run in name order; each sees the previous one's changes.
+  Server mods run in name order; each sees the previous one's changes.
 * **cancel**: where the game's description says to return true, a handler
   returning `true` does that.
 * **cost**: a hook's bridge callback is in the game's hook chain only while a
-  running plugin with `hooks` subscribes to it, so an unused hook costs nothing
+  running server mod with `hooks` subscribes to it, so an unused hook costs nothing
   (no call at all; the only fixed cost is one builtin call per server frame that
   asks whether the subscriptions changed). Measured (local bot match, 9 players,
   64 server frames/s, desktop x86-64): a trivial handler costs 2.2 µs per call on
@@ -208,7 +211,7 @@ xt.hook("ForbidThrowCurrentWeapon", function(h) return true end) -- cancel: need
 
 Every call into a mod — an event, a hook, a command, a timer step — has a budget:
 `lua_instructions` (2,000,000), `lua_time_ms` (40 ms), `lua_memory_mb` (16 MB);
-hook calls `lua_hook_ms` (5 ms) and, per plugin, `lua_hook_frame_ms` (25 ms of hook
+hook calls `lua_hook_ms` (5 ms) and, per server mod, `lua_hook_frame_ms` (25 ms of hook
 calls per frame). **A literal endless loop is stopped by design** — the game must
 keep drawing frames. Continuous work is written as work the engine resumes:
 
@@ -236,7 +239,7 @@ xt.cancel(id)
 
 ## 8. Stability promise
 
-**A mod or plugin can never stop the game.** An error, a limit (instructions, time,
+**A mod can never stop the game.** An error, a limit (instructions, time,
 memory, the hook budgets), an error in a coroutine or a timer, or an engine frame
 abandoned during its call (loading screen cancel) stops **that mod only**: its state
 is closed, it is marked `error` with the message, the message is in its output
@@ -248,13 +251,13 @@ What this covers: everything a mod's Lua code can do — loops, recursion, memor
 patterns, the table library, coroutines, `pcall` (a mod cannot catch its own death),
 hooks, timers. What it does not cover:
 
-* **hook outputs are trusted to the game's own checks.** A plugin with
+* **hook outputs are trusted to the game's own checks.** A server mod with
   `hooks_write` can set a hook's output to a value the game code then rejects in its
   own way (a QC runtime error ends the map, as it would for a broken mutator). Only
   declared outputs are writable, never entities, never NaN; grant `hooks_write` only
-  to plugins you trust to change the rules.
+  to server mods you trust to change the rules.
 * bugs in the engine itself (please report them).
-* what a granted scope legitimately does (a plugin with `messages` can spam within
+* what a granted scope legitimately does (a server mod with `messages` can spam within
   its rate limit; one with `hooks_write` can make a match unplayable).
 
 ## 9. Screen space (client mods)
@@ -278,50 +281,50 @@ them with a setting.
 * **Android**: *Pick file* in the Mods tab opens the system picker; the app copies
   the zip to `<userdir>/luastate/incoming/` and the engine installs it from there
   with the same checks and the same review.
-* **Launcher**: its Mods page lists mods and plugins with their permission state.
+* **Launcher**: its Mods page lists client mods and server mods with their permission state.
   *Install from file…* leaves `<userdir>/luastate/incoming/request.txt` (`mod <path>`
-  or `plugin <path>`); the game reads it once at start, opens the Mods tab and shows
+  or `plugin <path>` for a server mod); the game reads it once at start, opens the Mods tab and shows
   the same review. The launcher itself never unpacks or enables anything.
 * **Servers**: a server can never install, update, remove, enable or grant
   anything: these commands refuse while a server this engine does not host may have
   put text in the command buffer (stufftext, its CSQC's `localcmd`), until that text
   has run.
 
-## 11. Out of scope: native plugins
+## 11. Out of scope: native mods
 
 Native code (a `.so`/`.dll` loaded into the game) is **not** part of this standard.
 Code in the engine's process can read and write all of its memory, open files and
 sockets, and crash the process; no in-process check can contain it, so it could not
-honour sections 5 and 8. Lua is the plugin language because its interpreter is the
+honour sections 5 and 8. Lua is the mod language because its interpreter is the
 sandbox.
 
-## Appendix A (proposal, not implemented): out-of-process native plugins
+## Appendix A (proposal, not implemented): out-of-process native mods
 
-If native plugins are wanted later, they would run **as separate processes** that
+If native mods are wanted later, they would run **as separate processes** that
 talk to the engine over a pipe, sandboxed by the operating system, so the promise
-above still holds (a dead plugin process is just a stopped plugin).
+above still holds (a dead mod process is just a stopped mod).
 
-* **Transport**: the engine starts `plugin-host <package>` with stdin/stdout as a
+* **Transport**: the engine starts `mod-host <package>` with stdin/stdout as a
   pipe (or a Unix socket on desktop). Messages are length-prefixed JSON (4-byte
   little-endian length, then UTF-8 JSON), at most 64 KB each.
 * **Handshake**: engine → `{"t":"hello","api":2,"realm":"server","grants":["events","messages"]}`;
-  plugin → `{"t":"hello","id":"…","version":"…","subscribe":["death","hook:Damage_Calculate"]}`.
+  mod → `{"t":"hello","id":"…","version":"…","subscribe":["death","hook:Damage_Calculate"]}`.
 * **Events**: engine → `{"t":"event","seq":17,"name":"death","args":[3,5,"rocket"]}`;
   hooks the same, and for writable hooks the engine waits at most the hook budget for
   `{"t":"result","seq":17,"set":{"damage":12},"cancel":false}`; a late or missing
-  answer counts as "no change" and repeated lateness stops the plugin.
-* **Calls**: plugin → `{"t":"call","seq":4,"fn":"tell","args":[3,"hi"]}`, answered with
+  answer counts as "no change" and repeated lateness stops the mod.
+* **Calls**: mod → `{"t":"call","seq":4,"fn":"tell","args":[3,"hi"]}`, answered with
   `{"t":"ret","seq":4,"ok":true,"value":null}`. Exactly the `xt` functions its grants
   allow, checked by the engine as for Lua.
 * **Sandbox**: Linux: a seccomp filter (read/write on its pipe, memory, exit), no
   network or file namespaces (bwrap-style), rlimits on CPU and memory; Android: an
   isolated service process (`android:isolatedProcess`); Windows/macOS: AppContainer /
-  App Sandbox. No native plugin on the web.
+  App Sandbox. No native mod on the web.
 * **Packages**: the same zip and manifest, with `main: <binary>` per platform and
   architecture and a required sha256 per binary; the same review, and an explicit
   "runs native code" warning.
 
-## Appendix B: checklist for a plugin author
+## Appendix B: checklist for a mod author
 
 1. `mod.txt` with `id`, `title`, `version`, `api: 2`, `realm`, `permissions` and a
    `reason.<scope>` line for each.
@@ -329,9 +332,10 @@ above still holds (a dead plugin process is just a stopped plugin).
 3. No endless loops: `xt.spawn` + `xt.sleep`, `xt.every`, the `frame` event.
 4. Client panels at `xt.freespot(...)` by default, movable with a `setting.`.
 5. Zip the folder; publish over HTTPS and give the sha256 next to the link.
-6. Try it: `lua_mod_install /path/to/your.zip`, `lua_install_confirm`, turn it on in
-   the Mods tab, watch `lua_mod_log <id>`.
+6. Try it: `lua_mod_install /path/to/your.zip` (a server mod: `sv_lua_mod_install`),
+   `lua_install_confirm`, turn it on in the Mods tab, watch `lua_mod_log <id>` or the
+   Output page.
 
 Examples: [`touch/lua/examples`](../touch/lua/examples) — `mods/hud_widget` (HUD widget
-with settings), `plugins/damage_scale` (a write hook), `plugins/leader_watch`
-(a coroutine doing continuous work), and the API 1 ones.
+with settings), the server mods `plugins/damage_scale` (a write hook) and
+`plugins/leader_watch` (a coroutine doing continuous work), and the API 1 ones.

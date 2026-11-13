@@ -20,12 +20,6 @@ void TouchLauncher_Open(entity btn, entity dlg)
 	DialogOpenButton_Click(btn, dlg);
 }
 
-void TouchLauncher_OpenLan(entity btn, entity dlg)
-{
-	cvar_set("net_slist_lan_only", "1");
-	DialogOpenButton_Click(btn, dlg);
-}
-
 void TouchLauncher_Goto(entity btn, entity me)
 {
 	m_goto(btn.cvarName, false);
@@ -49,32 +43,32 @@ entity TouchLauncher_TileOpen(string label, vector color, float big, entity dlg)
 void GodnoticLauncherDialog_fill(entity me)
 {
 	entity e;
+	// LAN games and hosting live in Multiplayer (its Internet | LAN switch
+	// and "Host a LAN game", touch_menu_reflow.qc), Mods in Settings.
 	me.TR(me);
 		me.TD(me, 2, 2, e = TouchLauncher_TileOpen(_("Play"), '0.6 1 0.6', 1, me.singleplayerDialog));
 			e.tooltip = _("Instant action against bots, or the campaign");
 		me.TD(me, 2, 2, e = TouchLauncher_TileOpen(_("Multiplayer"), '0 0 0', 1, me.multiplayerDialog));
 			e.tooltip = _("Servers on the internet and on this network");
 		me.TD(me, 2, 2, e = TouchLauncher_TileOpen(_("Settings"), '0 0 0', 1, me.settingsDialog));
-	me.TR(me);
-	me.TR(me);
-		me.TD(me, 2, 2, e = TouchLauncher_Tile(_("LAN games"), '0.55 1 0.55', 1));
-			e.onClick = TouchLauncher_OpenLan;
-			e.onClickEntity = me.multiplayerDialog;
-			e.tooltip = _("Games on this Wi-Fi or network");
-		me.TD(me, 2, 2, e = TouchLauncher_Tile(_("Host LAN"), '0.55 1 0.55', 1));
-			e.cvarName = "TouchLanHost";
-			e.onClick = TouchLauncher_Goto;
-			e.onClickEntity = e;
-			setDependent(e, "touch_lan_available", 1, 1); // not in the browser
-		me.TD(me, 2, 2, e = TouchLauncher_Tile(_("Mods"), '0 0 0', 1));
-			e.cvarName = "touchmods";
-			e.onClick = TouchLauncher_Goto;
-			e.onClickEntity = e;
-	me.TR(me);
-	me.TR(me);
-		me.TD(me, 1, 2, e = TouchLauncher_TileOpen(_("Media"), '0 0 0', 0, me.mediaDialog));
-		me.TD(me, 1, 2, e = TouchLauncher_TileOpen(_("Credits"), '0 0 0', 0, me.creditsDialog));
-		me.TD(me, 1, 2, e = TouchLauncher_TileOpen(_("Quit"), '1 0.6 0.6', 0, me.quitDialog));
+	me.gotoRC(me, 2.35, 0);
+		me.TD(me, 1.65, 2, e = TouchLauncher_TileOpen(_("Media"), '0 0 0', 0, me.mediaDialog));
+		me.TD(me, 1.65, 2, e = TouchLauncher_TileOpen(_("Credits"), '0 0 0', 0, me.creditsDialog));
+		me.TD(me, 1.65, 2, e = me.quitTile = TouchLauncher_TileOpen(_("Quit"), '1 0.6 0.6', 0, me.quitDialog));
+}
+
+float GodnoticLauncherDialog_keyDown(entity me, float key, float ascii, float shift)
+{
+	// Back (Escape) with nothing open over the launcher: the Quit question,
+	// as the Quit tile asks it. Out of a match only; in one the menu's own
+	// Escape handling applies.
+	if (key == K_ESCAPE && me.quitDialog && me.quitTile && !(gamestatus & (GAME_CONNECTED | GAME_ISSERVER)))
+	{
+		m_play_click_sound(MENU_SOUND_OPEN);
+		DialogOpenButton_Click(me.quitTile, me.quitDialog);
+		return 1;
+	}
+	return SUPER(GodnoticLauncherDialog).keyDown(me, key, ascii, shift);
 }
 
 entity TouchLauncher_AddSheet(entity mainwindow, entity i)
@@ -101,6 +95,22 @@ bool TouchLauncher_Configure(entity me)
 	float m = TouchMenuScale_dpToUnits(8) / conheight;
 	me.addItem(me, l, eY * top, eX + eY * (1 - top - m), SKINALPHAS_MAINMENU_z);
 	me.moveItemAfter(me, l, NULL); // first: what the menu goes back to when it hides
+	// The sheets right behind it, ahead of every other dialog: the main
+	// window's front dialog is its last one shown, so a dialog a sheet opens
+	// (Mutators..., Filters..., the Mods manager) has to come after it.
+	entity after = l;
+	entity sheets[6];
+	sheets[0] = l.singleplayerDialog;
+	sheets[1] = l.multiplayerDialog;
+	sheets[2] = l.mediaDialog;
+	sheets[3] = l.settingsDialog;
+	sheets[4] = l.creditsDialog;
+	sheets[5] = l.quitDialog;
+	for (int i = 0; i < 6; ++i)
+	{
+		me.moveItemAfter(me, sheets[i], after);
+		after = sheets[i];
+	}
 	// One sheet at a time: what is behind the front sheet (the launcher, a
 	// sheet that opened this one) all but disappears instead of showing
 	// through it at 30%.

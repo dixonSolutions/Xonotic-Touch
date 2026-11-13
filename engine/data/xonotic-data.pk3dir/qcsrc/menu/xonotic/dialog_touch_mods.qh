@@ -1,13 +1,18 @@
 #pragma once
 
-// Settings -> Mobile -> Mods: the manager for Lua client mods (<userdir>/mods)
-// and server plugins (<userdir>/plugins), docs/PLUGIN_STANDARD.md.
+// The manager for Lua client mods (<userdir>/mods) and server plugins
+// (<userdir>/plugins), docs/PLUGIN_STANDARD.md: a sheet of its own
+// ("touchmods"), opened from Settings > Mods (directly on a touch device,
+// by the button on that page on a desktop), so its pages get the whole
+// screen rather than the room under the rows of tabs.
 //
-// One tab with five views: the list (client mods or server plugins), a mod's
+// One sheet with these views: the list (client mods or server plugins), a mod's
 // details (permissions with the author's reasons and a switch each, settings,
 // recent output, events/hooks/commands), Install (a link or a file), the
-// review shown before anything is installed, and the confirmation before an
-// uninstall. Rows are finger-sized; everything works with a mouse too.
+// review shown before anything is installed, the confirmation before an
+// uninstall, and a page with the whole of a text too long for its row (tap
+// a text that ends in "..."). Rows are finger-sized; everything works with
+// a mouse too.
 //
 // The tab never changes anything itself: every action is the console command
 // the engine checks (lua_mod_enable, lua_mod_permission, lua_mod_install,
@@ -27,17 +32,34 @@
 // engine checks and reviews it like any other package. The button only shows
 // where that status file exists.
 
+#include "rootdialog.qh"
 #include "tab.qh"
 #include "textlabel.qh"
 #include "touchbutton.qh"
 #include "inputbox.qh"
 
+CLASS(GodnoticModsDialog, XonoticRootDialog)
+	METHOD(GodnoticModsDialog, fill, void(entity));
+	ATTRIB(GodnoticModsDialog, title, string, _("Mods"));
+	ATTRIB(GodnoticModsDialog, color, vector, SKINCOLOR_DIALOG_SETTINGS);
+	ATTRIB(GodnoticModsDialog, intendedWidth, float, 0.96);
+	ATTRIB(GodnoticModsDialog, rows, float, 14);
+	ATTRIB(GodnoticModsDialog, columns, float, 6);
+	ATTRIB(GodnoticModsDialog, name, string, "touchmods");
+ENDCLASS(GodnoticModsDialog)
+entity godnotic_mods_dialog;
+// mainwindow.qc: add the manager's sheet.
+void TouchMods_ConfigureDialogs(entity mainwindow);
+// A button's onClick: open the manager (Settings > Mods).
+void TouchMods_OpenManager(entity btn, entity me);
+
+// Settings > Mods: what the manager is, and a button to open it.
 CLASS(GodnoticModsTab, XonoticTab)
 	METHOD(GodnoticModsTab, fill, void(entity));
 	ATTRIB(GodnoticModsTab, intendedWidth, float, 0.9);
-	ATTRIB(GodnoticModsTab, rows, float, 14);
+	ATTRIB(GodnoticModsTab, rows, float, 15.5);
 	ATTRIB(GodnoticModsTab, columns, float, 6);
-	ATTRIB(GodnoticModsTab, name, string, "touchmods");
+	ATTRIB(GodnoticModsTab, name, string, "touchmodstab");
 ENDCLASS(GodnoticModsTab)
 entity makeGodnoticModsTab();
 
@@ -50,8 +72,14 @@ CLASS(GodnoticModsButton, GodnoticButton)
 	ATTRIB(GodnoticModsButton, modText, string);
 ENDCLASS(GodnoticModsButton)
 
+// A text of the current view. One too long for its box wraps onto a second
+// line, and past that ends in "..." and opens the whole of it when tapped.
 CLASS(GodnoticModsLabel, XonoticTextLabel)
 	METHOD(GodnoticModsLabel, draw, void(entity));
+	METHOD(GodnoticModsLabel, mousePress, bool(entity, vector));
+	METHOD(GodnoticModsLabel, mouseRelease, float(entity, vector));
+	ATTRIB(GodnoticModsLabel, modCut, bool, false);
+	ATTRIB(GodnoticModsLabel, modPressed, bool, false);
 	ATTRIB(GodnoticModsLabel, modSlot, int, 0);
 	ATTRIB(GodnoticModsLabel, modRole, int, 0);
 	ATTRIB(GodnoticModsLabel, modText, string);

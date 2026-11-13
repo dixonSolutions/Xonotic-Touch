@@ -6,6 +6,7 @@
 #include "slider.qh"
 #include "checkbox.qh"
 #include "button.qh"
+#include "radiobutton.qh"
 
 float touch_menu_size_at_init; // menu_touch_size this menu was built with
 
@@ -82,4 +83,17 @@ void GodnoticMenuSizeTab_fill(entity me)
 			e.tooltip = _("The stock Xonotic menu, sized for a mouse. Apply to switch");
 		me.TD(me, 1, 3, e = makeXonoticTextLabel(0, strzone(sprintf(_("Screen: %d dpi, rows %d dp"), rint(TouchMenuScale_dpi()), TOUCH_MENU_ROW_DP)))); // kept: a label holds on to its text
 			e.allowCut = true;
+	// Which keyboard a menu text field gets (touch_ui.c, touch_menu_keyboard).
+	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Keyboard for text fields")));
+	me.TR(me);
+		me.TD(me, 1, 2, e = makeXonoticRadioButton_T(1, "touch_menu_keyboard", "0", _("Automatic"),
+			_("The game's keys for languages written in Latin letters, the system keyboard for the others")));
+		me.TD(me, 1, 2, e = makeXonoticRadioButton_T(1, "touch_menu_keyboard", "1", _("Game keys"),
+			_("The same keys as the console and chat, with accents on a long press")));
+		me.TD(me, 1, 2, e = makeXonoticRadioButton_T(1, "touch_menu_keyboard", "2", _("System keyboard"),
+			_("The phone's own keyboard, with its input methods")));
+	me.TR(me);
+		me.TD(me, 2, me.columns, e = makeXonoticTextLabel(0, _("The game's keys type Latin letters and their accents (hold a key). Chinese, Japanese, Korean, Cyrillic, Greek and other scripts need the system keyboard's input method: Automatic picks it when the game or the system is set to such a language.")));
+			e.allowWrap = true;
 }

@@ -1029,6 +1029,7 @@ void m_draw(float width, float height)
 		// touch controls on, syncing here made every frame look still, and a
 		// mouse (or finger) then neither hovered nor dragged a slider.
 		vector newMouse = menu_absolute_mousepos();
+		if (TouchSheet_overKeys(newMouse)) newMouse = menuMousePos; // Touch: the pointer over the engine's keys is not over the menu
 		if (newMouse != menuMousePos)
 		{
 			menuMousePos = newMouse;

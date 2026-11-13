@@ -1,5 +1,9 @@
 #include "dialog_touch_mods.qh"
 
+#include "dialog.qh"
+#include "touch_menu_vgrid.qh"
+#include "../item/modalcontroller.qh"
+
 // The Mods tab (see dialog_touch_mods.qh). A model function (TouchMods_update,
 // once per frame) turns the engine's cvars and the current view into the text
 // and the action of every widget; the widgets only show it and run the action
@@ -16,6 +20,7 @@ const int TM_V_INSTALL = 2;
 const int TM_V_REVIEW = 3;
 const int TM_V_REMOVE = 4;
 const int TM_V_ENABLE = 5;  // turning a mod on: what it asks for, granted in one step
+const int TM_V_TEXT = 6;    // the whole of a text too long for its row
 
 const int TM_P_PERMS = 0;
 const int TM_P_SETTINGS = 1;
@@ -33,6 +38,7 @@ const int TM_L_TITLE = 0;
 const int TM_L_DETAIL = 1;
 const int TM_L_SUMMARY = 2;
 const int TM_L_HEADER = 3;
+const int TM_L_FULL = 4;    // the text page's text, over the rows
 
 int tm_view;
 int tm_realm;        // 0: client mods, 1: server plugins
@@ -64,6 +70,8 @@ string tm_bar[TM_BARS];
 string tm_baract[TM_BARS];
 bool tm_barsel[TM_BARS];
 string tm_header, tm_summary, tm_prevact, tm_nextact;
+string tm_fullhead, tm_fulltext; // the text page
+int tm_textback;                 // the view it returns to
 
 #define TM_SET(var, val) MACRO_BEGIN string _tm_v = (val); if (_tm_v != var) strcpy(var, _tm_v); MACRO_END
 
@@ -295,12 +303,12 @@ string TouchMods_importStatus()
 
 string TouchMods_prefix(int realm)
 {
-	return realm ? "sv_lua_plugin_" : "lua_mod_";
+	return realm ? "sv_lua_mod_" : "lua_mod_";
 }
 
 string TouchMods_kind(int realm)
 {
-	return realm ? _("plugin") : _("mod");
+	return realm ? _("server mod") : _("mod");
 }
 
 string TouchMods_stateText(string st)
@@ -380,10 +388,10 @@ void TouchMods_modelList()
 	TouchMods_readList();
 	int first = TouchMods_paging(tm_count, TM_SLOTS);
 	string p = TouchMods_prefix(tm_realm);
-	TM_SET(tm_header, (tm_realm ? _("Server plugins (games you host)") : _("Client mods")));
+	TM_SET(tm_header, (tm_realm ? _("Server mods (games you host)") : _("Client mods (this device)")));
 	if (!tm_count)
 		TM_SET(tm_summary, strcat((tm_realm
-			? _("No plugins yet. Install one, or put its folder in the plugins folder; new ones start off.")
+			? _("No server mods yet. Install one, or put its folder in the plugins folder; new ones start off.")
 			: _("No mods yet. Install one, or put its folder in the mods folder; new ones start off.")), TouchMods_lastMessage()));
 	else
 		TM_SET(tm_summary, strcat(sprintf(_("%d installed. %s"), tm_count, TouchMods_pageText(tm_count, TM_SLOTS)), TouchMods_lastMessage()));
@@ -406,8 +414,19 @@ void TouchMods_modelList()
 			TM_SET(tm_bact[s], strcat(p, "reload ", tm_name[i]));
 		}
 	}
-	TouchMods_bar(0, _("Mods"), "@realm 0", !tm_realm);
-	TouchMods_bar(1, _("Plugins"), "@realm 1", tm_realm);
+	// How to make a mod: in the first row the page leaves free.
+	for (int hs = 0; hs < TM_SLOTS; ++hs)
+		if (first + hs >= tm_count)
+		{
+			TM_SET(tm_big[hs], _("Guide"));
+			TM_SET(tm_bigact[hs], "@howto");
+			tm_bigcolor[hs] = '0.6 0.85 1';
+			TM_SET(tm_title[hs], strcat("^7", _("How to make a mod")));
+			TM_SET(tm_detail[hs], strcat("^8", _("Opens the guide (docs/MODDING.md on GitHub) in your browser: a first mod in five minutes.")));
+			break;
+		}
+	TouchMods_bar(0, _("Client mods"), "@realm 0", !tm_realm);
+	TouchMods_bar(1, _("Server mods"), "@realm 1", tm_realm);
 	TouchMods_bar(2, _("Install..."), "@install", false);
 	if (tm_count)
 		TouchMods_bar(3, _("Reload all"), strcat(p, "reload"), false);
@@ -428,7 +447,7 @@ void TouchMods_modelDetail()
 		return;
 	}
 	bool on = TouchMods_isOn(tm_d_state);
-	TM_SET(tm_header, sprintf("%s %s", (tm_realm ? _("Plugin") : _("Mod")), tm_d_title));
+	TM_SET(tm_header, sprintf("%s %s", (tm_realm ? _("Server mod") : _("Mod")), tm_d_title));
 	TM_SET(tm_big[0], (on ? _("ON") : _("OFF")));
 	TM_SET(tm_bigact[0], (on ? sprintf("%sdisable %s", p, tm_sel) : strcat("@turnon ", tm_sel)));
 	tm_bigcolor[0] = (tm_d_state == "error" || tm_d_state == "unfinished") ? '1 0.55 0.55' : (on ? '0.55 1 0.55' : '1 1 1');
@@ -451,7 +470,7 @@ void TouchMods_modelDetail()
 	switch (tm_sub)
 	{
 		case TM_P_PERMS:
-			what = _("Permissions: tap to grant or take back. A grant restarts it if it stopped without one.");
+			what = _("Permissions: each switch shows what it has. Tap one to allow it or take it back; allowing restarts a mod that stopped without it.");
 			first = TouchMods_paging(tm_np, per);
 			if (!tm_np)
 				TM_SET(tm_title[1], strcat("^8", _("It asks for no permissions.")));
@@ -459,7 +478,7 @@ void TouchMods_modelDetail()
 			{
 				i = first + s;
 				if (i >= tm_np) break;
-				TM_SET(tm_big[s + 1], (tm_pg[i] ? _("Granted") : _("Not granted")));
+				TM_SET(tm_big[s + 1], (tm_pg[i] ? _("Allowed") : _("Not allowed")));
 				tm_bigcolor[s + 1] = tm_pg[i] ? '0.55 1 0.55' : '1 0.85 0.5';
 				TM_SET(tm_bigact[s + 1], sprintf("%spermission %s %s %s", p, tm_sel, (tm_pg[i] ? "revoke" : "grant"), tm_pn[i]));
 				TM_SET(tm_title[s + 1], strcat("^7", tm_pn[i]));
@@ -563,42 +582,50 @@ void TouchMods_modelDetail()
 void TouchMods_modelInstall()
 {
 	TouchMods_readInstall();
-	TM_SET(tm_header, (tm_target ? _("Install a server plugin") : _("Install a client mod")));
+	TM_SET(tm_header, (tm_target ? _("Install a server mod") : _("Install a client mod")));
 	TM_SET(tm_summary, _("Nothing is written until you have seen what it asks for. It installs switched off, with no permissions."));
-	TM_SET(tm_title[0], strcat("^7", _("A link (https:// only) or a file on this device")));
-	TM_SET(tm_detail[0], strcat("^8", _("A .zip with init.lua and mod.txt. Add #sha256=<hash> to a link to pin the exact file.")));
-	TM_SET(tm_big[1], (tm_target ? _("Plugin") : _("Mod")));
-	TM_SET(tm_bigact[1], "@target");
-	TM_SET(tm_detail[1], strcat("^8", _("e.g. https://example.org/hud_clock.zip  or  /home/me/hud_clock.zip")));
-	TM_SET(tm_a[1], _("Review"));
-	TM_SET(tm_aact[1], "@review");
-	TM_SET(tm_b[1], _("Clear"));
-	TM_SET(tm_bact[1], "@clear");
+	// What it is: two choices, the chosen one lit.
+	TM_SET(tm_big[0], (!tm_target ? _("Chosen") : _("Choose")));
+	tm_bigcolor[0] = !tm_target ? '0.55 1 0.55' : '1 1 1';
+	TM_SET(tm_bigact[0], "@target 0");
+	TM_SET(tm_title[0], strcat("^7", _("Client mod (this device)")));
+	TM_SET(tm_detail[0], strcat("^8", _("Runs in your own game here: HUD, sounds, controls. Only you see it.")));
+	TM_SET(tm_big[1], (tm_target ? _("Chosen") : _("Choose")));
+	tm_bigcolor[1] = tm_target ? '0.55 1 0.55' : '1 1 1';
+	TM_SET(tm_bigact[1], "@target 1");
+	TM_SET(tm_title[1], strcat("^7", _("Server mod (games you host)")));
+	TM_SET(tm_detail[1], strcat("^8", _("Runs in the games this device hosts, for everyone in them; not in games you join.")));
+	// Where it comes from: the field over slot 2's title.
+	TM_SET(tm_detail[2], strcat("^8", _("A https:// link or a path to a .zip with init.lua and mod.txt. Add #sha256=<hash> to a link to pin the exact file.")));
+	TM_SET(tm_a[2], _("Review"));
+	TM_SET(tm_aact[2], "@review");
+	TM_SET(tm_b[2], _("Clear"));
+	TM_SET(tm_bact[2], "@clear");
 	string imp = TouchMods_importStatus();
 	if (imp != "")
 	{
-		TM_SET(tm_big[2], _("Pick file"));
-		TM_SET(tm_bigact[2], "@pick");
-		TM_SET(tm_title[2], strcat("^7", _("Pick a .zip with the system file picker")));
+		TM_SET(tm_big[3], _("Pick file"));
+		TM_SET(tm_bigact[3], "@pick");
+		TM_SET(tm_title[3], strcat("^7", _("Or pick a .zip with the system file picker")));
 		string shown = (substring(imp, 0, 7) == "picked ") ? _("Picked: checking it now...") : imp;
-		TM_SET(tm_detail[2], strcat("^8", ((imp != " ") ? shown : _("It is checked and shown here before anything is installed."))));
+		TM_SET(tm_detail[3], strcat("^8", ((imp != " ") ? shown : _("It is checked and shown here before anything is installed."))));
 	}
 	else
 	{
-		TM_SET(tm_title[2], strcat("^7", _("Or a folder or .zip path on this computer")));
-		TM_SET(tm_detail[2], strcat("^8", _("The launcher's Mods page can pick a file and send it here.")));
+		TM_SET(tm_title[3], strcat("^7", _("Or a folder or .zip path on this computer")));
+		TM_SET(tm_detail[3], strcat("^8", _("The launcher's Mods page can pick a file and send it here.")));
 	}
 	string st = tm_i_state;
 	if (st == "downloading")
-		TM_SET(tm_title[3], strcat("^3", tm_i_message));
+		TM_SET(tm_title[4], strcat("^3", tm_i_message));
 	else if (st == "error")
-		TM_SET(tm_title[3], strcat("^1", _("Refused:"), " ", tm_i_message));
+		TM_SET(tm_title[4], strcat("^1", _("Refused:"), " ", tm_i_message));
 	else if (st == "done")
-		TM_SET(tm_title[3], strcat("^2", tm_i_message));
+		TM_SET(tm_title[4], strcat("^2", tm_i_message));
 	if (st == "downloading")
 	{
-		TM_SET(tm_a[3], _("Stop"));
-		TM_SET(tm_aact[3], "lua_install_cancel");
+		TM_SET(tm_a[4], _("Stop"));
+		TM_SET(tm_aact[4], "lua_install_cancel");
 	}
 	TouchMods_bar(0, _("< Back"), "@list", false);
 }
@@ -607,7 +634,7 @@ void TouchMods_modelReview()
 {
 	TouchMods_readInstall();
 	bool plugin = (tm_i_realm == "plugin");
-	TM_SET(tm_header, (tm_i_update ? sprintf(_("Update this %s?"), plugin ? _("plugin") : _("mod")) : sprintf(_("Install this %s?"), plugin ? _("plugin") : _("mod"))));
+	TM_SET(tm_header, (tm_i_update ? sprintf(_("Update this %s?"), plugin ? _("server mod") : _("mod")) : sprintf(_("Install this %s?"), plugin ? _("server mod") : _("mod"))));
 	TM_SET(tm_big[0], (tm_i_update ? _("Update") : _("New")));
 	tm_bigcolor[0] = '0.6 0.8 1';
 	string by = "";
@@ -670,7 +697,7 @@ void TouchMods_modelEnable()
 		tm_view = tm_backview;
 		return;
 	}
-	TM_SET(tm_title[0], strcat("^7", _("It asks for these permissions. Grant what you trust, then it starts.")));
+	TM_SET(tm_title[0], strcat("^7", _("It asks for these permissions. Each switch shows what it will get; tap one to change it.")));
 	TM_SET(tm_detail[0], strcat("^8", _("You can take any of them back later in its Permissions page.")));
 	int per = TM_SLOTS - 1;
 	int first = TouchMods_paging(tm_np, per);
@@ -684,24 +711,24 @@ void TouchMods_modelEnable()
 		if (i >= tm_np) break;
 		if (tm_pg[i])
 		{
-			TM_SET(tm_big[s + 1], _("Granted"));
+			TM_SET(tm_big[s + 1], _("Allowed"));
 			tm_bigcolor[s + 1] = '0.55 1 0.55';
 		}
 		else
 		{
-			TM_SET(tm_big[s + 1], (tm_choose[i] ? _("Grant") : _("Skip")));
+			TM_SET(tm_big[s + 1], (tm_choose[i] ? _("Allowed") : _("Not allowed")));
 			tm_bigcolor[s + 1] = (tm_choose[i] ? '0.55 1 0.55' : '1 0.85 0.5');
 			TM_SET(tm_bigact[s + 1], sprintf("@choose %d", i));
 		}
 		TM_SET(tm_title[s + 1], strcat("^7", tm_pn[i]));
 		TM_SET(tm_detail[s + 1], strcat("^8", tm_pr[i]));
 	}
-	TM_SET(tm_summary, strcat(sprintf(_("%d not granted yet."), missing), " ", TouchMods_pageText(tm_np, per)));
+	TM_SET(tm_summary, strcat(sprintf(_("%d not allowed yet."), missing), " ", TouchMods_pageText(tm_np, per)));
 	if (grant != "")
-		TouchMods_bar(4, _("Grant + turn on"), sprintf("%spermission %s grant %s\n%senable %s", p, tm_sel, grant, p, tm_sel), true);
+		TouchMods_bar(4, _("Allow, turn on"), sprintf("%spermission %s grant %s\n%senable %s", p, tm_sel, grant, p, tm_sel), true);
 	else
 		TouchMods_bar(4, _("Turn on"), sprintf("%senable %s", p, tm_sel), true);
-	TouchMods_bar(3, _("Grant all"), "@chooseall", false);
+	TouchMods_bar(3, _("Allow all"), "@chooseall", false);
 }
 
 void TouchMods_modelRemove()
@@ -718,6 +745,13 @@ void TouchMods_modelRemove()
 	TM_SET(tm_detail[1], strcat("^8", (tm_keepdata ? _("is kept: a reinstall finds it again") : _("is deleted too"))));
 	TouchMods_bar(0, _("Cancel"), "@detail_back", false);
 	TouchMods_bar(4, _("Remove"), "@doremove", true);
+}
+
+void TouchMods_modelText()
+{
+	TM_SET(tm_header, tm_fullhead);
+	TM_SET(tm_summary, "");
+	TouchMods_bar(0, _("< Back"), "@textback", false);
 }
 
 void TouchMods_run(string act);
@@ -792,6 +826,7 @@ void TouchMods_update()
 		case TM_V_REVIEW: TouchMods_modelReview(); break;
 		case TM_V_REMOVE: TouchMods_modelRemove(); break;
 		case TM_V_ENABLE: TouchMods_modelEnable(); break;
+		case TM_V_TEXT: TouchMods_modelText(); break;
 	}
 }
 
@@ -831,7 +866,9 @@ void TouchMods_run(string act)
 		case "@detail_back": tm_view = TM_V_DETAIL; break;
 		case "@sub": tm_sub = stof(arg); tm_page = 0; tm_logend = (tm_sub == TM_P_LOG); break;
 		case "@install": tm_view = TM_V_INSTALL; tm_target = tm_realm; tm_page = 0; break;
-		case "@target": tm_target = !tm_target; break;
+		case "@target": tm_target = (arg != "") ? (stof(arg) != 0) : !tm_target; break;
+		case "@textback": tm_view = tm_textback; break;
+		case "@howto": localcmd("\nopenurl https://github.com/dixonSolutions/Godnotic/blob/main/docs/MODDING.md\n"); break;
 		case "@clear": if (tm_input) tm_input.setText(tm_input, ""); break;
 		case "@review":
 		{
@@ -935,6 +972,61 @@ void GodnoticModsButton_draw(entity me)
 	SUPER(GodnoticModsButton).draw(me);
 }
 
+// Draws t wrapped in the label's box, at most maxlines lines (fewer when
+// the box is shorter), centred when centre is set; "\n" starts a new
+// paragraph. True when some of it was left out: the last line then ends
+// in "...".
+bool TouchMods_drawWrapped(entity me, string t, float maxlines, float scale, bool centre)
+{
+	vector fs = me.realFontSize * scale;
+	float w = 1 - me.keepspaceLeft - me.keepspaceRight;
+	if (fs.y <= 0 || w <= 0)
+		return false;
+	float lh = fs.y * 1.12;
+	int fit = max(1, min(maxlines, floor((1 + 0.12 * fs.y) / lh)));
+	fit = min(fit, 24);
+	string lines[24];
+	int n = 0;
+	bool cut = false;
+	string paras[8];
+	int np = min(8, tokenizebyseparator(t, "\n"));
+	for (int k = 0; k < np; ++k)
+		paras[k] = strzone(argv(k));
+	for (int k = 0; k < np && !cut; ++k)
+	{
+		getWrappedLine_remaining = (paras[k] == "") ? " " : paras[k];
+		while (getWrappedLine_remaining)
+		{
+			string l = getWrappedLine(w, fs, draw_TextWidth_WithColors);
+			if (n >= fit)
+			{
+				cut = true;
+				break;
+			}
+			bool more = (getWrappedLine_remaining != "") || (k + 1 < np);
+			if (n == fit - 1 && more)
+			{
+				// the last line that fits: the rest cut with an ellipsis
+				string rest = (getWrappedLine_remaining != "") ? strcat(l, " ", getWrappedLine_remaining) : strcat(l, " ...");
+				l = draw_TextShortenToWidth(rest, w, true, fs);
+				getWrappedLine_remaining = string_null;
+				cut = true;
+			}
+			lines[n] = strzone(l);
+			++n;
+		}
+	}
+	for (int k = 0; k < np; ++k)
+		strunzone(paras[k]);
+	float y = centre ? 0.5 * (1 - (n * lh - 0.12 * fs.y)) : 0;
+	for (int i = 0; i < n; ++i)
+	{
+		draw_Text(eX * me.keepspaceLeft + eY * (y + i * lh), lines[i], fs, me.colorL, me.alpha, true);
+		strunzone(lines[i]);
+	}
+	return cut;
+}
+
 void GodnoticModsLabel_draw(entity me)
 {
 	TouchMods_update();
@@ -945,13 +1037,78 @@ void GodnoticModsLabel_draw(entity me)
 		case TM_L_DETAIL: t = tm_detail[me.modSlot]; break;
 		case TM_L_SUMMARY: t = tm_summary; break;
 		case TM_L_HEADER: t = tm_header; break;
+		case TM_L_FULL: t = (tm_view == TM_V_TEXT) ? tm_fulltext : ""; break;
 	}
-	// the Install view's input field sits where slot 1's title is
-	if (me.modRole == TM_L_TITLE && me.modSlot == 1 && tm_view == TM_V_INSTALL)
+	// the Install view's input field sits where slot 2's title is
+	if (me.modRole == TM_L_TITLE && me.modSlot == 2 && tm_view == TM_V_INSTALL)
+		t = "";
+	// the text page shows its title and its text, nothing else
+	if (tm_view == TM_V_TEXT && me.modRole != TM_L_FULL && me.modRole != TM_L_HEADER)
 		t = "";
 	TouchMods_setText(me, t);
-	if (t != "")
+	me.modCut = false;
+	if (t == "")
+	{
+		me.focusable = false;
+		return;
+	}
+	if (me.modRole == TM_L_HEADER)
+	{
 		SUPER(GodnoticModsLabel).draw(me);
+		return;
+	}
+	float a = draw_alpha;
+	if (me.disabled)
+		draw_alpha *= me.disabledAlpha;
+	// A detail or the summary wraps onto two smaller lines; the text page
+	// fills its box.
+	if (me.modRole == TM_L_FULL)
+		TouchMods_drawWrapped(me, t, 24, 1, false);
+	else if (me.modRole == TM_L_TITLE)
+		me.modCut = TouchMods_drawWrapped(me, t, 1, 1, true);
+	else
+		me.modCut = TouchMods_drawWrapped(me, t, 2, 0.82, true);
+	// A cut text is a button: it opens the whole of it.
+	me.focusable = me.modCut;
+	if (me.modCut && me.focused)
+		draw_Fill('0 0 0', '1 1 0', '1 1 1', 0.06);
+	draw_alpha = a;
+}
+
+void TouchMods_openText(entity me)
+{
+	string head = tm_header, body = "";
+	switch (me.modRole)
+	{
+		case TM_L_TITLE:
+		case TM_L_DETAIL:
+			head = tm_title[me.modSlot];
+			body = strcat(tm_title[me.modSlot], "\n", tm_detail[me.modSlot]);
+			break;
+		case TM_L_SUMMARY:
+			body = tm_summary;
+			break;
+	}
+	strcpy(tm_fullhead, strdecolorize(head));
+	strcpy(tm_fulltext, body);
+	if (tm_view != TM_V_TEXT)
+		tm_textback = tm_view;
+	tm_view = TM_V_TEXT;
+	m_play_click_sound(MENU_SOUND_OPEN);
+}
+
+bool GodnoticModsLabel_mousePress(entity me, vector pos)
+{
+	me.modPressed = me.modCut;
+	return me.modCut;
+}
+
+float GodnoticModsLabel_mouseRelease(entity me, vector pos)
+{
+	if (me.modPressed && pos.x >= 0 && pos.y >= 0 && pos.x <= 1 && pos.y <= 1)
+		TouchMods_openText(me);
+	me.modPressed = false;
+	return 1;
 }
 
 bool TouchMods_inputShown()
@@ -1016,14 +1173,7 @@ entity TouchMods_label(int slot, int role)
 	return e;
 }
 
-entity makeGodnoticModsTab()
-{
-	entity me = NEW(GodnoticModsTab);
-	me.configureDialog(me);
-	return me;
-}
-
-void GodnoticModsTab_fill(entity me)
+void TouchMods_fill(entity me)
 {
 	entity e;
 	int s;
@@ -1038,7 +1188,7 @@ void GodnoticModsTab_fill(entity me)
 		me.TD(me, 1, 4.2, TouchMods_label(0, TM_L_SUMMARY));
 		me.TD(me, 1.05, 0.9, TouchMods_button(0, TM_B_PREV));
 		me.TD(me, 1.05, 0.9, TouchMods_button(0, TM_B_NEXT));
-	// six finger-sized rows: a big switch, two lines of text, two buttons
+	// five finger-sized rows: a big switch, two lines of text, two buttons
 	for (s = 0; s < TM_SLOTS; ++s)
 	{
 		me.gotoRC(me, 2.1 + s * 2.05, 0);
@@ -1049,14 +1199,57 @@ void GodnoticModsTab_fill(entity me)
 		me.gotoRC(me, 2.1 + s * 2.05 + 0.95, 1.1);
 			me.TD(me, 0.95, 3.0, TouchMods_label(s, TM_L_DETAIL));
 	}
-	// the Install view's link field, over slot 1's title line
-	me.gotoRC(me, 2.1 + 1 * 2.05, 1.1);
+	// the Install view's link field, over slot 2's title line
+	me.gotoRC(me, 2.1 + 2 * 2.05, 1.1);
 		me.TD(me, 0.95, 3.0, e = NEW(GodnoticModsInput));
 			e.configureXonoticInputBox(e, 0, string_null, _("A https:// link to a .zip, or a file or folder path"));
 			e.maxLength = 255;
 			tm_input = e;
+	// the text page's text, over the rows
+	me.gotoRC(me, 2.1, 0);
+		me.TD(me, TM_SLOTS * 2.05 - 0.15, me.columns, TouchMods_label(0, TM_L_FULL));
 	// the bar
 	me.gotoRC(me, 12.4, 0);
 	for (s = 0; s < TM_BARS; ++s)
 		me.TD(me, 1.6, 1.2, TouchMods_button(s, TM_B_BAR));
+}
+
+void GodnoticModsDialog_fill(entity me)
+{
+	TouchMods_fill(me);
+}
+
+void TouchMods_ConfigureDialogs(entity mainwindow)
+{
+	entity i = godnotic_mods_dialog = NEW(GodnoticModsDialog);
+	i.configureDialog(i);
+	mainwindow.addItemCentered(mainwindow, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
+	TouchMapPick_ConfigureDialogs(mainwindow); // the map picker's sheets (touch_menu_vgrid.qc)
+}
+
+void TouchMods_OpenManager(entity btn, entity me)
+{
+	if (godnotic_mods_dialog)
+		DialogOpenButton_Click(btn, godnotic_mods_dialog);
+}
+
+entity makeGodnoticModsTab()
+{
+	entity me = NEW(GodnoticModsTab);
+	me.configureDialog(me);
+	return me;
+}
+
+void GodnoticModsTab_fill(entity me)
+{
+	entity e;
+	me.TR(me);
+		me.TD(me, 1, me.columns, e = makeXonoticHeaderLabel(_("Mods")));
+	me.TR(me);
+		me.TD(me, 3, me.columns, e = makeXonoticTextLabel(0, _("Client mods change your own game on this device (HUD, sounds, controls). Server mods run in the games this device hosts. Each one starts switched off and gets only the permissions you allow it.")));
+			e.allowWrap = true;
+	me.gotoRC(me, 4.5, 1.5);
+		me.TD(me, 1.6, 3, e = makeGodnoticButton(_("Open the Mods manager"), '0.6 0.85 1'));
+			e.onClick = TouchMods_OpenManager;
+			e.onClickEntity = me;
 }

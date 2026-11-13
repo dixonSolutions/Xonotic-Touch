@@ -1,6 +1,7 @@
 #include "dialog_touch_gamemenu.qh"
 
 #include "touchbutton.qh"
+#include "dialog_touch_lan.qh"
 #include "leavematchbutton.qh"
 #include "touch_menu_scale.qh"
 
@@ -90,7 +91,8 @@ void GodnoticGameMenuDialog_fill(entity me)
 		me.TD(me, 1.5, 1, e = makeGodnoticCommandButton(_("Quit"), '1 0 0', "menu_showquitdialog", 0));
 	me.TR(me);
 	me.TR(me);
-		// Host a game for the LAN, or while hosting see who is in, the addresses and Stop.
-		me.TD(me, 1.5, 2, e = TouchGameMenu_SubButton(_("LAN game: host, players, stop"), "TouchLanHost"));
-			setDependent(e, "touch_lan_available", 1, 1);
+		// Hosting on the LAN (Multiplayer > Create, LAN box): where others
+		// join, and Stop.
+		me.TD(me, 1.5, 1.4, TouchLan_StatusLabel());
+		me.TD(me, 1.5, 0.6, e = TouchLan_StopButton());
 }
