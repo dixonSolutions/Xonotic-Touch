@@ -298,6 +298,8 @@ class ViewRenderer(
             sub.text = p.str("subtitle")
             sub.visibility = if (sub.text.isEmpty()) View.GONE else View.VISIBLE
             val kindHome = p.str("kind") == "home"
+            // the pause menu sits on a scrim over the frozen game frame: the player sees the match
+            root.setBackgroundColor(if (p.str("kind") == "game") 0xB3000000.toInt() else Theme.BG)
             bar.visibility = if (p["header"].obj().bool("hidden")) View.GONE else View.VISIBLE
             titleV.visibility = if (kindHome) View.INVISIBLE else View.VISIBLE // Home shows the banner instead
             back.visibility = if (host.canBack() && !kindHome) View.VISIBLE else View.GONE
@@ -462,7 +464,7 @@ class ViewRenderer(
         val titleV = Kit.text(ctx, "", Theme.SP_TITLE - 1f, Theme.TEXT, bold = true, lines = 1)
         titleV.typeface = Theme.display
         if (android.os.Build.VERSION.SDK_INT >= 26) { titleV.ellipsize = null; titleV.setAutoSizeTextTypeUniformWithConfiguration(13, 19, 1, android.util.TypedValue.COMPLEX_UNIT_SP) }
-        val subtitle = Kit.text(ctx, "", Theme.SP_CAPTION + 1f, Theme.TEXT_MUTED, lines = 1)
+        val subtitle = Kit.text(ctx, "", Theme.SP_CAPTION + 1f, Theme.TEXT_MUTED, lines = 2)
         val badges = FlowGrid(ctx, 0, dp(6f), wrap = true)
         val meta = FlowGrid(ctx, 0, dp(12f), wrap = true)
         val actions = FlowGrid(ctx, 0, dp(10f), wrap = true)

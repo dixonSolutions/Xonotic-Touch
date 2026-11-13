@@ -155,6 +155,21 @@ public final class XonoticActivity extends SDLActivity {
         return super.dispatchKeyEvent(event);
     }
 
+    /** Memory is short: the engine frees the models and sounds no game uses (touch_warm.c). */
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if (level >= TRIM_MEMORY_RUNNING_LOW && level != TRIM_MEMORY_UI_HIDDEN) { // UI_HIDDEN is just "in the background"
+            NativeBridge.enqueue("touch_warm_drop");
+        }
+    }
+
+    @Override
+    public void onLowMemory() {
+        super.onLowMemory();
+        NativeBridge.enqueue("touch_warm_drop");
+    }
+
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);

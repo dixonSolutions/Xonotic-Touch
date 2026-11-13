@@ -2370,7 +2370,7 @@ void CL_UpdateScreen(void)
 		VID_Finish();
 		return;
 	}
-	{ extern qbool TouchFE_SkipDraw(void); if (TouchFE_SkipDraw()) return; } // Touch: nothing to draw behind an opaque native screen
+	{ extern qbool TouchFE_SkipDraw(void); if (TouchFE_SkipDraw()) { TouchWarm_Frame(); return; } } // Touch: nothing to draw behind an opaque native screen (the menu-idle warm-up still runs)
 
 	if (scr_loading)
 	{

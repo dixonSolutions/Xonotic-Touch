@@ -73,7 +73,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     private var lastSig = ""
 
     init {
-        root.setBackgroundColor(Theme.BG)
+        // transparent: each screen brings its background (the pause menu a scrim over the game)
         root.isClickable = true // nothing behind it while it shows
         root.addView(screenLayer, match())
         root.addView(dialogLayer, match())
@@ -214,7 +214,11 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         NativeBridge.frontendBeat()
         NativeBridge.enqueue(FeArgs.command("attach", "1"))
         if (app.bool("ui_bridge")) c.hello(caps())
-        else stopgap = StopgapActions(activity, c)
+        else {
+            stopgap = StopgapActions(activity, c)
+            // touch_warm prepares what Play starts while Home is idle
+            NativeBridge.enqueue(FeArgs.command("set", "touch_warm_map", StopgapActions.STOPGAP_MAP))
+        }
     }
 
     private fun caps(): Map<String, Any?> {
@@ -308,8 +312,8 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
 
     private fun reportAll() {
         val pm = activity.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
-        reportPower("_android_powersave", if (pm.isPowerSaveMode) "1" else "0")
-        if (Build.VERSION.SDK_INT >= 29) reportPower("_android_thermal", pm.currentThermalStatus.toString())
+        reportPower("touch_device_powersave", if (pm.isPowerSaveMode) "1" else "0")
+        if (Build.VERSION.SDK_INT >= 29) reportPower("touch_device_thermal", pm.currentThermalStatus.toString())
     }
 
     private var powerReceiver: BroadcastReceiver? = null
@@ -318,13 +322,13 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     private fun watchPower() {
         val pm = activity.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
         powerReceiver = object : BroadcastReceiver() {
-            override fun onReceive(c: Context, i: Intent) { reportPower("_android_powersave", if (pm.isPowerSaveMode) "1" else "0") }
+            override fun onReceive(c: Context, i: Intent) { reportPower("touch_device_powersave", if (pm.isPowerSaveMode) "1" else "0") }
         }
         try {
             activity.registerReceiver(powerReceiver, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
         } catch (e: Exception) { powerReceiver = null }
         if (Build.VERSION.SDK_INT >= 29) {
-            val l = PowerManager.OnThermalStatusChangedListener { s -> reportPower("_android_thermal", s.toString()) }
+            val l = PowerManager.OnThermalStatusChangedListener { s -> reportPower("touch_device_thermal", s.toString()) }
             pm.addThermalStatusListener(activity.mainExecutor, l)
             thermalListener = l
         }
@@ -515,6 +519,11 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
 class StopgapActions(private val activity: Activity, private val client: UibClient) {
     private var current = ""
 
+    companion object {
+        /** What the stopgap Home's Play starts (and touch_warm prepares while Home is idle). */
+        const val STOPGAP_MAP = "stormkeep"
+    }
+
     private fun load(name: String): Map<String, Any?> = try {
         Json.parse(activity.assets.open("fe/$name.json").bufferedReader().readText()).obj()
     } catch (e: Exception) { Log.w("Godnotic", "Native UI: no fe/$name.json: ${e.message}"); emptyMap() }
@@ -545,7 +554,7 @@ class StopgapActions(private val activity: Activity, private val client: UibClie
         val id = a.str("id")
         Log.i("Godnotic", "Native UI action: $node / $id")
         when (id) {
-            "play", "quick" -> NativeBridge.enqueue(FeArgs.command("play", "dm", "stormkeep", "4", "3"))
+            "play", "quick" -> NativeBridge.enqueue(FeArgs.command("play", "dm", STOPGAP_MAP, "4", "3"))
             "quit" -> NativeBridge.enqueue(FeArgs.command("menu", "quit"))
             "resume" -> NativeBridge.enqueue(FeArgs.command("menu", "resume"))
             "disconnect" -> NativeBridge.enqueue(FeArgs.command("menu", "leave"))

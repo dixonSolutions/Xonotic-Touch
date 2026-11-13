@@ -124,8 +124,14 @@ only the frame rate drops.
 | `save` | | `saveconfig` |
 | `ui` | json | the UI bridge's renderer messages, when the engine has registered the `ui` verb (`TouchFE_RegisterVerb`, for touch_uib*.c) |
 
-Kotlin also sets `_android_thermal` (PowerManager thermal status), `_android_powersave`
-and `_android_idle_home` through `fe set` for engine-side warm-up and throttling.
+Kotlin also sets, through `fe set`, what the menu-idle warm-up (touch_warm.c) reads:
+`touch_device_thermal` (`PowerManager.getCurrentThermalStatus()`, on every change),
+`touch_device_powersave` (battery saver, on its broadcast) and `touch_warm_map` (the
+map Home's Play starts), plus `_android_idle_home`. `onTrimMemory`/`onLowMemory`
+send `touch_warm_drop`. Behind an opaque native Home nothing is drawn but the
+warm-up still runs (the `CL_UpdateScreen` hook calls `TouchWarm_Frame` before it
+returns), and the engine still counts as visible and focused: the native screen
+changes neither `vid_hidden` nor `vid_activewindow`.
 
 ## For other engine modules
 
@@ -147,7 +153,7 @@ All one line, marked `// Touch:`:
 | `menu.c` `MP_KeyEvent` | `{ extern qbool TouchFE_MenuHidden(void); if (TouchFE_MenuHidden()) return; }` |
 | `menu.c` `MP_Draw` | the same |
 | `vid_sdl.c` `Sys_SendKeyEvents` | `{ extern void TouchFE_Frame(void); TouchFE_Frame(); }` |
-| `cl_screen.c` `CL_UpdateScreen` | `{ extern qbool TouchFE_SkipDraw(void); if (TouchFE_SkipDraw()) return; }` |
+| `cl_screen.c` `CL_UpdateScreen` | `{ extern qbool TouchFE_SkipDraw(void); if (TouchFE_SkipDraw()) { TouchWarm_Frame(); return; } }` |
 | `cl_screen.c` `SCR_PushLoadingScreen` | `{ extern void TouchFE_Loading(const char *, float); TouchFE_Loading(s->msg, s->absolute_loading_amount_min); }` |
 | `cl_main.c` `CL_Frame` | `{ extern double TouchFE_MaxFPS(double); maxfps = TouchFE_MaxFPS(maxfps); }` |
 | `makefile.inc` | `touch_frontend.o` in the Touch object list |
