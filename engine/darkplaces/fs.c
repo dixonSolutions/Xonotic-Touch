@@ -2143,8 +2143,10 @@ static int FS_ChooseUserDir(userdirmode_t userdirmode, char *userdir, size_t use
 #endif
 }
 
+#include "touch_fs_mount.h" // Touch: fs_mountpack, packs mounted while the game runs
 void FS_Init_Commands(void)
 {
+	TouchFS_Init_Commands(); // Touch: fs_mountpack, fs_opentrace
 	Cvar_RegisterVariable (&scr_screenshot_name);
 	Cvar_RegisterVariable (&fs_empty_files_in_pack_mark_deletions);
 	Cvar_RegisterVariable (&fs_unload_dlcache);
@@ -2558,6 +2560,7 @@ static qfile_t *FS_OpenPackedFile (pack_t* pack, int pack_ind)
 	qfile_t* file;
 
 	pfile = &pack->files[pack_ind];
+	Touch_FS_Trace(pack, pfile); // Touch: fs_opentrace
 
 	// If we don't have the true offset, get it now
 	if (! (pfile->flags & PACKFILE_FLAG_TRUEOFFS))

@@ -108,3 +108,32 @@ with zipfile.ZipFile(root / "in.pk3") as src, zipfile.ZipFile(out / "in-phone.pk
     assert dst.getinfo("dds/textures/wall.dds").compress_size <= src.getinfo("dds/textures/wall.dds").compress_size
 print("ok: growing conversion retains source DDS and symlink")
 EOF
+
+# --sfx opus: a 44.1 kHz looped Vorbis effect becomes Opus that decodes to
+# exactly n * 48000 / 44100 samples with its loop tags in 48 kHz samples.
+if command -v ffmpeg >/dev/null 2>&1 && ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libvorbis \
+	&& "$PY" -I -c 'import ctypes.util, sys; sys.exit(not ctypes.util.find_library("vorbisfile"))'; then
+	ffmpeg -nostdin -v error -f lavfi -i "anoisesrc=color=pink:sample_rate=44100:duration=2:amplitude=0.3:seed=7" \
+		-c:a libvorbis -q:a 6 \
+		-metadata LOOP_START=0 -metadata LOOP_END=88200 "$tmp/loop.ogg"
+	"$PY" -I -c 'import sys, zipfile; z = zipfile.ZipFile(sys.argv[1], "w"); z.write(sys.argv[2], "sound/test/loop.ogg"); z.close()' \
+		"$tmp/sfx.pk3" "$tmp/loop.ogg"
+	"$PY" -I "$here/repack-phone-assets.py" --textures keep --audio keep --sfx opus -j 1 -o "$tmp/sfx" "$tmp/sfx.pk3" \
+		2>"$tmp/log" || { cat "$tmp/log"; exit 1; }
+	"$PY" -I - "$tmp/sfx/sfx-phone.pk3" "$tmp" <<'PYEOF'
+import re, struct, subprocess, sys, zipfile
+d = zipfile.ZipFile(sys.argv[1]).read("sound/test/loop.ogg")
+i = 27 + d[26]
+assert d[i:i + 8] == b"OpusHead", "not converted to Opus"
+assert struct.unpack_from("<I", d, i + 12)[0] == 48000, "input rate"
+tags = dict(re.findall(rb"(LOOP_[A-Z]+)=(\d+)", d[:4096]))
+assert tags == {b"LOOP_START": b"0", b"LOOP_END": b"96000"}, tags
+open(sys.argv[2] + "/out.ogg", "wb").write(d)
+pcm = subprocess.run(["ffmpeg", "-v", "error", "-c:a", "libopus", "-i", sys.argv[2] + "/out.ogg", "-f", "s16le", "-"],
+                     capture_output=True, check=True).stdout
+assert len(pcm) // 2 == 96000, len(pcm) // 2
+print("ok: sound effect to exact-length Opus, loop tags in 48 kHz samples")
+PYEOF
+else
+	echo "skip: --sfx opus (no ffmpeg with libvorbis, or no libvorbisfile)"
+fi
