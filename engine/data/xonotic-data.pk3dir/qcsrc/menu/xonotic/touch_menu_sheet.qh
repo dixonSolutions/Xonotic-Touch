@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
+
+// Godnotic: dialogs as sheets on a touch device.
+//
+// With finger-sized rows (touch_menu_scale.qc) the stock dialogs are taller
+// than a phone's screen. Rather than squeezing them (Container_addItem caps
+// every child at the screen height, which shrank every row with it), a
+// dialog taller than the screen keeps its real height and scrolls: drag it
+// up and down anywhere outside a list, fling it, and a bar at its right edge
+// shows where you are.
+//
+// Taps and drags are told apart before the dialog sees them: a press on a
+// scrollable sheet is held back until the finger either lifts (a tap: the
+// press and the release go to the control together) or moves more than
+// TOUCH_SHEET_SLOP_DP. Moving mostly up or down scrolls the sheet and the
+// control under the finger never hears of it; moving sideways hands the
+// press to the control (a slider follows the finger from where it landed).
+// A press on a list goes straight to the list, which scrolls itself.
+//
+// Keyboard and gamepad focus moving to a control off screen scrolls it in.
+// Everything here works on the root dialogs of the main window, so every
+// dialog, stock or ours, gets it without a line of its own.
+
+const float TOUCH_SHEET_SLOP_DP = 10;
+
+.float touch_sheet_h;     // full height, fraction of the layout height; 0 not set up
+.float touch_sheet_min;   // lowest origin.y (scrolled to the bottom)
+.float touch_sheet_max;   // highest origin.y (top)
+.float touch_sheet_was_shown;
+
+// menu.qc routes the main window's mouse calls through these.
+void TouchSheet_mousePress(vector pos);
+void TouchSheet_mouseDrag(vector pos);
+void TouchSheet_mouseRelease(vector pos);
+// menu.qc, around main.draw: scrim, setup, fling and focus; then the scroll bar.
+void TouchSheet_preDraw();
+void TouchSheet_postDraw();

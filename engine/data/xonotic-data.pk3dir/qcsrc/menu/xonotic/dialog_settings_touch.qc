@@ -4,6 +4,8 @@
 #include "dialog_touch_privacy.qh"
 
 #include "touch_menu_layout.qh"
+#include "touch_menu_scale.qh"
+#include "touch_menu_settings.qh"
 #include "textlabel.qh"
 #include "slider.qh"
 #include "checkbox.qh"
@@ -57,8 +59,36 @@ entity makeGodnoticSettingsTab()
 	return me;
 }
 
+void GodnoticSettingsTab_fillTouch(entity me)
+{
+	entity mc = makeXonoticTabController(me.rows - 1.5); // what every sub-tab is built for
+
+	me.TR(me);
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Controls"),   makeXonoticMobileControlsTab()));
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("HUD"),        makeXonoticMobileHudTab()));
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Aim"),        makeXonoticMobileAimTab()));
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Auto-shoot"), makeXonoticMobileAutoShootTab()));
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Tactics"),    makeXonoticMobileTacticsTab()));
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("ESP"),        makeGodnoticEspTab()));
+	me.TR(me);
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Dynamics"),   makeXonoticMobileDynamicsTab()));
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Loser"),      makeXonoticMobileLoserTab()));
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Mods"),       makeGodnoticModsTab()));
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Privacy"),    makeGodnoticPrivacyTab()));
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Menu"),       makeGodnoticMenuSizeTab())); // menu size (touch_menu_settings.qc)
+	me.gotoRC(me, 2.5, 0);
+		me.TD(me, me.rows - 2.5, me.columns, mc);
+}
+
 void GodnoticSettingsTab_fill(entity me)
 {
+	if (touch_menu_on)
+	{
+		// Touch: finger-sized tabs, so two rows of six. The sub-tabs keep
+		// their 14 rows in the 13 left under them (rows 7% shorter).
+		GodnoticSettingsTab_fillTouch(me);
+		return;
+	}
 	// One row of ten sub-tab buttons, then the sub-tab itself: 15.5 = 1.5 + 14.
 	entity mc = makeXonoticTabController(me.rows - 1.5);
 	me.TR(me);
