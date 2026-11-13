@@ -20,7 +20,7 @@ older DarkPlaces) and the libraries are vendored from upstream.
 | | official | phone pack | engine side |
 | --- | --- | --- | --- |
 | textures | `dds/foo.dds`, DXT1/3/5, deflated | `dds/foo.ktx`: ASTC in KTX 1 with the whole mip chain | `touch_assets_ktx.h`, uploaded as it is when the GPU has `GL_KHR_texture_compression_astc_ldr` |
-| other entries | deflate | zstd (zip method 93) when it saves 2 %, else stored | `touch_assets_fs.h` + `touch_assets_zstd.c` (zstd 1.5.7 decoder in `touch_vendor/zstd/`) |
+| other entries | deflate | zstd (zip method 93) when it saves 2 %, else stored, or the source's deflate copied as it is when that is 2 % smaller | `touch_assets_fs.h` + `touch_assets_zstd.c` (zstd 1.5.7 decoder in `touch_vendor/zstd/`) |
 | music | Ogg Vorbis | Ogg Opus 96 kbit/s, same `.ogg` name | `touch_assets_opus.c` (libopusfile) |
 
 ASTC block sizes: 8x8 for world textures, 6x6 for `dds/models/`, 5x5 for

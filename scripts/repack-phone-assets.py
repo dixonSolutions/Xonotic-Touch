@@ -15,9 +15,11 @@ name of the pack it came from (the manifest says so). Entry by entry:
               name: the QuakeC looks for sounds by their .ogg name, and the
               engine looks inside (touch_assets_opus.c).
   the rest    stored with zstd (zip method 93) when that saves 2% or more,
-              else stored; never deflate. The engine inflates zstd entries
-              several times faster (touch_assets_fs.h). Ogg, mp3 and other
-              compressed formats are stored as they are.
+              else stored; never deflate ourselves. The engine inflates zstd
+              entries several times faster (touch_assets_fs.h). Ogg, mp3 and
+              other compressed formats are stored as they are. An unchanged
+              entry that the source deflates 2% smaller than our own payload
+              is copied compressed, so repacking cannot make a pack bigger.
 
 Writes OUTDIR/phone-manifest.json (one record per pack: file name, size,
 sha256, the name to install it under and the source pack's name, size and
@@ -275,6 +277,21 @@ def is_symlink(info):
     return (info.external_attr >> 16) & 0o170000 == 0o120000
 
 
+def source_payload(pack, info):
+    """The compressed bytes of an entry, as the source zip stores them."""
+    with open(pack, "rb") as f:
+        f.seek(info.header_offset)
+        header = f.read(30)
+        if len(header) != 30 or header[:4] != b"PK\x03\x04":
+            raise ValueError("bad local header")
+        name_len, extra_len = struct.unpack_from("<HH", header, 26)
+        f.seek(info.header_offset + 30 + name_len + extra_len)
+        payload = f.read(info.compress_size)
+    if len(payload) != info.compress_size:
+        raise ValueError("short entry")
+    return payload
+
+
 def sha256_of(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -291,7 +308,7 @@ def repack(args, pack, textures, stats):
     outname = stem + "-phone.pk3"
     outpath = os.path.join(args.outdir, outname)
     zout = ZipWriter(outpath + ".part")
-    kinds = {k: [0, 0, 0] for k in ("textures", "audio", "zstd", "stored")}
+    kinds = {k: [0, 0, 0] for k in ("textures", "audio", "zstd", "stored", "kept")}
     seen = set()
     converted = set()  # dds names that became ktx
     lock = threading.Lock()
@@ -317,6 +334,16 @@ def repack(args, pack, textures, stats):
         method, payload = pack_entry(newname, newdata, level)
         if kind is None:
             kind = "zstd" if method == ZIP_ZSTD else "stored"
+        # small text entries never reach zstd, and storing them raw can be
+        # bigger than the deflate the source already had: copy that instead
+        if newname == name and kind in ("zstd", "stored") and info.compress_type == zipfile.ZIP_DEFLATED \
+                and info.compress_size < len(payload) * 0.98:
+            try:
+                payload = source_payload(pack, info)
+            except (OSError, ValueError) as e:
+                log("  %s: source bytes not reused (%s)" % (name, e))
+            else:
+                method, kind = zipfile.ZIP_DEFLATED, "kept"
         return newname, newdata, method, payload, kind
 
     def emit(info, name, data, method, payload, kind):
@@ -454,14 +481,14 @@ def main():
         json.dump({"format": 1, "meta": meta, "packs": records}, f, indent=1)
         f.write("\n")
     with open(os.path.join(args.outdir, "phone-sizes.md"), "w") as f:
-        f.write("| pack | official | phone | textures | audio | zstd | stored |\n")
-        f.write("| --- | ---: | ---: | ---: | ---: | ---: | ---: |\n")
+        f.write("| pack | official | phone | textures | audio | zstd | stored | kept |\n")
+        f.write("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n")
         for r in records:
             k = stats[r["install_as"]]
             cell = lambda n: "%.1f -> %.1f" % (k[n][1] / 1e6, k[n][2] / 1e6) if k[n][0] else "-"
-            f.write("| %s | %.1f MB | %.1f MB | %s | %s | %s | %s |\n" % (
+            f.write("| %s | %.1f MB | %.1f MB | %s | %s | %s | %s | %s |\n" % (
                 r["install_as"], r["source"]["size"] / 1e6, r["size"] / 1e6,
-                cell("textures"), cell("audio"), cell("zstd"), cell("stored")))
+                cell("textures"), cell("audio"), cell("zstd"), cell("stored"), cell("kept")))
 
 
 if __name__ == "__main__":

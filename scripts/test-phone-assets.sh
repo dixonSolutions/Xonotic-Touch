@@ -1,7 +1,8 @@
 #!/bin/sh
 # Checks scripts/repack-phone-assets.py on a small made-up pk3: entries come
 # back byte for byte (python's zipfile reads zstd entries since 3.14), zstd is
-# used only where it pays, symlinks stay symlinks, and -- when ffmpeg and
+# used only where it pays, an entry the source already deflates smaller is
+# copied compressed, symlinks stay symlinks, and -- when ffmpeg and
 # astcenc are around -- a DXT1 texture becomes a well-formed ASTC KTX file
 # whose symlink follows it.
 #
@@ -24,6 +25,7 @@ with zipfile.ZipFile(sys.argv[1], "w", zipfile.ZIP_DEFLATED) as z:
     z.writestr("maps/test.bsp", b"IBSP" + bytes(range(256)) * 400)
     z.writestr("gfx/pic.jpg", b"\xff\xd8\xff" + bytes(5000))
     z.writestr("tiny.cfg", b"set a 1\n")
+    z.writestr("small.cfg", b'bind x "say hi"\n' * 5)
     z.writestr("dds/textures/wall.dds", dxt1(64, 32))
     z.writestr("sound/x.ogg", b"OggS" + bytes(100))
     for name, target in (("dds/textures/wall2.dds", "wall.dds"), ("maps/alias.bsp", "test.bsp")):
@@ -62,7 +64,9 @@ for i in a.infolist():
         assert (fmt, base, w, h, levels) == (0x93B7, 0x1907, 64, 32, 7), (hex(fmt), hex(base), w, h, levels)
         continue
     assert b.read(o) == a.read(i), name
-    want = 93 if name in ("maps/test.bsp", "gfx/pic.jpg", "dds/textures/wall.dds") else 0
+    # an entry the source deflates well is copied compressed, not stored raw
+    want = 93 if name in ("maps/test.bsp", "gfx/pic.jpg") \
+        else 8 if name in ("dds/textures/wall.dds", "small.cfg", "sound/x.ogg") else 0
     assert o.compress_type == want, (name, o.compress_type)
 assert not bi, bi
 print("ok:", textures, rec["size"], "bytes")
