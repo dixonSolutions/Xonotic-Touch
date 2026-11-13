@@ -1188,6 +1188,7 @@ void NetConn_OpenServerPorts(int opennetports)
 	int port;
 	NetConn_CloseServerPorts();
 	TouchLAN_ServerPortsOpened(); // Touch: a new server; hosted from the LAN Host screen or not
+	opennetports = TouchLAN_OpenNetPorts(opennetports); // Touch: a local game opens no network socket
 
 	SV_LockThreadMutex(); // FIXME recursive?
 	Crypto_LoadKeys(); // server sockets
@@ -2105,6 +2106,7 @@ static int NetConn_ClientParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 		stringbuf[length] = 0;
 		string = stringbuf;
 		length = TouchNet_ClientConnectionless(string, length); // Touch: "accept\\rwin\\N" is an accept with a window
+		TouchLAN_ClientConnectionless(string, length, peeraddress); // Touch: the host ended its LAN game
 
 		if (developer_networking.integer)
 		{
