@@ -1,0 +1,496 @@
+{
+ "name": "seq-lan-popup",
+ "description": "Hosting on LAN: the popup shows who joined, then closes by itself (Close when someone joins) with a toast.",
+ "generated": "seed",
+ "snapshot": {
+  "uib": 1,
+  "t": "snapshot",
+  "id": 2,
+  "rev": 1,
+  "root": "app",
+  "nodes": [
+   {
+    "id": "app",
+    "type": "app",
+    "props": {
+     "title": "Godnotic",
+     "stack": [
+      "pause"
+     ],
+     "modal": [
+      "lan.host"
+     ],
+     "canBack": true,
+     "context": "game"
+    },
+    "children": [
+     "pause",
+     "lan.host"
+    ]
+   },
+   {
+    "id": "pause",
+    "type": "screen",
+    "props": {
+     "title": "Paused",
+     "kind": "game",
+     "presentation": "fullscreen"
+    },
+    "children": [
+     "pause/host",
+     "pause/match",
+     "pause/actions"
+    ]
+   },
+   {
+    "id": "pause/host",
+    "type": "card",
+    "props": {
+     "title": "Hosting on your network",
+     "subtitle": "Others join with one of these addresses",
+     "icon": "host",
+     "accent": "ember",
+     "density": "compact",
+     "badges": [
+      {
+       "icon": "lock",
+       "text": "Password set",
+       "tone": "warning"
+      }
+     ],
+     "meta": [
+      {
+       "icon": "wifi",
+       "text": "Wi-Fi 192.168.1.23:26000"
+      },
+      {
+       "icon": "vpn",
+       "text": "VPN 100.64.0.5:26000"
+      }
+     ],
+     "primary": {
+      "id": "host.popup",
+      "label": "Addresses",
+      "icon": "host"
+     },
+     "actions": [
+      {
+       "id": "host.copy",
+       "label": "Copy address",
+       "icon": "copy",
+       "kind": "copy",
+       "text": "192.168.1.23:26000"
+      },
+      {
+       "id": "host.share",
+       "label": "Share",
+       "icon": "share",
+       "kind": "share",
+       "text": "godnotic://join/192.168.1.23:26000"
+      }
+     ]
+    },
+    "children": []
+   },
+   {
+    "id": "pause/match",
+    "type": "card",
+    "props": {
+     "title": "Stormkeep",
+     "subtitle": "Deathmatch · 7:42 left · 3rd of 5",
+     "image": "pk3:maps/stormkeep",
+     "aspect": "21:9",
+     "meta": [
+      {
+       "icon": "trophy",
+       "text": "12 frags"
+      },
+      {
+       "icon": "players",
+       "text": "5 players"
+      }
+     ]
+    },
+    "children": []
+   },
+   {
+    "id": "pause/actions",
+    "type": "grid",
+    "props": {
+     "minItem": 200
+    },
+    "children": [
+     "pause/actions/resume",
+     "pause/actions/settings",
+     "pause/actions/team",
+     "pause/actions/spectate",
+     "pause/actions/disconnect"
+    ]
+   },
+   {
+    "id": "pause/actions/resume",
+    "type": "button",
+    "props": {
+     "label": "Resume",
+     "action": {
+      "id": "resume",
+      "label": "Resume",
+      "icon": "resume",
+      "style": "primary"
+     },
+     "style": "primary"
+    },
+    "children": []
+   },
+   {
+    "id": "pause/actions/settings",
+    "type": "button",
+    "props": {
+     "label": "Settings",
+     "action": {
+      "id": "settings",
+      "label": "Settings",
+      "icon": "settings"
+     },
+     "style": "secondary"
+    },
+    "children": []
+   },
+   {
+    "id": "pause/actions/team",
+    "type": "button",
+    "props": {
+     "label": "Change team",
+     "action": {
+      "id": "team",
+      "label": "Change team",
+      "icon": "players"
+     },
+     "style": "secondary",
+     "hidden": true
+    },
+    "children": []
+   },
+   {
+    "id": "pause/actions/spectate",
+    "type": "button",
+    "props": {
+     "label": "Spectate",
+     "action": {
+      "id": "spectate",
+      "label": "Spectate",
+      "icon": "esp"
+     },
+     "style": "secondary"
+    },
+    "children": []
+   },
+   {
+    "id": "pause/actions/disconnect",
+    "type": "button",
+    "props": {
+     "label": "End the game",
+     "action": {
+      "id": "disconnect",
+      "label": "End the game",
+      "icon": "disconnect",
+      "style": "destructive",
+      "confirm": {
+       "title": "End the game for everyone?",
+       "ok": "End",
+       "destructive": true
+      }
+     },
+     "style": "destructive"
+    },
+    "children": []
+   },
+   {
+    "id": "lan.host",
+    "type": "screen",
+    "props": {
+     "title": "Your LAN game",
+     "subtitle": "Others on your Wi-Fi or VPN join with one of these",
+     "presentation": "dialog",
+     "dismissable": true,
+     "primary": {
+      "id": "host.close",
+      "label": "Close",
+      "icon": "check",
+      "style": "primary"
+     }
+    },
+    "children": [
+     "lan.host/addresses",
+     "lan.host/lock",
+     "lan.host/players",
+     "lan.host/autoclose"
+    ]
+   },
+   {
+    "id": "lan.host/addresses",
+    "type": "section",
+    "props": {
+     "title": "Addresses"
+    },
+    "children": [
+     "lan.host/addresses/a0",
+     "lan.host/addresses/a1",
+     "lan.host/addresses/link"
+    ]
+   },
+   {
+    "id": "lan.host/addresses/a0",
+    "type": "row",
+    "props": {
+     "align": "spread",
+     "label": "Wi-Fi",
+     "icon": "wifi"
+    },
+    "children": [
+     "lan.host/addresses/a0/text",
+     "lan.host/addresses/a0/copy"
+    ]
+   },
+   {
+    "id": "lan.host/addresses/a0/text",
+    "type": "text",
+    "props": {
+     "body": "192.168.1.23:26000",
+     "style": "mono",
+     "selectable": true
+    },
+    "children": []
+   },
+   {
+    "id": "lan.host/addresses/a0/copy",
+    "type": "button",
+    "props": {
+     "label": "Copy",
+     "style": "secondary",
+     "action": {
+      "id": "host.copy",
+      "label": "Copy",
+      "icon": "copy",
+      "kind": "copy",
+      "text": "192.168.1.23:26000"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "lan.host/addresses/a1",
+    "type": "row",
+    "props": {
+     "align": "spread",
+     "label": "VPN (tailscale0)",
+     "icon": "vpn"
+    },
+    "children": [
+     "lan.host/addresses/a1/text",
+     "lan.host/addresses/a1/copy"
+    ]
+   },
+   {
+    "id": "lan.host/addresses/a1/text",
+    "type": "text",
+    "props": {
+     "body": "100.64.0.5:26000",
+     "style": "mono",
+     "selectable": true
+    },
+    "children": []
+   },
+   {
+    "id": "lan.host/addresses/a1/copy",
+    "type": "button",
+    "props": {
+     "label": "Copy",
+     "style": "secondary",
+     "action": {
+      "id": "host.copy",
+      "label": "Copy",
+      "icon": "copy",
+      "kind": "copy",
+      "text": "100.64.0.5:26000"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "lan.host/addresses/link",
+    "type": "row",
+    "props": {
+     "align": "spread",
+     "label": "Link",
+     "icon": "link"
+    },
+    "children": [
+     "lan.host/addresses/link/text",
+     "lan.host/addresses/link/copy",
+     "lan.host/addresses/link/share"
+    ]
+   },
+   {
+    "id": "lan.host/addresses/link/text",
+    "type": "text",
+    "props": {
+     "body": "godnotic://join/192.168.1.23:26000",
+     "style": "mono",
+     "selectable": true
+    },
+    "children": []
+   },
+   {
+    "id": "lan.host/addresses/link/copy",
+    "type": "button",
+    "props": {
+     "label": "Copy",
+     "style": "secondary",
+     "action": {
+      "id": "host.copylink",
+      "label": "Copy",
+      "icon": "copy",
+      "kind": "copy",
+      "text": "godnotic://join/192.168.1.23:26000"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "lan.host/addresses/link/share",
+    "type": "button",
+    "props": {
+     "label": "Share",
+     "style": "secondary",
+     "action": {
+      "id": "host.share",
+      "label": "Share",
+      "icon": "share",
+      "kind": "share",
+      "text": "godnotic://join/192.168.1.23:26000"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "lan.host/lock",
+    "type": "text",
+    "props": {
+     "body": "Password set: players need it to join",
+     "icon": "lock",
+     "tone": "warning",
+     "style": "note"
+    },
+    "children": []
+   },
+   {
+    "id": "lan.host/players",
+    "type": "text",
+    "props": {
+     "body": "Nobody has joined yet",
+     "icon": "players",
+     "style": "caption",
+     "live": true
+    },
+    "children": []
+   },
+   {
+    "id": "lan.host/autoclose",
+    "type": "switch",
+    "props": {
+     "label": "Close when someone joins",
+     "bind": "cvar:touch_lan_popup_autoclose",
+     "value": true,
+     "help": "This popup goes away by itself when the first player joins"
+    },
+    "children": []
+   }
+  ]
+ },
+ "steps": [
+  {
+   "delay": 0.8,
+   "msg": {
+    "uib": 1,
+    "t": "diff",
+    "id": 11,
+    "base": 1,
+    "rev": 2,
+    "set": [
+     {
+      "id": "lan.host/players",
+      "type": "text",
+      "props": {
+       "body": "In the game: you, Mara (23 ms)",
+       "icon": "players",
+       "style": "caption",
+       "live": true
+      },
+      "children": []
+     }
+    ],
+    "del": []
+   },
+   "note": "a player joined"
+  },
+  {
+   "delay": 0.2,
+   "msg": {
+    "uib": 1,
+    "t": "diff",
+    "id": 12,
+    "base": 2,
+    "rev": 3,
+    "set": [
+     {
+      "id": "app",
+      "type": "app",
+      "props": {
+       "title": "Godnotic",
+       "stack": [
+        "pause"
+       ],
+       "modal": [],
+       "canBack": false,
+       "context": "game"
+      },
+      "children": [
+       "pause",
+       "toast/1"
+      ]
+     },
+     {
+      "id": "toast/1",
+      "type": "toast",
+      "props": {
+       "text": "A player joined your game",
+       "kind": "success",
+       "icon": "players",
+       "timeout": 3
+      },
+      "children": []
+     }
+    ],
+    "del": [
+     "lan.host",
+     "lan.host/addresses",
+     "lan.host/addresses/a0",
+     "lan.host/addresses/a0/text",
+     "lan.host/addresses/a0/copy",
+     "lan.host/addresses/a1",
+     "lan.host/addresses/a1/text",
+     "lan.host/addresses/a1/copy",
+     "lan.host/addresses/link",
+     "lan.host/addresses/link/text",
+     "lan.host/addresses/link/copy",
+     "lan.host/addresses/link/share",
+     "lan.host/lock",
+     "lan.host/players",
+     "lan.host/autoclose"
+    ]
+   },
+   "note": "popup closed"
+  }
+ ]
+}

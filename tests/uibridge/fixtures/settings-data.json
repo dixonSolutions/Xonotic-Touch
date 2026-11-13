@@ -29,7 +29,7 @@
   "uib": 1,
   "t": "snapshot",
   "id": 2,
-  "rev": 30,
+  "rev": 36,
   "root": "app",
   "nodes": [
    {
@@ -59,6 +59,16 @@
      "background": "asset:background",
      "actions": [
       {
+       "id": "settings",
+       "label": "Settings",
+       "icon": "settings"
+      },
+      {
+       "id": "credits",
+       "label": "Credits",
+       "icon": "credits"
+      },
+      {
        "id": "quit",
        "label": "Quit",
        "icon": "quit",
@@ -73,7 +83,6 @@
     },
     "children": [
      "home/banner",
-     "home/hero",
      "home/tiles"
     ]
    },
@@ -82,6 +91,8 @@
     "type": "image",
     "props": {
      "ref": "asset:banner",
+     "role": "banner",
+     "emphasis": "high",
      "aspect": "21:9",
      "fit": "contain",
      "alt": "Godnotic"
@@ -89,55 +100,16 @@
     "children": []
    },
    {
-    "id": "home/hero",
-    "type": "hero",
-    "props": {
-     "title": "Play",
-     "subtitle": "Continue: Stormkeep · Deathmatch · 4 bots",
-     "image": "pk3:maps/stormkeep",
-     "aspect": "16:9",
-     "featured": true,
-     "meta": [
-      {
-       "icon": "map",
-       "text": "Stormkeep"
-      },
-      {
-       "icon": "mode",
-       "text": "Deathmatch"
-      },
-      {
-       "icon": "bot",
-       "text": "4 bots"
-      }
-     ],
-     "primary": {
-      "id": "play",
-      "label": "Play",
-      "icon": "play",
-      "style": "primary"
-     },
-     "actions": [
-      {
-       "id": "sp",
-       "label": "Choose…",
-       "icon": "map"
-      }
-     ]
-    },
-    "children": []
-   },
-   {
     "id": "home/tiles",
     "type": "grid",
     "props": {
-     "minItem": 200
+     "minItem": 240,
+     "maxColumns": 3
     },
     "children": [
      "home/tiles/sp",
-     "home/tiles/mp",
-     "home/tiles/settings",
-     "home/tiles/credits"
+     "home/tiles/campaign",
+     "home/tiles/mp"
     ]
    },
    {
@@ -145,12 +117,32 @@
     "type": "card",
     "props": {
      "title": "Singleplayer",
-     "subtitle": "Bots, your rules",
+     "subtitle": "Stormkeep · Deathmatch · 4 bots",
      "icon": "singleplayer",
-     "image": "pk3:gfx/menu/luma/gametype_dm",
+     "image": "pk3:maps/stormkeep",
      "aspect": "16:9",
+     "featured": true,
      "primary": {
       "id": "sp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/campaign",
+    "type": "card",
+    "props": {
+     "title": "Campaign",
+     "subtitle": "Level 1 of 31 · Deathmatch: Boil",
+     "image": "pk3:maps/boil",
+     "progress": 0,
+     "icon": "trophy",
+     "aspect": "16:9",
+     "featured": true,
+     "primary": {
+      "id": "campaign",
       "label": "Open",
       "icon": "chevron"
      }
@@ -162,42 +154,14 @@
     "type": "card",
     "props": {
      "title": "Multiplayer",
-     "subtitle": "Find a game or join by address",
+     "subtitle": "Join a server, or create a game",
      "icon": "multiplayer",
-     "image": "pk3:gfx/menu/luma/gametype_ctf",
+     "image": "pk3:maps/xoylent",
      "aspect": "16:9",
+     "featured": true,
+     "live": true,
      "primary": {
       "id": "mp",
-      "label": "Open",
-      "icon": "chevron"
-     }
-    },
-    "children": []
-   },
-   {
-    "id": "home/tiles/settings",
-    "type": "card",
-    "props": {
-     "title": "Settings",
-     "subtitle": "Video, controls, Mods",
-     "icon": "settings",
-     "primary": {
-      "id": "settings",
-      "label": "Open",
-      "icon": "chevron"
-     }
-    },
-    "children": []
-   },
-   {
-    "id": "home/tiles/credits",
-    "type": "card",
-    "props": {
-     "title": "Credits",
-     "subtitle": "The people behind Xonotic and Godnotic",
-     "icon": "credits",
-     "primary": {
-      "id": "credits",
       "label": "Open",
       "icon": "chevron"
      }

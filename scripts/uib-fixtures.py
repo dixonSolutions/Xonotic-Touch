@@ -11,6 +11,14 @@ lists, records diff sequences, and measures start time and message sizes.
 --check compares with tests/uibridge/fixtures and fails on drift, ignoring volatile
 fields (session, message ids, engine version, pings, times). Needs game data, so it is
 not a CI job; scripts/test-uibridge.sh runs it when data is there.
+
+The run is the same on every machine: a new user directory and a fixed environment
+(no HOME configuration, LANG=C, TZ=UTC), the engine's own defaults (the package's
+xonotic.cfg is not read, so the fixtures do not depend on which basedir staged it),
+no network (a private network namespace where the system allows one, and no master
+servers or LAN search in any case, so the server list is empty everywhere), and the
+diffs one event produced are folded into one (how many frames the engine took to
+describe a screen is timing, not content).
 """
 import argparse, copy, json, os, socket, subprocess, sys, tempfile, time
 
@@ -33,16 +41,23 @@ class Engine:
             extra = ["+exec", "uib_pre.cfg"] + list(extra)
         a, b = socket.socketpair()
         self.sock = a
-        env = dict(os.environ)
-        for k in ("WAYLAND_DISPLAY", "DISPLAY", "XAUTHORITY"):
-            env.pop(k, None)
-        env.update(SDL_VIDEODRIVER="offscreen", SDL_AUDIODRIVER="dummy")
+        # a fixed environment: nothing of this machine's configuration reaches the engine
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": self.ud, "XDG_CONFIG_HOME": self.ud,
+               "XDG_DATA_HOME": self.ud, "XDG_RUNTIME_DIR": self.ud, "LANG": "C", "LC_ALL": "C", "TZ": "UTC",
+               "SDL_VIDEODRIVER": "offscreen", "SDL_AUDIODRIVER": "dummy"}
         if args.libdir:
             env["LD_LIBRARY_PATH"] = args.libdir
         cmd = ["timeout", "-k", "5", str(args.timeout), args.engine, "-xonotic", "-basedir", args.basedir,
                "-userdir", self.ud, "-nosound", "+vid_fullscreen", "0", "+vid_width", "1280", "+vid_height", "720",
-               "+exec", "xonotic.cfg", "+set", "_touch_assets_ready", "1", "+set", "vid_touchscreen", "0",
+               "+set", "_touch_assets_ready", "1", "+set", "vid_touchscreen", "0",
+               # no network: no master servers, no LAN search, no remembered servers, no update check
+               "+set", "net_slist_lan_only", "1", "+set", "net_slist_lan_ports", "0", "+set", "net_slist_lan_sweeps", "0",
+               "+set", "net_slist_lan_tailscale", "0", "+set", "net_slist_cache", "0", "+set", "cl_curl_enabled", "0",
+               "+set", "touch_lan_hostname", "Godnotic server",
                "-uibridge", f"fd:{b.fileno()}"] + list(extra)
+        # ... and where the system allows it, no network interface at all
+        if subprocess.run(["unshare", "-rn", "true"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+            cmd = ["unshare", "-rn"] + cmd
         self.t0 = time.monotonic()
         self.log = open(os.path.join(self.ud, "engine.log"), "w")
         self.proc = subprocess.Popen(cmd, env=env, pass_fds=[b.fileno()], stdout=self.log, stderr=subprocess.STDOUT,
@@ -138,6 +153,25 @@ class Engine:
         self.send(dict({"t": "ev"}, **kw))
         return self.settle()
 
+    def take_diff(self):
+        """The diffs received since the last call, folded into one (None if there were none)."""
+        ds, self.diffs = self.diffs, []
+        if not ds:
+            return None
+        sets, dels = {}, []
+        for d in ds:
+            for i in d["del"]:
+                sets.pop(i, None)
+                if i not in dels:
+                    dels.append(i)
+            for n in d["set"]:
+                sets[n["id"]] = n
+                if n["id"] in dels:
+                    dels.remove(n["id"])
+        # parents before children, as the engine sends them
+        order = sorted(sets.values(), key=lambda n: (n["id"] != "app", n["id"].count("/"), n["id"]))
+        return {"uib": 1, "t": "diff", "id": ds[-1]["id"], "base": ds[0]["base"], "rev": ds[-1]["rev"], "set": order, "del": dels}
+
     def snapshot_msg(self):
         nodes, stack = [], ["app"]
         while stack:
@@ -166,6 +200,16 @@ class Engine:
             self.proc.kill()
             self.proc.wait()
         self.log.close()
+
+
+def renumber(base, steps):
+    """Folded diffs chain from the base snapshot: base, base+1, ..."""
+    rev = base["rev"]
+    for st in steps:
+        st["msg"]["base"] = rev
+        rev += 1
+        st["msg"]["rev"] = rev
+    return steps
 
 
 def fixture(e, name, desc, rows=True, steps=None, base=None):
@@ -206,29 +250,34 @@ def run(args):
         report["hello_ms_after_spawn"] = round(e.hello_ms)
         report["snapshot_ms_after_spawn"] = round(e.snap_ms)
         e.settle()
-        out["home"] = fixture(e, "home", "Home: banner, hero Play card, Singleplayer, Multiplayer, Settings, Credits; Quit.")
+        out["home"] = fixture(e, "home", "Home: the banner and exactly three cards (Singleplayer, Campaign, Multiplayer); Settings, Credits and Quit are header actions.")
         # navigate: Home -> Singleplayer (recorded) -> back
         base = e.snapshot_msg()
-        e.diffs.clear()
+        e.take_diff()
         e.ev(ev="action", node="home/tiles/sp", action="sp")
-        out["singleplayer"] = fixture(e, "singleplayer", "Singleplayer (Create): mode cards, map picker over maps:<mode>, match options with LAN, recent.")
-        nav = [{"delay": 0.5, "msg": d} for d in e.diffs]
-        e.diffs.clear()
+        out["singleplayer"] = fixture(e, "singleplayer", "Singleplayer: a local game. Mode cards, the map picker over maps:<mode> (two rows of tiles scrolling sideways; tap chooses, double tap plays), match options, recent.")
+        nav = [{"delay": 0.5, "msg": e.take_diff()}]
         e.ev(ev="back")
-        nav += [{"delay": 1.0, "msg": d} for d in e.diffs]
-        out["seq-navigate"] = fixture(e, "seq-navigate", "Home, push Singleplayer, back to Home (engine diffs).", rows=False, steps=nav, base=base)
-        # Create with LAN + password
+        nav += [{"delay": 1.0, "msg": e.take_diff()}]
+        out["seq-navigate"] = fixture(e, "seq-navigate", "Home, push Singleplayer, back to Home (engine diffs, one per event).", rows=False, steps=renumber(base, nav), base=base)
+        # the map picker: a tap chooses (row/select), the preview and the list follow
         e.ev(ev="action", node="home/tiles/sp", action="sp")
-        e.ev(ev="value", node="sp/match/form/lan", value=True)
-        e.ev(ev="value", node="sp/match/form/pwon", value=True)
-        e.ev(ev="value", node="sp/match/form/password", value="hunter2")
-        out["singleplayer-create-lan"] = fixture(e, "singleplayer-create-lan", "LAN ticked with a password: Port and Password inline, closed lock; the password never appears.")
-        e.ev(ev="value", node="sp/match/form/pwon", value=False)
-        e.ev(ev="value", node="sp/match/form/lan", value=False)
-        # map preview
-        e.ev(ev="row", node="sp/maps/list", row="stormkeep", kind="activate")
-        out["map-preview"] = fixture(e, "map-preview", "Map preview page pushed over Singleplayer.")
+        base = e.snapshot_msg()
+        e.take_diff()
+        e.ev(ev="row", node="sp/maps/list", row="xoylent", kind="select")
+        steps = [{"delay": 0.5, "msg": e.take_diff(), "note": "row select xoylent"}]
+        e.ev(ev="row", node="sp/maps/list", row="stormkeep", kind="select")
+        steps += [{"delay": 0.5, "msg": e.take_diff(), "note": "row select stormkeep"}]
+        out["seq-map-select"] = fixture(e, "seq-map-select", "Map picker: taps on Xoylent and Stormkeep send row/select; the engine answers with "
+                                        "the list's selected row. A double tap sends row/activate on the chosen row and starts the match.", steps=renumber(base, steps), base=base)
+        # map details
+        e.ev(ev="row", node="sp/maps/list", row="stormkeep", kind="action", action="map.preview")
+        out["map-preview"] = fixture(e, "map-preview", "Map details page pushed over Singleplayer.")
         e.ev(ev="back")
+        e.ev(ev="back")
+        # campaign
+        e.ev(ev="action", node="home/tiles/campaign", action="campaign")
+        out["campaign"] = fixture(e, "campaign", "Campaign: the chosen level beside its picture, the levels as cards (won, next, locked).")
         e.ev(ev="back")
         # servers
         e.ev(ev="action", node="home/tiles/mp", action="mp")
@@ -236,19 +285,28 @@ def run(args):
         e.ev(ev="value", node="mp/bar/filters/lan", value=True)
         out["servers-lan"] = fixture(e, "servers-lan", "Servers with LAN ticked.")
         e.ev(ev="value", node="mp/bar/filters/lan", value=False)
+        # Create (from Multiplayer) with LAN + password
+        e.ev(ev="action", node="mp/join/create", action="create")
+        out["create"] = fixture(e, "create", "Create a game, LAN unticked: the same local game as Singleplayer; only the LAN checkbox is about the network.")
+        e.ev(ev="value", node="sp/match/form/lan", value=True)
+        e.ev(ev="value", node="sp/match/form/pwon", value=True)
+        e.ev(ev="value", node="sp/match/form/password", value="hunter2")
+        out["singleplayer-create-lan"] = fixture(e, "singleplayer-create-lan", "Create a game with LAN ticked and a password: Player slots, Port and Password inline, closed lock; the password never appears.")
+        e.ev(ev="value", node="sp/match/form/pwon", value=False)
+        e.ev(ev="value", node="sp/match/form/lan", value=False)
+        e.ev(ev="back")
         e.ev(ev="back")
         # settings: vertical tabs, a setting changing (recorded), sub-tabs
-        e.ev(ev="action", node="home/tiles/settings", action="settings")
+        e.ev(ev="action", node="home", action="settings")
         out["settings"] = fixture(e, "settings", "Settings: vertical tabs (split) with Video selected and its horizontal sub-tabs.")
         e.ev(ev="value", node="settings/split/video/tabs", value="view")
         base = e.snapshot_msg()
-        e.diffs.clear()
+        e.take_diff()
         e.ev(ev="value", node="settings/split/video/tabs/view/fov", value=110)
-        steps = [{"delay": 0.5, "msg": d, "note": "fov 110"} for d in e.diffs]
-        e.diffs.clear()
+        steps = [{"delay": 0.5, "msg": e.take_diff(), "note": "fov 110"}]
         e.ev(ev="value", node="settings/split/video/tabs/view/fov", value=100)
-        steps += [{"delay": 0.5, "msg": d, "note": "fov 100"} for d in e.diffs]
-        out["seq-setting"] = fixture(e, "seq-setting", "Field of view changed twice: value diffs from the engine.", rows=False, steps=steps, base=base)
+        steps += [{"delay": 0.5, "msg": e.take_diff(), "note": "fov 100"}]
+        out["seq-setting"] = fixture(e, "seq-setting", "Field of view changed twice: value diffs from the engine.", rows=False, steps=renumber(base, steps), base=base)
         for sec in ("audio", "game", "input", "touch", "esp", "player", "privacy", "updates", "data", "menu", "mods"):
             e.ev(ev="value", node="settings/split", value=sec)
             out[f"settings-{sec}"] = fixture(e, f"settings-{sec}", f"Settings > {sec}.")
@@ -259,7 +317,7 @@ def run(args):
         out["mod-page"] = fixture(e, "mod-page", "A page contributed by a mod (origin mod:radar).")
         e.ev(ev="back")
         e.ev(ev="back")
-        e.ev(ev="action", node="home/tiles/credits", action="credits")
+        e.ev(ev="action", node="home", action="credits")
         out["credits"] = fixture(e, "credits", "Credits and licence.")
         e.ev(ev="back")
         report["snapshot_bytes_max"] = max(e.sizes["snapshot"])

@@ -297,6 +297,43 @@
    },
    "additionalProperties": false
   },
+  "reserved": {
+   "type": "object",
+   "properties": {
+    "id": {
+     "type": "string",
+     "pattern": "^[A-Za-z0-9_.:/-]{1,128}$"
+    },
+    "x": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 9007199254740991
+    },
+    "y": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 9007199254740991
+    },
+    "w": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 9007199254740991
+    },
+    "h": {
+     "type": "integer",
+     "minimum": 0,
+     "maximum": 9007199254740991
+    }
+   },
+   "required": [
+    "id",
+    "x",
+    "y",
+    "w",
+    "h"
+   ],
+   "additionalProperties": false
+  },
   "busy": {
    "type": "object",
    "properties": {
@@ -526,6 +563,13 @@
            "game",
            "loading"
           ]
+         },
+         "reserved": {
+          "type": "array",
+          "items": {
+           "$ref": "#/$defs/reserved"
+          },
+          "maxItems": 8
          }
         },
         "additionalProperties": false
@@ -2475,6 +2519,21 @@
           },
           "maxItems": 256
          },
+         "rowSelect": {
+          "$ref": "#/$defs/action"
+         },
+         "rows": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+         },
+         "scroll": {
+          "type": "string",
+          "enum": [
+           "vertical",
+           "horizontal"
+          ]
+         },
          "rowPrimary": {
           "$ref": "#/$defs/action"
          },
@@ -2952,6 +3011,13 @@
          "alt": {
           "type": "string",
           "maxLength": 4096
+         },
+         "role": {
+          "type": "string",
+          "enum": [
+           "picture",
+           "banner"
+          ]
          }
         },
         "additionalProperties": false

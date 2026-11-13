@@ -740,7 +740,9 @@ static void UIB_WatchReserved(void)
 {
 	char json[160];
 	float x, y, w, h, d;
-	if (cls.state != ca_dedicated && TouchShell_Rect(&x, &y, &w, &h, &d) && d > 0)
+	// not as a back end (-uibridge): the engine's window is then hidden behind
+	// the app's own, and nothing of the engine's lies over the app's UI
+	if (cls.state != ca_dedicated && !UIBStream_BackendMode() && TouchShell_Rect(&x, &y, &w, &h, &d) && d > 0)
 	{
 		dpsnprintf(json, sizeof(json), "[{\"id\":\"console\",\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d}]",
 			(int)floor(x / d), (int)floor(y / d), (int)ceil(w / d), (int)ceil(h / d));

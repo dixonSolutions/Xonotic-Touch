@@ -1,0 +1,28 @@
+# The screens of 2026-11-14: Home (three cards), Singleplayer, choosing a map, Campaign,
+# Multiplayer (choose, then the one Join), Create, the LAN popup.
+# Run: loader/scripts/drive.sh tests/screens.script <outdir> [WxH]
+wait 1500
+snapshot OUT/gtk-01-home.png
+click home/tiles/sp
+wait 1500
+snapshot OUT/gtk-02-singleplayer.png
+row sp/maps/list 3
+wait 900
+snapshot OUT/gtk-03-map-chosen.png
+back
+wait 900
+click home/tiles/campaign
+wait 1500
+snapshot OUT/gtk-04-campaign.png
+back
+wait 900
+click home/tiles/mp
+wait 1500
+snapshot OUT/gtk-05-multiplayer.png
+row mp/servers 2
+wait 900
+snapshot OUT/gtk-06-server-chosen.png
+click mp/join/create:create
+wait 1500
+snapshot OUT/gtk-07-create-lan.png
+quit

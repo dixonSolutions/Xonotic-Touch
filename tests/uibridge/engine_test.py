@@ -168,7 +168,7 @@ def main():
         session = h["session"] if h else ""
         c.settle()
         # a setting round trip: open Settings > Video > View, change the field of view
-        c.send({"t": "ev", "ev": "action", "node": "home/tiles/settings", "action": "settings"})
+        c.send({"t": "ev", "ev": "action", "node": "home", "action": "settings"})
         c.settle()
         c.send({"t": "ev", "ev": "value", "node": "settings/split/video/tabs", "value": "view"})
         c.settle()
@@ -182,9 +182,9 @@ def main():
         check(c.nodes["settings/split/video/tabs/view/fov"]["props"].get("value") == 117, "value event: the diff carries fov 117")
         r = c.request({"t": "ev", "ev": "value", "node": "settings/split/video/tabs/view/fov", "value": "x"})
         check(r is not None and r.get("t") == "error", "a string for a slider is refused")
-        r = c.request({"t": "ev", "ev": "value", "node": "home/hero", "value": True})
+        r = c.request({"t": "ev", "ev": "value", "node": "home/tiles/sp", "value": True})
         check(r is not None and r.get("code") in ("denied", "not_found"), "a value for an unbound or absent node is refused")
-        r = c.request({"t": "ev", "ev": "action", "node": "home/hero", "action": "rm -rf"})
+        r = c.request({"t": "ev", "ev": "action", "node": "home/tiles/sp", "action": "rm -rf"})
         check(r is not None and r.get("code") in ("denied", "not_found"), "an action the node does not have is refused")
         # the cvar really changed: ask through a second path (the console dump of the node via uib_stats is not enough)
         # windows: maps sorted by title

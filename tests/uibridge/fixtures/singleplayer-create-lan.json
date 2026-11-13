@@ -1,6 +1,6 @@
 {
  "name": "singleplayer-create-lan",
- "description": "LAN ticked with a password: Port and Password inline, closed lock; the password never appears.",
+ "description": "Create a game with LAN ticked and a password: Player slots, Port and Password inline, closed lock; the password never appears.",
  "generated": "engine",
  "caps": {
   "nodes": [],
@@ -29,7 +29,7 @@
   "uib": 1,
   "t": "snapshot",
   "id": 2,
-  "rev": 8,
+  "rev": 19,
   "root": "app",
   "nodes": [
    {
@@ -39,6 +39,7 @@
      "title": "Godnotic",
      "stack": [
       "home",
+      "mp",
       "sp"
      ],
      "modal": [],
@@ -47,6 +48,7 @@
     },
     "children": [
      "home",
+     "mp",
      "sp"
     ]
    },
@@ -58,6 +60,16 @@
      "kind": "home",
      "background": "asset:background",
      "actions": [
+      {
+       "id": "settings",
+       "label": "Settings",
+       "icon": "settings"
+      },
+      {
+       "id": "credits",
+       "label": "Credits",
+       "icon": "credits"
+      },
       {
        "id": "quit",
        "label": "Quit",
@@ -73,7 +85,6 @@
     },
     "children": [
      "home/banner",
-     "home/hero",
      "home/tiles"
     ]
    },
@@ -82,6 +93,8 @@
     "type": "image",
     "props": {
      "ref": "asset:banner",
+     "role": "banner",
+     "emphasis": "high",
      "aspect": "21:9",
      "fit": "contain",
      "alt": "Godnotic"
@@ -89,55 +102,16 @@
     "children": []
    },
    {
-    "id": "home/hero",
-    "type": "hero",
-    "props": {
-     "title": "Play",
-     "subtitle": "Continue: Stormkeep · Deathmatch · 4 bots",
-     "image": "pk3:maps/stormkeep",
-     "aspect": "16:9",
-     "featured": true,
-     "meta": [
-      {
-       "icon": "map",
-       "text": "Stormkeep"
-      },
-      {
-       "icon": "mode",
-       "text": "Deathmatch"
-      },
-      {
-       "icon": "bot",
-       "text": "4 bots"
-      }
-     ],
-     "primary": {
-      "id": "play",
-      "label": "Play",
-      "icon": "play",
-      "style": "primary"
-     },
-     "actions": [
-      {
-       "id": "sp",
-       "label": "Choose…",
-       "icon": "map"
-      }
-     ]
-    },
-    "children": []
-   },
-   {
     "id": "home/tiles",
     "type": "grid",
     "props": {
-     "minItem": 200
+     "minItem": 240,
+     "maxColumns": 3
     },
     "children": [
      "home/tiles/sp",
-     "home/tiles/mp",
-     "home/tiles/settings",
-     "home/tiles/credits"
+     "home/tiles/campaign",
+     "home/tiles/mp"
     ]
    },
    {
@@ -145,12 +119,32 @@
     "type": "card",
     "props": {
      "title": "Singleplayer",
-     "subtitle": "Bots, your rules",
+     "subtitle": "Stormkeep · Deathmatch · 4 bots",
      "icon": "singleplayer",
-     "image": "pk3:gfx/menu/luma/gametype_dm",
+     "image": "pk3:maps/stormkeep",
      "aspect": "16:9",
+     "featured": true,
      "primary": {
       "id": "sp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/campaign",
+    "type": "card",
+    "props": {
+     "title": "Campaign",
+     "subtitle": "Level 1 of 31 · Deathmatch: Boil",
+     "image": "pk3:maps/boil",
+     "progress": 0,
+     "icon": "trophy",
+     "aspect": "16:9",
+     "featured": true,
+     "primary": {
+      "id": "campaign",
       "label": "Open",
       "icon": "chevron"
      }
@@ -162,10 +156,12 @@
     "type": "card",
     "props": {
      "title": "Multiplayer",
-     "subtitle": "Find a game or join by address",
+     "subtitle": "Join a server, or create a game",
      "icon": "multiplayer",
-     "image": "pk3:gfx/menu/luma/gametype_ctf",
+     "image": "pk3:maps/xoylent",
      "aspect": "16:9",
+     "featured": true,
+     "live": true,
      "primary": {
       "id": "mp",
       "label": "Open",
@@ -175,32 +171,262 @@
     "children": []
    },
    {
-    "id": "home/tiles/settings",
-    "type": "card",
+    "id": "mp",
+    "type": "screen",
     "props": {
-     "title": "Settings",
-     "subtitle": "Video, controls, Mods",
-     "icon": "settings",
-     "primary": {
-      "id": "settings",
-      "label": "Open",
-      "icon": "chevron"
+     "title": "Multiplayer",
+     "kind": "page",
+     "header": {
+      "collapsible": true
+     }
+    },
+    "children": [
+     "mp/bar",
+     "mp/servers",
+     "mp/join"
+    ]
+   },
+   {
+    "id": "mp/bar",
+    "type": "toolbar",
+    "props": {},
+    "children": [
+     "mp/bar/search",
+     "mp/bar/filters"
+    ]
+   },
+   {
+    "id": "mp/bar/search",
+    "type": "field",
+    "props": {
+     "label": "Search",
+     "bind": "vm:mp.search",
+     "value": "",
+     "kind": "search",
+     "placeholder": "Search servers"
+    },
+    "children": []
+   },
+   {
+    "id": "mp/bar/filters",
+    "type": "row",
+    "props": {
+     "wrap": true
+    },
+    "children": [
+     "mp/bar/filters/lan",
+     "mp/bar/filters/empty",
+     "mp/bar/filters/full",
+     "mp/bar/filters/laggy",
+     "mp/bar/filters/refresh"
+    ]
+   },
+   {
+    "id": "mp/bar/filters/lan",
+    "type": "switch",
+    "props": {
+     "label": "LAN",
+     "style": "checkbox",
+     "bind": "vm:mp.lan",
+     "icon": "lan",
+     "value": false
+    },
+    "children": []
+   },
+   {
+    "id": "mp/bar/filters/empty",
+    "type": "switch",
+    "props": {
+     "label": "Empty",
+     "style": "checkbox",
+     "bind": "cvar:menu_slist_showempty",
+     "value": true
+    },
+    "children": []
+   },
+   {
+    "id": "mp/bar/filters/full",
+    "type": "switch",
+    "props": {
+     "label": "Full",
+     "style": "checkbox",
+     "bind": "cvar:menu_slist_showfull",
+     "value": true
+    },
+    "children": []
+   },
+   {
+    "id": "mp/bar/filters/laggy",
+    "type": "switch",
+    "props": {
+     "label": "Laggy",
+     "style": "checkbox",
+     "bind": "cvar:menu_slist_showlaggy",
+     "value": false
+    },
+    "children": []
+   },
+   {
+    "id": "mp/bar/filters/refresh",
+    "type": "button",
+    "props": {
+     "label": "Refresh",
+     "action": {
+      "id": "refresh",
+      "label": "Refresh",
+      "icon": "refresh"
+     },
+     "style": "secondary"
+    },
+    "children": []
+   },
+   {
+    "id": "mp/servers",
+    "type": "list",
+    "props": {
+     "source": "servers",
+     "columns": [
+      {
+       "key": "lock",
+       "type": "lock",
+       "label": "",
+       "width": "xs",
+       "priority": 2,
+       "sortable": false
+      },
+      {
+       "key": "name",
+       "type": "text",
+       "label": "Server",
+       "width": "fill",
+       "priority": 1,
+       "sortable": true
+      },
+      {
+       "key": "map",
+       "type": "map",
+       "label": "Map",
+       "width": "m",
+       "priority": 2,
+       "sortable": true
+      },
+      {
+       "key": "mode",
+       "type": "mode",
+       "label": "Mode",
+       "width": "s",
+       "priority": 2,
+       "sortable": true
+      },
+      {
+       "key": "players",
+       "type": "players",
+       "label": "Players",
+       "width": "s",
+       "priority": 1,
+       "sortable": true,
+       "align": "end"
+      },
+      {
+       "key": "ping",
+       "type": "ping",
+       "label": "Ping",
+       "width": "s",
+       "priority": 1,
+       "sortable": true,
+       "align": "end"
+      }
+     ],
+     "sort": "ping",
+     "desc": false,
+     "filter": "",
+     "selection": "single",
+     "density": "compact",
+     "display": "table",
+     "rowHeight": "compact",
+     "state": "ready",
+     "live": true,
+     "rowSelect": {
+      "id": "server.select",
+      "label": "Choose",
+      "icon": "check"
+     },
+     "rowPrimary": {
+      "id": "server.join",
+      "label": "Join",
+      "icon": "play",
+      "style": "primary"
+     },
+     "empty": {
+      "title": "No servers yet",
+      "text": "Check your connection, then Refresh.",
+      "icon": "server",
+      "action": {
+       "id": "refresh",
+       "label": "Refresh",
+       "icon": "refresh"
+      }
+     },
+     "count": 0
+    },
+    "children": []
+   },
+   {
+    "id": "mp/join",
+    "type": "actionbar",
+    "props": {
+     "align": "spread"
+    },
+    "children": [
+     "mp/join/address",
+     "mp/join/create",
+     "mp/join/go"
+    ]
+   },
+   {
+    "id": "mp/join/address",
+    "type": "field",
+    "props": {
+     "label": "Address",
+     "bind": "vm:mp.address",
+     "value": "",
+     "kind": "address",
+     "placeholder": "host:port or godnotic://join/…",
+     "submit": {
+      "id": "join",
+      "label": "Join",
+      "icon": "play"
      }
     },
     "children": []
    },
    {
-    "id": "home/tiles/credits",
-    "type": "card",
+    "id": "mp/join/create",
+    "type": "button",
     "props": {
-     "title": "Credits",
-     "subtitle": "The people behind Xonotic and Godnotic",
-     "icon": "credits",
-     "primary": {
-      "id": "credits",
-      "label": "Open",
-      "icon": "chevron"
-     }
+     "label": "Create",
+     "action": {
+      "id": "create",
+      "label": "Create",
+      "icon": "add"
+     },
+     "style": "secondary"
+    },
+    "children": []
+   },
+   {
+    "id": "mp/join/go",
+    "type": "button",
+    "props": {
+     "label": "Join",
+     "style": "primary",
+     "action": {
+      "id": "join",
+      "label": "Join",
+      "icon": "play",
+      "style": "primary"
+     },
+     "enabled": false
     },
     "children": []
    },
@@ -208,8 +434,9 @@
     "id": "sp",
     "type": "screen",
     "props": {
-     "title": "Singleplayer",
+     "title": "Create a game",
      "kind": "page",
+     "subtitle": "On your network: others can join",
      "header": {
       "collapsible": true
      },
@@ -414,7 +641,7 @@
     "props": {
      "title": "Map",
      "sticky": true,
-     "subtitle": "Tap a map to see it"
+     "subtitle": "Tap to choose, double tap to play"
     },
     "children": [
      "sp/maps/list"
@@ -427,7 +654,9 @@
      "source": "maps:dm",
      "display": "cards",
      "rowHeight": "card",
-     "minItem": 220,
+     "rows": 2,
+     "scroll": "horizontal",
+     "minItem": 160,
      "aspectItem": "16:9",
      "state": "ready",
      "selection": "single",
@@ -452,16 +681,22 @@
        "sortable": false
       }
      ],
+     "rowSelect": {
+      "id": "map.select",
+      "label": "Choose",
+      "icon": "check"
+     },
      "rowPrimary": {
-      "id": "map.preview",
-      "label": "Preview",
-      "icon": "info"
+      "id": "map.play",
+      "label": "Play",
+      "icon": "play",
+      "style": "primary"
      },
      "rowActions": [
       {
-       "id": "map.choose",
-       "label": "Use this map",
-       "icon": "check"
+       "id": "map.preview",
+       "label": "Details",
+       "icon": "info"
       }
      ],
      "empty": {
@@ -493,8 +728,8 @@
      "sp/match/form/skill",
      "sp/match/form/time",
      "sp/match/form/weapons",
-     "sp/match/form/slots",
      "sp/match/form/lan",
+     "sp/match/form/slots",
      "sp/match/form/port",
      "sp/match/form/pwon",
      "sp/match/form/password"
@@ -606,6 +841,19 @@
     "children": []
    },
    {
+    "id": "sp/match/form/lan",
+    "type": "switch",
+    "props": {
+     "label": "LAN",
+     "style": "checkbox",
+     "icon": "lan",
+     "bind": "vm:create.lan",
+     "value": true,
+     "help": "Others on your Wi-Fi or VPN can find and join this game"
+    },
+    "children": []
+   },
+   {
     "id": "sp/match/form/slots",
     "type": "stepper",
     "props": {
@@ -616,19 +864,6 @@
      "step": 1,
      "format": "int",
      "value": 8
-    },
-    "children": []
-   },
-   {
-    "id": "sp/match/form/lan",
-    "type": "switch",
-    "props": {
-     "label": "LAN",
-     "style": "checkbox",
-     "icon": "lan",
-     "bind": "vm:create.lan",
-     "value": true,
-     "help": "Host on your network (Wi-Fi or VPN) so others can join"
     },
     "children": []
    },
@@ -727,6 +962,7 @@
   ]
  },
  "rows": {
+  "servers": [],
   "maps:dm": [
    {
     "key": "afterslime",

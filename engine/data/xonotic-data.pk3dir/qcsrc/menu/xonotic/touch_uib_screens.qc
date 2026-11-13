@@ -355,7 +355,7 @@ void UIB_BuildCampaign()
 		UIB_Done();
 		return;
 	}
-	uib_j("primary", UIB_AS("campaign.play", sprintf(_("Play level %d"), sel + 1), "play", "primary"));
+	uib_j("primary", UIB_AS("campaign.play", _("Play"), "play", "primary"));
 	UIB_Open("sel", "preview");
 		uib_s("title", sprintf(_("%d. %s"), sel + 1, UIB_CampaignLevelTitle(sel)));
 		uib_s("subtitle", sprintf(_("%s on %s"), UIB_ModeName(campaign_gametype[sel]), UIB_MapTitle(campaign_mapname[sel])));
@@ -365,7 +365,6 @@ void UIB_BuildCampaign()
 		uib_s("body", strreplace("\n", " ", campaign_longdesc[sel]));
 		if (sel < uib_camp_index) uib_push("badges", UIB_Badge("check", _("Won"), "positive"));
 		else uib_push("badges", UIB_Badge("flag", _("Next"), "accent"));
-		uib_j("primary", UIB_AS("campaign.play", sprintf(_("Play level %d"), sel + 1), "play", "primary"));
 	UIB_Close();
 	UIB_Section("levels", _("Levels"), true);
 		uib_s("subtitle", sprintf(_("%d of %d won · tap to choose, double tap to play"), uib_camp_index, campaign_entries));
@@ -447,7 +446,7 @@ void UIB_BuildCreate()
 	uib_s("kind", "page");
 	uib_s("subtitle", lan ? _("On your network: others can join") : _("Local game: only you and the bots"));
 	uib_j("header", "{\"collapsible\":true}");
-	uib_j("primary", lan ? UIB_AS("play", _("Host on LAN"), "host", "primary") : UIB_AS("play", sprintf(_("Play %s"), uib_map_title), "play", "primary"));
+	uib_j("primary", lan ? UIB_AS("play", _("Host on LAN"), "host", "primary") : UIB_AS("play", _("Play"), "play", "primary"));
 
 	UIB_Section("modes", _("Game mode"), false);
 		UIB_Open("grid", "grid");
@@ -470,23 +469,15 @@ void UIB_BuildCreate()
 
 	UIB_Section("maps", _("Map"), true);
 		uib_s("subtitle", _("Tap to choose, double tap to play"));
-		// the chosen map: picture, text and Play
-		UIB_Open("sel", "preview");
-			uib_s("title", uib_map_title);
-			uib_s("subtitle", (uib_map_author != "") ? sprintf(_("by %s"), uib_map_author) : UIB_ModeNames(uib_map_modes));
-			uib_s("image", strcat("pk3:maps/", map));
-			uib_s("aspect", "16:9");
-			uib_s("density", "compact");
-			uib_push("attrs", UIB_Attr(_("Modes"), UIB_ModeNames(uib_map_modes), "mode"));
-			uib_j("primary", lan ? UIB_AS("play", _("Host on LAN"), "host", "primary") : UIB_AS("play", _("Play"), "play", "primary"));
-			uib_push("actions", UIB_A("map.preview", _("Details"), "info"));
-		UIB_Close();
 		UIB_Open("list", "list");
 			string msrc = cvar_string("_uib_debug_maps");      // stress tests: a synthetic source
 			uib_s("source", (msrc != "") ? msrc : strcat("maps:", mode));
 			uib_s("display", "cards");
 			uib_s("rowHeight", "card");
-			uib_f("minItem", 220);
+			// two full rows of tiles (picture and name) in view, more by scrolling sideways
+			uib_f("rows", 2);
+			uib_s("scroll", "horizontal");
+			uib_f("minItem", 160);
 			uib_s("aspectItem", "16:9");
 			uib_s("state", "ready");
 			uib_s("selection", "single");
@@ -718,9 +709,14 @@ void UIB_BuildServers()
 {
 	UIB_ServerParams();
 	bool lan = UIB_VMf("mp.lan");
-	if (!UIB_Screen("mp", _("Servers")))
+	// what Join joins: the typed address if there is one, else the chosen row
+	string sel = UIB_VM("mp.server");
+	string typed = UIB_VM("mp.address");
+	if (typed != "") sel = "";
+	if (!UIB_Screen("mp", _("Multiplayer")))
 		return;
 	uib_s("kind", "page");
+	if (uib_mp_summary != "") uib_s("subtitle", uib_mp_summary);
 	uib_j("header", "{\"collapsible\":true}");
 	UIB_Open("bar", "toolbar");
 		UIB_Open("search", "field");
@@ -752,14 +748,17 @@ void UIB_BuildServers()
 		uib_s("sort", sort == "" ? "ping" : sort);
 		uib_b("desc", UIB_VMf("mp.desc"));
 		uib_s("filter", UIB_VM("mp.search"));
-		uib_s("selection", "none");
+		// one tap chooses a server, the one Join button (or a double tap) joins it;
+		// rows are text only: no per-row buttons, no page behind a row
+		uib_s("selection", "single");
+		if (sel != "") uib_j("selected", sprintf("[%s]", uib_qv(sel)));
 		uib_s("density", "compact");
 		uib_s("display", "table");
 		uib_s("rowHeight", "compact");
 		uib_s("state", "ready");
-		uib_j("rowPrimary", UIB_A("server.open", _("Details"), "info"));
-		uib_push("rowActions", UIB_A("server.join", _("Join"), "play"));
-		uib_push("rowActions", UIB_A("server.fav", _("Favourite"), "star"));
+		uib_b("live", 1);
+		uib_j("rowSelect", UIB_A("server.select", _("Choose"), "check"));
+		uib_j("rowPrimary", UIB_AS("server.join", _("Join"), "play", "primary"));
 		if (lan)
 			uib_j("empty", sprintf("{\"title\":%s,\"text\":%s,\"icon\":\"lan\"}", uib_q(_("No games on this network")),
 				uib_q(_("Games hosted on your Wi-Fi or VPN show up here."))));
@@ -775,10 +774,16 @@ void UIB_BuildServers()
 			uib_s("value", UIB_VM("mp.address"));
 			uib_s("kind", "address");
 			uib_s("placeholder", _("host:port or godnotic://join/…"));
-			uib_j("submit", UIB_A("join.address", _("Join"), "play"));
+			uib_j("submit", UIB_A("join", _("Join"), "play"));
 		UIB_Close();
 		UIB_Button("create", _("Create"), UIB_A("create", _("Create"), "add"), "secondary");
-		UIB_Button("go", _("Join"), UIB_AS("join.address", _("Join"), "play", "primary"), "primary");
+		// the one Join: off until a server is chosen or an address typed
+		UIB_Open("go", "button");
+			uib_s("label", _("Join"));
+			uib_s("style", "primary");
+			uib_j("action", UIB_AS("join", _("Join"), "play", "primary"));
+			if (sel == "" && typed == "") uib_b("enabled", 0);
+		UIB_Close();
 	UIB_Close();
 	UIB_Done();
 }
@@ -797,65 +802,6 @@ bool UIB_FindServer(string address)
 	return false;
 }
 
-void UIB_BuildServer()
-{
-	string addr = UIB_VM("mp.server");
-	string name = addr, map = "", mode = "", ver = "";
-	float players = 0, mx = 0, bots = 0, ping = 0;
-	bool lock = false, fav = false;
-	if (UIB_FindServer(addr))
-	{
-		name = uib_wcell(0, "name");
-		map = uib_wcell(0, "map");
-		mode = uib_wcell(0, "mode");
-		ver = uib_wcell(0, "version");
-		players = stof(uib_wcell(0, "players"));
-		mx = stof(uib_wcell(0, "max"));
-		bots = stof(uib_wcell(0, "bots"));
-		ping = stof(uib_wcell(0, "ping"));
-		lock = uib_wcell(0, "lock") == "1";
-		fav = uib_wcell(0, "fav") == "1";
-	}
-	if (!UIB_Screen("mp.server", name))
-		return;
-	uib_s("kind", "detail");
-	uib_j("header", "{\"collapsible\":true}");
-	UIB_Open("preview", "preview");
-		uib_s("title", name);
-		uib_s("subtitle", sprintf(_("%s on %s"), UIB_ModeName(mode), map));
-		if (map != "") uib_s("image", strcat("pk3:maps/", map));
-		uib_s("aspect", "16:9");
-		uib_push("attrs", UIB_Attr(_("Players"), sprintf(_("%d/%d (%d bots)"), players, mx, bots), "players"));
-		uib_push("attrs", UIB_Attr(_("Ping"), sprintf(_("%d ms"), ping), "ping"));
-		uib_push("attrs", UIB_Attr(_("Address"), addr, "server"));
-		if (ver != "") uib_push("attrs", UIB_Attr(_("Version"), ver, "info"));
-		if (lock) uib_push("badges", UIB_Badge("lock", _("Password"), "warning"));
-		if (fav) uib_push("badges", UIB_Badge("star_filled", _("Favourite"), "accent"));
-		uib_j("primary", UIB_AS("server.join", _("Join"), "play", "primary"));
-		uib_push("actions", UIB_A("server.fav", (fav ? _("Remove favourite") : _("Favourite")), (fav ? "star_filled" : "star")));
-		uib_push("actions", UIB_AText("server.copy", _("Copy address"), "copy", "copy", addr));
-	UIB_Close();
-	UIB_Section("players", _("Players"), true);
-		UIB_Open("list", "list");
-			uib_s("source", strcat("players:", addr));
-			uib_s("density", "compact");
-			uib_s("display", "table");
-			uib_s("rowHeight", "compact");
-			uib_s("state", "ready");
-			uib_push("columns", UIB_Col("name", "text", _("Player"), "fill", 1, false, false));
-			uib_push("columns", UIB_Col("score", "number", _("Score"), "s", 1, true, true));
-			uib_push("columns", UIB_Col("ping", "ping", _("Ping"), "s", 2, false, true));
-			uib_j("empty", sprintf("{\"title\":%s,\"icon\":\"players\"}", uib_q(_("Nobody is playing"))));
-		UIB_Close();
-	UIB_Close();
-	UIB_Open("bar", "actionbar");
-		uib_s("align", "end");
-		UIB_Button("fav", (fav ? _("Remove favourite") : _("Favourite")), UIB_A("server.fav", _("Favourite"), "star"), "secondary");
-		UIB_Button("join", _("Join"), UIB_AS("server.join", _("Join"), "play", "primary"), "primary");
-	UIB_Close();
-	UIB_Done();
-}
-
 void UIB_BuildPassword()
 {
 	if (!UIB_Screen("mp.password", _("Password")))
@@ -864,7 +810,7 @@ void UIB_BuildPassword()
 	uib_b("dismissable", 1);
 	// a button as well as Enter: the dialog's main action (renderers put it in the action bar)
 	uib_j("primary", UIB_AS("password.join", _("Join"), "play", "primary"));
-	UIB_Text("text", sprintf(_("%s needs a password."), UIB_VM("mp.server")), "");
+	UIB_Text("text", sprintf(_("%s needs a password."), UIB_VM("mp.joining")), "");
 	UIB_Open("form", "form");
 		uib_j("submit", UIB_AS("password.join", _("Join"), "play", "primary"));
 		UIB_Open("pw", "field");
@@ -886,7 +832,7 @@ void UIB_Join(string addr)
 	addr = strreplace("\"", "", strreplace(";", "", addr));
 	if (addr == "")
 		return;
-	UIB_VMSet("mp.server", addr);
+	UIB_VMSet("mp.joining", addr);
 	if (UIB_FindServer(addr) && uib_wcell(0, "lock") == "1")
 	{
 		cvar_set("_touch_lan_haspw_query", addr);
@@ -897,21 +843,6 @@ void UIB_Join(string addr)
 		}
 	}
 	localcmd(sprintf("\nconnect \"%s\"\n", addr));
-}
-
-void UIB_ToggleFav(string addr)
-{
-	string s = cvar_string("net_slist_favorites"), out = "";
-	bool found = false;
-	int n = tokenize_console(s);
-	for (int i = 0; i < n; ++i)
-		if (argv(i) == addr) found = true;
-		else out = strcat(out, (out == "" ? "" : " "), argv(i));
-	if (!found)
-		out = strcat(out, (out == "" ? "" : " "), addr);
-	cvar_set("net_slist_favorites", out);
-	resorthostcache();
-	uib_toast((found ? _("Removed from favourites") : _("Added to favourites")), "success", (found ? "star" : "star_filled"), 3);
 }
 
 void UIB_Refresh()
@@ -1018,7 +949,7 @@ void UIB_BuildLanPopup()
 	uib_s("presentation", "dialog");
 	uib_b("dismissable", 1);
 	uib_s("subtitle", _("Others on your Wi-Fi or VPN join with one of these"));
-	uib_j("primary", UIB_AS("host.join", _("Join game"), "play", "primary"));
+	uib_j("primary", UIB_AS("host.close", _("Close"), "check", "primary"));
 	bool pw = UIB_HostLocked();
 	int n = UIB_HostAddresses();
 	UIB_Section("addresses", _("Addresses"), false);
@@ -1070,10 +1001,6 @@ void UIB_BuildLanPopup()
 		uib_b("live", 1);
 	UIB_Close();
 	UIB_Switch("autoclose", _("Close when someone joins"), "cvar:touch_lan_popup_autoclose", _("This popup goes away by itself when the first player joins"));
-	UIB_Open("buttons", "row");
-		uib_s("align", "end");
-		UIB_Button("join", _("Join game"), UIB_AS("host.join", _("Join game"), "play", "primary"), "primary");
-	UIB_Close();
 	UIB_Done();
 }
 
@@ -1220,7 +1147,6 @@ void UIB_Build(string id)
 		case "campaign": UIB_BuildCampaign(); return;
 		case "lan.host": UIB_BuildLanPopup(); return;
 		case "mp": UIB_BuildServers(); return;
-		case "mp.server": UIB_BuildServer(); return;
 		case "mp.password": UIB_BuildPassword(); return;
 		case "pause": UIB_BuildPause(); return;
 		case "loading": UIB_BuildLoading(); return;
@@ -1347,10 +1273,10 @@ void UIB_Action(string node, string a, string payload)
 		case "campaign.play": UIB_StartCampaign(bound(0, UIB_VMf("campaign.sel"), uib_camp_index)); return;
 		case "map.preview": UIB_VMSet("map.sel", cvar_string("touch_lan_map")); UIB_Push("sp.map"); return;
 		case "host.popup": uib_lanpopup_auto = false; if (!UIB_LanPopupUp()) UIB_Modal("lan.host"); return;
-		case "host.join": UIB_LanPopupClose(true); return;
+		case "host.close": UIB_LanPopupClose(true); return;
 		case "host.copy": case "host.copylink": case "host.share": return;   // the renderer copied or shared the text
 		case "create": UIB_VMSet("create.from", "mp"); UIB_Push("sp"); return;
-		case "mp": UIB_Push("mp"); UIB_Refresh(); return;
+		case "mp": UIB_VMSet("mp.server", ""); UIB_Push("mp"); UIB_Refresh(); return;
 		case "credits": UIB_Push("credits"); return;
 		case "quit": localcmd("\nquit\n"); return;   // the renderer already confirmed
 		case "quit.confirm": localcmd("\nquit\n"); return;
@@ -1369,12 +1295,19 @@ void UIB_Action(string node, string a, string payload)
 			UIB_RebuildAll();
 			return;
 		case "refresh": UIB_Refresh(); return;
-		case "server.join": UIB_Join(UIB_VM("mp.server")); return;
-		case "server.fav": UIB_ToggleFav(UIB_VM("mp.server")); UIB_RebuildAll(); return;
-		case "join.address": UIB_Join(UIB_VM("mp.address")); return;
+		case "join": case "join.address": case "server.join":
+		{
+			// the one Join: the typed address, else the chosen server
+			string target = (UIB_VM("mp.address") != "") ? UIB_VM("mp.address") : UIB_VM("mp.server");
+			if (target == "")
+				uib_toast(_("Choose a server or type an address"), "info", "info", 3);
+			else
+				UIB_Join(target);
+			return;
+		}
 		case "password.join":
 		{
-			string addr = UIB_VM("mp.server");
+			string addr = UIB_VM("mp.joining");
 			cvar_set("_cl_touch_lan_password_server", addr);
 			UIB_Back();
 			localcmd(sprintf("\nconnect \"%s\"\n", addr));
@@ -1443,11 +1376,20 @@ void UIB_RowEvent(string node, string row, string json)
 			UIB_StartGame(m, g);
 			return;
 		case "mp/servers":
+		{
+			// one tap chooses, a double tap joins; an activate on a row that is not
+			// the chosen one only chooses it (as in the map picker)
+			bool chosen = (row == UIB_VM("mp.server") && UIB_VM("mp.address") == "");
+			if (strstrofs(json, "\"kind\":\"activate\"", 0) >= 0 && chosen)
+			{
+				UIB_Join(row);
+				return;
+			}
 			UIB_VMSet("mp.server", row);
-			if (isaction && strstrofs(json, "server.join", 0) >= 0) UIB_Join(row);
-			else if (isaction && strstrofs(json, "server.fav", 0) >= 0) { UIB_ToggleFav(row); UIB_RebuildAll(); }
-			else UIB_Push("mp.server");
+			UIB_VMSet("mp.address", "");
+			UIB_RebuildAll();
 			return;
+		}
 	}
 }
 
@@ -1464,7 +1406,7 @@ void UIB_ValueEvent(string node, string value, string json)
 		case "sp/match/form/weapons": UIB_VMSet("create.weapons", value); break;
 		case "mp/bar/search": UIB_VMSet("mp.search", value); break;
 		case "mp/bar/filters/lan": UIB_VMSet("mp.lan", value); UIB_Refresh(); break;
-		case "mp/join/address": UIB_VMSet("mp.address", value); break;
+		case "mp/join/address": UIB_VMSet("mp.address", value); break;   // a typed address is the target, not the row
 		case "mp.password/form/pw": cvar_set("_cl_touch_lan_password", value); break;
 		default:
 			// cvar binds were applied by the engine; vm binds keep their value
@@ -1497,7 +1439,7 @@ float UIB_Event(string ev, string node, string arg, string json)
 		case "value": UIB_ValueEvent(node, arg, json); return 1;
 		case "submit":
 			UIB_ValueEvent(node, arg, json);
-			if (node == "mp/join/address") UIB_Join(arg);
+			if (node == "mp/join/address" && arg != "") UIB_Join(arg);
 			if (node == "mp.password/form/pw") UIB_Action(node, "password.join", "");
 			return 1;
 		case "row": UIB_RowEvent(node, arg, json); return 1;

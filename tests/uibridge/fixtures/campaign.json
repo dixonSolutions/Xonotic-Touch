@@ -1,0 +1,312 @@
+{
+ "name": "campaign",
+ "description": "Campaign: the chosen level beside its picture, the levels as cards (won, next, locked).",
+ "generated": "engine",
+ "caps": {
+  "nodes": [],
+  "hints": [],
+  "width": 1280,
+  "height": 720,
+  "dpi": 96,
+  "widthClass": "expanded",
+  "heightClass": "medium",
+  "input": [
+   "mouse",
+   "keyboard"
+  ],
+  "locale": "en",
+  "reducedMotion": false,
+  "powerSave": false,
+  "thermal": "nominal",
+  "insets": {
+   "top": 0,
+   "right": 0,
+   "bottom": 0,
+   "left": 0
+  }
+ },
+ "snapshot": {
+  "uib": 1,
+  "t": "snapshot",
+  "id": 2,
+  "rev": 10,
+  "root": "app",
+  "nodes": [
+   {
+    "id": "app",
+    "type": "app",
+    "props": {
+     "title": "Godnotic",
+     "stack": [
+      "home",
+      "campaign"
+     ],
+     "modal": [],
+     "canBack": true,
+     "context": "menu"
+    },
+    "children": [
+     "home",
+     "campaign"
+    ]
+   },
+   {
+    "id": "home",
+    "type": "screen",
+    "props": {
+     "title": "Godnotic",
+     "kind": "home",
+     "background": "asset:background",
+     "actions": [
+      {
+       "id": "settings",
+       "label": "Settings",
+       "icon": "settings"
+      },
+      {
+       "id": "credits",
+       "label": "Credits",
+       "icon": "credits"
+      },
+      {
+       "id": "quit",
+       "label": "Quit",
+       "icon": "quit",
+       "style": "secondary",
+       "confirm": {
+        "title": "Quit Godnotic?",
+        "ok": "Quit",
+        "destructive": false
+       }
+      }
+     ]
+    },
+    "children": [
+     "home/banner",
+     "home/tiles"
+    ]
+   },
+   {
+    "id": "home/banner",
+    "type": "image",
+    "props": {
+     "ref": "asset:banner",
+     "role": "banner",
+     "emphasis": "high",
+     "aspect": "21:9",
+     "fit": "contain",
+     "alt": "Godnotic"
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles",
+    "type": "grid",
+    "props": {
+     "minItem": 240,
+     "maxColumns": 3
+    },
+    "children": [
+     "home/tiles/sp",
+     "home/tiles/campaign",
+     "home/tiles/mp"
+    ]
+   },
+   {
+    "id": "home/tiles/sp",
+    "type": "card",
+    "props": {
+     "title": "Singleplayer",
+     "subtitle": "Stormkeep · Deathmatch · 4 bots",
+     "icon": "singleplayer",
+     "image": "pk3:maps/stormkeep",
+     "aspect": "16:9",
+     "featured": true,
+     "primary": {
+      "id": "sp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/campaign",
+    "type": "card",
+    "props": {
+     "title": "Campaign",
+     "subtitle": "Level 1 of 31 · Deathmatch: Boil",
+     "image": "pk3:maps/boil",
+     "progress": 0,
+     "icon": "trophy",
+     "aspect": "16:9",
+     "featured": true,
+     "primary": {
+      "id": "campaign",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/mp",
+    "type": "card",
+    "props": {
+     "title": "Multiplayer",
+     "subtitle": "Join a server, or create a game",
+     "icon": "multiplayer",
+     "image": "pk3:maps/xoylent",
+     "aspect": "16:9",
+     "featured": true,
+     "live": true,
+     "primary": {
+      "id": "mp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "campaign",
+    "type": "screen",
+    "props": {
+     "title": "Campaign",
+     "kind": "page",
+     "subtitle": "Xonotic Campaign",
+     "header": {
+      "collapsible": true
+     },
+     "primary": {
+      "id": "campaign.play",
+      "label": "Play",
+      "icon": "play",
+      "style": "primary"
+     }
+    },
+    "children": [
+     "campaign/sel",
+     "campaign/levels"
+    ]
+   },
+   {
+    "id": "campaign/sel",
+    "type": "preview",
+    "props": {
+     "title": "1. Deathmatch: Boil",
+     "subtitle": "Deathmatch on Boil",
+     "image": "pk3:maps/boil",
+     "aspect": "16:9",
+     "density": "compact",
+     "body": "Welcome to Xonotic! We'll start off easy with Deathmatch against 5 bots on Boil. Xonotic is mainly a multiplayer game, but before jumping into online games it might be a good idea to practice a bit versus bots.",
+     "badges": [
+      {
+       "icon": "flag",
+       "text": "Next",
+       "tone": "accent"
+      }
+     ]
+    },
+    "children": []
+   },
+   {
+    "id": "campaign/levels",
+    "type": "section",
+    "props": {
+     "title": "Levels",
+     "sticky": true,
+     "subtitle": "0 of 31 won · tap to choose, double tap to play"
+    },
+    "children": [
+     "campaign/levels/list"
+    ]
+   },
+   {
+    "id": "campaign/levels/list",
+    "type": "list",
+    "props": {
+     "source": "campaign",
+     "display": "cards",
+     "rowHeight": "card",
+     "minItem": 220,
+     "aspectItem": "16:9",
+     "state": "ready",
+     "selection": "single",
+     "selected": [
+      "0"
+     ],
+     "columns": [
+      {
+       "key": "title",
+       "type": "text",
+       "label": "Level",
+       "width": "fill",
+       "priority": 1,
+       "sortable": false
+      },
+      {
+       "key": "modeName",
+       "type": "text",
+       "label": "Mode",
+       "width": "m",
+       "priority": 2,
+       "sortable": false
+      },
+      {
+       "key": "state",
+       "type": "text",
+       "label": "State",
+       "width": "s",
+       "priority": 3,
+       "sortable": false
+      }
+     ],
+     "rowSelect": {
+      "id": "campaign.select",
+      "label": "Choose",
+      "icon": "check"
+     },
+     "rowPrimary": {
+      "id": "campaign.play",
+      "label": "Play",
+      "icon": "play",
+      "style": "primary"
+     },
+     "count": 2
+    },
+    "children": []
+   }
+  ]
+ },
+ "rows": {
+  "campaign": [
+   {
+    "key": "0",
+    "image": "pk3:maps/boil",
+    "cells": {
+     "n": 1,
+     "title": "1. Deathmatch: Boil",
+     "map": "boil",
+     "mode": "dm",
+     "modeName": "Deathmatch",
+     "state": "next",
+     "locked": false
+    }
+   },
+   {
+    "key": "1",
+    "image": "pk3:maps/stormkeep",
+    "cells": {
+     "n": 2,
+     "title": "2. Team Deathmatch: Stormkeep",
+     "map": "stormkeep",
+     "mode": "tdm",
+     "modeName": "Team Deathmatch",
+     "state": "locked",
+     "locked": true
+    }
+   }
+  ]
+ }
+}

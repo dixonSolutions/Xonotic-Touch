@@ -272,3 +272,24 @@ pub fn plain_text(s: &str) -> String {
     }
     out.trim().to_string()
 }
+
+/// Two clicks or taps on the same row this close together are a double click.
+pub const DOUBLE_CLICK: std::time::Duration = std::time::Duration::from_millis(400);
+
+/// Choosing versus playing in a list that has `rowSelect` (docs/UI_BRIDGE.md 6.1): the
+/// first click or tap on a row chooses it (`row`, kind `select`); a second one on the same
+/// row within [`DOUBLE_CLICK`] plays it (kind `activate`). A third click starts over, and
+/// a click on another row, or a slow second click, only chooses. Scrolling never clicks.
+#[derive(Default)]
+pub struct Clicks {
+    last: Option<(String, String, std::time::Instant)>,
+}
+
+impl Clicks {
+    /// The kind of `row` event a click on `row` of `list` at `now` sends.
+    pub fn click(&mut self, list: &str, row: &str, now: std::time::Instant) -> &'static str {
+        let double = self.last.as_ref().is_some_and(|(l, r, t)| l == list && r == row && now.duration_since(*t) <= DOUBLE_CLICK);
+        self.last = if double { None } else { Some((list.to_string(), row.to_string(), now)) };
+        if double { "activate" } else { "select" }
+    }
+}
