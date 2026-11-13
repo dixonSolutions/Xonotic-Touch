@@ -1,0 +1,67 @@
+name: Launcher
+
+# The GTK 4 / libadwaita launcher in launcher/ (Kotlin/Native). Kotlin/Native
+# has no aarch64 host, so this x86_64 job builds both binaries: aarch64 is
+# cross-compiled and linked against the aarch64 GNOME runtime. The Flatpak
+# jobs in build-and-publish.yml take them from the launcher-bin artifact.
+on:
+  push:
+    branches-ignore: [main, master]
+    paths: ['launcher/**', '.github/workflows/launcher.yml']
+  pull_request:
+    paths: ['launcher/**', '.github/workflows/launcher.yml']
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  build:
+    name: Launcher (x86_64 + aarch64)
+    runs-on: ubuntu-latest
+    env:
+      # Must match runtime-version in flatpak/io.github.dixonSolutions.XonoticTouch.yml.
+      XT_GNOME_VERSION: '48'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Cache Kotlin/Native, Gradle and the GNOME runtimes
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.konan
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.local/share/flatpak
+          key: launcher-gnome${{ env.XT_GNOME_VERSION }}-${{ hashFiles('launcher/**/*.gradle.kts', 'launcher/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: launcher-gnome${{ env.XT_GNOME_VERSION }}-
+
+      - name: GNOME runtimes (headers; x86_64 and aarch64 libraries)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq flatpak file
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive --no-related flathub "org.gnome.Sdk//$XT_GNOME_VERSION"
+          flatpak install --user -y --noninteractive --no-related --arch=aarch64 flathub "org.gnome.Platform//$XT_GNOME_VERSION"
+
+      - name: Core tests
+        working-directory: launcher
+        run: ./gradlew --no-daemon --console=plain :core:jvmTest
+
+      - name: Build
+        run: bash launcher/build.sh
+
+      - name: Check the binaries
+        run: |
+          file launcher/dist/*
+          file launcher/dist/xt-launcher-x86_64 | grep -q 'x86-64'
+          file launcher/dist/xt-launcher-aarch64 | grep -q 'aarch64'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launcher-bin
+          path: launcher/dist/
+          if-no-files-found: error

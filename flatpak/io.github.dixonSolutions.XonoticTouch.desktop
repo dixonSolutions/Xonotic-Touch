@@ -1,8 +1,17 @@
 [Desktop Entry]
 Name=Xonotic Touch
-Exec=start.sh
+Exec=xt-launcher
 Icon=io.github.dixonSolutions.XonoticTouch
 Terminal=false
 Type=Application
 Categories=Game;ActionGame;
 StartupWMClass=xonotic
+Actions=play;launcher;
+
+[Desktop Action play]
+Name=Play directly
+Exec=start.sh
+
+[Desktop Action launcher]
+Name=Launcher
+Exec=xt-launcher --launcher

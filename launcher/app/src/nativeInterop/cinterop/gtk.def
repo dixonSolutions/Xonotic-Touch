@@ -1,0 +1,3 @@
+headers = adwaita.h
+package = gtk
+headerFilter = adwaita.h adw-*.h gtk/* gdk/* gsk/* glib/* gobject/* gio/* glib.h glib-object.h gio/gio.h gtk/gtk.h

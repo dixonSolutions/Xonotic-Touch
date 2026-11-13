@@ -933,6 +933,9 @@ cd "$USER_BASE" 2>/dev/null || xonotic_log "cannot enter $USER_BASE — engine m
 #
 # -customgamename also renames the game in master server queries, which then
 # list no servers; -customgamenetworkfiltername puts the stock name back.
+#
+# Arguments given to start.sh (the launcher's choices, e.g. +vid_fullscreen 0)
+# come last so they win over the defaults above them.
 run_engine() {
     "$BIN" -xonotic \
         -customgamename "Xonotic Touch" \
@@ -959,7 +962,8 @@ run_engine() {
         +developer 0 \
         +prvm_traceqc 0 \
         +prvm_statementprofiling 0 \
-        +prvm_timeprofiling 0
+        +prvm_timeprofiling 0 \
+        "$@"
 }
 
 # A stale marker from a killed session must not relaunch this one.
@@ -973,7 +977,7 @@ ENGINE_STATUS=0
 
 while :; do
     prepare_assets
-    run_engine || ENGINE_STATUS=$?
+    run_engine "$@" || ENGINE_STATUS=$?
 
     if restart_requested; then
         clear_restart_request

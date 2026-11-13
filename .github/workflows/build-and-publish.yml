@@ -46,14 +46,18 @@ jobs:
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Package version: ${VERSION}"
 
+  launcher:
+    name: Launcher
+    uses: ./.github/workflows/launcher.yml
+
   flatpak:
     name: Flatpak (${{ matrix.arch }})
-    needs: [version]
+    needs: [version, launcher]
     # Native runners only — QEMU aarch64-on-x86 was ~10× slower than x86_64.
     # ubuntu-24.04-arm is free for public repos.
     runs-on: ${{ matrix.runner }}
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-48
       options: --privileged
     strategy:
       fail-fast: false
@@ -69,6 +73,16 @@ jobs:
 
       - name: Stamp package version
         run: bash scripts/set-package-version.sh "${{ needs.version.outputs.version }}"
+
+      # Prebuilt by the launcher job; the manifest installs the one for this arch.
+      - name: Fetch the launcher binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: launcher-bin
+          path: launcher/dist
+
+      - name: Mark the launcher binaries executable
+        run: chmod 755 launcher/dist/xt-launcher-*
 
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6

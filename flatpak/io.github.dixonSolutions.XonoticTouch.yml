@@ -1,8 +1,11 @@
 app-id: io.github.dixonSolutions.XonoticTouch
-runtime: org.freedesktop.Platform
-runtime-version: '24.08'
-sdk: org.freedesktop.Sdk
-command: start.sh
+# GNOME 48 for GTK 4 and libadwaita (the launcher). It is built on
+# freedesktop 24.08, so the engine keeps the same compiler and libraries.
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+# The launcher; "Play directly" in the desktop file still runs start.sh.
+command: xt-launcher
 
 finish-args:
   - --share=network
@@ -52,6 +55,24 @@ modules:
           stable-only: true
           url-template: https://github.com/libxmp/libxmp/archive/libxmp-${version}.tar.gz
 
+  # The launcher (launcher/, Kotlin/Native + GTK 4/libadwaita). Kotlin/Native
+  # has no aarch64 host compiler, so both binaries are built outside this
+  # manifest by launcher/build.sh (in CI, the launcher job) and dropped in
+  # here. Run launcher/build.sh before a local flatpak-builder build.
+  - name: launcher
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 xt-launcher /app/bin/xt-launcher
+    sources:
+      - type: file
+        path: ../launcher/dist/xt-launcher-x86_64
+        dest-filename: xt-launcher
+        only-arches: [x86_64]
+      - type: file
+        path: ../launcher/dist/xt-launcher-aarch64
+        dest-filename: xt-launcher
+        only-arches: [aarch64]
+
   - name: xonotic-touch
     buildsystem: simple
     build-commands:
@@ -75,3 +96,4 @@ modules:
           - engine/darkplaces/darkplaces-dedicated
           - engine/gmqcc/gmqcc
           - engine/data/xonotic-data.pk3dir/qcsrc/.tmp
+          - launcher
