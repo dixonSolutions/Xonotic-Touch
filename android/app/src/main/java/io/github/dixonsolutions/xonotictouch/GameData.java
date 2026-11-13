@@ -4,7 +4,6 @@ import android.content.Context;
 import android.util.Base64;
 import android.util.Log;
 
-import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -12,21 +11,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
 import java.io.OutputStream;
-import java.io.SequenceInputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -56,12 +45,19 @@ final class GameData {
      * One archive covers everything. Xonotic-latest.zip ships the data, maps,
      * music, nexcompat and font pk3s together; the -mappingsupport and -high
      * builds duplicate them, which is 1.6 GB of download for no new files.
+     * PackFetch takes the pk3s out of it without storing the archive.
      */
     private static final String ASSET_ARCHIVE = "Xonotic-latest.zip";
+    /** The folder in the archive whose pk3s make up the game data. */
+    private static final String ARCHIVE_DATA = "Xonotic/data/";
 
-    /** The pk3s that have to be on disk before the game is playable. */
+    /**
+     * The pk3s that have to be on disk before the game is playable. Music is
+     * optional (the setup screen asks, default off); the game is silent
+     * without it and the launcher's "Download music" shortcut fetches it later.
+     */
     private static final String[] REQUIRED_PK3S = {
-        "-data.pk3", "-maps.pk3", "-music.pk3",
+        "-data.pk3", "-maps.pk3",
     };
 
     interface Progress {
@@ -259,6 +255,10 @@ final class GameData {
         }
     }
 
+    /**
+     * Gets the APK's slim data set into place. The pk3 download is separate
+     * ({@link #planDownload}, {@link #download}): it asks the player first.
+     */
     void prepare(Progress progress) throws IOException {
         synchronized (PREPARE_LOCK) {
             File base = baseDir();
@@ -266,7 +266,6 @@ final class GameData {
                 throw new IOException("Cannot create " + base);
             }
             installBundle(progress);
-            downloadAssets(progress);
         }
     }
 
@@ -323,12 +322,14 @@ final class GameData {
 
     // -------------------------------------------------------------- download
 
-    /** Parallel byte ranges while the mirror honours them; one stream otherwise. */
-    private static final int DOWNLOAD_STREAMS = 4;
-    private static final int DOWNLOAD_ATTEMPTS = 4;
-    private static final long DOWNLOAD_RETRY_MS = 3000;
-    private static final String ASSET_STAGING = "download";
+    /** Where 1.2.x before the streamed download staged the whole archive. */
+    private static final String OLD_STAGING = "download";
 
+    /**
+     * True while the game cannot start: a core pk3 is missing, or a setup
+     * started and has not got every non-optional pack in yet (the fonts, the
+     * compatibility packs).
+     */
     boolean assetsMissing() {
         File data = dataDir();
         for (String suffix : REQUIRED_PK3S) {
@@ -336,285 +337,85 @@ final class GameData {
                 return true;
             }
         }
+        for (String role : PackFetch.Meta.read(data).missing(data)) {
+            if (!role.contains("-music")) {
+                return true;
+            }
+        }
         return false;
     }
 
-    private void downloadAssets(Progress progress) throws IOException {
+    boolean musicInstalled() {
+        return hasPk3(dataDir(), "-music.pk3");
+    }
+
+    /** Music was asked for by a setup that has not finished it. */
+    boolean musicWanted() {
         File data = dataDir();
-        if (!data.isDirectory() && !data.mkdirs()) {
-            throw new IOException("Cannot create " + data);
+        for (String role : PackFetch.Meta.read(data).want) {
+            if (role.contains("-music")) {
+                return true;
+            }
         }
-        if (!assetsMissing()) {
-            return;
-        }
+        return false;
+    }
 
-        String status = HostRes.string(context, "boot_downloading");
-        Log.i(TAG, "Fetching " + ASSET_ARCHIVE);
-        // The archive is staged in parts rather than streamed into the pk3s: a
-        // stopped run then resumes from the bytes on disk, and an unzip that
-        // fails can be retried without fetching the gigabyte again.
-        ArchiveFetch archive = new ArchiveFetch(new File(context.getFilesDir(), ASSET_STAGING), progress, status);
-        archive.fetch();
-        try (InputStream raw = archive.open()) {
-            unzip(new ZipInputStream(raw), data, "Xonotic/data/", progress, status);
+    /** Reads the archive's file list (two small requests); network, so off the UI thread. */
+    PackFetch.Plan planDownload() throws IOException {
+        File data = dataDir();
+        mkdirs(data);
+        // A 1.2.x install that stopped mid-download left the archive's parts
+        // here, up to 1.2 GB that nothing reads any more.
+        File old = new File(context.getFilesDir(), OLD_STAGING);
+        File[] parts = old.listFiles();
+        if (parts != null) {
+            for (File part : parts) {
+                if (!part.delete()) {
+                    Log.w(TAG, "Could not remove " + part);
+                }
+            }
         }
-        archive.discard();
+        if (old.exists() && !old.delete()) {
+            Log.w(TAG, "Could not remove " + old);
+        }
+        return PackFetch.plan(AUTOBUILD + "/" + ASSET_ARCHIVE, autobuildAuthHeader(), ARCHIVE_DATA);
+    }
 
-        if (assetsMissing()) {
-            throw new IOException(ASSET_ARCHIVE + " did not yield a required pk3");
+    /** Fetches the planned pk3s (music when asked) into the data dir. Interrupt to stop. */
+    void download(PackFetch.Plan plan, boolean music, Progress progress) throws IOException {
+        synchronized (PREPARE_LOCK) {
+            String status = HostRes.string(context, "boot_downloading");
+            long started = System.currentTimeMillis();
+            long[] mark = { started, 0 };
+            double[] rate = { 0 };
+            Log.i(TAG, "Fetching pk3s from " + ASSET_ARCHIVE + (music ? " with music" : ""));
+            new PackFetch(dataDir(), plan, (done, total, file, verifying) -> {
+                long now = System.currentTimeMillis();
+                synchronized (rate) {
+                    if (now - mark[0] >= 1000) {
+                        double r = (done - mark[1]) * 1000.0 / (now - mark[0]);
+                        rate[0] = rate[0] == 0 ? r : rate[0] * 0.7 + r * 0.3;
+                        mark[0] = now;
+                        mark[1] = done;
+                    }
+                }
+                int percent = total > 0 ? (int) (done * 100 / total) : -1;
+                String detail = verifying
+                        ? HostRes.string(context, "boot_verifying", file)
+                        : HostRes.string(context, "boot_progress", megabytes(done), megabytes(total),
+                                String.format(java.util.Locale.US, "%.1f", rate[0] / (1024 * 1024)));
+                progress.update(status, detail, percent);
+            }).run(music);
+            if (assetsMissing()) {
+                throw new IOException(ASSET_ARCHIVE + " did not yield a required pk3");
+            }
+            Log.i(TAG, "Game data downloaded in " + (System.currentTimeMillis() - started) / 1000 + " s");
         }
     }
 
-    /**
-     * The asset archive as parallel byte ranges, each on disk as its own part
-     * file. The meta file pins the server's ETag and size: a changed archive
-     * discards the parts rather than splicing two builds together.
-     */
-    private final class ArchiveFetch {
-        private final File dir;
-        private final Progress progress;
-        private final String status;
-        private final String url = AUTOBUILD + "/" + ASSET_ARCHIVE;
-        private boolean ranged;
-        private int streams;
-        private long total;
-        private long[] starts;
-        private long[] lengths;
-        private long done;
-        private long lastReport;
-        /** Cancelled: the part threads stop, and their retry loop must not start them again. */
-        private volatile boolean stopped;
-        private final List<HttpURLConnection> open = new ArrayList<>();
-
-        ArchiveFetch(File dir, Progress progress, String status) {
-            this.dir = dir;
-            this.progress = progress;
-            this.status = status;
-        }
-
-        void fetch() throws IOException {
-            mkdirs(dir);
-            String etag;
-            HttpURLConnection probe = request("bytes=0-0");
-            try {
-                int code = probe.getResponseCode();
-                if (code != HttpURLConnection.HTTP_OK && code != HttpURLConnection.HTTP_PARTIAL) {
-                    throw new IOException("HTTP " + code + " for " + ASSET_ARCHIVE);
-                }
-                etag = String.valueOf(probe.getHeaderField("ETag"));
-                String contentRange = probe.getHeaderField("Content-Range");
-                ranged = code == HttpURLConnection.HTTP_PARTIAL && contentRange != null
-                        && contentRange.contains("/");
-                total = ranged
-                        ? Long.parseLong(contentRange.substring(contentRange.lastIndexOf('/') + 1).trim())
-                        : Long.parseLong(probe.getHeaderField("Content-Length"));
-            } catch (NumberFormatException e) {
-                throw new IOException("No size from " + url, e);
-            } finally {
-                probe.disconnect();
-            }
-            if (total <= 0) {
-                throw new IOException("No size from " + url);
-            }
-            streams = ranged ? DOWNLOAD_STREAMS : 1;
-
-            String identity = etag + "\n" + total + "\n" + streams;
-            File meta = new File(dir, "meta");
-            if (!meta.isFile() || !identity.equals(readAll(meta))) {
-                clearParts();
-                writeAll(meta, identity);
-            }
-
-            starts = new long[streams];
-            lengths = new long[streams];
-            for (int n = 0; n < streams; n++) {
-                starts[n] = total * n / streams;
-                lengths[n] = total * (n + 1) / streams - starts[n];
-            }
-            done = 0;
-            for (int n = 0; n < streams; n++) {
-                done += ranged ? Math.min(partFile(n).length(), lengths[n]) : 0;
-            }
-            if (done < total) {
-                fetchParts();
-            }
-        }
-
-        InputStream open() throws IOException {
-            List<InputStream> parts = new ArrayList<>();
-            for (int n = 0; n < streams; n++) {
-                parts.add(new FileInputStream(partFile(n)));
-            }
-            return new BufferedInputStream(
-                    new SequenceInputStream(Collections.enumeration(parts)), 256 * 1024);
-        }
-
-        void discard() {
-            clearParts();
-            File meta = new File(dir, "meta");
-            if (!meta.delete() && meta.exists()) {
-                Log.w(TAG, "Could not remove " + meta);
-            }
-            if (!dir.delete() && dir.exists()) {
-                Log.w(TAG, "Could not remove " + dir);
-            }
-        }
-
-        private void fetchParts() throws IOException {
-            ExecutorService pool = Executors.newFixedThreadPool(streams, runnable -> {
-                Thread thread = new Thread(runnable, "xonotic-download");
-                thread.setDaemon(true);
-                return thread;
-            });
-            List<Future<?>> jobs = new ArrayList<>();
-            try {
-                for (int n = 0; n < streams; n++) {
-                    final int part = n;
-                    jobs.add(pool.submit(() -> {
-                        fetchPart(part);
-                        return null;
-                    }));
-                }
-                for (Future<?> job : jobs) {
-                    job.get();
-                }
-            } catch (InterruptedException e) {
-                stopped = true;
-                Thread.currentThread().interrupt();
-                throw new InterruptedIOException("Download cancelled");
-            } catch (ExecutionException e) {
-                Throwable cause = e.getCause();
-                if (cause instanceof IOException) {
-                    throw (IOException) cause;
-                }
-                throw new IOException(String.valueOf(cause), cause);
-            } finally {
-                pool.shutdownNow();
-                if (stopped) {
-                    // A read blocked in the socket does not see the interrupt
-                    // (and the HTTP stack may clear it): close the connections,
-                    // and wait for the part threads to be gone, so a Resume
-                    // never has two writers on one part file.
-                    synchronized (open) {
-                        for (HttpURLConnection connection : open) {
-                            connection.disconnect();
-                        }
-                    }
-                    try {
-                        if (!pool.awaitTermination(15, TimeUnit.SECONDS)) {
-                            Log.w(TAG, "Download threads still running after cancel");
-                        }
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                }
-            }
-        }
-
-        private void fetchPart(int n) throws IOException {
-            for (int attempt = 1; ; attempt++) {
-                try {
-                    transfer(n);
-                    return;
-                } catch (IOException e) {
-                    if (attempt >= DOWNLOAD_ATTEMPTS || stopped || Thread.currentThread().isInterrupted()) {
-                        throw e;
-                    }
-                    Log.w(TAG, "Part " + n + " stopped, retrying", e);
-                    try {
-                        Thread.sleep(DOWNLOAD_RETRY_MS);
-                    } catch (InterruptedException interrupted) {
-                        Thread.currentThread().interrupt();
-                        throw new InterruptedIOException("Download cancelled");
-                    }
-                }
-            }
-        }
-
-        private void transfer(int n) throws IOException {
-            File part = partFile(n);
-            long have = ranged ? part.length() : 0;
-            if (have > lengths[n]) {
-                have = 0;
-            }
-            if (have == lengths[n]) {
-                return;
-            }
-            long from = starts[n] + have;
-            long to = starts[n] + lengths[n] - 1;
-            HttpURLConnection connection = request(ranged ? "bytes=" + from + "-" + to : null);
-            synchronized (open) {
-                open.add(connection);
-            }
-            try {
-                int code = connection.getResponseCode();
-                if (code != (ranged ? HttpURLConnection.HTTP_PARTIAL : HttpURLConnection.HTTP_OK)) {
-                    throw new IOException("HTTP " + code + " for " + ASSET_ARCHIVE);
-                }
-                byte[] buffer = new byte[64 * 1024];
-                long remaining = lengths[n] - have;
-                try (InputStream in = connection.getInputStream();
-                     FileOutputStream out = new FileOutputStream(part, have > 0)) {
-                    int read;
-                    while (remaining > 0
-                            && (read = in.read(buffer, 0, (int) Math.min(buffer.length, remaining))) > 0) {
-                        if (stopped || Thread.currentThread().isInterrupted()) {
-                            throw new InterruptedIOException("Download cancelled");
-                        }
-                        out.write(buffer, 0, read);
-                        remaining -= read;
-                        advance(read);
-                    }
-                }
-                if (remaining != 0) {
-                    throw new IOException("Connection closed early on part " + n);
-                }
-            } finally {
-                connection.disconnect();
-                synchronized (open) {
-                    open.remove(connection);
-                }
-            }
-        }
-
-        private HttpURLConnection request(String range) throws IOException {
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
-            connection.setRequestProperty("Authorization", autobuildAuthHeader());
-            connection.setRequestProperty("Accept-Encoding", "identity");
-            if (range != null) {
-                connection.setRequestProperty("Range", range);
-            }
-            connection.setConnectTimeout(30_000);
-            connection.setReadTimeout(60_000);
-            connection.setInstanceFollowRedirects(true);
-            return connection;
-        }
-
-        private synchronized void advance(long count) {
-            done += count;
-            // One UI post per megabyte; per-chunk posts flood the looper.
-            if (done - lastReport >= 1024 * 1024 || done >= total) {
-                lastReport = done;
-                progress.update(status, (done >> 20) + " / " + (total >> 20) + " MB",
-                        (int) (done * 100 / total));
-            }
-        }
-
-        private File partFile(int n) {
-            return new File(dir, "part." + n);
-        }
-
-        private void clearParts() {
-            File[] entries = dir.listFiles();
-            if (entries == null) {
-                return;
-            }
-            for (File entry : entries) {
-                if (!entry.delete() && entry.exists()) {
-                    Log.w(TAG, "Could not remove " + entry);
-                }
-            }
-        }
+    /** Whole megabytes, for the progress line. */
+    static String megabytes(long bytes) {
+        return String.valueOf(bytes >> 20);
     }
 
     /**
@@ -645,15 +446,8 @@ final class GameData {
     }
 
     /**
-     * @param strip when non-null, only entries under this prefix are extracted,
-     *              and the prefix is dropped from their destination path.
-     */
-    private static void unzip(ZipInputStream zip, File dest, String strip,
-                              Progress progress, String status) throws IOException {
-        unzip(zip, dest, strip, progress, status, null, null, null);
-    }
-
-    /**
+     * @param strip    when non-null, only entries under this prefix are extracted,
+     *                 and the prefix is dropped from their destination path.
      * @param previous signatures from the last unpack ("crc:size" by name), to
      *                 skip entries that have not changed; null writes all
      * @param current  filled with this bundle's signatures; may be null

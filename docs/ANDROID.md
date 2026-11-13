@@ -235,7 +235,8 @@ installs something, never before. Removing it would mean no in-app updates.
 android/
   app/src/main/cpp/CMakeLists.txt   darkplaces -> libmain.so
   app/src/main/java/…/BootActivity      unpacks + downloads game data
-  app/src/main/java/…/GameData          the unpack/download itself
+  app/src/main/java/…/GameData          the unpack, and what the download needs
+  app/src/main/java/…/PackFetch         pk3s out of the remote zip by HTTP Range
   app/src/main/java/…/XonoticActivity   SDLActivity subclass, passes -basedir
 scripts/android-deps.sh           SDL2, ogg, vorbis, freetype, jpeg, png, curl+mbedTLS per ABI
 scripts/android-stage-assets.sh   QuakeC + slim data -> the APK's assets
@@ -266,22 +267,47 @@ during `FS_Init` and would not see anything Java staged afterwards.
 1. Unpack `assets/xonotic-slim-data.zip` — game logic, configs, and the menu skin
    the download screen itself needs. Re-runs after an app update so new progs
    never sit beside old ones.
-2. Fetch `Xonotic-latest.zip` from the Xonotic autobuild server and extract its
-   `.pk3` payloads — about 1.16 GB. That one archive already carries data, maps,
-   music and fonts; the `-mappingsupport` and `-high` builds that
-   `scripts/fetch-assets-posix.sh` also pulls on Ubuntu Touch duplicate it, for
-   1.6 GB of download and no new files. It is extracted straight off the socket
-   rather than staged, so it needs no temporary space and a failure costs only a
-   retry.
+2. Ask, then fetch the pk3s. `PackFetch` reads `Xonotic-latest.zip`'s central
+   directory from the autobuild server with HTTP Range requests (the archive
+   is never stored), and the setup step shows what the download costs, how
+   much space is free (it refuses to start without room for it, and says how
+   much to free), and offers the music pack, off by default. Each pk3 under
+   `Xonotic/data/` then comes from its own byte range straight into its final
+   file: data, maps, nexcompat, xoncompat and the two fonts, about 1.05 GB,
+   plus 106 MB with music. The big pk3s are stored in the zip, so they are cut
+   into 8 MB chunks that 8 connections fetch at once, each writing at its own
+   offset; the small deflated fonts are inflated as one stream. A pk3 is
+   written as `<name>.part`, checked against the CRC32 in the central
+   directory and renamed into place. Peak storage is the pk3s themselves; the
+   download-then-unzip it replaced needed the 1.2 GB archive on top.
 3. Start `XonoticActivity`.
 
-While the boot screen shows work (the first-launch download, its extraction,
-an unpack after an update), it offers **Cancel**. The download stops with the
-parts it fetched kept on disk; the extraction and the unpack stop between
-files (a pk3 is written under a temporary name, so it can stop mid-file). The
-screen then says where it stopped and offers **Resume**, which carries on from
-there, and **Quit**. A cancelled download's threads are closed down before the
-screen says so, so a Resume never has two writers on one part.
+**Resuming.** How far each chunk got is saved beside its part
+(`<name>.part.state`, once a second and on every stop), so Cancel, a dropped
+connection (each chunk retries with a back-off for about two minutes), Quit or
+a killed process all carry on from the bytes on disk. `data/.packs-setup` pins
+the archive's ETag and size and lists the packs the setup finished: when the
+autobuild publishes a new build, the parts and those packs are discarded and
+the setup starts over rather than mixing two builds, and every range request
+carries `If-Range`, so a build that changes mid-download is caught at once.
+The parts an older release staged in `files/download` are deleted.
+
+**Music later.** While the music pack is missing, a long press on the launcher
+icon offers **Download music** (a dynamic shortcut, built in code like the boot
+screen), which opens the setup step for just that pack, with **Not now** to go
+straight into the game.
+
+While the boot screen shows work (the download, an unpack after an update), it
+offers **Cancel**. The download stops with its chunks kept on disk; the unpack
+stops between files. The screen then says where it stopped and offers
+**Resume**, which carries on without asking again, and **Quit**. A cancelled
+download's threads are closed down before the screen says so, so a Resume never
+has two writers on one part. The boot screen's text and buttons are sized for
+a phone held sideways (56 dp buttons, 18 sp text, one column at most 640 dp
+wide) and it scrolls on a short screen; it still shows only when there is
+something to wait for or decide. The download notification uses
+`FOREGROUND_SERVICE_IMMEDIATE` (Android 12+), and a notification says when the
+game is ready if the download finished while the app was in the background.
 
 ## Updating
 

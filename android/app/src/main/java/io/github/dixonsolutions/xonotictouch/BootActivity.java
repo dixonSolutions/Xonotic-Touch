@@ -9,6 +9,10 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.pm.ShortcutInfo;
+import android.content.pm.ShortcutManager;
+import android.graphics.drawable.Icon;
+import android.text.format.Formatter;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -17,13 +21,19 @@ import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -38,9 +48,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * looking, a notification says so, and tapping it comes back here.
  *
  * While it works the screen offers Cancel: the download stops with what it
- * fetched kept on disk (GameData stages it in parts), unpacking stops between
- * files (each lands under a temporary name and is renamed when whole), and
- * the screen then offers Resume and Quit.
+ * fetched kept on disk (PackFetch keeps each pk3's chunks and their state),
+ * unpacking stops between files (each lands under a temporary name and is
+ * renamed when whole), and the screen then offers Resume and Quit.
+ *
+ * The pk3 download asks first: the setup step says how much it fetches, how
+ * much space is free, and offers the music pack (off by default). A
+ * launcher shortcut, "Download music", opens the same step later.
  */
 public final class BootActivity extends Activity {
 
@@ -50,6 +64,9 @@ public final class BootActivity extends Activity {
     private static final String CHANNEL_DONE = "downloads-done";
     private static final int NOTICE_PROGRESS = 1;
     private static final int NOTICE_DONE = 2;
+    /** Set by the launcher's "Download music" shortcut. */
+    static final String EXTRA_GET_MUSIC = "get_music";
+    private static final String SHORTCUT_MUSIC = "music";
 
     private static final Handler ui = new Handler(Looper.getMainLooper());
 
@@ -65,6 +82,8 @@ public final class BootActivity extends Activity {
     /** Finished while no boot screen was showing; the next one resumed takes it. */
     private static volatile GameData readyData;
     private static volatile boolean failedWhileAway;
+    /** The "Download music" shortcut opened this screen. */
+    private static volatile boolean musicRequested;
 
     private View root;
     private TextView status;
@@ -73,6 +92,20 @@ public final class BootActivity extends Activity {
     private Button retry;
     private Button cancel;
     private Button quit;
+    /** The setup step: what the download costs, the music choice, Download. */
+    private LinearLayout choice;
+    private TextView choiceText;
+    private TextView spaceText;
+    private CheckBox musicBox;
+    private Button download;
+    private Button later;
+    private Button recheck;
+    /** The archive's file list while the setup step waits for the player. */
+    private static volatile PackFetch.Plan pendingPlan;
+    /** Download or Resume was pressed in this process: music on or off; null: ask. */
+    private static volatile Boolean chosenMusic;
+    /** The setup step is for the music pack only (the shortcut), the game is playable. */
+    private static volatile boolean musicOnly;
     private Thread worker;
     /** The process's one preparation thread while it runs, whichever screen started it. */
     private static volatile Thread preparationThread;
@@ -97,6 +130,28 @@ public final class BootActivity extends Activity {
         retry.setOnClickListener(v -> start());
         cancel.setOnClickListener(v -> cancelPreparation());
         quit.setOnClickListener(v -> quitApp());
+        download.setOnClickListener(v -> startDownload(musicBox.isChecked()));
+        later.setOnClickListener(v -> {
+            pendingPlan = null;
+            musicRequested = false;
+            musicOnly = false;
+            launchEngine(new GameData(this));
+        });
+        recheck.setOnClickListener(v -> {
+            PackFetch.Plan plan = pendingPlan;
+            if (plan != null) {
+                showChoice(plan);
+            }
+        });
+        musicBox.setOnCheckedChangeListener((b, checked) -> {
+            PackFetch.Plan plan = pendingPlan;
+            if (plan != null) {
+                updateChoice(plan);
+            }
+        });
+        if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_GET_MUSIC, false)) {
+            musicRequested = true;
+        }
 
         appContext = getApplicationContext();
         readyData = null;
@@ -111,43 +166,85 @@ public final class BootActivity extends Activity {
      */
     private void buildScreen() {
         float dp = getResources().getDisplayMetrics().density;
+        int screen = getResources().getDisplayMetrics().widthPixels;
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setGravity(Gravity.CENTER);
-        int pad = Math.round(32 * dp);
+        box.setGravity(Gravity.CENTER_HORIZONTAL);
+        int pad = Math.round(24 * dp);
         box.setPadding(pad, pad, pad, pad);
-        // Starts invisible: shown only when there is something to wait for
-        // (unpacking, the first download, an update install, an error).
-        box.setVisibility(View.INVISIBLE);
 
         status = new TextView(this);
         status.setTextColor(0xFFF2F4F8);
-        status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24);
+        status.setGravity(Gravity.CENTER);
         status.setText(HostRes.string(this, "boot_unpacking"));
         box.addView(status, wrap(0));
 
         detail = new TextView(this);
-        detail.setTextColor(0xFF8C93A3);
-        detail.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        detail.setTextColor(0xFFB4BAC6);
+        detail.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+        detail.setGravity(Gravity.CENTER);
         detail.setText(HostRes.string(this, "boot_first_run"));
-        box.addView(detail, wrap(Math.round(8 * dp)));
+        box.addView(detail, wrap(Math.round(10 * dp)));
 
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(100);
+        progress.setMinimumHeight(Math.round(12 * dp));
         LinearLayout.LayoutParams bar = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        bar.topMargin = Math.round(24 * dp);
+                LinearLayout.LayoutParams.MATCH_PARENT, Math.round(16 * dp));
+        bar.topMargin = Math.round(20 * dp);
         box.addView(progress, bar);
+
+        // The setup step, shown instead of the bar until the player says Download.
+        choice = new LinearLayout(this);
+        choice.setOrientation(LinearLayout.VERTICAL);
+        choice.setGravity(Gravity.CENTER_HORIZONTAL);
+        choice.setVisibility(View.GONE);
+        choiceText = new TextView(this);
+        choiceText.setTextColor(0xFFF2F4F8);
+        choiceText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        choiceText.setGravity(Gravity.CENTER);
+        choice.addView(choiceText, wrap(0));
+        musicBox = new CheckBox(this);
+        musicBox.setTextColor(0xFFF2F4F8);
+        musicBox.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        musicBox.setMinHeight(Math.round(56 * dp));
+        musicBox.setPadding(Math.round(12 * dp), 0, Math.round(12 * dp), 0);
+        choice.addView(musicBox, wrap(Math.round(12 * dp)));
+        spaceText = new TextView(this);
+        spaceText.setTextColor(0xFFB4BAC6);
+        spaceText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        spaceText.setGravity(Gravity.CENTER);
+        choice.addView(spaceText, wrap(Math.round(8 * dp)));
+        box.addView(choice, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
 
         LinearLayout buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
-        box.addView(buttons, wrap(Math.round(24 * dp)));
+        buttons.setGravity(Gravity.CENTER);
+        box.addView(buttons, wrap(Math.round(20 * dp)));
+        download = button(buttons, "boot_download", 0);
+        recheck = button(buttons, "boot_check_again", Math.round(16 * dp));
         retry = button(buttons, "boot_retry", 0);
         cancel = button(buttons, "boot_cancel", 0);
+        later = button(buttons, "boot_not_now", Math.round(16 * dp));
         quit = button(buttons, "boot_quit", Math.round(16 * dp));
 
-        root = box;
-        setContentView(box);
+        // Comfortable on a phone held sideways: one column at most 640 dp wide,
+        // scrolling when a short landscape screen cannot fit it.
+        int width = Math.min(screen, Math.round(640 * dp));
+        LinearLayout centre = new LinearLayout(this);
+        centre.setGravity(Gravity.CENTER);
+        centre.addView(box, new LinearLayout.LayoutParams(width, LinearLayout.LayoutParams.WRAP_CONTENT));
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(centre, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        // Starts invisible: shown only when there is something to wait for
+        // (unpacking, the setup step, the download, an update install, an error).
+        scroll.setVisibility(View.INVISIBLE);
+        root = scroll;
+        setContentView(scroll);
     }
 
     private static LinearLayout.LayoutParams wrap(int top) {
@@ -157,9 +254,17 @@ public final class BootActivity extends Activity {
         return p;
     }
 
+    /** A button a thumb finds: 56 dp tall, 18 sp text, at least 140 dp wide. */
     private Button button(LinearLayout row, String text, int start) {
+        float dp = getResources().getDisplayMetrics().density;
         Button b = new Button(this);
         b.setText(HostRes.string(this, text));
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        b.setMinHeight(Math.round(56 * dp));
+        b.setMinimumHeight(Math.round(56 * dp));
+        b.setMinWidth(Math.round(140 * dp));
+        b.setMinimumWidth(Math.round(140 * dp));
+        b.setPadding(Math.round(24 * dp), 0, Math.round(24 * dp), 0);
         b.setVisibility(View.GONE);
         LinearLayout.LayoutParams p = wrap(0);
         p.setMarginStart(start);
@@ -346,30 +451,156 @@ public final class BootActivity extends Activity {
             applyProgress(lastStatus, lastDetail, lastPercent);
             return;
         }
-        if (data.assetsMissing()) {
-            // Something to wait for from the first frame: the screen shows at
-            // once, not after the delay that hides the quick unpack.
+        PackFetch.Plan waiting = pendingPlan;
+        if (waiting != null) {
+            // The setup step was up when the last screen went: show it again.
+            preparing.set(false);
+            showChoice(waiting);
+            return;
+        }
+        boolean music = musicRequested && !data.musicInstalled();
+        Boolean chosen = chosenMusic;
+        if (chosen != null && (data.assetsMissing() || music)) {
+            // Resume or Retry of a download the player already said yes to.
+            startService();
+        } else if (data.assetsMissing() || music) {
+            // The setup step comes up as soon as the file list is in.
             reveal();
-            requestNotificationPermission();
-            // Leaving the app mid-download must not freeze or end it
-            // (KeepAliveService); started now, while this screen is in front.
-            KeepAliveService.show(this, KeepAliveService.KIND_DOWNLOAD,
-                    HostRes.string(this, "keepalive_download_text"));
         }
         Thread preparation = new Thread(() -> {
             try {
                 data.prepare(BootActivity::report);
+                boolean missing = data.assetsMissing();
+                if (!missing && !music) {
+                    ui.post(() -> prepared(data));
+                    return;
+                }
+                report(HostRes.string(appContext, "boot_checking"), "", -1);
+                PackFetch.Plan plan = data.planDownload();
+                if (chosen == null) {
+                    ui.post(() -> planned(plan, !missing));
+                    return;
+                }
+                data.download(plan, chosen || music, BootActivity::report);
                 ui.post(() -> prepared(data));
             } catch (IOException | RuntimeException e) {
                 Log.e(TAG, "Game data preparation failed", e);
                 ui.post(() -> failed(e));
             }
         }, "xonotic-bootstrap");
+        startPreparation(preparation);
+    }
+
+    private void startPreparation(Thread preparation) {
         worker = preparation;
         preparationThread = preparation;
         cancelRequested = false;
         preparation.start();
         syncCancel();
+    }
+
+    /**
+     * Leaving the app mid-download must not freeze or end it (KeepAliveService);
+     * started while this screen is in front, which Android 12+ requires.
+     */
+    private void startService() {
+        reveal();
+        requestNotificationPermission();
+        KeepAliveService.show(this, KeepAliveService.KIND_DOWNLOAD,
+                HostRes.string(this, "keepalive_download_text"));
+    }
+
+    /** The file list is in: the setup step waits for the player. */
+    private static void planned(PackFetch.Plan plan, boolean onlyMusic) {
+        preparationThread = null;
+        pendingPlan = plan;
+        musicOnly = onlyMusic;
+        preparing.set(false);
+        BootActivity live = visibleScreen();
+        if (live != null) {
+            live.showChoice(plan);
+        }
+    }
+
+    /** The setup step: size, the music choice and the free space, then Download. */
+    private void showChoice(PackFetch.Plan plan) {
+        reveal();
+        GameData data = new GameData(this);
+        PackFetch.Entry music = plan.music();
+        musicBox.setVisibility(music != null && !musicOnly ? View.VISIBLE : View.GONE);
+        if (music != null) {
+            musicBox.setText(HostRes.string(this, "boot_music_option", size(music.csize)));
+        }
+        if (musicOnly || musicRequested || data.musicWanted()) {
+            musicBox.setChecked(true);
+        }
+        status.setText(HostRes.string(this, musicOnly ? "boot_setup_music_title" : "boot_setup_title"));
+        detail.setText("");
+        progress.setVisibility(View.GONE);
+        choice.setVisibility(View.VISIBLE);
+        cancel.setVisibility(View.GONE);
+        retry.setVisibility(View.GONE);
+        quit.setVisibility(musicOnly ? View.GONE : View.VISIBLE);
+        later.setVisibility(musicOnly ? View.VISIBLE : View.GONE);
+        updateChoice(plan);
+    }
+
+    private void updateChoice(PackFetch.Plan plan) {
+        File dir = new GameData(this).dataDir();
+        boolean music = musicOnly || musicBox.isChecked();
+        List<PackFetch.Entry> todo = PackFetch.todo(dir, plan, music);
+        PackFetch.Need need = PackFetch.need(dir, todo, plan);
+        long free = PackFetch.freeBytes(dir);
+        StringBuilder text = new StringBuilder(HostRes.string(this,
+                musicOnly ? "boot_setup_music_size" : "boot_setup_size", size(need.fetch)));
+        if (need.resumed > 0) {
+            text.append('\n').append(HostRes.string(this, "boot_setup_resumed", size(need.resumed)));
+        }
+        choiceText.setText(text);
+        long needed = need.disk + PackFetch.SLACK_BYTES;
+        boolean fits = free >= needed;
+        spaceText.setTextColor(fits ? 0xFFB4BAC6 : 0xFFFF8A80);
+        spaceText.setText(fits
+                ? HostRes.string(this, "boot_space_free", size(free), size(needed))
+                : HostRes.string(this, "boot_space_short", size(needed), size(free), size(needed - free)));
+        download.setText(HostRes.string(this, need.resumed > 0 ? "boot_resume" : "boot_download"));
+        download.setVisibility(View.VISIBLE);
+        download.setEnabled(fits);
+        recheck.setVisibility(fits ? View.GONE : View.VISIBLE);
+    }
+
+    private String size(long bytes) {
+        return Formatter.formatShortFileSize(this, bytes);
+    }
+
+    /** Download pressed: the planned packs, with or without music. */
+    private void startDownload(boolean music) {
+        PackFetch.Plan plan = pendingPlan;
+        if (plan == null || !preparing.compareAndSet(false, true)) {
+            return;
+        }
+        pendingPlan = null;
+        boolean withMusic = music || musicOnly;
+        chosenMusic = withMusic;
+        choice.setVisibility(View.GONE);
+        download.setVisibility(View.GONE);
+        recheck.setVisibility(View.GONE);
+        later.setVisibility(View.GONE);
+        progress.setVisibility(View.VISIBLE);
+        progress.setIndeterminate(true);
+        status.setText(HostRes.string(this, "boot_downloading"));
+        detail.setText("");
+        startService();
+        GameData data = new GameData(this);
+        startPreparation(new Thread(() -> {
+            try {
+                data.download(plan, withMusic, BootActivity::report);
+                ui.post(() -> prepared(data));
+            } catch (IOException | RuntimeException e) {
+                Log.e(TAG, "Game data download failed", e);
+                ui.post(() -> failed(e));
+            }
+        }, "xonotic-download"));
     }
 
     /** The screen the player can see right now, or null once it has gone. */
@@ -404,7 +635,11 @@ public final class BootActivity extends Activity {
     private static void prepared(GameData data) {
         preparationThread = null;
         preparing.set(false);
+        chosenMusic = null;
+        musicRequested = false;
+        musicOnly = false;
         KeepAliveService.stop(appContext);
+        updateMusicShortcut(data);
         BootActivity live = visibleScreen();
         if (live != null) {
             live.launchEngine(data);
@@ -425,6 +660,10 @@ public final class BootActivity extends Activity {
         }
         preparing.set(false);
         KeepAliveService.stop(appContext);
+        if (cause instanceof PackFetch.NoSpace) {
+            // Retry brings the setup step back, which says what to free.
+            chosenMusic = null;
+        }
         BootActivity live = visibleScreen();
         if (live != null) {
             live.showFailure(cause);
@@ -500,6 +739,11 @@ public final class BootActivity extends Activity {
 
     private void applyProgress(String text, String note, int percent) {
         syncCancel();
+        if (choice.getVisibility() == View.VISIBLE) {
+            // The setup step waits for the player; nothing runs behind it.
+            return;
+        }
+        progress.setVisibility(View.VISIBLE);
         status.setText(text);
         detail.setText(note);
         if (percent < 0) {
@@ -523,13 +767,26 @@ public final class BootActivity extends Activity {
 
     private void showFailure(Throwable cause) {
         reveal();
+        choice.setVisibility(View.GONE);
+        download.setVisibility(View.GONE);
+        recheck.setVisibility(View.GONE);
+        later.setVisibility(View.GONE);
+        progress.setVisibility(View.VISIBLE);
         quit.setVisibility(View.VISIBLE);
-        if (cancelRequested || cause instanceof InterruptedIOException) {
+        // A read timeout is an InterruptedIOException too, but no pause.
+        if (cancelRequested || (cause instanceof InterruptedIOException
+                && !(cause instanceof java.net.SocketTimeoutException))) {
             cancelRequested = false;
             progress.setIndeterminate(false);
             status.setText(HostRes.string(this, "boot_paused"));
-            detail.setText(lastDetail.isEmpty() ? HostRes.string(this, "boot_paused_detail_none")
-                    : HostRes.string(this, "boot_paused_detail", lastDetail));
+            // "412 / 1027 MB · 6.1 MB/s": the speed means nothing once stopped.
+            String where = lastDetail;
+            int speed = where.indexOf(" · ");
+            if (speed > 0) {
+                where = where.substring(0, speed);
+            }
+            detail.setText(where.isEmpty() ? HostRes.string(this, "boot_paused_detail_none")
+                    : HostRes.string(this, "boot_paused_detail", where));
             retry.setText(HostRes.string(this, "boot_resume"));
             retry.setVisibility(View.VISIBLE);
             return;
@@ -550,6 +807,39 @@ public final class BootActivity extends Activity {
         }
     }
 
+    /**
+     * "Download music" on a long press of the launcher icon while the music
+     * pack is missing. Built in code (no res/xml), for the same reason as the
+     * screen: under AndySU the host's resources need not be this build's.
+     */
+    private static void updateMusicShortcut(GameData data) {
+        if (Build.VERSION.SDK_INT < 25) {
+            return;
+        }
+        try {
+            ShortcutManager shortcuts = appContext.getSystemService(ShortcutManager.class);
+            if (shortcuts == null) {
+                return;
+            }
+            if (data.musicInstalled()) {
+                shortcuts.removeDynamicShortcuts(Collections.singletonList(SHORTCUT_MUSIC));
+                return;
+            }
+            Intent intent = new Intent(appContext, BootActivity.class)
+                    .setAction(Intent.ACTION_VIEW)
+                    .putExtra(EXTRA_GET_MUSIC, true);
+            int icon = appContext.getApplicationInfo().icon;
+            ShortcutInfo info = new ShortcutInfo.Builder(appContext, SHORTCUT_MUSIC)
+                    .setShortLabel(HostRes.string(appContext, "boot_shortcut_music"))
+                    .setIcon(Icon.createWithResource(appContext, icon))
+                    .setIntent(intent)
+                    .build();
+            shortcuts.setDynamicShortcuts(Collections.singletonList(info));
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Could not update the music shortcut", e);
+        }
+    }
+
     private static void notifyProgress(String text, String note, int percent) {
         NotificationManager manager = notifications();
         createChannel(manager, CHANNEL_PROGRESS, NotificationManager.IMPORTANCE_LOW);
@@ -558,6 +848,7 @@ public final class BootActivity extends Activity {
                 .setContentTitle(text)
                 .setContentText(note)
                 .setOngoing(true)
+                .setOnlyAlertOnce(true)
                 .setProgress(100, Math.max(0, percent), percent < 0)
                 .setContentIntent(openBoot())
                 .build());
@@ -588,9 +879,14 @@ public final class BootActivity extends Activity {
     }
 
     private static Notification.Builder builder(String channel) {
-        return Build.VERSION.SDK_INT >= 26
+        Notification.Builder b = Build.VERSION.SDK_INT >= 26
                 ? new Notification.Builder(appContext, channel)
                 : new Notification.Builder(appContext);
+        if (Build.VERSION.SDK_INT >= 31) {
+            // The download notice shows at once, not after Android 12's 10 s grace.
+            b.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE);
+        }
+        return b;
     }
 
     private static PendingIntent openBoot() {

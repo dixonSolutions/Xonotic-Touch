@@ -171,6 +171,10 @@ public final class KeepAliveService extends Service {
         Notification.Builder builder = Build.VERSION.SDK_INT >= 26
                 ? new Notification.Builder(context, channel)
                 : new Notification.Builder(context);
+        if (Build.VERSION.SDK_INT >= 31) {
+            // Shown at once rather than after Android 12's ten-second grace.
+            builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE);
+        }
         Intent open = new Intent(context, download ? BootActivity.class : XonoticActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         int flags = PendingIntent.FLAG_UPDATE_CURRENT
