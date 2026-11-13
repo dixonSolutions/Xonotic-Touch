@@ -34,6 +34,9 @@ pub struct ListView {
     pub seen: Cell<(usize, usize)>,
 }
 
+/// Updates a control's widget in place from its node.
+pub type Updater = Rc<dyn Fn(&Node)>;
+
 pub struct Ui {
     pub win: adw::ApplicationWindow,
     pub nav: adw::NavigationView,
@@ -44,7 +47,7 @@ pub struct Ui {
     pub shown_stack: Vec<String>,
     pub dialogs: HashMap<String, adw::Dialog>,
     /// Node id -> in-place updater for controls.
-    pub updaters: HashMap<String, Rc<dyn Fn(&Node)>>,
+    pub updaters: HashMap<String, Updater>,
     /// Node id -> the widget a script "click" activates.
     pub activators: HashMap<String, gtk::Widget>,
     pub lists: HashMap<String, Rc<RefCell<ListView>>>,

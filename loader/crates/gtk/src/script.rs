@@ -33,7 +33,7 @@ pub fn snapshot(w: &impl IsA<gtk::Widget>, path: &str) {
         eprintln!("snapshot: nothing drawn yet");
         return;
     };
-    let Some(renderer) = w.native().map(|n| n.renderer()).flatten() else { return };
+    let Some(renderer) = w.native().and_then(|n| n.renderer()) else { return };
     let tex = renderer.render_texture(node, None::<&gsk::graphene::Rect>);
     match tex.save_to_png(path) {
         Ok(()) => println!("snapshot {width}x{height} -> {path}"),

@@ -19,7 +19,9 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 pub enum Backend {
-    Fixture(FixtureBackend),
+    Fixture(Box<FixtureBackend>),
+    /// The engine as UI backend (`-uibridge stdio`), wired when work/uibridge lands.
+    #[allow(dead_code)]
     Engine(EngineBackend),
     Offline(String),
 }

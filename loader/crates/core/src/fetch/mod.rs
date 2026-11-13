@@ -481,8 +481,8 @@ impl ChunkState {
                         v >= 0 && (v as u64) <= s.size_of(i)
                     });
                     if ok {
-                        for i in 0..n {
-                            s.done[i].store(be32(16 + 4 * i), Ordering::SeqCst);
+                        for (i, d) in s.done.iter().enumerate() {
+                            d.store(be32(16 + 4 * i), Ordering::SeqCst);
                         }
                         return s;
                     }

@@ -3,7 +3,7 @@
 wait 1200
 count OUT/toplevels.txt
 snapshot OUT/nav-01-home.png
-click home/tiles/mp:mp
+click home/tiles/mp
 wait 1200
 snapshot OUT/nav-02-servers.png
 click mp/bar/filters/lan
@@ -26,9 +26,9 @@ wait 900
 back
 wait 900
 snapshot OUT/nav-07-back-home.png
-click home/tiles/settings:settings
+click home/tiles/settings
 wait 1200
-click settings/sections/mods:settings.mods
+click settings/sections/mods
 wait 1200
 snapshot OUT/nav-08-settings-mods.png
 count OUT/toplevels.txt

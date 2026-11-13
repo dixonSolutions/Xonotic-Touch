@@ -350,6 +350,7 @@ dependencies = [
  "godnotic-loader-core",
  "gtk4",
  "libadwaita",
+ "libc",
  "serde_json",
 ]
 

@@ -5,9 +5,11 @@
 
 mod app;
 mod backend;
+mod data_ui;
 mod images;
 mod lists;
 mod script;
+mod session_ui;
 mod widgets;
 
 use adw::prelude::*;
@@ -90,7 +92,7 @@ fn make_backend(o: &Opts) -> Backend {
         let name = PathBuf::from(f).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| f.clone());
         let name = if name.ends_with(".json") { name } else { format!("{name}.json") };
         return match backend::load_fixture(&dir, &name) {
-            Ok(player) => Backend::Fixture(FixtureBackend { dir, player, current: name, history: vec![], incoming: VecDeque::new() }),
+            Ok(player) => Backend::Fixture(Box::new(FixtureBackend { dir, player, current: name, history: vec![], incoming: VecDeque::new() })),
             Err(e) => Backend::Offline(format!("Could not read the fixture: {e}")),
         };
     }
@@ -166,10 +168,9 @@ fn main() -> glib::ExitCode {
         gapp.activate();
         for f in files {
             let uri = f.uri();
-            if let (Some(a), Some(addr)) = (st.borrow().as_ref(), godnotic_core::link::parse_join(&uri)) {
-                if let Some(u) = a.ui.borrow().as_ref() {
-                    u.toasts.add_toast(adw::Toast::new(&format!("Join {addr}?")));
-                }
+            let a = st.borrow().clone();
+            if let (Some(a), Some(addr)) = (a, godnotic_core::link::parse_join(&uri)) {
+                session_ui::confirm_join(&a, addr);
             }
         }
     });
@@ -216,8 +217,20 @@ fn show_offline(a: &app::App) {
     };
     let Some(nav) = a.ui.borrow().as_ref().map(|u| u.nav.clone()) else { return };
     let tv = adw::ToolbarView::new();
-    tv.add_top_bar(&adw::HeaderBar::new());
+    let hb = adw::HeaderBar::new();
+    hb.pack_end(&data_ui::button());
+    tv.add_top_bar(&hb);
     let s = adw::StatusPage::builder().icon_name("input-gaming-symbolic").title("Godnotic").description(glib::markup_escape_text(&why)).build();
+    let play = gtk::Button::with_label("Play");
+    play.add_css_class("gn-play");
+    play.set_halign(gtk::Align::Center);
+    let w = Rc::downgrade(a);
+    play.connect_clicked(move |_| {
+        if let Some(a) = w.upgrade() {
+            session_ui::start(&a, godnotic_core::session::Action::Play);
+        }
+    });
+    s.set_child(Some(&play));
     tv.set_content(Some(&s));
     let page = adw::NavigationPage::builder().tag("offline").title("Godnotic").child(&tv).can_pop(false).build();
     nav.replace(&[page]);

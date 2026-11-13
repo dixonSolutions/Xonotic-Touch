@@ -141,8 +141,10 @@ pub fn screen(app: &App, store: &Store, s: &Node) -> gtk::Widget {
     header.set_show_back_button(false);
     let title = adw::WindowTitle::new(&s.title(), &s.str("subtitle").unwrap_or_default());
     header.set_title_widget(Some(&title));
-    let depth = store.stack().iter().position(|x| *x == s.id).unwrap_or(0);
-    if depth > 0 || store.app().and_then(|a| a.bool("canBack")).unwrap_or(false) {
+    let in_stack = store.stack().iter().position(|x| *x == s.id);
+    let depth = in_stack.unwrap_or(0);
+    // Dialogs and sheets close with their own button; pages get Back.
+    if in_stack.is_some_and(|d| d > 0 || store.app().and_then(|a| a.bool("canBack")).unwrap_or(false)) {
         let back = gtk::Button::from_icon_name("go-previous-symbolic");
         back.set_tooltip_text(Some("Back"));
         let w = Rc::downgrade(app);
@@ -162,6 +164,9 @@ pub fn screen(app: &App, store: &Store, s: &Node) -> gtk::Widget {
             }
             header.pack_end(&b);
         }
+    }
+    if depth == 0 {
+        header.pack_end(&crate::data_ui::button());
     }
     tv.add_top_bar(&header);
     if let Some(from) = s.from_mod() {

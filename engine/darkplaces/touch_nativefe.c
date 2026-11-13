@@ -6,6 +6,7 @@ The desktop app starts the engine (through packaging/start.sh) with:
   GODNOTIC_FRONTEND=native     this mode; anything else (or unset) leaves the
                                engine exactly as it was
   GODNOTIC_FE_RESULT=<path>    where to write how the session ended
+  GODNOTIC_FE_WATCH_PID=<pid>  optional: quit when that process (the app) is gone
   GODNOTIC_FE_SECRET_FD=<n>    optional: an inherited pipe holding one line,
                                "join\t<address>\t<password>" or "host\t<password>".
                                Read once at start and closed; the variable is
@@ -47,6 +48,8 @@ Console commands (both modes): fe_mark <text> prints "@@FE <text>".
 
 #ifndef WIN32
 #include <unistd.h>
+#include <signal.h>
+#include <errno.h>
 #endif
 
 enum { FE_OFF, FE_NATIVE, FE_MANAGER };
@@ -64,6 +67,8 @@ static char fe_server[128];
 static char fe_manager_cmds[4096];
 static int fe_manager_stage;
 static int fe_frames;
+static int fe_watch_pid;          // the app that started us; when it is gone, so are we
+static double fe_watch_next;
 
 qbool TouchNativeFE_Active(void)
 {
@@ -183,6 +188,10 @@ void TouchNativeFE_Init(void)
 	if (fe_result_path[0])
 		remove(fe_result_path);
 	fe_read_secret();
+	{
+		const char *w = getenv("GODNOTIC_FE_WATCH_PID");
+		fe_watch_pid = w ? atoi(w) : 0;
+	}
 	atexit(fe_atexit);
 	fe_start_time = Sys_DirtyTime();
 	Con_DPrintf("native front end: %s mode\n", fe_mode == FE_NATIVE ? "native" : "manager");
@@ -269,6 +278,18 @@ void TouchNativeFE_Frame(void)
 	double now;
 	if (fe_mode == FE_OFF || fe_result_written)
 		return;
+#ifndef WIN32
+	// Parent-death watchdog: the app quit or crashed without closing us (once a second).
+	if (fe_watch_pid > 1 && Sys_DirtyTime() > fe_watch_next)
+	{
+		fe_watch_next = Sys_DirtyTime() + 1.0;
+		if (kill(fe_watch_pid, 0) != 0 && errno == ESRCH)
+		{
+			fe_end("quit", "the app is gone");
+			return;
+		}
+	}
+#endif
 	if (fe_mode == FE_MANAGER)
 	{
 		fe_manager_frame();
