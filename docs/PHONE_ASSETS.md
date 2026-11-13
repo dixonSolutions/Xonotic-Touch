@@ -234,8 +234,14 @@ libopusfile decodes the effects at about half the speed of libvorbisfile
 (all 795 effects that are decoded whole, i.e. shorter than
 `snd_streaming_length` 40 s: 5.2 s Vorbis, 9.7 s with the chosen mix; the
 largest single one 85 -> 208 ms). The engine decodes small files on first
-play and big Vorbis files on worker threads; Opus files are not on that
-worker path yet (see "Needs from the load-time work" in the publish notes).
+play and big Vorbis files on worker threads, but an Opus file over
+`snd_lazyload_maxsize` (48 KiB) is decoded on the main thread at precache.
+With every effect as Opus that put 0.7-1.4 s of decoding into a stormkeep or
+erbium load on a desktop (4 cores; sound phase 70-190 ms with the published
+set), several seconds on a tablet. So `--sfx-precache-kib 48` keeps Vorbis
+for an effect whose Opus file would be over 48 KiB and that is short enough
+to be decoded whole (30 files, 2.5 MB more); set it to 0 once the engine
+decodes Opus on its worker threads too.
 
 ### Split set (`scripts/split-data-packs.py`)
 

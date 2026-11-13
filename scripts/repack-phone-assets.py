@@ -13,7 +13,11 @@ name of the pack it came from (the manifest says so). Entry by entry:
   *.ogg       Ogg Vorbis music (--audio music, the default) or all sound
               (--audio all) becomes Ogg Opus, under the same
               name: the QuakeC looks for sounds by their .ogg name, and the
-              engine looks inside (touch_assets_opus.c).
+              engine looks inside (touch_assets_opus.c). --sfx opus (the
+              astc and dxt profiles) makes each sound effect Opus at the
+              lowest bitrate that measures as close to the source as a
+              generous one, or keeps it Vorbis; music and effects decode to
+              exactly the source's length at 48 kHz.
   the rest    stored with zstd (zip method 93) when that saves 2% or more,
               else stored. An entry that would grow keeps its original
               compressed payload, name and bytes. The engine inflates zstd entries
@@ -274,6 +278,14 @@ SFX_MAX_ENV = 0.35    # mean |dB| of the 2 ms energy envelope
 SFX_MAX_LOUD = 0.25   # dB of total energy above 100 Hz
 SFX_MAX_PRE = 1.5     # dB more energy than the source before the first onset
 SFX_MAX_SEAM = 3.0    # dB: error at a loop's ends over the error inside
+
+# A sound file bigger than this is decoded at precache (snd_lazyload_maxsize,
+# 48 KiB) unless it is long enough to stream (snd_streaming_length 40 s in
+# Xonotic). Vorbis files that big are decoded on worker threads, Opus ones on
+# the main thread, so those stay Vorbis until the engine decodes Opus on the
+# workers too; 0 (--sfx-precache-kib 0) converts them anyway.
+SFX_PRECACHE_LIMIT = 48 * 1024
+SFX_STREAMED_SECONDS = 40
 
 _vorbisfile = None
 
@@ -583,6 +595,13 @@ def sfx_to_opus(name, data, loops):
         opus, d = attempt(kbps)
         if len(opus) > 0.9 * len(data):
             break  # higher rates are only bigger
+        if (SFX_PRECACHE_LIMIT and len(opus) > SFX_PRECACHE_LIMIT
+                and len(pcm) <= SFX_STREAMED_SECONDS * rate):
+            # the engine decodes a sound file this big at precache, and only
+            # Vorbis on worker threads (touch_loadogg.h): as Opus it would
+            # be decoded on the main thread during the map load
+            report["kept"] = "precache"
+            break
         if (d["band"] - yard["band"] > SFX_MAX_BAND or d["env"] - yard["env"] > SFX_MAX_ENV
                 or abs(d["loud"] - yard["loud"]) > SFX_MAX_LOUD
                 or (d["pre"] is not None and yard["pre"] is not None and d["pre"] - yard["pre"] > SFX_MAX_PRE)
@@ -1020,6 +1039,9 @@ def main():
     ap.add_argument("--sfx", choices=("keep", "opus"), default="keep",
                     help="opus: each Vorbis sound effect becomes Opus at the lowest bitrate that measures as close "
                          "to the source as Opus at a generous rate, or stays Vorbis (slim: opus)")
+    ap.add_argument("--sfx-precache-kib", type=int, default=48,
+                    help="--sfx opus keeps Vorbis where the Opus file would be bigger than this and the engine would "
+                         "decode it at precache (0: no limit; set 0 once Opus decodes on the engine's worker threads)")
     ap.add_argument("--bsp-zstd-level", type=int, default=0, help="zstd level for maps/*.bsp (0: --zstd-level)")
     ap.add_argument("--jpeg-quality", type=int, default=0,
                     help="re-encode JPEGs saved at a higher quality than this (0: leave them; slim: 86)")
@@ -1049,6 +1071,8 @@ def main():
                                                           "norm": args.norm_blocks, "gfx": args.gfx_blocks}, args.max_size)
     os.makedirs(args.outdir, exist_ok=True)
     args.loops = set()
+    global SFX_PRECACHE_LIMIT
+    SFX_PRECACHE_LIMIT = args.sfx_precache_kib * 1024
     if args.sfx == "opus":
         _vf()  # fail early without libvorbisfile
         args.loops = looped_speakers(args.packs)
@@ -1065,7 +1089,8 @@ def main():
     sfx = stats.pop("_sfx", [])
     if sfx:
         with open(os.path.join(args.outdir, "phone-sfx.tsv"), "w") as f:
-            cols = ("name", "rate", "channels", "out_channels", "loop", "vorbis", "kbps", "opus", "band", "env", "loud")
+            cols = ("name", "rate", "channels", "out_channels", "loop", "vorbis", "kbps", "opus", "band", "env", "loud",
+                    "kept")
             f.write("\t".join(cols) + "\n")
             for r in sorted(sfx, key=lambda r: r["name"]):
                 f.write("\t".join("" if r.get(c) is None else str(r.get(c)) for c in cols) + "\n")
