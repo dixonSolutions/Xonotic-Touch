@@ -75,10 +75,22 @@ static void Touch_DDS_SwDecodeEnd(const char *name, int fullw, int fullh, int by
 		Con_Printf("^3%s: DXT decoded in software, %dx%d -> %lld KB\n", name, fullw, fullh, uploaded / 1024);
 }
 
+// WebGL names the extension WEBGL_compressed_texture_astc (Emscripten lists
+// it as GL_WEBGL_compressed_texture_astc and enables it): phones' and Apple
+// GPUs' browsers have it, most desktop GPUs do not.
+static qbool Touch_KTX_GPUHasASTC(void)
+{
+#ifdef __EMSCRIPTEN__
+	if (GL_ExtensionSupported("GL_WEBGL_compressed_texture_astc"))
+		return true;
+#endif
+	return GL_ExtensionSupported("GL_KHR_texture_compression_astc_ldr");
+}
+
 static void Touch_KTX_Stats_f(cmd_state_t *cmd)
 {
 	Con_Printf("ASTC textures: %d loaded, %d refused; GPU support: %s\n", touch_ktx_loaded, touch_ktx_refused,
-		GL_ExtensionSupported("GL_KHR_texture_compression_astc_ldr") ? "yes" : "no");
+		Touch_KTX_GPUHasASTC() ? "yes" : "no");
 	Con_Printf("DXT textures decoded in software: %d, %.1f ms, %.1f MB of DXT (whole chains), %.1f MB RGBA uploaded at %d mip level(s) down; full size would be %.1f MB RGBA; largest %s (%dx%d)\n",
 		touch_swdds.count, touch_swdds.seconds * 1000.0, touch_swdds.dxtbytes / 1048576.0, touch_swdds.uploaded / 1048576.0,
 		r_texture_dds_swdecode_reduce.integer, touch_swdds.fullpixels * 4.0 * 4 / 3 / 1048576.0, touch_swdds.largest[0] ? touch_swdds.largest : "-", touch_swdds.largest_w, touch_swdds.largest_h);
@@ -123,7 +135,7 @@ static qbool Touch_KTX_Usable(void)
 		noastc = Sys_CheckParm("-noastc") != 0;
 	if (noastc)
 		return false;
-	return GL_ExtensionSupported("GL_KHR_texture_compression_astc_ldr");
+	return Touch_KTX_GPUHasASTC();
 }
 
 static rtexture_t *Touch_KTX_Refuse(const char *name, const char *why, unsigned char *ktx)

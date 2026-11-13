@@ -497,8 +497,115 @@ void Sys_SDL_Init(void)
 
 }
 
+// ---- Maps on demand (docs/WEB.md, "Maps on demand") ----------------------
+//
+// The page starts with the core data and fetches a map's pack when the map
+// is asked for. The menu still lists every map: the core pack has a
+// stand-in .mapinfo (its title says how much there is to download) and an
+// empty .bsp for each, and the map's own pack replaces both once mounted.
+//
+// "map" and "changelevel" (the menu, the console, map rotation and votes,
+// and QuakeC's changelevel builtin all go through them) ask the page first.
+// When the pack is not mounted, the page fetches it with a progress screen
+// and the command returns without doing anything; once the pack is stored
+// and mounted, the page runs "fs_rescan" and the same command again. So the
+// engine never waits on the network: no Asyncify, nothing changed in the
+// loading code, and the commands are wrapped here instead of edited in
+// upstream sv_ccmds.c.
+
+int xt_web_hook_maps(void);
+
+static xcommand_t em_map_orig, em_changelevel_orig;
+
+EM_JS(int, js_NeedMap, (const char *map, const char *line), {
+	return Module.xt && Module.xt.needMap ? Module.xt.needMap(UTF8ToString(map), UTF8ToString(line)) : 1;
+});
+
+/// true: the page is fetching the map and runs the command again itself
+static qbool em_map_deferred(cmd_state_t *cmd)
+{
+	char line[MAX_INPUTLINE];
+
+	if (Cmd_Argc(cmd) != 2)
+		return false; // the command prints its usage
+	dpsnprintf(line, sizeof(line), "%s \"%s\"", Cmd_Argv(cmd, 0), Cmd_Argv(cmd, 1));
+	return !js_NeedMap(Cmd_Argv(cmd, 1), line);
+}
+
+static void em_map_f(cmd_state_t *cmd)
+{
+	if (!em_map_deferred(cmd))
+		em_map_orig(cmd);
+}
+
+static void em_changelevel_f(cmd_state_t *cmd)
+{
+	if (!em_map_deferred(cmd))
+		em_changelevel_orig(cmd);
+}
+
+/// Wrap "map" and "changelevel" once the server has registered them.
+/// Returns how many are wrapped (2).
+EMSCRIPTEN_KEEPALIVE int xt_web_hook_maps(void)
+{
+	cmd_function_t *f;
+	int n = 0;
+
+	for (f = cmd_local->engine_functions; f; f = f->next)
+	{
+		if (!strcmp(f->name, "map") && f->function != em_map_f)
+		{
+			em_map_orig = f->function;
+			f->function = em_map_f;
+		}
+		else if (!strcmp(f->name, "changelevel") && f->function != em_changelevel_f)
+		{
+			em_changelevel_orig = f->function;
+			f->function = em_changelevel_f;
+		}
+		if (f->function == em_map_f || f->function == em_changelevel_f)
+			n++;
+	}
+	return n;
+}
+
+EM_JS(char *, js_MapsCommand, (const char *arg), {
+	var said = Module.xt && Module.xt.mapsCommand ? Module.xt.mapsCommand(UTF8ToString(arg)) : "";
+	return said ? stringToNewUTF8(said + "\n") : 0;
+});
+
+static void em_web_maps_f(cmd_state_t *cmd)
+{
+	char *said = js_MapsCommand(Cmd_Argc(cmd) > 1 ? Cmd_Argv(cmd, 1) : "status");
+	if (said)
+	{
+		Con_Print(said);
+		free(said);
+	}
+}
+
+static void em_web_storage_f(cmd_state_t *cmd)
+{
+	char *said = js_MapsCommand("storage");
+	if (said)
+		free(said);
+}
+
+static void em_hook_maps_f(cmd_state_t *cmd)
+{
+	if (xt_web_hook_maps() != 2)
+		Con_Printf("Maps on demand: map/changelevel not found\n");
+}
+
 void Sys_EM_Register_Commands(void)
 {
+	// FS_Init calls this before the server registers "map": the hook runs
+	// from the command buffer instead, the first thing the startup configs
+	// execute (so before a +map on the command line).
+	Cmd_AddCommand(CF_SHARED, "_xt_web_hook_maps", em_hook_maps_f, "wrap map/changelevel to fetch maps on demand (web only)");
+	Cbuf_AddText(cmd_local, "_xt_web_hook_maps\n");
+	Cmd_AddCommand(CF_CLIENT, "web_maps", em_web_maps_f, "web: how much of the game data is stored");
+	Cmd_AddCommand(CF_CLIENT, "web_storage", em_web_storage_f, "web: open the page's Storage and settings popover");
 #ifdef WASM_USER_ADJUSTABLE
 	Cmd_AddCommand(CF_SHARED, "em_ls", em_listfiles_f, "Lists Files in specified directory defaulting to the current working directory (Emscripten Only)");
 	Cmd_AddCommand(CF_SHARED, "em_upload", em_upload_f, "Upload file to specified directory defaulting to basedir (Emscripten Only)");
