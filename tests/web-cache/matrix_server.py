@@ -36,6 +36,13 @@ class Handler(serve.Handler):
         kw["directory"] = STATE["root"]
         super().__init__(*a, **kw)
 
+    def translate_path(self, path):
+        # The root is looked up for every request, not once per connection:
+        # a browser's kept-alive connection would go on serving the root it
+        # was opened under after /__root switched it (Firefox does).
+        self.directory = STATE["root"]
+        return super().translate_path(path)
+
     def _json(self, obj):
         body = json.dumps(obj).encode()
         self.send_response(200)

@@ -22,10 +22,14 @@ EMSDK="${EMSDK:-$ROOT/.vercel/cache/emsdk}"
 AUTOBUILD="https://github.com/dixonSolutions/Godnotic-data/releases/download/data-20261107"
 DATA_ARCHIVE="Godnotic-data-20261107.zip"
 # The slim phone set (ASTC, zstd, Opus): the "astc" profile, for browsers on
-# GPUs with WEBGL_compressed_texture_astc. Pinned by hash: a republished
-# asset is used with a warning (the page fetches what changed), not refused.
-SLIM_URL="https://github.com/dixonSolutions/Godnotic-data/releases/download/data-slim/Godnotic-data.zip"
-SLIM_SHA256="4940b5a49c13a928d447b18c3cf430d0879dbbaf3bc27750ece001877d21dec0"
+# GPUs with WEBGL_compressed_texture_astc. Pinned by hash, and the build
+# fails when the asset cannot be fetched or is not the pinned one: a deploy
+# without the profile would move every ASTC browser to the 1 GB set, and a
+# changed asset would make every visitor download it again. "data-slim" is a
+# tag that moves; point this at an immutable one (data-slim-<date>) once
+# Godnotic-data publishes it, and move the pin on purpose.
+SLIM_URL="${XT_SLIM_DATA_ARCHIVE:-https://github.com/dixonSolutions/Godnotic-data/releases/download/data-slim/Godnotic-data.zip}"
+SLIM_SHA256="${XT_SLIM_DATA_SHA256:-4940b5a49c13a928d447b18c3cf430d0879dbbaf3bc27750ece001877d21dec0}"
 # A prebuilt "web" repack of the stock set (zstd entries, re-encoded JPEGs,
 # DXT kept: repack-phone-assets.py --profile slim --textures keep), for the
 # "web" profile. Empty: the web profile is the stock pk3s as they are.
@@ -136,23 +140,29 @@ mkdir -p "$work/stock"
 unzip -q -j -o "$work/Xonotic-latest.zip" 'Xonotic/data/*.pk3' -d "$work/stock"
 rm -f "$work/Xonotic-latest.zip"
 stage_args=(--stock "$work/stock")
-fetch_set() { # URL SHA256 NAME -> stage argument for that set, or nothing
-    if curl -sfL --retry 3 --retry-delay 5 -o "$work/$3.zip" "$1"; then
-        if [ -n "$2" ] && ! echo "$2  $work/$3.zip" | sha256sum -c --quiet - 2>/dev/null; then
-            echo "warning: $1 is not the pinned build ($2); using it anyway" >&2
-        fi
-        echo "$work/$3.zip"
-    else
-        echo "warning: could not fetch $1; leaving the $3 profile out" >&2
+fetch_set() { # URL SHA256 NAME -> the archive's path; the build fails without it
+    if ! curl -sfL --retry 3 --retry-delay 5 -o "$work/$3.zip" "$1"; then
+        echo "vercel-build: could not fetch $1 (the $3 profile); not deploying without it" >&2
+        return 1
     fi
+    if [ -z "$2" ]; then
+        echo "vercel-build: no sha256 pinned for $1 (the $3 profile)" >&2
+        return 1
+    fi
+    if ! echo "$2  $work/$3.zip" | sha256sum -c --quiet - >/dev/null 2>&1; then
+        echo "vercel-build: $1 is not the pinned build: expected sha256 $2, got $(sha256sum "$work/$3.zip" | cut -d' ' -f1)" >&2
+        echo "vercel-build: move the pin in scripts/vercel-build.sh on purpose if the data was meant to change" >&2
+        return 1
+    fi
+    echo "$work/$3.zip"
 }
 echo "Fetching the slim (ASTC) data…"
 slim="$(fetch_set "$SLIM_URL" "$SLIM_SHA256" astc)"
-[ -z "$slim" ] || stage_args+=(--astc "$slim")
+stage_args+=(--astc "$slim")
 if [ -n "$WEB_URL" ]; then
     echo "Fetching the web repack…"
     webset="$(fetch_set "$WEB_URL" "$WEB_SHA256" web)"
-    [ -z "$webset" ] || stage_args+=(--web "$webset")
+    stage_args+=(--web "$webset")
 fi
 PYTHON="$EMSDK_PYTHON" bash "$ROOT/scripts/stage-web-data.sh" "${stage_args[@]}"
 rm -f "$ROOT/build/web/serve.py"
