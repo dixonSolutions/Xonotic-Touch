@@ -18,6 +18,8 @@ use std::io::{self, Read, Write};
 use std::process::{Child, Command, Stdio};
 
 pub const SECRET_FD: i32 = 3;
+/// The desktop app id: the game window carries it too, so the dock shows one Godnotic entry.
+pub const APP_ID: &str = "io.github.dixonSolutions.XonoticTouch";
 pub const ENV_MODE: &str = "GODNOTIC_FRONTEND";
 pub const ENV_RESULT: &str = "GODNOTIC_FE_RESULT";
 pub const ENV_SECRET_FD: &str = "GODNOTIC_FE_SECRET_FD";
@@ -69,6 +71,9 @@ pub fn base_args(cfg: &Config) -> (BTreeMap<String, String>, Vec<String>) {
 pub fn plan(action: &Action, cfg: &Config, start_script: &str, result_path: &str) -> Plan {
     let (mut env, mut args) = base_args(cfg);
     env.insert(ENV_RESULT.into(), result_path.into());
+    // SDL names the game window after the app (X11 WM_CLASS, Wayland app_id): one dock entry.
+    env.insert("SDL_VIDEO_X11_WMCLASS".into(), APP_ID.into());
+    env.insert("SDL_VIDEO_WAYLAND_WMCLASS".into(), APP_ID.into());
     let mut secret = None;
     if let Action::Connect { address, password } = action {
         env.insert(ENV_MODE.into(), "native".into());

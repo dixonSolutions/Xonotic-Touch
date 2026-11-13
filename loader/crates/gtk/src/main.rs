@@ -110,8 +110,11 @@ fn css() {
 
 fn main() -> glib::ExitCode {
     let t0 = std::time::Instant::now();
+    // WM_CLASS on X11 follows the program name: the app id, as the desktop file's StartupWMClass says.
+    glib::set_prgname(Some(APP_ID));
     let o = parse_args();
-    let flags = if o.snapshot.is_some() || o.script.is_some() { gio::ApplicationFlags::NON_UNIQUE } else { gio::ApplicationFlags::HANDLES_OPEN };
+    let test_run = o.snapshot.is_some() || o.script.is_some() || std::env::var_os("GODNOTIC_EXIT_AFTER_FRAME").is_some() || std::env::var_os("GODNOTIC_NON_UNIQUE").is_some();
+    let flags = if test_run { gio::ApplicationFlags::NON_UNIQUE } else { gio::ApplicationFlags::HANDLES_OPEN };
     let gapp = adw::Application::builder().application_id(APP_ID).flags(flags).build();
     let state: Rc<std::cell::RefCell<Option<app::App>>> = Rc::new(std::cell::RefCell::new(None));
 
@@ -143,6 +146,12 @@ fn main() -> glib::ExitCode {
             let ms = t0.elapsed().as_secs_f64() * 1000.0;
             if o3.time || std::env::var_os("GODNOTIC_TIMING").is_some() {
                 eprintln!("godnotic-loader: first frame after {ms:.1} ms (process start)");
+            }
+            if std::env::var_os("GODNOTIC_EXIT_AFTER_FRAME").is_some() {
+                if let Some(app) = w.application() {
+                    app.quit();
+                }
+                return glib::ControlFlow::Break;
             }
             // The described UI comes after the first frame: nothing blocks the window.
             start_ui(&a2);
