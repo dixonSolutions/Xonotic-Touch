@@ -8,8 +8,6 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInstaller;
 import android.content.pm.PackageManager;
-import android.net.ConnectivityManager;
-import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
@@ -366,13 +364,7 @@ final class AppUpdater {
      * asked for does not.
      */
     static boolean onUnmeteredNetwork(Context context) {
-        ConnectivityManager connectivity =
-                (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
-        if (connectivity == null) {
-            return false;
-        }
-        NetworkInfo active = connectivity.getActiveNetworkInfo();
-        return active != null && active.isConnected() && !connectivity.isActiveNetworkMetered();
+        return Net.unmetered(context);
     }
 
     /**

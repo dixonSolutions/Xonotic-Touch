@@ -95,24 +95,17 @@ done
 
 ##### Branding ################################################################
 
-ICON_SRC="${ANDROID_ICON_SRC:-$ROOT/branding/godnotic-icon-512.png}"
-test -f "$ICON_SRC" || { echo "Missing official icon: $ICON_SRC" >&2; exit 1; }
-MAGICK="$(command -v magick || command -v convert || true)"
-test -n "$MAGICK" || { echo "ImageMagick (magick/convert) is required" >&2; exit 1; }
-
-# The same logo stage-click.sh installs, at the densities Android asks for.
-log "Generating launcher icons from $(basename "$ICON_SRC")"
-while read -r density size; do
-    dir="$ANDROID_DIR/app/src/main/res/mipmap-$density"
-    mkdir -p "$dir"
-    "$MAGICK" "$ICON_SRC" -resize "${size}x${size}" "$dir/icon.png"
-done <<'DENSITIES'
-mdpi 48
-hdpi 72
-xhdpi 96
-xxhdpi 144
-xxxhdpi 192
-DENSITIES
+# The launcher icon: scripts/gen-branding.py writes it as res folders under
+# branding/android (adaptive foreground, dark background and monochrome layers
+# for API 26+, a legacy icon.png on the same dark plate for the rest). The
+# resource stays mipmap/icon, the name every (AndySU) host's manifest uses.
+ICON_RES="${ANDROID_ICON_RES:-$ROOT/branding/android}"
+test -f "$ICON_RES/mipmap-anydpi-v26/icon.xml" || { echo "Missing launcher icon: run scripts/gen-branding.py ($ICON_RES)" >&2; exit 1; }
+log "Installing launcher icons from ${ICON_RES#$ROOT/}"
+rm -rf "$ANDROID_DIR"/app/src/main/res/mipmap-*
+for dir in "$ICON_RES"/mipmap-*; do
+    cp -r "$dir" "$ANDROID_DIR/app/src/main/res/"
+done
 
 ##### Game data payload #######################################################
 

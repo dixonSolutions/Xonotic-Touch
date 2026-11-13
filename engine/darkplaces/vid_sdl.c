@@ -28,6 +28,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "csprogs.h"
 #include "touch_hud.h"
 #include "touch_vote.h"
+#include "touch_shellbtn.h" // Touch: console button
 #include "screen.h"
 #include "touch_android.h"
 #include "touch_display.h" // Touch
@@ -1771,6 +1772,8 @@ void Sys_SDL_HandleEvents(void)
 				else
 					Con_DPrintf("SDL_Event: SDL_MOUSEBUTTONUP\n");
 #endif
+			if (TouchShell_Mouse(event.type == SDL_MOUSEBUTTONDOWN, event.button.button, event.button.which == SDL_TOUCH_MOUSEID, event.button.x, event.button.y)) // Touch: console button
+				break;
 			if (event.type == SDL_MOUSEBUTTONDOWN && event.button.which != SDL_TOUCH_MOUSEID)
 			{
 				qbool was_confirmed = VID_TouchMouseConfirmed();
@@ -2017,6 +2020,8 @@ void Sys_SDL_HandleEvents(void)
 					// a system popup) otherwise holds a local game paused for good.
 					vid_hasfocus = true;
 				}
+				if (TouchShell_Finger(0, (int)event.tfinger.fingerId + 1, event.tfinger.x, event.tfinger.y)) // Touch: console button
+					break;
 				// Touch: a finger on the vote chip or card stays out of the table
 				if (TouchVote_Finger(0, (int)event.tfinger.fingerId + 1, event.tfinger.x, event.tfinger.y))
 					break;
@@ -2042,6 +2047,8 @@ void Sys_SDL_HandleEvents(void)
 #endif
 				if (VID_TouchIsDirect(event.tfinger.touchId))
 					VID_NoteTouchActivity();
+				if (TouchShell_Finger(2, (int)event.tfinger.fingerId + 1, event.tfinger.x, event.tfinger.y)) // Touch: console button
+					break;
 				if (TouchVote_Finger(2, (int)event.tfinger.fingerId + 1, event.tfinger.x, event.tfinger.y)) // Touch
 					break;
 				for (i = 0;i < MAXFINGERS-1;i++)
@@ -2066,6 +2073,8 @@ void Sys_SDL_HandleEvents(void)
 #endif
 				if (VID_TouchIsDirect(event.tfinger.touchId))
 					VID_NoteTouchActivity();
+				if (TouchShell_Finger(1, (int)event.tfinger.fingerId + 1, event.tfinger.x, event.tfinger.y)) // Touch: console button
+					break;
 				if (TouchVote_Finger(1, (int)event.tfinger.fingerId + 1, event.tfinger.x, event.tfinger.y)) // Touch
 					break;
 				for (i = 0;i < MAXFINGERS-1;i++)
@@ -2785,6 +2794,9 @@ void VID_Finish (void)
 			CHECKGLERROR
 			if (r_speeds.integer == 2 || gl_finish.integer)
 				GL_Finish();
+#ifdef __ANDROID__
+			{ extern void NativeUI_Presented(void); NativeUI_Presented(); } // Touch: first drawn frame lifts the boot picture
+#endif
 			{
 				// The swap blocks on vsync. That is waiting, not work, and the
 				// Android performance hint must not count it (Sys_PerfHint_Frame).

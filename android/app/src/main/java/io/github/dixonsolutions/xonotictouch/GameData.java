@@ -379,7 +379,50 @@ final class GameData {
         if (old.exists() && !old.delete()) {
             Log.w(TAG, "Could not remove " + old);
         }
-        return PackFetch.plan(FULL_DATA + "/" + ASSET_ARCHIVE, null, ARCHIVE_DATA);
+        // The slim set stores its textures as ASTC; a GPU without it gets the
+        // full set (GpuProbe). The slim archive being unusable must not block
+        // the setup either: the full set has every pack too.
+        String full = FULL_DATA + "/" + ASSET_ARCHIVE;
+        boolean astc = GpuProbe.astc();
+        String slim = astc ? assetLine("godnotic-data-url.txt") : null;
+        if (slim != null) {
+            try {
+                PackFetch.Plan plan = PackFetch.plan(slim, null, ARCHIVE_DATA);
+                Log.i(TAG, "Game data set: slim (ASTC) " + slim);
+                return plan;
+            } catch (IOException e) {
+                Log.w(TAG, "Slim data set unusable (" + e.getMessage() + "); using the full set");
+            }
+        }
+        Log.i(TAG, "Game data set: full " + full + (astc ? "" : " (GPU without ASTC)"));
+        return PackFetch.plan(full, null, ARCHIVE_DATA);
+    }
+
+    private String assetLine(String name) {
+        try (InputStream in = context.getAssets().open(name)) {
+            byte[] b = new byte[4096];
+            int n = in.read(b);
+            String line = n > 0 ? new String(b, 0, n, java.nio.charset.StandardCharsets.UTF_8).trim() : "";
+            return line.startsWith("https://") ? line : null;
+        } catch (IOException e) {
+            Log.w(TAG, "No " + name + " in the assets");
+            return null;
+        }
+    }
+
+    /** "2 min", "40 s": what is left at the current speed, for the progress line. */
+    static String timeLeft(long bytesLeft, double bytesPerSecond) {
+        if (bytesPerSecond < 1024) {
+            return "…";
+        }
+        long s = (long) (bytesLeft / bytesPerSecond);
+        if (s < 60) {
+            return Math.max(1, s) + " s";
+        }
+        if (s < 3600) {
+            return ((s + 30) / 60) + " min";
+        }
+        return (s / 3600) + " h " + ((s % 3600) / 60) + " min";
     }
 
     /** Fetches the planned pk3s (music when asked) into the data dir. Interrupt to stop. */
@@ -387,13 +430,18 @@ final class GameData {
         synchronized (PREPARE_LOCK) {
             String status = HostRes.string(context, "boot_downloading");
             long started = System.currentTimeMillis();
-            long[] mark = { started, 0 };
+            // mark[1] < 0: no sample yet. The first report carries what an
+            // earlier run already fetched, which is no speed at all.
+            long[] mark = { started, -1 };
             double[] rate = { 0 };
-            Log.i(TAG, "Fetching pk3s from " + ASSET_ARCHIVE + (music ? " with music" : ""));
+            Log.i(TAG, "Fetching pk3s from " + plan.url + (music ? " with music" : ""));
             new PackFetch(dataDir(), plan, (done, total, file, verifying) -> {
                 long now = System.currentTimeMillis();
                 synchronized (rate) {
-                    if (now - mark[0] >= 1000) {
+                    if (mark[1] < 0) {
+                        mark[0] = now;
+                        mark[1] = done;
+                    } else if (now - mark[0] >= 1000) {
                         double r = (done - mark[1]) * 1000.0 / (now - mark[0]);
                         rate[0] = rate[0] == 0 ? r : rate[0] * 0.7 + r * 0.3;
                         mark[0] = now;
@@ -404,11 +452,12 @@ final class GameData {
                 String detail = verifying
                         ? HostRes.string(context, "boot_verifying", file)
                         : HostRes.string(context, "boot_progress", megabytes(done), megabytes(total),
-                                String.format(java.util.Locale.US, "%.1f", rate[0] / (1024 * 1024)));
+                                String.format(java.util.Locale.US, "%.1f", rate[0] / (1024 * 1024)),
+                                timeLeft(total - done, rate[0]));
                 progress.update(status, detail, percent);
             }).run(music);
             if (assetsMissing()) {
-                throw new IOException(ASSET_ARCHIVE + " did not yield a required pk3");
+                throw new IOException(plan.url + " did not yield a required pk3");
             }
             Log.i(TAG, "Game data downloaded in " + (System.currentTimeMillis() - started) / 1000 + " s");
         }

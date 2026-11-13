@@ -90,6 +90,10 @@ public final class XonoticActivity extends SDLActivity {
         EngineSwap.register(this);
         super.onCreate(savedInstanceState);
         running = true;
+        // The boot screen's banner stays up over the SDL surface until the
+        // engine has drawn its first frame: no black between the two.
+        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(BootSplash.BACKGROUND));
+        BootSplash.coverUntilFirstFrame(this);
         watchSoftKeyboard();
         watchInputDevices();
         startUpdateService();
@@ -428,9 +432,16 @@ public final class XonoticActivity extends SDLActivity {
             }
             return;
         }
-        if (!asked && !AppUpdater.onUnmeteredNetwork(this)) {
+        Net.Kind network = Net.kind(this);
+        if (!asked && network != Net.Kind.UNMETERED) {
+            // Say what the connection really is: "waiting for Wi-Fi" while the
+            // Wi-Fi icon shows was a Wi-Fi without internet, with mobile data
+            // carrying everything.
+            Log.i("Godnotic", "Update download waits: network " + network);
             bridge.publishPaused(installed, update.version, updater.cachedPercent(update),
-                    HostRes.string(this, "update_status_waiting_wifi"));
+                    network == Net.Kind.MOBILE
+                            ? HostRes.string(this, "update_status_waiting_wifi")
+                            : HostRes.string(this, "update_status_waiting_network", Net.describe(this, network)));
             return;
         }
         if (!downloading.compareAndSet(false, true)) {
@@ -625,6 +636,7 @@ public final class XonoticActivity extends SDLActivity {
         final View decor = getWindow().getDecorView();
         decor.setOnApplyWindowInsetsListener((view, insets) -> {
             setSystemBarsVisible(isKeyboardVisible(insets, view));
+            BootSplash.reportSafeInsets(this, insets); // the engine's console button keeps clear of cutouts
             return view.onApplyWindowInsets(insets);
         });
     }

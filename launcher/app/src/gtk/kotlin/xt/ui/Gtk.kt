@@ -34,6 +34,15 @@ fun CPointer<*>.on(signal: String, f: () -> Unit) {
     g_signal_connect_data(cast(), signal, voidTramp.reinterpret(), StableRef.create(f).asCPointer(), freeRef, 0u)
 }
 
+private val stringTramp = staticCFunction { _: COpaquePointer?, s: CPointer<ByteVar>?, d: COpaquePointer? ->
+    d!!.asStableRef<(String) -> Unit>().get().invoke(s?.toKString().orEmpty())
+}
+
+/** Connects a signal whose handler takes the instance and a string (AdwAlertDialog::response). */
+fun CPointer<*>.onString(signal: String, f: (String) -> Unit) {
+    g_signal_connect_data(cast(), signal, stringTramp.reinterpret(), StableRef.create(f).asCPointer(), freeRef, 0u)
+}
+
 /** Runs [f] when a property changes. */
 fun CPointer<*>.onNotify(property: String, f: () -> Unit) {
     g_signal_connect_data(cast(), "notify::$property", notifyTramp.reinterpret(), StableRef.create(f).asCPointer(), freeRef, 0u)

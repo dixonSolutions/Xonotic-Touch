@@ -93,6 +93,7 @@ private val onActivate = staticCFunction { app: CPointer<GtkApplication>?, _: gp
 private val onShutdown = staticCFunction { _: CPointer<GApplication>?, _: gpointer? ->
     if (timing) println("shutdown at ${nowMs() - t0} ms")
     stopServer()
+    ctx?.download?.shutdown()
     ctx?.let { if (it.cfg.serialize() != it.savedText) Sys.writeText(it.configPath, it.cfg.serialize()) }
     Unit
 }
@@ -100,8 +101,11 @@ private val onShutdown = staticCFunction { _: CPointer<GApplication>?, _: gpoint
 private const val HELP = """Usage: xt-launcher [OPTION]
   --play            start the game now with the saved choices
   --launcher        show the launcher even when "Open launcher" is off
-  --page=NAME       open on play, mods, host or settings
+  --page=NAME       open on play, data, mods, host or settings
   --start-server    open the Host page and start the local server
+  --download        open the Data page and start the game data download
+  --fetch           download the game data without a window, then exit
+                    (Ctrl-C stops and keeps the parts; XT_DATA_SET=slim|full|URL)
   --snapshot=FILE   render the window to a PNG and quit (tests; with --size=WxH)
   --help            this text
 """
@@ -125,6 +129,8 @@ fun main(args: Array<String>) {
         a.startsWith("--snapshot=") -> { snapshotPath = a.substringAfter('='); forceLauncher = true }
         a.startsWith("--snapshot-delay=") -> snapshotDelay = a.substringAfter('=').toIntOrNull() ?: 1500
         a == "--start-server" -> { startServerNow = true; startPage = "host"; forceLauncher = true }
+        a == "--download" -> { c.download.autoStart = true; startPage = "data"; forceLauncher = true }
+        a == "--fetch" -> platform.posix.exit(headlessFetch(c))
         a.startsWith("--size=") -> windowSize = Launch.parseResolution(a.substringAfter('='))
     }
     timing = env["XT_LAUNCHER_TIMING"] == "1"

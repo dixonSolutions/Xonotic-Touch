@@ -9,7 +9,7 @@ is darkplaces compiled with the NDK.
 |---|---|
 | Package id | `io.github.dixonsolutions.xonotictouch` |
 | App name | Godnotic |
-| Launcher icon | `engine/misc/logos/icons_png/xonotic_512.png` — the same logo the Click and Flatpak packages use |
+| Launcher icon | Adaptive `mipmap/icon` (eagle foreground in the 66 dp safe zone, dark background, monochrome layer for themed icons) plus a legacy `icon.png` on the same dark plate, all from `scripts/gen-branding.py` (`branding/android/`) |
 | ABIs | `arm64-v8a`, `armeabi-v7a`, `x86_64` |
 | min / target SDK | 21 / 35 |
 | Renderer | GLES2 (`USE_GLES2`, already set for `__ANDROID__` in `sys.h`) |
@@ -265,6 +265,34 @@ for gmqcc. Everything else is downloaded into `build/android/` and cached there:
 SDL2, libogg, libvorbis, freetype, libjpeg-turbo, libpng, mbedTLS and curl sources, built once
 per ABI.
 
+## Boot screen, banner and the console button
+
+`GodnoticBootActivity` (the launcher entry since the Kotlin shell) is a
+subclass of `BootActivity` (the entry older AndySU hosts' manifests name), so
+both hosts run one screen. Until there is something to wait for or decide it
+shows only the Godnotic banner on black (`BootSplash`). `XonoticActivity`
+keeps that same picture over the SDL surface until the engine reports a
+frame with something lit in it (`NativeUI_Presented` in `nativeui/engine.c`
+reads one row of the back buffer before each swap until it is not black,
+then the bridge's `presented()` flag lifts the cover), so a start never shows
+black between the boot screen and the engine's loading picture. The banner is
+an asset (`xt/godnotic-banner.png`, copied from `branding/` by `build.gradle`),
+never an `R.drawable`, for the HostRes reason.
+
+The screen itself is one centred column at most 640 dp wide: the banner, a
+28 sp title, one line saying what is downloaded and how big, the bar with a
+large percentage, and "233 / 439 MB · 3.6 MB/s · 57 s left" under it, with
+56 dp pill buttons. The log names the GPU probe result and the archive used
+("GPU probe: Mali-G68, ASTC supported", "Game data set: slim (ASTC) <url>").
+
+The console is the engine's own: a terminal icon in the top right corner
+(`engine/darkplaces/touch_shellbtn.c`, every platform) toggles the engine
+console sheet. On Android `XonoticActivity` reports the display-cutout and
+rounded-corner insets and the density through the JNI command queue
+(`set _touch_safe_insets "l t r b density"`), which only the engine thread
+drains. The old Android `>_` button and its dialogs are gone; plugins are
+managed with the `lua_mod*` console commands and the in-game Mods dialog.
+
 ## What the app does on first launch
 
 `BootActivity` runs before the engine, because darkplaces scans its basedir
@@ -303,6 +331,17 @@ icon offers **Download music** (a dynamic shortcut, built in code like the boot
 screen), which opens the setup step for just that pack, with **Not now** to go
 straight into the game.
 
+**Asking once.** Download (or Use mobile data) is remembered in the
+`boot-download` preferences until the data is in: a Quit, a kill or a lost
+connection carries on at the next start without asking again. On mobile data,
+a Wi-Fi without internet (Android then routes over mobile data) or a Wi-Fi
+marked as metered, the setup step says which (`Net.kt`) and offers **Use
+mobile data** or **Wait for Wi-Fi**; waiting shows that state and starts by
+itself when an unmetered network comes (a default-network callback). Quit
+during the download asks first ("What is downloaded is kept"), as does Back.
+`POST_NOTIFICATIONS` is asked for when the download starts; refused for good,
+the screen says that Android may stop the download in the background.
+
 While the boot screen shows work (the download, an unpack after an update), it
 offers **Cancel**. The download stops with its chunks kept on disk; the unpack
 stops between files. The screen then says where it stopped and offers
@@ -333,8 +372,10 @@ deletes whatever is not the release the last check found.
 
 1. While the game runs, `XonoticActivity` downloads the release the last check
    found into the cache, only on Wi-Fi or another unmetered connection.
-   Otherwise the Updates screen says it is waiting for Wi-Fi, and Download goes
-   ahead on mobile data.
+   Otherwise the Updates screen says what the connection is -- mobile data,
+   a Wi-Fi without internet access (so Android is on mobile data: what the
+   tablet showed while it said "waiting for Wi-Fi" on Wi-Fi), or a Wi-Fi
+   marked as metered -- and Download goes ahead on it.
 2. Once it is complete the state is `ready`: "installs the next time you
    start".
 3. On the next start `BootActivity` installs it from the cache before the

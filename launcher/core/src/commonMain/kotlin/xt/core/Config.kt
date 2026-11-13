@@ -67,6 +67,7 @@ object Keys {
     const val HOST_PORT = "host_port"
     const val HOST_NAME = "host_name"
     const val HOST_PUBLIC = "host_public"
+    const val DATA_SET = "data_set"             // "" = automatic (GPU probe), slim, full
 }
 
 /** A choice shown in a combo row: the stored id and what the player reads. */
@@ -110,6 +111,12 @@ object Choices {
         Choice("dom", "Domination"),
         Choice("race", "Race"),
         Choice("cts", "Complete the Stage"),
+    )
+
+    val dataSets = listOf(
+        Choice("", "Automatic"),
+        Choice("slim", "Slim (ASTC textures)"),
+        Choice("full", "Full"),
     )
 
     fun indexOf(list: List<Choice>, id: String?): Int =

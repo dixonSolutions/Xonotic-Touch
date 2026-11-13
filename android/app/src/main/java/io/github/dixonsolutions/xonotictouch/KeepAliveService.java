@@ -175,8 +175,8 @@ public final class KeepAliveService extends Service {
             // Shown at once rather than after Android 12's ten-second grace.
             builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE);
         }
-        Intent open = new Intent(context, download ? BootActivity.class : XonoticActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        Intent open = download ? BootActivity.launcherIntent(context)
+                : new Intent(context, XonoticActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         int flags = PendingIntent.FLAG_UPDATE_CURRENT
                 | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
         return builder
