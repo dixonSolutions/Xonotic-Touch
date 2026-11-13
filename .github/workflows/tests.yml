@@ -41,8 +41,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Spectator meanings of the buttons and the held JOIN
+      - name: The spectator bar and the join refusal lock
         run: bash scripts/test-touch-spectate.sh
+
+  touch-hudmode:
+    name: Touch HUD modes, menu actions and the join swipe
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Mode derivation, controls per mode, action list, swipe traces
+        run: bash scripts/test-touch-hudmode.sh
 
   phone-assets:
     name: Phone pack repack tool
