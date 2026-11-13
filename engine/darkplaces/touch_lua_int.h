@@ -9,43 +9,60 @@ code calls them plugins).
 #include "touch_lua54/lua.h"
 #include "touch_lua54/lauxlib.h"
 
-#define TLUA_PERM_EVENTS    (1u << 0)
-#define TLUA_PERM_COMMANDS  (1u << 1)
-#define TLUA_PERM_CVAR_READ (1u << 2)
-#define TLUA_PERM_CVAR_WRITE (1u << 3)
-#define TLUA_PERM_EXEC      (1u << 4)
-#define TLUA_PERM_STORAGE   (1u << 5)
-#define TLUA_PERM_DISPLAY   (1u << 6)
-#define TLUA_PERM_INPUT     (1u << 7)
-#define TLUA_PERM_PLAYERS   (1u << 8)
-#define TLUA_PERM_MESSAGES  (1u << 9)
-#define TLUA_PERM_STATE     (1u << 10)
-// API 2 (docs/PLUGIN_STANDARD.md): the game's mutator hooks (touch_lua_hooks.c)
-#define TLUA_PERM_HOOKS     (1u << 11)  // subscribe to hooks and read their arguments
-#define TLUA_PERM_HOOKS_WRITE (1u << 12) // change a hook's documented outputs, cancel it
-#define TLUA_NUMPERMS 13
-#define TLUA_PERM_ALL       ((1u << TLUA_NUMPERMS) - 1)
-// the scopes API 1 knew; a legacy mod (no "api:") requests exactly these
-#define TLUA_PERM_API1      ((1u << 11) - 1)
-// A mod with no "api:" line in mod.txt (written before scopes existed) gets
-// these until the user grants more: what a HUD needs, nothing that changes
-// settings, runs commands, writes files or sends messages.
-#define TLUA_PERM_LEGACY_DEFAULT (TLUA_PERM_EVENTS | TLUA_PERM_COMMANDS | TLUA_PERM_CVAR_READ | TLUA_PERM_DISPLAY | TLUA_PERM_INPUT | TLUA_PERM_PLAYERS | TLUA_PERM_STATE)
+/*
+Permission tiers (API 3, docs/PLUGIN_STANDARD.md "Tiers"). A player understands
+four switches, not a wall of scopes:
+
+  standard     everything a normal mod does; on as soon as the mod is turned on
+  gamerules    change the game: hook outputs, players, entities, the match (server)
+  internet     HTTPS to the hosts the manifest names
+  engine_full  any console command, any cvar that is not private
+
+The bits keep the positions the API 1/2 grant files used ("v1 <hex mask>" in
+luastate/<realm>/grants/), so files written before tiers mean the same: bit 12
+was hooks_write and is Game rules; bits 0-11 were the standard scopes, which are
+now always granted. The old scope names stay valid in mod.txt and in
+lua_mod_permission and map onto these (tlua_scope_aliases in touch_lua.c).
+*/
+#define TLUA_TIER_STANDARD  (1u << 0)
+#define TLUA_TIER_GAMERULES (1u << 12)
+#define TLUA_TIER_INTERNET  (1u << 13)
+#define TLUA_TIER_ENGINE    (1u << 14)
+#define TLUA_NUMPERMS 4                  // entries of tlua_permissions[]
+#define TLUA_PERM_ALL (TLUA_TIER_STANDARD | TLUA_TIER_GAMERULES | TLUA_TIER_INTERNET | TLUA_TIER_ENGINE)
+// the switches a player turns on (standard needs none)
+#define TLUA_PERM_OPTIONAL (TLUA_TIER_GAMERULES | TLUA_TIER_INTERNET | TLUA_TIER_ENGINE)
+// the old scope names, as the code checks them
+#define TLUA_PERM_EVENTS    TLUA_TIER_STANDARD
+#define TLUA_PERM_COMMANDS  TLUA_TIER_STANDARD
+#define TLUA_PERM_CVAR_READ TLUA_TIER_STANDARD
+#define TLUA_PERM_CVAR_WRITE TLUA_TIER_STANDARD
+#define TLUA_PERM_EXEC      TLUA_TIER_STANDARD
+#define TLUA_PERM_STORAGE   TLUA_TIER_STANDARD
+#define TLUA_PERM_DISPLAY   TLUA_TIER_STANDARD
+#define TLUA_PERM_INPUT     TLUA_TIER_STANDARD
+#define TLUA_PERM_PLAYERS   TLUA_TIER_STANDARD
+#define TLUA_PERM_MESSAGES  TLUA_TIER_STANDARD
+#define TLUA_PERM_STATE     TLUA_TIER_STANDARD
+#define TLUA_PERM_HOOKS     TLUA_TIER_STANDARD
+#define TLUA_PERM_HOOKS_WRITE TLUA_TIER_GAMERULES
+#define TLUA_PERM_API1      TLUA_TIER_STANDARD
+#define TLUA_PERM_LEGACY_DEFAULT TLUA_TIER_STANDARD
 
 #define TLUA_MAX_MODS 32
 #define TLUA_NAME_LEN 32
 #define TLUA_MAX_FILE (1024 * 1024)      // init.lua, a required file, a load() chunk
 #define TLUA_MAX_PATTERN_SUBJECT (1024 * 1024)
 #define TLUA_SUFFIX_LEN 32               // the <name> of lua_<mod>_<name>
-#define TLUA_MAX_MODCMDS 16              // console commands per mod
-#define TLUA_MAX_MODCVARS 32             // own cvars per mod
-#define TLUA_API_MAX 2                   // newest "api:" level this engine runs
-#define TLUA_MAX_SETTINGS 8              // setting.<name> lines in mod.txt
+#define TLUA_MAX_MODCMDS 32              // console commands per mod
+#define TLUA_MAX_MODCVARS 64             // own cvars per mod
+#define TLUA_API_MAX 3                   // newest "api:" level this engine runs
+#define TLUA_MAX_SETTINGS 32             // setting.<name> lines in mod.txt
 #define TLUA_LOGLINES 40                 // recent output kept per mod (lua_mod_log)
 #define TLUA_LOGLEN 200
 #define TLUA_MAX_HOOKS 256               // mutator hooks the bridge can carry
 #define TLUA_HOOKWORDS (TLUA_MAX_HOOKS / 32)
-#define TLUA_MAX_TIMERS 64               // xt.after / xt.every / xt.spawn per mod
+#define TLUA_MAX_TIMERS 256              // xt.after / xt.every / xt.spawn per mod
 
 // what mod.txt says a package is for ("realm:")
 #define TLUA_REALM_ANY 0
@@ -56,10 +73,12 @@ code calls them plugins).
 typedef struct tlua_setting_s
 {
 	char name[TLUA_SUFFIX_LEN + 1];  // the cvar is <prefix><mod>_<name>
-	char type[8];                   // bool, number, choice, text
+	char type[8];                   // bool, number (int, float), choice, text, color, key
 	char def[64];
 	char args[128];                 // number: min max [step]; choice: the options
 	char label[64];
+	char desc[160];                 // setting.<name>.desc
+	char group[32];                 // setting.<name>.group: a section of its settings page
 } tlua_setting_t;
 
 typedef enum tlua_state_e
@@ -101,7 +120,7 @@ typedef struct tlua_mod_s
 	qbool killed;
 	char killreason[160];
 	int prints;                     // print() lines left in the current call
-	unsigned eventmask;             // bit per realm event with a handler
+	unsigned long long eventmask;   // bit per realm event with a handler (up to 64)
 	unsigned hookmask[TLUA_HOOKWORDS]; // bit per mutator hook with a handler (touch_lua_hooks.c)
 	double hookspent;               // seconds spent in hook calls this host frame
 	unsigned hookframe;             // host.framecount hookspent belongs to
@@ -112,6 +131,17 @@ typedef struct tlua_mod_s
 	int execs;                      // xt.exec calls left in the current call
 	int owncvars;                   // own cvars that exist (-1: not counted yet)
 	struct tlua_realm_s *realm;
+	// API 3 (touch_lua_api.c)
+	char httphosts[256];            // "http:" hosts the manifest names, comma separated
+	double cpu_window, cpu_last;    // seconds spent in calls: this second, the last full one
+	unsigned calls_window, calls_last;
+	unsigned throttled_window, throttled_last; // calls skipped by the per-frame budget
+	double window_start;
+	double framespent;              // seconds in calls this host frame (lua_frame_ms)
+	unsigned spentframe;            // host.framecount framespent belongs to
+	size_t mempeak;
+	int engcmds;                    // xt.engine.cmd left in the current call
+	int depth;                      // nesting of calls into this mod (re-entrancy)
 } tlua_mod_t;
 
 typedef struct tlua_realm_s
@@ -225,6 +255,54 @@ void TLua_Hooks_Setup(void);
 
 // Timers and coroutines (xt.after, xt.every, xt.spawn, xt.sleep)
 void TLua_RunTimers(tlua_realm_t *r);
+
+// API 3 (touch_lua_api.c and the files it names): registration of the
+// generated table, the Lua prelude, the shared modules, accounting
+void TLua_API_Open(lua_State *L, tlua_mod_t *m);   // xt table on the stack top
+void TLua_API_Setup(void);
+void TLua_API_Frame(void);                         // once per host frame (client or server)
+void TLua_API_ModStopped(tlua_mod_t *m);           // a mod's state is about to close
+qbool TLua_API_Throttled(tlua_mod_t *m);           // over lua_frame_ms this frame: skip the call
+void TLua_API_Account(tlua_mod_t *m, double seconds, qbool skipped);
+const char *TLua_ReadModFile(lua_State *L, tlua_mod_t *m, const char *rel, size_t *outlen); // NULL when missing
+qbool TLua_CvarSecret(const char *name);
+qbool TLua_OwnCvar(tlua_mod_t *m, const char *name);
+qbool TLua_CleanValue(const char *s);
+// a C caller's call into a mod that is not an event: fn(L, ud) under the limits
+qbool TLua_CallRef(tlua_mod_t *m, int ref, int (*push)(lua_State *L, void *ud), void *ud, void (*result)(lua_State *L, void *ud));
+// registry references to Lua functions a mod handed to the engine (callbacks)
+int TLua_Ref(lua_State *L, int idx);
+void TLua_Unref(tlua_mod_t *m, int ref);
+// the offline-only rule (touch_weapons.h): true when open; why says why not
+qbool TLua_Offline(const char **why);
+// the client: whose CSQC runs (0 none, 1 foreign, 2 this game's)
+int TLua_CL_CsqcKind(void);
+// the realm modules API 3 adds
+int TLua_Hooks_Subscribe(lua_State *L);
+int TLua_Hooks_Names(lua_State *L);
+int TLua_Hooks_CountRealm(tlua_realm_t *r);
+const char *TLua_Hooks_NameRealm(tlua_realm_t *r, int i);
+void TLua_CL_CsqcHello(void);
+void TLua_Chan_Setup(void);
+qbool TLua_Chan_SendPage(int player, const char *pageid, const char *json);
+qbool TLua_Chan_ClosePage(int player, const char *pageid);
+void TLua_Chan_Frame(void);
+void TLua_Chan_ModStopped(tlua_mod_t *m);
+void TLua_UI_Setup(void);
+void TLua_UI_Frame(void);
+void TLua_UI_ModStopped(tlua_mod_t *m);
+void TLua_UI_SyncManifest(tlua_realm_t *r);
+void TLua_SVAPI_Setup(void);
+void TLua_SVAPI_Frame(void);
+void TLua_SVAPI_ModStopped(tlua_mod_t *m);
+qbool TLua_SVAPI_ChatLine(int player, const char *text);
+qbool TLua_SVAPI_ClientCommand(int player, const char *line);
+void TLua_CLAPI_Setup(void);
+void TLua_CLAPI_ModStopped(tlua_mod_t *m);
+
+// re-entrancy: true while any mod's code runs (hooks and events caused by a
+// mod's own API call are not delivered: docs/PLUGIN_STANDARD.md)
+#define TLua_InCall() (tlua_current != NULL)
 
 // Cvars and commands, on the first hook call.
 void TLua_InitOnce(void);

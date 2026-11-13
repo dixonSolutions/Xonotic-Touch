@@ -1089,8 +1089,9 @@ static qbool tlua_dl_localhttp;
 
 long TouchLua_CurlProtocols(curl_callback_t callback, qbool redirect)
 {
+	long TLua_Http_Protocols(curl_callback_t callback, qbool redirect);
 	if (callback != tlua_dl_cb)
-		return 0;
+		return TLua_Http_Protocols(callback, redirect); // xt.http (touch_lua_api.c)
 	// 1: CURLPROTO_HTTP, 2: CURLPROTO_HTTPS
 	return (tlua_dl_localhttp && !redirect) ? (1 | 2) : 2;
 }

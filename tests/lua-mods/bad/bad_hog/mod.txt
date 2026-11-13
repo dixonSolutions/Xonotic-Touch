@@ -1,0 +1,4 @@
+id: bad_hog
+title: Memory hog (test)
+api: 3
+realm: server

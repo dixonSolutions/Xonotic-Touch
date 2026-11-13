@@ -17,6 +17,9 @@ vector touch_lua_hook_outv(float slot) = #1749;
 string touch_lua_hook_outs(float slot) = #1750;
 float touch_lua_hook_gen(float signature) = #1751;
 float touch_lua_hook_wanted(float hook) = #1752;
+// API 3: a hook's arguments in one call (up to 7; more before it, 8 at a time)
+float touch_lua_hook_run(float hook, ...) = #1753;
+void touch_lua_hook_more(...) = #1754;
 
 bool touch_lua_checked;
 bool touch_lua_present;
@@ -102,4 +105,69 @@ MUTATOR_HOOKFUNCTION(touch_lua, SV_StartFrame)
 		touch_lua_event("frame", NULL, NULL, 0, "");
 		touch_lua_hooks_sync(); // the plugins' hooks in or out of their chains
 	}
+}
+
+// API 3: what server mods ask the game to do its own way
+// (engine/darkplaces/touch_lua_svapi.c calls these by name)
+float touch_lua_api(float op, entity e, float f, vector v, string s)
+{
+	switch (op)
+	{
+		case 1: // give / take: GiveItems words, "plus 50 rockets", "no devastator"
+		{
+			if (!IS_PLAYER(e))
+				return 0;
+			float n = tokenize_console(s);
+			return GiveItems(e, 0, n);
+		}
+		case 2: // respawn
+			if (!IS_CLIENT(e))
+				return 0;
+			PutClientInServer(e);
+			return 1;
+		case 3: // move to team 1..4
+			if (!IS_CLIENT(e) || !teamplay)
+				return 0;
+			return MoveToTeam(e, f, 6);
+		case 4: // teleport
+			if (!e)
+				return 0;
+			setorigin(e, v);
+			if (IS_PLAYER(e))
+				e.velocity = '0 0 0';
+			return 1;
+		case 5: // remove an entity a mod spawned
+			if (!e || IS_CLIENT(e))
+				return 0;
+			delete(e);
+			return 1;
+		case 6: // start a vote (e: the caller, NULL: the server)
+		{
+			string line = strcat("vote call ", s);
+			float n = tokenize_console(line);
+			VoteCommand(CMD_REQUEST_COMMAND, e, n, line);
+			return 1;
+		}
+		case 7: // angles (a player's view too)
+			if (!e)
+				return 0;
+			e.angles = v;
+			if (IS_PLAYER(e))
+				e.fixangle = true;
+			return 1;
+	}
+	return 0;
+}
+
+string touch_lua_api_gametype()
+{
+	return MapInfo_Type_ToString(MapInfo_CurrentGametype());
+}
+
+// mod channel commands have the engine's own limits per player (touch_lua_chan.c):
+// the game's command flood control must not drop a mod's hello or answers
+MUTATOR_HOOKFUNCTION(touch_lua, ClientCommand_FloodControl)
+{
+	string c = M_ARGV(1, string);
+	return c == "xtmsg" || c == "xthello" || c == "xtpage";
 }

@@ -21,17 +21,24 @@ title: Package test mod
 version: 1.0
 author: Tests
 description: Installed by the package tests.
-api: 2
+api: 3
 realm: client
-permissions: events, display
+permissions: events, display, internet
 reason.events: draws on the hud event
 reason.display: draws a box
+reason.internet: fetches the box colour
+http: box.example
 setting.size: number 16 8 64 | Text size
 """
 MOD_V2 = MOD_V1.replace("version: 1.0", "version: 2.0").replace(
-    "permissions: events, display", "permissions: events, display, storage").replace(
-    "reason.display: draws a box", "reason.display: draws a box\nreason.storage: remembers the size")
-INIT = 'xt.on("hud", function() end)  -- needs events\nprint("PKGMOD loaded api " .. xt.apiversion)\n'
+    "permissions: events, display, internet", "permissions: events, display, internet, engine_full").replace(
+    "reason.display: draws a box", "reason.display: draws a box\nreason.engine_full: reads a setting")
+# stops while the internet tier is off (so a grant restarts it); with the tier on
+# the request is refused for its host, which the mod expects (no network in tests)
+INIT = ('xt.on("hud", function() end)  -- needs events\n'
+        'local ok, err = pcall(xt.http.get, "https://not-listed.example/", function() end)\n'
+        'if not ok and tostring(err):find("permission denied", 1, true) then error(err) end\n'
+        'print("PKGMOD loaded api " .. xt.apiversion)\n')
 
 
 def write(name, entries, method=zipfile.ZIP_DEFLATED):

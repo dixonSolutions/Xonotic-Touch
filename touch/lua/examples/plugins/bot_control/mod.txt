@@ -1,0 +1,10 @@
+id: bot_control
+title: Bot control
+version: 1.0
+author: Godnotic
+description: !bots <n> and !skill <0-10> for the player hosting, and bots that fill empty servers.
+api: 3
+realm: server
+permissions: gamerules
+reason.gamerules: adds and removes bots
+setting.fill: int 3 0 16 1 | Keep at least this many players with bots

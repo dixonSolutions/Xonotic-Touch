@@ -1,21 +1,16 @@
-local function denied(label, fn)
+-- API 3 tiers: the old scopes are the standard tier (no grant needed);
+-- engine_full is a switch "grant all" never turns on
+local function try(label, fn)
     local ok, err = pcall(fn)
-    if not ok and tostring(err):find('permission denied', 1, true) then
-        print('PERMISSIONS PASS denied ' .. label)
-    else
-        print('PERMISSIONS FAIL denied ' .. label .. ': ' .. tostring(err))
-    end
+    print("TIERS " .. label .. " " .. (ok and "allowed" or (tostring(err):find("permission denied", 1, true) and "denied" or ("error " .. tostring(err)))))
 end
-
-denied('exec', function() xt.exec('echo unexpectedly allowed') end)
-denied('storage', function() xt.save('test', 'x') end)
-denied('cvar_write', function() xt.setcvar('fov', '90') end)
-local frames = 0
-xt.on('frame', function() frames = frames + 1 end)
-xt.command('probe', function()
-    local ok, err = pcall(function() xt.exec('echo PERMISSIONS ALLOWED') end)
-    print('PERMISSIONS exec ' .. (ok and 'allowed' or tostring(err)))
-    local unsafe = pcall(function() xt.exec('quit') end)
-    print('PERMISSIONS allowlist ' .. (unsafe and 'FAIL' or 'PASS'))
-    print('PERMISSIONS frames ' .. frames)
+try("exec", function() xt.exec("echo TIERS exec ran") end)
+try("storage", function() xt.save("test", "x") end)
+try("cvar_write", function() xt.setcvar("fov", "90") end)
+try("engine", function() return xt.engine.cvar("fov") end)
+xt.command("probe", function()
+    local unsafe = pcall(function() xt.exec("quit") end)
+    print("TIERS allowlist " .. (unsafe and "FAIL" or "PASS"))
+    try("probe engine", function() return xt.engine.cvar("fov") end)
+    print("TIERS private " .. tostring(pcall(xt.engine.cvar, "rcon_password") and xt.engine.cvar("rcon_password")))
 end)

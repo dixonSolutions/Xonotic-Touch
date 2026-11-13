@@ -1884,6 +1884,7 @@ void CSQC_UpdateView(entity this, float w, float h, bool notmenu)
 
 	// Draw once after HUD; input already ran before SetCamera.
 	Touch_Draw();
+	TouchLua_CL_Frame(); // Touch: Lua client mods: hooks, game events, the HUD pass (client/touch_lua.qc)
 
 	if(NextFrameCommand)
 	{

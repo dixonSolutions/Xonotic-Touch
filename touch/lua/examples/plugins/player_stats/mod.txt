@@ -1,0 +1,7 @@
+id: player_stats
+title: Player stats across maps
+version: 1.0
+author: Godnotic
+description: Counts every player's kills and deaths across maps and restarts; !stats shows yours.
+api: 3
+realm: server

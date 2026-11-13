@@ -1,0 +1,4 @@
+id: bad_hook
+title: Error in a hook (test)
+api: 3
+realm: server
