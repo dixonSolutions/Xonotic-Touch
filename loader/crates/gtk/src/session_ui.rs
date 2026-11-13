@@ -35,6 +35,7 @@ fn toast(app: &App, text: &str) {
 
 /// Starts a session; the window hides until it ends.
 pub fn start(app: &App, action: Action) {
+    let t0 = std::time::Instant::now();
     let (p, cfg) = paths();
     let Some(start) = p.start_script.clone() else {
         toast(app, "The game was not found next to the app");
@@ -57,7 +58,12 @@ pub fn start(app: &App, action: Action) {
     let mut plan = session::plan(&action, &cfg, &start, &result);
     plan.env.insert("GODNOTIC_FE_WATCH_PID".into(), std::process::id().to_string());
     let child = match session::spawn(&plan, &log) {
-        Ok(c) => c,
+        Ok(c) => {
+            if std::env::var_os("GODNOTIC_TIMING").is_some() {
+                eprintln!("godnotic-loader: Play to engine process started in {:.2} ms", t0.elapsed().as_secs_f64() * 1000.0);
+            }
+            c
+        }
         Err(e) => {
             toast(app, &format!("Could not start the game: {e}"));
             return;
