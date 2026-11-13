@@ -201,9 +201,11 @@ JS
     FLIP='(async () => { document.getElementById("xt-menu").click(); const sw = document.getElementById("xt-opt-persist"); if (!sw.checked) sw.click(); for (let i = 0; i < 50 && (sw.disabled || !xt.state.persistAnswer || xt.state.persistAnswer === "pending"); i++) await new Promise((r) => setTimeout(r, 100)); for (let i = 0; i < 50 && !/used of/.test(document.getElementById("xt-st-quota").textContent); i++) await new Promise((r) => setTimeout(r, 100)); return { checked: sw.checked, answer: xt.state.persistAnswer, text: document.getElementById("xt-persist-text").textContent, persisted: await navigator.storage.persisted(), calls: window.__persistCalls, rowHidden: document.getElementById("xt-opt-persist-row").hidden, quota: document.getElementById("xt-st-quota").textContent }; })()'
     step persist-denied "$E" --init "$OUT/count-persist.js" --url "$M/" --until "$STARTED" --eval "$FLIP" \
         --expect 'r.calls === 1 && r.checked === r.persisted && r.answer === (r.persisted ? "granted" : "denied") && !r.rowHidden && /used of/.test(r.quota)'
-    # Granted (the permission given through CDP, as an installed or often used site gets it).
+    # Granted (the permission given through CDP, as an installed or often
+    # used site gets it; with it Chromium reports persisted() at once, so
+    # the switch is either found on or turns on with one call).
     step persist-granted "$E" --init "$OUT/count-persist.js" --grant durableStorage --url "$M/" --until "$STARTED" --eval "$FLIP" \
-        --expect 'r.calls === 1 && r.checked === true && r.persisted === true && /keeps the game data until you delete it/.test(r.text)'
+        --expect 'r.calls <= 1 && r.checked === true && r.persisted === true && /keeps the game data until you delete it/.test(r.text)'
     # A later visit shows the answer without asking again. (The grant is
     # CDP's and lasts for its session, so this is a reload, not a restart:
     # keeping the persisted flag across restarts is the browser's part.)
