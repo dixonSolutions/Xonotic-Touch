@@ -28,9 +28,9 @@ Quick checks:
 | Check | Expected |
 |-------|----------|
 | Window title | `Godnotic` |
-| Fresh install + Wi‑Fi | Download dialog with progress bar, then ToS and profile if needed; never a touch-controls dialog |
+| Fresh install + Wi‑Fi | Download dialog with progress bar, then the main menu: no terms, profile or touch-controls dialog; `cl_allow_uidtracking 0` in `config.cfg` |
 | Fresh install, touch mode | Standard controls without asking: `touch.layout.cfg` written, `touch_setup_done 1` in `config.cfg` |
-| Returning user (name + `touch_setup_done`) | No profile dialog; touch settings untouched |
+| Returning user (`touch_setup_done`) | No dialog; touch settings untouched |
 | Menu text field tap | System keyboard (GNOME: Accessibility → Screen Keyboard) |
 
 ## Keyboard hot-plug

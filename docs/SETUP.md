@@ -21,8 +21,22 @@ On the first main-menu frame, dialogs open **in order**; each step is skipped wh
 | 1 | Asset download | Touch + assets not ready (see below) |
 | 2 | Touch controls (no dialog) | `vid_touchscreen` and `touch_setup_done` is `0`: applied silently, see below |
 | 3 | Language | Once per install: the menu restarts in the system's language |
-| 4 | Terms of Service | `_termsofservice_accepted` &lt; server ToS version |
-| 5 | Profile setup (`FirstRun`) | `touch_profile_done` is `0` and name/stats incomplete |
+| 4 | Privacy defaults (no dialog) | Once per install, see below |
+| — | Terms of Service | Never (`TouchStartup_skipTermsOfService`) |
+| — | Profile setup (`FirstRun`) | Never (`TouchStartup_userProfileNeeded` returns false) |
+
+After the asset download the game opens on the main menu: there is no terms popup and
+no welcome/profile popup. The player name is in Settings → Mobile → Privacy (and
+Multiplayer → Profile), the language in Settings → User; an unnamed player plays under
+the engine default.
+
+Nobody has accepted Xonotic's terms, so `TouchStartup_applyPrivacyDefaults()`
+(`touch_startup_util.qc`), once per install (`touch_privacy_defaults_done`), sets
+`cl_allow_uidtracking 0`, `cl_allow_uidranking 0` and `cl_allow_uid2name 0` (from `-1`,
+which would ask in game). An install that accepted the terms before
+(`_termsofservice_accepted > 0`) or chose `cl_allow_uid2name 1` keeps its values. The
+switches and the terms (fetched from `update.xonotic.org` only when opened) are in
+Settings → Mobile → Privacy and Credits.
 
 There is no touch-controls dialog. Players did not want a popup before they could
 play, and everything it offered (the presets, Minimal included, and handedness) is
@@ -36,16 +50,15 @@ other steps, and never on an install that already has `touch_setup_done 1`.
 
 Implementation: `MainWindow_tryOpenStartupDialogs()` in `qcsrc/menu/xonotic/mainwindow.qc`.
 
-After ToS accept or asset download completes, `main.firstDraw = true` re-runs the chain so the next step opens automatically.
+After the asset download completes, `main.firstDraw = true` re-runs the chain so the next step opens automatically.
 
 ### Skip conditions (returning users)
 
 | User state | Skipped steps |
 |------------|----------------|
 | Assets already on disk | Asset download dialog |
-| `touch_profile_done 1` (or legacy: custom name + stats Yes/No) | Profile setup |
 | `touch_setup_done 1` in config / `touch.layout.cfg` | Touch controls defaults (left as they are) |
-| ToS already accepted | ToS dialog |
+| `touch_privacy_defaults_done 1` | Privacy defaults |
 
 ## Asset download (first launch)
 
@@ -177,9 +190,9 @@ Cvars (menu sets position when focusing inputs):
 
 ## Testing checklist
 
-1. **Clean install (no assets):** Flatpak launch → ToS (if needed) → download dialog with moving progress → profile → touch preset → main menu.
-2. **Assets present:** No download dialog; only missing profile/touch steps.
-3. **Fully configured user:** Only ToS if version bumped; otherwise straight to the stock Xonotic main menu.
+1. **Clean install (no assets):** Flatpak launch → download dialog with moving progress → main menu (touch preset and privacy defaults applied without a dialog).
+2. **Assets present:** Straight to the main menu.
+3. **Fully configured user:** Straight to the main menu, also when Xonotic's terms change.
 4. **Input field:** Tap name field → GNOME OSK appears; typed text enters the box.
 5. **Menu navigation:** No puck cursor; taps hit buttons directly.
 

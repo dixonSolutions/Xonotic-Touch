@@ -1,6 +1,7 @@
 #include "menu.qh"
 #include "xonotic/touch_update_util.qh"
 #include "xonotic/dialog_touch_gamemenu.qh" // Touch
+#include "xonotic/touch_menu_scale.qh" // Touch
 
 #include "item.qh"
 
@@ -117,6 +118,7 @@ const float MENU_ASPECT = 1280 / 1024;
 
 void draw_reset_cropped()
 {
+	if (TouchMenuScale_drawReset()) return; // Touch: touch-device menu size
 	// Portrait: use full console — landscape MENU_ASPECT letterboxing leaves a dead
 	// band at the top where the cursor cannot reach menu buttons.
 	if (realconheight > realconwidth)
@@ -160,6 +162,7 @@ void UpdateConWidthHeight(float w, float h, float p)
 		conwidth = realconwidth;
 		conheight = realconwidth / MENU_ASPECT;
 	}
+	TouchMenuScale_layout(); // Touch: touch-device menu size
 	if (main)
 	{
 		if (conwidth_s != conwidth || conheight_s != conheight)
@@ -212,6 +215,7 @@ void m_init_delayed()
 		Skin_ApplySetting(argv(0), substring(s, argv_start_index(1), argv_end_index(-1) - argv_start_index(1)));
 	}
 	fclose(fh);
+	TouchMenuScale_applySkin(); // Touch: compact margins on a touch device
 
 	int glob = search_begin(strcat(draw_currentSkin, "/*.tga"), true, true);
 	if (glob >= 0)

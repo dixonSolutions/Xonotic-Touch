@@ -1,4 +1,5 @@
 #include "statslist.qh"
+#include "touch_startup_util.qh" // Touch
 
 #include <common/playerstats.qh>
 #include <common/gametypes/_mod.qh>
@@ -331,6 +332,7 @@ void XonoticStatsList_drawListBoxItem(entity me, int i, vector absSize, bool isS
 
 void XonoticStatsList_showNotify(entity me)
 {
+	if (!TouchStartup_statsAllowed()) return; // Touch: no XonStat request unless statistics are allowed
 	PlayerStats_PlayerDetail_CheckUpdate();
 }
 

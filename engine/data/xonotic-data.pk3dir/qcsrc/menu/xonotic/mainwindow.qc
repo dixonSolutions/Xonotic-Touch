@@ -58,6 +58,7 @@
 #include "dialog_media.qh"
 #include "dialog_settings.qh"
 #include "dialog_credits.qh"
+#include "dialog_touch_credits.qh" // Touch
 #include "dialog_quit.qh"
 
 /** Open the asset-fetch wizard instantly (no zoom animation).
@@ -90,6 +91,7 @@ void MainWindow_tryOpenStartupDialogs(entity me)
 		return;
 	}
 	TouchStartup_applyTouchDefaults(); // Touch: default controls, no setup dialog
+	TouchStartup_applyPrivacyDefaults(); // Touch: statistics off until the player turns them on
 	// Start in the system's language (the browser's, on the web), once per install, whether or not the
 	// first-run dialog is due. The menu restarts in it and comes back here.
 	if (LanguageList_applySystemLanguage())
@@ -337,6 +339,10 @@ void MainWindow_configureMainWindow(entity me)
 	i.configureDialog(i);
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
 
+	godnotic_terms_dialog = i = NEW(GodnoticTermsDialog); // Touch: terms viewer (Credits, Settings > Mobile > Privacy)
+	i.configureDialog(i); // Touch
+	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z); // Touch
+
 	i = NEW(XonoticUid2NameDialog);
 	i.configureDialog(i);
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
@@ -383,7 +389,7 @@ void MainWindow_configureMainWindow(entity me)
 		n.addItemCentered(n, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
 		n.setNexposee(n, i, SKINPOSITION_DIALOG_SETTINGS, SKINALPHAS_MAINMENU_x, SKINALPHAS_MAINMENU_y);
 
-		i = NEW(XonoticCreditsDialog);
+		i = NEW(GodnoticCreditsDialog); // Touch: Godnotic, licences, then the Xonotic credits
 		i.configureDialog(i);
 		n.addItemCentered(n, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
 		n.setNexposee(n, i, SKINPOSITION_DIALOG_CREDITS, SKINALPHAS_MAINMENU_x, SKINALPHAS_MAINMENU_y);

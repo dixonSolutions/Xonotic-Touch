@@ -27,6 +27,7 @@
   <launchable type="desktop-id">io.github.dixonSolutions.XonoticTouch.desktop</launchable>
   <url type="homepage">https://github.com/dixonSolutions/Godnotic</url>
   <url type="bugtracker">https://github.com/dixonSolutions/Godnotic/issues</url>
+  <url type="vcs-browser">https://github.com/dixonSolutions/Godnotic</url>
   <screenshots>
     <screenshot type="default">
       <caption>Godnotic on a touch device</caption>

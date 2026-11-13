@@ -1,0 +1,44 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
+
+// Godnotic: one size for the whole menu on a touch device, from the screen's
+// short side and its density, instead of per-dialog tweaks.
+//
+// The stock menu lays every dialog out in "virtual" units: a 12-unit font, a
+// 17.4-unit row, and a layout height equal to vid_conheight (600 on Android,
+// the real pixel height on Linux, where the launcher sets it). On a 6.5" phone
+// that made a 12-unit font about 8.6 sp and a row about 14 dp; with conheight
+// at the pixel height it was far smaller still.
+//
+// On a touch device this layer picks the layout height so one virtual unit is
+// TOUCH_MENU_DP_PER_UNIT dp (times menu_touch_size), but never so short that
+// the tallest stock dialogs (24 rows) stop fitting, and draws that layout over
+// the real console size. Fonts, rows, margins and hit boxes all grow together,
+// so nothing is clipped or misaligned. Desktop (no touch screen) is untouched.
+
+// dp per virtual unit at menu_touch_size 1: a 12-unit font is then 18 sp and
+// a row 26 dp, where the screen is tall enough for it.
+const float TOUCH_MENU_DP_PER_UNIT = 1.5;
+// The shortest layout the stock 24-row dialogs fit in with the compact
+// margins below (24 x 17.4 rows + 23 x 2 spacing + 23.2 title + 4 + 6 = 497).
+const float TOUCH_MENU_MIN_LAYOUT = 500;
+// Widest layout aspect on a touch device. Stock crops to 1280:1024, which left
+// half of a 20:9 phone empty while the dialogs squeezed their labels.
+const float TOUCH_MENU_MAX_ASPECT = 1.78;
+
+// Console units per layout unit; 1 = stock. Fixed once the menu has been
+// built, so the dialogs keep the proportions they were laid out with.
+float touch_menu_scale;
+bool touch_menu_scale_fixed;
+
+bool TouchMenuScale_active();
+// Called by UpdateConWidthHeight (menu.qc) after it set conwidth/conheight.
+void TouchMenuScale_layout();
+// Called first thing by draw_reset_cropped (menu.qc); true when it did the reset.
+bool TouchMenuScale_drawReset();
+// Called by m_init_delayed (menu.qc) after the skin values are read.
+void TouchMenuScale_applySkin();
+// Device density in dpi as the layer sees it, and the dp size of a length in
+// console units (for the settings readout and the screenshots audit).
+float TouchMenuScale_dpi();
+float TouchMenuScale_conToDp(float conunits);

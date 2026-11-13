@@ -7,6 +7,7 @@
 #include "textlabel.qh"
 #include "button.qh"
 #include "util.qh"
+#include "touch_startup_util.qh" // Touch
 
 void Close_Clicked(entity btn, entity me)
 {
@@ -62,6 +63,7 @@ void XonoticToS_OnGet(entity fh, entity me, int status)
 
 bool XonoticToSDialog_shouldShow()
 {
+	if (TouchStartup_skipTermsOfService()) return false; // Touch: no terms popup, see touch_startup_util.qc
 	return (_Nex_ExtResponseSystem_NewToS && _Nex_ExtResponseSystem_NewToS > autocvar__termsofservice_accepted);
 }
 

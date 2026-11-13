@@ -53,6 +53,7 @@ OBJ_COMMON= \
 	touch_lua_vm.o \
 	touch_assets_zstd.o \
 	vid_touchdetect.o \
+	touch_display.o \
 	cl_video.o \
 	cl_video_libavw.o \
 	clvm_cmds.o \

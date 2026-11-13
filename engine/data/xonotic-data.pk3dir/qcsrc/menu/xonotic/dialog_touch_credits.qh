@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
+
+// Godnotic credits: the banner, what Godnotic is, its GitHub link and
+// component repositories, the licences of what it is made of, then the
+// upstream Xonotic credits (credits.qc) unchanged. The list scrolls by
+// dragging it, as on any phone.
+//
+// Also the terms viewer: Xonotic's terms of service (they govern XonStat,
+// stats.xonotic.org), shown on request from Credits and Settings > Mobile >
+// Privacy. Godnotic never asks for them on startup (touch_startup_util.qc).
+
+#include "dialog_credits.qh"
+#include "credits.qh"
+#include "textbox.qh"
+#include "rootdialog.qh"
+
+const string GODNOTIC_GITHUB_URL = "https://github.com/dixonSolutions/Godnotic";
+
+// Drag-to-scroll for list boxes (credits, terms text): a finger on the list
+// moves it; the scrollbar keeps working as before.
+bool GodnoticDragScroll_press(entity me, vector pos);
+bool GodnoticDragScroll_drag(entity me, vector pos);
+bool GodnoticDragScroll_release(entity me, vector pos);
+
+CLASS(GodnoticCreditsList, XonoticCreditsList)
+	METHOD(GodnoticCreditsList, configureXonoticCreditsList, void(entity));
+	METHOD(GodnoticCreditsList, mousePress, bool(entity, vector));
+	METHOD(GodnoticCreditsList, mouseDrag, float(entity, vector));
+	METHOD(GodnoticCreditsList, mouseRelease, float(entity, vector));
+ENDCLASS(GodnoticCreditsList)
+
+CLASS(GodnoticCreditsDialog, XonoticCreditsDialog)
+	METHOD(GodnoticCreditsDialog, fill, void(entity));
+	ATTRIB(GodnoticCreditsDialog, tooltip, string, _("Godnotic, its licences and the Xonotic credits"));
+	ATTRIB(GodnoticCreditsDialog, intendedWidth, float, 0.62);
+	ATTRIB(GodnoticCreditsDialog, rows, float, 22);
+	ATTRIB(GodnoticCreditsDialog, columns, float, 3);
+	ATTRIB(GodnoticCreditsDialog, name, string, "Credits");
+ENDCLASS(GodnoticCreditsDialog)
+
+CLASS(GodnoticDragTextBox, XonoticTextBox)
+	METHOD(GodnoticDragTextBox, mousePress, bool(entity, vector));
+	METHOD(GodnoticDragTextBox, mouseDrag, float(entity, vector));
+	METHOD(GodnoticDragTextBox, mouseRelease, float(entity, vector));
+ENDCLASS(GodnoticDragTextBox)
+
+CLASS(GodnoticTermsDialog, XonoticRootDialog)
+	METHOD(GodnoticTermsDialog, fill, void(entity));
+	ATTRIB(GodnoticTermsDialog, title, string, _("Xonotic terms of service"));
+	ATTRIB(GodnoticTermsDialog, color, vector, SKINCOLOR_DIALOG_FIRSTRUN);
+	ATTRIB(GodnoticTermsDialog, intendedWidth, float, 0.8);
+	ATTRIB(GodnoticTermsDialog, rows, float, 18);
+	ATTRIB(GodnoticTermsDialog, columns, float, 4);
+	ATTRIB(GodnoticTermsDialog, name, string, "GodnoticTerms");
+	ATTRIB(GodnoticTermsDialog, textBox, entity);
+ENDCLASS(GodnoticTermsDialog)
+
+entity godnotic_terms_dialog;
+// onClick for a button anywhere: fetch the terms and open the viewer.
+void GodnoticTerms_Open(entity btn, entity unused);
