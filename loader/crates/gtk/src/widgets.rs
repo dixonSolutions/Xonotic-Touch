@@ -1285,7 +1285,7 @@ fn list(app: &App, store: &Store, n: &Node) -> gtk::Widget {
         Some(rows) => {
             let sw = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Automatic).vscrollbar_policy(gtk::PolicyType::Never)
                 .kinetic_scrolling(true).overlay_scrolling(false).child(&view).build();
-            sw.set_min_content_height(rows as i32 * (sideways_tile_height(app, rows) + 12) + 14);
+            sw.set_min_content_height(rows as i32 * (sideways_tile_height(app, rows) + 26) + 26);
             sw.add_css_class("gn-sideways");
             sw
         }
@@ -1358,9 +1358,23 @@ fn table(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
         };
         let before = RefCell::new(rest(n));
         let (w, screen_id) = (Rc::downgrade(app), n.id.split('/').next().unwrap_or_default().to_string());
+        let (cvw, src) = (cv.downgrade(), lv.borrow().source.clone());
         register_updater(app, &n.id, Rc::new(move |n: &Node| {
             let now = rest(n);
             if *before.borrow() == now {
+                // only the choice changed: show the engine's chosen row as chosen
+                let (Some(a), Some(cv)) = (w.upgrade(), cvw.upgrade()) else { return };
+                let Some(sel) = cv.model().and_downcast::<gtk::SingleSelection>() else { return };
+                let key = n.arr("selected").first().and_then(|v| v.as_str()).map(str::to_string);
+                let pos = key.and_then(|k| {
+                    let core = a.core.borrow();
+                    let win = core.store.sources.get(&src)?;
+                    (0..win.total().min(5000)).find(|i| win.row(*i).and_then(|r| r.str_of("key")).as_deref() == Some(&k))
+                });
+                let want = pos.map(|p| p as u32).unwrap_or(gtk::INVALID_LIST_POSITION);
+                if sel.selected() != want {
+                    sel.set_selected(want);
+                }
                 return;
             }
             *before.borrow_mut() = now;
@@ -1538,8 +1552,8 @@ fn sideways_rows(n: &Node) -> Option<u32> {
 /// header, the mode strip and the section title, and above the action bar.
 fn sideways_tile_height(app: &App, rows: u32) -> i32 {
     let win_h = app.ui.borrow().as_ref().map(|u| u.win.height()).filter(|h| *h > 0).unwrap_or(760);
-    let room = win_h - if app.narrow.get() { 190 } else { 400 };
-    (room / rows as i32 - 12).clamp(96, 170)
+    let room = win_h - if app.narrow.get() { 190 } else { 440 };
+    (room / rows as i32 - 26).clamp(96, 170)
 }
 
 fn card_grid(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
