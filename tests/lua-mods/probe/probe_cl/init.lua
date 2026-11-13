@@ -33,7 +33,7 @@ local notes = {}
 xt.on("notification", function(kind, name, text)
   if #notes < 12 then notes[#notes + 1] = kind .. ":" .. name end
 end)
-xt.command("count", function()
+local function count()
   print("probe_cl: notifications " .. table.concat(notes, " "))
   local list = {}
   for k, n in pairs(events) do list[#list + 1] = k .. "=" .. n end
@@ -47,7 +47,10 @@ xt.command("count", function()
   end
   print("probe_cl: hidden listed " .. hidden)
   print("probe_cl: entities players=" .. (kinds.player or 0) .. " items=" .. (kinds.item or 0) .. " projectiles=" .. (kinds.projectile or 0) .. " offline=" .. tostring((xt.offline())))
-end, "counts")
+end
+xt.command("count", count, "counts")
+-- online, mod commands refuse while the server's text may be pending: count by itself too
+xt.every(8, function() if xt.ingame() and not xt.offline() then count() end end)
 
 local ch = xt.channel("probe")
 xt.command("flood", function()

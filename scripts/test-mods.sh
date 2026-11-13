@@ -81,7 +81,8 @@ run_engine() { # log, timeout, args...
 }
 
 # a receiver for leaderboard_http (POST bodies to a file)
-python3 - "$WORK/posts.txt" > "$WORK/http.log" 2>&1 <<'PY' &
+HPORT=$((27000 + RANDOM % 2000))
+python3 - "$WORK/posts.txt" "$HPORT" > "$WORK/http.log" 2>&1 <<'PY' &
 import http.server, sys
 out = sys.argv[1]
 class H(http.server.BaseHTTPRequestHandler):
@@ -95,7 +96,7 @@ class H(http.server.BaseHTTPRequestHandler):
         self.wfile.write(b"stored")
     def log_message(self, *a):
         pass
-http.server.HTTPServer(("127.0.0.1", 8765), H).serve_forever()
+http.server.HTTPServer(("127.0.0.1", int(sys.argv[2])), H).serve_forever()
 PY
 HTTP_PID=$!
 
@@ -121,8 +122,8 @@ HTTP_PID=$!
 	for m in vampire chat_vote item_placer bot_control; do echo "defer $t \"sv_lua_plugin_permission $m grant gamerules\""; done
 	echo "defer $t \"lua_mods\""
 	echo "defer $t \"sv_lua_plugins\""
-	echo "defer $t \"set lua_touch_weapon_nextx 600; set lua_touch_weapon_nexty 300; set lua_quiet_center_words Prepare\""
-	echo "defer $t \"set sv_cheats 1; set maxplayers 8; set bot_number 3; set skill 6; set g_warmup 0; set slowmo 2; set g_chat_flood_spl 0; set g_chat_flood_lmax 0; set sv_clientcommand_antispam_time -1\""
+	echo "defer $t \"set lua_touch_weapon_nextx 600; set lua_touch_weapon_nexty 300; set lua_quiet_center_words Prepare; set sv_lua_leaderboard_http_url http://127.0.0.1:$HPORT/scores\""
+	echo "defer $t \"set sv_cheats 1; set maxplayers 8; set bot_number 3; set skill 6; set g_warmup 0; set slowmo 2; set g_chat_flood_spl 0; set g_chat_flood_lmax 0; set sv_clientcommand_antispam_time -1; set sv_clientcommand_antispam_count 10000\""
 	t=$(echo "$t + 0.5" | bc)
 	echo "defer $t \"map $MAP\""
 	B=$(echo "$t + 9" | bc)
@@ -130,6 +131,7 @@ HTTP_PID=$!
 defer $B "togglemenu 0"
 defer $(echo "$B + 1" | bc) "cmd join"
 defer $(echo "$B + 2" | bc) "togglemenu 0"
+defer $(echo "$B + 3" | bc) "cmd join; togglemenu 0"
 defer $(echo "$B + 4" | bc) "sv_lua_probe_sv_tiers"
 defer $(echo "$B + 4.5" | bc) "sv_lua_plugin_permission probe_sv grant all"
 defer $(echo "$B + 5" | bc) "sv_lua_probe_sv_tiers"
@@ -141,6 +143,7 @@ defer $(echo "$B + 7.5" | bc) "sv_lua_probe_sv_reentry"
 defer $(echo "$B + 8" | bc) "sv_lua_probe_sv_world"
 defer $(echo "$B + 8.5" | bc) "lua_probe_cl_flood"
 defer $(echo "$B + 9.5" | bc) "sv_lua_probe_sv_chancount"
+defer $(echo "$B + 9.8" | bc) "togglemenu 0"
 defer $(echo "$B + 10" | bc) "say !time"
 defer $(echo "$B + 10.5" | bc) "say !drop"
 defer $(echo "$B + 11" | bc) "say !mark"
@@ -301,8 +304,7 @@ defer 12 "connect 127.0.0.1:$PORT"
 defer 30 "togglemenu 0"
 defer 31 "cmd join"
 defer 32 "togglemenu 0"
-defer 50 "lua_probe_cl_count"
-defer 51 "quit"
+defer 60 "quit"
 EOF
 	OLOG="$WORK/online.log"
 	RUN_UD="$OUD" run_engine "$OLOG" 120 +exec online.cfg

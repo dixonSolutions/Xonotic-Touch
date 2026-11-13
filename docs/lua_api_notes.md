@@ -235,8 +235,13 @@ id starts with `server.`).
 
 In the engine all of it goes through five functions of `engine/darkplaces/touch_lua_ui.c`
 (`tlua_ui_register`, `tlua_ui_update`, `tlua_ui_remove`, `tlua_ui_publish` and
-`tlua_ui_event` for the way back): connecting the UI bridge's store means replacing
-their bodies.
+`tlua_ui_event` for the way back). When the UI bridge is in the tree
+(`engine/darkplaces/touch_uib.h`), every page also goes to its store:
+`TouchUIB_ModSetPage(<mod>, <page key>, ...)` with the rows turned into the bridge's
+page shape (a root `section`, then the rows as nodes, parents first, binds
+`mod:<mod>.<row>`, a `list` as a `choice` with `style: radio`, server pages under the
+key `server-<page>`), `TouchUIB_ModRemove` when it goes, and the bridge's `value` /
+`action` events (`TouchUIB_ModSetEventHandler`) come back through `tlua_ui_event`.
 
 **The Mods manager's own state** (for the menus that draw it): `_cl_lua_mods` and
 `_sv_lua_plugins` (one line per mod: `name<TAB>state<TAB>title<TAB>error<TAB>description`),

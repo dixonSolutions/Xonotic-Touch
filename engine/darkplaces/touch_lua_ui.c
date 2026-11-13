@@ -71,6 +71,8 @@ static tlua_uipage_t tlua_pages[TLUA_UI_MAXPAGES];
 static qbool tlua_pages_dirty;
 static char tlua_key_pagemt, tlua_key_dispatch;
 
+qbool tlua_ui_event(const char *id, const char *row, const char *event, const char *value);
+
 // ---------------------------------------------------------------------------
 // The store interface (stub backend). The UI bridge replaces the bodies of
 // these five functions; nothing else here knows where pages go.
@@ -84,22 +86,442 @@ static tlua_uipage_t *tlua_ui_find(const char *id)
 	return NULL;
 }
 
+#if defined(__has_include)
+#if __has_include("touch_uib.h")
+#define TLUA_HAVE_UIB 1
+#endif
+#endif
+
+#ifdef TLUA_HAVE_UIB
+// ---- the UI bridge's store (docs/UI_BRIDGE.md, "Mods"): our JSON (schema 1,
+// docs/LUA_API.md) turned into the bridge's page shape: a flat list of nodes,
+// the first the page's root section, ids relative to the page
+#include "touch_uib.h"
+
+typedef struct tlua_jn_s
+{
+	char type;             // o object, a array, s string, n number, t true, f false, z null
+	const char *s; int len; // string (raw, escapes kept) or number text
+	int first, next;       // first child, next sibling (indices, -1: none); object members: key node then value node
+} tlua_jn_t;
+#define TLUA_JN_MAX 4096
+static tlua_jn_t tlua_jn[TLUA_JN_MAX];
+static int tlua_jn_count;
+
+static void tlua_jn_ws(const char **p) { while (**p == ' ' || **p == '\n' || **p == '\t' || **p == '\r') (*p)++; }
+
+static int tlua_jn_parse(const char **p, int depth)
+{
+	int me, last = -1;
+	tlua_jn_ws(p);
+	if (tlua_jn_count >= TLUA_JN_MAX || depth > 32 || !**p)
+		return -1;
+	me = tlua_jn_count++;
+	tlua_jn[me].first = tlua_jn[me].next = -1;
+	tlua_jn[me].s = *p;
+	tlua_jn[me].len = 0;
+	if (**p == '{' || **p == '[')
+	{
+		char close = **p == '{' ? '}' : ']';
+		tlua_jn[me].type = **p == '{' ? 'o' : 'a';
+		(*p)++;
+		for (;;)
+		{
+			int c;
+			tlua_jn_ws(p);
+			if (**p == close) { (*p)++; return me; }
+			if (**p == ',') { (*p)++; continue; }
+			c = tlua_jn_parse(p, depth + 1);
+			if (c < 0)
+				return -1;
+			if (last < 0) tlua_jn[me].first = c; else tlua_jn[last].next = c;
+			last = c;
+			if (tlua_jn[me].type == 'o')
+			{
+				int v;
+				tlua_jn_ws(p);
+				if (**p != ':')
+					return -1;
+				(*p)++;
+				if ((v = tlua_jn_parse(p, depth + 1)) < 0)
+					return -1;
+				tlua_jn[last].next = v;
+				last = v;
+			}
+		}
+	}
+	if (**p == '"')
+	{
+		const char *q = ++(*p);
+		while (**p && **p != '"') { if (**p == '\\' && (*p)[1]) (*p)++; (*p)++; }
+		if (!**p)
+			return -1;
+		tlua_jn[me].type = 's';
+		tlua_jn[me].s = q;
+		tlua_jn[me].len = (int)(*p - q);
+		(*p)++;
+		return me;
+	}
+	if (!strncmp(*p, "true", 4)) { tlua_jn[me].type = 't'; *p += 4; return me; }
+	if (!strncmp(*p, "false", 5)) { tlua_jn[me].type = 'f'; *p += 5; return me; }
+	if (!strncmp(*p, "null", 4)) { tlua_jn[me].type = 'z'; *p += 4; return me; }
+	tlua_jn[me].type = 'n';
+	while (**p && strchr("+-0123456789.eE", **p)) (*p)++;
+	tlua_jn[me].len = (int)(*p - tlua_jn[me].s);
+	return tlua_jn[me].len ? me : -1;
+}
+
+static int tlua_jn_get(int obj, const char *key)
+{
+	int k;
+	if (obj < 0 || tlua_jn[obj].type != 'o')
+		return -1;
+	for (k = tlua_jn[obj].first; k >= 0 && tlua_jn[k].next >= 0; k = tlua_jn[tlua_jn[k].next].next)
+		if (tlua_jn[k].len == (int)strlen(key) && !strncmp(tlua_jn[k].s, key, (size_t)tlua_jn[k].len))
+			return tlua_jn[k].next;
+	return -1;
+}
+
+// appends the raw JSON of node n (strings re-quoted as they were)
+static void tlua_jn_put(char *out, size_t size, int n)
+{
+	size_t o = strlen(out);
+	if (n < 0) { dp_strlcat(out, "null", size); return; }
+	switch (tlua_jn[n].type)
+	{
+	case 's':
+		if (o + (size_t)tlua_jn[n].len + 3 < size)
+		{
+			out[o++] = '"';
+			memcpy(out + o, tlua_jn[n].s, (size_t)tlua_jn[n].len);
+			o += (size_t)tlua_jn[n].len;
+			out[o++] = '"';
+			out[o] = 0;
+		}
+		break;
+	case 'n':
+		if (o + (size_t)tlua_jn[n].len + 1 < size)
+		{
+			memcpy(out + o, tlua_jn[n].s, (size_t)tlua_jn[n].len);
+			out[o + tlua_jn[n].len] = 0;
+		}
+		break;
+	case 't': dp_strlcat(out, "true", size); break;
+	case 'f': dp_strlcat(out, "false", size); break;
+	default: dp_strlcat(out, "null", size); break;
+	}
+}
+
+static void tlua_jn_prop(char *out, size_t size, const char *name, int n, qbool *first)
+{
+	if (n < 0)
+		return;
+	dp_strlcat(out, *first ? "\"" : ",\"", size);
+	*first = false;
+	dp_strlcat(out, name, size);
+	dp_strlcat(out, "\":", size);
+	tlua_jn_put(out, size, n);
+}
+
+static qbool tlua_jn_is(int n, const char *s)
+{
+	return n >= 0 && tlua_jn[n].type == 's' && tlua_jn[n].len == (int)strlen(s) && !strncmp(tlua_jn[n].s, s, (size_t)tlua_jn[n].len);
+}
+
+static int tlua_uib_seq;
+static char tlua_uib_ids[TLUA_JN_MAX][40]; // a row's node id, by its tree index
+
+// node ids first (rows without an id get n1, n2, ...), so parents can be
+// written before their children
+static void tlua_uib_assign(int row)
+{
+	int id = tlua_jn_get(row, "id"), kids = tlua_jn_get(row, "children"), c;
+	if (id >= 0 && tlua_jn[id].type == 's' && tlua_jn[id].len < (int)sizeof(tlua_uib_ids[0]))
+	{
+		memcpy(tlua_uib_ids[row], tlua_jn[id].s, (size_t)tlua_jn[id].len);
+		tlua_uib_ids[row][tlua_jn[id].len] = 0;
+	}
+	else
+		dpsnprintf(tlua_uib_ids[row], sizeof(tlua_uib_ids[row]), "n%d", ++tlua_uib_seq);
+	if (kids >= 0)
+		for (c = tlua_jn[kids].first; c >= 0; c = tlua_jn[c].next)
+			tlua_uib_assign(c);
+}
+
+// one row, then its children, as bridge nodes appended to out
+static void tlua_uib_node(char *out, size_t size, const char *mod, int row)
+{
+	char child_ids[2048] = "", buf[96];
+	const char *idout = tlua_uib_ids[row];
+	int type = tlua_jn_get(row, "type"), kids = tlua_jn_get(row, "children"), c, opts, items;
+	qbool first = true, list = tlua_jn_is(type, "list");
+	if (kids >= 0)
+		for (c = tlua_jn[kids].first; c >= 0; c = tlua_jn[c].next)
+		{
+			if (child_ids[0]) dp_strlcat(child_ids, ",", sizeof(child_ids));
+			dp_strlcat(child_ids, "\"", sizeof(child_ids));
+			dp_strlcat(child_ids, tlua_uib_ids[c], sizeof(child_ids));
+			dp_strlcat(child_ids, "\"", sizeof(child_ids));
+		}
+	if (out[strlen(out) - 1] != '[')
+		dp_strlcat(out, ",", size);
+	dp_strlcat(out, "{\"id\":\"", size);
+	dp_strlcat(out, idout, size);
+	dp_strlcat(out, "\",\"type\":", size);
+	// a list of items is a choice to the bridge (one of them selected)
+	if (list)
+		dp_strlcat(out, "\"choice\"", size);
+	else
+		tlua_jn_put(out, size, type);
+	dp_strlcat(out, ",\"origin\":\"mod:", size);
+	dp_strlcat(out, mod, size);
+	dp_strlcat(out, "\",\"props\":{", size);
+	if (tlua_jn_is(type, "section") || tlua_jn_is(type, "card"))
+		tlua_jn_prop(out, size, "title", tlua_jn_get(row, tlua_jn_is(type, "card") ? "title" : "text"), &first);
+	else if (tlua_jn_is(type, "text"))
+		tlua_jn_prop(out, size, "body", tlua_jn_get(row, "text"), &first);
+	else if (tlua_jn_is(type, "image"))
+	{
+		int f = tlua_jn_get(row, "file");
+		if (f >= 0)
+		{
+			char ref[160];
+			dpsnprintf(ref, sizeof(ref), "%s\"ref\":\"mod:%s/%.*s\"", first ? "" : ",", mod, tlua_jn[f].len, tlua_jn[f].s);
+			dp_strlcat(out, ref, size);
+			first = false;
+		}
+	}
+	else
+	{
+		int v = tlua_jn_get(row, "value");
+		tlua_jn_prop(out, size, "label", tlua_jn_get(row, "label"), &first);
+		tlua_jn_prop(out, size, "help", tlua_jn_get(row, "desc"), &first);
+		if (!tlua_jn_is(type, "button") && !tlua_jn_is(type, "progress"))
+		{
+			dpsnprintf(buf, sizeof(buf), "%s\"bind\":\"mod:%s.%s\"", first ? "" : ",", mod, idout);
+			dp_strlcat(out, buf, size);
+			first = false;
+		}
+		if (tlua_jn_is(type, "colour") && v >= 0 && tlua_jn[v].type == 's')
+		{
+			dpsnprintf(buf, sizeof(buf), ",\"value\":\"#%.*s\"", tlua_jn[v].len, tlua_jn[v].s);
+			dp_strlcat(out, buf, size);
+		}
+		else if (tlua_jn_is(type, "keybind") && v >= 0)
+		{
+			dp_strlcat(out, ",\"value\":[", size);
+			tlua_jn_put(out, size, v);
+			dp_strlcat(out, "]", size);
+		}
+		else
+			tlua_jn_prop(out, size, "value", v, &first);
+		tlua_jn_prop(out, size, "min", tlua_jn_get(row, "min"), &first);
+		tlua_jn_prop(out, size, "max", tlua_jn_get(row, "max"), &first);
+		tlua_jn_prop(out, size, "step", tlua_jn_get(row, "step"), &first);
+		tlua_jn_prop(out, size, "placeholder", tlua_jn_get(row, "placeholder"), &first);
+		tlua_jn_prop(out, size, "maxLength", tlua_jn_get(row, "maxlen"), &first);
+		if (tlua_jn_is(type, "field"))
+			dp_strlcat(out, ",\"kind\":\"text\"", size);
+		if (tlua_jn_is(type, "button"))
+		{
+			dpsnprintf(buf, sizeof(buf), ",\"action\":{\"id\":\"%s\"}", idout);
+			dp_strlcat(out, buf, size);
+			tlua_jn_prop(out, size, "style", tlua_jn_get(row, "style"), &first);
+		}
+		if ((opts = tlua_jn_get(row, "options")) >= 0)
+		{
+			dp_strlcat(out, ",\"options\":[", size);
+			for (c = tlua_jn[opts].first; c >= 0; c = tlua_jn[c].next)
+			{
+				dp_strlcat(out, c == tlua_jn[opts].first ? "{\"value\":" : ",{\"value\":", size);
+				tlua_jn_put(out, size, c);
+				dp_strlcat(out, ",\"label\":", size);
+				tlua_jn_put(out, size, c);
+				dp_strlcat(out, "}", size);
+			}
+			dp_strlcat(out, "]", size);
+		}
+		if (list && (items = tlua_jn_get(row, "items")) >= 0)
+		{
+			dp_strlcat(out, ",\"style\":\"radio\",\"options\":[", size);
+			for (c = tlua_jn[items].first; c >= 0; c = tlua_jn[c].next)
+			{
+				dp_strlcat(out, c == tlua_jn[items].first ? "{\"value\":" : ",{\"value\":", size);
+				tlua_jn_put(out, size, tlua_jn_get(c, "id"));
+				dp_strlcat(out, ",\"label\":", size);
+				tlua_jn_put(out, size, tlua_jn_get(c, "label"));
+				if (tlua_jn_get(c, "detail") >= 0)
+				{
+					dp_strlcat(out, ",\"help\":", size);
+					tlua_jn_put(out, size, tlua_jn_get(c, "detail"));
+				}
+				dp_strlcat(out, "}", size);
+			}
+			dp_strlcat(out, "]", size);
+		}
+		if (tlua_jn_is(tlua_jn_get(row, "disabled"), "x") || (tlua_jn_get(row, "disabled") >= 0 && tlua_jn[tlua_jn_get(row, "disabled")].type == 't'))
+			dp_strlcat(out, ",\"enabled\":false", size);
+	}
+	dp_strlcat(out, "},\"children\":[", size);
+	dp_strlcat(out, child_ids, size);
+	dp_strlcat(out, "]}", size);
+	if (kids >= 0)
+		for (c = tlua_jn[kids].first; c >= 0; c = tlua_jn[c].next)
+			tlua_uib_node(out, size, mod, c);
+}
+
+// the bridge's (mod id, page key) for one of our page ids
+static void tlua_uib_key(const char *id, char *mod, size_t modsize, char *key, size_t keysize)
+{
+	const char *p = id, *dot;
+	qbool server = !strncmp(p, "server.", 7);
+	if (server)
+		p += 7;
+	dot = strchr(p, '.');
+	dp_strlcpy(mod, p, min(modsize, dot ? (size_t)(dot - p) + 1 : modsize));
+	dpsnprintf(key, keysize, "%s%s", server ? "server-" : "", dot ? dot + 1 : "page");
+}
+
+static void tlua_uib_set(const char *id, const char *json)
+{
+	static char out[96 * 1024];
+	char mod[64], key[96], err[256], rootids[4096] = "";
+	const char *p = json;
+	int root, rows, title, c;
+	tlua_jn_count = 0;
+	tlua_uib_seq = 0;
+	if ((root = tlua_jn_parse(&p, 0)) < 0 || (rows = tlua_jn_get(root, "rows")) < 0)
+		return;
+	tlua_uib_key(id, mod, sizeof(mod), key, sizeof(key));
+	title = tlua_jn_get(root, "title");
+	// the rows first (children before the root here; the root goes first below)
+	dp_strlcpy(out, "[", sizeof(out));
+	for (c = tlua_jn[rows].first; c >= 0; c = tlua_jn[c].next)
+		tlua_uib_assign(c);
+	for (c = tlua_jn[rows].first; c >= 0; c = tlua_jn[c].next)
+	{
+		tlua_uib_node(out, sizeof(out), mod, c);
+		if (rootids[0]) dp_strlcat(rootids, ",", sizeof(rootids));
+		dp_strlcat(rootids, "\"", sizeof(rootids));
+		dp_strlcat(rootids, tlua_uib_ids[c], sizeof(rootids));
+		dp_strlcat(rootids, "\"", sizeof(rootids));
+	}
+	{
+		static char page[100 * 1024];
+		dp_strlcpy(page, "{\"title\":", sizeof(page));
+		tlua_jn_put(page, sizeof(page), title);
+		dp_strlcat(page, ",\"nodes\":[{\"id\":\"root\",\"type\":\"section\",\"props\":{\"title\":", sizeof(page));
+		tlua_jn_put(page, sizeof(page), title);
+		dp_strlcat(page, "},\"children\":[", sizeof(page));
+		dp_strlcat(page, rootids, sizeof(page));
+		dp_strlcat(page, "]}", sizeof(page));
+		if (strlen(out) > 1)
+		{
+			dp_strlcat(page, ",", sizeof(page));
+			dp_strlcat(page, out + 1, sizeof(page));
+		}
+		else
+			dp_strlcat(page, "]", sizeof(page));
+		dp_strlcat(page, out[1] ? "]}" : "}", sizeof(page)); // out has no closing bracket
+		if (TouchUIB_ModSetPage(mod, key, page, strlen(page), err, sizeof(err)) < 0)
+			Con_DPrintf("Lua: the UI bridge refused page %s: %s\n", id, err);
+	}
+}
+
+// the bridge's events on mod nodes: {"ev":"value"|"action", "node":"...", "value":...}
+static void tlua_uib_event(const char *mod_id, const char *ev_json, size_t len, void *ctx)
+{
+	char buf[2048], ev[16] = "", node[160] = "", value[512] = "", page[160], row[64];
+	const char *p, *slash;
+	int root, n;
+	(void)ctx;
+	if (len >= sizeof(buf))
+		return;
+	memcpy(buf, ev_json, len);
+	buf[len] = 0;
+	p = buf;
+	tlua_jn_count = 0;
+	if ((root = tlua_jn_parse(&p, 0)) < 0)
+		return;
+	if ((n = tlua_jn_get(root, "ev")) >= 0 && tlua_jn[n].type == 's')
+		dp_strlcpy(ev, tlua_jn[n].s, min(sizeof(ev), (size_t)tlua_jn[n].len + 1));
+	if ((n = tlua_jn_get(root, "node")) >= 0 && tlua_jn[n].type == 's')
+		dp_strlcpy(node, tlua_jn[n].s, min(sizeof(node), (size_t)tlua_jn[n].len + 1));
+	if ((n = tlua_jn_get(root, "value")) >= 0)
+	{
+		if (tlua_jn[n].type == 'a')
+			n = tlua_jn[n].first; // a keybind's names: the first
+		if (n >= 0 && tlua_jn[n].type == 't') dp_strlcpy(value, "1", sizeof(value));
+		else if (n >= 0 && tlua_jn[n].type == 'f') dp_strlcpy(value, "0", sizeof(value));
+		else if (n >= 0 && (tlua_jn[n].type == 's' || tlua_jn[n].type == 'n'))
+			dp_strlcpy(value, tlua_jn[n].s + (tlua_jn[n].type == 's' && tlua_jn[n].s[0] == '#' ? 1 : 0), min(sizeof(value), (size_t)tlua_jn[n].len + 1 - (tlua_jn[n].s[0] == '#' ? 1 : 0)));
+	}
+	// node: "mods/<mod>/<page key>/<row>" (or relative): the page key and the row
+	slash = strrchr(node, '/');
+	if (!slash)
+		return;
+	dp_strlcpy(row, slash + 1, sizeof(row));
+	{
+		char head[160], *k;
+		dp_strlcpy(head, node, min(sizeof(head), (size_t)(slash - node) + 1));
+		k = strrchr(head, '/');
+		k = k ? k + 1 : head;
+		if (!strncmp(k, "server-", 7))
+			dpsnprintf(page, sizeof(page), "server.%s.%s", mod_id, k + 7);
+		else
+			dpsnprintf(page, sizeof(page), "%s.%s", mod_id, k);
+	}
+	if (!strcmp(ev, "action"))
+		tlua_ui_event(page, row, "press", "");
+	else if (!strcmp(ev, "value") || !strcmp(ev, "submit"))
+	{
+		tlua_uipage_t *pg = tlua_ui_find(page);
+		char key[64];
+		const char *t;
+		// a list (sent as a choice) answers with select
+		dpsnprintf(key, sizeof(key), "\"id\":\"%s\",\"type\":\"list\"", row);
+		t = pg && pg->json ? strstr(pg->json, key) : NULL;
+		if (!t)
+		{
+			dpsnprintf(key, sizeof(key), "\"type\":\"list\",\"id\":\"%s\"", row);
+			t = pg && pg->json ? strstr(pg->json, key) : NULL;
+		}
+		tlua_ui_event(page, row, t ? "select" : "change", value);
+	}
+}
+#endif
+
 static qbool tlua_ui_register(const char *id, const char *origin, const char *kind, const char *json)
 {
-	(void)id; (void)origin; (void)kind; (void)json;
+	(void)origin; (void)kind;
+#ifdef TLUA_HAVE_UIB
+	tlua_uib_set(id, json);
+#else
+	(void)id; (void)json;
+#endif
 	tlua_pages_dirty = true;
 	return true;
 }
 
 static void tlua_ui_update(const char *id, const char *json)
 {
+#ifdef TLUA_HAVE_UIB
+	tlua_uib_set(id, json);
+#else
 	(void)id; (void)json;
+#endif
 	tlua_pages_dirty = true;
 }
 
 static void tlua_ui_remove(const char *id)
 {
+#ifdef TLUA_HAVE_UIB
+	char mod[64], key[96];
+	tlua_uib_key(id, mod, sizeof(mod), key, sizeof(key));
+	TouchUIB_ModRemove(mod, key);
+#else
 	(void)id;
+#endif
 	tlua_pages_dirty = true;
 }
 
@@ -1249,6 +1671,9 @@ void TLua_UI_Setup(void)
 		TLua_RegisterCvar(&lua_page_select);
 		TLua_RegisterCvar(&lua_page);
 	}
+#ifdef TLUA_HAVE_UIB
+	TouchUIB_ModSetEventHandler(tlua_uib_event, NULL);
+#endif
 	Cmd_AddCommand(CF_CLIENT | CF_SERVER, "lua_pages", tlua_pages_f, "list the pages Lua mods describe (settings, menu and server pages)");
 	Cmd_AddCommand(CF_CLIENT | CF_SERVER, "lua_page_json", tlua_page_json_f, "print a mod page's description as JSON (docs/LUA_API.md, UI descriptions)");
 	Cmd_AddCommand(CF_CLIENT | CF_SERVER, "lua_page_event", tlua_page_event_f, "send a page event as a renderer would: lua_page_event <id> <row> change|press|select [value]");
