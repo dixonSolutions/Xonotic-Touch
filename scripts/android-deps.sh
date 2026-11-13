@@ -131,7 +131,9 @@ find_path(OGG_INCLUDE ogg/ogg.h REQUIRED)
 find_path(OPUS_INCLUDE opus/opus.h REQUIRED)
 add_library(opusfile STATIC src/info.c src/internal.c src/opusfile.c src/stream.c)
 target_include_directories(opusfile PRIVATE include ${OGG_INCLUDE} ${OPUS_INCLUDE}/opus)
-target_compile_definitions(opusfile PRIVATE OP_DISABLE_HTTP OP_HAVE_LRINTF)
+# 32-bit bionic before API 24 has no fseeko with 64-bit off_t; only the
+# memory reader is used anyway
+target_compile_definitions(opusfile PRIVATE OP_DISABLE_HTTP OP_HAVE_LRINTF _FILE_OFFSET_BITS=32)
 install(TARGETS opusfile ARCHIVE DESTINATION lib)
 install(FILES include/opusfile.h DESTINATION include/opus)
 EOF_CMAKE
