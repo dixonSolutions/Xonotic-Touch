@@ -20,13 +20,13 @@ elif [ -f "${ROOT:-}/scripts/lib/asset-discover.sh" ]; then
     . "${ROOT}/scripts/lib/asset-discover.sh"
 fi
 
-DATA_DIR="${1:-${XONOTIC_TOUCH_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/xonotic-touch/data}}"
+DATA_DIR="${1:-${GODNOTIC_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/godnotic/data}}"
 
 if [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" = "1" ]; then
     exit 0
 fi
 
-UTIL_BIN="${XONOTIC_TOUCH_APP_ROOT:-}/bin"
+UTIL_BIN="${GODNOTIC_APP_ROOT:-}/bin"
 if [ -x "$UTIL_BIN/curl" ]; then
     export PATH="$UTIL_BIN:${PATH}"
 fi

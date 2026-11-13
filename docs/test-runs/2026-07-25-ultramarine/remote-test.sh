@@ -2,10 +2,10 @@
 # Run ON the Ultramarine host after SSH works.
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/dixonSolutions/Xonotic-Touch.git}"
-REPO_DIR="${REPO_DIR:-$HOME/Projects/Xonotic-Touch}"
-SHOT_DIR="${SHOT_DIR:-$HOME/xonotic-touch-test/screenshots}"
-LOG_DIR="${LOG_DIR:-$HOME/xonotic-touch-test/logs}"
+REPO_URL="${REPO_URL:-https://github.com/dixonSolutions/Godnotic.git}"
+REPO_DIR="${REPO_DIR:-$HOME/Projects/Godnotic}"
+SHOT_DIR="${SHOT_DIR:-$HOME/godnotic-test/screenshots}"
+LOG_DIR="${LOG_DIR:-$HOME/godnotic-test/logs}"
 mkdir -p "$SHOT_DIR" "$LOG_DIR" "$(dirname "$REPO_DIR")"
 
 stamp() { date -Iseconds; }
@@ -68,17 +68,17 @@ launch_game() {
     echo $! >"$LOG_DIR/game.pid"
   else
     log "Ensuring Flatpak app"
-    flatpak remote-add --user --if-not-exists xonotic-touch \
-      https://dixonSolutions.github.io/Xonotic-Touch/flatpak || true
-    flatpak install -y --user xonotic-touch io.github.dixonSolutions.XonoticTouch || true
+    flatpak remote-add --user --if-not-exists godnotic \
+      https://dixonSolutions.github.io/Godnotic/flatpak || true
+    flatpak install -y --user godnotic io.github.dixonSolutions.Godnotic || true
     log "Launching flatpak"
-    nohup flatpak run io.github.dixonSolutions.XonoticTouch >"$LOG_DIR/game.log" 2>&1 &
+    nohup flatpak run io.github.dixonSolutions.Godnotic >"$LOG_DIR/game.log" 2>&1 &
     echo $! >"$LOG_DIR/game.pid"
   fi
 }
 
 asset_status() {
-  local data="$HOME/.local/share/xonotic-touch/data"
+  local data="$HOME/.local/share/godnotic/data"
   [[ -f "$data/.assets-ready" ]] && echo ready || echo missing
   [[ -f "$data/.asset-fetch-progress" ]] && cat "$data/.asset-fetch-progress" || true
   ls "$data" 2>/dev/null | head -40 || true

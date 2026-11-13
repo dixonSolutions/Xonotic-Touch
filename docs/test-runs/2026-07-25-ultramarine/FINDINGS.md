@@ -1,8 +1,8 @@
 # Ultramarine touch test — 2026-07-25
 
 Target: `borysthebear@100.125.7.103` (Tailscale `ultramarine`, Surface, GNOME Wayland)  
-Build under test: Flatpak `io.github.dixonSolutions.XonoticTouch` **1.1.1** (`3125de8`, 2026-07-03)  
-Remote clone: `~/Projects/Xonotic-Touch` (same commit) for fast local edits
+Build under test: Flatpak `io.github.dixonSolutions.Godnotic` **1.1.1** (`3125de8`, 2026-07-03)  
+Remote clone: `~/Projects/Godnotic` (same commit) for fast local edits
 
 ## Verdict
 
@@ -19,7 +19,7 @@ Remote clone: `~/Projects/Xonotic-Touch` (same commit) for fast local edits
 
 1. **Setup every launch:** `+exec xonotic.cfg` → `xonotic-client.cfg` sets `_cl_name ""` *after* archived config loads, clearing the name so FirstRun always returns.
 2. **Incomplete home:** `mainwindow.qc` registered Touch Home and Singleplayer on the **same** nexposee position; Singleplayer won and Play looked broken/empty.
-3. **Flatpak data dir:** `XDG_DATA_HOME` under Flatpak pointed assets at `~/.var/app/...` instead of `~/.local/share/xonotic-touch`; `start.sh` now pins the host path.
+3. **Flatpak data dir:** `XDG_DATA_HOME` under Flatpak pointed assets at `~/.var/app/...` instead of `~/.local/share/godnotic`; `start.sh` now pins the host path.
 
 ### WhatsApp feedback fixes (2026-07-25 afternoon)
 
@@ -36,7 +36,7 @@ User photos showed: portrait-held tablet with landscape UI, huge DODGE/HUD, yell
 
 Verified on device: home shows Campaign; Campaign opens full Singleplayer (Level 1 Boil…); resolution 1440×960; trace spam stopped after `prvm_traceqc 0`.
 
-**Use on Ultramarine until Flatpak rebuild:** `~/xonotic-touch-test/run-fixed.sh` (override `menu.dat`/`csprogs.dat` in `zzz-touch-fix.pk3dir`). Hold tablet **landscape** (auto-rotate disabled for the session).
+**Use on Ultramarine until Flatpak rebuild:** `~/godnotic-test/run-fixed.sh` (override `menu.dat`/`csprogs.dat` in `zzz-touch-fix.pk3dir`). Hold tablet **landscape** (auto-rotate disabled for the session).
 
 ### Thermal mode (Surface Pro 4 — 2026-07-25)
 
@@ -51,7 +51,7 @@ Fanless tablet was overheating under 1440p + glass HUD. Switched defaults:
 | Power | `powerprofilesctl set power-saver` at launch |
 | Perf profile | `thermal` (default) |
 
-If it still runs hot: quit the game (`systemctl --user stop xonotic-touch-test`) and let the chassis cool before another session.
+If it still runs hot: quit the game (`systemctl --user stop godnotic-test`) and let the chassis cool before another session.
 
 ## Environment
 
@@ -73,7 +73,7 @@ If it still runs hot: quit the game (`systemctl --user stop xonotic-touch-test`)
 
 ## Assets inventory
 
-Path: `~/.local/share/xonotic-touch/data/`  
+Path: `~/.local/share/godnotic/data/`  
 Marker: `.assets-ready` **YES**
 
 | Pack | Size (approx) |
@@ -142,8 +142,8 @@ export YDOTOOL_SOCKET=$XDG_RUNTIME_DIR/.ydotool_socket
 ydotoold --socket-path=$YDOTOOL_SOCKET --socket-own=$(id -u):$(id -g) &
 
 # Launch (direct binary so +set sticks):
-flatpak run --command=/app/bin/xonotic io.github.dixonSolutions.XonoticTouch \
-  -xonotic -customgamename "Xonotic Touch" \
+flatpak run --command=/app/bin/xonotic io.github.dixonSolutions.Godnotic \
+  -xonotic -customgamename "Godnotic" \
   +exec xonotic.cfg +exec screen.layout.cfg \
   +set _touch_assets_ready 1 +vid_fullscreen 1 +vid_touchscreen 1 \
   +vid_width 1440 +vid_height 960 +set _cl_name TouchAgent \
@@ -152,7 +152,7 @@ flatpak run --command=/app/bin/xonotic io.github.dixonSolutions.XonoticTouch \
 # Capture: open console (`), `screenshot`, SCP TGA, convert with Pillow
 ```
 
-Repo clone for code iteration: `~/Projects/Xonotic-Touch`.
+Repo clone for code iteration: `~/Projects/Godnotic`.
 
 ## Follow-ups (optional)
 

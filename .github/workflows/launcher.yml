@@ -18,7 +18,7 @@ jobs:
     name: Launcher (x86_64 + aarch64)
     runs-on: ubuntu-latest
     env:
-      # Must match runtime-version in flatpak/io.github.dixonSolutions.XonoticTouch.yml.
+      # Must match runtime-version in flatpak/io.github.dixonSolutions.Godnotic.yml.
       XT_GNOME_VERSION: '48'
     steps:
       - uses: actions/checkout@v4

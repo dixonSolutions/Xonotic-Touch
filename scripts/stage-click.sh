@@ -7,7 +7,7 @@ ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 . "$ROOT/scripts/lib/xonotic-shlib.sh"
 
 DEST="${DEST:-${DESTDIR:-$ROOT/build/click}}"
-CLICK_NAME="${CLICK_NAME:-xonotictouch.dixonsolutions}"
+CLICK_NAME="${CLICK_NAME:-godnotic.dixonsolutions}"
 CLICK_VERSION="${CLICK_VERSION:-1.1.1}"
 CLICK_FRAMEWORK="${CLICK_FRAMEWORK:-ubuntu-touch-24.04-1.x}"
 CLICK_ARCH="${CLICK_ARCH:-}"

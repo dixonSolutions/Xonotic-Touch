@@ -48,4 +48,4 @@ ydotool key 28:1 28:0
 sleep 1
 ydotool key 41:1 41:0
 ls -lt "$HOME/.xonotic/data/screenshots" | head -6
-grep -E "program loaded \(crc" "$HOME/xonotic-touch-test/logs/glass-launch3.log" | tail -5
+grep -E "program loaded \(crc" "$HOME/godnotic-test/logs/glass-launch3.log" | tail -5

@@ -992,7 +992,7 @@
   // app, the app names this site), and hand over to the app, which has the
   // game data and the settings. Elsewhere there is no way to know, so the
   // first visit offers the hand-over as a plain link.
-  const APP_PACKAGE = 'io.github.dixonsolutions.xonotictouch';
+  const APP_PACKAGE = 'io.github.dixonsolutions.godnotic';
   const isAndroid = /Android/i.test(ua);
   const isChromium = !!navigator.userAgentData || /Chrom(e|ium)\//.test(ua);
   const isLinux = !isAndroid && /Linux|X11/i.test(navigator.platform || ua);
@@ -1024,7 +1024,7 @@
   // IndexedDB and the browser asks, or remembers, the permission on later
   // visits. The stock packs in it (data, maps, music, fonts) are read in
   // place, read only; this build's own files still come from the site.
-  const FOLDER_HINT = 'The Flatpak keeps it in ~/.var/app/io.github.dixonSolutions.XonoticTouch/data/xonotic-touch/data (type the path with Ctrl+L: the folder is hidden).';
+  const FOLDER_HINT = 'The Flatpak keeps it in ~/.var/app/io.github.dixonSolutions.Godnotic/data/godnotic/data (type the path with Ctrl+L: the folder is hidden).';
   /** "data", "maps", "music", "xoncompat", "font-unifont"…: which stock pack a file name is, '' for others. */
   function packKind(name, whole) {
     let m = /^xonotic-[^-]+-(data|maps|music|xoncompat)(-[0-9a-z_.]+)?\.pk3$/i.exec(name);

@@ -6,8 +6,8 @@ export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}"
 export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/1000/bus}"
 
-SHOT_DIR="${SHOT_DIR:-$HOME/xonotic-touch-test/screenshots/glass}"
-LOG="$HOME/xonotic-touch-test/logs/glass-accept.log"
+SHOT_DIR="${SHOT_DIR:-$HOME/godnotic-test/screenshots/glass}"
+LOG="$HOME/godnotic-test/logs/glass-accept.log"
 mkdir -p "$SHOT_DIR" "$(dirname "$LOG")"
 : >"$LOG"
 
@@ -23,8 +23,8 @@ LOGIC_H="${LOGIC_H:-960}"
 LAYOUT_CANDIDATES=(
   "$HOME/.xonotic/data/data/touch.layout.cfg"
   "$HOME/.xonotic/data/touch.layout.cfg"
-  "$HOME/.local/share/xonotic-touch/data/data/touch.layout.cfg"
-  "$HOME/.local/share/xonotic-touch/data/touch.layout.cfg"
+  "$HOME/.local/share/godnotic/data/data/touch.layout.cfg"
+  "$HOME/.local/share/godnotic/data/touch.layout.cfg"
 )
 
 to_logic() {
@@ -126,7 +126,7 @@ tap 0.500 0.045
 
 # Collect screenshots
 ls -lt "$HOME/.xonotic/data/screenshots" 2>/dev/null | head -10 | tee -a "$LOG" || true
-ls -lt "$HOME/.local/share/xonotic-touch/data/screenshots" 2>/dev/null | head -10 | tee -a "$LOG" || true
+ls -lt "$HOME/.local/share/godnotic/data/screenshots" 2>/dev/null | head -10 | tee -a "$LOG" || true
 
 # Layout persistence (engine path is often data/data/)
 log "layout file:"

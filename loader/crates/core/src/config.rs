@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! `~/.config/xonotic-touch/launcher.conf`: `key = value` lines, the same file
+//! `~/.config/godnotic/launcher.conf`: `key = value` lines, the same file
 //! and format the Kotlin launcher used, unknown keys kept.
 
 use std::collections::BTreeMap;

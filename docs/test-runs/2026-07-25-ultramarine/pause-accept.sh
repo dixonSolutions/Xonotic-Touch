@@ -6,8 +6,8 @@ export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}"
 export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/1000/bus}"
 
-SHOT_DIR="${SHOT_DIR:-$HOME/xonotic-touch-test/screenshots/pause}"
-LOG="$HOME/xonotic-touch-test/logs/pause-accept.log"
+SHOT_DIR="${SHOT_DIR:-$HOME/godnotic-test/screenshots/pause}"
+LOG="$HOME/godnotic-test/logs/pause-accept.log"
 mkdir -p "$SHOT_DIR" "$(dirname "$LOG")"
 : >"$LOG"
 

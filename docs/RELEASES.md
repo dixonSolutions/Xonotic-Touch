@@ -21,21 +21,21 @@ Each push to `main` creates a **new immutable version** `1.2.<run_number>` (tag 
 |---|---|
 | **Remote URL** | `https://dixonSolutions.github.io/Godnotic/flatpak` |
 | **Remote name** | `godnotic` |
-| **App ID** | `io.github.dixonSolutions.XonoticTouch` |
+| **App ID** | `io.github.dixonSolutions.Godnotic` |
 | **Architectures** | `x86_64` (desktop/laptop), `aarch64` (ARM tablets/phones) |
 
 ```bash
 flatpak remote-add --user --if-not-exists godnotic \
   https://dixonSolutions.github.io/Godnotic/flatpak
 
-flatpak install --user godnotic io.github.dixonSolutions.XonoticTouch
-flatpak update --user io.github.dixonSolutions.XonoticTouch
+flatpak install --user godnotic io.github.dixonSolutions.Godnotic
+flatpak update --user io.github.dixonSolutions.Godnotic
 ```
 
 List older commits (rollback):
 
 ```bash
-flatpak remote-info --log godnotic io.github.dixonSolutions.XonoticTouch
+flatpak remote-info --log godnotic io.github.dixonSolutions.Godnotic
 # then install/update to a specific commit hash if needed
 ```
 
@@ -43,16 +43,16 @@ First launch downloads game assets (~3 GB) into:
 
 | Install | Path |
 |---------|------|
-| **Flatpak** | `~/.var/app/io.github.dixonSolutions.XonoticTouch/data/xonotic-touch/data/` (wiped by Delete app data / `flatpak uninstall --delete-data`) |
-| **Click (Ubuntu Touch)** | `~/.local/share/xonotictouch.dixonsolutions/data/` (AppArmor-writable `APP_PKGNAME` dir) |
-| **Native / unpackaged** | `~/.local/share/xonotic-touch/data/` |
+| **Flatpak** | `~/.var/app/io.github.dixonSolutions.Godnotic/data/godnotic/data/` (wiped by Delete app data / `flatpak uninstall --delete-data`) |
+| **Click (Ubuntu Touch)** | `~/.local/share/godnotic.dixonsolutions/data/` (AppArmor-writable `APP_PKGNAME` dir) |
+| **Native / unpackaged** | `~/.local/share/godnotic/data/` |
 
-Legacy Flatpak installs that still have `~/.local/share/xonotic-touch` are migrated into the Flatpak data dir on next launch (the manifest exposes that host path only for migration — not as the live store). To force a clean first-run wizard now:
+An install from before the rename to Godnotic keeps its packs: the Flatpak moves to the new app ID by itself at the next `flatpak update` (Flatpak carries `~/.var/app/<old id>` over), and the first start renames the data folder inside it. A native install has its `~/.local/share` folder renamed the same way. To force a clean first-run wizard now:
 
 ```bash
-flatpak uninstall --user --delete-data io.github.dixonSolutions.XonoticTouch
-rm -rf ~/.local/share/xonotic-touch \
-  ~/.var/app/io.github.dixonSolutions.XonoticTouch
+flatpak uninstall --user --delete-data io.github.dixonSolutions.Godnotic
+rm -rf ~/.local/share/godnotic \
+  ~/.var/app/io.github.dixonSolutions.Godnotic
 ```
 
 User config and touch layout overrides remain in `~/.xonotic/`.
@@ -66,7 +66,7 @@ User config and touch layout overrides remain in `~/.xonotic/`.
 
 ## Ubuntu Touch (.click)
 
-Click packages target Ubuntu Touch devices (ARM). App ID: `xonotictouch.dixonsolutions` (must match the [OpenStore](https://open-store.io/app/xonotictouch.dixonsolutions) listing).
+Click packages target Ubuntu Touch devices (ARM). App ID: `godnotic.dixonsolutions` (must match the [OpenStore](https://open-store.io/app/godnotic.dixonsolutions) listing).
 
 There is no OSTree/apt remote for `.click` like Flatpak — instead each `main` push publishes a **stable download remote** on GitHub Pages (always-latest URLs) plus versioned files and GitHub Release attachments. OpenStore gets the arm64 + armhf revisions from `.github/workflows/openstore.yml`, weekly and on demand, not on every push (see **OpenStore** below).
 
@@ -87,11 +87,11 @@ pkcon install-local --allow-untrusted latest-arm64.click
 ### Install from GitHub Releases
 
 1. Open the [latest release](https://github.com/dixonSolutions/Godnotic/releases/latest) (or any older `v1.2.*` tag).
-2. Download `xonotictouch.dixonsolutions_*_arm64.click` (or `_armhf.click`).
+2. Download `godnotic.dixonsolutions_*_arm64.click` (or `_armhf.click`).
 3. On the device:
 
 ```bash
-pkcon install-local --allow-untrusted xonotictouch.dixonsolutions_*_arm64.click
+pkcon install-local --allow-untrusted godnotic.dixonsolutions_*_arm64.click
 ```
 
 ### Local Click build
@@ -122,8 +122,8 @@ Attached assets:
 
 - `Godnotic-<version>-x86_64.flatpak`
 - `Godnotic-<version>-aarch64.flatpak`
-- `xonotictouch.dixonsolutions_<version>_arm64.click`
-- `xonotictouch.dixonsolutions_<version>_armhf.click`
+- `godnotic.dixonsolutions_<version>_arm64.click`
+- `godnotic.dixonsolutions_<version>_armhf.click`
 - `Godnotic-<version>-arm64-v8a.apk`
 - `Godnotic-<version>-armeabi-v7a.apk`
 - `Godnotic-<version>-x86_64.apk`
@@ -160,14 +160,14 @@ flatpak install --user Godnotic-1.2.<N>-x86_64.flatpak
 
 ### OpenStore
 
-<a href="https://open-store.io/app/xonotictouch.dixonsolutions"><img src="https://open-store.io/badges/en_US.svg" alt="OpenStore" width="200" /></a>
+<a href="https://open-store.io/app/godnotic.dixonsolutions"><img src="https://open-store.io/badges/en_US.svg" alt="OpenStore" width="200" /></a>
 
 | | |
 |---|---|
-| **App id** | `xonotictouch.dixonsolutions` |
+| **App id** | `godnotic.dixonsolutions` |
 | **Title** | Godnotic |
-| **Manage** | https://open-store.io/manage/xonotictouch.dixonsolutions |
-| **Public page** | https://open-store.io/app/xonotictouch.dixonsolutions |
+| **Manage** | https://open-store.io/manage/godnotic.dixonsolutions |
+| **Public page** | https://open-store.io/app/godnotic.dixonsolutions |
 | **Secret** | Repo secret `OPENSTORE_API_KEY` |
 | **Icon** | Official `engine/misc/logos/icons_png/xonotic_256.png` inside the `.click` (extracted on revision upload) |
 | **Changelog** | Each upload sets a short revision changelog linking the GitHub release notes; OpenStore prepends it to the app's changelog |
@@ -198,4 +198,4 @@ the pinned full set in the same repository otherwise, or when that archive canno
 |----------|---------|
 | `XONOTIC_SKIP_ASSET_FETCH=1` | Skip download (dev/testing) |
 | `XONOTIC_AUTOBUILD_URL` | Autobuild base URL |
-| `XONOTIC_TOUCH_DATA_DIR` | Asset cache directory |
+| `GODNOTIC_DATA_DIR` | Asset cache directory |

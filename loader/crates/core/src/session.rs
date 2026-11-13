@@ -19,7 +19,7 @@ use std::process::{Child, Command, Stdio};
 
 pub const SECRET_FD: i32 = 3;
 /// The desktop app id: the game window carries it too, so the dock shows one Godnotic entry.
-pub const APP_ID: &str = "io.github.dixonSolutions.XonoticTouch";
+pub const APP_ID: &str = "io.github.dixonSolutions.Godnotic";
 pub const ENV_MODE: &str = "GODNOTIC_FRONTEND";
 pub const ENV_RESULT: &str = "GODNOTIC_FE_RESULT";
 pub const ENV_SECRET_FD: &str = "GODNOTIC_FE_SECRET_FD";
@@ -55,10 +55,10 @@ pub fn base_args(cfg: &Config) -> (BTreeMap<String, String>, Vec<String>) {
             env.insert(e.to_string(), v.trim().to_string());
         }
     };
-    put(keys::TOUCH_PROFILE, "XONOTIC_TOUCH_PROFILE");
-    put(keys::PERF_PROFILE, "XONOTIC_TOUCH_PERF_PROFILE");
-    put(keys::TOUCH_MODE, "XONOTIC_TOUCH_MODE");
-    put(keys::USER_BASE, "XONOTIC_TOUCH_USER_BASE");
+    put(keys::TOUCH_PROFILE, "GODNOTIC_PROFILE");
+    put(keys::PERF_PROFILE, "GODNOTIC_PERF_PROFILE");
+    put(keys::TOUCH_MODE, "GODNOTIC_MODE");
+    put(keys::USER_BASE, "GODNOTIC_USER_BASE");
     let mut args: Vec<String> = Vec::new();
     match cfg.get(keys::WINDOW_MODE) {
         Some("fullscreen") => args.extend(["+vid_fullscreen".into(), "1".into()]),
@@ -301,7 +301,7 @@ mod tests {
         let p = plan(&a, &cfg, "/app/bin/start.sh", "/tmp/r");
         assert_eq!(p.env.get(ENV_MODE).map(String::as_str), Some("native"));
         assert_eq!(p.env.get(ENV_SECRET_FD).map(String::as_str), Some("3"));
-        assert_eq!(p.env.get("XONOTIC_TOUCH_PROFILE").map(String::as_str), Some("casual"));
+        assert_eq!(p.env.get("GODNOTIC_PROFILE").map(String::as_str), Some("casual"));
         assert_eq!(p.args, vec!["+vid_fullscreen", "0", "+cl_maxfps", "90", "+name", "a b", "+connect", "192.168.1.23:26001"]);
         assert_eq!(p.secret.as_deref(), Some("join\t192.168.1.23:26001\thunter2 x\n"));
         assert!(p.args.iter().chain(p.env.values()).all(|x| !x.contains("hunter2")));

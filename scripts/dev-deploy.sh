@@ -57,8 +57,8 @@ REMOTE_HOME="$(run_ssh 'echo $HOME')"
 # under the sandbox data dir so "Delete app data" wipes them, and only a
 # non-Flatpak install uses the legacy host path. Deploying to the wrong one
 # silently does nothing, so pick whichever actually holds the game packs.
-FLATPAK_DATA="$REMOTE_HOME/.var/app/io.github.dixonSolutions.XonoticTouch/data/xonotic-touch/data"
-LEGACY_DATA="$REMOTE_HOME/.local/share/xonotic-touch/data"
+FLATPAK_DATA="$REMOTE_HOME/.var/app/io.github.dixonSolutions.Godnotic/data/godnotic/data"
+LEGACY_DATA="$REMOTE_HOME/.local/share/godnotic/data"
 REMOTE_DATA="$(run_ssh "if ls '$FLATPAK_DATA'/xonotic-*-data.pk3 >/dev/null 2>&1; then \
                             echo '$FLATPAK_DATA'; \
                         elif ls '$LEGACY_DATA'/xonotic-*-data.pk3 >/dev/null 2>&1; then \
@@ -110,7 +110,7 @@ copy_to "$TMPSTAGE/." "$REMOTE_OVERLAY/"
 # Stamp the overlay with the app commit it was built against. The launcher
 # removes an overlay whose stamp no longer matches the installed app, so an
 # old dev menu cannot shadow a newer release on this device.
-run_ssh "flatpak info --user --show-commit io.github.dixonSolutions.XonoticTouch 2>/dev/null \
+run_ssh "flatpak info --user --show-commit io.github.dixonSolutions.Godnotic 2>/dev/null \
          > '$REMOTE_OVERLAY/.built-for' || true"
 
 log "uploading touch configs"
@@ -204,7 +204,7 @@ if [ "$DO_RESTART" = 1 ]; then
              pkill -x xonotic 2>/dev/null; sleep 2; \
              rm -f '$REMOTE_BASE/instance.lock' \"\$HOME/.xonotic/lock\"; \
              setsid nohup \
-             flatpak run io.github.dixonSolutions.XonoticTouch -condebug \
+             flatpak run io.github.dixonSolutions.Godnotic -condebug \
              >/tmp/xonotic-dev.log 2>&1 </dev/null & \
              sleep ${XT_BOOT_WAIT:-20}; pgrep -x xonotic >/dev/null \
              && echo 'game running' || echo 'GAME FAILED TO START'"

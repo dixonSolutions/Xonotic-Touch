@@ -600,8 +600,8 @@ against the documents linked here on 2026-11-14:
 carry: SHA-256 `DB:CE:85:DC:DE:04:16:1C:E5:77:08:6B:B2:2E:03:82:AC:20:3B:D2:0E:47:45:84:C1:2D:DC:06:B0:31:5A:5B`
 (subject `CN=dixonSolutions, OU=Android, O=dixonSolutions, C=US`), read from
 the APK signing block of `Godnotic-1.2.189-arm64-v8a.apk`, `-x86_64.apk`,
-`XonoticTouch-live-1.2.189-arm64.apk` and `Godnotic-1.2.175-arm64-v8a.apk`
-(all the same; package `io.github.dixonsolutions.xonotictouch`). It is the
+the live build of 1.2.189 for arm64 and `Godnotic-1.2.175-arm64-v8a.apk`
+(all the same). It is the
 keystore in the repository secret `ANDROID_KEYSTORE_BASE64`; a build signed
 with the throwaway key (`scripts/android-build.sh` without a keystore) is
 not covered. A new keystore means a new fingerprint in that file.
@@ -662,8 +662,8 @@ manifest):
 
 | Install | Packs | Settings | Pickable in Chromium? |
 |---|---|---|---|
-| Flatpak | `~/.var/app/io.github.dixonSolutions.XonoticTouch/data/xonotic-touch/data/` | `~/.xonotic/data/config.cfg` | Yes: `~/.var` is not on Chromium's block list. It is hidden, so the path has to be typed (Ctrl+L in the GTK picker) |
-| Local package (no Flatpak) | `~/.local/share/xonotic-touch/data/` | `~/.xonotic/data/config.cfg` | **No**: Chromium refuses `~/.local/share` and everything below it, like `~/.config`, `~/.ssh` and the home folder itself ([source](https://github.com/chromium/chromium/blob/main/chrome/browser/file_system_access/chrome_file_system_access_permission_context.cc), `kBlockPaths`). A copy or a symlinked folder elsewhere works |
+| Flatpak | `~/.var/app/io.github.dixonSolutions.Godnotic/data/godnotic/data/` | `~/.xonotic/data/config.cfg` | Yes: `~/.var` is not on Chromium's block list. It is hidden, so the path has to be typed (Ctrl+L in the GTK picker) |
+| Local package (no Flatpak) | `~/.local/share/godnotic/data/` | `~/.xonotic/data/config.cfg` | **No**: Chromium refuses `~/.local/share` and everything below it, like `~/.config`, `~/.ssh` and the home folder itself ([source](https://github.com/chromium/chromium/blob/main/chrome/browser/file_system_access/chrome_file_system_access_permission_context.cc), `kBlockPaths`). A copy or a symlinked folder elsewhere works |
 | Stock Xonotic | its `data/` folder (`~/.var/app/org.xonotic.Xonotic/…`, `/usr/share/xonotic/data`, an unpacked zip) | `~/.xonotic/data/config.cfg` | as its location allows; `/usr/share` works |
 | Ubuntu Touch, Android | app-confined storage | | no picker reaches it |
 

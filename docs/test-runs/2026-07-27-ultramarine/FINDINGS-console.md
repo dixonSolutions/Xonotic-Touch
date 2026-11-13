@@ -9,7 +9,7 @@ Build: on-device `darkplaces-sdl` (Fedora ABI) + local `menu.dat` / `csprogs.dat
 |-------|--------|
 | Engine build on tablet | Pass (`make sdl-release DP_SSE=0`) |
 | Local Ubuntu binary | Fail — needs `libjpeg.so.8` / `LIBJPEG_8.0` (Fedora has `.62`) |
-| Launch via `run-fixed.sh` | Pass — host binary at `~/xonotic-touch-test/xonotic-host` |
+| Launch via `run-fixed.sh` | Pass — host binary at `~/godnotic-test/xonotic-host` |
 | `menu.dat` override | Pass (`zzz-touch-fix.pk3dir`, crc shows new menu) |
 | `TouchConsolePreview` in menu.dat | Pass (string present) |
 | `touch_kb_*` / TouchUI symbols in binary | Pass |
@@ -17,10 +17,10 @@ Build: on-device `darkplaces-sdl` (Fedora ABI) + local `menu.dat` / `csprogs.dat
 ## Deploy path
 
 1. Built QC locally; built engine on device (ABI mismatch for jpeg).
-2. Rsynced `menu.dat` / `csprogs.dat` / `progs.dat` → `~/.local/share/xonotic-touch/data/zzz-touch-fix.pk3dir/`
-3. Copied on-device `darkplaces-sdl` → `~/xonotic-touch-test/xonotic-host`
+2. Rsynced `menu.dat` / `csprogs.dat` / `progs.dat` → `~/.local/share/godnotic/data/zzz-touch-fix.pk3dir/`
+3. Copied on-device `darkplaces-sdl` → `~/godnotic-test/xonotic-host`
 4. Cleared stale `zzzz-*` override dirs
-5. Launched: `XONOTIC_TOUCH_HOST_BIN=…/xonotic-host ~/xonotic-touch-test/run-fixed.sh`
+5. Launched: `GODNOTIC_HOST_BIN=…/xonotic-host ~/godnotic-test/run-fixed.sh`
 
 ## Preview fix (same day)
 
@@ -44,4 +44,4 @@ Fix: restore `rows=15.5`, put Console & chat + menu-QC live preview at top of To
 
 - Prefer on-device engine builds for Fedora/Ultramarine; Ubuntu host binaries need jpeg soname 8.
 - Early `Unknown command "touch_*"` lines while execing profiles before CSQC registers cvars are expected.
-- Log: `~/xonotic-touch-test/logs/game-console-redesign.log`
+- Log: `~/godnotic-test/logs/game-console-redesign.log`

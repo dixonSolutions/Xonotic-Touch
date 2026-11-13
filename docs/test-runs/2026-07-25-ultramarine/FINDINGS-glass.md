@@ -2,8 +2,8 @@
 
 Target: Ultramarine `borysthebear@100.125.7.103`  
 Spec: `docs/TOUCH_LAYOUT_SPEC.md`  
-Runner: `~/xonotic-touch-test/run-fixed.sh`  
-Override: `~/.local/share/xonotic-touch/data/zzz-touch-fix.pk3dir/csprogs.dat`
+Runner: `~/godnotic-test/run-fixed.sh`  
+Override: `~/.local/share/godnotic/data/zzz-touch-fix.pk3dir/csprogs.dat`
 
 ## Shipped in this pass
 
@@ -65,7 +65,7 @@ Also fixed `glass-accept.sh`: **logical** 1440×960 coords (not physical 2880×1
 export SSHPASS=1122
 sshpass -e ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no borysthebear@100.125.7.103
 # restart
-killall xonotic 2>/dev/null; ~/xonotic-touch-test/run-fixed.sh &
+killall xonotic 2>/dev/null; ~/godnotic-test/run-fixed.sh &
 # in-game (landscape): Join, then:
 #   touch_debug 1
 #   screenshot
@@ -77,5 +77,5 @@ Rebuild CSQC locally:
 ```bash
 cd engine/data/xonotic-data.pk3dir/qcsrc
 make ../csprogs.dat QCC=$PWD/../../gmqcc/gmqcc
-# scp to both zzz-touch-fix.pk3dir and xonotic-data.pk3dir under ~/.local/share/xonotic-touch/data/
+# scp to both zzz-touch-fix.pk3dir and xonotic-data.pk3dir under ~/.local/share/godnotic/data/
 ```

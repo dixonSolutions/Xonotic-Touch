@@ -5,7 +5,7 @@
 # confinement, where bash may not be exec'able (docs/UBUNTU_TOUCH_LAUNCH.md).
 set -eu
 
-ROOT="${XONOTIC_TOUCH_APP_ROOT:-${ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}}"
+ROOT="${GODNOTIC_APP_ROOT:-${ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}}"
 BUNDLE_DIR="${1:?usage: sync-bundle-data.sh <bundle-data-dir> <user-data-dir>}"
 USER_DIR="${2:?usage: sync-bundle-data.sh <bundle-data-dir> <user-data-dir>}"
 

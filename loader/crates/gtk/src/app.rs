@@ -466,7 +466,7 @@ fn find_scrolled(w: &gtk::Widget) -> Option<gtk::ScrolledWindow> {
 
 /// The window, with the native skeleton shown at once (banner and placeholders) until the first snapshot.
 pub fn build_window(app: &App, gapp: &adw::Application, size: Option<(i32, i32)>) -> adw::ApplicationWindow {
-    let win = adw::ApplicationWindow::builder().application(gapp).title("Godnotic").icon_name("io.github.dixonSolutions.XonoticTouch").build();
+    let win = adw::ApplicationWindow::builder().application(gapp).title("Godnotic").icon_name("io.github.dixonSolutions.Godnotic").build();
     let (w, h) = size.unwrap_or((1100, 760));
     win.set_default_size(w, h);
     win.set_size_request(360, 480);

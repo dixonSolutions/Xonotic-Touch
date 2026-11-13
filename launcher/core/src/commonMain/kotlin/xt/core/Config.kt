@@ -3,7 +3,7 @@ package xt.core
 
 /**
  * The launcher's settings, kept as `key = value` lines in
- * ~/.config/xonotic-touch/launcher.conf. A flat text file parses in
+ * ~/.config/godnotic/launcher.conf. A flat text file parses in
  * microseconds and needs no serialization library in the binary.
  * Unknown keys are kept, so an older launcher does not drop a newer one's.
  */

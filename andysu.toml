@@ -1,4 +1,4 @@
-app = "io.github.dixonsolutions.xonotictouch"
+app = "io.github.dixonsolutions.godnotic"
 host_api = 3
 public_key = "keys/godnotic-public.pem"
 

@@ -566,11 +566,11 @@ await test('prune never deletes what another page path uses, and stops on an unr
     await dl(s, await s.missing(h.files), h);
   }
   await s.ref('/Godnotic/web/', [hostB.id]);
-  await s.prune('/Xonotic-Touch/web/', [hostA.id]);
+  await s.prune('/Godnotic/web/', [hostA.id]);
   assert.equal((await s.missing(hostA.files)).length, 0, 'path A keeps its chunks');
   assert.equal((await s.missing(hostB.files)).length, 0, "path B's chunks survive A's prune");
   await s.ref('/elsewhere/', ['ffffffffffffffffffff']);
-  const r = await s.prune('/Xonotic-Touch/web/', [hostA.id]);
+  const r = await s.prune('/Godnotic/web/', [hostA.id]);
   assert.equal(r.removed, 0);
   assert.match(r.kept, /unreadable/);
 });
@@ -852,12 +852,12 @@ await test('a visitor from when the music was optional gets it with "Updating…
 await test('the installed app: offered instead of a download where the browser reports it', async () => {
   const host = makeProfiles({ web: { files: splitFiles(), defaultMap: 'stormkeep' } });
   const android = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/142.0.0.0 Mobile Safari/537.36';
-  const p = loadPage(profile(), host, { ua: android, relatedApps: [{ platform: 'play', id: 'io.github.dixonsolutions.xonotictouch' }] });
+  const p = loadPage(profile(), host, { ua: android, relatedApps: [{ platform: 'play', id: 'io.github.dixonsolutions.godnotic' }] });
   await until(() => p.shown.includes('xt-download'), 'dialog');
   assert.equal(p.element('xt-app').hidden, false);
   assert.equal(p.element('xt-app-text').hidden, false, 'says the app is installed');
   assert.equal(p.element('xt-app-open').textContent, 'Open the Godnotic app');
-  assert.match(p.element('xt-app-open').href, /^intent:\/\/open#Intent;scheme=godnotic;package=io\.github\.dixonsolutions\.xonotictouch;S\.browser_fallback_url=https%3A%2F%2Fgame\.example%2Fweb%2F%3Fnoapp%3D1;end$/);
+  assert.match(p.element('xt-app-open').href, /^intent:\/\/open#Intent;scheme=godnotic;package=io\.github\.dixonsolutions\.godnotic;S\.browser_fallback_url=https%3A%2F%2Fgame\.example%2Fweb%2F%3Fnoapp%3D1;end$/);
   assert.ok(!p.context.__started, 'nothing downloads or starts until the player chooses');
   // Chromium on Android without the app: a plain link, not a claim.
   const q = loadPage(profile(), host, { ua: android, relatedApps: [] });
@@ -879,7 +879,7 @@ await test('the installed app: offered instead of a download where the browser r
   // A returning visitor with data is never held up by any of it.
   const prof = profile();
   await firstVisit(loadPage(prof, host, { ua: android, relatedApps: [] }));
-  const again = loadPage(prof, host, { ua: android, relatedApps: [{ platform: 'play', id: 'io.github.dixonsolutions.xonotictouch' }] });
+  const again = loadPage(prof, host, { ua: android, relatedApps: [{ platform: 'play', id: 'io.github.dixonsolutions.godnotic' }] });
   await ready(again, 'warm');
   assert.ok(!again.shown.includes('xt-download'));
 });
@@ -904,8 +904,8 @@ await test('an existing Godnotic folder: found below the picked folder, checked 
   assert.equal(packKind('xonotic-0.8.6-data.pk3', true), 'data');
   assert.equal(packKind('font-unifont-20261107.pk3', true), 'font-unifont');
   assert.equal(packKind('zz-progs.pk3'), '');
-  const root = new FakeDir(); root.name = 'io.github.dixonSolutions.XonoticTouch';
-  const data = await (await (await root.getDirectoryHandle('data', { create: true })).getDirectoryHandle('xonotic-touch', { create: true })).getDirectoryHandle('data', { create: true });
+  const root = new FakeDir(); root.name = 'io.github.dixonSolutions.Godnotic';
+  const data = await (await (await root.getDirectoryHandle('data', { create: true })).getDirectoryHandle('godnotic', { create: true })).getDirectoryHandle('data', { create: true });
   await root.getDirectoryHandle('cache', { create: true });
   data.files.set('xonotic-20261107-data.pk3', zip('textures/a.tga'));
   data.files.set('xonotic-20261107-maps.pk3', zip('maps/stormkeep.bsp'));
