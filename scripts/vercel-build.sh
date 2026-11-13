@@ -1,11 +1,12 @@
 #!/bin/bash
 # Vercel's build of the browser version, run by Vercel's Git integration on
 # every push to main (vercel.json). One build makes the whole site: engine,
-# QuakeC, page, and the game data, which comes from the same upstream
-# autobuild archive the Android app downloads on first launch.
+# QuakeC, page, and the game data: the pinned Godnotic data release (stock
+# Xonotic pk3s), content-addressed by scripts/stage-web-data.sh.
 #
 #   scripts/vercel-build.sh --ignore    Vercel's "ignored build step": exit 0
-#                                       (skip) for anything but main
+#                                       (skip) for anything but main and
+#                                       work/web* (web loader previews)
 #   scripts/vercel-build.sh --install   build tools + Emscripten SDK
 #   scripts/vercel-build.sh             build into build/web
 #
@@ -51,11 +52,14 @@ find_python() {
 
 case "${1:-}" in
 --ignore)
-    # Vercel builds every branch unless told otherwise. Only main publishes.
-    if [ "${VERCEL_GIT_COMMIT_REF:-main}" = "main" ]; then
-        echo "main: building"
-        exit 1
-    fi
+    # Vercel builds every branch unless told otherwise. Only main publishes;
+    # work/web* branches get a preview deployment to test the loader on.
+    case "${VERCEL_GIT_COMMIT_REF:-main}" in
+        main|work/web*)
+            echo "${VERCEL_GIT_COMMIT_REF:-main}: building"
+            exit 1
+            ;;
+    esac
     echo "${VERCEL_GIT_COMMIT_REF}: not main, skipping"
     exit 0
     ;;

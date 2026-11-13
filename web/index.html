@@ -3,13 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#0b0f14">
+<meta name="theme-color" content="#000000">
 <meta name="color-scheme" content="dark">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="description" content="Godnotic, the free arena shooter with touch controls, running in your browser.">
 <title>Godnotic</title>
+<!-- scripts/build-web.sh fills this in: the content-hashed engine and page
+     files, and the data manifest this build was staged with. Served straight
+     from web/ (no build), the page uses the plain names and asks
+     data/manifest.json which manifest is current. -->
+<script id="xt-config" type="application/json">{"engine":"godnotic.js","wasm":"godnotic.wasm","manifest":"","dataUrl":""}</script>
+<!--xt:preload-->
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -29,37 +35,53 @@
 </div>
 
 <div id="xt-overlay">
-  <main class="xt-card">
-    <img class="xt-title" src="godnotic-banner.png" alt="Godnotic">
+  <main class="xt-col">
+    <h1 class="xt-banner"><img src="godnotic-banner.png" alt="Godnotic" width="2172" height="724" decoding="async"></h1>
 
     <section id="xt-status" class="xt-panel" aria-live="polite">
-      <p class="xt-line" id="xt-status-text">Checking your browser…</p>
-      <button class="xt-btn xt-play" id="xt-again" type="button" onclick="location.reload()" hidden>Play again</button>
+      <p class="xt-title" id="xt-status-text">Checking your browser…</p>
+      <p class="xt-detail" id="xt-status-detail"></p>
+      <div class="xt-buttons"><button class="xt-btn xt-primary" id="xt-again" type="button" onclick="location.reload()" hidden>Play again</button></div>
     </section>
 
-    <section id="xt-download" class="xt-panel" hidden>
-      <p class="xt-line">The game needs <strong id="xt-dl-size">—</strong> of data. It downloads once and stays in this browser.</p>
-      <label class="xt-check"><input type="checkbox" id="xt-dl-music" checked><span>Include music (<span id="xt-dl-music-size">—</span>)</span></label>
-      <p class="xt-hint" id="xt-dl-quota" hidden></p>
-      <button class="xt-btn" id="xt-dl-go" type="button">Download</button>
+    <section id="xt-download" class="xt-panel" aria-labelledby="xt-dl-title" hidden>
+      <h2 class="xt-title" id="xt-dl-title">Download the game data</h2>
+      <p class="xt-detail">Godnotic's maps, textures and sounds: <strong id="xt-dl-size">—</strong> to download, once. They stay in this browser for the next visit.</p>
+      <p class="xt-detail" id="xt-dl-resumed" hidden></p>
+      <label class="xt-check" id="xt-dl-music-row"><input type="checkbox" id="xt-dl-music" checked><span>Music too (+<span id="xt-dl-music-size">—</span>, can be added later)</span></label>
+      <p class="xt-detail xt-small" id="xt-dl-space"></p>
+      <div class="xt-buttons">
+        <button class="xt-btn xt-primary" id="xt-dl-go" type="button">Download</button>
+      </div>
     </section>
 
     <section id="xt-progress" class="xt-panel" hidden>
-      <p class="xt-line" id="xt-progress-label">Downloading…</p>
-      <div class="xt-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="xt-bar"><div id="xt-bar-fill"></div></div>
-      <p class="xt-hint" id="xt-progress-detail"></p>
-      <button class="xt-btn xt-quiet" id="xt-dl-cancel" type="button">Cancel download</button>
+      <h2 class="xt-title" id="xt-progress-label">Downloading game assets…</h2>
+      <p class="xt-percent" id="xt-percent" aria-hidden="true">0%</p>
+      <div class="xt-bar" role="progressbar" aria-labelledby="xt-progress-label" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="xt-bar"><div id="xt-bar-fill"></div></div>
+      <p class="xt-detail" id="xt-progress-detail">&nbsp;</p>
+      <p class="xt-sr" id="xt-progress-live" aria-live="polite"></p>
+      <div class="xt-buttons">
+        <button class="xt-btn" id="xt-dl-pause" type="button">Pause</button>
+        <button class="xt-btn" id="xt-dl-cancel" type="button">Cancel</button>
+      </div>
     </section>
 
     <section id="xt-ready" class="xt-panel" hidden>
-      <button class="xt-btn xt-play" id="xt-play" type="button">Play</button>
-      <label class="xt-check"><input type="checkbox" id="xt-opt-fullscreen" checked><span>Fullscreen</span></label>
-      <p class="xt-hint" id="xt-ready-hint"></p>
+      <div class="xt-buttons"><button class="xt-btn xt-primary xt-play" id="xt-play" type="button">Play</button></div>
+      <label class="xt-check" id="xt-opt-fullscreen-row"><input type="checkbox" id="xt-opt-fullscreen" checked><span>Fullscreen</span></label>
+      <p class="xt-detail xt-small" id="xt-ready-hint"></p>
     </section>
 
-    <section id="xt-error" class="xt-panel" hidden>
-      <p class="xt-line xt-err" id="xt-error-text"></p>
-      <button class="xt-btn" type="button" onclick="location.reload()">Reload</button>
+    <section id="xt-error" class="xt-panel" role="alert" hidden>
+      <h2 class="xt-title">Something went wrong</h2>
+      <p class="xt-detail xt-err" id="xt-error-text"></p>
+      <div class="xt-buttons"><button class="xt-btn xt-primary" type="button" onclick="location.reload()">Reload</button></div>
+    </section>
+
+    <section class="xt-storage" id="xt-storage" aria-label="Storage" hidden>
+      <p class="xt-small" id="xt-storage-text"></p>
+      <div class="xt-buttons"><button class="xt-btn xt-small-btn" id="xt-install" type="button" hidden>Install app</button></div>
     </section>
 
     <details class="xt-more" id="xt-more">
@@ -74,8 +96,12 @@
           <option value="3">Native (every screen pixel)</option>
         </select>
       </label>
-      <p class="xt-hint" id="xt-diag"></p>
-      <button class="xt-btn xt-quiet" id="xt-clear" type="button">Delete downloaded data</button>
+      <p class="xt-small" id="xt-diag"></p>
+      <p class="xt-small" id="xt-verify-text" aria-live="polite"></p>
+      <div class="xt-buttons">
+        <button class="xt-btn xt-small-btn" id="xt-verify" type="button">Verify data</button>
+        <button class="xt-btn xt-small-btn" id="xt-clear" type="button">Delete downloaded data</button>
+      </div>
     </details>
   </main>
   <footer class="xt-foot">Free software, GPLv2+. Game data © the Xonotic team. Runs on WebAssembly and WebGL 2.</footer>
@@ -83,7 +109,7 @@
 
 <div id="xt-toast" role="status" hidden></div>
 
-<script src="config.js"></script>
+<script src="store.js"></script>
 <script src="shell.js"></script>
 </body>
 </html>

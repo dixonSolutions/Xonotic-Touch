@@ -11,13 +11,38 @@ name: Web
 #     https://godnotic.vercel.app/data/), because Pages caps a site at 1 GB
 # Vercel builds the full site itself from main (vercel.json,
 # scripts/vercel-build.sh); this workflow does not deploy there.
-# See docs/WEB.md.
+# Pushes and pull requests that touch the web loader run its tests (job
+# "test"): the data store and loader flow, and that staging the data twice
+# gives identical files. See docs/WEB.md.
 
 on:
   workflow_run:
     workflows: ["Build and publish"]
     types: [completed]
   workflow_dispatch:
+  push:
+    branches-ignore: [main]
+    paths:
+      - 'web/**'
+      - 'tests/web-cache/**'
+      - 'scripts/build-web.sh'
+      - 'scripts/stage-web-data.sh'
+      - 'scripts/stage-slim-data.sh'
+      - 'scripts/vercel-build.sh'
+      - 'scripts/test-web-cache*'
+      - 'vercel.json'
+      - '.github/workflows/web.yml'
+  pull_request:
+    paths:
+      - 'web/**'
+      - 'tests/web-cache/**'
+      - 'scripts/build-web.sh'
+      - 'scripts/stage-web-data.sh'
+      - 'scripts/stage-slim-data.sh'
+      - 'scripts/vercel-build.sh'
+      - 'scripts/test-web-cache*'
+      - 'vercel.json'
+      - '.github/workflows/web.yml'
 
 permissions:
   contents: write
@@ -26,7 +51,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: web
+  group: ${{ (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch') && 'web' || format('web-test-{0}', github.ref) }}
   cancel-in-progress: false
 
 env:
@@ -34,9 +59,21 @@ env:
   XT_WEB_DATA_URL: ${{ vars.XT_WEB_DATA_URL || 'https://godnotic.vercel.app/data/' }}
 
 jobs:
+  test:
+    name: Loader tests
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Data store, loader flow, reproducible data
+        run: bash scripts/test-web-cache.sh
+
   build:
     name: Build and deploy
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     outputs:
       pages: ${{ steps.pages.outputs.ready }}
@@ -71,13 +108,41 @@ jobs:
           actions-cache-folder: emsdk-cache
 
       - name: Build engine, QuakeC and page
+        env:
+          # The watermark Vercel's build of the same commit uses, so both
+          # hosts stage the same zz-progs.pk3.
+          SHA: ${{ steps.rel.outputs.sha }}
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq build-essential python3 unzip
-          bash scripts/build-web.sh
+          QCCFLAGS_WATERMARK="web-${SHA:0:7}" bash scripts/build-web.sh
 
       - name: Stage the shell's data
         run: bash scripts/stage-web-data.sh --shell "$XT_WEB_DATA_URL"
+
+      # The same commit must give the same data on both hosts, or every
+      # visitor of one downloads it again after visiting the other. Vercel
+      # deploys main itself, usually before this runs; compare when it is on
+      # this commit.
+      - name: Compare this fork's data with the Vercel build
+        env:
+          SHA: ${{ steps.rel.outputs.sha }}
+        run: |
+          curl -sf "${XT_WEB_DATA_URL}manifest.json" -o vercel-manifest.json || { echo "::warning::Could not read ${XT_WEB_DATA_URL}manifest.json"; exit 0; }
+          python3 - <<'PY'
+          import json, os
+          v = json.load(open('vercel-manifest.json'))
+          p = json.load(open('build/web/data/manifest.json'))
+          if v.get('commit') != os.environ['SHA']:
+              print(f"::notice::Vercel serves {v.get('commit') or 'an older layout'}, not {os.environ['SHA']}: not compared")
+              raise SystemExit(0)
+          theirs = {f['name']: f['rev'] for f in v['files']}
+          diff = [f['name'] for f in p['files'] if not f.get('stock') and theirs.get(f['name']) != f['rev']]
+          if diff:
+              print(f"::error::Same commit, different data on Pages and Vercel (zlib {p.get('zlib')} vs {v.get('zlib')}): {', '.join(diff)}")
+              raise SystemExit(1)
+          print('Pages and Vercel stage identical files for this commit')
+          PY
 
       - name: Attach the page to the release
         env:
@@ -113,9 +178,8 @@ jobs:
         run: |
           rm -rf site/web
           mkdir -p site/web
-          # The shell: page, engine and this fork's data; config.js stays
-          # empty, so the page reads data/ next to it, whose manifest names
-          # the stock host.
+          # The shell: page, engine and this fork's data. The page reads
+          # data/ next to it, whose manifest names the stock host.
           (cd build/web && tar cf - --exclude=./serve.py .) | (cd site/web && tar xf -)
           # Link it from the landing page.
           if [ -f site/index.html ] && ! grep -q 'href="web/"' site/index.html; then

@@ -3,9 +3,9 @@
 // The engine is DarkPlaces built with Emscripten (scripts/build-web.sh). This
 // file is the "platform layer" that a phone or desktop OS would otherwise be:
 //
-//   data        downloads the pk3s once into OPFS, or the Cache API where OPFS
-//               is not writable (streamed to disk, not held in memory), then
-//               hands them to the engine's MEMFS
+//   data        downloads the game data once, in hash-checked 32 MiB chunks,
+//               into OPFS or the Cache API (store.js), then hands the files
+//               to the engine's MEMFS
 //   saves       mirrors the userdir (config.cfg, layouts) to IndexedDB
 //   display     canvas fills the page; render resolution = CSS size × scale
 //   GPU         WebGL 2 context forced opaque and high-performance; reports
@@ -32,8 +32,6 @@
   // it is the easy way to read the console of a phone.
   const LOGSINK = params.has('logsink');
   const sink = (text) => { try { navigator.sendBeacon('/__log', text); } catch (e) { /* ignore */ } };
-  // Do not rename: this cache is shared with already-installed web builds.
-  const DATA_CACHE = 'xt-data-v1';
   const USERDIR = '/xt-user';
   const BASEDIR = '/game';
 
@@ -53,14 +51,25 @@
     fsPending: false,
     kbdOn: false,
     wakeLock: null,
-    buildId: 'dev',
+    downloading: false,
+    timing: {},
   };
+  // Build config (index.html, written by scripts/build-web.sh); config.js
+  // from older builds still counts.
+  const CONFIG = Object.assign({ engine: 'godnotic.js', wasm: 'godnotic.wasm' }, (() => {
+    try { return JSON.parse($('xt-config').textContent); } catch (e) { return {}; }
+  })(), window.XT_CONFIG || {});
+  let data = null; // the game data store (store.js)
 
   // ------------------------------------------------------------------ UI
 
   const panels = ['xt-status', 'xt-download', 'xt-progress', 'xt-ready', 'xt-error'];
   function show(id) { for (const p of panels) $(p).hidden = p !== id; }
-  function status(text) { $('xt-status-text').textContent = text; show('xt-status'); }
+  function status(text, detail) {
+    $('xt-status-text').textContent = text;
+    $('xt-status-detail').textContent = detail || '';
+    show('xt-status');
+  }
   const logTail = [];
   function fail(text) {
     $('xt-error-text').textContent = text;
@@ -371,319 +380,181 @@
 
   // ------------------------------------------------------------- data
 
-  // Where the pk3s live: ?data=URL, else config.js (written by
-  // scripts/build-web.sh from XT_WEB_DATA_URL, so a GitHub Pages copy of the
-  // page can use the data hosted next to the Vercel copy), else ./data/.
-  const CONFIG = window.XT_CONFIG || {};
+  // Where the game data lives: ?data=URL, else the page's build config
+  // (XT_WEB_DATA_URL in scripts/build-web.sh), else ./data/. The manifest is
+  // the one the page was built with (scripts/stage-web-data.sh), named by its
+  // own hash, so a warm start reads it from storage and asks the network
+  // nothing. A page without one (served from web/, or the release zip) asks
+  // data/manifest.json which one is current.
   const dataBase = new URL(params.get('data') || CONFIG.dataUrl || 'data/', location.href);
+  const SMALL_UPDATE = 50e6;
+  const manifestId = (p) => (/([0-9a-f]{8,64})\.json$/.exec(p || '') || [])[1];
 
-  async function fetchManifest(base) {
-    const url = new URL('manifest.json', base);
+  // A no-cache pointer ({manifest: "m/<id>.json"}). Offline, the last one
+  // seen will do.
+  async function pointer(base, name) {
+    const url = new URL(name, base);
+    const remember = 'pointer:' + url.href;
+    try {
+      const res = await fetch(url, { cache: 'no-cache' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const j = await res.json();
+      if (!j.manifest) throw new Error('the data there is from an older release');
+      store.set(remember, j.manifest);
+      return j.manifest;
+    } catch (e) {
+      const last = store.get(remember, '');
+      if (last) return last;
+      throw new Error(`The game data is not available right now (${url.host}: ${e.message}). Try again later.`);
+    }
+  }
+
+  // Manifests are immutable: from storage when seen before, else fetched
+  // and checked against the hash in their name.
+  async function getManifest(base, path) {
+    const id = manifestId(path);
+    if (!id) throw new Error(`Bad manifest name: ${path}`);
+    const kept = await data.loadManifest(id);
+    if (kept) return { id, m: kept };
+    const url = new URL(path, base);
     let res;
     try {
-      res = await fetch(url, { cache: 'no-cache' });
+      res = await fetch(url);
     } catch (e) {
       throw new Error(`The game data is not available right now (${url.host}: ${e.message}). Try again later.`);
     }
     if (!res.ok) throw new Error(`The game data is not available right now (${url.host}: HTTP ${res.status}). Try again later.`);
-    const m = await res.json();
-    for (const f of m.files) f.base = base.href;
-    return m;
+    const text = await res.text();
+    if (!(await XTStore.sha256(new TextEncoder().encode(text))).startsWith(id)) {
+      throw new Error(`The game data list from ${url.host} is damaged. Try again later.`);
+    }
+    await data.saveManifest(id, text);
+    return { id, m: JSON.parse(text) };
   }
 
   // A shell copy of the page (GitHub Pages) carries only this fork's own
   // files and names a "stock" host for the stock Xonotic pk3s, the way the
-  // apps carry the game code and download the rest on first launch. The
-  // stock list is read from that host each visit, so it can move to a newer
-  // upstream build without the shell being republished.
+  // apps carry the game code and download the rest on first launch. That
+  // host's stock.json says which stock manifest is current, so it can move
+  // to newer data without the shell being republished.
   async function loadManifest() {
-    const m = await fetchManifest(dataBase);
-    if (m.stock) {
-      const stockBase = new URL(params.get('stock') || m.stock, dataBase);
-      const remote = await fetchManifest(stockBase);
-      const have = new Set(m.files.map((f) => f.name));
-      for (const f of remote.files) if (f.stock && !have.has(f.name)) m.files.push(f);
+    const path = params.get('manifest') || CONFIG.manifest || await pointer(dataBase, 'manifest.json');
+    const main = await getManifest(dataBase, path);
+    const ids = [main.id];
+    const files = main.m.files.map((f) => Object.assign({}, f, { base: dataBase.href }));
+    if (main.m.stock) {
+      const stockBase = new URL(params.get('stock') || main.m.stock, dataBase);
+      const stock = await getManifest(stockBase, await pointer(stockBase, 'stock.json'));
+      ids.push(stock.id);
+      const have = new Set(files.map((f) => f.name));
+      for (const f of stock.m.files) if (!have.has(f.name)) files.push(Object.assign({}, f, { base: stockBase.href }));
     }
-    return m;
+    if (main.m.chunk) data.chunk = main.m.chunk;
+    return { ids, files };
   }
 
-  // Where downloaded files live between visits.
-  //
-  // OPFS (the origin private file system) first: a file is written as a
-  // stream and committed on close, so a 600 MB pk3 never sits in memory and
-  // an interrupted download leaves nothing behind. Browsers without writable
-  // OPFS get the Cache API, in 32 MB parts: Chromium rejects single Cache
-  // entries somewhere above 200 MB.
-  const fileId = (f) => `${f.rev}-${f.path.replace(/[^A-Za-z0-9._-]/g, '_')}`;
+  const blobUrl = (c) => new URL(`blobs/${c.h}.bin`, c.file.base || dataBase).href;
+  const sum = (list) => list.reduce((n, c) => n + c.size, 0);
+  const fmtTime = (s) => s > 5400 ? `${Math.round(s / 3600)} h` : s > 90 ? `${Math.round(s / 60)} min` : `${Math.max(1, Math.round(s))} s`;
 
-  async function openOPFS() {
-    if (!navigator.storage || !navigator.storage.getDirectory) return null;
-    if (!('createWritable' in (window.FileSystemFileHandle ? FileSystemFileHandle.prototype : {}))) return null;
-    try {
-      const root = await navigator.storage.getDirectory();
-      const dir = await root.getDirectoryHandle(DATA_CACHE, { create: true });
-      return {
-        kind: 'opfs',
-        async has(f) {
-          try { return (await (await dir.getFileHandle(fileId(f))).getFile()).size === f.size; } catch (e) { return false; }
-        },
-        async put(f, stream) {
-          const h = await dir.getFileHandle(fileId(f), { create: true });
-          const w = await h.createWritable();
-          try { await stream.pipeTo(w); } catch (e) { try { await w.abort(); } catch (e2) { /* gone */ } throw e; }
-        },
-        async get(f) { return new Uint8Array(await (await (await dir.getFileHandle(fileId(f))).getFile()).arrayBuffer()); },
-        async drop(f) { try { await dir.removeEntry(fileId(f)); } catch (e) { /* gone */ } },
-        async prune(keep) {
-          for await (const name of dir.keys()) {
-            if (/^[0-9a-f]{16}-/.test(name) && !keep.has(name)) await dir.removeEntry(name).catch(() => {});
-          }
-        },
-      };
-    } catch (e) {
-      return null; // Firefox private windows have no OPFS
-    }
-  }
-
-  async function openCacheStore() {
-    const PART = 32 * 1024 * 1024;
-    const cache = await caches.open(DATA_CACHE);
-    const key = (f, i) => new URL(`${f.path}?rev=${f.rev}&part=${i}`, f.base || dataBase).href;
-    const parts = (f) => Math.max(1, Math.ceil(f.size / PART));
-    return {
-      kind: 'cache',
-      async has(f) {
-        // Every part, not just the last: a part the browser evicted on its
-        // own would otherwise fail every start without a new download.
-        for (let i = 0; i < parts(f); i++) {
-          const r = await cache.match(key(f, i));
-          if (!r || r.headers.get('x-xt-size') !== String(f.size)) return false;
-        }
-        return true;
-      },
-      async put(f, stream) {
-        // At most one part is held in memory: a full part is handed to the
-        // cache as it is and a new buffer started.
-        const reader = stream.getReader();
-        const fresh = () => new Uint8Array(Math.min(PART, f.size || PART));
-        let buf = fresh();
-        let fill = 0;
-        let part = 0;
-        const flush = async () => {
-          const body = fill === buf.length ? buf : buf.slice(0, fill);
-          await cache.put(key(f, part++), new Response(body, {
-            headers: { 'content-type': 'application/octet-stream', 'x-xt-size': String(f.size) },
-          }));
-          if (body === buf) buf = fresh();
-          fill = 0;
-        };
+  // Download the given chunks with the progress panel: percent, "x / y MB ·
+  // speed · time left", Pause / Resume and Cancel. Pause and Cancel keep
+  // what has arrived (whole chunks, and 4 MiB pieces of the rest). Resolves
+  // when all are stored; rejects with AbortError on Cancel.
+  function runDownload(list, label) {
+    const total = sum(list);
+    const got = new Map();
+    let paused = false;
+    let cancelled = false;
+    let controller = null;
+    let wake = null;
+    const samples = [];
+    let lastPaint = 0;
+    let lastSaid = -1;
+    const bytes = () => { let n = 0; for (const v of got.values()) n += v; return n; };
+    const paint = (force) => {
+      const now = performance.now();
+      if (!force && now - lastPaint < 200) return;
+      lastPaint = now;
+      const all = bytes();
+      samples.push([now, all]);
+      while (samples.length > 2 && now - samples[0][0] > 8000) samples.shift();
+      const [t0, b0] = samples[0];
+      const rate = now - t0 > 500 ? Math.max(0, all - b0) / ((now - t0) / 1000) : 0;
+      const pct = total ? Math.min(100, 100 * all / total) : 100;
+      $('xt-percent').textContent = Math.floor(pct) + '%';
+      $('xt-bar-fill').style.width = pct.toFixed(1) + '%';
+      $('xt-bar').setAttribute('aria-valuenow', pct.toFixed(0));
+      $('xt-bar').setAttribute('aria-valuetext', `${Math.floor(pct)}%, ${mbPair(all, total)}`);
+      if (paused) {
+        $('xt-progress-detail').textContent = `Stopped at ${mbPair(all, total)}. Resume carries on from there.`;
+      } else {
+        $('xt-progress-detail').textContent = `${mbPair(all, total)}` +
+          (rate > 0 ? ` · ${(rate / 1e6).toFixed(1)} MB/s · ${fmtTime((total - all) / rate)} left` : '');
+      }
+      // Screen readers: every 10%, not every repaint.
+      const step = Math.floor(pct / 10);
+      if (step !== lastSaid) { lastSaid = step; $('xt-progress-live').textContent = `${step * 10}% downloaded`; }
+    };
+    const setPaused = (on) => {
+      paused = on;
+      $('xt-progress').classList.toggle('xt-paused', on);
+      $('xt-progress-label').textContent = on ? 'Paused' : label;
+      $('xt-dl-pause').textContent = on ? 'Resume' : 'Pause';
+      paint(true);
+    };
+    $('xt-dl-pause').onclick = () => {
+      if (!paused) { setPaused(true); if (controller) controller.abort(); } else { setPaused(false); if (wake) wake(); }
+    };
+    $('xt-dl-cancel').onclick = () => {
+      cancelled = true;
+      $('xt-dl-cancel').textContent = 'Cancelling…';
+      if (controller) controller.abort();
+      if (wake) wake();
+    };
+    state.downloading = true;
+    $('xt-verify').disabled = true;
+    $('xt-dl-cancel').textContent = 'Cancel';
+    setPaused(false);
+    show('xt-progress');
+    $('xt-dl-pause').focus({ preventScroll: true });
+    return (async () => {
+      try {
+        let todo = list;
         for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          let off = 0;
-          while (off < value.length) {
-            const n = Math.min(buf.length - fill, value.length - off);
-            buf.set(value.subarray(off, off + n), fill);
-            fill += n;
-            off += n;
-            if (fill === buf.length) await flush();
-          }
-        }
-        if (fill || part === 0) await flush();
-      },
-      async hasPart(f, i) {
-        const r = await cache.match(key(f, i));
-        return !!r && r.headers.get('x-xt-size') === String(f.size);
-      },
-      aligned(f) {
-        const source = f.parts || [{ size: f.size }];
-        return source.length === parts(f)
-          && source.every((p, i) => p.size === Math.min(PART, f.size - i * PART));
-      },
-      async putPart(f, i, signal, progress) {
-        const sourceParts = f.parts || [{ url: f.url, size: f.size }];
-        const part = sourceParts[i];
-        const expected = part.size;
-        const request = key(f, i);
-        for (let attempt = 0; attempt < 4; attempt++) {
+          controller = new AbortController();
+          state.downloadController = controller;
           try {
-            const res = await fetch(new URL(part.url, f.base || dataBase), { cache: 'no-store', signal });
-            if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
-            let got = 0;
-            const counted = res.body.pipeThrough(new TransformStream({
-              transform(chunk, ctl) {
-                got += chunk.byteLength;
-                if (got > expected) throw new Error(`${f.name} part ${i + 1} is larger than expected`);
-                progress(chunk.byteLength);
-                ctl.enqueue(chunk);
-              },
-            }));
-            await cache.put(request, new Response(counted, {
-              headers: { 'content-type': 'application/octet-stream', 'x-xt-size': String(f.size) },
-            }));
-            if (got !== expected) throw new Error(`${f.name} part ${i + 1} arrived incomplete (${got} of ${expected} bytes)`);
+            await data.download(todo, {
+              urlFor: blobUrl,
+              signal: controller.signal,
+              onBytes: (c, n) => { got.set(c.h, n); paint(); },
+            });
+            paint(true);
             return;
           } catch (e) {
-            await cache.delete(request);
-            if (signal.aborted || e.name === 'AbortError' || e.name === 'QuotaExceededError' || attempt === 3) throw e;
-            await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+            if (!(e && e.name === 'AbortError')) throw e;
+            if (cancelled) throw e;
+            if (paused) await new Promise((r) => { wake = r; });
+            wake = null;
+            if (cancelled) throw new DOMException('Download cancelled', 'AbortError');
+            // Carry on with what is still missing.
+            const still = [];
+            for (const c of todo) if (await data.has(c)) got.set(c.h, c.size); else still.push(c);
+            todo = still;
           }
         }
-      },
-      async get(f) {
-        const out = new Uint8Array(f.size);
-        let off = 0;
-        for (let i = 0; i < parts(f); i++) {
-          const r = await cache.match(key(f, i));
-          if (!r) throw new Error(`${f.name} is incomplete in the browser cache. Reload to download it again.`);
-          const b = new Uint8Array(await r.arrayBuffer());
-          const expected = Math.min(PART, f.size - i * PART);
-          if (b.length !== expected) {
-            await cache.delete(key(f, i));
-            throw new Error(`${f.name} has an incomplete part in the browser cache. Reload to download it again.`);
-          }
-          if (off + b.length > out.length) throw new Error(`${f.name} is damaged in the browser cache. Reload to download it again.`);
-          out.set(b, off);
-          off += b.length;
-        }
-        if (off !== f.size) throw new Error(`${f.name} is incomplete in the browser cache. Reload to download it again.`);
-        return out;
-      },
-      async drop(f) { for (let i = 0; i < parts(f); i++) await cache.delete(key(f, i)); },
-      // Keys are per part, so this takes the manifest rather than file ids.
-      async prune(keepIds, manifest) {
-        const keep = new Set();
-        for (const f of manifest.files) for (let i = 0; i < parts(f); i++) keep.add(key(f, i));
-        for (const req of await cache.keys()) if (!keep.has(req.url)) await cache.delete(req);
-      },
-    };
-  }
-
-  // ?store=cache uses the Cache API even where OPFS works, to test the
-  // fallback; it leaves any OPFS copy alone, and a later visit without it
-  // goes back to OPFS (and drops the Cache copy).
-  async function openStore() {
-    const opfs = params.get('store') === 'cache' ? null : await openOPFS();
-    if (!opfs) return openCacheStore();
-    caches.delete(DATA_CACHE).catch(() => {}); // anything an older page left there
-    return opfs;
-  }
-
-  async function missingFiles(store, files) {
-    const missing = [];
-    for (const f of files) if (!(await store.has(f))) missing.push(f);
-    return missing;
-  }
-
-  // One file as one stream, whether it is stored whole or in parts. Each
-  // part is retried a few times: a dropped connection on a phone should not
-  // restart a 600 MB download from zero.
-  function fileStream(f) {
-    const parts = f.parts || [{ url: f.url, size: f.size }];
-    let i = 0;
-    let reader = null;
-    async function open(part, signal) {
-      let lastErr;
-      for (let attempt = 0; attempt < 4; attempt++) {
-        try {
-          if (signal.aborted) throw new DOMException('Download cancelled', 'AbortError');
-          const res = await fetch(new URL(part.url, f.base || dataBase), { cache: 'no-store', signal });
-          if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
-          return res.body.getReader();
-        } catch (e) {
-          if (signal.aborted || e.name === 'AbortError') throw e;
-          lastErr = e;
-          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
-        }
-      }
-      throw new Error(`Download of ${f.name} failed: ${lastErr && lastErr.message || lastErr}`);
-    }
-    return new ReadableStream({
-      async pull(ctl) {
-        for (;;) {
-          if (!reader) {
-            if (i >= parts.length) { ctl.close(); return; }
-            reader = await open(parts[i], state.downloadController.signal);
-          }
-          const { done, value } = await reader.read();
-          if (!done) { ctl.enqueue(value); return; }
-          reader = null;
-          i++;
-        }
-      },
-      cancel() { if (reader) reader.cancel(); },
-    });
-  }
-
-  async function download(store, files) {
-    const total = files.reduce((n, f) => n + f.size, 0);
-    let done = 0;
-    const t0 = performance.now();
-    const controller = new AbortController();
-    state.downloadController = controller;
-    $('xt-dl-cancel').disabled = false;
-    show('xt-progress');
-    for (const f of files) {
-      $('xt-progress-label').textContent = `Downloading ${f.name}…`;
-      let got = 0;
-      let lastPaint = 0;
-      const progress = (n) => {
-        got += n;
-        const now = performance.now();
-        if (now - lastPaint > 150) {
-          lastPaint = now;
-          const all = done + got;
-          const pct = total ? (100 * all / total) : 0;
-          $('xt-bar-fill').style.width = pct.toFixed(1) + '%';
-          $('xt-bar').setAttribute('aria-valuenow', pct.toFixed(0));
-          const rate = all / Math.max(0.001, (now - t0) / 1000);
-          const eta = rate > 0 ? Math.round((total - all) / rate) : 0;
-          $('xt-progress-detail').textContent =
-            `${mb(all)} of ${mb(total)} · ${(rate / 1e6).toFixed(1)} MB/s` + (eta > 1 ? ` · about ${eta > 90 ? Math.round(eta / 60) + ' min' : eta + ' s'} left` : '');
-        }
-      };
-      const counted = (stream) => stream.pipeThrough(new TransformStream({
-        transform(chunk, ctl) {
-          progress(chunk.byteLength);
-          ctl.enqueue(chunk);
-        },
-      }));
-      try {
-        if (store.kind === 'cache' && store.aligned(f)) {
-          const sourceParts = f.parts || [{ url: f.url, size: f.size }];
-          for (let i = 0; i < sourceParts.length; i++) {
-            if (controller.signal.aborted) throw new DOMException('Download cancelled', 'AbortError');
-            if (!(await store.hasPart(f, i))) {
-              $('xt-progress-label').textContent = `Downloading ${f.name} (part ${i + 1} of ${sourceParts.length})…`;
-              await store.putPart(f, i, controller.signal, progress);
-            }
-          }
-        } else {
-          await store.put(f, counted(fileStream(f)));
-        }
-      } catch (e) {
+      } finally {
+        state.downloading = false;
         state.downloadController = null;
-        if (e && e.name === 'AbortError') {
-          throw e;
-        }
-        // Cache API parts are committed one at a time. Keep completed parts so
-        // retrying only fetches the missing ones; OPFS writes as one transaction.
-        if (store.kind !== 'cache') await store.drop(f);
-        if (e && e.name === 'QuotaExceededError') throw new Error('The browser ran out of storage for the game data. Free some disk space, or leave out the music.');
-        throw new Error(`Saving ${f.name} failed: ${e && e.message || e}`);
+        $('xt-verify').disabled = false;
       }
-      if (got !== f.size && store.kind !== 'cache') {
-        await store.drop(f);
-        throw new Error(`${f.name} arrived incomplete (${got} of ${f.size} bytes). Check your connection and try again.`);
-      }
-      done += f.size;
-    }
-    state.downloadController = null;
-    $('xt-dl-cancel').disabled = true;
+    })();
   }
+  const mbPair = (a, b) => b >= 1e9 ? `${(a / 1e9).toFixed(2)} / ${(b / 1e9).toFixed(2)} GB` : `${Math.round(a / 1e6)} / ${Math.round(b / 1e6)} MB`;
 
   function cancelDownload() {
-    if (state.downloadController) state.downloadController.abort();
+    if (state.downloadController) $('xt-dl-cancel').onclick();
   }
 
   function mkdirs(FS, path) {
@@ -695,17 +566,22 @@
     }
   }
 
-  async function mountData(store, files) {
+  // Into the engine's in-memory filesystem. This is the slow part of a
+  // warm start: every pk3 is read from storage into the JS heap (docs/WEB.md,
+  // "Start-up time"). canOwn: MEMFS keeps this buffer as the file.
+  async function mountData(files) {
     const FS = Module.FS;
+    const total = files.reduce((n, f) => n + f.size, 0);
+    let done = 0;
     let i = 0;
     for (const f of files) {
       i++;
-      status(`Loading game data (${i} of ${files.length})…`);
-      const buf = await store.get(f);
+      status('Loading game data…', `${mbPair(done, total)} · file ${i} of ${files.length}`);
+      const buf = await data.read(f);
       const path = `${BASEDIR}/${f.path}`;
       mkdirs(FS, path);
-      // canOwn: MEMFS keeps this buffer as the file, no second copy.
       FS.writeFile(path, buf, { canOwn: true });
+      done += f.size;
     }
   }
 
@@ -719,6 +595,77 @@
         resolve();
       });
     });
+  }
+
+  // ------------------------------------------- storage: persistence, install
+
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1);
+  const isSafari = /^((?!chrome|chromium|crios|fxios|android|edg).)*safari/i.test(ua);
+  const installed = () => mq('(display-mode: standalone)') || mq('(display-mode: fullscreen)') || navigator.standalone === true;
+  let installPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    installPrompt = e;
+    $('xt-install').hidden = false;
+    if (state.files) showStorage();
+  });
+  window.addEventListener('appinstalled', () => { installPrompt = null; $('xt-install').hidden = true; });
+  $('xt-install').onclick = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    try { await installPrompt.userChoice; } catch (e) { /* dismissed */ }
+    installPrompt = null;
+    $('xt-install').hidden = true;
+  };
+
+  async function persisted() {
+    try { return !!(navigator.storage && navigator.storage.persisted && await navigator.storage.persisted()); } catch (e) { return false; }
+  }
+  // Best-effort storage is the browser's to clear under disk pressure; ask
+  // for it to be kept once there is something worth keeping.
+  async function requestPersist() {
+    if (!navigator.storage || !navigator.storage.persist || await persisted()) return;
+    try { await navigator.storage.persist(); } catch (e) { /* not offered */ }
+  }
+
+  // Say plainly what is stored, how much room there is, and whether the
+  // browser may delete it.
+  async function showStorage() {
+    const files = state.files || [];
+    const used = await data.storedBytes(files);
+    let est = null;
+    try { est = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null; } catch (e) { /* none */ }
+    const kept = await persisted();
+    const parts = [`Game data: ${mb(used)} in this browser` + (est && est.quota ? ` (${mb(est.usage || 0)} used of ${mb(est.quota)} it allows this site).` : '.')];
+    if (kept) {
+      parts.push('It is kept until you delete it.');
+    } else {
+      let why = 'The browser may delete it if the device runs low on space';
+      if (isSafari) why += ', and Safari deletes it after 7 days without a visit';
+      why += '.';
+      if (installed()) why += '';
+      else if (installPrompt) why += ' Installing the app keeps it.';
+      else if (isIOS) why += ' To keep it, add this page to the Home Screen (Share, then Add to Home Screen) and play from there.';
+      else why += ' Installing this page as an app (the browser menu) keeps it.';
+      parts.push(why);
+    }
+    $('xt-storage-text').textContent = parts.join(' ');
+    $('xt-storage-text').classList.toggle('xt-warn', !kept);
+    $('xt-storage').hidden = false;
+  }
+
+  async function freeSpaceLine(need) {
+    let est = null;
+    try { est = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null; } catch (e) { /* none */ }
+    const el = $('xt-dl-space');
+    if (!est || !est.quota) { el.textContent = ''; return; }
+    const free = est.quota - (est.usage || 0);
+    const fits = free > need * 1.05;
+    el.textContent = fits
+      ? `${mb(free)} free for this site; this needs ${mb(need)}.`
+      : `Not enough room: this needs ${mb(need)} and the browser offers ${mb(free)} here. Private windows and a nearly full disk shrink it.`;
+    el.classList.toggle('xt-warn', !fits);
   }
 
   // ------------------------------------------------------- the engine
@@ -763,7 +710,8 @@
       if (logTail.length > 200) logTail.shift();
       console.warn(text);
     },
-    locateFile: (path) => path + '?v=' + encodeURIComponent(state.buildId),
+    // The wasm's name carries its hash in a built page (index.html config).
+    locateFile: (path) => path === 'godnotic.wasm' ? CONFIG.wasm : path,
     onRuntimeInitialized: () => runtimeReady(),
     onAbort(what) {
       if (state.aborted) return;
@@ -791,9 +739,9 @@
 
   function loadEngine() {
     const s = document.createElement('script');
-    s.src = 'godnotic.js?v=' + encodeURIComponent(state.buildId);
+    s.src = CONFIG.engine;
     s.async = true;
-    s.onerror = () => fail('Could not load the game engine (godnotic.js).');
+    s.onerror = () => fail(`Could not load the game engine (${CONFIG.engine}).`);
     document.body.appendChild(s);
   }
 
@@ -840,7 +788,7 @@
       const AC = window.AudioContext || window.webkitAudioContext;
       if (AC) { const probe = new AC(); state.sampleRate = probe.sampleRate; probe.close(); }
     } catch (e) { /* no audio device */ }
-    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+    requestPersist().catch(() => {});
 
     $('xt-overlay').classList.add('xt-gone');
     canvas.focus({ preventScroll: true });
@@ -863,112 +811,175 @@
 
   // ---------------------------------------------------------- startup
 
+  const mark = (name) => {
+    state.timing[name] = Math.round(performance.now());
+    try { performance.mark('xt-' + name); } catch (e) { /* old browser */ }
+  };
+
   async function main() {
     if (typeof WebAssembly !== 'object') return fail('This browser cannot run WebAssembly.');
     const gpu = probeGPU();
     if (!gpu) return fail('This browser has no WebGL 2, which the game needs to draw. Update the browser, or turn on hardware acceleration in its settings.');
-    if (!('caches' in window)) return fail('This page needs a secure connection (https or localhost) to store the game data.');
+    if (!window.isSecureContext && !('caches' in window)) return fail('This page needs a secure connection (https or localhost) to store the game data.');
+    if (!window.crypto || !crypto.subtle) return fail('This page needs a secure connection (https or localhost) to check the game data.');
 
-    try {
-      const b = await fetch('build.json', { cache: 'no-cache' });
-      if (b.ok) state.buildId = (await b.json()).build || 'dev';
-    } catch (e) { /* offline: use cached engine */ }
+    // The engine downloads and compiles while storage is checked (the page
+    // preloads it from <head>).
     loadEngine();
 
     const diag = [`GPU: ${gpu.renderer || 'unknown'}`, gpu.s3tc ? 'compressed textures: yes' : 'compressed textures: no (decoded in software)'];
     if (navigator.gpu) diag.push('WebGPU present (the engine draws with WebGL 2)');
+    if (CONFIG.build) diag.push(`build ${CONFIG.build}`);
     $('xt-diag').textContent = diag.join(' · ');
     if (gpu.software) toast('Your browser is drawing without the GPU. Turn on hardware acceleration for a playable frame rate.', 9000);
 
     status('Checking game data…');
-    let manifest;
-    try { manifest = await loadManifest(); } catch (e) { return fail(e.message); }
-    const files = await openStore();
-    state.store = files.kind;
-
-    const music = manifest.files.filter((f) => f.group === 'music');
-    const musicSize = music.reduce((n, f) => n + f.size, 0);
-    const wantMusic = () => store.get('music', navigator.connection && navigator.connection.saveData ? '0' : '1') === '1';
-    const selected = () => manifest.files.filter((f) => f.group !== 'music' || wantMusic());
-
-    let missing = await missingFiles(files, selected());
-    if (missing.length) {
-      $('xt-dl-music').checked = wantMusic();
-      $('xt-dl-music-size').textContent = mb(musicSize);
-      $('xt-dl-music').closest('label').hidden = !music.length;
-      const refresh = async () => {
-        missing = await missingFiles(files, selected());
-        $('xt-dl-size').textContent = mb(missing.reduce((n, f) => n + f.size, 0));
-      };
-      $('xt-dl-music').onchange = () => { store.set('music', $('xt-dl-music').checked ? 1 : 0); refresh(); };
-      await refresh();
-      if (navigator.storage && navigator.storage.estimate) {
-        const est = await navigator.storage.estimate();
-        const free = (est.quota || 0) - (est.usage || 0);
-        const need = missing.reduce((n, f) => n + f.size, 0);
-        if (est.quota && free < need * 1.05) {
-          $('xt-dl-quota').hidden = false;
-          $('xt-dl-quota').textContent = `This browser offers about ${mb(free)} of storage here, less than the download. Private windows and low disk space shrink it.`;
-        }
-      }
-      while (missing.length) {
-        show('xt-download');
-        await new Promise((resolve) => { $('xt-dl-go').onclick = resolve; });
-        try {
-          if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
-          await download(files, missing);
-        } catch (e) {
-          if (e && e.name === 'AbortError') {
-            missing = await missingFiles(files, selected());
-            await refresh();
-            continue;
-          }
-          return fail(e.message || String(e));
-        }
-        // What the download just stored is no longer missing. Without this the
-        // dialog came back after every successful download and the game never
-        // started.
-        missing = await missingFiles(files, selected());
-      }
-    }
-
-    status('Starting the engine…');
-    await runtimePromise;
     try {
-      await mountUserdir();
-      await mountData(files, selected());
+      data = await XTStore.Store.open({ preferCache: params.get('store') === 'cache' });
     } catch (e) {
       return fail(e.message || String(e));
     }
-    // Only once every file this manifest needs has loaded: drop what older
-    // releases left behind (files whose hash is no longer listed).
-    files.prune(new Set(manifest.files.map(fileId)), manifest).catch(() => {});
+    state.store = data.kind;
+    let manifest;
+    try { manifest = await loadManifest(); } catch (e) { return fail(e.message); }
+    const files = manifest.files;
+    state.files = files;
+    mark('manifest');
+
+    const music = files.filter((f) => f.group === 'music');
+    const wantMusic = () => store.get('music', navigator.connection && navigator.connection.saveData ? '0' : '1') === '1';
+    const selected = () => files.filter((f) => f.group !== 'music' || wantMusic());
+
+    let missing = await data.missing(selected());
+    // Set after the first complete start: until then a download is the
+    // install (however much of it already arrived), afterwards an update.
+    const hadStart = store.get('started', '') === '1';
+    let adopted = 0;
+    // Downloads made by earlier versions of this page: turn them into chunks
+    // once (each checked against its hash) instead of downloading again.
+    if (missing.length) {
+      try {
+        adopted = await data.adopt(files, (n, total) => status('Moving downloaded data to the new storage layout…', `${mbPair(n, total)} checked`));
+        if (adopted) missing = await data.missing(selected());
+      } catch (e) {
+        console.warn('Adopting older downloads failed:', e);
+      }
+    }
+    mark('checked');
+
+    if (missing.length) {
+      const allMissing = await data.missing(files);
+      const chunkCount = new Set(files.flatMap((f) => f.chunks)).size;
+      const firstInstall = allMissing.length === chunkCount;
+      // A small update (new game code, a config): fetch it and go on. The
+      // question is for first installs and big downloads.
+      if (!firstInstall && sum(missing) <= SMALL_UPDATE && !params.has('ask')) {
+        try {
+          await runDownload(missing, 'Updating game data…');
+        } catch (e) {
+          if (!(e && e.name === 'AbortError')) toast(e.message || String(e), 8000);
+        }
+        missing = await data.missing(selected());
+      }
+      if (missing.length) {
+        const musicSize = music.reduce((n, f) => n + f.size, 0);
+        const musicMissing = (await data.missing(music)).length > 0;
+        $('xt-dl-music').checked = wantMusic();
+        $('xt-dl-music-size').textContent = mb(musicSize);
+        $('xt-dl-music-row').hidden = !music.length || !musicMissing;
+        const refresh = async () => {
+          missing = await data.missing(selected());
+          let partial = 0;
+          for (const c of missing) partial += await data.resumable(c);
+          const stored = await data.storedBytes(selected());
+          const need = sum(missing) - partial;
+          $('xt-dl-size').textContent = mb(need);
+          $('xt-dl-title').textContent = missing.every((c) => c.file.group === 'music') ? 'Download the music'
+            : (hadStart || adopted ? 'Update the game data' : 'Download the game data');
+          const already = stored + partial;
+          $('xt-dl-resumed').hidden = !(already > 0 && !hadStart);
+          $('xt-dl-resumed').textContent = `${mb(already)} is already downloaded; it carries on from there.`;
+          $('xt-dl-go').textContent = partial > 0 ? 'Resume' : 'Download';
+          await freeSpaceLine(need);
+        };
+        $('xt-dl-music').onchange = () => { store.set('music', $('xt-dl-music').checked ? 1 : 0); refresh(); };
+        await refresh();
+        while (missing.length) {
+          show('xt-download');
+          $('xt-dl-go').focus({ preventScroll: true });
+          await new Promise((resolve) => { $('xt-dl-go').onclick = resolve; });
+          try {
+            await runDownload(missing, 'Downloading game assets…');
+          } catch (e) {
+            if (e && e.name === 'AbortError') { await refresh(); continue; }
+            if (e && e.name === 'QuotaExceededError') return fail('The browser ran out of storage for the game data. Free some disk space, or leave out the music, then reload.');
+            return fail(e.message || String(e));
+          }
+          // What the download just stored is no longer missing.
+          missing = await data.missing(selected());
+          await refresh();
+        }
+      }
+      await requestPersist();
+    }
+    mark('data-ready');
+
+    status('Starting the engine…');
+    await runtimePromise;
+    mark('engine-ready');
+    try {
+      await mountUserdir();
+      await mountData(selected());
+    } catch (e) {
+      return fail(e.message || String(e));
+    }
+    mark('mounted');
+    store.set('started', 1);
+    // Every file this start needs was there: drop what no page path that
+    // started recently still lists (older releases' chunks, old layouts).
+    data.prune(location.pathname, manifest.ids).then((r) => { state.pruned = r; }).catch(() => {});
 
     $('xt-opt-fullscreen').checked = store.get('fullscreen', '1') === '1';
     const fsSupported = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
-    $('xt-opt-fullscreen').closest('label').hidden = !fsSupported;
+    $('xt-opt-fullscreen-row').hidden = !fsSupported;
     const hints = [];
     if (!fsSupported && hasTouch) hints.push('For fullscreen, add this page to your Home Screen and open it from there.');
     if (!touchOnly) hints.push('Click the game to capture the mouse. Esc opens the menu.');
     $('xt-ready-hint').textContent = hints.join(' ');
     show('xt-ready');
+    showStorage().catch(() => {});
     $('xt-play').disabled = false;
-    $('xt-play').focus();
+    $('xt-play').focus({ preventScroll: true });
     $('xt-play').onclick = play;
+    mark('ready');
     if (params.has('autoplay')) play();
   }
 
   // Settings
   $('xt-opt-scale').value = store.get('scale', 'auto');
   $('xt-opt-scale').onchange = (e) => { store.set('scale', e.target.value); refit(); };
-  $('xt-dl-cancel').onclick = cancelDownload;
+  $('xt-verify').onclick = async () => {
+    if (!data || !state.files || state.downloading) return;
+    const btn = $('xt-verify');
+    btn.disabled = true;
+    const out = $('xt-verify-text');
+    try {
+      const r = await data.verify(state.files, (n, total) => { out.textContent = `Checking ${n} of ${total} pieces…`; });
+      out.textContent = r.bad
+        ? `${r.bad} damaged ${r.bad === 1 ? 'piece was' : 'pieces were'} removed. Reload to download ${r.bad === 1 ? 'it' : 'them'} again.`
+        : `All ${r.checked - r.missing} stored pieces are intact` + (r.missing ? ` (${r.missing} not downloaded).` : '.');
+    } catch (e) {
+      out.textContent = 'Checking failed: ' + (e.message || e);
+    }
+    btn.disabled = false;
+  };
   $('xt-clear').onclick = async () => {
-    if (!confirm('Delete the downloaded game data from this browser? Your settings stay.')) return;
+    if (!confirm('Delete the downloaded game data from this browser? Your settings stay. The next start downloads it again.')) return;
     try {
       const root = await navigator.storage.getDirectory();
-      await root.removeEntry(DATA_CACHE, { recursive: true });
+      await root.removeEntry(XTStore.NAME, { recursive: true });
     } catch (e) { /* no OPFS */ }
-    await caches.delete(DATA_CACHE).catch(() => {});
+    await caches.delete(XTStore.NAME).catch(() => {});
     location.reload();
   };
 

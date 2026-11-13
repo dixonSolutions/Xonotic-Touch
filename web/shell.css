@@ -1,12 +1,15 @@
+/* Loader and page chrome. Matches the Android boot screen (BootActivity):
+   black, the GODNOTIC banner, one centred column, large type, pill buttons. */
 :root {
-  --bg: #0b0f14;
-  --card: #121922;
-  --line: #233041;
-  --text: #e6edf3;
-  --dim: #8b9bb0;
-  --accent: #3fa9f5;
-  --accent-text: #04121f;
-  --err: #ff7a6b;
+  --bg: #000;
+  --text: #f2f4f8;
+  --dim: #b4bac6;
+  --line: #3a4558;
+  --pill: #273040;
+  --track: #2a3342;
+  --accent: #3584e4;
+  --warn: #ffc870;
+  --err: #ff8a80;
   color-scheme: dark;
 }
 
@@ -17,7 +20,7 @@ html, body {
   height: 100%;
   background: var(--bg);
   color: var(--text);
-  font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 18px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   overflow: hidden;
   overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
@@ -61,99 +64,115 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
-           max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
-  background:
-    radial-gradient(1200px 600px at 70% -10%, rgba(63, 169, 245, .18), transparent 60%),
-    var(--bg);
+  /* "safe center": centred, but never cut off at the top when taller than
+     the screen (a phone in landscape). */
+  justify-content: safe center;
+  padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+           max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  background: var(--bg);
   overflow-y: auto;
   z-index: 10;
+  -webkit-user-select: text;
+  user-select: text;
 }
 #xt-overlay.xt-gone { display: none; }
 
-.xt-card {
-  width: min(460px, 100%);
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 22px 22px 14px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, .45);
+.xt-col {
+  width: min(560px, 100%);
+  text-align: center;
 }
 
-.xt-title {
-  display: block;
-  width: 100%;
-  height: auto;
-  margin: 0 0 14px;
-}
+.xt-banner { margin: 0 auto 20px; width: min(440px, 86%); }
+.xt-banner img { display: block; width: 100%; height: auto; }
 
-.xt-panel { margin: 0 0 14px; }
-.xt-panel[hidden] { display: none; }
-.xt-line { margin: 0 0 12px; }
-.xt-hint { margin: 8px 0 0; color: var(--dim); font-size: 14px; }
-.xt-err { color: var(--err); white-space: pre-wrap; }
+.xt-panel { margin: 0 0 18px; }
+.xt-panel[hidden], .xt-storage[hidden] { display: none; }
+.xt-title { margin: 0 0 10px; font-size: 1.5rem; font-weight: 600; line-height: 1.25; }
+.xt-detail { margin: 0 0 12px; color: var(--dim); font-size: 1rem; }
+.xt-detail strong { color: var(--text); font-weight: 600; }
+.xt-small { font-size: .875rem; color: var(--dim); margin: 6px 0; }
+.xt-err { color: var(--err); white-space: pre-wrap; text-align: left; font-size: .875rem;
+  max-height: 40vh; overflow: auto; -webkit-user-select: text; user-select: text; }
+.xt-warn { color: var(--warn); }
+.xt-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.xt-percent { margin: 4px 0 8px; font-size: 2.25rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.xt-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 14px; }
 
 .xt-btn {
   appearance: none;
-  border: 0;
-  border-radius: 10px;
-  background: var(--accent);
-  color: var(--accent-text);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--pill);
+  color: #fff;
   font: inherit;
-  font-weight: 650;
-  padding: 11px 20px;
-  min-height: 44px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  padding: 12px 28px;
+  min-height: 48px;
+  min-width: 132px;
   cursor: pointer;
 }
-.xt-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-.xt-btn:disabled { opacity: .5; cursor: default; }
-.xt-play { width: 100%; font-size: 20px; padding: 14px; margin-bottom: 12px; }
-.xt-quiet { background: transparent; color: var(--dim); border: 1px solid var(--line); margin-top: 10px; }
+.xt-btn.xt-primary { background: var(--accent); border-color: var(--accent); }
+.xt-btn:hover { filter: brightness(1.12); }
+.xt-btn:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+.xt-btn:disabled { opacity: .5; cursor: default; filter: none; }
+.xt-btn[hidden] { display: none; }
+.xt-play { min-width: min(320px, 100%); font-size: 1.35rem; padding: 14px 36px; }
+.xt-small-btn { font-size: .9rem; min-height: 44px; min-width: 0; padding: 8px 18px; }
 
 .xt-check, .xt-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 36px;
-  margin: 0 0 8px;
+  justify-content: center;
+  gap: 12px;
+  min-height: 44px;
+  margin: 4px 0;
   cursor: pointer;
 }
-.xt-row { justify-content: space-between; }
-.xt-check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.xt-check[hidden] { display: none; }
+.xt-row { justify-content: space-between; text-align: left; }
+.xt-check input { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
+.xt-check input:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 select {
   font: inherit;
+  font-size: .95rem;
   color: var(--text);
-  background: var(--bg);
+  background: var(--pill);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 6px 8px;
+  border-radius: 10px;
+  padding: 8px 10px;
+  min-height: 44px;
 }
+select:focus-visible, summary:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 
 .xt-bar {
   height: 10px;
-  border-radius: 6px;
-  background: var(--bg);
-  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--track);
   overflow: hidden;
 }
 #xt-bar-fill {
   height: 100%;
   width: 0;
   background: var(--accent);
-  transition: width .2s linear;
+  transition: width .25s linear;
 }
+.xt-paused #xt-bar-fill { background: var(--dim); }
 
-.xt-more { border-top: 1px solid var(--line); padding-top: 10px; color: var(--dim); font-size: 15px; }
-.xt-more summary { cursor: pointer; min-height: 32px; }
+.xt-storage { margin: 0 0 14px; }
+
+.xt-more { margin-top: 6px; border-top: 1px solid var(--pill); padding-top: 10px; color: var(--dim); font-size: .95rem; text-align: left; }
+.xt-more summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; justify-content: center; }
 .xt-more[open] summary { margin-bottom: 8px; }
 
 .xt-foot {
-  margin-top: 14px;
-  color: var(--dim);
-  font-size: 12px;
+  margin-top: 16px;
+  color: #7d8594;
+  font-size: .75rem;
   text-align: center;
-  max-width: 460px;
+  max-width: 560px;
 }
 
 #xt-toast {
@@ -162,11 +181,11 @@ select {
   top: max(12px, env(safe-area-inset-top));
   transform: translateX(-50%);
   max-width: calc(100vw - 32px);
-  background: rgba(18, 25, 34, .94);
+  background: rgba(20, 24, 32, .94);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 8px 14px;
-  font-size: 14px;
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: .9rem;
   z-index: 30;
   pointer-events: none;
 }
@@ -196,6 +215,20 @@ select {
   0%, 25% { transform: rotate(0); }
   55%, 100% { transform: rotate(-90deg); }
 }
+
+/* Phones in landscape: a short screen. Smaller banner and type, no wasted
+   rows, everything still reachable by scrolling. */
+@media (max-height: 520px) {
+  html, body { font-size: 16px; }
+  .xt-banner { width: min(260px, 50%); margin-bottom: 10px; }
+  .xt-title { font-size: 1.25rem; margin-bottom: 6px; }
+  .xt-percent { font-size: 1.75rem; margin: 0 0 4px; }
+  .xt-panel { margin-bottom: 10px; }
+  .xt-buttons { margin-top: 8px; }
+  .xt-foot { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .xt-rotate-icon { animation: none; transform: rotate(-90deg); }
+  #xt-bar-fill { transition: none; }
 }
