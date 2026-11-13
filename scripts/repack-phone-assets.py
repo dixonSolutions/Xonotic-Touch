@@ -52,7 +52,7 @@ except ImportError:
 import numpy as np
 
 # compressed already: zstd would spend time for nothing
-STORE_EXT = {"ogg", "opus", "mp3", "pk3", "zip", "gz", "ktx", "webp", "avi", "ogv"}
+STORE_EXT = {"ogg", "opus", "mp3", "pk3", "zip", "gz", "webp", "avi", "ogv"}
 
 ZIP_STORED, ZIP_ZSTD = 0, 93
 KTX_ID = b"\xabKTX 11\xbb\r\n\x1a\n"
@@ -527,14 +527,29 @@ def repack(args, pack, textures, stats):
                 converted.add(i.filename)
             emit(i, name, data, method, payload, kind)
 
+        # A link follows its target to .ktx. A link may point at another link
+        # (dds/foo.dds -> dds/textures/foo.dds -> ...), so what counts as moved
+        # grows until nothing changes; renaming only the links that point
+        # straight at a converted file left the outer ones dangling.
+        resolved = {}
         for info in links:
-            target = zin.read(info)
+            text = zin.read(info).decode("utf-8", "replace")
+            resolved[info.filename] = (text, os.path.normpath(
+                os.path.join(os.path.dirname(info.filename), text)).replace(os.sep, "/"))
+        moved = set(converted)
+        grew = True
+        while grew:
+            grew = False
+            for name, (text, full) in resolved.items():
+                if name not in moved and name.endswith(".dds") and text.endswith(".dds") and full in moved:
+                    moved.add(name)
+                    grew = True
+        for info in links:
             name = info.filename
-            text = target.decode("utf-8", "replace")
-            if name.endswith(".dds") and text.endswith(".dds"):
-                full = os.path.normpath(os.path.join(os.path.dirname(name), text)).replace(os.sep, "/")
-                if full in converted:
-                    name, target = name[:-3] + "ktx", (text[:-3] + "ktx").encode()
+            text = resolved[name][0]
+            target = text.encode("utf-8")
+            if name in moved:
+                name, target = name[:-3] + "ktx", (text[:-3] + "ktx").encode("utf-8")
             emit(info, name, target, ZIP_STORED, target, "stored")
 
     zout.close()

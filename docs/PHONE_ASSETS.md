@@ -73,11 +73,22 @@ sharpness. A full repack takes 11 minutes on 16 threads.
 
 | pack | official | slim | textures | JPEGs | left out |
 | --- | ---: | ---: | --- | --- | ---: |
-| data | 312.2 MB | 118.1 MB | 201.2 -> 25.7 MB | 18.5 -> 9.9 MB | 6.1 MB |
-| maps | 618.4 MB | 264.2 MB | 380.3 -> 94.9 MB | 126.9 -> 73.4 MB | 9.1 MB |
+| data | 312.2 MB | 108.2 MB | 204.8 -> 19.4 MB | 18.5 -> 9.9 MB | 6.1 MB |
+| maps | 618.4 MB | 231.1 MB | 404.3 -> 85.8 MB | 126.9 -> 73.4 MB | 9.1 MB |
 | music | 110.7 MB | 47.1 MB | (Opus 64 kbit/s) | | |
-| xoncompat, fonts | 5.3 MB | 3.7 MB | | | |
-| **total** | **1046 MB** | **433 MB** | | | |
+| xoncompat, fonts | 5.3 MB | 3.4 MB | | | |
+| **total** | **1046 MB** | **390 MB** | | | |
+
+ASTC entries are zstd-compressed like everything else (they shrink by about an
+eighth). Before that they were stored raw, and because the size policy compares
+each converted entry with its deflated DXT original, 986 textures that deflate
+well stayed DXT: on a phone without S3TC those were decoded in software at a
+quarter of their width and height. Compressed, the ASTC version wins for all but
+272 near-flat textures and `particlefont.dds` (DXT2, which the encoder does not
+take), and the set is 43 MB smaller.
+
+A link follows its target to `.ktx`, including a link to a link
+(`dds/gak.dds -> dds/textures/gak.dds -> gakfullbright.dds`).
 
 ### JPEGs and what is left out
 
