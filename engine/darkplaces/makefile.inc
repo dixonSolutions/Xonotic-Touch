@@ -43,6 +43,7 @@ OBJ_COMMON= \
 	touch_dodge.o \
 	touch_ledge.o \
 	touch_tactics.o \
+	touch_assist.o \
 	touch_pause.o \
 	touch_nade.o \
 	touch_android.o \

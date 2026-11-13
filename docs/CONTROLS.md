@@ -1031,6 +1031,32 @@ practice may use. Attack from the air needs nothing new: splash weapons
 already aim at the floor by a grounded enemy's feet when the player is
 higher, and stock servers do not add the shooter's speed to projectiles.
 
+### Server switch for the assists (`sv_touch_assist`)
+
+A server running this engine tells each player which touch assists it allows,
+and Touch clients obey it (`engine/darkplaces/touch_assist.c`, one hook line in
+`SV_SendServerinfo`). `sv_touch_assist` is a bitmask, default `7`:
+
+| Bit | Assist |
+|---|---|
+| 1 | aim assist (pull and friction) |
+| 2 | auto-shoot |
+| 4 | automatic weapon switching |
+
+`0` turns all three off; `1` keeps only the aim pull. The value goes to each
+player as they join and again at every map change, so a change reaches everyone
+at the next map. The client keeps it in the read-only `_cl_touch_assist` (`-1`
+until the server says something) and prints which assists the server turned
+off. A server that says nothing, which is every stock Xonotic server, leaves the
+assists as the player set them. A new connection or a disconnect forgets the
+last server's value. This is a request the client honours, not something the
+server can enforce. The offline practice helpers have their own gate and are
+unaffected.
+
+Tested: a client joining servers set to `1`, `7` and an engine without the
+switch reads `1`, `7` and `-1`; in a bot match with `sv_touch_assist 0`
+auto-shoot never fired, with `7` it fired as usual.
+
 ### Offline tactics (engine, bots on this machine only)
 
 `engine/darkplaces/touch_tactics.c`. Everything here runs only while the

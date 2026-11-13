@@ -38,6 +38,7 @@ primary, no lead, no switching.
 #include "touch_weapons.h"
 #include "touch_hook.h"
 #include "touch_tactics.h"
+#include "touch_assist.h"
 extern cvar_t cl_touch_esp_enabled;
 
 extern cvar_t vid_touchscreen;
@@ -385,6 +386,7 @@ static unsigned char shot_seen[SHOT_SEEN_MAX];
 
 void TouchAim_Init(void)
 {
+	TouchAssist_Init();
 	Cvar_RegisterVariable(&cl_touch_autoshoot);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_delay);
 	Cvar_RegisterVariable(&cl_touch_autoshoot_release);
@@ -675,6 +677,13 @@ static qbool is_enemy(int n, int team_game)
 		return true;
 	// Team game, or not known: the same pants colour is the same team.
 	return (them->colors & 15) != (me->colors & 15);
+}
+
+// Automatic weapon switching: the player's setting, and the server allows it
+// (touch_assist.c).
+static qbool autoswitch_on(void)
+{
+	return cl_touch_autoswitch.integer != 0 && TouchAssist_Allowed(TOUCH_ASSIST_AUTOSWITCH);
 }
 
 // Clear line through world geometry (and CSQC brush models such as doors).
@@ -1651,7 +1660,7 @@ static qbool dry_check(const aimtarget_t *near, int held, const touch_wep_t *wep
 			plan == TW_DRY_SWITCH && best >= 0 ? va(vabuf, sizeof(vabuf), " -> %s", names[best]) : plan == TW_DRY_EVADE ? ": nothing better, keep away" : ": firing it out first");
 	if (nshots <= 3)
 		said_plan = plan;
-	if (plan != TW_DRY_SWITCH || best < 0 || !fight || !cl_touch_autoswitch.integer)
+	if (plan != TW_DRY_SWITCH || best < 0 || !fight || !autoswitch_on())
 		return false;
 	if (now - ta.manual_switch < MANUAL_GUARD || ta.switch_to >= 0 || TouchHook_InUse() || TouchHook_Rescuing())
 		return false;
@@ -1677,7 +1686,7 @@ static void auto_switch(const aimtarget_t *near, int held, const touch_wep_t *we
 	qbool cur_ok, smart = cl_touch_autoswitch_smart.integer != 0, combo = false, escape, dropped;
 	float bu = 0, hu = 0, dist;
 	const track_t *t;
-	if (!cl_touch_autoswitch.integer || held < 0 || !wep || TouchHook_InUse() || TouchHook_Rescuing())
+	if (!autoswitch_on() || held < 0 || !wep || TouchHook_InUse() || TouchHook_Rescuing())
 		return;
 	// a switch ends steering and remote detonation of every rocket out
 	if (ta.num_free && !free_all_certain())
@@ -2950,8 +2959,9 @@ static void aim_frame(void)
 	practice_gate_said = practice_gate_now;
 	num_marks = 0;
 
-	autoshoot = cl_touch_autoshoot.integer != 0;
-	assist = cl_touch_aimassist.integer != 0;
+	// what the server allows (touch_assist.c): all, on a server that says nothing
+	autoshoot = cl_touch_autoshoot.integer != 0 && TouchAssist_Allowed(TOUCH_ASSIST_AUTOSHOOT);
+	assist = cl_touch_aimassist.integer != 0 && TouchAssist_Allowed(TOUCH_ASSIST_AIM);
 	friction = assist ? bound(0.0f, cl_touch_aimassist_friction.value, FRICTION_MAX) : 0;
 	strength = assist ? bound(0.0f, cl_touch_aimassist_strength.value, STRENGTH_MAX) : 0;
 	// the cone reaches at most the edge of the view: half the horizontal
@@ -2990,7 +3000,7 @@ static void aim_frame(void)
 	wep = held >= 0 ? TouchWep_Find(TouchHUD_WeaponName(held)) : NULL;
 	note_held(held, now);
 
-	if (!autoshoot && friction <= 0 && strength <= 0 && !cl_touch_autoswitch.integer)
+	if (!autoshoot && friction <= 0 && strength <= 0 && !autoswitch_on())
 	{
 		reset();
 		publish();
@@ -3721,6 +3731,7 @@ void TouchAim_Frame(void)
 	double t0;
 	if (cl_touch_aim_dumptracks.integer)
 		dump_tracks();
+	TouchAssist_Frame();
 	TouchHook_Frame();
 	t0 = Sys_DirtyTime();
 	aim_frame();

@@ -25,6 +25,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "csprogs.h"
 #include "thread.h"
 #include "touch_hud.h" // Touch: CANCEL on the loading screen
+#include "touch_assist.h" // Touch: server switch for the touch assists
 
 // current client
 client_t *host_client;
@@ -867,6 +868,7 @@ void SV_SendServerinfo (client_t *client)
 		MSG_WriteByte (&client->netconnection->message, svc_stufftext);
 		MSG_WriteString (&client->netconnection->message, "cl_serverextension_download 2\n");
 	}
+	TouchAssist_SendServerinfo(client); // Touch: which touch assists this server allows
 
 	// send at this time so it's guaranteed to get executed at the right time
 	{
