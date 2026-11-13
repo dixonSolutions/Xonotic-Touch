@@ -1285,7 +1285,10 @@ fn list(app: &App, store: &Store, n: &Node) -> gtk::Widget {
         Some(rows) => {
             let sw = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Automatic).vscrollbar_policy(gtk::PolicyType::Never)
                 .kinetic_scrolling(true).overlay_scrolling(false).child(&view).build();
-            sw.set_min_content_height(rows as i32 * (sideways_tile_height(app, rows) + 26) + 26);
+            let h = rows as i32 * (sideways_tile_height(app, rows) + 26) + 26;
+            sw.set_min_content_height(h);
+            sw.set_height_request(h);
+            sw.set_propagate_natural_height(true);
             sw.add_css_class("gn-sideways");
             sw
         }
