@@ -33,25 +33,46 @@
   const files = new Map(); // path -> {id, blobs, urls, size, chunk}
   let touched = new Set(); // "path\tblock" read since takeTouched()
 
-  /** len bytes at off of the blob behind url, into dst at dstOff. */
+  // Text decoding sniffs a byte order mark before it looks at the charset:
+  // a range starting with FF FE, FE FF or EF BB BF comes back as UTF-16 or
+  // UTF-8, not as the bytes. So every blob gets PAD zero bytes in front, and
+  // a read whose text is not clean x-user-defined (the length, and every
+  // character below 0x80 or in U+F780-U+F7FF) is asked again starting one
+  // byte earlier: at the latest the zero padding, which is no BOM.
+  const PAD = 3;
+  const ZEROS = new Uint8Array(PAD);
+
+  /** len bytes at off of the (padded) blob behind url, into dst at dstOff. */
   function rangeRead(url, off, len, dst, dstOff) {
     const t = global.performance.now();
-    const x = new global.XMLHttpRequest();
-    x.open('GET', url, false);
-    x.overrideMimeType('text/plain; charset=x-user-defined');
-    x.setRequestHeader('Range', `bytes=${off}-${off + len - 1}`);
-    x.send();
-    const s = x.responseText;
-    // 200 with the whole blob is a browser that ignores Range on blob URLs:
-    // still right from offset 0 (probe() turns lazy reads off for those).
-    const skip = x.status === 200 ? off : 0;
-    if ((x.status !== 206 && x.status !== 200) || s.length < skip + len) {
-      throw new Error(`storage read failed (HTTP ${x.status}, ${s.length} of ${len} bytes)`);
+    for (let back = 0; back <= PAD + off && back <= PAD + 8; back++) {
+      const start = PAD + off - back;
+      if (start < 0) break;
+      const x = new global.XMLHttpRequest();
+      x.open('GET', url, false);
+      x.overrideMimeType('text/plain; charset=x-user-defined');
+      x.setRequestHeader('Range', `bytes=${start}-${PAD + off + len - 1}`);
+      x.send();
+      if (x.status !== 206) throw new Error(`storage read failed (HTTP ${x.status})`);
+      const s = x.responseText;
+      if (s.length !== len + back) { stats.retries = (stats.retries || 0) + 1; continue; }
+      let clean = true;
+      for (let i = 0; i < back; i++) {
+        const c = s.charCodeAt(i);
+        if (c > 0x7f && (c < 0xf780 || c > 0xf7ff)) { clean = false; break; }
+      }
+      for (let i = 0; clean && i < len; i++) {
+        const c = s.charCodeAt(back + i);
+        if (c > 0x7f && (c < 0xf780 || c > 0xf7ff)) { clean = false; break; }
+        dst[dstOff + i] = c;
+      }
+      if (!clean) { stats.retries = (stats.retries || 0) + 1; continue; }
+      stats.xhr++;
+      stats.bytes += len;
+      stats.ms += global.performance.now() - t;
+      return;
     }
-    for (let i = 0; i < len; i++) dst[dstOff + i] = s.charCodeAt(skip + i);
-    stats.xhr++;
-    stats.bytes += len;
-    stats.ms += global.performance.now() - t;
+    throw new Error(`storage read failed (${len} bytes at ${off})`);
   }
 
   function cachePut(key, bytes) {
@@ -71,7 +92,8 @@
   function create(FS, path, size, blobs, chunk) {
     if (chunk % BLOCK) throw new Error('chunk size must be a multiple of ' + BLOCK);
     const id = ++nextId;
-    const urls = blobs.map((b) => global.URL.createObjectURL(b));
+    // A Blob made of other blobs refers to them: nothing is copied.
+    const urls = blobs.map((b) => global.URL.createObjectURL(new global.Blob([ZEROS, b])));
     files.set(path, { id, blobs, urls, size, chunk });
     const slash = path.lastIndexOf('/');
     const dir = path.slice(0, slash);

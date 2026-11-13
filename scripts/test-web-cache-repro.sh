@@ -100,7 +100,7 @@ assert 'dds/textures/set/shared.dds' in core and 'scripts/sky.shader' in core an
 assert extra == ['textures/set/unused.tga'], extra
 z = zipfile.ZipFile(os.path.join(outs[0], split['index']))
 assert z.read('maps/alpha.bsp') == b'', 'stand-in bsp'
-assert z.read('maps/alpha.mapinfo').decode().startswith('title Alpha (download '), 'marked title'
+assert z.read('maps/alpha.mapinfo').decode().startswith('title Alpha\n'), 'the real mapinfo in the core'
 assert z.read('maps/alpha.jpg') == b'shot', 'level shot in the core'
 assert not any(n.endswith('.map') for n in core + alpha), 'editor sources left out'
 for f in files:

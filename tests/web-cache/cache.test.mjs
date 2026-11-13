@@ -205,6 +205,7 @@ class Element extends EventTarget {
     this.dataset = {};
   }
   setAttribute() {}
+  getBoundingClientRect() { return { width: 1280, height: 720 }; }
   focus() {}
   closest() { return new Element(); }
   appendChild() {}
@@ -237,6 +238,7 @@ function loadPage(prof, host, { search = '', engine = true, persist = false, ast
     fetch: (u, o) => host.fetch(u, o),
     FileSystemFileHandle: prof.root ? FakeFileHandle : undefined,
     performance: { now: () => Date.now(), mark() {} },
+    requestAnimationFrame: (f) => setTimeout(f, 0),
     setTimeout: (f, ms) => setTimeout(f, Math.min(ms || 0, 5)), clearTimeout, setInterval: () => 0, clearInterval,
     matchMedia: () => ({ matches: false, addEventListener() {} }),
     localStorage: { getItem: (k) => (prof.local.has(k) ? prof.local.get(k) : null), setItem: (k, v) => prof.local.set(k, String(v)) },
@@ -250,6 +252,7 @@ function loadPage(prof, host, { search = '', engine = true, persist = false, ast
       },
     },
     location: { href: 'https://game.example/web/' + search, pathname: '/web/', search, reload() {} },
+    innerWidth: 1280, innerHeight: 720, devicePixelRatio: 1,
     screen: {},
     isSecureContext: true,
     HTMLCanvasElement: class extends Canvas {
@@ -296,6 +299,11 @@ function loadPage(prof, host, { search = '', engine = true, persist = false, ast
     };
     context.Module.IDBFS = {};
     context.Module.ccall = (name, ret, types, args) => { if (name === 'xt_web_command') commands.push(args[0]); };
+    context.Module.callMain = () => { context.__started = true; };
+    context.Module._xt_web_hook_maps = () => 2;
+    context.Module._xt_web_refit = () => {};
+    context.Module._xt_web_autosave = () => 0;
+    context.Module._xt_web_save = () => {};
     setTimeout(() => context.Module.onRuntimeInitialized(), 0);
   }
   return { context, element, shown, statuses, mounted, commands, page: context.__page };
@@ -341,10 +349,10 @@ await test('first visit asks, downloads each chunk once, mounts; a reload makes 
   const host = makeHost(baseFiles());
   const p = loadPage(prof, host);
   await until(() => p.shown.includes('xt-download'), 'download dialog');
-  assert.equal(p.element('xt-dl-title').textContent, 'Download the game data');
+  assert.equal(p.element('xt-dl-title').textContent, 'Download Godnotic');
   p.element('xt-dl-go').onclick();
   await ready(p, 'ready');
-  assert.ok(p.statuses.includes('Starting the engine…'), 'main reached "Starting the engine…"');
+  assert.ok(p.statuses.includes('Starting…'), 'main reached "Starting…"');
   assert.equal(p.mounted.size, 4, 'all files mounted');
   assert.equal(sha(p.mounted.get('/game/data/maps.pk3')), host.files[2].sha256, 'assembled from chunks');
   assert.equal(blobFetches(host).length, 7, 'one request per chunk');
@@ -373,8 +381,19 @@ await test('changed game code: only that chunk, fetched without asking; the old 
   assert.deepEqual(host2.log.map((l) => l.path.split('/').pop()), [host2.path.slice(2), host2.files[0].chunks[0] + '.bin'],
     'requests: the new manifest and the progs chunk');
   await until(() => q.page.state.pruned, 'prune');
+  // A tab may still run the older release (reading its files in place): its
+  // chunks stay two days, then go.
+  assert.ok(opfsNames(prof).includes('c-' + host.files[0].chunks[0]), 'old progs chunk kept for a tab still running it');
+  const dir = prof.root.dirs.get('xt-data-v1');
+  for (const [n, b] of dir.files) {
+    if (!n.startsWith('r-')) continue;
+    const r = JSON.parse(new TextDecoder().decode(b));
+    if (r.ids.includes(host.id)) { r.t -= 3 * 24 * 3600 * 1000; dir.files.set(n, new TextEncoder().encode(JSON.stringify(r))); }
+  }
+  const s3 = await store(loadPage(prof, host2, { engine: false }).context);
+  await s3.prune('/web/', [host2.id]);
   const names = opfsNames(prof);
-  assert.ok(!names.includes('c-' + host.files[0].chunks[0]), 'old progs chunk pruned');
+  assert.ok(!names.includes('c-' + host.files[0].chunks[0]), 'old progs chunk pruned two days later');
   assert.ok(names.includes('c-' + host2.files[0].chunks[0]), 'new progs chunk kept');
   assert.ok(names.includes('c-' + host.files[2].chunks[0]), 'unchanged chunks kept');
 });
@@ -391,7 +410,7 @@ await test('a large update still asks', async () => {
   const host2 = makeHost(files.slice(0, 2).concat(files.slice(4)));
   const q = loadPage(prof, host2);
   await until(() => q.shown.includes('xt-download'), 'dialog for a large delta');
-  assert.equal(q.element('xt-dl-title').textContent, 'Update the game data');
+  assert.equal(q.element('xt-dl-title').textContent, 'Finish downloading Godnotic');
 });
 
 await test('pause keeps finished chunks and 4 MiB pieces; a reload resumes with Range', async () => {
@@ -588,108 +607,92 @@ const firstVisit = async (p) => {
   await ready(p, 'ready');
 };
 
-await test('maps on demand: a first visit downloads the core and one map; others come when asked for', async () => {
+await test('one download with everything; a map pack that went missing is fetched when played', async () => {
   const prof = profile();
   const host = makeProfiles({ web: { files: splitFiles(), defaultMap: 'stormkeep' } });
-  const p = loadPage(prof, host, { search: '?allmaps=0' });
+  const p = loadPage(prof, host);
   await until(() => p.shown.includes('xt-download'), 'dialog');
-  const core = ['zz-progs.pk3', 'xonotic-data.pk3', 'maps-0core.pk3', 'maps-stormkeep.pk3'];
-  const want = core.reduce((n, x) => n + fileOf(host, x).size, 0);
-  assert.equal(p.element('xt-dl-size').textContent, `${Math.round(want / 1e6)} MB`, 'asks for the core and the default map only');
-  assert.equal(p.element('xt-dl-later').hidden, false, 'says the other maps come later');
+  const total = host.files.reduce((n, f) => n + f.size, 0);
+  assert.equal(p.element('xt-dl-size').textContent, `${Math.round(total / 1e6)} MB`, 'one size: every file, music included');
   p.element('xt-dl-go').onclick();
   await ready(p, 'ready');
-  assert.deepEqual([...new Set(fetchedNames(host))].sort(), core.slice().sort(), 'downloaded: core and stormkeep');
+  await until(() => p.context.__started, 'the game starts without a Play button');
+  assert.deepEqual([...new Set(fetchedNames(host))].sort(), host.files.map((f) => f.name).sort(), 'everything downloaded');
   assert.ok(!p.mounted.has('/game/data/maps-stormkeep.pk3'), 'in memory: map packs mount when played');
-  assert.ok(p.mounted.has('/game/data/maps-0core.pk3'));
   // The engine asks for stormkeep: stored, so mounted, rescanned, run again.
   assert.equal(p.context.Module.xt.needMap('stormkeep', 'map "stormkeep"'), 0);
   await until(() => p.commands.length === 1, 'command again');
   assert.equal(p.commands[0], 'fs_rescan\nmap "stormkeep"');
   assert.ok(p.mounted.has('/game/data/maps-stormkeep.pk3'));
   assert.equal(p.context.Module.xt.needMap('maps/stormkeep.bsp', 'map "stormkeep"'), 1, 'then it goes ahead');
-  // dance is not here: fetched with the map panel, then run.
+  // dance's pack vanished from storage: fetched with the map card, then run.
+  const dance = fileOf(host, 'maps-dance.pk3');
+  for (const h of dance.chunks) prof.root.dirs.get('xt-data-v1').files.delete('c-' + h);
   host.log.length = 0;
   assert.equal(p.context.Module.xt.needMap('dance', 'changelevel "dance"'), 0);
   await until(() => p.commands.length === 2, 'dance command');
   assert.equal(p.commands[1], 'fs_rescan\nchangelevel "dance"');
   assert.deepEqual([...new Set(fetchedNames(host))], ['maps-dance.pk3'], 'only the dance pack downloaded');
-  assert.equal(p.element('xt-map').hidden, true, 'map panel gone');
-  assert.ok(p.mounted.has('/game/data/maps-dance.pk3'));
+  assert.equal(p.element('xt-map').hidden, true, 'map card gone');
   assert.ok(!p.mounted.has('/game/data/maps-stormkeep.pk3'), 'in memory: one map pack at a time');
   assert.equal(p.context.Module.xt.needMap('custommap', 'map "custommap"'), 1, 'a map with no pack goes ahead');
-  // A reload knows dance is stored: no download, just a mount.
   host.log.length = 0;
-  const q = loadPage(prof, host, { search: '?allmaps=0' });
+  const q = loadPage(prof, host);
   await ready(q, 'warm');
-  assert.equal(q.context.Module.xt.needMap('dance', 'map "dance"'), 0);
-  await until(() => q.commands.length === 1, 'warm dance');
-  assert.equal(blobFetches(host).length, 0, 'no data requests');
+  assert.ok(!q.shown.includes('xt-download') && !q.shown.includes('xt-progress'), 'returning: no download UI');
+  await until(() => q.context.__started, 'straight into the game');
+  assert.equal(host.log.length, 0, 'no data requests');
 });
 
 await test('a cancelled map download runs nothing and keeps what arrived', async () => {
   const prof = profile();
   const host = makeProfiles({ web: { files: splitFiles(), defaultMap: 'stormkeep' } });
-  const p = loadPage(prof, host, { search: '?allmaps=0' });
+  const p = loadPage(prof, host);
   await firstVisit(p);
   const dance = fileOf(host, 'maps-dance.pk3');
+  for (const h of dance.chunks) prof.root.dirs.get('xt-data-v1').files.delete('c-' + h);
   host.hold = (h) => h === dance.chunks[1];
   assert.equal(p.context.Module.xt.needMap('dance', 'map "dance"'), 0);
   await until(() => opfsNames(prof).includes('c-' + dance.chunks[0]), 'first chunk stored');
-  assert.equal(p.element('xt-map').hidden, false, 'map panel shown');
+  assert.equal(p.element('xt-map').hidden, false, 'map card shown');
   p.element('xt-map-cancel').onclick();
-  await until(() => p.element('xt-map').hidden, 'panel closed');
+  await until(() => p.element('xt-map').hidden, 'card closed');
   assert.equal(p.commands.length, 0, 'the map command is not run');
   assert.ok(opfsNames(prof).includes('c-' + dance.chunks[0]), 'finished chunk kept');
 });
 
-await test('background download: after the first match, the rest arrives; pause and resume', async () => {
+await test('a page closed by the browser mid-download says so next time and carries on', async () => {
   const prof = profile();
   const host = makeProfiles({ web: { files: splitFiles(), defaultMap: 'stormkeep' } });
-  const p = loadPage(prof, host, { search: '?allmaps=1' });
-  await firstVisit(p);
-  assert.ok(!host.log.some((l) => fetchedNames(host).includes('maps-dance.pk3')), 'nothing in the background before playing');
-  const dance = fileOf(host, 'maps-dance.pk3');
-  let stall = true;
-  host.hold = (h, off) => stall && h === dance.chunks[0] && off >= 1;
-  p.page.state.started = true; // Play
-  assert.equal(p.context.Module.xt.needMap('stormkeep', 'map "stormkeep"'), 0);
-  await until(() => p.commands.length === 1, 'stormkeep runs');
-  assert.equal(p.context.Module.xt.needMap('stormkeep', 'map "stormkeep"'), 1); // the match starts: background on
-  await until(() => p.page.maps.bgOn && p.page.maps.bgController, 'background running');
-  assert.match(p.context.Module.xt.mapsCommand('pause'), /paused/);
-  assert.equal(p.page.maps.bgPaused, true);
-  stall = false;
-  await new Promise((r) => setTimeout(r, 50));
-  assert.ok(!opfsNames(prof).includes('c-' + dance.chunks[0]), 'paused: nothing more');
-  p.context.Module.xt.mapsCommand('resume');
-  await until(() => p.page.maps.bgDone, 'background done');
-  const s = await p.page.backgroundStatus();
-  assert.equal(s.left, 0, 'every map, the extra pack and the music stored');
-  const names = new Set(fetchedNames(host));
-  for (const n of ['maps-dance.pk3', 'maps-boil.pk3', 'maps-0extra.pk3', 'music.pk3']) assert.ok(names.has(n), n + ' downloaded');
+  const data = fileOf(host, 'xonotic-data.pk3');
+  host.hold = (h) => h === data.chunks[1];
+  const p = loadPage(prof, host);
+  await until(() => p.shown.includes('xt-download'), 'dialog');
+  p.element('xt-dl-go').onclick();
+  await until(() => opfsNames(prof).includes('c-' + data.chunks[0]), 'a chunk stored');
+  const c = JSON.parse(prof.local.get('xt.crumb'));
+  assert.equal(c.phase, 'download');
+  assert.ok(!c.closed, 'no normal close recorded: the process was killed');
+  host.hold = null;
+  host.log.length = 0;
+  const q = loadPage(prof, host); // the reload after the kill
+  await ready(q, 'ready'); // the rest is small here: it carries on without asking
+  assert.match(q.page.state.problem, /closed this page while downloading/, 'the reason is kept for the Storage panel');
+  assert.match(JSON.parse(prof.local.get('xt.problem')).text, /closed this page/);
+  assert.ok(blobFetches(host).every((l) => !l.path.includes(data.chunks[0])), 'the stored chunk is not fetched again');
 });
 
-await test('a map asked for during the background download goes first', async () => {
-  const prof = profile();
+await test('no storage at all (private window): memory only, says why, still plays', async () => {
+  const prof = profile({ opfs: false });
+  prof.caches.open = async () => { throw new DOMException('The operation is insecure.', 'SecurityError'); };
   const host = makeProfiles({ web: { files: splitFiles(), defaultMap: 'stormkeep' } });
-  const p = loadPage(prof, host, { search: '?allmaps=1' });
-  await firstVisit(p);
-  const dance = fileOf(host, 'maps-dance.pk3');
-  let stall = true;
-  host.hold = (h, off) => stall && h === dance.chunks[0] && off >= 1;
-  p.page.state.started = true;
-  p.context.Module.xt.needMap('stormkeep', 'map "stormkeep"');
-  await until(() => p.commands.length === 1, 'stormkeep');
-  p.context.Module.xt.needMap('stormkeep', 'map "stormkeep"');
-  await until(() => p.page.maps.bgController, 'background on dance');
-  host.log.length = 0;
-  p.context.Module.xt.needMap('boil', 'map "boil"');
-  await until(() => p.commands.length === 2, 'boil runs while dance is still stalled');
-  assert.equal(p.commands[1], 'fs_rescan\nmap "boil"');
-  assert.equal(p.page.maps.bgPaused, false, 'background resumes after');
-  stall = false;
-  await until(() => p.page.maps.bgDone, 'background done');
+  const p = loadPage(prof, host);
+  await until(() => p.shown.includes('xt-download'), 'dialog');
+  assert.equal(p.page.state.store, 'memory');
+  assert.match(p.element('xt-dl-reason').textContent, /downloads on every visit/);
+  p.element('xt-dl-go').onclick();
+  await ready(p, 'ready');
+  await until(() => p.context.__started, 'plays');
 });
 
 await test('profile by GPU: ASTC gets the slim set, others the standard one; the choice is kept', async () => {

@@ -584,6 +584,13 @@ static void em_web_maps_f(cmd_state_t *cmd)
 	}
 }
 
+static void em_web_storage_f(cmd_state_t *cmd)
+{
+	char *said = js_MapsCommand("storage");
+	if (said)
+		free(said);
+}
+
 static void em_hook_maps_f(cmd_state_t *cmd)
 {
 	if (xt_web_hook_maps() != 2)
@@ -597,7 +604,8 @@ void Sys_EM_Register_Commands(void)
 	// execute (so before a +map on the command line).
 	Cmd_AddCommand(CF_SHARED, "_xt_web_hook_maps", em_hook_maps_f, "wrap map/changelevel to fetch maps on demand (web only)");
 	Cbuf_AddText(cmd_local, "_xt_web_hook_maps\n");
-	Cmd_AddCommand(CF_CLIENT, "web_maps", em_web_maps_f, "web: background download of the other maps: pause, resume or status");
+	Cmd_AddCommand(CF_CLIENT, "web_maps", em_web_maps_f, "web: how much of the game data is stored");
+	Cmd_AddCommand(CF_CLIENT, "web_storage", em_web_storage_f, "web: open the page's Storage and settings popover");
 #ifdef WASM_USER_ADJUSTABLE
 	Cmd_AddCommand(CF_SHARED, "em_ls", em_listfiles_f, "Lists Files in specified directory defaulting to the current working directory (Emscripten Only)");
 	Cmd_AddCommand(CF_SHARED, "em_upload", em_upload_f, "Upload file to specified directory defaulting to basedir (Emscripten Only)");

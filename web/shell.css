@@ -1,16 +1,66 @@
-/* Loader and page chrome. Matches the Android boot screen (BootActivity):
-   black, the GODNOTIC banner, one centred column, large type, pill buttons. */
+/* The page around the game, in the style of a libadwaita app (the Linux
+   native Godnotic app): Adwaita's named colours as custom properties, light
+   and dark from prefers-color-scheme, the system accent where the browser
+   has AccentColor, a header bar, a clamp, boxed lists, pill buttons, status
+   pages, toasts. Plain CSS, no framework. The game canvas stays black. */
 :root {
-  --bg: #000;
-  --text: #f2f4f8;
-  --dim: #b4bac6;
-  --line: #3a4558;
-  --pill: #273040;
-  --track: #2a3342;
-  --accent: #3584e4;
-  --warn: #ffc870;
-  --err: #ff8a80;
-  color-scheme: dark;
+  /* libadwaita 1.6 named colours, light */
+  --accent-bg: #3584e4;
+  --accent-fg: #ffffff;
+  --accent: #0461be;
+  --destructive-bg: #e01b24;
+  --destructive: #c30000;
+  --warning: #9c6e03;
+  --error: #c30000;
+  --window-bg: #fafafb;
+  --window-fg: rgba(0, 0, 6, .8);
+  --headerbar-bg: #ffffff;
+  --headerbar-fg: rgba(0, 0, 6, .8);
+  --headerbar-shade: rgba(0, 0, 6, .12);
+  --card-bg: #ffffff;
+  --card-shade: rgba(0, 0, 6, .07);
+  --popover-bg: #ffffff;
+  --dim: .55;
+  --border: rgba(0, 0, 6, .15);
+  --button-bg: rgba(0, 0, 6, .08);
+  --button-hover: rgba(0, 0, 6, .12);
+  --trough: rgba(0, 0, 6, .12);
+  --toast-bg: rgba(46, 46, 50, .95);
+  --focus: rgba(53, 132, 228, .5);
+  --radius-card: 12px;
+  --radius-button: 6px;
+  --target: 34px;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: #81d0ff;
+    --destructive: #ff938c;
+    --warning: #ffc252;
+    --error: #ff938c;
+    --window-bg: #222226;
+    --window-fg: #ffffff;
+    --headerbar-bg: #2e2e32;
+    --headerbar-fg: #ffffff;
+    --headerbar-shade: rgba(0, 0, 6, .36);
+    --card-bg: rgba(255, 255, 255, .08);
+    --card-shade: rgba(0, 0, 6, .36);
+    --popover-bg: #36363a;
+    --border: rgba(255, 255, 255, .15);
+    --button-bg: rgba(255, 255, 255, .1);
+    --button-hover: rgba(255, 255, 255, .15);
+    --trough: rgba(255, 255, 255, .15);
+    --toast-bg: rgba(18, 18, 20, .95);
+  }
+}
+/* The system accent where the browser offers it (Firefox, Safari);
+   Chromium keeps Adwaita blue. */
+@supports (color: AccentColor) {
+  :root { --accent-bg: AccentColor; --accent-fg: AccentColorText; --accent: AccentColor; }
+}
+/* Touch screens: larger targets. */
+@media (pointer: coarse) {
+  :root { --target: 44px; }
 }
 
 * { box-sizing: border-box; }
@@ -18,9 +68,9 @@
 html, body {
   margin: 0;
   height: 100%;
-  background: var(--bg);
-  color: var(--text);
-  font: 18px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #000;
+  color: var(--window-fg);
+  font: 15px/1.5 "Adwaita Sans", Cantarell, Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   overflow: hidden;
   overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
@@ -58,154 +108,308 @@ html, body {
   pointer-events: none;
 }
 
+/* ---------------------------------------------------------------- window */
+
 #xt-overlay {
   position: fixed;
   inset: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  /* "safe center": centred, but never cut off at the top when taller than
-     the screen (a phone in landscape). */
-  justify-content: safe center;
-  padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
-           max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
-  background: var(--bg);
+  background: var(--window-bg);
   overflow-y: auto;
   z-index: 10;
   -webkit-user-select: text;
   user-select: text;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 #xt-overlay.xt-gone { display: none; }
+/* A returning visitor: the hero alone, on black, until the game takes over. */
+#xt-overlay.xt-splash { background: #000; justify-content: center; }
+#xt-overlay.xt-splash .adw-headerbar,
+#xt-overlay.xt-splash .xt-foot { display: none; }
+#xt-overlay.xt-splash .xt-hero img { box-shadow: none; }
 
-.xt-col {
-  width: min(560px, 100%);
-  text-align: center;
-}
-
-.xt-banner { margin: 0 auto 20px; width: min(440px, 86%); }
-.xt-banner img { display: block; width: 100%; height: auto; }
-
-.xt-panel { margin: 0 0 18px; }
-.xt-panel[hidden], .xt-storage[hidden] { display: none; }
-.xt-title { margin: 0 0 10px; font-size: 1.5rem; font-weight: 600; line-height: 1.25; }
-.xt-detail { margin: 0 0 12px; color: var(--dim); font-size: 1rem; }
-.xt-detail strong { color: var(--text); font-weight: 600; }
-.xt-small { font-size: .875rem; color: var(--dim); margin: 6px 0; }
-.xt-err { color: var(--err); white-space: pre-wrap; text-align: left; font-size: .875rem;
-  max-height: 40vh; overflow: auto; -webkit-user-select: text; user-select: text; }
-.xt-warn { color: var(--warn); }
-.xt-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-
-.xt-percent { margin: 4px 0 8px; font-size: 2.25rem; font-weight: 600; font-variant-numeric: tabular-nums; }
-
-.xt-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 14px; }
-
-.xt-btn {
-  appearance: none;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--pill);
-  color: #fff;
-  font: inherit;
-  font-size: 1.05rem;
-  font-weight: 600;
-  padding: 12px 28px;
-  min-height: 48px;
-  min-width: 132px;
-  cursor: pointer;
-}
-.xt-btn.xt-primary { background: var(--accent); border-color: var(--accent); }
-.xt-btn:hover { filter: brightness(1.12); }
-.xt-btn:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
-.xt-btn:disabled { opacity: .5; cursor: default; filter: none; }
-.xt-btn[hidden] { display: none; }
-.xt-play { min-width: min(320px, 100%); font-size: 1.35rem; padding: 14px 36px; }
-.xt-small-btn { font-size: .9rem; min-height: 44px; min-width: 0; padding: 8px 18px; }
-
-.xt-check, .xt-row {
+.adw-headerbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  min-height: 44px;
-  margin: 4px 0;
-  cursor: pointer;
+  min-height: 47px;
+  padding: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) 6px max(6px, env(safe-area-inset-left));
+  background: var(--headerbar-bg);
+  color: var(--headerbar-fg);
+  box-shadow: inset 0 -1px var(--headerbar-shade);
 }
-.xt-check[hidden] { display: none; }
-.xt-row { justify-content: space-between; text-align: left; }
-.xt-check input { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
-.xt-check input:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
-select {
-  font: inherit;
-  font-size: .95rem;
-  color: var(--text);
-  background: var(--pill);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 8px 10px;
-  min-height: 44px;
-}
-select:focus-visible, summary:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.adw-headerbar-title { font-weight: 700; }
+.adw-headerbar .adw-icon { position: absolute; right: max(6px, env(safe-area-inset-right)); }
 
-.xt-bar {
-  height: 10px;
-  border-radius: 5px;
-  background: var(--track);
+.adw-clamp {
+  width: min(600px, 100%);
+  margin: 0 auto;
+  padding: 24px 12px 12px;
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+#xt-overlay.xt-splash .adw-clamp { flex: 0 0 auto; }
+
+.xt-hero { margin: 0; }
+.xt-hero img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-card);
+  background: #000;
+  box-shadow: 0 0 0 1px var(--card-shade), 0 2px 6px var(--card-shade);
+}
+
+/* -------------------------------------------------------------- typography */
+
+.adw-title-1 { font-size: 1.85rem; font-weight: 800; line-height: 1.2; margin: 0; }
+.adw-title-2 { font-size: 1.5rem; font-weight: 800; line-height: 1.25; margin: 0; }
+.adw-heading { font-weight: 700; margin: 0; }
+.adw-body { margin: 0; }
+.adw-body[hidden], .adw-caption[hidden] { display: none; }
+.adw-caption { font-size: .82rem; margin: 0; }
+.adw-numeric { font-variant-numeric: tabular-nums; font-size: 2rem; font-weight: 800; margin: 0; }
+.dim { opacity: var(--dim); }
+.adw-warning { color: var(--warning); }
+.xt-err { color: var(--error); white-space: pre-wrap; text-align: left; font-size: .85rem;
+  max-height: 40vh; overflow: auto; -webkit-user-select: text; user-select: text; width: 100%; }
+.xt-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ----------------------------------------------------------- status pages */
+
+.adw-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  padding: 12px 0;
+}
+.adw-status[hidden] { display: none; }
+.adw-status-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 2rem;
+  font-weight: 800;
+}
+.adw-error-icon { background: var(--destructive-bg); color: #fff; }
+
+.adw-spinner {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 3px solid var(--trough);
+  border-top-color: var(--window-fg);
+  animation: adw-spin 1s linear infinite;
+}
+@keyframes adw-spin { to { transform: rotate(1turn); } }
+
+/* ----------------------------------------------------------------- buttons */
+
+.adw-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 6px; }
+.adw-buttons-start { justify-content: flex-start; margin-top: 12px; }
+
+.adw-btn {
+  appearance: none;
+  border: 0;
+  border-radius: var(--radius-button);
+  background: var(--button-bg);
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  min-height: var(--target);
+  padding: 5px 17px;
+  cursor: pointer;
+  transition: background-color .2s;
+}
+.adw-btn:hover { background: var(--button-hover); }
+.adw-btn:active { filter: brightness(.9); }
+.adw-btn:disabled { opacity: .5; cursor: default; }
+.adw-btn[hidden] { display: none; }
+.adw-btn.adw-pill { border-radius: 9999px; padding: 10px 32px; min-height: 44px; }
+.adw-btn.adw-suggested { background: var(--accent-bg); color: var(--accent-fg); }
+.adw-btn.adw-suggested:hover { filter: brightness(1.08); }
+.adw-btn.adw-destructive { color: var(--destructive); }
+.adw-btn.adw-flat { background: transparent; }
+.adw-btn.adw-flat:hover { background: var(--button-hover); }
+.adw-btn.adw-icon { padding: 0; width: var(--target); display: grid; place-items: center; }
+.xt-play { min-width: min(280px, 100%); font-size: 1.15rem; }
+
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* -------------------------------------------------------------- progress */
+
+.adw-progress {
+  width: 100%;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--trough);
   overflow: hidden;
 }
-#xt-bar-fill {
+.adw-progress > div {
   height: 100%;
   width: 0;
-  background: var(--accent);
+  border-radius: inherit;
+  background: var(--accent-bg);
   transition: width .25s linear;
 }
-.xt-paused #xt-bar-fill { background: var(--dim); }
+.xt-paused .adw-progress > div { background: var(--window-fg); opacity: .4; }
 
-.xt-storage { margin: 0 0 14px; }
+/* ------------------------------------------------------------- popover */
 
-.xt-more { margin-top: 6px; border-top: 1px solid var(--pill); padding-top: 10px; color: var(--dim); font-size: .95rem; text-align: left; }
-.xt-more summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; justify-content: center; }
-.xt-more[open] summary { margin-bottom: 8px; }
-
-.xt-foot {
-  margin-top: 16px;
-  color: #7d8594;
-  font-size: .75rem;
-  text-align: center;
-  max-width: 560px;
+/* GtkPopover: a rounded sheet with an arrow, anchored under the header
+   bar's menu button (top right over the game). Scrolls when the screen is
+   short; never wider than the screen. */
+.adw-popover {
+  position: fixed;
+  top: calc(max(6px, env(safe-area-inset-top)) + 47px);
+  right: max(8px, env(safe-area-inset-right));
+  z-index: 40;
+  width: min(360px, calc(100vw - 16px));
+  max-height: calc(100dvh - 72px);
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--popover-bg);
+  color: var(--window-fg);
+  border-radius: var(--radius-card);
+  box-shadow: 0 0 0 1px var(--card-shade), 0 2px 8px 2px rgba(0, 0, 0, .25);
+  font-size: .93rem;
+  -webkit-user-select: text;
+  user-select: text;
 }
+.adw-popover::before {
+  content: "";
+  position: fixed;
+  top: calc(max(6px, env(safe-area-inset-top)) + 41px);
+  right: calc(max(6px, env(safe-area-inset-right)) + 11px);
+  border: 6px solid transparent;
+  border-bottom-color: var(--popover-bg);
+}
+.adw-popover[hidden] { display: none; }
+.adw-popover .adw-boxed-list { background: transparent; box-shadow: 0 0 0 1px var(--border); }
+.adw-popover .adw-row { min-height: 40px; padding: 6px 10px; }
+.adw-popover .adw-group-title { margin-bottom: 8px; font-size: .93rem; }
+.adw-popover .adw-buttons-start { margin-top: 8px; gap: 8px; }
 
-#xt-toast {
+/* ----------------------------------------------- preferences groups, rows */
+
+.adw-group-title { font-size: 1rem; font-weight: 700; margin: 0 0 12px; }
+.adw-boxed-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--card-bg);
+  border-radius: var(--radius-card);
+  box-shadow: 0 0 0 1px var(--card-shade), 0 1px 3px 1px var(--card-shade);
+  overflow: hidden;
+}
+.adw-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 50px;
+  padding: 8px 12px;
+  box-shadow: inset 0 -1px var(--border);
+}
+.adw-row:last-child { box-shadow: none; }
+.adw-row[hidden] { display: none; }
+.adw-row-title { flex: none; }
+.adw-row-value { opacity: var(--dim); text-align: right; overflow-wrap: anywhere; }
+.adw-row-wrap { align-items: flex-start; }
+
+.adw-dropdown {
+  font: inherit;
+  color: inherit;
+  background: var(--button-bg);
+  border: 0;
+  border-radius: var(--radius-button);
+  min-height: var(--target);
+  padding: 4px 10px;
+}
+.adw-dropdown option { background: var(--popover-bg); color: var(--window-fg); }
+
+/* A GtkSwitch. */
+.adw-switch {
+  appearance: none;
+  flex: none;
+  width: 48px;
+  height: 26px;
+  border-radius: 9999px;
+  background: var(--trough);
+  position: relative;
+  cursor: pointer;
+  transition: background-color .2s;
+  margin: 0;
+}
+.adw-switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, .2);
+  transition: transform .2s;
+}
+.adw-switch:checked { background: var(--accent-bg); }
+.adw-switch:checked::after { transform: translateX(22px); }
+
+.xt-foot { text-align: center; padding: 12px 12px 18px; }
+
+/* ------------------------------------------------------------------ toast */
+
+.adw-toast {
   position: fixed;
   left: 50%;
-  top: max(12px, env(safe-area-inset-top));
+  bottom: max(24px, env(safe-area-inset-bottom));
   transform: translateX(-50%);
-  max-width: calc(100vw - 32px);
-  background: rgba(20, 24, 32, .94);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 10px 16px;
-  font-size: .9rem;
+  max-width: calc(100vw - 24px);
+  background: var(--toast-bg);
+  color: #fff;
+  border-radius: 9999px;
+  padding: 10px 20px;
+  font-weight: 600;
   z-index: 30;
   pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
 }
+.adw-toast[hidden] { display: none; }
 
-/* Maps on demand: a card over the game while a map's pack downloads. */
+/* A card over the game while a missing map's pack downloads. */
+.adw-card {
+  background: var(--popover-bg);
+  color: var(--window-fg);
+  border-radius: var(--radius-card);
+  box-shadow: 0 0 0 1px var(--card-shade), 0 4px 16px rgba(0, 0, 0, .35);
+}
 .xt-map {
   position: fixed;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: min(420px, calc(100vw - 32px));
-  box-sizing: border-box;
-  margin: 0;
-  padding: 16px 20px;
-  background: rgba(14, 17, 24, .96);
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  width: min(400px, calc(100vw - 24px));
+  padding: 18px 20px;
   z-index: 25;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
-#xt-map-fill { height: 100%; width: 0; background: var(--accent, #4aa3ff); border-radius: inherit; }
+.xt-map[hidden] { display: none; }
 
 #xt-rotate {
   position: fixed;
@@ -216,7 +420,7 @@ select:focus-visible, summary:focus-visible { outline: 3px solid #fff; outline-o
   align-items: center;
   justify-content: center;
   gap: 18px;
-  background: var(--bg);
+  background: var(--window-bg);
   text-align: center;
   padding: 24px;
 }
@@ -224,7 +428,7 @@ select:focus-visible, summary:focus-visible { outline: 3px solid #fff; outline-o
 .xt-rotate-icon {
   width: 46px;
   height: 78px;
-  border: 3px solid var(--text);
+  border: 3px solid var(--window-fg);
   border-radius: 9px;
   animation: xt-rotate 2.2s ease-in-out infinite;
 }
@@ -233,19 +437,16 @@ select:focus-visible, summary:focus-visible { outline: 3px solid #fff; outline-o
   55%, 100% { transform: rotate(-90deg); }
 }
 
-/* Phones in landscape: a short screen. Smaller banner and type, no wasted
-   rows, everything still reachable by scrolling. */
+/* Phones in landscape: a short screen. */
 @media (max-height: 520px) {
-  html, body { font-size: 16px; }
-  .xt-banner { width: min(260px, 50%); margin-bottom: 10px; }
-  .xt-title { font-size: 1.25rem; margin-bottom: 6px; }
-  .xt-percent { font-size: 1.75rem; margin: 0 0 4px; }
-  .xt-panel { margin-bottom: 10px; }
-  .xt-buttons { margin-top: 8px; }
+  .adw-clamp { padding-top: 12px; gap: 12px; }
+  .xt-hero img { max-height: 28vh; width: auto; margin: 0 auto; }
+  .adw-title-1 { font-size: 1.4rem; }
+  .adw-numeric { font-size: 1.5rem; }
   .xt-foot { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .xt-rotate-icon { animation: none; transform: rotate(-90deg); }
-  #xt-bar-fill { transition: none; }
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+  .xt-rotate-icon { transform: rotate(-90deg); }
 }

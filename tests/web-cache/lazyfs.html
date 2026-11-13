@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>lazyfs test</title>
+<!-- Run in a real browser (tests/web-cache/matrix.sh does): window.lazyfsTest()
+     resolves to {ok, checked, retries, error}. Serve the repository root. -->
+<script src="../../web/lazyfs.js"></script>
+<script>
+window.lazyfsTest = async () => {
+  const CHUNK = 2 << 20; // 2 MiB chunks here (a multiple of the 1 MiB block)
+  const size = 3 * CHUNK + 12345;
+  const data = new Uint8Array(size);
+  let x = 12345;
+  for (let i = 0; i < size; i++) { x = (x * 1103515245 + 12345) >>> 0; data[i] = x >>> 24; }
+  // Byte order marks where reads start: offset 0 of a chunk, block starts,
+  // and odd places.
+  const boms = [[0xff, 0xfe], [0xfe, 0xff], [0xef, 0xbb, 0xbf]];
+  const at = [CHUNK, CHUNK + (1 << 20), 7, 4096, 2 * CHUNK + 3, 3 * CHUNK];
+  at.forEach((o, i) => data.set(boms[i % 3], o));
+  const blobs = [];
+  for (let o = 0; o < size; o += CHUNK) blobs.push(new Blob([data.slice(o, o + CHUNK)]));
+  // A stand-in for Emscripten's FS: what create() uses.
+  const nodes = {};
+  const FS = {
+    mkdir() {},
+    createFile(dir, name) { const n = { stream_ops: {} }; nodes[dir + '/' + name] = n; return n; },
+    ErrnoError: function (e) { this.errno = e; },
+  };
+  if (!(await XTLazyFS.probe(blobs[0]))) return { ok: false, error: 'probe failed: no synchronous ranged reads here' };
+  const node = XTLazyFS.create(FS, '/t/file.pk3', size, blobs, CHUNK);
+  const heap = new Int8Array(4 << 20);
+  const reads = [];
+  for (const o of at) reads.push([o, 64], [o - 1, 16], [o, 2 << 20]);
+  for (let i = 0; i < 300; i++) { const o = Math.floor(Math.random() * size); reads.push([o, 1 + Math.floor(Math.random() * 300000)]); }
+  let checked = 0;
+  for (const [o, n0] of reads) {
+    if (o < 0 || o >= size) continue;
+    const n = node.stream_ops.read({ node }, heap, 100, n0, o);
+    const want = data.subarray(o, o + n0);
+    if (n !== want.length) return { ok: false, error: `read ${n0} at ${o}: got ${n} bytes` };
+    const got = new Uint8Array(heap.buffer, 100, n);
+    for (let i = 0; i < n; i++) if (got[i] !== want[i]) return { ok: false, error: `byte ${o + i} differs` };
+    checked += n;
+  }
+  return { ok: true, checked, retries: XTLazyFS.stats.retries || 0 };
+};
+</script>

@@ -361,8 +361,8 @@ def summary(name, path):
     by = {}
     for f in m['files']:
         by[f['group']] = by.get(f['group'], 0) + f['size']
-    first = by.get('core', 0) + sum(f['size'] for f in m['files'] if f.get('map') == DEFAULT_MAP)
-    return f"{name}: " + ', '.join(f'{g} {v/1e6:.0f} MB' for g, v in sorted(by.items())) + f"; first play {first/1e6:.0f} MB"
+    first = sum(f["size"] for f in m["files"] if f.get("hosted", True))
+    return f"{name}: " + ', '.join(f'{g} {v/1e6:.0f} MB' for g, v in sorted(by.items())) + f"; one download {first/1e6:.0f} MB"
 blobs = os.listdir(os.path.join(out, 'blobs'))
 for name, p in profiles.items():
     print(summary(name, p['manifest']) + f" ({p['manifest']})")

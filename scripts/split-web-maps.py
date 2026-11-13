@@ -12,9 +12,9 @@ maps pk3's name without ".pk3":
                              what the game itself names, and every
                              untraced file that is not a texture, model or
                              sound; plus each map's stand-ins, so the menu
-                             lists maps not downloaded yet: the .mapinfo
-                             with " (download N MB)" after its title, the
-                             level shot, and an empty maps/<map>.bsp
+                             lists maps whose pack is not mounted: the
+                             .mapinfo, the level shot, and an empty
+                             maps/<map>.bsp
   OUTDIR/<stem>-<map>.pk3    one per map: the .bsp, lightmaps, real
                              .mapinfo, waypoints, radar image, and every
                              texture, model and sound only that map uses
@@ -425,15 +425,11 @@ def main():
         size = write_pack(os.path.join(outdir, pack_name), entries)
         written[pack_name] = size
         result['maps'][name] = {'pack': pack_name, 'size': size}
-        mi = 'maps/' + name + '.mapinfo'
-        if mi in maps.by_name:
-            text = file_bytes(maps.by_name[mi]).decode('utf-8', 'replace')
-            mb = max(1, round(size / 1e6))
-            if re.search(r'^title[ \t]', text, re.M):
-                text = re.sub(r'^(title[ \t]+)(.*)$', lambda m: f'{m.group(1)}{m.group(2).rstrip()} (download {mb} MB)', text, count=1, flags=re.M)
-            else:
-                text = f'title {name} (download {mb} MB)\n' + text
-            index_entries.append((mi, None, None, text.encode('utf-8')))
+        # The real .mapinfo in the core too: the menu lists the map with its
+        # own title whether or not its pack is mounted.
+        mi = maps.by_name.get('maps/' + name + '.mapinfo')
+        if mi:
+            index_entries.append((mi.filename, mi, maps.raw(mi), None))
         index_entries.append(('maps/' + name + '.bsp', None, None, b''))
         for ext in ('.jpg', '.png', '.tga'):
             shot = maps.by_name.get('maps/' + name + ext)

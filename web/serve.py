@@ -8,9 +8,8 @@ keyboard lock and wake lock on secure origins; http://localhost counts as
 one. To test on a phone on the same network, put the bundle behind https
 (any static host or a local reverse proxy with a certificate).
 
-Headers follow vercel.json: content-addressed paths (a/, data/blobs/,
-data/m/) are immutable, everything else "no-cache", so a rebuild shows up on
-the next reload. Byte ranges are answered (206), as on Vercel: the page
+Headers are vercel.json's, read from it (Cache-Control, CORS on data/,
+the blobs' content type), and nothing else: no COOP/COEP, as on Vercel. Byte ranges are answered (206), as on Vercel: the page
 resumes a cut-off chunk download with one. XT_SERVE_LOG=FILE appends every
 request ("METHOD path status bytes") to FILE, for tests that count requests.
 """
@@ -23,6 +22,35 @@ import sys
 import time
 
 IMMUTABLE = re.compile(r"^/(a/|data/blobs/|data/m/)")
+VERCEL_JSON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "vercel.json")
+
+
+def _vercel_rules():
+    """vercel.json's "headers": (regex, [(key, value)]) in file order. Its
+    sources are path-to-regexp patterns; the ones used here ("/(.*)",
+    "/data/(.*)", "/(a|data/blobs|data/m)/(.*)") are regexes as written."""
+    import json
+    try:
+        with open(VERCEL_JSON) as f:
+            rules = json.load(f).get("headers", [])
+    except OSError:
+        rules = [{"source": "/(.*)", "headers": [{"key": "Cache-Control", "value": "no-cache"}]},
+                 {"source": "/(a|data/blobs|data/m)/(.*)", "headers": [{"key": "Cache-Control", "value": "public, max-age=31536000, immutable"}]}]
+    return [(re.compile("^" + r["source"] + "$"), [(h["key"], h["value"]) for h in r["headers"]]) for r in rules]
+
+
+RULES = _vercel_rules()
+
+
+def vercel_headers(path):
+    """The headers Vercel sends for this path: every matching rule, a later
+    rule replacing an earlier one's key (as Vercel does)."""
+    out = {}
+    for rx, headers in RULES:
+        if rx.match(path):
+            for k, v in headers:
+                out[k.lower()] = (k, v)
+    return list(out.values())
 
 TYPES = {
     ".wasm": "application/wasm",
@@ -40,26 +68,41 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def end_headers(self):
         path = self.path.split("?", 1)[0]
-        if IMMUTABLE.match(path):
-            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
-        else:
-            self.send_header("Cache-Control", "no-cache")
+        for key, value in vercel_headers(path):
+            if key.lower() == "content-type":
+                continue  # set with the body, below
+            self.send_header(key, value)
         self.send_header("Accept-Ranges", "bytes")
-        # Not needed today (no threads), but keeps SharedArrayBuffer available
-        # if the engine is ever built with -pthread.
-        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
-        self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
-        if path.startswith("/data/"):
-            # As on Vercel: a shell copy of the page on another origin (see
-            # stage-web-data.sh --shell) reads the stock pk3s from here.
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Expose-Headers", "Content-Range, Content-Length, Accept-Ranges")
-            self.send_header("Cross-Origin-Resource-Policy", "cross-origin")
-        else:
-            self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        etag = getattr(self, "_etag", None)
+        if etag:
+            self.send_header("ETag", etag)
+            self._etag = None
         super().end_headers()
 
+    def guess_type(self, path):
+        url = getattr(self, "path", "").split("?", 1)[0]
+        for key, value in vercel_headers(url):
+            if key.lower() == "content-type":
+                return value
+        return super().guess_type(path)
+
     def send_head(self):
+        # Revalidation by content (ETag), as Vercel does, not by modification
+        # time: a build copied with its old timestamps must not answer 304
+        # to a page from a newer one.
+        path = self.translate_path(self.path)
+        if os.path.isfile(path) and not IMMUTABLE.match(self.path.split("?", 1)[0]):
+            import hashlib
+            with open(path, "rb") as f:
+                etag = '"' + hashlib.sha1(f.read()).hexdigest() + '"'
+            if "If-Modified-Since" in self.headers:
+                del self.headers["If-Modified-Since"]
+            if self.headers.get("If-None-Match") == etag:
+                self.send_response(304)
+                self.send_header("ETag", etag)
+                self.end_headers()
+                return None
+            self._etag = etag
         rng = self.headers.get("Range")
         m = re.fullmatch(r"bytes=(\d+)-(\d*)", rng or "")
         path = self.translate_path(self.path)
@@ -74,7 +117,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             return None
         f = open(path, "rb")
-        f.seek(start)
+        f.seek(start)  # (a range of a whole file: answered by any build)
         self.send_response(206)
         self.send_header("Content-Type", self.guess_type(path))
         self.send_header("Content-Range", f"bytes {start}-{end}/{size}")

@@ -2,13 +2,17 @@
 //
 //   node tests/web-cache/e2e.mjs --chrome PATH --url URL --profile DIR [--label NAME]
 //        [--no-click] [--timeout SEC] [--throttle-bps N] [--latency MS] [--stop-after-bytes N]
-//        [--map NAME] [--map2 NAME] [--bots N] [--settle SEC]
+//        [--map NAME] [--map2 NAME] [--expect-fetch] [--bots N] [--settle SEC]
 //
 // --map: once the menu is up, start a bot match on NAME ("map NAME" from
 // the console, bot_number N, default 4) and wait until it is playable (the
 // client QuakeC loaded, then 3 s of frames). --map2: then change to a second
 // map the same way (a map not downloaded yet: maps on demand fetches its
-// pack first). Each step's time, data bytes and peak heap go in the JSON.
+// pack first; --expect-fetch fails the run when it needed none). Each
+// step's time, data bytes and peak heap go in the JSON. A map change on
+// demand, from a fresh profile:
+//   tests/web-cache/e2e.sh /tmp/p 'http://localhost:8080/?autoplay&allmaps=0' first \
+//       --map stormkeep --map2 dance --expect-fetch
 //
 // Opens URL in a Chrome profile kept in DIR (so a second run is a reload with
 // the same storage), clicks Download if the page asks, waits until the game's
@@ -182,7 +186,7 @@ while (!done && Date.now() - t0 < timeout) {
   }
   if (s.ready) note('ready');
   if (s.gone) note('playing');
-  if (s.menu) { note('menu'); out.tail = s.tail; out.timing = s.timing; done = true; }
+  if (s.menu) { note('menu'); out.tail = s.tail; out.timing = s.timing; done = true; console.error(`${(Date.now() - t0) / 1000}s: menu`); }
   await heap();
 }
 if (!done && !out.error && !stopped) out.error = 'timeout';
@@ -201,6 +205,7 @@ if (done) {
 
 // Start a match on `name` and wait until it is playable.
 const playMap = async (name, key) => {
+  console.error(`${(Date.now() - t0) / 1000}s: ${key} ${name}`);
   const before = dataBytes;
   // Lines so far (pages before state.logLines: the log's length, which
   // stops growing at 200).
@@ -213,7 +218,7 @@ const playMap = async (name, key) => {
     await sleep(200);
     const s = await evaluate(`(() => { const l = xt.log(); const fresh = Math.min(l.length, (xt.state.logLines || l.length) - ${lines0}); return { loaded: l.slice(l.length - fresh).some((x) => /client: program loaded|CSQC.*loaded/i.test(x)),
       failed: !document.getElementById('xt-error').hidden, err: document.getElementById('xt-error-text').textContent,
-      fetching: !document.getElementById('xt-map').hidden, tail: l.slice(-4) }; })()`);
+      fetching: !!document.getElementById('xt-map') && !document.getElementById('xt-map').hidden, tail: l.slice(-4) }; })()`);
     await heap();
     if (!s || s.error) continue;
     if (s.fetching && !fetched) { fetched = true; out.events[key + '-fetch'] = Date.now() - t0; }
@@ -221,6 +226,7 @@ const playMap = async (name, key) => {
     if (s.loaded) { ok = true; out[key + 'Tail'] = s.tail; break; }
   }
   if (!ok) { out.error = out.error || key + ' timeout'; return; }
+  console.error(`${(Date.now() - t0) / 1000}s: ${key} loaded`);
   out.events[key] = Date.now() - t0;
   out[key + 'Ms'] = Date.now() - t;
   const f = await evaluate('(() => new Promise((r) => { let n = 0; const t = performance.now(); const step = () => { n++; if (performance.now() - t < 3000) requestAnimationFrame(step); else r(n); }; requestAnimationFrame(step); }))()');
@@ -231,6 +237,8 @@ const playMap = async (name, key) => {
 };
 if (done && map1) await playMap(map1, 'map1');
 if (done && map2 && !out.error) await playMap(map2, 'map2');
+// --expect-fetch: the second map must have been downloaded on demand.
+if (done && map2 && flag('expect-fetch') && !out.error && !(out.map2Bytes > 0)) out.error = `${map2} was not fetched on demand`;
 out.peak = peak;
 // --settle SEC: keep playing, then sample again (the page gives read-ahead
 // memory back about 15 s after a load).
@@ -238,6 +246,10 @@ const settle = Number(opt('settle', '0'));
 if (done && settle && !out.error) {
   await sleep(settle * 1000);
   out.settled = await heap();
+  // What is left once the garbage is collected (a phone short of memory
+  // collects it; a desktop may never bother).
+  await send('HeapProfiler.collectGarbage', {}, 20000);
+  out.settledGC = await heap();
   out.settledLazy = await evaluate('window.xt && xt.lazyStats ? (({xhr, ms, cacheBytes}) => ({xhr, ms, cacheBytes}))(xt.lazyStats()) : null');
 }
 out.dataBytes = dataBytes;
@@ -245,4 +257,4 @@ out.blobRequests = requests.filter((r) => /blobs\/|\.part\d\d|\.pk3$|\.cfg$|\.tx
 if (proc) proc.kill('SIGKILL');
 await sleep(300);
 console.log(JSON.stringify(out));
-process.exit(0);
+process.exit(out.error && !stopped ? 1 : 0);
