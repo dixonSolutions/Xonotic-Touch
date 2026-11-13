@@ -113,3 +113,23 @@ void TouchCvar_Init(void)
 {
 	Cvar_RegisterVariable(&touch_cvar_index);
 }
+
+/*
+Cvar_RegisterVariable can find that a "set" already made an allocated cvar of
+the same name (a config line, or the platform, got there before the code that
+owns the cvar registered it). It relinks the list and frees the old cvar, but
+upstream leaves the hash table pointing at the freed one: the next lookup of
+that name by hash reads freed memory. Upstream notes the path as unused,
+because it registers everything before configs run; Touch code that registers
+late reached it (the console button's _touch_safe_insets, set by Android
+first, crashed the menu at its first frame).
+*/
+void TouchCvar_Replaced(cvar_state_t *cvars, cvar_t *old, cvar_t *replacement)
+{
+	int i;
+	cvar_hash_t *hash;
+	for (i = 0; i < CVAR_HASHSIZE; i++)
+		for (hash = cvars->hashtable[i]; hash; hash = hash->next)
+			if (hash->cvar == old)
+				hash->cvar = replacement;
+}

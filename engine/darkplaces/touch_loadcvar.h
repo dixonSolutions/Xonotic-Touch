@@ -9,6 +9,9 @@
 qbool TouchCvar_Link(cvar_t *variable, cvar_state_t *cvars);
 // The list changed other than through TouchCvar_Link.
 void TouchCvar_ListChanged(void);
+// A static cvar took the place of an allocated one of the same name: point the
+// hash entries that still name the old one at its replacement.
+void TouchCvar_Replaced(cvar_state_t *cvars, cvar_t *old, cvar_t *replacement);
 void TouchCvar_Init(void);
 
 #endif

@@ -26,6 +26,8 @@ touch_shell_button: 0 never, 1 menus and console only, 2 also in a match.
 
 // Draws the button (2D overlay pass, last, over the console sheet).
 void TouchShell_Draw(void);
+/** Registers the button's cvars; call at engine start, before configs. */
+void TouchShell_Init(void);
 
 // SDL finger events, before the finger table: true when the finger is the
 // button's and must be kept from everything else. type 0 down, 1 motion,

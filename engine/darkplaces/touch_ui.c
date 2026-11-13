@@ -3,6 +3,7 @@
  */
 #include "quakedef.h"
 #include "touch_ui.h"
+#include "touch_shellbtn.h"
 #include "draw.h"
 #include "ft2.h"
 #include "utf8lib.h"
@@ -252,6 +253,7 @@ void TouchUI_RegisterCvars(void)
 
 void TouchUI_Init(void)
 {
+	TouchShell_Init(); // its cvars have to exist before a config or the platform sets them
 	touchui_tab = TOUCHUI_TAB_KEYS;
 	touchui_layer = TOUCHUI_LAYER_ABC;
 	touchui_typed_mask = 0;

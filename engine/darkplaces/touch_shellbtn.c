@@ -35,6 +35,12 @@ static void ensure_cvars(void)
 	Cvar_RegisterVariable(&touch_shell_chat_sheet);
 }
 
+// At engine start, before any config or platform "set" can create these names.
+void TouchShell_Init(void)
+{
+	ensure_cvars();
+}
+
 static float cv(const char *name, float def)
 {
 	cvar_t *var = Cvar_FindVar(&cvars_all, name, ~0);

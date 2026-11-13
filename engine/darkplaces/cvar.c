@@ -664,6 +664,7 @@ void Cvar_RegisterVariable (cvar_t *variable)
 				current->next = variable;
 			}
 
+			TouchCvar_Replaced(cvars, cvar, variable); // Touch: the hash table still names the old cvar
 			// get rid of old allocated cvar
 			// (but not cvar->string and cvar->defstring, because we kept those)
 			Z_Free((char *)cvar->name);
