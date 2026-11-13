@@ -26,9 +26,9 @@ DATA_ARCHIVE="Godnotic-data-20261107.zip"
 # fails when the asset cannot be fetched or is not the pinned one: a deploy
 # without the profile would move every ASTC browser to the 1 GB set, and a
 # changed asset would make every visitor download it again. "data-slim" is a
-# tag that moves; point this at an immutable one (data-slim-<date>) once
-# Godnotic-data publishes it, and move the pin on purpose.
-SLIM_URL="${XT_SLIM_DATA_ARCHIVE:-https://github.com/dixonSolutions/Godnotic-data/releases/download/data-slim/Godnotic-data.zip}"
+# tag that moves; this pins the immutable copy (data-slim-<date>-<n>).
+# Move the pin on purpose when a new set is published.
+SLIM_URL="${XT_SLIM_DATA_ARCHIVE:-https://github.com/dixonSolutions/Godnotic-data/releases/download/data-slim-20261107-1/Godnotic-data.zip}"
 SLIM_SHA256="${XT_SLIM_DATA_SHA256:-4940b5a49c13a928d447b18c3cf430d0879dbbaf3bc27750ece001877d21dec0}"
 # A prebuilt "web" repack of the stock set (zstd entries, re-encoded JPEGs,
 # DXT kept: repack-phone-assets.py --profile slim --textures keep), for the
