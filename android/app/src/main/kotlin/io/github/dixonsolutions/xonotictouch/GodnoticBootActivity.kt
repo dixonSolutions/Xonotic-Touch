@@ -89,7 +89,15 @@ class GodnoticBootActivity : Activity() {
             if (Thread.currentThread().isInterrupted) return@startWork
             if (!data.assetsMissing()) { post(id) { continueToBoot() }; return@startWork }
             post(id) { status.text = "Checking download"; detail.text = "Getting the game data list" }
-            val found = PackFetch.plan(archiveUrl(), null, "Xonotic/data/")
+            val found = try {
+                PackFetch.plan(archiveUrl(), null, "Xonotic/data/")
+            } catch (e: java.io.IOException) {
+                // A pinned archive that is not published yet, or a mirror that
+                // refuses range requests, must not block setup: the autobuild
+                // carries the same pk3s and is the source Linux downloads from.
+                android.util.Log.w("Godnotic", "Pinned data archive unusable; using the autobuild", e)
+                data.planDownload()
+            }
             post(id) { plan = found; status.text = "Download game data"; updateChoice() }
         }
     }
