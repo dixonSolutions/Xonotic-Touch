@@ -193,8 +193,8 @@ cores):
 | --- | ---: | ---: | ---: | ---: | ---: |
 | official (no nexcompat) | 312.2 | 618.4 | 110.7 | 5.3 | 1046 MB |
 | astc, published 2026-11-13 | 108.2 | 231.1 | 47.1 | 3.4 | 390 MB |
-| astc, with Opus effects | 97.9 | 222.0 | 46.9 | 3.4 | **370 MB** |
-| dxt | 270.5 | 521.3 | 46.9 | 4.6 | **843 MB** |
+| astc, with Opus effects | 99.3 | 222.9 | 46.9 | 3.4 | **372.6 MB** |
+| dxt | 271.9 | 522.3 | 46.9 | 4.6 | **845.7 MB** |
 
 ### Sound effects (`--sfx opus`)
 
@@ -210,8 +210,8 @@ source as libvorbisfile decodes it:
 - a loop's seam no worse than 3 dB over the error inside it.
 
 A sound no rung passes, or where Opus is not a tenth smaller, stays Vorbis.
-On the 20261107 set 655 effects became Opus (29.7 -> 14.9 MB), 147 stayed
-Vorbis; `phone-sfx.tsv` lists every file with its rung and margins. Stereo
+On the 20261107 set 625 effects became Opus (24.2 -> 11.9 MB), 177 stayed
+Vorbis (all effects 36.5 -> 24.1 MB); `phone-sfx.tsv` lists every file with its rung and margins. Stereo
 whose side channel is 30 dB under the mid becomes mono (32 files): the mixer
 plays an L == R stereo sound exactly as the mono one.
 
@@ -240,8 +240,12 @@ With every effect as Opus that put 0.7-1.4 s of decoding into a stormkeep or
 erbium load on a desktop (4 cores; sound phase 70-190 ms with the published
 set), several seconds on a tablet. So `--sfx-precache-kib 48` keeps Vorbis
 for an effect whose Opus file would be over 48 KiB and that is short enough
-to be decoded whole (30 files, 2.5 MB more); set it to 0 once the engine
-decodes Opus on its worker threads too.
+to be decoded whole (35 files, 2.5 MB more); set it to 0 once the engine
+decodes Opus on its worker threads too. With that, the sound phase of the
+same loads is 136-196 ms (one outlier 321 ms) against 92-137 ms for the
+published set, three runs each, and the whole load did not get slower beyond
+run-to-run noise (stormkeep 3.1-3.5 s vs 4.0-4.9 s, erbium 4.6-5.2 s vs
+6.0-6.9 s, same order of runs).
 
 ### Split set (`scripts/split-data-packs.py`)
 
@@ -249,16 +253,16 @@ The download is cut so a client can play after a small part of it:
 
 | pack | astc | dxt | what |
 | --- | ---: | ---: | --- |
-| core | 63.3 MB | 203.3 MB | what the menu and any match opened (all but ~0.5 MB is opened by every match: the QuakeC precaches every registered model and sound), all 2D pictures of the menu and HUD skins in use (`--skins luma`; drawn on demand, so a trace misses rare ones), every mapinfo, level shot and shader script, fonts, xoncompat |
-| map-stormkeep + its shared packs | 10.3 MB | 24.6 MB | the first map |
+| core | 64.2 MB | 203.9 MB | what the menu and any match opened (all but ~0.5 MB is opened by every match: the QuakeC precaches every registered model and sound), all 2D pictures of the menu and HUD skins in use (`--skins luma`; drawn on demand, so a trace misses rare ones), every mapinfo, level shot and shader script, fonts, xoncompat |
+| map-stormkeep + its shared packs | 10.4 MB | 25.7 MB | the first map |
 | 30 other maps | 0.7-15.5 MB own | | bsp, lightmaps, waypoints, what only that map opened |
 | shared-N | ~40 packs | | files several maps opened, grouped by which maps use them |
 | music | 46.9 MB | 46.9 MB | the music pack, whole; fetched right after the first map |
 | detail | 7.5 MB | 7.5 MB | player LOD meshes (the QuakeC uses them only if they exist) |
-| extras | 83.7 MB | 265 MB | what no traced run opened: stock texture sets no stock map uses (community maps do), other HUD/menu skins, overkill models, the official progs (the apps ship their own) |
+| extras | 84.6 MB | 266 MB | what no traced run opened: stock texture sets no stock map uses (community maps do), other HUD/menu skins, overkill models, the official progs (the apps ship their own) |
 
-First play (core + stormkeep and its shared packs) is 73.6 MB of 370 MB for
-astc, 227.9 MB of 843 MB for dxt. No entry is in two packs and the union
+First play (core + stormkeep and its shared packs) is 74.7 MB of 372.6 MB
+for astc, 229.6 MB of 845.7 MB for dxt. No entry is in two packs and the union
 is the unsplit set (the one name two official packs share,
 `scripts/shaderlist.txt`, keeps the copy the engine used).
 
