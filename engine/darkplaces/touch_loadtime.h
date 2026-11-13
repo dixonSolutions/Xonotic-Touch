@@ -62,6 +62,23 @@ static inline void TouchLoadTime_ScopeEnd(touch_lt_scope_t *s) { TouchLoadTime_E
 #define TOUCH_LT_SCOPE(p) touch_lt_scope_t TOUCH_LT_CAT(touch_lt_scope_, __LINE__) __attribute__((cleanup(TouchLoadTime_ScopeEnd), unused)) = { ((void)TouchLoadTime_Begin(p), (p)) }
 #else
 #define TOUCH_LT_SCOPE(p) ((void)0)
+// touch_preload.h (in touch_loadtime.c): a model ('m'), sound ('s') or
+// GLSL permutation ('g') loaded on first use in the game, and what it cost;
+// the next load of the map loads it under the loading screen.
+void TouchPreload_Loaded(int kind, const char *name, double seconds);
+// ... and the first use of one the preload loaded: the list keeps it
+void TouchPreload_Used(int kind, const char *name);
+// gl_rmain.c R_GLSL_CompilePermutation: the permutation about to compile
+void TouchPreload_Shader(unsigned int mode, unsigned long long permutation);
+// gl_draw.c Draw_CachePic_Flags: around the load of a picture
+void TouchPreload_PicBegin(void);
+void TouchPreload_PicEnd(const char *name, unsigned int cachepicflags);
+// the replay: load one registered-but-unloaded model, decode one deferred
+// sound, compile one GLSL permutation; true when it did
+qbool TouchModel_PreloadName(const char *name);
+qbool TouchSnd_PreloadName(const char *name);
+qbool TouchGLSL_Precompile(unsigned int mode, unsigned long long permutation);
+
 #endif
 
 void TouchLoadTime_Init(void);
@@ -76,6 +93,8 @@ extern void (*touch_snd_loadsome)(void);
 extern void (*touch_snd_poll)(void);
 // sfx_t flag: precached, not decoded yet (snd_lazyload)
 #define TOUCH_SFXFLAG_DEFERRED (1u << 28)
+// sfx_t flag: decoded by touch_preload, not played yet
+#define TOUCH_SFXFLAG_PRELOADED (1u << 27)
 
 // model_shared.c (touch_loadmodel.h), mod_lazyload: Mod_ForName only
 // registers a model inside a precache scope; TouchModel_Ensure loads a model
@@ -120,5 +139,22 @@ double TouchLoadTime_SleepTime(double sleeptime);
 qbool TouchLoadTime_Restless(void);
 // CL_Frame's frame limit: 0 (none) while restless.
 float TouchLoadTime_MaxFPS(float maxfps);
+
+// touch_preload.h (in touch_loadtime.c): a model ('m'), sound ('s') or
+// GLSL permutation ('g') loaded on first use in the game, and what it cost;
+// the next load of the map loads it under the loading screen.
+void TouchPreload_Loaded(int kind, const char *name, double seconds);
+// ... and the first use of one the preload loaded: the list keeps it
+void TouchPreload_Used(int kind, const char *name);
+// gl_rmain.c R_GLSL_CompilePermutation: the permutation about to compile
+void TouchPreload_Shader(unsigned int mode, unsigned long long permutation);
+// gl_draw.c Draw_CachePic_Flags: around the load of a picture
+void TouchPreload_PicBegin(void);
+void TouchPreload_PicEnd(const char *name, unsigned int cachepicflags);
+// the replay: load one registered-but-unloaded model, decode one deferred
+// sound, compile one GLSL permutation; true when it did
+qbool TouchModel_PreloadName(const char *name);
+qbool TouchSnd_PreloadName(const char *name);
+qbool TouchGLSL_Precompile(unsigned int mode, unsigned long long permutation);
 
 #endif

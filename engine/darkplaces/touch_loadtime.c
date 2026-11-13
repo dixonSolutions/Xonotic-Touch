@@ -103,11 +103,15 @@ typedef struct tlt_state_s
 	double worst_frame;          // longest host frame in the 5 s after it
 	double worst_play;           // ... of those with no menu or dialog open
 	int frames_after;
+	double game_time;            // first game frame of the last load
+	qbool background;            // loading what the load left, not a first use
 
 }
 tlt_state_t;
 
 static tlt_state_t tlt;
+
+#include "touch_preload.h"
 
 static double TLT_Now(void)
 {
@@ -133,6 +137,8 @@ void TouchLoadTime_End(int phase)
 	{
 		tlt.total[phase] += TLT_Now() - tlt.begin[phase];
 		tlt.calls[phase]++;
+		if (phase == TLT_SHADER)
+			TP_ShaderDone();
 	}
 	if (phase == TLT_SPAWN && !tlt.loading && host.state == host_active)
 	{
@@ -290,6 +296,7 @@ void TouchLoadTime_Frame(void)
 		tlt.loading = false;
 		Cvar_SetValueQuick(&touch_loadtime_game, touch_loadtime_game.integer + 1);
 		tlt.ready_time = now;
+		tlt.game_time = now;
 		tlt.worst_frame = 0;
 		tlt.worst_play = 0;
 		tlt.frames_after = 0;
@@ -483,11 +490,14 @@ double TouchLoadTime_SleepTime(double sleeptime)
 	// dialog after a join, the game menu); in play only what is used loads
 	if (cls.state == ca_connected && cls.signon == SIGNONS && !scr_loading && key_dest != key_game)
 	{
+		tlt.background = true;
 		if (touch_model_loadsome)
 			touch_model_loadsome();
 		if (touch_snd_loadsome)
 			touch_snd_loadsome();
+		tlt.background = false;
 	}
+	TP_Frame(now);
 
 	if (TouchLoadTime_Restless())
 	{
@@ -512,6 +522,7 @@ void TouchLoadTime_Init(void)
 	Cvar_RegisterVariable(&touch_load_lazydeflate);
 	Cvar_RegisterVariable(&touch_loadtime_menu);
 	Cvar_RegisterVariable(&touch_loadtime_game);
+	TP_Init();
 	Cmd_AddCommand(CF_CLIENT | CF_SERVER, "touch_loadtime_start", TouchLoadTime_Start_f, "start timing a load now (put it before map or connect); touch_loadtime 1 prints the result at the first game frame");
 	Cmd_AddCommand(CF_CLIENT | CF_SERVER, "touch_loadtime_report", TouchLoadTime_Report_f, "print the load phase totals gathered since the last report");
 }

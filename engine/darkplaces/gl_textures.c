@@ -2109,12 +2109,12 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 
 	// A GPU without S3TC (Mali, PowerVR and most other phone GPUs) gets the
 	// DXT blocks decoded in software (DDS_DecodeToBGRA below). The texture
-	// is kept at the size the old block-per-pixel shortcut produced, two
-	// mip levels below full size or the picmip level if that is smaller, so
-	// texture memory does not grow; what changes is that the texels are the
-	// real ones.
-	if(force_swdecode && miplevel < 2)
-		miplevel = 2;
+	// is kept r_texture_dds_swdecode_reduce mip levels below full size (2:
+	// the size the old block-per-pixel shortcut produced, so texture memory
+	// does not grow) or the picmip level if that is smaller; what changes is
+	// that the texels are the real ones.
+	if(force_swdecode && miplevel < r_texture_dds_swdecode_reduce.integer)
+		miplevel = bound(0, r_texture_dds_swdecode_reduce.integer, 8);
 
 	// this is where we apply gl_picmip
 	mippixels_start = ddspixels;
@@ -2169,6 +2169,7 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 		int w = mipwidth, h = mipheight, levels = 0, total = 0, lw, lh;
 		unsigned char *top = (unsigned char *) Mem_Alloc(tempmempool, (size_t)w * h * 4);
 		unsigned char *chain, *dst;
+		Touch_DDS_SwDecodeBegin(); // Touch: software decode statistics (r_texture_astc_stats)
 		DDS_DecodeToBGRA(mippixels_start, textype, dxt1fromdxt35, w, h, top);
 		// the file ran out of mip levels before the size above: box-filter
 		// the rest of the way
@@ -2203,6 +2204,7 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 			lh = nh;
 		}
 
+		Touch_DDS_SwDecodeEnd(filename, dds_width, dds_height, bytesperblock, total); // Touch: software decode statistics
 		textype = TEXTYPE_BGRA;
 		bytesperblock = 0;
 		bytesperpixel = 4;

@@ -108,13 +108,40 @@ static qbool TouchSnd_Deferred(const sfx_t *sfx)
 
 static void TouchSnd_Ensure(sfx_t *sfx)
 {
+	if (sfx && (sfx->flags & TOUCH_SFXFLAG_PRELOADED))
+	{
+		sfx->flags &= ~TOUCH_SFXFLAG_PRELOADED;
+		TouchPreload_Used('s', sfx->name);
+	}
 	if (!sfx || !(sfx->flags & TOUCH_SFXFLAG_DEFERRED))
 		return;
 	sfx->flags &= ~TOUCH_SFXFLAG_DEFERRED;
 	if (TouchOgg_Pending(sfx))
 		TouchOgg_Finish(sfx);
 	if (!sfx->fetcher)
+	{
+		double t0 = Sys_DirtyTime();
 		S_LoadSound(sfx, true);
+		TouchPreload_Loaded('s', sfx->name, Sys_DirtyTime() - t0);
+	}
+}
+
+// touch_preload: decode a precached sound before its first play
+qbool TouchSnd_PreloadName(const char *name)
+{
+	sfx_t *sfx;
+	if (snd_renderbuffer == NULL)
+		return false;
+	for (sfx = known_sfx; sfx; sfx = sfx->next)
+	{
+		if ((sfx->flags & TOUCH_SFXFLAG_DEFERRED) && !strcmp(sfx->name, name))
+		{
+			TouchSnd_Ensure(sfx);
+			sfx->flags |= TOUCH_SFXFLAG_PRELOADED;
+			return true;
+		}
+	}
+	return false;
 }
 
 // once per host frame in the game (touch_loadtime.c)

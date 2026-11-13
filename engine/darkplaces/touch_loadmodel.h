@@ -78,14 +78,59 @@ qbool TouchModel_IsDeferred(model_t *mod)
 	return mod && !mod->loaded && touchmod_numdeferred && TouchModel_Find(mod) >= 0;
 }
 
+// loaded by touch_preload and not used yet: its first use keeps it listed
+static model_t *touchmod_preloaded[TOUCHMOD_MAX];
+static int touchmod_numpreloaded;
+
+static void TouchModel_FirstUse(model_t *mod)
+{
+	int i;
+	for (i = 0; i < touchmod_numpreloaded; i++)
+	{
+		if (touchmod_preloaded[i] == mod)
+		{
+			touchmod_preloaded[i] = touchmod_preloaded[--touchmod_numpreloaded];
+			TouchPreload_Used('m', mod->name);
+			return;
+		}
+	}
+}
+
 model_t *TouchModel_Ensure(model_t *mod)
 {
 	int i;
+	if (mod && touchmod_numpreloaded && mod->loaded)
+		TouchModel_FirstUse(mod);
 	if (!mod || mod->loaded || !touchmod_numdeferred || (i = TouchModel_Find(mod)) < 0)
 		return mod;
 	TouchModel_Remove(i);
-	Mod_LoadModel(mod, false, false);
+	{
+		double t0 = Sys_DirtyTime();
+		Mod_LoadModel(mod, false, false);
+		TouchPreload_Loaded('m', mod->name, Sys_DirtyTime() - t0);
+	}
 	return mod;
+}
+
+// touch_preload: load a registered model before its first use
+qbool TouchModel_PreloadName(const char *name)
+{
+	int i;
+	for (i = 0; i < touchmod_numdeferred; i++)
+	{
+		model_t *mod = touchmod_deferred[i];
+		if (!strcmp(mod->name, name))
+		{
+			TouchModel_Remove(i);
+			if (mod->loaded)
+				return false;
+			Mod_LoadModel(mod, false, false);
+			if (touchmod_numpreloaded < TOUCHMOD_MAX)
+				touchmod_preloaded[touchmod_numpreloaded++] = mod;
+			return true;
+		}
+	}
+	return false;
 }
 
 // Mod_PurgeUnused frees this model.
@@ -94,6 +139,9 @@ static void TouchModel_Purged(model_t *mod)
 	int i = TouchModel_Find(mod);
 	if (i >= 0)
 		TouchModel_Remove(i);
+	for (i = 0; i < touchmod_numpreloaded; i++)
+		if (touchmod_preloaded[i] == mod)
+			touchmod_preloaded[i--] = touchmod_preloaded[--touchmod_numpreloaded];
 }
 
 // once per host frame in the game (touch_loadtime.c)
