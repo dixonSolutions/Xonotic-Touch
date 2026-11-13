@@ -952,6 +952,7 @@ void S_FreeSfx (sfx_t *sfx, qbool force)
 
 	if (developer_loading.integer)
 		Con_Printf ("unloading sound %s\n", sfx->name);
+	TouchOgg_Forget(sfx); // Touch: its decode on a worker thread must not outlive it
 
 	// Remove it from the list of known sfx
 	if (sfx == known_sfx)

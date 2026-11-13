@@ -12,20 +12,20 @@
 // for, and while a menu or dialog is open in the game (the welcome dialog
 // after a join, the game menu) the rest are decoded within
 // snd_lazyload_budget milliseconds per frame. A name with no file behind it
-// is loaded (and found missing) at once, as before, and so is a file bigger
-// than snd_lazyload_maxsize KiB: one decode of it cannot be split across
-// frames, so it would be a long frame in the game.
+// is loaded (and found missing) at once, as before. A file bigger than
+// snd_lazyload_maxsize KiB would be one long frame however it is scheduled:
+// a Vorbis one is decoded on worker threads during the load
+// (snd_lazyload_async, touch_loadogg.h), any other at precache as before.
 
-#define TOUCH_SFXFLAG_DEFERRED (1u << 28)
 
 static cvar_t snd_lazyload = {CF_CLIENT, "snd_lazyload", "1", "precached sounds are decoded when first played, or in the background during the game (Godnotic); 0 = all at precache"};
 static cvar_t snd_lazyload_maxsize = {CF_CLIENT, "snd_lazyload_maxsize", "48", "sound files bigger than this many KiB are decoded at precache even with snd_lazyload (one decode of a big file would be a long frame in the game)"};
 static cvar_t snd_lazyload_budget = {CF_CLIENT, "snd_lazyload_budget", "4", "milliseconds per frame spent decoding precached sounds not played yet while a menu or dialog is open in the game (0 = only on first play)"};
 
-// The size of the file S_LoadSound would read for name (sound/<name> or
-// <name>, a .wav also as .ogg, Touch_Opus_LoadFile's .opus for a .ogg), or -1
-// when there is none.
-static fs_offset_t TouchSnd_FileSize(const char *name)
+// The file S_LoadSound would read for name (sound/<name> or <name>, a .wav
+// also as .ogg, Touch_Opus_LoadFile's .opus for a .ogg): its size, and its
+// path in path; -1 when there is none.
+static fs_offset_t TouchSnd_File(const char *name, char *path, size_t pathsize)
 {
 	char buf[MAX_QPATH + 16];
 	size_t len;
@@ -59,6 +59,7 @@ static fs_offset_t TouchSnd_FileSize(const char *name)
 			{
 				fs_offset_t size = FS_FileSize(f);
 				FS_Close(f);
+				dp_strlcpy(path, buf, pathsize);
 				return size;
 			}
 		}
@@ -66,10 +67,19 @@ static fs_offset_t TouchSnd_FileSize(const char *name)
 	return -1;
 }
 
+// snd_ogg.c (touch_loadogg.h): big Vorbis files decoded on worker threads
+void TouchOgg_Init(void);
+qbool TouchOgg_StartAsync(sfx_t *sfx, const char *filename);
+qbool TouchOgg_Pending(const sfx_t *sfx);
+void TouchOgg_Finish(sfx_t *sfx);
+void TouchOgg_Forget(sfx_t *sfx);
+void TouchOgg_Poll(void);
+
 // S_PrecacheSound, instead of loading: true when left for later.
 static qbool TouchSnd_Defer(sfx_t *sfx)
 {
 	fs_offset_t size;
+	char path[MAX_QPATH + 16];
 	if (sfx->fetcher || (sfx->flags & TOUCH_SFXFLAG_DEFERRED))
 		return sfx->fetcher == NULL;
 	if (!snd_lazyload.integer || nosound.integer || !snd_precache.integer || snd_renderbuffer == NULL)
@@ -77,9 +87,16 @@ static qbool TouchSnd_Defer(sfx_t *sfx)
 	// a big file takes one long decode however it is scheduled (tens of
 	// milliseconds on a desktop, several times that on a phone): that stays
 	// in the load rather than becoming a hitch in the game
-	size = TouchSnd_FileSize(sfx->name);
-	if (size < 0 || size > snd_lazyload_maxsize.value * 1024)
+	size = TouchSnd_File(sfx->name, path, sizeof(path));
+	if (size < 0)
 		return false;
+	if (size > snd_lazyload_maxsize.value * 1024)
+	{
+		// decoded on a worker thread while the load goes on
+		size_t len = strlen(path);
+		if (len < 4 || strcasecmp(path + len - 4, ".ogg") || !TouchOgg_StartAsync(sfx, path))
+			return false;
+	}
 	sfx->flags |= TOUCH_SFXFLAG_DEFERRED;
 	return true;
 }
@@ -94,6 +111,8 @@ static void TouchSnd_Ensure(sfx_t *sfx)
 	if (!sfx || !(sfx->flags & TOUCH_SFXFLAG_DEFERRED))
 		return;
 	sfx->flags &= ~TOUCH_SFXFLAG_DEFERRED;
+	if (TouchOgg_Pending(sfx))
+		TouchOgg_Finish(sfx);
 	if (!sfx->fetcher)
 		S_LoadSound(sfx, true);
 }
@@ -108,7 +127,7 @@ static void TouchSnd_LoadSome(void)
 	start = Sys_DirtyTime();
 	for (sfx = known_sfx; sfx; sfx = sfx->next)
 	{
-		if (!(sfx->flags & TOUCH_SFXFLAG_DEFERRED))
+		if (!(sfx->flags & TOUCH_SFXFLAG_DEFERRED) || TouchOgg_Pending(sfx))
 			continue;
 		{
 			double t0 = Sys_DirtyTime();
@@ -129,4 +148,6 @@ static void TouchSnd_Init(void)
 	Cvar_RegisterVariable(&snd_lazyload_budget);
 	Cvar_RegisterVariable(&snd_lazyload_maxsize);
 	touch_snd_loadsome = TouchSnd_LoadSome;
+	touch_snd_poll = TouchOgg_Poll;
+	TouchOgg_Init();
 }

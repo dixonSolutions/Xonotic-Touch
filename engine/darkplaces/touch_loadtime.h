@@ -73,6 +73,9 @@ qbool TouchFont_LoadPendingOne(void);
 // snd_main.c (touch_loadsnd.h) sets this: decode precached sounds not
 // played yet within snd_lazyload_budget; called once per host frame in game.
 extern void (*touch_snd_loadsome)(void);
+extern void (*touch_snd_poll)(void);
+// sfx_t flag: precached, not decoded yet (snd_lazyload)
+#define TOUCH_SFXFLAG_DEFERRED (1u << 28)
 
 // model_shared.c (touch_loadmodel.h), mod_lazyload: Mod_ForName only
 // registers a model inside a precache scope; TouchModel_Ensure loads a model

@@ -400,6 +400,7 @@ unsigned int TouchLoad_PicFlags(const char *path, unsigned int flags)
 }
 
 void (*touch_snd_loadsome)(void);
+void (*touch_snd_poll)(void);
 void (*touch_model_loadsome)(void);
 
 qbool TouchModel_CSQCPrecache(prvm_prog_t *prog, model_t *m)
@@ -476,6 +477,8 @@ double TouchLoadTime_SleepTime(double sleeptime)
 	TLT_Signons(now);
 
 	// background work left by the load, once the game runs
+	if (touch_snd_poll)
+		touch_snd_poll();
 	// what the load left: decoded while a menu or dialog is open (the welcome
 	// dialog after a join, the game menu); in play only what is used loads
 	if (cls.state == ca_connected && cls.signon == SIGNONS && !scr_loading && key_dest != key_game)
