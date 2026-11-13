@@ -136,6 +136,9 @@ jobs:
       - name: Safe component imports
         run: bash scripts/test-components.sh
       - name: Engine and game code match their pinned component commits
+        # Only main: a work branch changes the engine before its commit exists
+        # in the component repository (scripts/component-push.sh runs at merge).
+        if: github.ref == 'refs/heads/main'
         run: |
           set -euo pipefail
           for component in darkplaces data; do
