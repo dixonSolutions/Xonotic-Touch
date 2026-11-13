@@ -297,6 +297,7 @@ fn entry(app: &App, n: &Node) -> gtk::Widget {
         t.upcast()
     };
     e.set_size_request(-1, 44);
+    register_activator(app, &n.id, &e);
     if let Some(sub) = n.obj("submit").cloned() {
         let w = Rc::downgrade(app);
         let id = n.id.clone();

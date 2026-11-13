@@ -30,6 +30,10 @@ pub enum Action {
     Play,
     /// Straight into a server (a `godnotic://` link, a typed address).
     Connect { address: ServerAddress, password: Option<String> },
+    /// The game opened on one of its own menu dialogs (`menu_cmd directmenu <name>`:
+    /// servers, settings, TouchLanHost, touchmods, Credits): what the app routes to
+    /// while it does not show that screen itself.
+    Menu { dialog: String },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -75,6 +79,12 @@ pub fn plan(action: &Action, cfg: &Config, start_script: &str, result_path: &str
     env.insert("SDL_VIDEO_X11_WMCLASS".into(), APP_ID.into());
     env.insert("SDL_VIDEO_WAYLAND_WMCLASS".into(), APP_ID.into());
     let mut secret = None;
+    if let Action::Menu { dialog } = action {
+        if !dialog.is_empty() && dialog.chars().all(|c| c.is_ascii_alphanumeric()) {
+            // The menu is up after the first frame; then it opens the dialog.
+            args.extend(["+defer".into(), "1".into(), format!("menu_cmd directmenu {dialog}")]);
+        }
+    }
     if let Action::Connect { address, password } = action {
         env.insert(ENV_MODE.into(), "native".into());
         args.extend(["+connect".into(), address.to_string()]);
@@ -295,6 +305,11 @@ mod tests {
         assert_eq!(p.args, vec!["+vid_fullscreen", "0", "+cl_maxfps", "90", "+name", "a b", "+connect", "192.168.1.23:26001"]);
         assert_eq!(p.secret.as_deref(), Some("join\t192.168.1.23:26001\thunter2 x\n"));
         assert!(p.args.iter().chain(p.env.values()).all(|x| !x.contains("hunter2")));
+        let menu = plan(&Action::Menu { dialog: "servers".into() }, &Config::default(), "/s", "/r");
+        assert_eq!(menu.args, vec!["+defer", "1", "menu_cmd directmenu servers"]);
+        assert!(!menu.env.contains_key(ENV_MODE));
+        let bad = plan(&Action::Menu { dialog: "x; quit".into() }, &Config::default(), "/s", "/r");
+        assert!(bad.args.is_empty());
         let play = plan(&Action::Play, &Config::default(), "/s", "/r");
         assert!(!play.env.contains_key(ENV_MODE) && play.secret.is_none());
     }

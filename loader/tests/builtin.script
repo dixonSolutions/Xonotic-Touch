@@ -1,0 +1,23 @@
+# The app as it ships before the bridge: built-in Home and Multiplayer, a join by
+# address through the native front end mode, and Settings routed to the game's menu.
+wait 1000
+count OUT/toplevels.txt
+snapshot OUT/b1-home.png
+click home/tiles/mp
+wait 800
+snapshot OUT/b2-multiplayer.png
+type mp/join/address 127.0.0.1:26556
+wait 300
+click mp/join/go
+wait 2000
+count OUT/toplevels.txt
+waitvisible 90000
+snapshot OUT/b3-back-after-match.png
+back
+wait 800
+click home/tiles/settings
+wait 2000
+waitvisible 60000
+snapshot OUT/b4-back-after-settings.png
+count OUT/toplevels.txt
+quit

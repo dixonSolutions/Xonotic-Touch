@@ -14,6 +14,7 @@
 //! dark | light        colour scheme
 //! snapshot <file.png> render the window
 //! count <file>        append the number of mapped top-level windows of this process
+//! type <node> <text>  set an entry's text
 //! join <addr> [pw]    start a session joining a server (as a godnotic:// link would)
 //! play                start the game the classic way
 //! waitvisible <ms>    wait until the window shows again (the session ended)
@@ -136,6 +137,17 @@ fn step(w: std::rc::Weak<app::Shared>, mut lines: VecDeque<String>) {
                 });
             }
             delay = (ms + 500) as u64;
+        }
+        "type" => {
+            // type <node id> <text>: sets an entry's text as if typed (its change signals run).
+            let w = args.first().and_then(|id| app.ui.borrow().as_ref().and_then(|u| u.activators.get(*id).cloned()));
+            let text = args.get(1..).map(|a| a.join(" ")).unwrap_or_default();
+            if let Some(e) = w.as_ref().and_then(|w| w.dynamic_cast_ref::<gtk::Editable>()) {
+                e.set_text(&text);
+            } else {
+                eprintln!("script: no entry {:?}", args.first());
+            }
+            delay = 200;
         }
         "join" => {
             let addr = args.first().and_then(|a| godnotic_core::link::parse_join(a));

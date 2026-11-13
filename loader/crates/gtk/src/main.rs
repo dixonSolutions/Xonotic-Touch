@@ -92,12 +92,16 @@ fn make_backend(o: &Opts) -> Backend {
         let name = PathBuf::from(f).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| f.clone());
         let name = if name.ends_with(".json") { name } else { format!("{name}.json") };
         return match backend::load_fixture(&dir, &name) {
-            Ok(player) => Backend::Fixture(Box::new(FixtureBackend { dir, player, current: name, history: vec![], incoming: VecDeque::new() })),
+            Ok(player) => Backend::Fixture(Box::new(FixtureBackend { builtin: false, dir, player, current: name, history: vec![], incoming: VecDeque::new() })),
             Err(e) => Backend::Offline(format!("Could not read the fixture: {e}")),
         };
     }
-    // The engine's UI-bridge backend mode lands with work/uibridge.
-    Backend::Offline("The game's interface is not available yet".into())
+    // The engine's UI-bridge backend mode lands with work/uibridge; until then the
+    // app shows its own screens and opens the game's menu for the rest.
+    match backend::load_builtin("home.json") {
+        Ok(player) => Backend::Fixture(Box::new(FixtureBackend { builtin: true, dir: PathBuf::new(), player, current: "home.json".into(), history: vec![], incoming: VecDeque::new() })),
+        Err(e) => Backend::Offline(e),
+    }
 }
 
 fn css() {

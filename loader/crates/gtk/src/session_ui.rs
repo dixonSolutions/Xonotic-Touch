@@ -40,6 +40,16 @@ pub fn start(app: &App, action: Action) {
         toast(app, "The game was not found next to the app");
         return;
     };
+    // No game without its data: the storage button downloads it first.
+    let ready = Path::new(&p.user_data()).join(godnotic_core::fetch::datasets::READY_MARKER).exists()
+        || p.data_dirs().iter().any(|d| std::fs::read_dir(d).into_iter().flatten().flatten().any(|e| {
+            let n = e.file_name().to_string_lossy().to_string();
+            n.starts_with("xonotic-") && n.ends_with("-data.pk3")
+        }));
+    if !ready && std::env::var_os("GODNOTIC_SKIP_DATA_CHECK").is_none() {
+        toast(app, "Download the game data first: the storage button at the top right");
+        return;
+    }
     let _ = std::fs::create_dir_all(&p.user_base);
     let result = format!("{}/session-result.txt", p.user_base);
     let log = format!("{}/last-session.log", p.user_base);

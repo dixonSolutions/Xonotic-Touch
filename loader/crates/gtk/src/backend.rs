@@ -27,6 +27,8 @@ pub enum Backend {
 }
 
 pub struct FixtureBackend {
+    /// Built-in screens (data/builtin): what the app shows before the bridge is live.
+    pub builtin: bool,
     pub dir: PathBuf,
     pub player: Player,
     pub current: String,
@@ -83,6 +85,23 @@ fn route(action: &str) -> Option<&'static str> {
     })
 }
 
+/// The app's own screens, used while the engine's UI bridge is not live.
+pub fn builtin_text(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "home.json" => include_str!("../data/builtin/home.json"),
+        "mp.json" => include_str!("../data/builtin/mp.json"),
+        "credits.json" => include_str!("../data/builtin/credits.json"),
+        _ => return None,
+    })
+}
+
+pub fn load_builtin(name: &str) -> Result<Player, String> {
+    let text = builtin_text(name).ok_or_else(|| format!("no built-in screen {name}"))?;
+    let mut p = Player::new(Fixture::parse(text)?);
+    p.images = Some(image_resolver());
+    Ok(p)
+}
+
 pub fn load_fixture(dir: &std::path::Path, name: &str) -> Result<Player, String> {
     let text = std::fs::read_to_string(dir.join(name)).map_err(|e| format!("{name}: {e}"))?;
     let mut p = Player::new(Fixture::parse(&text)?);
@@ -92,15 +111,50 @@ pub fn load_fixture(dir: &std::path::Path, name: &str) -> Result<Player, String>
 
 /// Opens the fixture for an action, as if the engine had navigated.
 pub fn fixture_route(app: &App, action: &str) {
+    let builtin = matches!(&*app.backend.borrow(), Backend::Fixture(f) if f.builtin);
+    if builtin {
+        builtin_route(app, action);
+        return;
+    }
     let Some(next) = route(action) else { return };
     switch_fixture(app, next, true);
+}
+
+/// Built-in screens: Multiplayer and Credits are the app's; the rest opens the game
+/// on the matching dialog of its own menu, so no button is dead.
+fn builtin_route(app: &App, action: &str) {
+    use godnotic_core::session::Action;
+    let menu = |d: &str| Action::Menu { dialog: d.to_string() };
+    match action {
+        "mp" => switch_fixture(app, "mp.json", true),
+        "credits" => switch_fixture(app, "credits.json", true),
+        "play" | "sp" => crate::session_ui::start(app, Action::Play),
+        "settings" => crate::session_ui::start(app, menu("settings")),
+        "menu.servers" => crate::session_ui::start(app, menu("servers")),
+        "menu.host" => crate::session_ui::start(app, menu("TouchLanHost")),
+        "menu.mods" => crate::session_ui::start(app, menu("touchmods")),
+        "menu.credits" => crate::session_ui::start(app, menu("Credits")),
+        "join.address" => {
+            let text = app.core.borrow().store.node("mp/join/address").and_then(|n| n.str("value")).unwrap_or_default();
+            match godnotic_core::link::parse_join(&text) {
+                Some(a) => crate::session_ui::start(app, Action::Connect { address: a, password: None }),
+                None => {
+                    if let Some(u) = app.ui.borrow().as_ref() {
+                        u.toasts.add_toast(adw::Toast::new("Type an address (host:port) or paste a godnotic:// link"));
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 fn switch_fixture(app: &App, name: &str, push: bool) {
     let ok = {
         let mut b = app.backend.borrow_mut();
         let Backend::Fixture(f) = &mut *b else { return };
-        match load_fixture(&f.dir, name) {
+        let loaded = if f.builtin { load_builtin(name) } else { load_fixture(&f.dir, name) };
+        match loaded {
             Ok(mut p) => {
                 if push {
                     let cur = std::mem::replace(&mut f.current, name.to_string());
