@@ -221,6 +221,7 @@ void Debug_Notification(string input)
 #endif
 
 void Local_Notification(MSG net_type, Notification net_name, ...count);
+var bool(MSG net_type, entity notif, string s1, string s2, string s3, string s4, float f1, float f2, float f3, float f4) touch_lua_notify_hook; // Touch: Lua client mods see notifications (client/touch_lua.qc)
 /// glue for networking, forwards to `Local_Notification`
 void Local_Notification_Core(
 	MSG net_type, Notification net_name,
