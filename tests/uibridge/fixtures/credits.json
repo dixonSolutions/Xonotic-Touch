@@ -1,0 +1,290 @@
+{
+ "name": "credits",
+ "description": "Credits and licence.",
+ "generated": "seed",
+ "snapshot": {
+  "uib": 1,
+  "t": "snapshot",
+  "id": 2,
+  "rev": 1,
+  "root": "app",
+  "nodes": [
+   {
+    "id": "app",
+    "type": "app",
+    "props": {
+     "title": "Godnotic",
+     "stack": [
+      "home",
+      "credits"
+     ],
+     "modal": [],
+     "canBack": true,
+     "context": "menu"
+    },
+    "children": [
+     "home",
+     "credits"
+    ]
+   },
+   {
+    "id": "home",
+    "type": "screen",
+    "props": {
+     "title": "Godnotic",
+     "kind": "home",
+     "background": "asset:background",
+     "actions": [
+      {
+       "id": "quit",
+       "label": "Quit",
+       "icon": "quit",
+       "style": "secondary",
+       "confirm": {
+        "title": "Quit Godnotic?",
+        "ok": "Quit"
+       }
+      }
+     ]
+    },
+    "children": [
+     "home/banner",
+     "home/hero",
+     "home/tiles"
+    ]
+   },
+   {
+    "id": "home/banner",
+    "type": "image",
+    "props": {
+     "ref": "asset:banner",
+     "aspect": "21:9",
+     "fit": "contain",
+     "alt": "Godnotic"
+    },
+    "children": []
+   },
+   {
+    "id": "home/hero",
+    "type": "hero",
+    "props": {
+     "title": "Play",
+     "subtitle": "Continue: Stormkeep · Deathmatch · 4 bots",
+     "image": "pk3:maps/stormkeep",
+     "aspect": "16:9",
+     "featured": true,
+     "meta": [
+      {
+       "icon": "map",
+       "text": "Stormkeep"
+      },
+      {
+       "icon": "mode",
+       "text": "Deathmatch"
+      },
+      {
+       "icon": "bot",
+       "text": "4 bots"
+      }
+     ],
+     "primary": {
+      "id": "play",
+      "label": "Play",
+      "icon": "play",
+      "style": "primary"
+     },
+     "actions": [
+      {
+       "id": "quick",
+       "label": "Quick match",
+       "icon": "players"
+      },
+      {
+       "id": "sp",
+       "label": "Choose…",
+       "icon": "map"
+      }
+     ]
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles",
+    "type": "grid",
+    "props": {
+     "minItem": 200
+    },
+    "children": [
+     "home/tiles/sp",
+     "home/tiles/mp",
+     "home/tiles/settings",
+     "home/tiles/credits"
+    ]
+   },
+   {
+    "id": "home/tiles/sp",
+    "type": "card",
+    "props": {
+     "title": "Singleplayer",
+     "subtitle": "Bots, your rules",
+     "icon": "singleplayer",
+     "image": "pk3:gfx/menu/luma/gametype_dm",
+     "aspect": "16:9",
+     "primary": {
+      "id": "sp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/mp",
+    "type": "card",
+    "props": {
+     "title": "Multiplayer",
+     "subtitle": "Find a game or join by address",
+     "icon": "multiplayer",
+     "image": "pk3:gfx/menu/luma/gametype_ctf",
+     "aspect": "16:9",
+     "primary": {
+      "id": "mp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/settings",
+    "type": "card",
+    "props": {
+     "title": "Settings",
+     "subtitle": "Video, controls, Mods",
+     "icon": "settings",
+     "primary": {
+      "id": "settings",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/credits",
+    "type": "card",
+    "props": {
+     "title": "Credits",
+     "subtitle": "The people behind Xonotic and Godnotic",
+     "icon": "credits",
+     "primary": {
+      "id": "credits",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "credits",
+    "type": "screen",
+    "props": {
+     "title": "Credits",
+     "kind": "page"
+    },
+    "children": [
+     "credits/godnotic",
+     "credits/xonotic",
+     "credits/licence"
+    ]
+   },
+   {
+    "id": "credits/godnotic",
+    "type": "section",
+    "props": {
+     "title": "Godnotic"
+    },
+    "children": [
+     "credits/godnotic/text"
+    ]
+   },
+   {
+    "id": "credits/godnotic/text",
+    "type": "text",
+    "props": {
+     "body": "Godnotic is a touch-first build of Xonotic for phones, tablets, Linux and the web."
+    },
+    "children": []
+   },
+   {
+    "id": "credits/xonotic",
+    "type": "section",
+    "props": {
+     "title": "Xonotic"
+    },
+    "children": [
+     "credits/xonotic/text",
+     "credits/xonotic/list"
+    ]
+   },
+   {
+    "id": "credits/xonotic/text",
+    "type": "text",
+    "props": {
+     "body": "Xonotic is made by the Xonotic team and its many contributors."
+    },
+    "children": []
+   },
+   {
+    "id": "credits/xonotic/list",
+    "type": "button",
+    "props": {
+     "label": "Everyone who made Xonotic",
+     "action": {
+      "id": "credits.full",
+      "label": "Everyone who made Xonotic",
+      "icon": "credits"
+     },
+     "style": "link"
+    },
+    "children": []
+   },
+   {
+    "id": "credits/licence",
+    "type": "section",
+    "props": {
+     "title": "Licence"
+    },
+    "children": [
+     "credits/licence/text",
+     "credits/licence/link"
+    ]
+   },
+   {
+    "id": "credits/licence/text",
+    "type": "text",
+    "props": {
+     "body": "The engine and game code are free software under the GNU General Public License, version 2 or later. Game data is under its authors' licences (see each pack's licence file).",
+     "style": "caption"
+    },
+    "children": []
+   },
+   {
+    "id": "credits/licence/link",
+    "type": "button",
+    "props": {
+     "label": "Source code",
+     "action": {
+      "id": "credits.source",
+      "label": "Source code",
+      "icon": "link",
+      "kind": "link",
+      "url": "https://github.com/dixonSolutions/Godnotic"
+     },
+     "style": "link"
+    },
+    "children": []
+   }
+  ]
+ }
+}

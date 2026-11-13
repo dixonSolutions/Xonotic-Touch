@@ -64,6 +64,7 @@ OBJ_COMMON= \
 	touch_prvm.o \
 	vid_touchdetect.o \
 	touch_display.o \
+	touch_nativefe.o \
 	cl_video.o \
 	cl_video_libavw.o \
 	clvm_cmds.o \

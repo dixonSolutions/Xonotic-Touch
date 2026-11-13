@@ -1,17 +1,14 @@
 [Desktop Entry]
 Name=Godnotic
-Exec=xt-launcher
+Exec=godnotic-loader %u
 Icon=io.github.dixonSolutions.XonoticTouch
 Terminal=false
 Type=Application
 Categories=Game;ActionGame;
-StartupWMClass=xonotic
-Actions=play;launcher;
+StartupWMClass=io.github.dixonSolutions.XonoticTouch
+MimeType=x-scheme-handler/godnotic;
+Actions=play;
 
 [Desktop Action play]
 Name=Play directly
 Exec=start.sh
-
-[Desktop Action launcher]
-Name=Launcher
-Exec=xt-launcher --launcher

@@ -1,0 +1,264 @@
+{
+ "name": "builtin-credits",
+ "generated": "loader-builtin",
+ "snapshot": {
+  "uib": 1,
+  "t": "snapshot",
+  "id": 1,
+  "rev": 1,
+  "root": "app",
+  "nodes": [
+   {
+    "id": "app",
+    "type": "app",
+    "props": {
+     "title": "Godnotic",
+     "stack": [
+      "home",
+      "credits"
+     ],
+     "modal": [],
+     "canBack": true,
+     "context": "menu"
+    },
+    "children": [
+     "home",
+     "credits"
+    ]
+   },
+   {
+    "id": "home",
+    "type": "screen",
+    "props": {
+     "title": "Godnotic",
+     "kind": "home"
+    },
+    "children": [
+     "home/banner",
+     "home/hero",
+     "home/tiles"
+    ]
+   },
+   {
+    "id": "home/banner",
+    "type": "image",
+    "props": {
+     "ref": "asset:banner",
+     "aspect": "21:9",
+     "fit": "contain",
+     "alt": "Godnotic"
+    },
+    "children": []
+   },
+   {
+    "id": "home/hero",
+    "type": "hero",
+    "props": {
+     "title": "Play",
+     "subtitle": "Start Godnotic: bots, a match or the server list",
+     "image": "pk3:maps/stormkeep",
+     "aspect": "16:9",
+     "primary": {
+      "id": "play",
+      "label": "Play",
+      "icon": "play",
+      "style": "primary"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles",
+    "type": "grid",
+    "props": {
+     "minItem": 200
+    },
+    "children": [
+     "home/tiles/sp",
+     "home/tiles/mp",
+     "home/tiles/settings",
+     "home/tiles/credits"
+    ]
+   },
+   {
+    "id": "home/tiles/sp",
+    "type": "card",
+    "props": {
+     "title": "Singleplayer",
+     "subtitle": "Bots and the campaign (opens in the game)",
+     "icon": "singleplayer",
+     "primary": {
+      "id": "sp",
+      "label": "Open"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/mp",
+    "type": "card",
+    "props": {
+     "title": "Multiplayer",
+     "subtitle": "Join by address or link, browse servers, host a LAN game",
+     "icon": "multiplayer",
+     "primary": {
+      "id": "mp",
+      "label": "Open"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/settings",
+    "type": "card",
+    "props": {
+     "title": "Settings",
+     "subtitle": "Video, controls, Mods (opens in the game)",
+     "icon": "settings",
+     "primary": {
+      "id": "settings",
+      "label": "Open"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/credits",
+    "type": "card",
+    "props": {
+     "title": "Credits",
+     "subtitle": "Components and licences",
+     "icon": "credits",
+     "primary": {
+      "id": "credits",
+      "label": "Open"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "credits",
+    "type": "screen",
+    "props": {
+     "title": "Credits",
+     "kind": "page"
+    },
+    "children": [
+     "credits/godnotic",
+     "credits/components",
+     "credits/licences",
+     "credits/links"
+    ]
+   },
+   {
+    "id": "credits/godnotic",
+    "type": "section",
+    "props": {
+     "title": "Godnotic"
+    },
+    "children": [
+     "credits/godnotic/text"
+    ]
+   },
+   {
+    "id": "credits/godnotic/text",
+    "type": "text",
+    "props": {
+     "body": "A touch-first fork of the Xonotic arena shooter, for phones, tablets and desktops."
+    },
+    "children": []
+   },
+   {
+    "id": "credits/components",
+    "type": "section",
+    "props": {
+     "title": "Components"
+    },
+    "children": [
+     "credits/components/text"
+    ]
+   },
+   {
+    "id": "credits/components/text",
+    "type": "text",
+    "props": {
+     "body": "Engine: github.com/dixonSolutions/Godnotic-darkplaces\nGame code and data: github.com/dixonSolutions/Godnotic-data"
+    },
+    "children": []
+   },
+   {
+    "id": "credits/licences",
+    "type": "section",
+    "props": {
+     "title": "Licences"
+    },
+    "children": [
+     "credits/licences/text"
+    ]
+   },
+   {
+    "id": "credits/licences/text",
+    "type": "text",
+    "props": {
+     "body": "Godnotic's own code: GPL-3.0-or-later\nXonotic game code and data: GPL-3.0-or-later\nDarkPlaces engine: GPL-2.0-or-later\nLua 5.4 (mods): MIT\nzstd decoder: BSD-3-Clause\nd0_blind_id (player IDs): BSD\nGMQCC (QuakeC compiler): MIT\nXolonium font, Xonotic edition: GPL-2.0-or-later with font exception\nXonotic emblem: LGPL-2.1-or-later or CC-BY-3.0\nFull texts: LICENSE and engine/COPYING in the repository"
+    },
+    "children": []
+   },
+   {
+    "id": "credits/links",
+    "type": "row",
+    "props": {
+     "wrap": true
+    },
+    "children": [
+     "credits/links/github",
+     "credits/links/licence",
+     "credits/links/xonotic"
+    ]
+   },
+   {
+    "id": "credits/links/github",
+    "type": "button",
+    "props": {
+     "label": "GitHub",
+     "action": {
+      "id": "credits.github",
+      "label": "GitHub",
+      "icon": "link",
+      "kind": "link",
+      "url": "https://github.com/dixonSolutions/Godnotic"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "credits/links/licence",
+    "type": "button",
+    "props": {
+     "label": "Licence",
+     "action": {
+      "id": "credits.licence",
+      "label": "Licence",
+      "icon": "link",
+      "kind": "link",
+      "url": "https://github.com/dixonSolutions/Godnotic/blob/main/LICENSE"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "credits/links/xonotic",
+    "type": "button",
+    "props": {
+     "label": "Everyone who made Xonotic (opens in the game)",
+     "action": {
+      "id": "menu.credits",
+      "label": "Everyone who made Xonotic",
+      "icon": "credits"
+     }
+    },
+    "children": []
+   }
+  ]
+ }
+}

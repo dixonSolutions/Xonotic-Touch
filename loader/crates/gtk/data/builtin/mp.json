@@ -1,0 +1,231 @@
+{
+ "name": "builtin-mp",
+ "generated": "loader-builtin",
+ "snapshot": {
+  "uib": 1,
+  "t": "snapshot",
+  "id": 1,
+  "rev": 1,
+  "root": "app",
+  "nodes": [
+   {
+    "id": "app",
+    "type": "app",
+    "props": {
+     "title": "Godnotic",
+     "stack": [
+      "home",
+      "mp"
+     ],
+     "modal": [],
+     "canBack": true,
+     "context": "menu"
+    },
+    "children": [
+     "home",
+     "mp"
+    ]
+   },
+   {
+    "id": "home",
+    "type": "screen",
+    "props": {
+     "title": "Godnotic",
+     "kind": "home"
+    },
+    "children": [
+     "home/banner",
+     "home/hero",
+     "home/tiles"
+    ]
+   },
+   {
+    "id": "home/banner",
+    "type": "image",
+    "props": {
+     "ref": "asset:banner",
+     "aspect": "21:9",
+     "fit": "contain",
+     "alt": "Godnotic"
+    },
+    "children": []
+   },
+   {
+    "id": "home/hero",
+    "type": "hero",
+    "props": {
+     "title": "Play",
+     "subtitle": "Start Godnotic: bots, a match or the server list",
+     "image": "pk3:maps/stormkeep",
+     "aspect": "16:9",
+     "primary": {
+      "id": "play",
+      "label": "Play",
+      "icon": "play",
+      "style": "primary"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles",
+    "type": "grid",
+    "props": {
+     "minItem": 200
+    },
+    "children": [
+     "home/tiles/sp",
+     "home/tiles/mp",
+     "home/tiles/settings",
+     "home/tiles/credits"
+    ]
+   },
+   {
+    "id": "home/tiles/sp",
+    "type": "card",
+    "props": {
+     "title": "Singleplayer",
+     "subtitle": "Bots and the campaign (opens in the game)",
+     "icon": "singleplayer",
+     "primary": {
+      "id": "sp",
+      "label": "Open"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/mp",
+    "type": "card",
+    "props": {
+     "title": "Multiplayer",
+     "subtitle": "Join by address or link, browse servers, host a LAN game",
+     "icon": "multiplayer",
+     "primary": {
+      "id": "mp",
+      "label": "Open"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/settings",
+    "type": "card",
+    "props": {
+     "title": "Settings",
+     "subtitle": "Video, controls, Mods (opens in the game)",
+     "icon": "settings",
+     "primary": {
+      "id": "settings",
+      "label": "Open"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/credits",
+    "type": "card",
+    "props": {
+     "title": "Credits",
+     "subtitle": "Components and licences",
+     "icon": "credits",
+     "primary": {
+      "id": "credits",
+      "label": "Open"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "mp",
+    "type": "screen",
+    "props": {
+     "title": "Multiplayer",
+     "kind": "page"
+    },
+    "children": [
+     "mp/browse",
+     "mp/join"
+    ]
+   },
+   {
+    "id": "mp/browse",
+    "type": "section",
+    "props": {
+     "title": "Find a game",
+     "subtitle": "The server list and LAN hosting live in the game until the app shows them itself."
+    },
+    "children": [
+     "mp/browse/servers",
+     "mp/browse/host"
+    ]
+   },
+   {
+    "id": "mp/browse/servers",
+    "type": "button",
+    "props": {
+     "label": "Browse servers",
+     "help": "Internet and LAN games, with filters (opens in the game)",
+     "action": {
+      "id": "menu.servers",
+      "label": "Browse servers",
+      "icon": "server"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "mp/browse/host",
+    "type": "button",
+    "props": {
+     "label": "Host a LAN game",
+     "help": "Port, password and bots (opens in the game)",
+     "action": {
+      "id": "menu.host",
+      "label": "Host a LAN game",
+      "icon": "host"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "mp/join",
+    "type": "actionbar",
+    "props": {
+     "align": "spread"
+    },
+    "children": [
+     "mp/join/address",
+     "mp/join/go"
+    ]
+   },
+   {
+    "id": "mp/join/address",
+    "type": "field",
+    "props": {
+     "label": "Address",
+     "bind": "vm:mp.address",
+     "value": "",
+     "kind": "address",
+     "placeholder": "host:port or godnotic://join/..."
+    },
+    "children": []
+   },
+   {
+    "id": "mp/join/go",
+    "type": "button",
+    "props": {
+     "label": "Join",
+     "style": "primary",
+     "action": {
+      "id": "join.address",
+      "label": "Join",
+      "icon": "play",
+      "style": "primary"
+     }
+    },
+    "children": []
+   }
+  ]
+ }
+}
