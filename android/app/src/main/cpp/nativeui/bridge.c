@@ -5,7 +5,7 @@
 #include <string.h>
 
 #define QUEUE_CAP 32
-#define COMMAND_CAP 1024
+#define COMMAND_CAP 8192 /* a UI bridge event, percent-encoded, fits */
 #define STATUS_CAP 32768
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 static char queue[QUEUE_CAP][COMMAND_CAP];

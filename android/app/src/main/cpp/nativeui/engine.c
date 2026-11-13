@@ -31,7 +31,7 @@ void NativeUI_Frame(void)
     static nativeui_pop_fn pop;
     static nativeui_publish_fn publish, publish_permissions;
     static unsigned retry;
-    char command[1024];
+    static char command[8192];
     cvar_t *mods;
     if (!pop || !publish || !publish_permissions)
     {

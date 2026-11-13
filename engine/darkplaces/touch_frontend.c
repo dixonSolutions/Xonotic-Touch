@@ -45,6 +45,26 @@ Everything works on the desktop too, without a sink, for headless tests
 
 extern uint8_t serverlist_querystage; // netconn.c
 
+/*
+The UI bridge (touch_uib*.c, docs/UI_BRIDGE.md) when this engine has it: a
+weak link, so this file builds and works with and without it. With it, an
+attached native UI is a UI bridge renderer: `fe ui <json>` posts its
+messages, and the bridge's messages go out on the ordered "ui" queue.
+*/
+#if defined(__GNUC__) || defined(__clang__)
+#define TOUCHFE_WEAK __attribute__((weak))
+#else
+#define TOUCHFE_WEAK
+#endif
+typedef struct touchuib_conn_s touchuib_conn_t;
+int TouchUIB_Available(void) TOUCHFE_WEAK;
+touchuib_conn_t *TouchUIB_Open(const char *name, size_t name_len) TOUCHFE_WEAK;
+int TouchUIB_Post(touchuib_conn_t *c, const char *json, size_t len) TOUCHFE_WEAK;
+char *TouchUIB_Take(touchuib_conn_t *c, size_t *len) TOUCHFE_WEAK;
+void TouchUIB_Free(char *buf) TOUCHFE_WEAK;
+void TouchUIB_SetNotify(touchuib_conn_t *c, void (*fn)(void *ctx), void *ctx) TOUCHFE_WEAK;
+void TouchUIB_Close(touchuib_conn_t *c) TOUCHFE_WEAK;
+
 #define TOUCHFE_BEAT_TIMEOUT 4.0
 #define TOUCHFE_SLOW_PERIOD 0.25
 #define TOUCHFE_MAX_WATCH 192
@@ -88,6 +108,7 @@ static struct
 	struct { char verb[16]; touchfe_verb_fn fn; } verbs[8];
 	int nverbs;
 	qbool was_joining;
+	touchuib_conn_t *uib;   // the UI bridge connection of the attached native UI
 } fe;
 
 // ---------------------------------------------------------------------------
@@ -294,6 +315,31 @@ static const char *app_state(void)
 	return "menu";
 }
 
+static qbool uib_present(void)
+{
+	return TouchUIB_Available && TouchUIB_Open && TouchUIB_Post && TouchUIB_Take && TouchUIB_Free && TouchUIB_Available();
+}
+
+// The bridge queued messages for the native UI: on the "ui" queue, in order.
+static void uib_drain(void *ctx)
+{
+	char *m;
+	size_t len;
+	(void)ctx;
+	while (fe.uib && (m = TouchUIB_Take(fe.uib, &len)))
+	{
+		TouchFE_Put("ui", m, 1);
+		TouchUIB_Free(m);
+	}
+}
+
+static void uib_close(void)
+{
+	if (fe.uib && TouchUIB_Close)
+		TouchUIB_Close(fe.uib);
+	fe.uib = NULL;
+}
+
 static touchfe_verb_fn fe_verb(const char *verb)
 {
 	int i;
@@ -326,7 +372,7 @@ static void publish_app(void)
 	jb_kstr(&b, "server", sv.active ? "" : addr);
 	jb_kbool(&b, "demo", cls.demoplayback);
 	jb_kstr(&b, "version", engineversion);
-	jb_kbool(&b, "ui_bridge", fe_verb("ui") != NULL);
+	jb_kbool(&b, "ui_bridge", fe_verb("ui") != NULL || uib_present());
 	jb_raw(&b, "}");
 	fe_send(FE_APP, &b, false);
 }
@@ -870,6 +916,7 @@ static void fe_detach(const char *why)
 	if (!fe.attached)
 		return;
 	Con_Printf("Front-end bridge: detached (%s); the QuakeC menu is in charge\n", why);
+	uib_close();
 	fe.attached = false;
 	fe.advanced = false;
 	fe.screen[0] = 0;
@@ -1256,6 +1303,26 @@ static void TouchFE_Cmd_f(cmd_state_t *cmd)
 	}
 	else if (!strcmp(verb, "save"))
 		Cbuf_AddText(cmd_local, "\nsaveconfig\n");
+	else if (!strcmp(verb, "ui") && !fe_verb("ui"))
+	{
+		// a UI bridge message from the native renderer: decoded whole, not through fe_args
+		const char *raw = Cmd_Argc(cmd) > 2 ? Cmd_Argv(cmd, 2) : "";
+		size_t n = strlen(raw) + 1;
+		char *json = (char *)malloc(n);
+		if (!json)
+			return;
+		fe_decode(json, n, raw);
+		if (!fe.uib && uib_present() && fe.attached)
+		{
+			fe.uib = TouchUIB_Open("android", 7);
+			if (fe.uib && TouchUIB_SetNotify)
+				TouchUIB_SetNotify(fe.uib, uib_drain, NULL);
+		}
+		if (fe.uib && TouchUIB_Post(fe.uib, json, strlen(json)) == -1)
+			uib_close(); // closed by the engine: the next message opens a new one (a hello)
+		free(json);
+		uib_drain(NULL);
+	}
 	else if (fe_verb(verb))
 		fe_verb(verb)(arg(cmd, 2));
 	else
@@ -1359,6 +1426,8 @@ void TouchFE_Frame(void)
 	if (!touch_native_frontend.integer && !fe.attached)
 		return; // nothing to tell anyone
 	fe_sync_menu();
+	if (fe.uib)
+		uib_drain(NULL);
 	publish_app();
 	watch_status();
 	if (fe.attached && beat_age() > 30 && !cls.demoplayback)
