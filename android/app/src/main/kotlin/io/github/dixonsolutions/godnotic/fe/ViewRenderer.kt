@@ -78,13 +78,17 @@ class ViewRenderer(
 
     override fun create(id: String, parent: String?, index: Int, type: String, props: Map<String, Any?>, hints: Map<String, Any?>) {
         nodes[id]?.let { remove(id) }
-        val e = try { build(id, type, props) } catch (ex: RuntimeException) { generic(id, type, props) }
+        // a child of Home's bar is drawn as one of its joined segments (a button)
+        val inTabBar = parent?.let { nodes[it] }?.type == "tabbar"
+        val e = try { if (inTabBar) tab(id, props) else build(id, type, props) } catch (ex: RuntimeException) { generic(id, type, props) }
         e.parent = parent
         nodes[id] = e
         bindSafe(e)
         e.view.visibility = if (props.bool("hidden")) View.GONE else View.VISIBLE
         val p = parent?.let { nodes[it] } ?: return
         if (p.type == "tabs") { tabsAdd(p, e); return }
+        // Home's bar of tabs: the screen's last strip, under the action bar
+        if (p.type == "screen" && type == "tabbar") { (p.view as? ViewGroup)?.addView(e.view, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)); return }
         if (p.type == "split") { splitAdd(p, e); return }
         val place = UiLayout.placement(p.type, type, hints, props)
         val group = when (place) {
@@ -182,6 +186,7 @@ class ViewRenderer(
         "form", "pane", "column" -> group(id, type, props, Kit.column(ctx, 12f))
         "grid" -> grid(id, props)
         "tabs" -> tabs(id, props)
+        "tabbar" -> tabbar(id, props)
         "card" -> card(id, props, hero = false)
         "hero" -> card(id, props, hero = true)
         "list" -> list(id, props)
@@ -206,7 +211,7 @@ class ViewRenderer(
         if (g is LinearLayout && g.orientation == LinearLayout.HORIZONTAL && child.type == "field")
             return LinearLayout.LayoutParams(dp(380f), ViewGroup.LayoutParams.WRAP_CONTENT)
         if (g is LinearLayout && g.orientation == LinearLayout.HORIZONTAL) {
-            val grow = child.type == "card" || child.type == "hero" || child.type == "row" || child.props.str("width") == "fill"
+            val grow = child.type == "card" || child.type == "hero" || child.type == "row" || child.type == "tab" || child.props.str("width") == "fill"
             return LinearLayout.LayoutParams(if (grow) 0 else ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, if (grow) 1f else 0f)
         }
         if (g is LinearLayout) return LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -829,16 +834,68 @@ class ViewRenderer(
             img.contain = x.props.str("fit") == "contain"
             // a banner or picture never takes more than a fifth (contain) or two fifths of the screen's height
             img.maxHeight = (ctx.resources.displayMetrics.heightPixels * if (img.contain) 0.2f else 0.4f).toInt()
-            // `role: banner` with `emphasis: high` (Home, docs/UI_BRIDGE.md): large, a
-            // quarter to a third of the height; any other banner on Home stays a header
+            // `role: banner` with `emphasis: high` (Home, docs/UI_BRIDGE.md): at the top, scaled to the
+            // screen; on a short screen (phone landscape) it gives way first: the row of cards and the
+            // bar of Settings, Credits and Quit must fit under it
             val h = ctx.resources.displayMetrics.heightPixels
-            // on a short screen (phone landscape) the banner gives way first: the cards must fit
             val hdp = h / ctx.resources.displayMetrics.density
             if (x.props.str("role") == "banner" && x.props.str("emphasis") == "high") img.maxHeight = (h * (if (hdp < 480f) 0.16f else if (hdp < 640f) 0.22f else 0.3f)).toInt()
             else if (img.contain && screenKind(x) == "home") img.maxHeight = (h * 0.11f).toInt()
             img.contentDescription = x.props.str("alt")
             val r = x.props.str("ref")
             if (r.isEmpty()) img.none() else picture(img, r)
+        }
+        return e
+    }
+
+    /** Home's bar (`tabbar`: Settings, Credits, Quit): one strip along the bottom, joined edge to edge. */
+    private fun tabbar(id: String, props: Map<String, Any?>): Entry {
+        val row = Kit.row(ctx)
+        row.setBackgroundColor(Theme.PANEL)
+        row.showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
+        row.dividerDrawable = android.graphics.drawable.GradientDrawable().apply { setColor(Theme.OUTLINE); setSize(max(1, dp(1f)), 1) }
+        return Entry(id, "tabbar", row, row, props)
+    }
+
+    /**
+     * One segment of Home's bar (Settings, Credits, Quit): a flat button joined to its neighbours.
+     * The open screen's one (the bar's `current`) is a darker shade with an ember line on top and
+     * does nothing when tapped; a pressed or focused one is darker too. Quit asks first (invoke).
+     */
+    private fun tab(id: String, props: Map<String, Any?>): Entry {
+        val frame = FrameLayout(ctx)
+        frame.minimumHeight = dp(56f)
+        frame.isClickable = true
+        frame.isFocusable = true
+        val titleV = Kit.text(ctx, "", Theme.SP_BODY, Theme.TEXT, bold = true, lines = 1)
+        titleV.gravity = Gravity.CENTER
+        titleV.ellipsize = android.text.TextUtils.TruncateAt.END
+        titleV.compoundDrawablePadding = dp(8f)
+        titleV.setPadding(dp(8f), 0, dp(8f), 0)
+        frame.addView(titleV, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        val line = View(ctx)
+        frame.addView(line, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, max(1, dp(1f)), Gravity.TOP))
+        val e = Entry(id, "tab", frame, null, props)
+        e.bind = { x ->
+            val p = x.props
+            val cur = nodes[x.parent ?: ""]?.props?.str("current").orEmpty()
+            val current = cur.isNotEmpty() && x.id.endsWith("/$cur")
+            frame.background = android.graphics.drawable.StateListDrawable().apply {
+                val dark = android.graphics.drawable.ColorDrawable(Theme.BG)
+                addState(intArrayOf(android.R.attr.state_pressed), dark)
+                addState(intArrayOf(android.R.attr.state_focused), dark)
+                addState(intArrayOf(), android.graphics.drawable.ColorDrawable(if (current) Theme.BG else Theme.PANEL_HI))
+            }
+            line.setBackgroundColor(if (current) Theme.EMBER else Theme.OUTLINE)
+            (line.layoutParams as? FrameLayout.LayoutParams)?.let { it.height = if (current) dp(3f) else max(1, dp(1f)); line.layoutParams = it }
+            val a = p["action"].obj()
+            val tint = if (current) Theme.EMBER else Theme.TEXT
+            titleV.text = p.str("label").ifEmpty { a.str("label") }
+            titleV.setTextColor(tint)
+            titleV.setCompoundDrawablesRelative(Icons.drawable(a.str("icon"), dp(18f), tint), null, null, null)
+            frame.contentDescription = titleV.text
+            frame.isSelected = current
+            frame.setOnClickListener { if (!current) invoke(id, e.props["action"].obj()) }
         }
         return e
     }

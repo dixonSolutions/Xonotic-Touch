@@ -96,6 +96,8 @@ TYPES = {
                "header": obj({"collapsible": B, "compact": B, "hidden": B})},
     "toolbar": {},
     "actionbar": {"align": enum("start", "center", "end", "spread")},
+    # Home's three modes along the very bottom: card children, the open one's key in current
+    "tabbar": {"current": S},
     "toast": {"text": S, "kind": enum("info", "success", "warning", "error"), "action": ref("action"),
               "timeout": I},
     "section": {"footer": S, "collapsible": B, "collapsed": B, "link": ref("action"), "sticky": B},

@@ -9,14 +9,16 @@ after every step the description is dumped and checked.
 
     UIB_BASEDIR=<basedir> [UIB_ENGINE=build/bin/xonotic] [UIB_LIBDIR=...] tests/uibridge/input_test.py [WxH] [touch|mouse] [shots dir]
 
-Checks: a tap opens a screen; a drag over the map picker scrolls and chooses
+Checks: on a fresh install the welcome asks for a name first (Escape does not
+close it; tapping the field, typing and Enter save the name and close it); a tap
+opens a screen; a drag over the map picker scrolls and chooses
 nothing; one tap chooses a map and starts nothing; Escape goes back; typing in
 the address field and Enter joins, Cancel on the loading screen returns to Home;
 arrow keys and Enter open a card; a classic dialog opens over the menu, takes
 Escape itself and leaves the bridge menu (not the old launcher) behind; a double
 tap on a map starts the match and the pause menu's Resume and Leave work.
 """
-import json, os, shutil, subprocess, sys, tempfile
+import json, os, re, shutil, subprocess, sys, tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 size = sys.argv[1] if len(sys.argv) > 1 else "1280x720"
@@ -32,6 +34,11 @@ def step(name, cmd, wait=1.6):
 
 
 step("start", "echo", 1.0)
+# a fresh install: the welcome asks for a name over Home before anything else (UIB_BuildWelcome)
+step("welcome-escape", "uib_input key ESCAPE", 1.0)
+step("welcome-tap-name", "uib_input tap welcome/form/name", 1.0)
+step("welcome-type", "uib_input text InputTester", 1.0)
+step("welcome-enter", "uib_input key ENTER", 1.6)
 step("tap-singleplayer", "uib_input tap home/tiles/sp")
 step("drag-maps", "uib_input drag sp/maps/list#0 -260 0", 2.2)
 step("tap-map", "uib_input tap sp/maps/list#7")
@@ -51,7 +58,10 @@ step("keys-in-list", "uib_input key DOWNARROW", 0.5)
 step("keys-in-list2", "uib_input key DOWNARROW", 0.5)
 step("keys-right", "uib_input key RIGHTARROW; uib_input key RIGHTARROW", 0.8)
 step("escape2", "uib_input key ESCAPE")
-step("open-settings", 'uib_event {\\"ev\\":\\"action\\",\\"node\\":\\"home\\",\\"action\\":\\"settings\\"}', 1.0)
+# Home's bar along the bottom: Settings, then Credits and back in place
+step("open-settings", "uib_input tap home/nav/settings", 1.2)
+step("tab-credits", "uib_input tap settings/nav/credits", 1.2)
+step("tab-settings", "uib_input tap credits/nav/settings", 1.2)
 step("open-classic", 'uib_event {\\"ev\\":\\"value\\",\\"node\\":\\"settings/split\\",\\"value\\":\\"menu\\"}', 1.0)
 step("classic-up", "uib_input tap settings/split/menu/classic/advanced", 2.5)
 step("classic-hold", "echo", 1.0)
@@ -135,6 +145,18 @@ def node(s, i):
 check(len(state) == len(steps), f"every step ran ({len(state)}/{len(steps)})")
 check(app("start").get("stack") == ["home"] and "top=home" in state.get("start", {}).get("r", ""),
       "with the default configuration the bridge menu draws Home (" + state.get("start", {}).get("r", "no renderer state")[:40] + ")")
+check(app("start").get("modal") == ["welcome"] and (node("start", "welcome").get("primary") or {}).get("enabled") is False,
+      f"a fresh install opens on the welcome dialog with Continue off ({app('start').get('modal')})")
+check(app("welcome-escape").get("modal") == ["welcome"], "Escape does not close the welcome")
+check((node("welcome-type", "welcome").get("primary") or {}).get("enabled") is True, "tapping the name field and typing turns Continue on")
+cfg = ""
+try:
+    cfg = open(os.path.join(ud, "data", "config.cfg"), encoding="utf-8", errors="replace").read()
+except OSError:
+    pass
+check(app("welcome-enter").get("modal") == [] and app("welcome-enter").get("stack") == ["home"]
+      and re.search(r'^(seta )?"?_cl_name"? "InputTester"$', cfg, re.M) and re.search(r'^seta "?touch_profile_done"? "1"$', cfg, re.M),
+      f"Enter saves the name and closes the welcome ({app('welcome-enter').get('modal')}; name saved: {'InputTester' in cfg})")
 check(app("tap-singleplayer").get("stack") == ["home", "sp"], "a tap on the Singleplayer card opens Singleplayer")
 check(app("drag-maps").get("stack") == ["home", "sp"] and node("drag-maps", "sp/maps/list").get("selected") == ["stormkeep"],
       "a drag over the map picker scrolls it and chooses nothing")
@@ -160,6 +182,11 @@ ksel = node("keys-right", "sp/maps/list").get("selected")
 check(ksel and ksel != node("enter-opens", "sp/maps/list").get("selected") and app("keys-right").get("stack") == ["home", "sp"],
       f"arrow keys reach the map picker and move its cursor, which chooses the map ({ksel})")
 check(app("escape2").get("stack") == ["home"], "Escape closes it")
+check(app("open-settings").get("stack") == ["home", "settings"] and node("open-settings", "settings/nav").get("current") == "settings",
+      "a tap on Settings in Home's bottom bar opens Settings, its segment current")
+check(app("tab-credits").get("stack") == ["home", "credits"] and node("tab-credits", "credits/nav").get("current") == "credits",
+      "a tap on Credits in the bar swaps the screen in place (Back still goes Home)")
+check(app("tab-settings").get("stack") == ["home", "settings"], "and Settings swaps back")
 frames = lambda s: int((state.get(s, {}).get("r", "") + " frames=0").split("frames=")[1].split()[0])
 check(app("classic-hold").get("stack") == ["home", "settings"] and frames("classic-hold") == frames("classic-up"),
       f"Advanced settings: the classic dialog draws and the bridge renderer stands aside ({frames('classic-hold') - frames('classic-up')} bridge frames in the next second)")

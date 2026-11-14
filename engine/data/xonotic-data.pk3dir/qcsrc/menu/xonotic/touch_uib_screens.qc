@@ -267,17 +267,45 @@ bool UIB_ServerSummary()
 	return true;
 }
 
-// Home: the banner and exactly three cards. Settings, Credits and Quit are the
-// screen's actions (small, in the header), never cards.
+// Home's bar along the bottom (a "tabbar" node, id "nav"): Settings, Credits and
+// Quit joined edge to edge, like tabs. It is on Home and on the Settings and
+// Credits screens it opens (while the menu is not over a match), where the open
+// one is "current" (drawn a darker shade); a tap on the other swaps the screen
+// in place (UIB_OpenTab). Quit asks first.
+bool UIB_HomeBarHere()
+{
+	// no tokenize here: the screens call this while building, inside callers that
+	// still read their own argv (a settings value event)
+	if (uibn_context == "game" || substring(uibn_stack, 0, 4) != "home") return false;
+	return strlen(uibn_stack) == 4 || substring(uibn_stack, 4, 1) == " ";
+}
+
+void UIB_HomeBarTab(string key, string label, string actionjson)
+{
+	UIB_Open(key, "button");
+		uib_s("label", label);
+		uib_j("action", actionjson);
+	UIB_Close();
+}
+
+void UIB_HomeBar(string current)
+{
+	UIB_Open("nav", "tabbar");
+		uib_s("current", current);
+		UIB_HomeBarTab("settings", _("Settings"), UIB_A("settings", _("Settings"), "settings"));
+		UIB_HomeBarTab("credits", _("Credits"), UIB_A("credits", _("Credits"), "credits"));
+		UIB_HomeBarTab("quit", _("Quit"), UIB_AC("quit", _("Quit"), "quit", "secondary", _("Quit Godnotic?"), _("Quit"), false));
+	UIB_Close();
+}
+
+// Home: the banner at the top, scaled to the window, the three cards in one row
+// under it, and the bar of Settings, Credits and Quit along the bottom.
 void UIB_BuildHome()
 {
 	if (!UIB_Screen("home", _("Godnotic")))
 		return;
 	uib_s("kind", "home");
 	uib_s("background", "asset:background");
-	uib_push("actions", UIB_A("settings", _("Settings"), "settings"));
-	uib_push("actions", UIB_A("credits", _("Credits"), "credits"));
-	uib_push("actions", UIB_AC("quit", _("Quit"), "quit", "secondary", _("Quit Godnotic?"), _("Quit"), false));
 
 	UIB_Open("banner", "image");
 		uib_s("ref", "asset:banner");
@@ -296,34 +324,10 @@ void UIB_BuildHome()
 	if (!uib_camp_loaded)
 		UIB_CampaignLoad();
 	UIB_ServerSummary();
-	// Home's cards are always one horizontal row, never stacked and never
-	// scrolled down to. The compact breakpoint: a renderer too narrow for three
-	// cards side by side (widthClass compact, under 600 dp) gets a row of two:
-	// Play, with Singleplayer and Campaign as its two actions, beside
-	// Multiplayer. Wider renderers get the row of three.
-	bool compact = (uib_caps("widthClass") == "compact" || uib_narrow);
+	// always one horizontal row of three, never stacked and never scrolled down to
 	UIB_Open("tiles", "grid");
-		uib_f("minItem", (compact ? 150 : 200));
-		uib_f("maxColumns", (compact ? 2 : 3));   // one row: every card of the grid side by side
-		if (compact)
-		{
-			UIB_Open("play", "card");
-				uib_s("title", _("Play"));
-				if (campaign_entries > 0)
-					uib_s("subtitle", sprintf(_("%s · Campaign level %d of %d"), UIB_MapTitle(map), uib_camp_index + 1, campaign_entries));
-				else
-					uib_s("subtitle", sprintf(_("%s · %s"), UIB_MapTitle(map), UIB_ModeName(mode)));
-				uib_s("icon", "play");
-				uib_s("image", strcat("pk3:maps/", map));
-				uib_s("aspect", "16:9");
-				uib_b("featured", 1);
-				uib_j("primary", UIB_A("sp", _("Singleplayer"), "singleplayer"));
-				uib_push("actions", UIB_A("sp", _("Singleplayer"), "singleplayer"));
-				uib_push("actions", UIB_A("campaign", _("Campaign"), "trophy"));
-			UIB_Close();
-		}
-		else
-		{
+		uib_f("minItem", 150);
+		uib_f("maxColumns", 3);
 		UIB_Open("sp", "card");
 			uib_s("title", _("Singleplayer"));
 			uib_s("subtitle", sprintf(_("%s · %s · %d bots"), UIB_MapTitle(map), UIB_ModeName(mode), bots));
@@ -351,7 +355,6 @@ void UIB_BuildHome()
 			uib_b("featured", 1);
 			uib_j("primary", UIB_A("campaign", _("Open"), "chevron"));
 		UIB_Close();
-		}
 		UIB_Open("mp", "card");
 			uib_s("title", _("Multiplayer"));
 			uib_s("subtitle", (uib_mp_summary != "") ? uib_mp_summary : _("Join a server, or create a game"));
@@ -363,7 +366,27 @@ void UIB_BuildHome()
 			uib_j("primary", UIB_A("mp", _("Open"), "chevron"));
 		UIB_Close();
 	UIB_Close();
+
+	UIB_HomeBar("");
 	UIB_Done();
+}
+
+// A tab of Home's bar: from Settings or Credits it replaces that screen (Back
+// still goes Home), from anywhere else it opens on top.
+void UIB_OpenTab(string id)
+{
+	if (uibn_modal == "" && tokenize_console(uibn_stack) == 2 && argv(0) == "home"
+		&& (argv(1) == "settings" || argv(1) == "credits"))
+	{
+		if (argv(1) == id)
+		{
+			UIB_Build(id);
+			return;
+		}
+		UIB_SetStack(strcat("home ", id), "");
+		return;
+	}
+	UIB_Push(id);
 }
 
 // ---------------------------------------------------------------- campaign
@@ -1243,6 +1266,7 @@ void UIB_BuildCredits()
 		UIB_Text("text", _("The engine and game code are free software under the GNU General Public License, version 2 or later. Game data is under its authors' licences (see each pack's licence file)."), "caption");
 		UIB_Button("source", _("Source code"), UIB_ALink("credits.source", _("Source code"), "link", "https://github.com/dixonSolutions/Godnotic"), "link");
 	UIB_Close();
+	if (UIB_HomeBarHere()) UIB_HomeBar("credits");
 	UIB_Done();
 }
 
@@ -1457,7 +1481,7 @@ void UIB_Action(string node, string a, string payload)
 		case "host.copy": case "host.copylink": case "host.share": return;   // the renderer copied or shared the text
 		case "create": UIB_VMSet("create.from", "mp"); UIB_Push("sp"); return;
 		case "mp": UIB_VMSet("mp.server", ""); UIB_Push("mp"); UIB_Refresh(); uib_mp_next_refresh = uib_gettime(1) + 10; return;
-		case "credits": UIB_Push("credits"); return;
+		case "credits": UIB_OpenTab("credits"); return;
 		case "quit": localcmd("\nquit\n"); return;   // the renderer already confirmed
 		case "quit.confirm": localcmd("\nquit\n"); return;
 		case "dialog.cancel": UIB_Back(); return;

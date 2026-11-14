@@ -56,34 +56,12 @@
     "props": {
      "title": "Godnotic",
      "kind": "home",
-     "background": "asset:background",
-     "actions": [
-      {
-       "id": "settings",
-       "label": "Settings",
-       "icon": "settings"
-      },
-      {
-       "id": "credits",
-       "label": "Credits",
-       "icon": "credits"
-      },
-      {
-       "id": "quit",
-       "label": "Quit",
-       "icon": "quit",
-       "style": "secondary",
-       "confirm": {
-        "title": "Quit Godnotic?",
-        "ok": "Quit",
-        "destructive": false
-       }
-      }
-     ]
+     "background": "asset:background"
     },
     "children": [
      "home/banner",
-     "home/tiles"
+     "home/tiles",
+     "home/nav"
     ]
    },
    {
@@ -103,7 +81,7 @@
     "id": "home/tiles",
     "type": "grid",
     "props": {
-     "minItem": 200,
+     "minItem": 150,
      "maxColumns": 3
     },
     "children": [
@@ -169,6 +147,63 @@
     "children": []
    },
    {
+    "id": "home/nav",
+    "type": "tabbar",
+    "props": {
+     "current": ""
+    },
+    "children": [
+     "home/nav/settings",
+     "home/nav/credits",
+     "home/nav/quit"
+    ]
+   },
+   {
+    "id": "home/nav/settings",
+    "type": "button",
+    "props": {
+     "label": "Settings",
+     "action": {
+      "id": "settings",
+      "label": "Settings",
+      "icon": "settings"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/nav/credits",
+    "type": "button",
+    "props": {
+     "label": "Credits",
+     "action": {
+      "id": "credits",
+      "label": "Credits",
+      "icon": "credits"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/nav/quit",
+    "type": "button",
+    "props": {
+     "label": "Quit",
+     "action": {
+      "id": "quit",
+      "label": "Quit",
+      "icon": "quit",
+      "style": "secondary",
+      "confirm": {
+       "title": "Quit Godnotic?",
+       "ok": "Quit",
+       "destructive": false
+      }
+     }
+    },
+    "children": []
+   },
+   {
     "id": "settings",
     "type": "screen",
     "props": {
@@ -176,7 +211,8 @@
      "kind": "page"
     },
     "children": [
-     "settings/split"
+     "settings/split",
+     "settings/nav"
     ]
    },
    {
@@ -434,6 +470,63 @@
      "label": "Mods",
      "icon": "mods",
      "subtitle": "Client and server mods, pages from mods"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/nav",
+    "type": "tabbar",
+    "props": {
+     "current": "settings"
+    },
+    "children": [
+     "settings/nav/settings",
+     "settings/nav/credits",
+     "settings/nav/quit"
+    ]
+   },
+   {
+    "id": "settings/nav/settings",
+    "type": "button",
+    "props": {
+     "label": "Settings",
+     "action": {
+      "id": "settings",
+      "label": "Settings",
+      "icon": "settings"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings/nav/credits",
+    "type": "button",
+    "props": {
+     "label": "Credits",
+     "action": {
+      "id": "credits",
+      "label": "Credits",
+      "icon": "credits"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings/nav/quit",
+    "type": "button",
+    "props": {
+     "label": "Quit",
+     "action": {
+      "id": "quit",
+      "label": "Quit",
+      "icon": "quit",
+      "style": "secondary",
+      "confirm": {
+       "title": "Quit Godnotic?",
+       "ok": "Quit",
+       "destructive": false
+      }
+     }
     },
     "children": []
    }
