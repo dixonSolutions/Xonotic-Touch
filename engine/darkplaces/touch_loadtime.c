@@ -32,6 +32,8 @@ as they arrive. Neither applies in the menu or in the game.
 #include "touch_loadfs.h"
 #include "touch_loadcvar.h"
 #include "touch_net.h"
+#include "touch_jointime.h"
+#include "touch_csprogs.h"
 #include "image.h"
 #ifdef __linux__
 #include <unistd.h>
@@ -127,7 +129,11 @@ void TouchLoadTime_Begin(int phase)
 	if (phase < 0 || phase >= TLT_COUNT)
 		return;
 	if (tlt.depth[phase]++ == 0)
+	{
 		tlt.begin[phase] = TLT_Now();
+		if (phase == TLT_SPAWN || phase == TLT_CSQC)
+			TouchJoinTime_Phase(phase, true);
+	}
 }
 
 void TouchLoadTime_End(int phase)
@@ -140,6 +146,8 @@ void TouchLoadTime_End(int phase)
 		tlt.calls[phase]++;
 		if (phase == TLT_SHADER)
 			TP_ShaderDone();
+		if (phase == TLT_SPAWN || phase == TLT_CSQC)
+			TouchJoinTime_Phase(phase, false);
 	}
 	if (phase == TLT_SPAWN && !tlt.loading && host.state == host_active)
 	{
@@ -150,6 +158,12 @@ void TouchLoadTime_End(int phase)
 		tlt.load_frames = 0;
 		tlt.last_signon = -1;
 	}
+}
+
+qbool TouchLoadTime_InLoad(void)
+{
+	return tlt.depth[TLT_MODEL] || tlt.depth[TLT_SOUND] || tlt.depth[TLT_IMAGE] || tlt.depth[TLT_DDS]
+		|| tlt.depth[TLT_SHADER] || tlt.depth[TLT_CSQC] || tlt.depth[TLT_SPAWN] || tlt.depth[TLT_PROGS];
 }
 
 void TouchLoadTime_Count(int counter)
@@ -270,6 +284,7 @@ void TouchLoadTime_Frame(void)
 	int i;
 
 	TLT_Signons(now);
+	TouchJoinTime_Frame(now);
 
 	// font sizes r_font_lazysizes left for later: all of them under a load's
 	// loading screen (the HUD draws most of them in its first frame), else
@@ -511,6 +526,7 @@ double TouchLoadTime_SleepTime(double sleeptime)
 		tlt.background = false;
 	}
 	TP_Frame(now);
+	TouchCSProgs_Frame();
 
 	if (TouchLoadTime_Restless())
 	{
@@ -531,6 +547,8 @@ void TouchLoadTime_Init(void)
 {
 	TouchLoadFS_Init();
 	TouchCvar_Init();
+	TouchJoinTime_Init();
+	TouchCSProgs_Init();
 	Cvar_RegisterVariable(&touch_loadtime);
 	Cvar_RegisterVariable(&touch_load_restless);
 	Cvar_RegisterVariable(&touch_load_lazysbar);

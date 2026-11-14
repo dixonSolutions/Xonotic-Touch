@@ -29,6 +29,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "mdfour.h"
 #include "touch_lan.h" // Touch: LAN games
 #include "touch_net.h" // Touch: windowed reliable channel, fast signon
+#include "touch_csprogs.h" // Touch: CSQC over HTTP
 #include "touch_srvlist.h" // Touch: the fast server list
 #include <time.h>
 
@@ -1665,6 +1666,7 @@ static int NetConn_ReceivedMessage(netconn_t *conn, const unsigned char *data, s
 					if( conn->receiveMessageLength + length <= (int)sizeof( conn->receiveMessage ) ) {
 						memcpy(conn->receiveMessage + conn->receiveMessageLength, data, length);
 						conn->receiveMessageLength += (int)length;
+						TouchCSProgs_Peek(conn, conn->receiveMessage, conn->receiveMessageLength); // Touch: a known CSQC build over HTTP, from the first fragment (touch_csprogs.c)
 					} else {
 						Con_Printf( "Reliable message (seq: %i) too big for message buffer!\n"
 									"Dropping the message!\n", sequence );

@@ -32,6 +32,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "cl_video.h"
 #include "float.h"
 #include "touch_android.h" // Touch: background map load
+#include "touch_jointime.h" // Touch: join phase timing
+#include "touch_csprogs.h" // Touch: CSQC over HTTP
 
 const char *svc_strings[128] =
 {
@@ -207,6 +209,7 @@ static void QW_CL_StopUpload_f(cmd_state_t *cmd);
 static inline void CL_SetSignonStage_WithMsg(int signon_stage)
 {
 	cls.signon = signon_stage;
+	TouchJoinTime_Signon(signon_stage); // Touch: join phase timing (touch_jointime.c)
 	dpsnprintf(cl_connect_status, sizeof(cl_connect_status), "Connect: signon stage %i of %i", cls.signon, SIGNONS);
 	Con_DPrint(cl_connect_status);
 }
@@ -1143,6 +1146,8 @@ static void CL_BeginDownloads(qbool aborteddownload)
 		 && !(cl_csqc_download.integer == 2 && FS_CRCFile("csprogs.dat", &progsize) == csqc_progcrc.integer && ((int)progsize == csqc_progsize.integer || csqc_progsize.integer == -1))
 		 && !FS_FileExists(va(vabuf, sizeof(vabuf), "dlcache/%s.%i.%i", csqc_progname.string, csqc_progsize.integer, csqc_progcrc.integer)))
 		{
+			if (TouchCSProgs_Wait(csqc_progname.string, csqc_progsize.integer, csqc_progcrc.integer))
+				return; // Touch: a known build over HTTP instead; the load carries on when it is in (touch_csprogs.c)
 			Con_Printf("Downloading new CSQC code to dlcache/%s.%i.%i\n", csqc_progname.string, csqc_progsize.integer, csqc_progcrc.integer);
 			if(cl_serverextension_download.integer == 2 && FS_HasZlib())
 				CL_ForwardToServer(va(vabuf, sizeof(vabuf), "download %s deflate", csqc_progname.string));
@@ -1407,15 +1412,13 @@ static void CL_BeginDownloads(qbool aborteddownload)
 	}
 }
 
-#ifdef __ANDROID__
-// Touch: carry on with a load TouchAndroid_HoldMapLoad held while the app was in the background
+// Touch: carry on with a load TouchAndroid_HoldMapLoad held while the app was in the background, or one waiting on touch_csprogs
 void CL_ResumeHeldLoad(void);
 void CL_ResumeHeldLoad(void)
 {
 	if (cls.state == ca_connected && cl.loadbegun && !cl.loadfinished)
 		CL_BeginDownloads(false);
 }
-#endif
 
 static void CL_BeginDownloads_f(cmd_state_t *cmd)
 {

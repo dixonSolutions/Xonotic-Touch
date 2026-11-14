@@ -49,6 +49,9 @@ the next game.
 #include "touch_crc.h"
 #include "touch_prvm.h"
 #include "touch_loadtime.h"
+#include "touch_csprogs.h"
+#include "touch_jointime.h"
+#include "libcurl.h"
 #if defined(__has_include)
 # if __has_include(<SDL.h>) && !defined(DEDICATED_SERVER)
 #  include <SDL.h>
@@ -73,6 +76,7 @@ static cvar_t touch_device_thermal = {CF_CLIENT, "touch_device_thermal", "0", "t
 static cvar_t touch_device_powersave = {CF_CLIENT, "touch_device_powersave", "0", "1 while the device is in battery saver; set by the platform layer"};
 static cvar_t touch_device_charging = {CF_CLIENT, "touch_device_charging", "0", "1 while the device is plugged in; set by the platform layer"};
 static cvar_t touch_warm_saver = {CF_CLIENT | CF_ARCHIVE, "touch_warm_saver", "1", "touch_warm under battery saver: 0 nothing, 1 all of it while charging and otherwise a reduced pass (touch_warm_saver_work), 2 all of it"};
+static cvar_t touch_warm_join = {CF_CLIENT, "touch_warm_join", "1", "while a join to a remote server waits on the network (a stock server's first message, the server's CSQC), load the map's preload list, and its world model once the precache list is in (Godnotic)"};
 static cvar_t touch_warm_saver_work = {CF_CLIENT, "touch_warm_saver_work", "0.5", "seconds of work the reduced touch_warm pass may spend under battery saver (world first, then models: the costliest items of a join)"};
 
 #define TW_MAXITEMS 1024
@@ -97,6 +101,7 @@ static struct
 	int loaded[5], already, missing;
 	volatile int lowmemory;
 	qbool in_game;
+	qbool joining;         // the plan is a remote join's (TW_JoinFrame)
 }
 tw;
 
@@ -306,10 +311,93 @@ static void TW_Drop(const char *why)
 	Con_DPrintf("touch_warm: freed what no game uses (%s)\n", why);
 }
 
+/*
+A join to a remote server spends much of its time waiting: a stock server
+sends its first message (serverinfo, precache lists, ~22 KB) one 1 KB
+fragment per round trip, and a server's CSQC that is not here yet takes a
+download. The client has nothing to do then, and part of what the load does
+next is known: the map's touch_preload list (models, pictures, shaders,
+sounds earlier games on it loaded late), which the replay would otherwise
+load under the loading screen after the signon. While it waits:
+  - the server's first message is still arriving (signon 0): the list of
+    the map it names (TouchCSProgs_PeekMap), in the first part of each
+    round trip only (a fragment's acknowledgement is never held up);
+  - the precache list is in and the server's CSQC is coming (UDP download
+    or touch_csprogs over HTTP): the rest, within touch_warm_budget a frame.
+Never the world model: the precache loads it, and loading it any earlier
+went wrong in the join's signon (a crash in the lightmap upload, a stall).
+Not while the server's own packs download (curl --forthismap): they may
+replace what the list names. The replay then finds the entries loaded.
+*/
+static const char *TW_JoinMap(void)
+{
+	static char map[MAX_QPATH];
+	const char *m = NULL;
+	size_t n;
+	if (!touch_warm.integer || !touch_warm_join.integer || tw.dropped || cls.state != ca_connected || sv.active || cls.demoplayback || cl.loadfinished)
+		return NULL;
+	if (touch_device_thermal.integer >= touch_warm_maxthermal.integer)
+		return NULL;
+	if (cls.signon == 0)
+		m = TouchCSProgs_PeekMap();
+	else if (cls.signon == 1 && !Curl_Have_forthismap()
+		&& (TouchCSProgs_Running() || (cls.qw_downloadname[0] && !strcmp(cls.qw_downloadname, csqc_progname.string))))
+		m = cl.model_name[1];
+	if (!m || strncmp(m, "maps/", 5) || (n = strlen(m)) < 10 || n - 9 >= sizeof(map) || strcmp(m + n - 4, ".bsp"))
+		return NULL;
+	memcpy(map, m + 5, n - 9);
+	map[n - 9] = 0;
+	return map;
+}
+
+static void TW_JoinFrame(const char *map)
+{
+	double start = Sys_DirtyTime(), budget = touch_warm_budget.value * 0.001, rtt;
+	if (cls.signon == 0)
+	{
+		// the server's next fragment comes a round trip after the client
+		// acknowledged the last one: work only in the first part of that
+		// gap, so its acknowledgement is not held up
+		rtt = TouchJoinTime_RTT();
+		if (rtt <= 0.004 || !cls.netcon || start - cls.netcon->lastMessageDirtyTime > rtt * 0.5)
+			return;
+		budget = min(budget, rtt * 0.4);
+	}
+	if (!tw.joining || strcmp(tw.map, map))
+	{
+		TW_Plan(map);
+		tw.joining = true;
+	}
+	// the world model is the precache's
+	while (tw.next < tw.count && tw.items[tw.next].kind == 'w')
+		tw.next++;
+	while (tw.next < tw.count && Sys_DirtyTime() - start < budget)
+		TW_Load(&tw.items[tw.next++]);
+	tw.spent += Sys_DirtyTime() - start;
+}
+
 static void TW_Frame(void)
 {
 	double start, budget;
 	const char *target;
+
+	// a remote join waiting on the network
+	if ((target = TW_JoinMap()))
+	{
+		TW_JoinFrame(target);
+		return;
+	}
+	if (tw.joining)
+	{
+		if ((cls.state == ca_connected && cl.loadfinished) || cls.state == ca_disconnected)
+		{
+			if (Cvar_VariableValue(&cvars_all, "touch_loadtime", ~0) && (tw.loaded[0] || tw.loaded[1] || tw.loaded[2] || tw.loaded[3] || tw.loaded[4]))
+				Con_Printf("LOADTIME warm join %s world=%d models=%d pics=%d shaders=%d sounds=%d already=%d work=%.1f ms\n",
+					tw.map, tw.loaded[0], tw.loaded[1], tw.loaded[2], tw.loaded[3], tw.loaded[4], tw.already, tw.spent * 1000.0);
+			TW_Reset();
+			tw.joining = false;
+		}
+	}
 
 	if (tw.lowmemory)
 	{
@@ -378,6 +466,10 @@ static void TW_Frame(void)
 
 void TouchWarm_Frame(void)
 {
+	// not from the loading screen a loader redraws: one load at a time
+	// (Mod_LoadModel works through the global loadmodel)
+	if (TouchLoadTime_InLoad())
+		return;
 	TW_Frame();
 }
 
@@ -422,6 +514,7 @@ void TouchWarm_Init(void)
 	Cvar_RegisterVariable(&touch_device_charging);
 	Cvar_RegisterVariable(&touch_warm_saver);
 	Cvar_RegisterVariable(&touch_warm_saver_work);
+	Cvar_RegisterVariable(&touch_warm_join);
 	Cmd_AddCommand(CF_CLIENT, "touch_warm_drop", TouchWarm_Drop_f, "free the models and sounds no game uses and stop touch_warm until the next game (low memory)");
 	Cmd_AddCommand(CF_CLIENT, "touch_warm_status", TouchWarm_Status_f, "what touch_warm prepared");
 	// load-time switches with no init hook of their own in an upstream file

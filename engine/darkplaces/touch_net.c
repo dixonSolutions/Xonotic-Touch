@@ -45,6 +45,7 @@ the wire format and the measurements.
 #include "sv_demo.h"
 #include "touch_net.h"
 #include "touch_lan.h"
+#include "touch_jointime.h"
 
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 #include <sys/select.h>
@@ -914,6 +915,7 @@ void TouchNet_TracePacket(lhnetsocket_t *mysocket, const void *data, int length,
 	const char *side, *kind;
 	char text[96];
 	int i, n, o;
+	TouchJoinTime_Packet(data, length, sent);
 	if (!touch_net_trace.integer || length < 4)
 		return;
 	if (cls.state != ca_dedicated
@@ -1090,6 +1092,7 @@ void TouchNet_Disconnecting(qbool kicked, const char *reason)
 void TouchNet_ConnectAgain(const char *address)
 {
 	lhnetaddress_t to;
+	TouchJoinTime_Connect();
 	if (cls.state != ca_connected || !cls.netcon || sv.active || cls.demoplayback || !address)
 		return;
 	if (!LHNETADDRESS_FromString(&to, address, 26000) || LHNETADDRESS_Compare(&to, &cls.netcon->peeraddress))

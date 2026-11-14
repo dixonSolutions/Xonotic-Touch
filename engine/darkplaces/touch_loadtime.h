@@ -82,6 +82,10 @@ qbool TouchGLSL_Precompile(unsigned int mode, unsigned long long permutation);
 #endif
 
 void TouchLoadTime_Init(void);
+// true inside a model, sound, picture, shader, CSQC or server load: the
+// loaders redraw the loading screen from inside (CL_KeepaliveMessage), and
+// work started from a frame hook then must not start another load
+qbool TouchLoadTime_InLoad(void);
 
 // ft2.c (touch_loadfont.h): render one font size left for later by
 // r_font_lazysizes; false when none is left.

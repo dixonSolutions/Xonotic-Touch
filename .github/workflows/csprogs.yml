@@ -1,0 +1,67 @@
+name: CSQC builds for joins
+
+# Publishes the files touch_csprogs fetches (engine/darkplaces/touch_csprogs.c,
+# docs/JOIN_SPEED.md): each official Xonotic release's csprogs.dat, deflated,
+# as csprogs.dat.SIZE.CRC.deflate on the prerelease "csprogs" of this
+# repository. A Godnotic client joining a stock server that runs one of these
+# builds fetches it here instead of the server's 40 KB/s UDP download.
+#
+# The engine accepts a file only when it inflates to the SHA-256 compiled into
+# tcp_known, so this job refuses to publish anything that does not match the
+# table on the branch it runs from.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: csprogs-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch the official release archives
+        run: |
+          set -euo pipefail
+          mkdir -p rel
+          # Xonotic 0.8.6 (2023-06-20): the data pack holds the release's csprogs.dat
+          curl -fL --retry 3 -o xonotic-0.8.6.zip https://dl.xonotic.org/xonotic-0.8.6.zip
+          unzip -q -j xonotic-0.8.6.zip 'Xonotic/data/xonotic-20230620-data.pk3' -d rel
+          rm xonotic-0.8.6.zip
+
+      - name: Make the files
+        run: |
+          set -euo pipefail
+          python3 scripts/csprogs-catalog.py out "Xonotic 0.8.6=rel/xonotic-20230620-data.pk3" | tee catalog.txt
+          python3 scripts/csprogs-catalog.py --check out
+
+      - name: Only builds the engine knows
+        run: |
+          set -euo pipefail
+          while IFS= read -r line; do
+            sha=$(printf '%s\n' "$line" | cut -d'"' -f2)
+            grep -qF "\"$sha\"" engine/darkplaces/touch_csprogs.c || { echo "not in tcp_known: $line"; exit 1; }
+          done < catalog.txt
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! gh release view csprogs > /dev/null 2>&1; then
+            gh release create csprogs --prerelease --latest=false --title "CSQC builds for joins" \
+              --notes "csprogs.dat of official Xonotic releases, raw-deflated, for touch_csprogs (docs/JOIN_SPEED.md). Not an app release."
+          fi
+          # a name is a size and a CRC, so the bytes behind it never change:
+          # upload only what is missing, never replace
+          have=$(gh release view csprogs --json assets --jq '.assets[].name')
+          for f in out/*.deflate; do
+            n=$(basename "$f")
+            if printf '%s\n' "$have" | grep -qx "$n"; then echo "already there: $n"; else gh release upload csprogs "$f"; fi
+          done

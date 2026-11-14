@@ -32,6 +32,8 @@ static cvar_t touch_preload = {CF_CLIENT, "touch_preload", "1", "load what earli
 static cvar_t touch_preload_budget = {CF_CLIENT, "touch_preload_budget", "4000", "milliseconds the preload may add to a map load at most"};
 static cvar_t touch_preload_keep = {CF_CLIENT, "touch_preload_keep", "4", "an entry of a map's preload list is dropped once that many games on the map did not need it"};
 static cvar_t touch_preload_seed = {CF_CLIENT, "touch_preload_seed", "1", "with no preload list for a map yet, preload the built-in list of player models, weapons and shaders a game always needs"};
+static cvar_t touch_preload_early = {CF_CLIENT, "touch_preload_early", "1", "joining a remote server, start the preload as soon as the precache is done, a slice per frame while the server answers the last signon steps (Godnotic); 0 = all of it at the last signon step"};
+static cvar_t touch_preload_slice = {CF_CLIENT, "touch_preload_slice", "15", "milliseconds of early preload per frame"};
 
 #define TP_MAX 1024
 #define TP_NAMELEN MAX_QPATH
@@ -284,16 +286,27 @@ static int TP_KindOrder(char kind)
 }
 
 // under the loading screen, once per load: load the list
-static void TP_Replay(void)
+// the replay, resumable: a remote join starts it as soon as its precache is
+// done (touch_preload_early) and runs it in slices between the frames that
+// trade the last signon steps with the server, so it overlaps their round
+// trips; whatever is left runs to the end at the last signon step
+static struct
 {
-	double start = Sys_DirtyTime(), budget = touch_preload_budget.value * 0.001, t0;
-	double spent[4] = {0, 0, 0, 0};
-	int n[4] = {0, 0, 0, 0}, pass, i, skipped = 0;
+	qbool active;
 	qbool have;
-	if (!touch_preload.integer || !cl.worldbasename[0])
-		return;
-	have = TP_Open(cl.worldbasename);
-	if (!have && touch_preload_seed.integer)
+	int pass, i, skipped, slices;
+	double work;
+	double spent[4];
+	int n[4];
+}
+tpr;
+
+static void TP_ReplayBegin(void)
+{
+	int i;
+	memset(&tpr, 0, sizeof(tpr));
+	tpr.have = TP_Open(cl.worldbasename);
+	if (!tpr.have && touch_preload_seed.integer)
 	{
 		for (i = 0; tp_seed[i]; i++)
 		{
@@ -302,18 +315,32 @@ static void TP_Replay(void)
 				e->age = 1;
 		}
 	}
+	tpr.active = true;
+}
+
+// slice: seconds this call may work, < 0 = to the end; true when finished
+static qbool TP_ReplayStep(double slice)
+{
+	double start = Sys_DirtyTime(), budget = touch_preload_budget.value * 0.001, t0;
 	tp.replaying = true;
-	for (pass = 0; pass < 4; pass++)
+	tpr.slices++;
+	for (; tpr.pass < 4; tpr.pass++, tpr.i = 0)
 	{
-		for (i = 0; i < tp.count; i++)
+		for (; tpr.i < tp.count; tpr.i++)
 		{
-			tp_entry_t *e = &tp.list[i];
+			tp_entry_t *e = &tp.list[tpr.i];
 			qbool loaded = false;
-			if (TP_KindOrder(e->kind) != pass)
+			if (TP_KindOrder(e->kind) != tpr.pass)
 				continue;
-			if (Sys_DirtyTime() - start >= budget)
+			if (slice >= 0 && Sys_DirtyTime() - start >= slice)
 			{
-				skipped++;
+				tp.replaying = false;
+				tpr.work += Sys_DirtyTime() - start;
+				return false;
+			}
+			if (tpr.work + Sys_DirtyTime() - start >= budget)
+			{
+				tpr.skipped++;
 				continue;
 			}
 			t0 = Sys_DirtyTime();
@@ -341,16 +368,19 @@ static void TP_Replay(void)
 			}
 			if (loaded)
 			{
-				n[pass]++;
-				spent[pass] += Sys_DirtyTime() - t0;
+				tpr.n[tpr.pass]++;
+				tpr.spent[tpr.pass] += Sys_DirtyTime() - t0;
 			}
 		}
 	}
 	tp.replaying = false;
 	tp.glsl_pending = false;
+	tpr.work += Sys_DirtyTime() - start;
+	tpr.active = false;
 	if (touch_loadtime.integer || developer_loading.integer)
-		Con_Printf("LOADTIME preload %s list=%d models=%d (%.1f ms) pics=%d (%.1f ms) shaders=%d (%.1f ms) sounds=%d (%.1f ms) over_budget=%d\n",
-			have ? "map" : (touch_preload_seed.integer ? "seed" : "none"), tp.count, n[0], spent[0] * 1000.0, n[1], spent[1] * 1000.0, n[2], spent[2] * 1000.0, n[3], spent[3] * 1000.0, skipped);
+		Con_Printf("LOADTIME preload %s list=%d models=%d (%.1f ms) pics=%d (%.1f ms) shaders=%d (%.1f ms) sounds=%d (%.1f ms) over_budget=%d slices=%d\n",
+			tpr.have ? "map" : (touch_preload_seed.integer ? "seed" : "none"), tp.count, tpr.n[0], tpr.spent[0] * 1000.0, tpr.n[1], tpr.spent[1] * 1000.0, tpr.n[2], tpr.spent[2] * 1000.0, tpr.n[3], tpr.spent[3] * 1000.0, tpr.skipped, tpr.slices);
+	return true;
 }
 
 // touch_warm.c: the entries the next game on map would preload (its list,
@@ -403,10 +433,26 @@ static void TP_Frame(double now)
 	if (tlt.loading && !tp.done && cls.state == ca_connected && cls.signon >= SIGNONS - 1 && cl.worldbasename[0])
 	{
 		tp.done = true;
-		TP_Replay();
+		if (!tpr.active)
+			TP_ReplayBegin();
+		TP_ReplayStep(-1);
+	}
+	// ... or, on a remote server, from the end of the precache (prespawn
+	// sent: the models are loaded and CSQC_Init has run) in slices, while
+	// the server answers prespawn and spawn
+	else if (tlt.loading && !tp.done && touch_preload_early.integer && !sv.active && cls.state == ca_connected
+		&& cls.signon >= 1 && cl.loadfinished && cl.worldbasename[0])
+	{
+		if (!tpr.active)
+			TP_ReplayBegin();
+		if (TP_ReplayStep(touch_preload_slice.value * 0.001))
+			tp.done = true;
 	}
 	if (!tlt.loading)
+	{
 		tp.done = false;
+		tpr.active = false;
+	}
 	// written soon after anything new, so a killed app keeps it
 	if (tp.dirty && now - tp.last_save > 2 && cls.state == ca_connected && cls.signon == SIGNONS)
 		TP_Save();
@@ -420,4 +466,6 @@ static void TP_Init(void)
 	Cvar_RegisterVariable(&touch_preload_budget);
 	Cvar_RegisterVariable(&touch_preload_keep);
 	Cvar_RegisterVariable(&touch_preload_seed);
+	Cvar_RegisterVariable(&touch_preload_early);
+	Cvar_RegisterVariable(&touch_preload_slice);
 }
