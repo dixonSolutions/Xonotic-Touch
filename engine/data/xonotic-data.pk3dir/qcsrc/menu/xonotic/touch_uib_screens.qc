@@ -1318,7 +1318,7 @@ void UIB_Action(string node, string a, string payload)
 		case "disconnect": localcmd("\ndisconnect\n"); return;
 		// disconnect alone does not stop a join the server has not answered yet
 		case "loading.cancel": localcmd("\ndisconnect\n_touch_cancel_join\n"); return;
-		case "credits.full": m_goto("Credits", true); return;
+		case "credits.full": m_goto("Credits", false); return;
 	}
 }
 

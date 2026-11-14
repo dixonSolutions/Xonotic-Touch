@@ -5,7 +5,8 @@
 #   scripts/test-uibridge.sh            schema, fixtures, store property test, fixture player
 #   UIB_BASEDIR=<basedir with game data> [UIB_ENGINE=build/bin/xonotic] [UIB_LIBDIR=...] \
 #   scripts/test-uibridge.sh --engine   also the engine: transport, round trips, images, hostile
-#                                       mods, reconnect, zero cost, and fixture drift (--check)
+#                                       mods, reconnect, zero cost, the QuakeC renderer under
+#                                       scripted input, and fixture drift (--check)
 #
 # The first part needs only python3 and a C compiler and runs in CI (.github/workflows/tests.yml).
 set -euo pipefail
@@ -55,6 +56,8 @@ if [ "${1:-}" = "--engine" ]; then
 	: "${UIB_BASEDIR:?set UIB_BASEDIR to a basedir with game data}"
 	echo "== engine: transport, round trips, images, mods, reconnect, zero cost"
 	python3 tests/uibridge/engine_test.py
+	echo "== engine: the QuakeC renderer under scripted input (default menu, taps, drags, keys, classic dialogs, a match)"
+	python3 tests/uibridge/input_test.py 1280x720 mouse
 	echo "== engine: fixtures have not drifted"
 	python3 scripts/uib-fixtures.py --check
 fi
