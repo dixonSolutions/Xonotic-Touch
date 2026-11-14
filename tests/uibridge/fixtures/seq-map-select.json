@@ -833,7 +833,9 @@
      "title": "Afterslime",
      "author": "kuniu the frogg, t0uYK8Ne",
      "description": "Medium sized indoor deathmatch map",
-     "modes": "dm tdm lms ca ft ka kh dom"
+     "modes": "dm tdm lms ca ft ka kh dom",
+     "state": "ready",
+     "progress": -1
     }
    },
    {
@@ -844,7 +846,9 @@
      "title": "Atelier",
      "author": "ShadoW, Mirio, Debugger",
      "description": "Large map, well suited for team games",
-     "modes": "dm lms tdm ca ft ka kh dom"
+     "modes": "dm lms tdm ca ft ka kh dom",
+     "state": "ready",
+     "progress": -1
     }
    },
    {
@@ -855,7 +859,9 @@
      "title": "Boil",
      "author": "kuniu the frogg, Mirio",
      "description": "Stay calm and watch how your enemy is boiling with anger. This is the moment you know you can beat them",
-     "modes": "dm tdm lms ca ft kh ka duel"
+     "modes": "dm tdm lms ca ft kh ka duel",
+     "state": "ready",
+     "progress": -1
     }
    },
    {
@@ -866,7 +872,9 @@
      "title": "Bromine",
      "author": "packer",
      "description": "Rusty styled map for large games",
-     "modes": "ca dm dom ft ka kh lms tdm"
+     "modes": "ca dm dom ft ka kh lms tdm",
+     "state": "ready",
+     "progress": -1
     }
    },
    {
@@ -877,7 +885,9 @@
      "title": "Darkzone",
      "author": "Cortez, CuBe0wL, SavageX, Mossepo",
      "description": "Xonotic remake of a classic map from Quake1: Q1DM6. Recommended for cut-throat duels",
-     "modes": "dm lms ka tdm ca kh ft duel"
+     "modes": "dm lms ka tdm ca kh ft duel",
+     "state": "ready",
+     "progress": -1
     }
    },
    {
@@ -888,7 +898,9 @@
      "title": "Erbium",
      "author": "Justin, Mirio, t0uYK8Ne",
      "description": "Industrial, nature... Duel!",
-     "modes": "dm lms tdm ca ft ka kh dom duel"
+     "modes": "dm lms tdm ca ft ka kh dom duel",
+     "state": "ready",
+     "progress": -1
     }
    },
    {
@@ -899,7 +911,9 @@
      "title": "Final Rage",
      "author": "Munyul Verminard, tZork, L0, proraide",
      "description": "Small map with brutal fast vertical action",
-     "modes": "dm tdm dom lms ca ft kh ka duel"
+     "modes": "dm tdm dom lms ca ft kh ka duel",
+     "state": "ready",
+     "progress": -1
     }
    },
    {
@@ -910,7 +924,9 @@
      "title": "Fuse",
      "author": "Ferdinand 'cityy' List",
      "description": "Duel Mapping Contest Winner of 2012",
-     "modes": "dm lms ka kh ft ca tdm duel"
+     "modes": "dm lms ka kh ft ca tdm duel",
+     "state": "ready",
+     "progress": -1
     }
    },
    {
@@ -921,7 +937,9 @@
      "title": "Glow Plant",
      "author": "tZork, Cuinnton, Debugger, Mirio",
      "description": "A nuclear power plant with a LOT of blue glowy stuff...",
-     "modes": "dm tdm dom lms ca kh ft ka"
+     "modes": "dm tdm dom lms ca kh ft ka",
+     "state": "ready",
+     "progress": -1
     }
    },
    {
@@ -932,7 +950,9 @@
      "title": "Implosion",
      "author": "MintOX, Mirio, Mario, packer, SpiKe",
      "description": "Space Style CTF Level",
-     "modes": "ctf ft kh ka ca tdm lms dom dm"
+     "modes": "ctf ft kh ka ca tdm lms dom dm",
+     "state": "ready",
+     "progress": -1
     }
    },
    {
@@ -943,7 +963,9 @@
      "title": "Opium",
      "author": "cityy, Mirio",
      "description": "Medium sized level with plenty of vertical action",
-     "modes": "dm tdm lms ca ka kh ft dom"
+     "modes": "dm tdm lms ca ka kh ft dom",
+     "state": "ready",
+     "progress": -1
     }
    },
    {
@@ -954,7 +976,9 @@
      "title": "Running Man",
      "author": "FruitieX, Cortez, Strahlemann, Debugger",
      "description": "Medium-sized, fast enclosed map",
-     "modes": "dm lms ka duel"
+     "modes": "dm lms ka duel",
+     "state": "ready",
+     "progress": -1
     }
    },
    {
@@ -965,7 +989,9 @@
      "title": "Silent Siege",
      "author": "Justin, kuniu the frogg",
      "description": "Medium size Duel/TDM map",
-     "modes": "dm lms tdm ca ft ka kh dom duel"
+     "modes": "dm lms tdm ca ft ka kh dom duel",
+     "state": "ready",
+     "progress": -1
     }
    },
    {
@@ -976,7 +1002,9 @@
      "title": "Solarium",
      "author": "theShadow, SpiKe",
      "description": "Medium sized open map, good for 3 to 6 players",
-     "modes": "dm tdm lms ca ka ft kh duel"
+     "modes": "dm tdm lms ca ka ft kh duel",
+     "state": "ready",
+     "progress": -1
     }
    },
    {
@@ -987,7 +1015,9 @@
      "title": "Stormkeep",
      "author": "FruitieX, Cuinnton, SavageX, Strahlemann, W. Libert, tZork, Mirio",
      "description": "Medium sized indoor map, well suited for team games",
-     "modes": "dm tdm dom lms race kh ca ft ka duel"
+     "modes": "dm tdm dom lms race kh ca ft ka duel",
+     "state": "ready",
+     "progress": -1
     }
    },
    {
@@ -998,7 +1028,9 @@
      "title": "Trident",
      "author": "proraide",
      "description": "Fight in an abandoned building!",
-     "modes": "dm tdm ca ft ka kh lms"
+     "modes": "dm tdm ca ft ka kh lms",
+     "state": "ready",
+     "progress": -1
     }
    },
    {
@@ -1009,7 +1041,9 @@
      "title": "Warfare",
      "author": "Maddin, Tymo",
      "description": "Medium sized map with a central area. Well suited and optimized for duel matches.",
-     "modes": "dm tdm lms ca ka kh ft duel"
+     "modes": "dm tdm lms ca ka kh ft duel",
+     "state": "ready",
+     "progress": -1
     }
    },
    {
@@ -1020,7 +1054,9 @@
      "title": "Xoylent",
      "author": "sev, Strahlemann",
      "description": "A remake of Soylent",
-     "modes": "dm lms tdm ca ft ka duel"
+     "modes": "dm lms tdm ca ft ka duel",
+     "state": "ready",
+     "progress": -1
     }
    }
   ],
