@@ -309,11 +309,31 @@ things are sent and what is shown meanwhile:
   is not shown from the saved list again until it has answered once; after
   three such sessions, or a week unseen, it is forgotten.
 - **No waiting for masters.** A server is asked in the frame a master names
-  it. The saved servers and the favourites are asked at once, before the
-  masters have answered.
-- **A budget on the clock, not the frame.** `net_slist_fast_rate` queries a
-  second (1500), `net_slist_fast_burst` at most in one frame (48): about 550
-  servers are asked within 0.4 s at any frame rate.
+  it. The saved servers and the favourites are asked at once, in the frame
+  the list opens, before the masters have answered.
+- **The seed, for the first open.** With nothing saved yet (a new install,
+  or `net_slist_saved 0`) the public servers the build carries
+  (`engine/darkplaces/touch_srvlist_seed.h`, about 240 addresses) take the
+  saved list's place: asked at once and first, in the frame the list opens,
+  before the masters have answered, twice at most like any address a master
+  lists. They are not shown until they answer (their names, maps and pings
+  would be days old and measured from somewhere else). Nothing is seeded
+  when no master is set (tests, LAN-only) or once a saved list exists.
+  `net_slist_seed 0` turns it off; a file name instead of 1 uses that list
+  (tests). See "The seed" below for how it is kept current.
+- **The first wave in one go.** The servers expected to answer (saved and
+  seeded) go first, all in one frame; the addresses only a master knows go
+  after them. `net_slist_fast_rate` queries a second (4000) and
+  `net_slist_fast_burst` at most in one frame (320) bound it on the clock,
+  not the frame; one IP address gets at most 16 at once and then 100 a
+  second (hosts that run many servers); a send buffer that fills
+  (`EWOULDBLOCK`) ends the frame's sends instead of losing them. The
+  client's sockets ask for a 2 MB receive buffer and a 1 MB send buffer, so
+  the answers of servers at one distance, which arrive within a few
+  milliseconds of each other, are not dropped when a frame is slow. The
+  kernel caps both at `net.core.rmem_max` / `wmem_max` (4 MB on the Fedora
+  desktop these numbers come from; a kernel left at its 208 kB default keeps
+  the default buffer; not checked on Android).
 - **Asking again only where it helps.** A silent server is asked again 1.1 s
   later (a DarkPlaces server ignores a second `getstatus` from one address
   for 1 s), up to `net_slist_maxtries` (3) times if it was up last time,
@@ -335,21 +355,49 @@ things are sent and what is shown meanwhile:
   card: from the saved list at the first frame of the session, live from then
   on.
 
+### The seed
+
+`engine/darkplaces/touch_srvlist_seed.h` lists the public servers that
+answered when it was written (addresses only, in the engine's own address
+format, sorted so that a new one shows as a small diff). It is compiled in,
+so every build of every platform carries it with no file to package.
+`scripts/srvlist-seed.py` writes it: it asks the masters Xonotic asks once,
+every listed server one `getinfo` (the silent ones a second), keeps those
+that answer as Xonotic protocol 3, and rewrites the header only when more
+than a tenth of the servers came or went (`--churn`), refusing to write
+fewer than 100 (`--min`: a runner with no UDP leaves it alone). From a host
+with no IPv6 (GitHub's runners) it keeps the last seed's IPv6 servers that
+the masters still list.
+
+CI keeps it current: `.github/workflows/srvlist-seed.yml` runs the script
+on the first of every month (and by hand), and when the header changed it
+pushes `bot/srvlist-seed-<date>` and opens a pull request. The header is
+part of the darkplaces component, so that pull request is merged like any
+engine change (`scripts/component-push.sh darkplaces`). A push to a
+`ci/srvlist*` branch that touches the script runs it with `--check` only,
+which shows that the masters and servers answer a runner.
+
+A stale seed costs little: public servers keep their addresses for months,
+a seeded server that has gone is asked twice and given up like any address
+a master lists, a new server is asked as soon as a master names it, and the
+seed is only used until the first refresh has been saved.
+
 ### Being a good citizen
 
 | what | number |
 |---|---|
 | to a master | what the stock client sends: one `getserversExt` per refresh and socket; the menu's 10 s timer is upstream's |
 | to one server | one `getstatus` (about 45 bytes; the answer is 300-1400) per refresh; a second only after 1.1 s without an answer; at most 3 per refresh, 2 for an unknown address, 1 for one that failed before (stock: always 3) |
-| to one IP address | at least 50 ms between two queries, whatever the ports (hosts that run several servers) |
-| overall | 1500 queries a second at most, 48 in one frame; 120 a second for the periodic refresh; a server that answered is not asked again within 20 s by the periodic refresh |
+| to one IP address | at most 16 queries at once, whatever the ports, then 100 a second (hosts that run several servers; the busiest public host runs 14 on each of IPv4 and IPv6 and answers all 14 asked at once) |
+| overall | 4000 queries a second at most, 320 in one frame (the first wave of some 250 in one go, about 12 kB); 120 a second for the periodic refresh; a server that answered is not asked again within 20 s by the periodic refresh |
 | while joining | nothing: the list stops asking from the first `getchallenge` to the last signon, so nothing counts against the join at a rate-limiting host |
 | after a reset | the time each address was last asked survives a list reset: two refreshes in a second do not ask anyone twice within the server's 1 s |
 | amplification | none: answers go to the address that asked, and the client answers nothing |
 
-A full refresh of today's list (about 560 addresses, 240 alive) sends about
-890 packets cold and 560-620 with the saved list; the stock client sends
-three per address, about 1700.
+A full refresh of today's list (about 540 addresses, 240 alive) sends about
+850 packets cold, seeded or not, and 560-620 with the saved list; the stock
+client sends three per address, about 1650. The seed changes when packets
+go, not how many.
 
 ### Measured
 

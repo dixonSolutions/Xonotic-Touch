@@ -9,6 +9,7 @@ int main(void)
 {
 	touchsl_record_t r, q;
 	touchsl_bucket_t b;
+	static touchsl_hosts_t hosts;
 	char line[700], bad[128];
 	float t[10] = {0.9f, 0.1f, 0.5f, 0.3f, 0.7f, 0.2f, 0.4f, 0.6f, 0.8f, 1.0f};
 	int n, i, total;
@@ -71,8 +72,25 @@ int main(void)
 	CHECK(TouchSL_Tries(TOUCHSL_KNOWN_DEAD, 3, 0) == 1, "one that failed before one");
 	CHECK(TouchSL_Tries(TOUCHSL_KNOWN_ALIVE, 3, 1) == 2, "the background refresh at most two");
 	CHECK(TouchSL_Tries(TOUCHSL_UNKNOWN, 1, 0) == 1 && TouchSL_Tries(TOUCHSL_KNOWN_ALIVE, 99, 0) == 8, "net_slist_maxtries bounds");
+	CHECK(TouchSL_Tries(TOUCHSL_KNOWN_SEED, 3, 0) == 2, "a seeded one two, as a master's");
+	CHECK(TouchSL_FirstWave(TOUCHSL_KNOWN_ALIVE) && TouchSL_FirstWave(TOUCHSL_KNOWN_SEED), "the saved and the seeded servers go in the first wave");
+	CHECK(!TouchSL_FirstWave(TOUCHSL_UNKNOWN) && !TouchSL_FirstWave(TOUCHSL_KNOWN_DEAD), "the unknown and the failed ones after it");
+	CHECK(TOUCHSL_BURST_DEFAULT >= 300, "the first wave (a seed or saved list of some 250) fits in one burst");
 	CHECK(TOUCHSL_RETRY_INTERVAL > 1.0, "a retry waits out the server's 1 s getstatus block");
 	CHECK(TouchSL_FinalWait(420) > 0.42 && TouchSL_FinalWait(420) < 0.6, "the last wait is maxping and a frame");
+
+	// one host: TOUCHSL_HOST_BURST at once, then TOUCHSL_HOST_RATE a second
+	for (n = 0, i = 0; i < 40; i++)
+		n += TouchSL_HostTake(&hosts, 12345, 500.0);
+	CHECK(n == TOUCHSL_HOST_BURST, "a host gets a burst at once");
+	CHECK(TouchSL_HostTake(&hosts, 12345 + TOUCHSL_HOST_SLOTS * 3 + 1, 500.0), "another host is not held up");
+	for (n = 0, i = 0, now = 500.0; i < 100; i++, now += 0.01) // one second, 100 frames
+		n += TouchSL_HostTake(&hosts, 12345, now) + TouchSL_HostTake(&hosts, 12345, now);
+	CHECK(n >= TOUCHSL_HOST_RATE - 2 && n <= TOUCHSL_HOST_RATE + 2, "then its rate over a second");
+	n = 0;
+	for (i = 0; i < 40; i++)
+		n += TouchSL_HostTake(&hosts, 12345 + TOUCHSL_HOST_SLOTS, 600.0); // the same slot, another address
+	CHECK(n == TOUCHSL_HOST_BURST, "an address that takes over a slot starts with a full burst");
 
 	// percentiles
 	CHECK(TouchSL_Percentile(t, 10, 50) == 0.5f, "half of ten answers were in by the fifth");

@@ -27,11 +27,15 @@ shared by touch_srvlist.c and tests/srvlist/srvlist_logic_test.c.
 // ---------------------------------------------------------------------------
 // Numbers (docs/NETWORK.md has the reasons)
 // ---------------------------------------------------------------------------
-#define TOUCHSL_RATE_DEFAULT      1500    // getstatus packets a second at most, first open and Refresh
-#define TOUCHSL_BURST_DEFAULT     48      // and at most this many in one go (one frame)
+#define TOUCHSL_RATE_DEFAULT      4000    // getstatus packets a second at most, first open and Refresh
+#define TOUCHSL_BURST_DEFAULT     320     // and at most this many in one go: the whole first wave in one frame
 #define TOUCHSL_RATE_BACKGROUND   120     // the menu's 10 s refresh timer: no faster than the stock list
 #define TOUCHSL_BURST_BACKGROUND  8
-#define TOUCHSL_SAME_HOST_GAP     0.05    // seconds between two queries to one IP address (hosts with many ports)
+#define TOUCHSL_HOST_RATE         100     // queries a second to one IP address (hosts with many ports)
+#define TOUCHSL_HOST_BURST        16      // and at most this many at once to it
+#define TOUCHSL_SOCKET_RCVBUF     (2 << 20) // receive buffer asked for: the first wave's answers can arrive within a few ms
+#define TOUCHSL_SOCKET_SNDBUF     (1 << 20) // and send buffer: the first wave goes out in one frame
+#define TOUCHSL_SEED_MAX          400     // addresses taken from the seed at most
 #define TOUCHSL_RETRY_INTERVAL    1.1     // a server ignores a second getstatus from one address for 1 s
 #define TOUCHSL_MIN_REQUERY       20.0    // background: a server that answered is left alone this long
 #define TOUCHSL_MASTER_WAIT       1.5     // a master that has said nothing by then holds nothing up
@@ -165,14 +169,51 @@ static inline void TouchSL_Spend(touchsl_bucket_t *b, int n)
 }
 
 // ---------------------------------------------------------------------------
+// One bucket per IP address (a host running many servers gets at most
+// TOUCHSL_HOST_BURST queries at once, then TOUCHSL_HOST_RATE a second),
+// direct-mapped by the address's hash: a slot taken by another address starts
+// over full for the new one.
+// ---------------------------------------------------------------------------
+#define TOUCHSL_HOST_SLOTS 4096
+typedef struct touchsl_hosts_s
+{
+	unsigned hash[TOUCHSL_HOST_SLOTS];
+	touchsl_bucket_t bucket[TOUCHSL_HOST_SLOTS];
+} touchsl_hosts_t;
+
+// 1 when one more query may go to the host now (and it is counted), 0 not yet
+static inline int TouchSL_HostTake(touchsl_hosts_t *h, unsigned iphash, double now)
+{
+	unsigned slot = iphash % TOUCHSL_HOST_SLOTS;
+	touchsl_bucket_t *b = &h->bucket[slot];
+	if (h->hash[slot] != iphash)
+	{
+		h->hash[slot] = iphash;
+		b->last = 0;   // a fresh bucket starts full
+	}
+	if (TouchSL_Budget(b, now, TOUCHSL_HOST_RATE, TOUCHSL_HOST_BURST) < 1)
+		return 0;
+	TouchSL_Spend(b, 1);
+	return 1;
+}
+
+// ---------------------------------------------------------------------------
 // Tries
 // ---------------------------------------------------------------------------
 #define TOUCHSL_KNOWN_ALIVE  1   // answered at the last refresh (from the saved list)
 #define TOUCHSL_KNOWN_DEAD   2   // did not, once or more
+#define TOUCHSL_KNOWN_SEED   3   // in the seed the build carries: answered when the build was made
 #define TOUCHSL_UNKNOWN      0   // a master named it and that is all we know
 
+// Asked in the first wave, before anything else: the servers expected to answer.
+static inline int TouchSL_FirstWave(int known)
+{
+	return known == TOUCHSL_KNOWN_ALIVE || known == TOUCHSL_KNOWN_SEED;
+}
+
 // A server that was there a minute ago is worth three asks, one a master
-// lists but nobody has heard from two, one that has already failed one.
+// lists (or the seed has) but nobody here has heard from two, one that has
+// already failed one.
 static inline int TouchSL_Tries(int known, int maxtries, int background)
 {
 	int n;
