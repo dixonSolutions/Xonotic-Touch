@@ -46,6 +46,8 @@ Owner rules that the descriptions follow and renderers must not undo:
   card reopens it. The host leaving ends the game for everyone.
 - The map picker shows two full rows of tiles (picture and name) and scrolls sideways.
   One tap chooses a map, the Play button or a double tap starts it.
+- On first start (no name chosen yet) a `welcome` dialog over Home asks for the player's
+  name; its Continue is off until there is one, and it cannot be dismissed.
 - Mods is a top-level section of Settings.
 - The user-visible word is "Mods", never "plugins".
 - Data lists (the server list) are dense; action controls are large (48 dp minimum target).
@@ -908,7 +910,7 @@ For the Rust core (and anyone else):
 | --- | --- |
 | `touch_uib_api.qh` | the builtins #1180..#1222 (`uib_begin`, `uib_node`, `uib_s`/`uib_f`/`uib_b`/`uib_j`/`uib_push`, `uib_nav`, `uib_window` ...). Guard: `UIB_EngineHasBridge()` (cvar `uib_version`) |
 | `touch_uib_build.qc` | builder helpers: `UIB_Screen`, `UIB_Open`/`UIB_Close`, `UIB_A` (actions), `UIB_Switch`, `UIB_Slider`, `UIB_Choice` ...; view-model values (`vm:` binds) kept in `_uib_*` cvars |
-| `touch_uib_screens.qc` | Home (banner, three cards), Singleplayer / Create (screen `sp`; LAN, slots, Port, Password only when opened from Multiplayer), Campaign, map details, Multiplayer (`mp`), password dialog, the host's LAN popup (`lan.host`), pause (hosting card), loading, Credits, quit dialog; navigation; `UIB_Event`, the menu's answer to every renderer event |
+| `touch_uib_screens.qc` | Home (banner, three cards), Singleplayer / Create (screen `sp`; LAN, slots, Port, Password only when opened from Multiplayer), Campaign, map details, Multiplayer (`mp`), password dialog, the first-start welcome (`welcome`: the player's name, not dismissable, back does nothing), the host's LAN popup (`lan.host`), pause (hosting card), loading, Credits, quit dialog; navigation; `UIB_Event`, the menu's answer to every renderer event |
 | `touch_uib_settings.qc` | Settings (split, vertical tabs, horizontal sub-tabs) and Mods (lists, detail with permissions, install from link) |
 | `touch_uib_render.qc` | the QuakeC renderer (web, and the fallback everywhere) |
 

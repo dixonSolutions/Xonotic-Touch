@@ -426,6 +426,7 @@ void RB_SetAction(entity e, string node, string prop)
 	if (e.rb_icon == "") strcpy(e.rb_icon, uib_get(node, strcat(prop, ".icon")));
 	string st = uib_get(node, strcat(prop, ".style"));
 	if (st != "") e.rb_style = RB_StyleOf(st);
+	if (uib_get(node, strcat(prop, ".enabled")) == "0") e.rb_dis = 1; // an action can be off (welcome: no name yet)
 	strcpy(e.rb_val, prop);
 	e.rb_focus = 1;
 }
@@ -2562,7 +2563,7 @@ void RB_Activate(int idx, vector m)
 	{
 		case "back": RB_Send("{\"ev\":\"back\"}"); return;
 		case "button": case "card": case "hero":
-			if (e.rb_val != "") RB_Invoke(e.rb_id, e.rb_val);
+			if (e.rb_val != "" && !e.rb_dis) RB_Invoke(e.rb_id, e.rb_val);
 			return;
 		case "switch": case "check":
 			RB_SendValue(e.rb_id, e.rb_sel ? "false" : "true");

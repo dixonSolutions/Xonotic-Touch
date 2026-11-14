@@ -94,6 +94,40 @@ async function run(text, until, ms = 20000) {
   }
   return lines;
 }
+// 0. First start: the welcome asks for a name before anything else. The
+// bridge snapshot says what is open; the name goes in with real clicks and
+// keys, where a player puts them (positions for this 1280x720 window).
+const modal = async () => { const l = await run('uib_dump', null, 2500); const m = l.join('').match(/"modal":\[([^\]]*)\]/); return m ? m[1] : '?'; };
+const click = async (x, y) => {
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+  await sleep(60);
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+  await sleep(400);
+};
+const typeText = async (text) => {
+  for (const ch of text) {
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: ch, text: ch, unmodifiedText: ch });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: ch });
+    await sleep(40);
+  }
+};
+check('a fresh browser opens on the welcome dialog', (await modal()) === '"welcome"', await modal());
+const shot = async (name) => { const r = await send('Page.captureScreenshot', { format: 'png' }); if (r.result && opt('shots')) fs.writeFileSync(`${opt('shots')}/${name}.png`, Buffer.from(r.result.data, 'base64')); };
+await shot('welcome-empty');
+await click(828, 366);   // Continue, off while there is no name
+check('Continue does nothing without a name', (await modal()) === '"welcome"', await modal());
+await click(640, 304);   // the name field
+await typeText('Web Player');
+await sleep(500);
+await shot('welcome-typed');
+await click(828, 366);   // Continue
+await sleep(1000);
+let named = await run('_cl_name', /_cl_name/, 3000);
+check('typing a name and Continue saves it', named.some((l) => /Web Player/.test(l)), named);
+check('the welcome is gone after that', (await modal()) === '', await modal());
+await run('touch_profile_done', /touch_profile_done/, 3000).then((l) => check('the welcome is marked done', l.some((x) => /"1"/.test(x)), l));
+
 check('mods.js is loaded and answering the menu', await evaluate(`(() => { try { Module.FS.stat(XTMods.STATUS); return true; } catch (e) { return false; } })()`), 'the status file that shows Pick file');
 
 // 1. A link on a host that allows web pages: downloaded with fetch(), reviewed.
@@ -169,6 +203,27 @@ lines = await run(`lua_webcheck_post ${cors}/echo`, /webcheck answer/, 15000);
 check('xt.http.post sends a body', lines.some((l) => /webcheck answer 200 posted:ping/.test(l)), lines);
 lines = await run(`lua_webcheck_get ${nocors}/answer.txt`, /webcheck answer/, 15000);
 check('xt.http to a host without CORS fails cleanly', lines.some((l) => /webcheck answer -1 $/.test(l) || /webcheck answer -1/.test(l)), lines);
+
+// 6. Everything above lives in the browser: a reload (no settings changed,
+// so config.cfg is not rewritten) still has the mods, their grants and state.
+await sleep(2500); // the page's save is debounced; a player does not reload in the same second
+await send('Page.reload', { ignoreCache: false });
+const t1 = Date.now();
+let back = false;
+while (Date.now() - t1 < 300000) {
+  await sleep(250);
+  const s = await evaluate(`(() => { const log = window.xt && xt.log ? xt.log() : []; return log.some((l) => /menu/i.test(l) && /loaded|program/i.test(l)); })()`);
+  if (s === true) { back = true; break; }
+}
+check('the page comes back after a reload', back, 'timeout');
+await sleep(2000);
+check('the welcome does not come back after a reload', (await modal()) === '', await modal());
+named = await run('_cl_name', /_cl_name/, 3000);
+check('the name is still there after a reload', named.some((l) => /Web Player/.test(l)), named);
+lines = await run('lua_mods', /webcheck/i);
+check('installed mods are still there after a reload', lines.some((l) => /^\s*hello\b/.test(l)) && lines.some((l) => /^\s*webcheck\s+(on|running)\b/.test(l)), lines);
+lines = await run('lua_webcheck_has', /webcheck has http/, 8000);
+check('the enabled mod runs again after a reload', lines.some((l) => /webcheck has http true/.test(l)), lines);
 
 finish();
 

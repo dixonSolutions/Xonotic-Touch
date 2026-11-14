@@ -88,7 +88,7 @@ void XonoticFirstRunDialog_fill(entity me)
 	me.TD(me, 1, 1, e = makeXonoticRadioButton(1, "cl_allow_uid2name", "0", _("No")));
 	me.TD(me, 1, 1, e = makeXonoticRadioButton(1, "cl_allow_uid2name", "-1", _("Undecided")));
 	me.TR(me);
-	me.TD(me, 1, me.columns, e = makeXonoticTextLabel(0.5, _("Player statistics are enabled by default, you can change this in the Profile menu")));
+	me.TD(me, 1, me.columns, e = makeXonoticTextLabel(0.5, _("Statistics stay off until you turn them on in Settings > Mobile > Privacy"))); // Touch
 
 	// Persist an explicit done flag so profile setup does not reappear every launch
 	// when the name was left at the engine default ("player") after only picking stats.

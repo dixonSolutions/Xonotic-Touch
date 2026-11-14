@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "touch_uib_screens.qh"
+#include "touch_startup_util.qh"
 #include <common/mapinfo.qh>
 #include <common/campaign_common.qh>
 #include <common/campaign_file.qh>
@@ -108,6 +109,7 @@ void UIB_Nav()
 {
 	int n = tokenize_console(uibn_stack);
 	bool canback = n > 1 || uibn_modal != "" || uibn_context == "game";
+	if (uibn_modal == "welcome") canback = false; // a name first (UIB_BuildWelcome)
 	uib_nav(uibn_stack, uibn_modal, canback, uibn_context);
 }
 
@@ -172,6 +174,8 @@ void UIB_Back()
 		UIB_RebuildAll();
 		return;
 	}
+	if (uibn_modal == "welcome")
+		return;
 	if (uibn_modal != "")
 		UIB_DropLast(true);
 	else if (tokenize_console(uibn_stack) > 1)
@@ -843,6 +847,63 @@ void UIB_BuildPassword()
 	UIB_Done();
 }
 
+// ---------------------------------------------------------------- welcome
+
+// What the welcome would save as the name: the typed text without the
+// characters a name cannot carry, "" while there is nothing usable.
+string UIB_WelcomeName()
+{
+	string n = strreplace("\"", "", strreplace("\\", "", strreplace("$", "", strreplace(";", "", UIB_VM("welcome.name")))));
+	n = strreplace("\n", "", strreplace("\r", "", n));
+	string plain = strtolower(strreplace(" ", "", strdecolorize(n)));
+	if (plain == "" || plain == "player" || plain == "unnamedplayer")
+		return "";
+	return substring(n, 0, 32);
+}
+
+// First start: the name other players see, before anything else. It cannot be
+// dismissed; Settings > Player changes it later (TouchStartup_nameNeeded).
+void UIB_BuildWelcome()
+{
+	if (!UIB_Screen("welcome", _("Welcome to Godnotic")))
+		return;
+	uib_s("presentation", "dialog");
+	uib_b("dismissable", 0);
+	// off until there is a name to save
+	string done = sprintf("{\"id\":\"welcome.done\",\"label\":%s,\"icon\":\"check\",\"style\":\"primary\",\"enabled\":%s}",
+		uib_q(_("Continue")), (UIB_WelcomeName() == "") ? "false" : "true");
+	uib_j("primary", done);
+	UIB_Text("text", _("Pick the name other players see. You can change it later in Settings > Player."), "");
+	UIB_Open("form", "form");
+		uib_j("submit", done);
+		UIB_Open("name", "field");
+			uib_s("label", _("Name"));
+			uib_s("bind", "vm:welcome.name");
+			uib_s("kind", "name");
+			uib_s("placeholder", _("Your name"));
+			uib_f("maxLength", 32);
+			// no submit of its own: renderers then send each change, and Continue turns on as you type
+		UIB_Close();
+	UIB_Close();
+	UIB_Done();
+}
+
+void UIB_WelcomeDone()
+{
+	string n = UIB_WelcomeName();
+	if (n == "")
+	{
+		uib_toast(_("Type a name first"), "info", "info", 3);
+		return;
+	}
+	cvar_set("_cl_name", n);
+	localcmd(sprintf("\nname \"%s\"\nseta touch_profile_done 1\nsaveconfig\n", n));
+	UIB_VMSet("welcome.name", "");
+	if (uibn_modal == "welcome")
+		strcpy(uibn_modal, "");
+	UIB_RebuildAll();
+}
+
 void UIB_Join(string addr)
 {
 	if (substring(addr, 0, 16) == "godnotic://join/")
@@ -1185,6 +1246,7 @@ void UIB_Build(string id)
 		case "lan.host": UIB_BuildLanPopup(); return;
 		case "mp": UIB_BuildServers(); return;
 		case "mp.password": UIB_BuildPassword(); return;
+		case "welcome": UIB_BuildWelcome(); return;
 		case "pause": UIB_BuildPause(); return;
 		case "loading": UIB_BuildLoading(); return;
 		case "credits": UIB_BuildCredits(); return;
@@ -1225,7 +1287,7 @@ void UIB_Context()
 	}
 	if (ctx == "loading") UIB_SetStack("loading", "");
 	else if (ctx == "game") UIB_SetStack("pause", "");
-	else UIB_SetStack("home", "");
+	else UIB_SetStack("home", TouchStartup_nameNeeded() ? "welcome" : "");
 	if (ctx == "menu" && cvar("_touch_lan_ended"))
 	{
 		// the host of the LAN game we were in left or quit (touch_lan.c)
@@ -1343,6 +1405,7 @@ void UIB_Action(string node, string a, string payload)
 				UIB_Join(target);
 			return;
 		}
+		case "welcome.done": UIB_WelcomeDone(); return;
 		case "password.join":
 		{
 			string addr = UIB_VM("mp.joining");
@@ -1479,6 +1542,7 @@ float UIB_Event(string ev, string node, string arg, string json)
 			UIB_ValueEvent(node, arg, json);
 			if (node == "mp/join/address" && arg != "") UIB_Join(arg);
 			if (node == "mp.password/form/pw") UIB_Action(node, "password.join", "");
+			if (node == "welcome/form/name") UIB_Action(node, "welcome.done", "");
 			return 1;
 		case "row": UIB_RowEvent(node, arg, json); return 1;
 		case "dismiss":

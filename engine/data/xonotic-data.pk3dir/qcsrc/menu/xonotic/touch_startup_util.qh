@@ -24,6 +24,7 @@ bool TouchStartup_assetsReady();
 bool TouchStartup_assetFetchActive();
 bool TouchStartup_assetFetchDialog_shouldShow();
 bool TouchStartup_userProfileNeeded();
+bool TouchStartup_nameNeeded();
 bool TouchStartup_touchSetupNeeded();
 void TouchStartup_applyPrivacyDefaults();
 bool TouchStartup_skipTermsOfService();

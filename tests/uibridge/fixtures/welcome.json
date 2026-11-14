@@ -1,0 +1,230 @@
+{
+ "name": "welcome",
+ "description": "First start: the welcome dialog asks for the player's name before anything else; Continue stays off until there is one. It cannot be dismissed.",
+ "generated": "engine",
+ "caps": {
+  "nodes": [],
+  "hints": [],
+  "width": 1280,
+  "height": 720,
+  "dpi": 96,
+  "widthClass": "expanded",
+  "heightClass": "medium",
+  "input": [
+   "mouse",
+   "keyboard"
+  ],
+  "locale": "en",
+  "reducedMotion": false,
+  "powerSave": false,
+  "thermal": "nominal",
+  "insets": {
+   "top": 0,
+   "right": 0,
+   "bottom": 0,
+   "left": 0
+  }
+ },
+ "snapshot": {
+  "uib": 1,
+  "t": "snapshot",
+  "id": 2,
+  "rev": 1,
+  "root": "app",
+  "nodes": [
+   {
+    "id": "app",
+    "type": "app",
+    "props": {
+     "title": "Godnotic",
+     "stack": [
+      "home"
+     ],
+     "modal": [
+      "welcome"
+     ],
+     "canBack": false,
+     "context": "menu"
+    },
+    "children": [
+     "home",
+     "welcome"
+    ]
+   },
+   {
+    "id": "home",
+    "type": "screen",
+    "props": {
+     "title": "Godnotic",
+     "kind": "home",
+     "background": "asset:background",
+     "actions": [
+      {
+       "id": "settings",
+       "label": "Settings",
+       "icon": "settings"
+      },
+      {
+       "id": "credits",
+       "label": "Credits",
+       "icon": "credits"
+      },
+      {
+       "id": "quit",
+       "label": "Quit",
+       "icon": "quit",
+       "style": "secondary",
+       "confirm": {
+        "title": "Quit Godnotic?",
+        "ok": "Quit",
+        "destructive": false
+       }
+      }
+     ]
+    },
+    "children": [
+     "home/banner",
+     "home/tiles"
+    ]
+   },
+   {
+    "id": "home/banner",
+    "type": "image",
+    "props": {
+     "ref": "asset:banner",
+     "role": "banner",
+     "emphasis": "high",
+     "aspect": "21:9",
+     "fit": "contain",
+     "alt": "Godnotic"
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles",
+    "type": "grid",
+    "props": {
+     "minItem": 240,
+     "maxColumns": 3
+    },
+    "children": [
+     "home/tiles/sp",
+     "home/tiles/campaign",
+     "home/tiles/mp"
+    ]
+   },
+   {
+    "id": "home/tiles/sp",
+    "type": "card",
+    "props": {
+     "title": "Singleplayer",
+     "subtitle": "Stormkeep · Deathmatch · 4 bots",
+     "icon": "singleplayer",
+     "image": "pk3:maps/stormkeep",
+     "aspect": "16:9",
+     "featured": true,
+     "primary": {
+      "id": "sp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/campaign",
+    "type": "card",
+    "props": {
+     "title": "Campaign",
+     "subtitle": "Level 1 of 31 · Deathmatch: Boil",
+     "image": "pk3:maps/boil",
+     "progress": 0,
+     "icon": "trophy",
+     "aspect": "16:9",
+     "featured": true,
+     "primary": {
+      "id": "campaign",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/mp",
+    "type": "card",
+    "props": {
+     "title": "Multiplayer",
+     "subtitle": "Join a server, or create a game",
+     "icon": "multiplayer",
+     "image": "pk3:maps/xoylent",
+     "aspect": "16:9",
+     "featured": true,
+     "live": true,
+     "primary": {
+      "id": "mp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "welcome",
+    "type": "screen",
+    "props": {
+     "title": "Welcome to Godnotic",
+     "presentation": "dialog",
+     "dismissable": false,
+     "primary": {
+      "id": "welcome.done",
+      "label": "Continue",
+      "icon": "check",
+      "style": "primary",
+      "enabled": false
+     }
+    },
+    "children": [
+     "welcome/text",
+     "welcome/form"
+    ]
+   },
+   {
+    "id": "welcome/text",
+    "type": "text",
+    "props": {
+     "body": "Pick the name other players see. You can change it later in Settings > Player."
+    },
+    "children": []
+   },
+   {
+    "id": "welcome/form",
+    "type": "form",
+    "props": {
+     "submit": {
+      "id": "welcome.done",
+      "label": "Continue",
+      "icon": "check",
+      "style": "primary",
+      "enabled": false
+     }
+    },
+    "children": [
+     "welcome/form/name"
+    ]
+   },
+   {
+    "id": "welcome/form/name",
+    "type": "field",
+    "props": {
+     "label": "Name",
+     "bind": "vm:welcome.name",
+     "kind": "name",
+     "placeholder": "Your name",
+     "maxLength": 32
+    },
+    "children": []
+   }
+  ]
+ }
+}

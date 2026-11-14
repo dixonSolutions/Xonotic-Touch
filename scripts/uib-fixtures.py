@@ -20,7 +20,7 @@ servers or LAN search in any case, so the server list is empty everywhere), and 
 diffs one event produced are folded into one (how many frames the engine took to
 describe a screen is timing, not content).
 """
-import argparse, copy, json, os, socket, subprocess, sys, tempfile, time
+import argparse, copy, json, os, re, socket, subprocess, sys, tempfile, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIX = os.path.join(ROOT, "tests", "uibridge", "fixtures")
@@ -54,6 +54,8 @@ class Engine:
                "+set", "net_slist_lan_only", "1", "+set", "net_slist_lan_ports", "0", "+set", "net_slist_lan_sweeps", "0",
                "+set", "net_slist_lan_tailscale", "0", "+set", "net_slist_cache", "0", "+set", "cl_curl_enabled", "0",
                "+set", "touch_lan_hostname", "Godnotic server",
+               # a player who has a name: no welcome dialog over the screens recorded here
+               "+set", "touch_profile_done", "1",
                "-uibridge", f"fd:{b.fileno()}"] + list(extra)
         # ... and where the system allows it, no network interface at all
         if subprocess.run(["unshare", "-rn", "true"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
@@ -337,6 +339,40 @@ def run(args):
         report["image"] = {"t": r["t"], "w": r.get("w"), "h": r.get("h"), "bytes": len(r.get("data", "")) * 3 // 4}
     finally:
         e.close()
+    # first start: the welcome asks for a name, Continue turns on once there is one,
+    # and saving it closes the dialog and sets the name
+    e = Engine(args, extra=["+set", "touch_profile_done", "0"])
+    try:
+        e.hello()
+        e.settle()
+        top = lambda: e.nodes.get("app", {}).get("props", {}).get("modal", [])
+        cont = lambda: (e.nodes.get("welcome", {}).get("props", {}).get("primary") or {}).get("enabled")
+        w = {"modal_at_start": top(), "continue_before": cont()}
+        out["welcome"] = fixture(e, "welcome", "First start: the welcome dialog asks for the player's name before anything else; Continue stays off until there is one. It cannot be dismissed.", rows=False)
+        e.ev(ev="back")
+        e.settle()
+        w["modal_after_back"] = top()
+        e.ev(ev="value", node="welcome/form/name", value="Tester One")
+        e.settle()
+        w["continue_after_name"] = cont()
+        e.ev(ev="action", node="welcome", action="welcome.done")
+        e.settle()
+        w["modal_after_continue"] = top()
+        time.sleep(1.0)  # saveconfig runs from the command buffer
+        try:
+            with open(os.path.join(e.ud, "data", "config.cfg"), encoding="utf-8", errors="replace") as f:
+                cfg = f.read()
+        except OSError:
+            cfg = ""
+        w["saved_name"] = re.search(r'^(seta )?"?_cl_name"? "Tester One"$', cfg, re.M) is not None
+        w["saved_done"] = re.search(r'^seta "?touch_profile_done"? "1"$', cfg, re.M) is not None
+        report["welcome"] = w
+        ok = (w["modal_at_start"] == ["welcome"] and w["continue_before"] is False and w["modal_after_back"] == ["welcome"]
+              and w["continue_after_name"] is True and w["modal_after_continue"] == []
+              and w["saved_name"] and w["saved_done"])
+        report["welcome_ok"] = ok
+    finally:
+        e.close()
     return out, report
 
 
@@ -375,6 +411,9 @@ def main():
                 bad += 1
             else:
                 print("same   ", name)
+    if report.get("welcome_ok") is False:
+        print("FAIL    welcome flow:", json.dumps(report.get("welcome")))
+        bad += 1
     return 1 if bad else 0
 
 

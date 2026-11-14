@@ -80,4 +80,4 @@ python3 "$root/web/serve.py" "$site" --port "$pp" >"$work/serve.log" 2>&1 & pids
 for _ in $(seq 100); do curl -sf "http://127.0.0.1:$cdp/json/version" >/dev/null && curl -sf "http://127.0.0.1:$pp/" >/dev/null && break; sleep 0.1; done
 node "$here/browser.mjs" --port "$cdp" --url "http://127.0.0.1:$pp/" \
     --cors "http://127.0.0.1:$pc" --nocors "http://127.0.0.1:$pn" \
-    --zip "$work/hello.zip" --httpzip "$work/webcheck.zip" ${VERBOSE:+--verbose}
+    --zip "$work/hello.zip" --httpzip "$work/webcheck.zip" ${VERBOSE:+--verbose} ${SHOTS:+--shots "$SHOTS"}
