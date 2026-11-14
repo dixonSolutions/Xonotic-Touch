@@ -725,8 +725,13 @@ adb shell "echo '-xonotic -condebug' > /storage/emulated/0/Android/data/io.githu
 
 ## Known gaps
 
-* **d0_blind_id is absent**, so server-side player authentication and stats are
-  unavailable. Plain connections work.
+* **Player IDs** (d0_blind_id): `scripts/android-deps.sh` builds
+  `libd0_blind_id.so` and `libd0_rijndael.so` from `engine/d0_blind_id` with
+  GMP 6.3.0 linked statically (portable C, its symbols hidden; about 0.4 MB per
+  ABI), `crypto.c` dlopen()s them, and Xonotic's public key `key_0.d0pk` ships
+  at the root of the APK's data bundle (the basedir). The GMP source (2 MB,
+  checked against its SHA-256) comes from ftp.gnu.org or gmplib.org, and its
+  configure needs `m4` on the build host.
 * No AAB, so this is sideload / F-Droid shaped rather than Play Store shaped.
 
 ## Signing

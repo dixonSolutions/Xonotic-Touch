@@ -18,6 +18,9 @@
 #   libcurl     SHARED, dlopen()ed by libcurl.c for server map downloads, with
 #               mbedTLS linked into it for https
 #   SDL2        shared  — also supplies the Java glue the APK needs
+#   d0_blind_id SHARED, libd0_blind_id.so and libd0_rijndael.so, dlopen()ed by
+#               crypto.c (player IDs, stats, encrypted connections), built
+#               from engine/d0_blind_id with GMP linked statically into it
 set -euo pipefail
 
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -37,6 +40,8 @@ JPEG_VERSION="${JPEG_VERSION:-3.1.2}"
 PNG_VERSION="${PNG_VERSION:-1.6.50}"
 MBEDTLS_VERSION="${MBEDTLS_VERSION:-3.6.7}"
 CURL_VERSION="${CURL_VERSION:-8.22.0}"
+GMP_VERSION="${GMP_VERSION:-6.3.0}"
+GMP_SHA256="${GMP_SHA256:-a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898}"
 
 NDK="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-}}"
 if [ -z "$NDK" ] || [ ! -d "$NDK" ]; then
@@ -55,7 +60,8 @@ PAGE_SIZE_STAMP="$PREFIX/.shared-16k-v1"
 case "$ABI" in
     arm64-v8a|x86_64)
         if [ ! -f "$PAGE_SIZE_STAMP" ]; then
-            rm -f "$PREFIX/lib/libSDL2.so" "$PREFIX/lib/libpng16.so" "$PREFIX/lib/libcurl.so"
+            rm -f "$PREFIX/lib/libSDL2.so" "$PREFIX/lib/libpng16.so" "$PREFIX/lib/libcurl.so" \
+                "$PREFIX/lib/libd0_blind_id.so" "$PREFIX/lib/libd0_rijndael.so"
         fi
         ;;
 esac
@@ -226,6 +232,79 @@ if [ ! -f "$PREFIX/lib/libcurl.so" ]; then
         -DCURL_CA_BUNDLE=none -DCURL_CA_PATH=none -DCURL_CA_FALLBACK=OFF \
         -DENABLE_THREADED_RESOLVER=ON
     test -f "$PREFIX/lib/libcurl.so" || { echo "curl build produced no shared object" >&2; ls -la "$PREFIX/lib" >&2; exit 1; }
+fi
+
+##### GMP + d0_blind_id (shared, dlopen'd) ##################################
+
+# crypto.c dlopen()s libd0_blind_id.so (and libd0_rijndael.so for encrypted
+# connections) the way image_png.c does libpng. Without them the engine has
+# no player ID: no stats (XonStat), no server-side authentication, no
+# crypto_* commands. The library is the copy in engine/d0_blind_id, built
+# here with a small CMake file of our own (its build is autotools); its big
+# numbers come from GMP, linked statically and with its symbols hidden.
+# GMP is portable C here (--disable-assembly): the library only does a few
+# modular exponentiations per connection and one key generation.
+if [ ! -f "$PREFIX/lib/libgmp.a" ]; then
+    log "GMP $GMP_VERSION"
+    command -v m4 >/dev/null || { echo "GMP's configure needs m4 (apt install m4)" >&2; exit 1; }
+    gmp_archive="$SRC_DIR/gmp-$GMP_VERSION.tar.xz"
+    if [ ! -d "$SRC_DIR/gmp-$GMP_VERSION" ] && [ ! -f "$gmp_archive" ]; then
+        curl -fL --retry 3 --retry-delay 5 -o "$gmp_archive.part" "https://ftp.gnu.org/gnu/gmp/gmp-$GMP_VERSION.tar.xz" \
+            || curl -fL --retry 3 --retry-delay 5 -o "$gmp_archive.part" "https://gmplib.org/download/gmp/gmp-$GMP_VERSION.tar.xz"
+        echo "$GMP_SHA256  $gmp_archive.part" | sha256sum -c - >/dev/null || { echo "gmp-$GMP_VERSION.tar.xz: checksum mismatch" >&2; rm -f "$gmp_archive.part"; exit 1; }
+        mv -f "$gmp_archive.part" "$gmp_archive"
+    fi
+    fetch "https://ftp.gnu.org/gnu/gmp/gmp-$GMP_VERSION.tar.xz" "gmp-$GMP_VERSION"
+    case "$ABI" in
+        arm64-v8a)   GMP_HOST=aarch64-linux-android ;;
+        armeabi-v7a) GMP_HOST=armv7a-linux-androideabi ;;
+        x86_64)      GMP_HOST=x86_64-linux-android ;;
+        x86)         GMP_HOST=i686-linux-android ;;
+    esac
+    NDK_BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+    gmp_build="$CACHE_DIR/build/$ABI/gmp"
+    rm -rf "$gmp_build"
+    mkdir -p "$gmp_build"
+    (
+        cd "$gmp_build"
+        CC="$NDK_BIN/$GMP_HOST$API-clang" AR="$NDK_BIN/llvm-ar" RANLIB="$NDK_BIN/llvm-ranlib" \
+        NM="$NDK_BIN/llvm-nm" STRIP="$NDK_BIN/llvm-strip" CFLAGS="-O2 -fPIC" \
+            "$SRC_DIR/gmp-$GMP_VERSION/configure" --host="$GMP_HOST" --prefix="$PREFIX" \
+            --enable-static --disable-shared --with-pic --disable-assembly --disable-cxx >/dev/null
+        make -j"$JOBS" >/dev/null
+        make install >/dev/null
+    )
+    test -f "$PREFIX/lib/libgmp.a" || { echo "GMP build produced no libgmp.a" >&2; exit 1; }
+fi
+
+if [ ! -f "$PREFIX/lib/libd0_blind_id.so" ] || [ ! -f "$PREFIX/lib/libd0_rijndael.so" ]; then
+    log "d0_blind_id (engine/d0_blind_id)"
+    D0_CMAKE="$CACHE_DIR/build/$ABI/d0-cmake"
+    mkdir -p "$D0_CMAKE"
+    cat > "$D0_CMAKE/CMakeLists.txt" <<EOF_CMAKE
+cmake_minimum_required(VERSION 3.10)
+project(d0_blind_id C)
+set(D0 "$ROOT/engine/d0_blind_id")
+find_path(GMP_INCLUDE gmp.h REQUIRED)
+find_library(GMP_LIBRARY NAMES libgmp.a REQUIRED)
+# the sources and flags of its Makefile.am (GMP back end)
+add_library(d0_blind_id SHARED \${D0}/d0_blind_id.c \${D0}/d0.c \${D0}/d0_iobuf.c \${D0}/sha2.c \${D0}/d0_bignum-gmp.c)
+target_include_directories(d0_blind_id PRIVATE \${GMP_INCLUDE})
+target_link_libraries(d0_blind_id PRIVATE \${GMP_LIBRARY})
+# sha2.c wants BYTE_ORDER, which configure would find; bionic has it in endian.h
+target_compile_options(d0_blind_id PRIVATE -include endian.h)
+add_library(d0_rijndael SHARED \${D0}/d0_rijndael.c)
+foreach(t d0_blind_id d0_rijndael)
+    target_compile_options(\${t} PRIVATE -fvisibility=hidden)
+    # GMP's symbols stay inside; nothing may be left undefined for dlopen to trip on
+    target_link_options(\${t} PRIVATE -Wl,--exclude-libs,ALL -Wl,--no-undefined)
+endforeach()
+install(TARGETS d0_blind_id d0_rijndael LIBRARY DESTINATION lib)
+EOF_CMAKE
+    cmake_build "$D0_CMAKE" d0_blind_id
+    for so in libd0_blind_id.so libd0_rijndael.so; do
+        test -f "$PREFIX/lib/$so" || { echo "d0_blind_id build produced no $so" >&2; ls -la "$PREFIX/lib" >&2; exit 1; }
+    done
 fi
 
 case "$ABI" in
