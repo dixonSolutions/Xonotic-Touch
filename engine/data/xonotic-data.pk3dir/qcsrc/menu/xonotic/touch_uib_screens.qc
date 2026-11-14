@@ -269,8 +269,63 @@ bool UIB_ServerSummary()
 	return true;
 }
 
-// Home: the banner and exactly three cards. Settings, Credits and Quit are the
-// screen's actions (small, in the header), never cards.
+// Home's three modes as one bar of joined tabs along the bottom (a "tabbar"
+// node, id "tiles"): Singleplayer, Campaign, Multiplayer. The bar is on Home and
+// on each of those three screens, where the open one is "current" (drawn a
+// darker shade); a tap on another tab swaps the screen in place (UIB_OpenTab).
+// Each tab keeps its map preview, icon and one line of state.
+void UIB_HomeTabs(string current)
+{
+	string map = cvar_string("touch_lan_map");
+	if (map == "") map = "stormkeep";
+	string mode = cvar_string("touch_lan_gametype");
+	if (mode == "") mode = "dm";
+	float bots = cvar("touch_lan_bots");
+	if (!uib_camp_loaded)
+		UIB_CampaignLoad();
+	UIB_ServerSummary();
+	UIB_Open("tiles", "tabbar");
+		uib_s("current", current);
+		UIB_Open("sp", "card");
+			uib_s("title", _("Singleplayer"));
+			uib_s("subtitle", sprintf(_("%s · %s · %d bots"), UIB_MapTitle(map), UIB_ModeName(mode), bots));
+			uib_s("icon", "singleplayer");
+			uib_s("image", strcat("pk3:maps/", map));
+			if (current == "sp") uib_b("selected", 1);
+			uib_j("primary", UIB_A("sp", _("Singleplayer"), "singleplayer"));
+		UIB_Close();
+		UIB_Open("campaign", "card");
+			uib_s("title", _("Campaign"));
+			if (campaign_entries > 0)
+			{
+				uib_s("subtitle", sprintf(_("Level %d of %d · %s"), uib_camp_index + 1, campaign_entries, UIB_CampaignLevelTitle(uib_camp_index)));
+				uib_s("image", strcat("pk3:maps/", campaign_mapname[uib_camp_index]));
+				uib_f("progress", uib_camp_index / campaign_entries);
+			}
+			else
+			{
+				uib_s("subtitle", _("Fight your way through the levels"));
+				uib_s("image", "pk3:maps/afterslime");
+			}
+			uib_s("icon", "trophy");
+			if (current == "campaign") uib_b("selected", 1);
+			uib_j("primary", UIB_A("campaign", _("Campaign"), "trophy"));
+		UIB_Close();
+		UIB_Open("mp", "card");
+			uib_s("title", _("Multiplayer"));
+			uib_s("subtitle", (uib_mp_summary != "") ? uib_mp_summary : _("Join a server, or create a game"));
+			uib_s("icon", "multiplayer");
+			uib_s("image", "pk3:maps/xoylent");
+			uib_b("live", 1);
+			if (current == "mp") uib_b("selected", 1);
+			uib_j("primary", UIB_A("mp", _("Multiplayer"), "multiplayer"));
+		UIB_Close();
+	UIB_Close();
+}
+
+// Home: the banner at the top, scaled to the window, and the bar of the three
+// modes at the bottom. Settings, Credits and Quit are the screen's actions
+// (small, in the header).
 void UIB_BuildHome()
 {
 	if (!UIB_Screen("home", _("Godnotic")))
@@ -290,82 +345,26 @@ void UIB_BuildHome()
 		uib_s("alt", "Godnotic");
 	UIB_Close();
 
-	string map = cvar_string("touch_lan_map");
-	if (map == "") map = "stormkeep";
-	string mode = cvar_string("touch_lan_gametype");
-	if (mode == "") mode = "dm";
-	float bots = cvar("touch_lan_bots");
-	if (!uib_camp_loaded)
-		UIB_CampaignLoad();
-	UIB_ServerSummary();
-	// Home's cards are always one horizontal row, never stacked and never
-	// scrolled down to. The compact breakpoint: a renderer too narrow for three
-	// cards side by side (widthClass compact, under 600 dp) gets a row of two:
-	// Play, with Singleplayer and Campaign as its two actions, beside
-	// Multiplayer. Wider renderers get the row of three.
-	bool compact = (uib_caps("widthClass") == "compact" || uib_narrow);
-	UIB_Open("tiles", "grid");
-		uib_f("minItem", (compact ? 150 : 200));
-		uib_f("maxColumns", (compact ? 2 : 3));   // one row: every card of the grid side by side
-		if (compact)
-		{
-			UIB_Open("play", "card");
-				uib_s("title", _("Play"));
-				if (campaign_entries > 0)
-					uib_s("subtitle", sprintf(_("%s · Campaign level %d of %d"), UIB_MapTitle(map), uib_camp_index + 1, campaign_entries));
-				else
-					uib_s("subtitle", sprintf(_("%s · %s"), UIB_MapTitle(map), UIB_ModeName(mode)));
-				uib_s("icon", "play");
-				uib_s("image", strcat("pk3:maps/", map));
-				uib_s("aspect", "16:9");
-				uib_b("featured", 1);
-				uib_j("primary", UIB_A("sp", _("Singleplayer"), "singleplayer"));
-				uib_push("actions", UIB_A("sp", _("Singleplayer"), "singleplayer"));
-				uib_push("actions", UIB_A("campaign", _("Campaign"), "trophy"));
-			UIB_Close();
-		}
-		else
-		{
-		UIB_Open("sp", "card");
-			uib_s("title", _("Singleplayer"));
-			uib_s("subtitle", sprintf(_("%s · %s · %d bots"), UIB_MapTitle(map), UIB_ModeName(mode), bots));
-			uib_s("icon", "singleplayer");
-			uib_s("image", strcat("pk3:maps/", map));
-			uib_s("aspect", "16:9");
-			uib_b("featured", 1);
-			uib_j("primary", UIB_A("sp", _("Open"), "chevron"));
-		UIB_Close();
-		UIB_Open("campaign", "card");
-			uib_s("title", _("Campaign"));
-			if (campaign_entries > 0)
-			{
-				uib_s("subtitle", sprintf(_("Level %d of %d · %s"), uib_camp_index + 1, campaign_entries, UIB_CampaignLevelTitle(uib_camp_index)));
-				uib_s("image", strcat("pk3:maps/", campaign_mapname[uib_camp_index]));
-				uib_f("progress", uib_camp_index / campaign_entries);
-			}
-			else
-			{
-				uib_s("subtitle", _("Fight your way through the levels"));
-				uib_s("image", "pk3:maps/afterslime");
-			}
-			uib_s("icon", "trophy");
-			uib_s("aspect", "16:9");
-			uib_b("featured", 1);
-			uib_j("primary", UIB_A("campaign", _("Open"), "chevron"));
-		UIB_Close();
-		}
-		UIB_Open("mp", "card");
-			uib_s("title", _("Multiplayer"));
-			uib_s("subtitle", (uib_mp_summary != "") ? uib_mp_summary : _("Join a server, or create a game"));
-			uib_s("icon", "multiplayer");
-			uib_s("image", "pk3:maps/xoylent");
-			uib_s("aspect", "16:9");
-			uib_b("featured", 1);
-			uib_b("live", 1);
-			uib_j("primary", UIB_A("mp", _("Open"), "chevron"));
-		UIB_Close();
-	UIB_Close();
+	UIB_HomeTabs("");
 	UIB_Done();
+}
+
+// A tab of Home's bar: from one of the three screens it replaces that screen
+// (Back still goes Home), from anywhere else it opens on top.
+void UIB_OpenTab(string id)
+{
+	if (uibn_modal == "" && tokenize_console(uibn_stack) == 2 && argv(0) == "home"
+		&& (argv(1) == "sp" || argv(1) == "campaign" || argv(1) == "mp"))
+	{
+		if (argv(1) == id)
+		{
+			UIB_Build(id);
+			return;
+		}
+		UIB_SetStack(strcat("home ", id), "");
+		return;
+	}
+	UIB_Push(id);
 }
 
 // ---------------------------------------------------------------- campaign
@@ -380,6 +379,7 @@ void UIB_BuildCampaign()
 	uib_s("kind", "page");
 	if (campaign_title != "") uib_s("subtitle", campaign_title);
 	uib_j("header", "{\"collapsible\":true}");
+	UIB_HomeTabs("campaign");
 	if (campaign_entries <= 0)
 	{
 		UIB_Open("none", "status");
@@ -481,6 +481,7 @@ void UIB_BuildCreate()
 	uib_s("subtitle", lan ? _("On your network: others can join") : _("Local game: only you and the bots"));
 	uib_j("header", "{\"collapsible\":true}");
 	uib_j("primary", lan ? UIB_AS("play", _("Host on LAN"), "host", "primary") : UIB_AS("play", _("Play"), "play", "primary"));
+	if (!frommp) UIB_HomeTabs("sp");
 
 	UIB_Section("modes", _("Game mode"), false);
 		UIB_Open("grid", "grid");
@@ -762,6 +763,7 @@ void UIB_BuildServers()
 	else if (cvar("_slist_refreshing"))
 		uib_s("subtitle", _("Looking for servers…"));
 	uib_j("header", "{\"collapsible\":true}");
+	UIB_HomeTabs("mp");
 	UIB_Open("bar", "toolbar");
 		UIB_Open("search", "field");
 			uib_s("label", _("Search"));
@@ -1448,12 +1450,12 @@ void UIB_Action(string node, string a, string payload)
 		return;
 	switch (a)
 	{
-		case "sp": UIB_VMSet("create.from", "home"); UIB_Push("sp"); return;
+		case "sp": UIB_VMSet("create.from", "home"); UIB_OpenTab("sp"); return;
 		case "campaign":
 			UIB_CampaignLoad();
 			UIB_CampaignRows();
 			UIB_VMSet("campaign.sel", ftos(uib_camp_index));
-			UIB_Push("campaign");
+			UIB_OpenTab("campaign");
 			return;
 		case "campaign.play": UIB_StartCampaign(bound(0, UIB_VMf("campaign.sel"), uib_camp_index)); return;
 		case "map.preview": UIB_VMSet("map.sel", cvar_string("touch_lan_map")); UIB_Push("sp.map"); return;
@@ -1461,7 +1463,7 @@ void UIB_Action(string node, string a, string payload)
 		case "host.close": UIB_LanPopupClose(true); return;
 		case "host.copy": case "host.copylink": case "host.share": return;   // the renderer copied or shared the text
 		case "create": UIB_VMSet("create.from", "mp"); UIB_Push("sp"); return;
-		case "mp": UIB_VMSet("mp.server", ""); UIB_Push("mp"); UIB_Refresh(); uib_mp_next_refresh = uib_gettime(1) + 10; return;
+		case "mp": UIB_VMSet("mp.server", ""); UIB_OpenTab("mp"); UIB_Refresh(); uib_mp_next_refresh = uib_gettime(1) + 10; return;
 		case "credits": UIB_Push("credits"); return;
 		case "quit": localcmd("\nquit\n"); return;   // the renderer already confirmed
 		case "quit.confirm": localcmd("\nquit\n"); return;

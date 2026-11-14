@@ -100,25 +100,8 @@ fn action_button(app: &App, node: &str, a: &Map<String, Value>, primary: bool) -
 
 /// The Home banner (`image` with `role: "banner"`): large, about a quarter of a normal window.
 const BANNER_HEIGHT: i32 = 240;
-const BANNER_HEIGHT_NARROW: i32 = 150;
-
-fn window_height(app: &App) -> i32 {
-    app.ui.borrow().as_ref().map(|u| u.win.height()).filter(|h| *h > 0).unwrap_or(760)
-}
-
-/// The banner gives way before the cards do (docs/UI_BRIDGE.md, the compact breakpoint):
-/// up to 30% of the window, never more than what is left once the cards have their room.
-fn banner_height(app: &App) -> i32 {
-    let h = window_height(app);
-    let max = if app.narrow.get() { BANNER_HEIGHT_NARROW } else { BANNER_HEIGHT };
-    (h * 30 / 100).min(h - if app.narrow.get() { 400 } else { 330 }).clamp(56, max)
-}
-
-/// A featured card's picture: as tall as a window of this height leaves it, at least 96.
-fn featured_picture_height(app: &App) -> i32 {
-    let h = window_height(app);
-    if app.narrow.get() { (h - banner_height(app) - 330).clamp(72, 200) } else { (h - banner_height(app) - 230).clamp(96, 230) }
-}
+/// ... and the least it shrinks to on Home, where it is sized from the window's width.
+const BANNER_MIN_HEIGHT: i32 = 80;
 
 /// The native skeleton shown before the engine's first snapshot: the banner and placeholder cards.
 pub fn skeleton() -> adw::NavigationPage {
@@ -199,6 +182,7 @@ pub fn screen(app: &App, store: &Store, s: &Node) -> gtk::Widget {
 
     let kids = store.children(&s.id);
     let mut body: Vec<&Node> = Vec::new();
+    let mut tabs: Option<&Node> = None;
     for k in &kids {
         if k.hidden() {
             continue;
@@ -210,6 +194,7 @@ pub fn screen(app: &App, store: &Store, s: &Node) -> gtk::Widget {
                 tv.add_top_bar(&t);
             }
             "actionbar" => tv.add_bottom_bar(&actionbar(app, store, k)),
+            "tabbar" => tabs = Some(k),
             _ => body.push(k),
         }
     }
@@ -220,6 +205,10 @@ pub fn screen(app: &App, store: &Store, s: &Node) -> gtk::Widget {
             bar.set_center_widget(Some(&action_button(app, &s.id, p, true)));
             tv.add_bottom_bar(&bar);
         }
+    }
+    // Home's bar of tabs: the last bottom bar, under the action bar.
+    if let Some(t) = tabs {
+        tv.add_bottom_bar(&tabbar(app, store, t));
     }
 
     // One scrolling region: a list that fills the screen scrolls by itself; everything else in one scrolled column.
@@ -364,7 +353,6 @@ pub fn node(app: &App, store: &Store, n: &Node) -> gtk::Widget {
     let w: gtk::Widget = match n.kind.as_str() {
         "section" | "form" => section(app, store, n),
         "hero" => hero(app, n),
-        "card" if !n.arr("actions").is_empty() => card_with_actions(app, n),
         "card" => card(app, n).upcast(),
         "grid" => grid(app, store, n),
         "row" => row(app, store, n),
@@ -379,7 +367,14 @@ pub fn node(app: &App, store: &Store, n: &Node) -> gtk::Widget {
                 p.set_content_fit(gtk::ContentFit::Contain);
             }
             let banner = n.str("role").as_deref() == Some("banner") || r == "asset:banner";
-            p.set_height_request(if banner { banner_height(app) } else { 220 });
+            if banner {
+                // Home's banner, at the top: as wide as the column, its height following its own
+                // shape (a picture is measured height-for-width), so it scales with the window.
+                p.set_height_request(BANNER_MIN_HEIGHT);
+                p.set_valign(gtk::Align::Start);
+            } else {
+                p.set_height_request(220);
+            }
             p.set_alternative_text(n.str("alt").as_deref());
             p.add_css_class("gn-banner");
             p.upcast()
@@ -839,7 +834,7 @@ fn card(app: &App, n: &Node) -> gtk::Button {
             // Map shots fill the card; artwork (mode icons) is shown whole.
             if r.starts_with("pk3:maps/") {
                 let featured = n.bool("featured").unwrap_or(false);
-                p.set_height_request(if featured { featured_picture_height(app) } else { aspect_height(n.str("aspect"), 240).clamp(80, 200) });
+                p.set_height_request(if featured { if app.narrow.get() { 150 } else { 230 } } else { aspect_height(n.str("aspect"), 240).clamp(80, 200) });
                 if featured {
                     b.add_css_class("gn-featured");
                 }
@@ -895,41 +890,73 @@ fn card(app: &App, n: &Node) -> gtk::Button {
     b
 }
 
-/// A card that carries its own actions (the compact Home's Play card: Singleplayer and
-/// Campaign): the picture and text as the card, its actions as buttons across its bottom.
-fn card_with_actions(app: &App, n: &Node) -> gtk::Widget {
-    let v = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    v.add_css_class("card");
-    v.add_css_class("gn-card");
-    if let Some(r) = n.str("image") {
-        let p = picture(app, &r, 720, 405);
-        p.set_height_request(featured_picture_height(app));
-        p.add_css_class("gn-card-pic");
-        v.append(&p);
-    }
-    let t = gtk::Box::new(gtk::Orientation::Vertical, 4);
-    t.add_css_class("gn-card-text");
-    t.add_css_class("gn-featured-text");
-    t.append(&label(&n.title(), &["gn-card-title"]));
-    if let Some(s) = n.str("subtitle") {
-        t.append(&label(&s, &["dim-label"]));
-    }
-    // side by side while there is room, one under the other inside the card on a narrow window
-    let row = gtk::Box::new(if app.narrow.get() { gtk::Orientation::Vertical } else { gtk::Orientation::Horizontal }, 8);
-    row.set_homogeneous(true);
-    row.set_margin_top(8);
-    for (i, a) in n.arr("actions").iter().enumerate() {
-        if let Some(a) = a.as_object() {
-            let b = action_button(app, &n.id, a, i == 0);
-            b.set_size_request(-1, 48);
-            b.set_hexpand(true);
-            register_activator(app, &format!("{}:{}", n.id, a.str_of("id").unwrap_or_default()), &b);
-            row.append(&b);
+/// Home's three modes (`tabbar`): one strip of tabs joined edge to edge along the bottom, each
+/// with its faint map preview, icon, title and a line of state. The `current` tab (the screen
+/// that is open) is a darker shade with an ember line on top; tapping another opens it.
+fn tabbar(app: &App, store: &Store, n: &Node) -> gtk::Widget {
+    let bar = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    bar.set_homogeneous(true);
+    bar.add_css_class("gn-tabbar");
+    let current = n.str("current").unwrap_or_default();
+    for k in store.children(&n.id) {
+        if k.hidden() {
+            continue;
         }
+        let b = gtk::Button::new();
+        b.add_css_class("gn-tab");
+        let is_current = k.bool("selected").unwrap_or(false) || (!current.is_empty() && k.id.ends_with(&format!("/{current}")));
+        if is_current {
+            b.add_css_class("gn-tab-current");
+        }
+        let o = gtk::Overlay::new();
+        if let Some(r) = k.str("image") {
+            let p = picture(app, &r, 480, 120);
+            p.add_css_class("gn-tab-pic");
+            p.set_height_request(if app.narrow.get() { 48 } else { 60 });
+            o.set_child(Some(&p));
+        } else {
+            let filler = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            filler.set_height_request(if app.narrow.get() { 48 } else { 60 });
+            o.set_child(Some(&filler));
+        }
+        let t = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        t.set_valign(gtk::Align::Center);
+        t.set_halign(gtk::Align::Center);
+        let head = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        head.set_halign(gtk::Align::Center);
+        if let Some(i) = k.str("icon").and_then(|i| icon(&i)) {
+            head.append(&gtk::Image::from_icon_name(i));
+        }
+        let title = label(&k.title(), &["gn-tab-title"]);
+        title.set_wrap(false);
+        title.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        head.append(&title);
+        t.append(&head);
+        if let Some(sub) = k.str("subtitle").filter(|_| !app.narrow.get()) {
+            let l = label(&sub, &["gn-tab-sub"]);
+            l.set_wrap(false);
+            l.set_xalign(0.5);
+            l.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            t.append(&l);
+        }
+        o.add_overlay(&t);
+        b.set_child(Some(&o));
+        b.set_tooltip_text(k.str("subtitle").as_deref());
+        if let Some(p) = k.obj("primary").cloned() {
+            let w = Rc::downgrade(app);
+            let id = k.id.clone();
+            b.connect_clicked(move |_| {
+                if !is_current {
+                    if let Some(a) = w.upgrade() {
+                        invoke(&a, &id, &p);
+                    }
+                }
+            });
+        }
+        register_activator(app, &k.id, &b);
+        bar.append(&b);
     }
-    t.append(&row);
-    v.append(&t);
-    v.upcast()
+    bar.upcast()
 }
 
 /// A short grid of cards (home tiles, modes). Long ones are `list` with `display: cards`.
@@ -942,8 +969,7 @@ fn grid(app: &App, store: &Store, n: &Node) -> gtk::Widget {
     let min = n.f64("minItem").unwrap_or(160.0);
     let kids = store.children(&n.id);
     let featured = kids.first().is_some_and(|k| k.bool("featured").unwrap_or(false));
-    // Home's featured cards are one row at every width, never stacked.
-    f.set_min_children_per_line(if featured { kids.len().clamp(1, 4) as u32 } else if app.narrow.get() { 1 } else { 2 });
+    f.set_min_children_per_line(if app.narrow.get() { 1 } else if featured { kids.len().clamp(1, 4) as u32 } else { 2 });
     f.set_max_children_per_line(n.f64("maxColumns").map(|m| m as u32).unwrap_or(((1100.0 / (min + 12.0)) as u32).clamp(1, 6)));
     for k in store.children(&n.id) {
         if k.hidden() {

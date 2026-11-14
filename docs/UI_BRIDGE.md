@@ -23,26 +23,13 @@ renderers showing the same snapshot will look different and must both be correct
 
 Owner rules that the descriptions follow and renderers must not undo:
 
-- Home is the banner, large, and exactly three large cards, each with a picture from the
-  game's own data: **Singleplayer** (the last map played), **Campaign** (the next level),
-  **Multiplayer** (with "N servers · M players" once the list is known). Settings, Credits
-  and Quit are the screen's `actions` (small, in the header), never cards. Nothing else.
-- **Home's cards are one horizontal row at every size**: side by side, never stacked,
-  never scrolled down to. A featured `grid` shows all its cards (`maxColumns` of them)
-  in one row. To make them fit a small window a renderer shrinks, in this order: the
-  banner (it takes what is left once each card has a picture of at least 96 dp and its
-  two lines of text, up to 30% of the page, never under 44 dp), then the cards'
-  pictures (cropped to fit, never squeezed; at least 72 dp), then it shortens subtitles
-  with an ellipsis; titles stay at 16 sp or more. Scrolling the row sideways is the last
-  resort; a vertical layout is not an option.
-- **The compact breakpoint.** A renderer that reports `widthClass: "compact"` (under
-  600 dp wide) cannot seat three cards comfortably and is described a row of **two**
-  (`maxColumns: 2`): **Play**, whose `actions` are Singleplayer (`sp`) and Campaign
-  (`campaign`), drawn as two buttons inside the card (side by side while their labels
-  fit, else one under the other), beside Multiplayer. Every wider renderer gets the row
-  of three (`maxColumns: 3`), down to a 640 x 360 dp window. The menu VM decides;
-  renderers only send their caps (again on a resize or a rotation) and draw what is
-  described, including a card's `actions`.
+- Home is the banner at the top, scaled to the window, and a bar of three tabs joined along
+  the bottom (`tabbar`, no cards), each with a faint picture from the game's own data:
+  **Singleplayer** (the last map played), **Campaign** (the next level), **Multiplayer**
+  (with "N servers · M players" once the list is known). The same bar is on those three
+  screens, with the open one `current` (a darker shade); a tap on another tab swaps the
+  screen in place, Back goes Home. Settings, Credits and Quit are the screen's `actions`
+  (small, in the header), never tabs. Nothing else.
 - Singleplayer is a local game: mode, map, bots. Nothing on it is about the network, and
   the engine opens no network socket for it (docs/LAN.md). Campaign is its own screen.
 - Multiplayer is one screen: a search field, one row of checkboxes (LAN, Empty, Full,
@@ -274,6 +261,7 @@ the sticky header, section 4.10). Children: content and containers.
 | `section` | `title`, `subtitle`, `footer`, `collapsible`, `collapsed`, `link` (action: "See all"), `sticky` (bool: its header sticks, section 4.10) | anything |
 | `toolbar` | — | sticky strip under the header: a search `field`, `tabs`, filter buttons. At most one, the screen's first child |
 | `actionbar` | `align` | sticky bar at the bottom: buttons (Play, Join, Apply). At most one, the screen's last child |
+| `tabbar` | `current` (the key of the open tab, `""` on Home) | Home's modes: one sticky strip along the very bottom of the screen (under the `actionbar`), its tabs joined edge to edge, flat (no card, no gap). Children are `card`s (`title`, `subtitle`, `icon`, `image`, `primary`, `selected` on the current one): the current tab is a darker shade with an accent line on top and does nothing when tapped; a renderer that does not know `tabbar` may show the cards in a row |
 | `row` | `wrap` (bool), `align` (`start`, `center`, `end`, `spread`) | small items side by side (buttons, chips, a control and its label) |
 | `grid` | `minItem` (dp, a hint for the narrowest card, default 160), `maxColumns`, `scroll` (`vertical` default, `horizontal` for a carousel) | cards |
 | `tabs` | `style` (`tabs`, `segmented`), `presentation` (`horizontal`), `swipe` (bool: swiping the content changes tab where no horizontal control is under the finger), `value` (selected pane's key), `bind` | `pane` nodes |
@@ -334,9 +322,9 @@ renderers ignore them unless they know them.
 **`text`** — `body`, `style` (`body`, `caption`, `title`, `mono`, `note`, `warning`),
 `selectable`.
 **`image`** — `ref`, `aspect`, `fit` (`cover`, `contain`), `alt`, `role` (`picture` default, `banner`).
-`role: "banner"` with `emphasis: "high"` is the Home banner: a renderer gives it about a
-quarter to a third of the window's height (never a thin strip), whole (`contain`), and may
-leave out the screen's title beside it.
+`role: "banner"` with `emphasis: "high"` is the Home banner: at the top of the page, as wide
+as the content and scaled to the window (most of the height above the bar of tabs, never a
+thin strip), whole (`contain`), and a renderer may leave out the screen's title beside it.
 **`divider`** — nothing.
 **`status`** — a whole-page state: `icon`, `title`, `body`, `progress` (0..1),
 `indeterminate`, `primary`, `actions`, `tone` (empty pages, errors, "connecting", "nothing here yet").
@@ -944,7 +932,7 @@ For the Rust core (and anyone else):
 | --- | --- |
 | `touch_uib_api.qh` | the builtins #1180..#1222 (`uib_begin`, `uib_node`, `uib_s`/`uib_f`/`uib_b`/`uib_j`/`uib_push`, `uib_nav`, `uib_window` ...). Guard: `UIB_EngineHasBridge()` (cvar `uib_version`) |
 | `touch_uib_build.qc` | builder helpers: `UIB_Screen`, `UIB_Open`/`UIB_Close`, `UIB_A` (actions), `UIB_Switch`, `UIB_Slider`, `UIB_Choice` ...; view-model values (`vm:` binds) kept in `_uib_*` cvars |
-| `touch_uib_screens.qc` | Home (banner, three cards), Singleplayer / Create (screen `sp`; LAN, slots, Port, Password only when opened from Multiplayer), Campaign, map details, Multiplayer (`mp`), password dialog, the first-start welcome (`welcome`: the player's name, not dismissable, back does nothing), the host's LAN popup (`lan.host`), pause (hosting card), loading, Credits, quit dialog; navigation; `UIB_Event`, the menu's answer to every renderer event |
+| `touch_uib_screens.qc` | Home (banner, the bar of three tabs that the mode screens carry too), Singleplayer / Create (screen `sp`; LAN, slots, Port, Password only when opened from Multiplayer), Campaign, map details, Multiplayer (`mp`), password dialog, the first-start welcome (`welcome`: the player's name, not dismissable, back does nothing), the host's LAN popup (`lan.host`), pause (hosting card), loading, Credits, quit dialog; navigation; `UIB_Event`, the menu's answer to every renderer event |
 | `touch_uib_settings.qc` | Settings (split, vertical tabs, horizontal sub-tabs) and Mods (lists, detail with permissions, install from link) |
 | `touch_uib_render.qc` | the QuakeC renderer (web, and the fallback everywhere) |
 
@@ -1008,9 +996,11 @@ a synthetic source made by `uib_testrows <source> <n> servers|maps`.
   fling is fast only stops it. Mouse wheel, PgUp/PgDn, arrows/Tab move a focus ring,
   Enter/Space activate, Escape is back. Text fields take keys (and ask for the screen
   keyboard on touch); private fields show bullets.
-- Home: the banner takes the page's spare height (up to 340 dp), the three cards sit in
-  one row whenever 150 dp each fits and are as tall as the page allows, so Home does not
-  scroll on a tablet or a phone on its side. A card list with `rows` draws that many rows
+- Home: the banner sits at the top, as wide as the content (21:9 at most) and up to 78% of
+  the height between the header and the bar of tabs, so it scales with the window and Home
+  never scrolls. The `tabbar` is region 7, the full width of the window along the bottom
+  (64 dp, 52 dp on a short page, 44 dp with one line per tab on the three mode screens of a
+  short page), the action bar above it. A card list with `rows` draws that many rows
   of tiles scrolling sideways, sized from the height of the view; on a short page the
   mode strip above it is compact (art and name). Lists with `selection: single`: a tap chooses,
   a second tap within 0.4 s activates.

@@ -103,10 +103,9 @@
    },
    {
     "id": "home/tiles",
-    "type": "grid",
+    "type": "tabbar",
     "props": {
-     "minItem": 200,
-     "maxColumns": 3
+     "current": ""
     },
     "children": [
      "home/tiles/sp",
@@ -122,12 +121,10 @@
      "subtitle": "Stormkeep · Deathmatch · 4 bots",
      "icon": "singleplayer",
      "image": "pk3:maps/stormkeep",
-     "aspect": "16:9",
-     "featured": true,
      "primary": {
       "id": "sp",
-      "label": "Open",
-      "icon": "chevron"
+      "label": "Singleplayer",
+      "icon": "singleplayer"
      }
     },
     "children": []
@@ -141,12 +138,10 @@
      "image": "pk3:maps/boil",
      "progress": 0,
      "icon": "trophy",
-     "aspect": "16:9",
-     "featured": true,
      "primary": {
       "id": "campaign",
-      "label": "Open",
-      "icon": "chevron"
+      "label": "Campaign",
+      "icon": "trophy"
      }
     },
     "children": []
@@ -159,13 +154,11 @@
      "subtitle": "Join a server, or create a game",
      "icon": "multiplayer",
      "image": "pk3:maps/xoylent",
-     "aspect": "16:9",
-     "featured": true,
      "live": true,
      "primary": {
       "id": "mp",
-      "label": "Open",
-      "icon": "chevron"
+      "label": "Multiplayer",
+      "icon": "multiplayer"
      }
     },
     "children": []
@@ -181,10 +174,74 @@
      }
     },
     "children": [
+     "mp/tiles",
      "mp/bar",
      "mp/servers",
      "mp/join"
     ]
+   },
+   {
+    "id": "mp/tiles",
+    "type": "tabbar",
+    "props": {
+     "current": "mp"
+    },
+    "children": [
+     "mp/tiles/sp",
+     "mp/tiles/campaign",
+     "mp/tiles/mp"
+    ]
+   },
+   {
+    "id": "mp/tiles/sp",
+    "type": "card",
+    "props": {
+     "title": "Singleplayer",
+     "subtitle": "Stormkeep · Deathmatch · 4 bots",
+     "icon": "singleplayer",
+     "image": "pk3:maps/stormkeep",
+     "primary": {
+      "id": "sp",
+      "label": "Singleplayer",
+      "icon": "singleplayer"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "mp/tiles/campaign",
+    "type": "card",
+    "props": {
+     "title": "Campaign",
+     "subtitle": "Level 1 of 31 · Deathmatch: Boil",
+     "image": "pk3:maps/boil",
+     "progress": 0,
+     "icon": "trophy",
+     "primary": {
+      "id": "campaign",
+      "label": "Campaign",
+      "icon": "trophy"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "mp/tiles/mp",
+    "type": "card",
+    "props": {
+     "title": "Multiplayer",
+     "subtitle": "Join a server, or create a game",
+     "icon": "multiplayer",
+     "image": "pk3:maps/xoylent",
+     "live": true,
+     "selected": true,
+     "primary": {
+      "id": "mp",
+      "label": "Multiplayer",
+      "icon": "multiplayer"
+     }
+    },
+    "children": []
    },
    {
     "id": "mp/bar",
