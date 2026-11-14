@@ -6,6 +6,7 @@ docs/UI_BRIDGE.md is the contract; touch_uib_store.c holds the tree.
 #include "thread.h"
 #include "touch_uib_int.h"
 #include "touch_shellbtn.h"
+#include "touch_display.h"
 #ifdef __linux__
 #include <sys/eventfd.h>
 #include <unistd.h>
@@ -919,6 +920,18 @@ void TouchUIB_Frame(void)
 	if (now >= uib.next_watch)
 	{
 		uib.next_watch = now + 0.1;
+#ifdef __EMSCRIPTEN__
+		{
+			// the page resizes its canvas after the window is made: keep the
+			// menu's dp (touch_display.c: one dp is one CSS pixel) current
+			static double next_dpi;
+			if (now >= next_dpi)
+			{
+				next_dpi = now + 1;
+				TouchDisplay_Update(0);
+			}
+		}
+#endif
 		UIB_WatchReserved();
 		UIBS_WatchTick();
 		if (uibm_tick_wanted || UIB_ConnCount())

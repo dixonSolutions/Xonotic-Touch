@@ -840,6 +840,7 @@ Console commands (tests, debugging):
 | `uib_stats` | node count, rev, snapshot size, clients |
 | `uib_modpage <mod> <page> <json>` / `- ` | register or remove a mod page (as the Lua API does) |
 | `uib_testrows <source> <n> servers\|maps [seed]` | synthetic rows for stress tests |
+| `uib_input key <name>` / `text <s>` / `tap <id>` / `doubletap <id>` / `drag <id> <dx> <dy>` / `tapxy <fx> <fy>` | tests of the QuakeC renderer: scripted input through `Key_Event` and a test pointer, the way a key, a mouse and a finger go. `<id>` is a node id, or `<list id>#<row index>` for a row; the renderer reports where it is (`_uib_r_find` / `_uib_r_found`) |
 
 ## 10a. Writing a client
 
@@ -890,8 +891,21 @@ changes one value sends a diff of one node. Rebuilding a 253-node screen with on
 changed value costs about 1.8 ms in the store (test build with sanitizers) and sends a
 163-byte diff.
 
-Cvars: `menu_touch_uib` (0/1, archived): draw the menu from the descriptions with the
-QuakeC renderer. `uib_debug` (1 logs messages, 2 their text). `_uib_r_debug` (renderer
+Cvars: `menu_touch_uib` (archived, **default 1**): wherever no native renderer shows the
+menu (the web build, Ubuntu Touch, a desktop without the app, every fallback), the QuakeC
+renderer draws the described screens. `0` is the classic touch menu everywhere: the escape
+hatch, also the switch Settings > Menu > New menu.
+
+**Classic dialogs.** The bridge renderer draws in place of the classic menu's root, so the
+old launcher never shows. What the bridge has no screen for is opened as a classic dialog
+over it and closes back to it: Settings > Menu > Classic menu lists Advanced settings,
+Demos / screenshots / music and Player model; Credits has the full credits. The rule
+(`RB_ClassicUp`): a dialog opened through `m_goto` (one hook line there calls
+`TouchUIB_Classic`; this is also every `menu_cmd directmenu <name>` from the engine or the
+game), anything the classic menu puts up by itself out of a match (first run, the data
+download, a password prompt), and on a desktop a window zoomed out of the Nexposee
+overview, is drawn and given input by the classic menu; when the classic root is back or
+the menu hides, the bridge renderer draws again. `uib_debug` (1 logs messages, 2 their text). `_uib_r_debug` (renderer
 state in `_uib_r_state`; 2 prints it twice a second; 3 every frame with its cost).
 Test hooks: `_uib_debug_open <screen>` opens a modal, `_uib_debug_toast <text>` shows a
 toast, `_uib_debug_servers` / `_uib_debug_maps` point the Servers list / map picker at
@@ -916,6 +930,15 @@ a synthetic source made by `uib_testrows <source> <n> servers|maps`.
   index and shifts the scroll when rows are inserted above it. Images: at most one new
   picture per frame and none while a fling is fast; small boxes draw a cached
   thumbnail (`uib_thumb`, PNG in `<gamedir>/uib-cache/`).
+- **Keyboard and gamepad**: Left/Right stay in a row (a strip of cards, a row of
+  buttons), Up/Down go to the nearest control of another row, Tab walks everything;
+  the first arrow lands on the page's first control. A list takes the focus and has a
+  row cursor: the arrows move it (and choose the row where the list has a selection),
+  Enter / Space / A activates the cursor's row, Escape / Backspace / B is back. The
+  d-pad and the stick-as-keys do what the arrows do.
+- **Short pages** (a phone on its side, under 330 dp between header and action bar): a
+  section that is one strip of cards (the game modes) is drawn as one row of chips
+  without its header, so both rows of the map picker are in view at scroll 0.
 - **Input**: a press is a tap until it moves `TOUCH_SHEET_SLOP_DP`; a vertical drag
   scrolls the region under it (never activates), a sideways drag on a slider moves it,
   on a carousel or tab strip scrolls it; release flings with friction; a press while a
@@ -1030,6 +1053,15 @@ private network namespace where the system allows one; no master servers or LAN 
 any case, so the server list is empty) and one folded diff per event in the `seq-*`
 fixtures, since how many frames the engine took to describe a screen is timing, not
 content. Three runs in a row give identical files.
+
+`tests/uibridge/input_test.py` runs a headless engine with the default configuration and
+drives the QuakeC renderer with `uib_input` (17 checks: the bridge menu is the default
+menu, a tap opens a screen, a drag over the map picker chooses nothing, one tap chooses a
+map, Escape, typing an address and Enter, arrow keys into the map picker, a classic
+dialog and back, a double tap starts the match, Pause, Leave); it passes at 1280x720
+(mouse), 1920x1200 and 2340x1080 (touch). `tests/uibridge/web_menu.mjs` does the same in
+the web build in headless Chrome over CDP with real mouse or touch events (10 checks, at
+1280x720 and a 851x393 phone viewport).
 
 `scripts/test-uibridge.sh` checks the schema is current, validates every fixture, runs
 the store's property test (random rebuilds; applying all diffs to the first snapshot
