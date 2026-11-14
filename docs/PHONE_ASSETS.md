@@ -307,6 +307,9 @@ list.
 }
 ```
 
+`set` is the source date and a hash of the source packs and of every split
+pack's name and sha256: it names these exact bytes, so a change to the split
+rules alone is a new set too (the web build pins it, `scripts/vercel-build.sh`).
 `priority` is the fetch order (lower first); `offset` and `size` are the
 pack's bytes in the archive, so one Range request fetches a pack without
 reading the zip directory. A map is playable when every pack in its `needs` is

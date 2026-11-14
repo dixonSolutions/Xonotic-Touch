@@ -177,7 +177,9 @@ def pk3(name, files, links=()):
         for n, target in links:
             i = zipfile.ZipInfo(n); i.external_attr = 0o120777 << 16; i.create_system = 3; z.writestr(i, target)
 pk3("xonotic-20261107-data-phone.pk3", {"models/a.md3": b"a" * 300, "models/player/x_lod1.iqm": b"l" * 300,
-    "gfx/menu.jpg": b"m" * 300, "sound/unused.ogg": b"u" * 300, "dds/textures/core.ktx": b"c" * 300})
+    "gfx/menu.jpg": b"m" * 300, "sound/unused.ogg": b"u" * 300, "dds/textures/core.ktx": b"c" * 300,
+    "gfx/hud/luma/progressbar.tga": b"p" * 50, "gfx/hud/default/progressbar.jpg": b"P" * 50,
+    "gfx/hud/luma/ammo.tga": b"a" * 50, "gfx/hud/default/ammo.tga": b"A" * 50})
 pk3("xonotic-20261107-maps-phone.pk3", {
     "maps/one.bsp": b"1" * 500, "maps/two.bsp": b"2" * 500, "maps/three.bsp": b"3" * 500,
     "maps/one.mapinfo": b"gametype dm", "maps/two.mapinfo": b"gametype dm", "maps/three.mapinfo": b"gametype dm",
@@ -211,7 +213,9 @@ exp = {"models/a.md3": "core", "models/player/x_lod1.iqm": "detail", "gfx/menu.j
        "maps/two.mapinfo": "core", "scripts/one.shader": "core", "dds/textures/own1.ktx": "map-one",
        "dds/textures/nobody.ktx": "extras", "sound/map_two/x.ogg": "map-two",
        "dds/textures/link.ktx": "map-two", "dds/textures/target.ktx": "map-two",
-       "sound/cdtracks/a.ogg": "music"}
+       "sound/cdtracks/a.ogg": "music",
+       # hud.qc draws gfx/hud/default/progressbar by that path: core even where the skin has its own
+       "gfx/hud/default/progressbar.jpg": "core", "gfx/hud/default/ammo.tga": "extras", "gfx/hud/luma/ammo.tga": "core"}
 bad = {k: (w.get(k), v) for k, v in exp.items() if w.get(k) != v}
 assert not bad, bad
 s = w["dds/textures/shared.ktx"]

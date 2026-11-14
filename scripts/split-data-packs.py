@@ -102,6 +102,10 @@ ALWAYS_CORE_MAPS = ["scripts/*.shader", "maps/*.mapinfo", "maps/*.jpg", "maps/*.
                     "maps/*.txt", "maps/*.instantaction", "maps/*.cfg", "*.cfg", "*.txt"]
 # never needed first: the QuakeC loads them only if they exist
 DETAIL = [r"^models/player/.*_lod[12]\.[^/]+$"]
+# pictures the client QuakeC names by their gfx/hud/default/ path whatever the
+# HUD skin (hud.qc: HUD_Panel_DrawProgressBar), so the skin's own copy does not
+# stand in for them
+HUD_DEFAULT_ALWAYS = [r"^gfx/hud/default/progressbar(_vertical)?(_alpha)?\.[^/]+$"]
 
 
 def glob1(name, pattern):
@@ -151,6 +155,8 @@ def ui_picture(name, skins, entries):
         if skin in skins:
             return True
         if parts[1] == "hud" and skin == "default":
+            if any(re.match(p, name) for p in HUD_DEFAULT_ALWAYS):
+                return True
             rest = "/".join(parts[3:])
             return not any(("data", "gfx/hud/%s/%s" % (s, rest)) in entries for s in skins)
         return False
@@ -455,7 +461,10 @@ def main():
         h.close()
     log("split into %d packs in %.0f s" % (len(packs), time.time() - t0))
 
-    srcsha = hashlib.sha256("".join(sorted(r.get("sha256", r["file"]) for r in phone["packs"])).encode()).hexdigest()[:12]
+    # the set id names these exact bytes: the source packs and how they were cut
+    # (a change to the split rules alone is a new set too)
+    srcsha = hashlib.sha256(("".join(sorted(r.get("sha256", r["file"]) for r in phone["packs"])) + "|" +
+                             "".join(r["install_as"] + r["sha256"] for r in packs)).encode()).hexdigest()[:12]
     first_play = ["core"] + sorted(deps[first]) + [first]
     manifest = {
         "format": FORMAT,
