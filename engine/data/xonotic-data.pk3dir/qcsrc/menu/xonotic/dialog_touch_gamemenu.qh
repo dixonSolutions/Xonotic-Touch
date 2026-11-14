@@ -2,8 +2,8 @@
 
 // The game menu on a touchscreen: what Escape, Android Back and the MENU pill
 // open while connected (TouchGameMenu_Route). The stock GameMenu's rows are a
-// thumb's width apart on a tablet; this one has finger-sized buttons, leaving
-// the server first among them.
+// thumb's width apart on a tablet; this one has finger-sized buttons: Resume
+// and Join game / Spectate first, Leave and Quit on the pinned bottom row.
 #include "rootdialog.qh"
 CLASS(GodnoticGameMenuDialog, XonoticRootDialog)
 	METHOD(GodnoticGameMenuDialog, fill, void(entity));
@@ -11,7 +11,7 @@ CLASS(GodnoticGameMenuDialog, XonoticRootDialog)
 	ATTRIB(GodnoticGameMenuDialog, title, string, _("Game menu"));
 	ATTRIB(GodnoticGameMenuDialog, color, vector, SKINCOLOR_DIALOG_QUIT);
 	ATTRIB(GodnoticGameMenuDialog, intendedWidth, float, 0.56);
-	ATTRIB(GodnoticGameMenuDialog, rows, float, 18);
+	ATTRIB(GodnoticGameMenuDialog, rows, float, 14);
 	ATTRIB(GodnoticGameMenuDialog, columns, float, 2);
 	ATTRIB(GodnoticGameMenuDialog, name, string, "TouchGameMenu");
 	ATTRIB(GodnoticGameMenuDialog, requiresConnection, bool, true);

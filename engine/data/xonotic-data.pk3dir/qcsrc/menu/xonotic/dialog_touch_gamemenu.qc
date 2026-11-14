@@ -40,6 +40,13 @@ string TouchGameMenu_Route(string itemname)
 	// (Before menuInitialized too: with a native front end owning the menu
 	// from the start the menu VM never draws, so it never initialises, and
 	// m_goto would only remember the name. The popup needs none of it.)
+	// Xonotic's player-statistics question, which the game code asks again on
+	// every frame the menu is not on screen: the bridge's own dialog where a
+	// native renderer draws the menu (touch_uid2name.qc). The name returned is
+	// no dialog, so the stock menu does nothing with it, now or after it
+	// initialises.
+	if (itemname == "Uid2Name" && UIB_Uid2NameOpen())
+		return "uid2name.native";
 	if (itemname == "TeamSelect")
 	{
 		// The popup is the bridge's own: the stock menu shows its root, in
@@ -106,13 +113,12 @@ void TouchGameMenu_Spectate(entity btn, entity me)
 void GodnoticGameMenuDialog_fill(entity me)
 {
 	entity e;
+	// What a player came for is on the first screen of a phone (2340x1080):
+	// Resume, then Join game / Spectate. Leave and Quit are the last row, which
+	// the touch sheet pins to the bottom edge with the row above it
+	// (touch_menu_sheet.qc), so they show however far the sheet is scrolled.
 	me.TR(me);
-		me.TD(me, 2, 2, e = makeGodnoticCommandButton(_("Resume"), '0 0 0', "togglemenu 0", COMMANDBUTTON_CLOSE));
-	me.TR(me);
-	me.TR(me);
-		// Never COMMANDBUTTON_CLOSE: that hides the menu while still connected.
-		me.TD(me, 2, 2, e = makeGodnoticCommandButton(_("Leave to main menu"), '1 0.55 0.55', LEAVEMATCH_CMD, 0));
-	me.TR(me);
+		me.TD(me, 1.5, 2, e = makeGodnoticCommandButton(_("Resume"), '0 0 0', "togglemenu 0", COMMANDBUTTON_CLOSE));
 	me.TR(me);
 	me.TR(me);
 		// Join and Move to spectators follow the engine's action list
@@ -126,24 +132,26 @@ void GodnoticGameMenuDialog_fill(entity me)
 			setDependent(e, "_touch_act_spectate", 1, 3);
 	me.TR(me);
 	me.TR(me);
-		me.TD(me, 1.5, 1, e = TouchGameMenu_SubButton(_("Settings"), "settings"));
-		me.TD(me, 1.5, 1, e = TouchGameMenu_SubButton(_("Mobile settings"), "touchsettings"));
-	me.TR(me);
-	me.TR(me);
 		me.TD(me, 1.5, 1, e = makeGodnoticCommandButton(_("Change team"), '0 0 0', "touch_action team", 0));
 			setDependent(e, "_touch_act_team", 1, 1);
-		me.TD(me, 1.5, 1, e = TouchGameMenu_SubButton(_("Servers"), "servers"));
+		me.TD(me, 1.5, 1, e = TouchGameMenu_SubButton(_("Settings"), "settings"));
 	me.TR(me);
 	me.TR(me);
+		me.TD(me, 1.5, 1, e = TouchGameMenu_SubButton(_("Mobile settings"), "touchsettings"));
 		me.TD(me, 1.5, 1, e = makeGodnoticCommandButton(_("Quick menu"), '0 0 0', "quickmenu", COMMANDBUTTON_CLOSE));
-		me.TD(me, 1.5, 1, e = TouchGameMenu_SubButton(_("Profile"), "profile"));
-	me.TR(me);
-	me.TR(me);
-		me.TD(me, 1.5, 2, e = makeGodnoticCommandButton(_("Quit"), '1 0 0', "menu_showquitdialog", 0));
 	me.TR(me);
 	me.TR(me);
 		// Hosting on the LAN (Multiplayer > Create, LAN box): where others
 		// join, and Stop.
 		me.TD(me, 1.5, 1.4, TouchLan_StatusLabel());
 		me.TD(me, 1.5, 0.6, e = TouchLan_StopButton());
+	me.TR(me);
+	me.TR(me);
+		me.TD(me, 1.5, 1, e = TouchGameMenu_SubButton(_("Servers"), "servers"));
+		me.TD(me, 1.5, 1, e = TouchGameMenu_SubButton(_("Profile"), "profile"));
+	me.TR(me);
+	me.TR(me);
+		// Never COMMANDBUTTON_CLOSE: that hides the menu while still connected.
+		me.TD(me, 1.5, 1, e = makeGodnoticCommandButton(_("Leave to main menu"), '1 0.55 0.55', LEAVEMATCH_CMD, 0));
+		me.TD(me, 1.5, 1, e = makeGodnoticCommandButton(_("Quit"), '1 0 0', "menu_showquitdialog", 0));
 }

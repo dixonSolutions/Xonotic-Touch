@@ -20,6 +20,13 @@ void UIB_JoinTick();                 // closes it once the player is in the game
 void UIB_SecTouchControls();
 bool UIB_TouchControlsAction(string action);
 
+// The player-statistics question, id "uid2name" (touch_uid2name.qc): the stock
+// Uid2Name dialog as a description.
+void UIB_BuildUid2Name();
+bool UIB_Uid2NameOpen();                 // true: a bridge renderer shows the menu (and the question while unanswered)
+bool UIB_Uid2NameAction(string action);  // uid2name.yes, uid2name.no
+bool UIB_Uid2NameBack();                 // Back on it answers No
+
 // from touch_uib_screens.qc / touch_uib_settings.qc
 void UIB_DropLast(bool modal);
 void UIB_Nav();

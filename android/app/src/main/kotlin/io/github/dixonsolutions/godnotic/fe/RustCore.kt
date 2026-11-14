@@ -23,6 +23,7 @@ class RustCore private constructor(private val renderer: UiRenderer, private val
     override val modal: List<String> get() = state["modal"].list().map { it.toString() }
     override val hero: String get() = state.str("hero")
     override val reserved: List<Map<String, Any?>> get() = state["reserved"].list().map { it.obj() }
+    override val overGame: Boolean get() = state.bool("overGame")
 
     private fun out(msg: String?) { if (!msg.isNullOrEmpty()) send(msg) }
 

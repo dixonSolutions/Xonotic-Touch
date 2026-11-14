@@ -1,0 +1,168 @@
+{
+ "uib": 1,
+ "t": "snapshot",
+ "id": 0,
+ "rev": 101,
+ "root": "app",
+ "nodes": [
+  {
+   "id": "app",
+   "type": "app",
+   "props": {
+    "title": "Godnotic",
+    "stack": [
+     "pause"
+    ],
+    "modal": [
+     "join"
+    ],
+    "canBack": true,
+    "context": "game",
+    "reserved": [
+     {
+      "id": "console",
+      "x": 616,
+      "y": 8,
+      "w": 48,
+      "h": 48
+     }
+    ]
+   },
+   "children": [
+    "pause",
+    "join"
+   ]
+  },
+  {
+   "id": "pause",
+   "type": "screen",
+   "props": {
+    "title": "Paused",
+    "kind": "game",
+    "presentation": "fullscreen"
+   },
+   "children": [
+    "pause/match",
+    "pause/actions"
+   ]
+  },
+  {
+   "id": "pause/match",
+   "type": "card",
+   "props": {
+    "title": "Match",
+    "subtitle": "Online game",
+    "aspect": "21:9"
+   },
+   "children": []
+  },
+  {
+   "id": "pause/actions",
+   "type": "grid",
+   "props": {
+    "minItem": 200
+   },
+   "children": [
+    "pause/actions/resume",
+    "pause/actions/settings",
+    "pause/actions/join",
+    "pause/actions/disconnect"
+   ]
+  },
+  {
+   "id": "pause/actions/resume",
+   "type": "button",
+   "props": {
+    "label": "Resume",
+    "action": {
+     "id": "resume",
+     "label": "Resume",
+     "icon": "resume",
+     "style": "primary"
+    },
+    "style": "primary"
+   },
+   "children": []
+  },
+  {
+   "id": "pause/actions/settings",
+   "type": "button",
+   "props": {
+    "label": "Settings",
+    "action": {
+     "id": "settings",
+     "label": "Settings",
+     "icon": "settings"
+    },
+    "style": "secondary"
+   },
+   "children": []
+  },
+  {
+   "id": "pause/actions/join",
+   "type": "button",
+   "props": {
+    "label": "Join game",
+    "action": {
+     "id": "join.open",
+     "label": "Join game",
+     "icon": "play"
+    },
+    "style": "secondary"
+   },
+   "children": []
+  },
+  {
+   "id": "pause/actions/disconnect",
+   "type": "button",
+   "props": {
+    "label": "Leave match",
+    "style": "destructive",
+    "action": {
+     "id": "disconnect",
+     "label": "Leave match",
+     "icon": "disconnect",
+     "style": "destructive",
+     "confirm": {
+      "title": "Leave the match?",
+      "ok": "Leave",
+      "destructive": true
+     }
+    }
+   },
+   "children": []
+  },
+  {
+   "id": "join",
+   "type": "screen",
+   "props": {
+    "title": "Join game",
+    "presentation": "dialog",
+    "dismissable": true,
+    "primary": {
+     "id": "join.auto",
+     "label": "Join",
+     "icon": "play",
+     "style": "primary"
+    }
+   },
+   "children": [
+    "join/spectate"
+   ]
+  },
+  {
+   "id": "join/spectate",
+   "type": "button",
+   "props": {
+    "label": "Spectate",
+    "action": {
+     "id": "join.spectate",
+     "label": "Spectate",
+     "icon": "esp"
+    },
+    "style": "secondary"
+   },
+   "children": []
+  }
+ ]
+}

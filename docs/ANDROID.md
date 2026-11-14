@@ -354,6 +354,22 @@ native components; the engine side of the transport is
   Lists and card grids are `RecyclerView`s over windows of rows; sticky header,
   toolbar, section headers and action bar; vector icons (`Icons.kt`); headings in
   Xolonium from the game data.
+* **In a match.** Xonotic's join dialog (`app.modal == ["join"]` in context
+  `game`, docs/CONTROLS.md "Joining") opens by itself for an observer, and the
+  player-statistics question (`uid2name`: Yes / No, Back answers No) on a
+  server that keeps statistics while `cl_allow_uid2name` is -1: the
+  overlay shows that dialog alone over the running match (the pause page under
+  it in the bridge's stack is hidden, the engine keeps drawing: `fe screen join
+  0`, a light scrim), with no tap needed. Back or a tap outside goes to the
+  engine (`back`), which closes it and hides the menu; so does any described
+  dialog, while the host's own confirms close locally. The rule is
+  `Driver::over_game` (Rust) and `UibClient.overGame` (Kotlin).
+* **One loading presentation.** While attached the host keeps
+  `_touch_loading_card 1` (UI_BRIDGE.md 4.13): its loading card is then the
+  only place the step, file, speed and notify lines show; the engine applies it
+  only during a join or load. It goes back to 0 when the native layer falls
+  back. It is not toggled per card because a local map load blocks the engine
+  from its first frame, before a `set` sent with the card could run.
 * **Without the engine's UI bridge** (a build without `touch_uib*.c`), the
   bridge's own Home and pause descriptions ship as assets (`assets/fe/`) and
   their actions map to engine commands; Singleplayer, Multiplayer, Settings and
@@ -793,8 +809,13 @@ adb shell "echo '-xonotic -condebug' > /storage/emulated/0/Android/data/io.githu
 
 ## Known gaps
 
-* **d0_blind_id is absent**, so server-side player authentication and stats are
-  unavailable. Plain connections work.
+* **Player IDs** (d0_blind_id): `scripts/android-deps.sh` builds
+  `libd0_blind_id.so` and `libd0_rijndael.so` from `engine/d0_blind_id` with
+  GMP 6.3.0 linked statically (portable C, its symbols hidden; about 0.4 MB per
+  ABI), `crypto.c` dlopen()s them, and Xonotic's public key `key_0.d0pk` ships
+  at the root of the APK's data bundle (the basedir). The GMP source (2 MB,
+  checked against its SHA-256) comes from ftp.gnu.org or gmplib.org, and its
+  configure needs `m4` on the build host.
 * No AAB, so this is sideload / F-Droid shaped rather than Play Store shaped.
 
 ## Signing
