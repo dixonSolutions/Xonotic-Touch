@@ -6,6 +6,7 @@
 
 1. Welcome: a fresh install asks for a name; a tap on the field asks for the
    screen keyboard (vid_touchscreen_showkeyboard) and places it under the field;
+   with the engine's own keys (touch-only devices) the field moves above them;
    typing turns Continue on; Enter saves the name and the keyboard goes away.
 2. Setup: while packaging/start.sh is still downloading the game data
    (_touch_asset_fetch_active, touch/asset-progress.txt) the menu is one
@@ -37,7 +38,7 @@ def run(name, steps, progress=None, extra=(), secs=40):
     # cvars are read through a file: $ in a deferred command is expanded when the defer line is read
     open(os.path.join(ud, "data", "vars.cfg"), "w").write(
         "echo VARS osk=$vid_touchscreen_showkeyboard tix=$vid_touchscreen_textinput_x tiw=$vid_touchscreen_textinput_w "
-        "done=$touch_profile_done bg=$_touch_asset_fetch_background\necho NAME $_cl_name\n")
+        "done=$touch_profile_done bg=$_touch_asset_fetch_background keys=$_touch_menu_keys_top\necho NAME $_cl_name\necho FOUND $_uib_r_found\n")
     lines = []
     for t, cmd, label in steps:
         shot = f"; screenshot fr_{name}_{label}.png" if shots else ""
@@ -70,9 +71,14 @@ def run(name, steps, progress=None, extra=(), secs=40):
     for line in log.splitlines():
         if line.startswith("STEP "):
             cur = line[5:].strip()
-            state[cur] = {"nodes": {}, "vars": {}, "name": ""}
+            state[cur] = {"nodes": {}, "vars": {}, "name": "", "found": []}
         elif cur and line.startswith("VARS "):
             state[cur]["vars"] = dict(kv.split("=", 1) for kv in line[5:].split() if "=" in kv)
+        elif cur and line.startswith("FOUND "):
+            try:
+                state[cur]["found"] = [float(x) for x in line[6:].split()]
+            except ValueError:
+                pass
         elif cur and line.startswith("NAME "):
             state[cur]["name"] = line[5:].strip()
         elif cur and line.startswith('{"uib":1,"t":"snapshot"') and not state[cur]["nodes"]:
@@ -91,9 +97,10 @@ def props(state, label, node):
 log, s, _ = run("welcome", [
     (5, "echo", "start"),
     (6, "uib_input tap welcome/form/name", "tapped"),
-    (8, "uib_input text Rat", "typed"),
-    (10, "uib_input key ENTER", "saved"),
-])
+    (7.5, "set _uib_r_find welcome/form/name", "keys"),
+    (9, "uib_input text Rat", "typed"),
+    (11, "uib_input key ENTER", "saved"),
+], extra=["+set", "touch_menu_keyboard", "1"])
 app = props(s, "start", "app")
 check(app.get("stack") == ["home"] and app.get("modal") == ["welcome"] and app.get("canBack") is False,
       "a fresh install opens on the welcome, which cannot be dismissed (%s %s)" % (app.get("stack"), app.get("modal")))
@@ -101,6 +108,10 @@ check(props(s, "start", "welcome").get("primary", {}).get("enabled") is False, "
 v = s.get("tapped", {}).get("vars", {})
 check(v.get("osk") in ("1", "2") and float(v.get("tiw") or 0) > 0,
       "a tap on the Name field asks for the screen keyboard and places it under the field (showkeyboard %s, width %s)" % (v.get("osk"), v.get("tiw")))
+k = s.get("keys", {})
+kt, fr = float(k.get("vars", {}).get("keys") or 0), k.get("found", [])
+check(kt > 0 and len(fr) == 4 and fr[1] + fr[3] <= kt + 1e-3,
+      "with the engine's own keys up (touch_menu_keyboard 1) the field sits above them (keys from %.2f, field %s)" % (kt, fr))
 check(props(s, "typed", "welcome").get("primary", {}).get("enabled") is True, "typing a name turns Continue on")
 app = props(s, "saved", "app")
 v = s.get("saved", {}).get("vars", {})
