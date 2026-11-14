@@ -29,6 +29,9 @@ impl Batch {
     }
 }
 
+/// Dialogs the game opens by itself over a match (see [`Driver::over_game`]).
+pub const OVER_GAME: [&str; 2] = ["join", "uid2name"];
+
 #[derive(Default)]
 pub struct Driver {
     pub store: Store,
@@ -108,9 +111,10 @@ impl Driver {
 
     /// The dialog on top is shown over the running match, not on the pause
     /// page under it: Xonotic's join dialog (`join`, docs/CONTROLS.md
-    /// "Joining"), which the engine opens by itself for an observer and
-    /// which, when it closes, returns to the match rather than to the pause
-    /// menu (`UIB_JoinClose`). The platform then hides the screen beneath,
+    /// "Joining") and its player-statistics question (`uid2name`), which
+    /// open by themselves (for an observer; on a server that keeps
+    /// statistics) and which, when they close, return to the match rather
+    /// than to the pause menu (`UIB_JoinClose`, `UIB_Uid2NameAnswer`). The platform then hides the screen beneath,
     /// lets the engine keep drawing the match (`fe screen ... 0`), and dims
     /// it only lightly.
     pub fn over_game(&self) -> bool {
@@ -121,7 +125,7 @@ impl Driver {
             return false;
         }
         match self.store.modal().last() {
-            Some(top) => top == "join" && self.store.node(top).is_some(),
+            Some(top) => OVER_GAME.contains(&top.as_str()) && self.store.node(top).is_some(),
             None => false,
         }
     }
@@ -578,6 +582,19 @@ mod tests {
             {"id":"home","type":"screen","props":{"title":"Home"},"children":[]},
             {"id":"join","type":"screen","props":{"title":"Join game","presentation":"dialog"},"children":[]}]}"#);
         assert_eq!(d.state()["overGame"], false);
+    }
+
+    #[test]
+    fn the_statistics_question_shows_over_the_match() {
+        let mut d = Driver::new();
+        let b = d.feed(r#"{"uib":1,"t":"snapshot","rev":1,"nodes":[
+            {"id":"app","type":"app","props":{"stack":["pause"],"modal":["uid2name"],"context":"game"},"children":["pause","uid2name"]},
+            {"id":"pause","type":"screen","props":{"title":"Paused","kind":"game"},"children":[]},
+            {"id":"uid2name","type":"screen","props":{"title":"Show your name in player statistics?","presentation":"dialog","dismissable":false,
+                "primary":{"id":"uid2name.yes","label":"Yes"}},"children":["uid2name/no"]},
+            {"id":"uid2name/no","type":"button","props":{"label":"No","action":{"id":"uid2name.no"}},"children":[]}]}"#);
+        assert!(ops(&b).contains(&"dialog uid2name".to_string()));
+        assert_eq!(d.state()["overGame"], true);
     }
 
     #[test]

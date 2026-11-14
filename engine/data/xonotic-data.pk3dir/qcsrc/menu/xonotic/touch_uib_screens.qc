@@ -169,6 +169,8 @@ void UIB_Back()
 {
 	if (UIB_JoinBack())
 		return;
+	if (UIB_Uid2NameBack()) // Touch: the player-statistics question
+		return;
 	if (uibn_modal == "" && UIB_TopScreen() == "settings" && UIB_VMf("settings.open")
 		&& (uib_caps("widthClass") == "compact" || uib_narrow))
 	{
@@ -1313,6 +1315,7 @@ void UIB_Build(string id)
 		case "campaign": UIB_BuildCampaign(); return;
 		case "lan.host": UIB_BuildLanPopup(); return;
 		case "join": UIB_BuildJoin(); return;
+		case "uid2name": UIB_BuildUid2Name(); return;
 		case "mp": UIB_BuildServers(); return;
 		case "mp.password": UIB_BuildPassword(); return;
 		case "welcome": UIB_BuildWelcome(); return;
@@ -1440,6 +1443,8 @@ void UIB_Action(string node, string a, string payload)
 	if (UIB_SettingsAction(node, a, payload))
 		return;
 	if (UIB_JoinAction(a))
+		return;
+	if (UIB_Uid2NameAction(a)) // Touch: the player-statistics question
 		return;
 	switch (a)
 	{

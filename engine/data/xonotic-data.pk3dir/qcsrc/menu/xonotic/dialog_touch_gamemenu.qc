@@ -40,6 +40,13 @@ string TouchGameMenu_Route(string itemname)
 	// (Before menuInitialized too: with a native front end owning the menu
 	// from the start the menu VM never draws, so it never initialises, and
 	// m_goto would only remember the name. The popup needs none of it.)
+	// Xonotic's player-statistics question, which the game code asks again on
+	// every frame the menu is not on screen: the bridge's own dialog where a
+	// native renderer draws the menu (touch_uid2name.qc). The name returned is
+	// no dialog, so the stock menu does nothing with it, now or after it
+	// initialises.
+	if (itemname == "Uid2Name" && UIB_Uid2NameOpen())
+		return "uid2name.native";
 	if (itemname == "TeamSelect")
 	{
 		// The popup is the bridge's own: the stock menu shows its root, in

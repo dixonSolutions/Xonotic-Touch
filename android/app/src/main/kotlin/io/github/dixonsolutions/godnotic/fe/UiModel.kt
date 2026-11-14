@@ -119,7 +119,7 @@ class UibClient(private val renderer: UiRenderer, private val send: (String) -> 
         ?: store.nodes.values.firstOrNull { it.type == "card" && it.props["primary"].obj().str("id") == "sp" })?.str("image") ?: ""
     override val reserved: List<Map<String, Any?>> get() = store.app?.props?.get("reserved").list().map { it.obj() }
     // the same rule as the Rust core's Driver::over_game
-    override val overGame: Boolean get() = store.app?.str("context") == "game" && modal.lastOrNull() == "join" && store.node("join") != null
+    override val overGame: Boolean get() = store.app?.str("context") == "game" && modal.lastOrNull().let { it == "join" || it == "uid2name" } && store.node(modal.last()) != null
     override fun receiveText(json: String) = receive(Json.parseOrNull(json).obj())
 
     private fun msg(t: String, body: Map<String, Any?>): String =

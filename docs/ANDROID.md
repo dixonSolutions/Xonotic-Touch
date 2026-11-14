@@ -348,7 +348,9 @@ native components; the engine side of the transport is
   toolbar, section headers and action bar; vector icons (`Icons.kt`); headings in
   Xolonium from the game data.
 * **In a match.** Xonotic's join dialog (`app.modal == ["join"]` in context
-  `game`, docs/CONTROLS.md "Joining") opens by itself for an observer: the
+  `game`, docs/CONTROLS.md "Joining") opens by itself for an observer, and the
+  player-statistics question (`uid2name`: Yes / No, Back answers No) on a
+  server that keeps statistics while `cl_allow_uid2name` is -1: the
   overlay shows that dialog alone over the running match (the pause page under
   it in the bridge's stack is hidden, the engine keeps drawing: `fe screen join
   0`, a light scrim), with no tap needed. Back or a tap outside goes to the
