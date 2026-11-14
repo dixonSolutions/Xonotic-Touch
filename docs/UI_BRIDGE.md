@@ -392,6 +392,7 @@ Nothing else in a description can open a URL or a file.
 | `servers.fav` | favourites | as above |
 | `maps` | installed maps | `name`, `title`, `author`, `modes` (space-separated mode ids), `players` (recommended, string), `size` (`small`, `medium`, `large`); row `image` is the preview ref |
 | `maps:<mode>` | maps that support a game type | as above |
+| `maps.<mode>` | the map picker: the maps a match can start on in that mode, from MapInfo (implied modes such as Duel on DM maps, no hidden or forbidden maps); the menu VM sets it, and Play starts only these | `name`, `title`, `author`, `description`, `modes`; row `image` is the preview ref |
 | `modes` | game types | `id`, `name`, `help`, `team` (bool); row `image` is the mode artwork |
 | `mods.client`, `mods.server` | installed mods | `id`, `name`, `version`, `enabled`, `state` (`ok`, `error`, `stopped`), `tier` (permission tier as the engine reports it) |
 | `recent` | recent matches | `map`, `mode`, `when`, `result`, `address` (empty for local) |

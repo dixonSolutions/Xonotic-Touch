@@ -178,7 +178,7 @@ def sp_screen(mode="dm", create=False, lan=False, pw=False, chosen="stormkeep"):
     modecards = [N(f"sp/modes/grid/{m[0]}", "card", title=m[1], subtitle=m[2], image=f"pk3:gfx/menu/luma/gametype_{m[0]}",
                    aspect="1:1", selected=(m[0] == mode), primary=A(f"mode.{m[0]}", m[1]))
                  for m in MODES]
-    maps = N("sp/maps/list", "list", source=f"maps:{mode}", display="cards", count=len([x for x in MAPS if mode in x[4].split()]),
+    maps = N("sp/maps/list", "list", source=f"maps.{mode}", display="cards", count=len([x for x in MAPS if mode in x[4].split()]),
              state="ready", selection="single", selected=[chosen], rowHeight="card", rows=2, scroll="horizontal", minItem=160, aspectItem="16:9",
              columns=[{"key": "title", "type": "text", "label": "Map", "priority": 1},
                       {"key": "players", "type": "text", "label": "Players", "priority": 2},
@@ -557,7 +557,7 @@ def main():
     srows = {"servers": rows_all,
              "servers.lan": [r for r in rows_all if r["cells"]["net"] != "internet"],
              "servers.fav": [r for r in rows_all if r["cells"]["fav"]]}
-    allrows = {**srows, "maps": map_rows(), "maps:dm": map_rows("dm"), "maps:ctf": map_rows("ctf"),
+    allrows = {**srows, "maps": map_rows(), "maps.dm": map_rows("dm"), "maps.ctf": map_rows("ctf"),
                "modes": mode_rows(), "recent": RECENT_ROWS, **MOD_ROWS,
                }
 
@@ -568,12 +568,12 @@ def main():
                                app([home(servers="214 servers · 87 players")]), rows=None))
     write("campaign", fixture("campaign", "Campaign: the chosen level beside its picture, the levels as cards (won, next, locked).",
                               app([h, campaign_screen()]), rows={"campaign": campaign_rows()}))
-    write("singleplayer", fixture("singleplayer", "Singleplayer: mode cards, map picker (cards over maps:dm), match options, recent.",
-                                  app([h, sp_screen()]), rows={k: allrows[k] for k in ("maps:dm", "maps", "modes", "recent")}))
+    write("singleplayer", fixture("singleplayer", "Singleplayer: mode cards, map picker (cards over maps.dm), match options, recent.",
+                                  app([h, sp_screen()]), rows={k: allrows[k] for k in ("maps.dm", "maps", "modes", "recent")}))
     write("map-preview", fixture("map-preview", "Map preview page pushed over Singleplayer.",
-                                 app([h, sp_screen(), map_preview()]), rows={"maps:dm": allrows["maps:dm"]}))
+                                 app([h, sp_screen(), map_preview()]), rows={"maps.dm": allrows["maps.dm"]}))
     write("singleplayer-create-lan", fixture("singleplayer-create-lan", "Create with LAN ticked and a password: port and password appear inline, closed lock.",
-                                             app([h, mp_screen(), sp_screen(create=True, lan=True, pw=True)]), rows={k: allrows[k] for k in ("maps:dm", "recent")}))
+                                             app([h, mp_screen(), sp_screen(create=True, lan=True, pw=True)]), rows={k: allrows[k] for k in ("maps.dm", "recent")}))
     write("servers", fixture("servers", "Servers: search, one row of checkboxes (LAN, Empty, Full, Laggy), Refresh, the dense list, address field, Join.",
                              app([h, mp_screen()]), rows=srows))
     write("servers-lan", fixture("servers-lan", "Servers with the LAN checkbox ticked (Wi-Fi and VPN rows).",
@@ -636,13 +636,13 @@ def main():
     write("seq-navigate", fixture("seq-navigate", "Home, push Singleplayer, back to Home.", app([h]), steps=[
         {"delay": 0.5, "msg": diff(1, [own(pushed, "app")] + spn["_all"])},
         {"delay": 1.0, "msg": diff(2, [own(app([h]), "app")], [n["id"] for n in spn["_all"]])},
-    ], rows={k: allrows[k] for k in ("maps:dm", "recent")}))
+    ], rows={k: allrows[k] for k in ("maps.dm", "recent")}))
     # 5a. the map picker: one tap chooses a map (row/select), the chosen-map preview and the list follow
     s1, s2 = sp_screen(chosen="stormkeep"), sp_screen(chosen="xoylent")
     write("seq-map-select", fixture("seq-map-select", "Map picker (two rows of tiles, scrolling sideways): a tap on Xoylent sends row/select; the engine answers with the "
                                     "list's selected row. A double tap would send row/activate and start the match.", app([h, s1]), steps=[
         {"delay": 0.5, "msg": diff(1, [own(s2, "sp/maps/list")]), "note": "row select xoylent"},
-    ], rows={k: allrows[k] for k in ("maps:dm", "recent")}))
+    ], rows={k: allrows[k] for k in ("maps.dm", "recent")}))
     # 5a2. the server list: a tap chooses a server and the one Join comes on; a double tap would join
     m1, m2 = mp_screen(), mp_screen(chosen=rows_all[5]["key"])
     write("seq-server-select", fixture("seq-server-select", "Multiplayer: a tap on a server sends row/select; the list shows it chosen and the one Join "

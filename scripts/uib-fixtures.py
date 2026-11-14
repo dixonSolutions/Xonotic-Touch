@@ -265,7 +265,7 @@ def run(args):
         base = e.snapshot_msg()
         e.take_diff()
         e.ev(ev="action", node="home/tiles/sp", action="sp")
-        out["singleplayer"] = fixture(e, "singleplayer", "Singleplayer: a local game. Mode cards, the map picker over maps:<mode> (two rows of tiles scrolling sideways; tap chooses, double tap plays), match options, recent.")
+        out["singleplayer"] = fixture(e, "singleplayer", "Singleplayer: a local game. Mode cards, the map picker over maps.<mode>, the maps MapInfo can start (two rows of tiles scrolling sideways; tap chooses, double tap plays), match options, recent.")
         nav = [{"delay": 0.5, "msg": e.take_diff()}]
         e.ev(ev="back")
         nav += [{"delay": 1.0, "msg": e.take_diff()}]

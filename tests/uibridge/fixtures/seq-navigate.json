@@ -303,7 +303,7 @@
       "id": "sp/maps/list",
       "type": "list",
       "props": {
-       "source": "maps:dm",
+       "source": "maps.dm",
        "display": "cards",
        "rowHeight": "card",
        "rows": 2,
