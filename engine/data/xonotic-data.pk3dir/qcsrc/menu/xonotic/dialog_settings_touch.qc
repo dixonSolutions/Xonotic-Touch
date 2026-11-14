@@ -15,6 +15,7 @@
 #include "inputbox.qh"
 #include "dialog_settings_input.qh"
 #include "tabcontroller.qh"
+#include "dialog_touch_controls.qh"
 
 void TouchMenu_SaveLayout_Click(entity me, entity other)
 {
@@ -75,6 +76,7 @@ void GodnoticSettingsTab_fillTouch(entity me)
 		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Loser"),      makeXonoticMobileLoserTab()));
 		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Privacy"),    makeGodnoticPrivacyTab()));
 		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Menu"),       makeGodnoticMenuSizeTab())); // menu size (touch_menu_settings.qc)
+		me.TD(me, 1, 1, mc.makeTabButton(mc, _("Touch"),      makeGodnoticTouchControlsTab())); // look, stick, buttons (dialog_touch_controls.qc)
 	me.gotoRC(me, 2.5, 0);
 		me.TD(me, me.rows - 2.5, me.columns, mc);
 }
@@ -90,10 +92,11 @@ void GodnoticSettingsTab_fill(entity me)
 	}
 	// One row of ten sub-tab buttons, then the sub-tab itself: 15.5 = 1.5 + 14.
 	// Menu is here too: the desktop layout has to be able to switch itself off.
-	float w = me.columns / 10;
+	float w = me.columns / 11;
 	entity mc = makeXonoticTabController(me.rows - 1.5);
 	me.TR(me);
 		me.TD(me, 1, w, mc.makeTabButton(mc, _("Controls"),   makeXonoticMobileControlsTab()));
+		me.TD(me, 1, w, mc.makeTabButton(mc, _("Touch"),      makeGodnoticTouchControlsTab())); // look, stick, buttons (dialog_touch_controls.qc)
 		me.TD(me, 1, w, mc.makeTabButton(mc, _("HUD"),        makeXonoticMobileHudTab()));
 		me.TD(me, 1, w, mc.makeTabButton(mc, _("Aim"),        makeXonoticMobileAimTab()));
 		me.TD(me, 1, w, mc.makeTabButton(mc, _("Auto-shoot"), makeXonoticMobileAutoShootTab()));

@@ -93,6 +93,7 @@
 #include <menu/xonotic/dialog_touch_asset_fetch.qc>
 #include <menu/xonotic/dialog_touch_credits.qc> // Touch
 #include <menu/xonotic/dialog_touch_esp.qc> // Touch
+#include <menu/xonotic/dialog_touch_controls.qc> // Touch: Settings > Mobile > Touch
 #include <menu/xonotic/dialog_touch_gamemenu.qc>
 #include <menu/xonotic/dialog_touch_join.qc> // Touch: the join dialog
 #include <menu/xonotic/dialog_touch_launcher.qc> // Touch
@@ -149,6 +150,7 @@
 #include <menu/xonotic/touch_uib_screens.qc> // Touch: UI bridge
 #include <menu/xonotic/touch_uib_settings.qc> // Touch: UI bridge
 #include <menu/xonotic/touch_uib_join.qc> // Touch: UI bridge, the join popup
+#include <menu/xonotic/touch_uib_touchcontrols.qc> // Touch: UI bridge, Touch controls settings
 #include <menu/xonotic/touch_uib_render.qc> // Touch: UI bridge
 #include <menu/xonotic/touch_startup_util.qc>
 #include <menu/xonotic/touch_update_util.qc>

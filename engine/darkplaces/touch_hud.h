@@ -80,6 +80,9 @@ int TouchHUD_AltFireState(void);            // TOUCH_ALTFIRE_* (touch_altfire.h)
 // touch_hud_state rects: every control on screen now, for the tests.
 void TouchHUD_PrintRects(void);
 
+// The touch stick's analog move, added to the frame's move by CL_Input.
+void TouchHUD_MoveAxes(float *forwardmove, float *sidemove);
+
 // The top bar's slot for the console button (0) or the vote chip (1), in
 // console units; false when no row is laid out (touch_topbar.h).
 qbool TouchHUD_TopBarRect(int slot, float *x, float *y, float *w, float *h);

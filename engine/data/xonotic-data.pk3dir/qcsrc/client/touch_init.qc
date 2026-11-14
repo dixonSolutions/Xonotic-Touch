@@ -53,11 +53,11 @@ void Touch_DefineCvars(void)
 	// which is exactly the misalignment §1 of the redesign doc complains about.
 	Touch_RegisterCvar("touch_move_x", "0.170");
 	Touch_RegisterCvar("touch_move_y", "0.680");
-	Touch_RegisterCvar("touch_move_size", "0.229"); // 42 mm — spans the thumb arc
+	Touch_RegisterCvar("touch_move_size", "0.300"); // the ring is the thumb's travel; never under 128 dp across (Touch_StickRadius)
 	Touch_RegisterCvar("touch_move_visible", "1");
 	Touch_RegisterCvar("touch_fire_x", "0.855");
 	Touch_RegisterCvar("touch_fire_y", "0.680");
-	Touch_RegisterCvar("touch_fire_size", "0.140"); // 26 mm — hot button
+	Touch_RegisterCvar("touch_fire_size", "0.160"); // 26 mm — hot button
 	Touch_RegisterCvar("touch_fire_visible", "1");
 	// ALT, secondary fire (+fire2). Contextual by default (2): shown only while
 	// the weapon in hand has a secondary fire it can fire, so the resting layout
@@ -80,7 +80,7 @@ void Touch_DefineCvars(void)
 	Touch_RegisterCvar("touch_jump_visible", "1");
 	Touch_RegisterCvar("touch_crouch_x", "0.700");
 	Touch_RegisterCvar("touch_crouch_y", "0.885"); // shares the JUMP baseline
-	Touch_RegisterCvar("touch_crouch_size", "0.066"); // 12 mm
+	Touch_RegisterCvar("touch_crouch_size", "0.080"); // 12 mm
 	Touch_RegisterCvar("touch_crouch_visible", "1");
 	Touch_RegisterCvar("touch_weapon_x", "0.540");
 	Touch_RegisterCvar("touch_weapon_y", "0.860");
@@ -160,7 +160,7 @@ void Touch_DefineCvars(void)
 	// a thing you stop to read; the corner readout covers the glance.
 	// Layout 7: the top bar holds all the chrome, MENU | SCORE | CHAT on one
 	// row and one pitch (0.117), so the bottom of the screen is the hands'.
-	// The pills are drawn 36 dp tall at least, with a 44 dp target.
+	// The pills are drawn 36 dp tall at least, with a 48 dp target.
 	Touch_RegisterCvar("touch_scores_x", "0.772");
 	Touch_RegisterCvar("touch_scores_y", "0.088");
 	Touch_RegisterCvar("touch_scores_size", "0.060");
@@ -247,7 +247,12 @@ void Touch_DefineCvars(void)
 	Touch_RegisterCvar("touch_handedness", "0");
 
 	// Feel
-	Touch_RegisterCvar("touch_sens_base", "2.8");
+	Touch_RegisterCvar("touch_sens_base", "3.6");
+	// Look acceleration (touch_feel.qh): extra gain for a fast swipe, between
+	// the two finger speeds in dp/s. 0 turns it off.
+	Touch_RegisterCvar("touch_look_accel", "0.8");
+	Touch_RegisterCvar("touch_look_accel_lo", "150");
+	Touch_RegisterCvar("touch_look_accel_hi", "900");
 	Touch_RegisterCvar("touch_sens_y_mult", "0.85");
 	Touch_RegisterCvar("touch_invert_y", "0");
 	Touch_RegisterCvar("touch_look_smoothing", "1");
@@ -256,8 +261,8 @@ void Touch_DefineCvars(void)
 	// fast movement stays lag-free. fcmin governs slow-speed jitter in Hz, beta
 	// governs high-speed lag. 2 restores the old fixed exponential smoother.
 	Touch_RegisterCvar("touch_look_filter", "1");
-	Touch_RegisterCvar("touch_look_fcmin", "3.0");
-	Touch_RegisterCvar("touch_look_beta", "0.03");
+	Touch_RegisterCvar("touch_look_fcmin", "4.0");
+	Touch_RegisterCvar("touch_look_beta", "0.05");
 	// A tap in the look zone that never becomes a drag fires one shot.
 	Touch_RegisterCvar("touch_look_tap_fire", "1");
 	Touch_RegisterCvar("touch_look_tap_ms", "200");
@@ -265,7 +270,13 @@ void Touch_DefineCvars(void)
 	Touch_RegisterCvar("touch_look_max_deg_per_s", "900");
 	Touch_RegisterCvar("touch_look_owns_view", "1");
 	Touch_RegisterCvar("touch_look_glide", "0");
-	Touch_RegisterCvar("touch_stick_deadzone", "0.18");
+	Touch_RegisterCvar("touch_stick_deadzone", "0.12");
+	// The stick floats to the thumb, follows it past the rim, and moves by
+	// angle and deflection (full speed from touch_stick_run outwards).
+	Touch_RegisterCvar("touch_stick_float", "1");
+	Touch_RegisterCvar("touch_stick_follow", "1");
+	Touch_RegisterCvar("touch_stick_analog", "1");
+	Touch_RegisterCvar("touch_stick_run", "0.6");
 	Touch_RegisterCvar("touch_stick_range", "1.0");
 	Touch_RegisterCvar("touch_aim_assist", "0");
 	Touch_RegisterCvar("touch_gyro_enabled", "0");
@@ -279,6 +290,8 @@ void Touch_DefineCvars(void)
 	// Sliding off FIRE keeps shooting and starts aiming, so shoot-while-aiming is
 	// one finger instead of two (docs/TOUCH_UX_REDESIGN.md §6.2).
 	Touch_RegisterCvar("touch_fire_drag_look", "1");
+	// ALT, HOP, DUCK and ZOOM turn the view too when the thumb drags off them.
+	Touch_RegisterCvar("touch_button_drag_look", "1");
 	// 0 plain button, 1 button that latches when held, 2 auto-hop while moving,
 	// 3 plain button plus the keep-jumping chip (touch_hoplock_*).
 	Touch_RegisterCvar("touch_hop_mode", "3");
@@ -359,6 +372,9 @@ const string TOUCH_MIGRATE_KEEP =
 	"touch_look_fcmin touch_look_beta touch_look_tap_fire touch_look_tap_ms "
 	"touch_look_escape_carry touch_look_max_deg_per_s touch_look_owns_view "
 	"touch_look_glide touch_stick_deadzone touch_stick_range touch_aim_assist "
+	"touch_look_accel touch_look_accel_lo touch_look_accel_hi touch_stick_float "
+	"touch_stick_follow touch_stick_analog touch_stick_run touch_button_drag_look "
+	"touch_fire_drag_look "
 	"touch_gyro_enabled touch_gyro_sens touch_gyro_ads_only touch_finger_grace_ms "
 	"touch_weapon_slot1 touch_weapon_slot2 touch_weapon_slot3 "
 	"touch_opacity touch_glass_hollow "
@@ -396,6 +412,27 @@ void Touch_MigrateLayout(void)
 			cvar_set("touch_chat_x", "0.889");
 			cvar_set("touch_chat_aspect", "2.4");
 		}
+		saved = 7;
+	}
+
+	if (saved == 7)
+	{
+		// 7 -> 8 is the controls review (docs/TOUCH_CONTROLS_REVIEW.md): a
+		// larger, floating, analog stick, larger FIRE and DUCK, a faster look
+		// in degrees per dp with acceleration. Positions are untouched. A
+		// value still at the old default takes the new one; anything the
+		// player changed stays theirs. The new settings (touch_stick_float,
+		// touch_look_accel, ...) are not in an old file and so start at
+		// their defaults.
+		print("Touch: layout 7 -> 8: larger floating stick, faster look.\n");
+		Touch_SaveLayoutFile("touch.layout.bak");
+		if (fabs(cvar("touch_move_size") - 0.229) < 0.002) cvar_set("touch_move_size", "0.300");
+		if (fabs(cvar("touch_fire_size") - 0.140) < 0.002) cvar_set("touch_fire_size", "0.160");
+		if (fabs(cvar("touch_crouch_size") - 0.066) < 0.002) cvar_set("touch_crouch_size", "0.080");
+		if (fabs(cvar("touch_sens_base") - 2.8) < 0.01) cvar_set("touch_sens_base", "3.6");
+		if (fabs(cvar("touch_stick_deadzone") - 0.18) < 0.002) cvar_set("touch_stick_deadzone", "0.12");
+		if (fabs(cvar("touch_look_fcmin") - 3.0) < 0.01) cvar_set("touch_look_fcmin", "4.0");
+		if (fabs(cvar("touch_look_beta") - 0.03) < 0.001) cvar_set("touch_look_beta", "0.05");
 		cvar_set("touch_layout_version", ftos(TOUCH_LAYOUT_VERSION));
 		localcmd("touch_save\n");
 		return;

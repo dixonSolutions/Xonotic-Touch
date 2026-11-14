@@ -1,4 +1,5 @@
 #include "touch_input.qh"
+#include "touch_feel.qh"
 #include "touch_chat.qh"
 #include "touch_customize.qh"
 #include "touch_glass.qh"
@@ -36,7 +37,80 @@ bool touch_finger_live[TOUCH_MAX_FINGERS];
 // promotion is sticky for the rest of the gesture.
 bool touch_finger_draglook[TOUCH_MAX_FINGERS];
 
-vector touch_move_offset;
+vector touch_move_offset;   // the knob, -1..1, for drawing
+// The stick (engine/darkplaces/touch_feel.h TouchStick_*): its floating
+// centre while a thumb holds it, and the analog move last handed to the
+// engine (touch_move).
+vector touch_stick_center;
+bool touch_stick_held;
+vector touch_stick_sent;
+
+float Touch_StickRadius(void)
+{
+	return max(Touch_WidgetRadius(autocvar_touch_move_size), TOUCHDP_STICK_RADIUS * Touch_DpUnits());
+}
+
+bool Touch_StickHeld(void)
+{
+	return touch_stick_held;
+}
+
+vector Touch_StickCenter(void)
+{
+	if (touch_stick_held)
+		return touch_stick_center;
+	return Touch_WidgetCenter(autocvar_touch_move_x, autocvar_touch_move_y, autocvar_touch_move_size);
+}
+
+// The thumb landed: the centre goes under it, kept far enough from the edges
+// to push every way (touch_stick_float 0: the drawn place).
+void Touch_StickLand(vector p)
+{
+	touch_stick_held = true;
+	if (!cvar("touch_stick_float"))
+	{
+		touch_stick_center = Touch_WidgetCenter(autocvar_touch_move_x, autocvar_touch_move_y, autocvar_touch_move_size);
+		return;
+	}
+	vector ui = Touch_UISize();
+	float pad = Touch_StickRadius() * 0.55;
+	touch_stick_center = bound(pad, p.x, ui.x - pad) * eX + bound(pad, p.y, ui.y - pad) * eY;
+}
+
+// The move for a thumb at p: length 0..1 (x right, y down), nothing inside
+// the dead zone, full speed from touch_stick_run outwards. A thumb past the
+// rim drags the centre along (touch_stick_follow).
+vector Touch_StickRead(vector p)
+{
+	float r = max(1, Touch_StickRadius() * max(0.1, autocvar_touch_stick_range));
+	vector off = p - touch_stick_center;
+	off.z = 0;
+	float mag = vlen(off);
+	if (mag > r)
+	{
+		if (cvar("touch_stick_follow") && cvar("touch_stick_float"))
+			touch_stick_center += off * (1 - r / mag);
+		off = off * (r / mag);
+		mag = r;
+	}
+	touch_move_offset = off * (1 / r);
+	float dz = autocvar_touch_stick_deadzone;
+	float run = max(dz + 0.01, cvar("touch_stick_run"));
+	float d = mag / r;
+	if (d <= dz || mag <= 0)
+		return '0 0 0';
+	return off * (min(1, (d - dz) / (run - dz)) / mag);
+}
+
+// Hands the move to the engine, which adds it to the frame's move as the
+// keys would (TouchHUD_MoveAxes); only when it changed.
+void Touch_StickSend(vector m)
+{
+	if (vlen(m - touch_stick_sent) < 0.01 && !(m == '0 0 0' && touch_stick_sent != '0 0 0'))
+		return;
+	touch_stick_sent = m;
+	localcmd(sprintf("touch_move %.3f %.3f\n", m.x, m.y));
+}
 bool touch_fire_down;
 bool touch_fire_edge;
 bool touch_fire_toggle_state;
@@ -328,6 +402,8 @@ void Touch_ReleaseAll(void)
 	touch_fire_toggle_state = false;
 	touch_zoom_toggle_state = false;
 	touch_move_offset = '0 0 0';
+	touch_stick_held = false;
+	Touch_StickSend('0 0 0');
 	touch_mouse_down = false;
 	touch_active_finger_count = 0;
 	// Same reason as the hop latch below: the overlay is gone at intermission and
@@ -503,6 +579,11 @@ int Touch_ClaimFinger(int src, vector pos)
 		touch_finger_live[i] = true;
 		touch_finger_draglook[i] = false;
 		touch_finger_role[i] = Touch_AssignRole(pos);
+		// a tick under the thumb when a button takes it (engine: touch_haptics)
+		if (touch_finger_role[i] != TOUCH_ROLE_LOOK && touch_finger_role[i] != TOUCH_ROLE_MOVE
+			&& touch_finger_role[i] != TOUCH_ROLE_IGNORED && touch_finger_role[i] != TOUCH_ROLE_NONE
+			&& cvar("_touch_haptics_available") && cvar("touch_haptics"))
+			localcmd("touch_haptic\n");
 		if (touch_finger_role[i] == TOUCH_ROLE_CON)
 			Touch_Console_OnDown(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_PAUSE)
@@ -515,6 +596,8 @@ int Touch_ClaimFinger(int src, vector pos)
 			Touch_Hud_GripBegin(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_LOOK)
 			Touch_Look_BeginGesture(pos);
+		else if (touch_finger_role[i] == TOUCH_ROLE_MOVE)
+			Touch_StickLand(pos);
 		else if (touch_finger_role[i] == TOUCH_ROLE_TURN)
 			localcmd("touch_turn\n"); // on the press: the engine spins the view
 		else if (touch_finger_role[i] == TOUCH_ROLE_WEAPON)
@@ -530,23 +613,26 @@ int Touch_ClaimFinger(int src, vector pos)
 	return -1;
 }
 
-void Touch_ApplyMove(vector deflection)
+// m: the stick's move, length 0..1 (Touch_StickRead). Analog when the engine
+// takes it (_touch_move_analog) and touch_stick_analog is on; else the four
+// movement keys, eight ways.
+void Touch_ApplyMove(vector m)
 {
-	float dz = autocvar_touch_stick_deadzone;
-	float mag = vlen(deflection);
-	if (mag < dz)
+	bool analog = cvar("touch_stick_analog") && cvar("_touch_move_analog");
+	if (analog)
 	{
-		Touch_SetKey("forward", false);
-		Touch_SetKey("back", false);
-		Touch_SetKey("moveleft", false);
-		Touch_SetKey("moveright", false);
-		return;
+		Touch_StickSend(m);
+		m = '0 0 0';
 	}
-	vector d = deflection * (autocvar_touch_stick_range / max(mag, 0.001));
-	Touch_SetKey("forward", d.y < -0.15);
-	Touch_SetKey("back", d.y > 0.15);
-	Touch_SetKey("moveleft", d.x < -0.15);
-	Touch_SetKey("moveright", d.x > 0.15);
+	else
+		Touch_StickSend('0 0 0');
+	float mag = vlen(m);
+	if (mag > 0)
+		m = m * (1 / mag);
+	Touch_SetKey("forward", m.y < -0.38);
+	Touch_SetKey("back", m.y > 0.38);
+	Touch_SetKey("moveleft", m.x < -0.38);
+	Touch_SetKey("moveright", m.x > 0.38);
 }
 
 void Touch_PollFingers(void)
@@ -875,6 +961,7 @@ void Touch_Frame(void)
 	vector look_accum = '0 0 0';
 	vector look_last = '0 0 0';
 	bool look_first = false;
+	bool look_finger = false, look_drag = false;
 
 	int i;
 	for (i = 0; i < TOUCH_MAX_FINGERS; ++i)
@@ -895,67 +982,66 @@ void Touch_Frame(void)
 		else if (role == TOUCH_ROLE_MOVE)
 		{
 			move_active = true;
-			vector center = Touch_WidgetCenter(autocvar_touch_move_x, autocvar_touch_move_y, autocvar_touch_move_size);
-			float radius = Touch_WidgetRadius(autocvar_touch_move_size);
-			vector off = pos - center;
-			off.z = 0;
-			float mag = vlen(off);
-			if (mag > radius)
-				off = normalize(off) * radius;
-			touch_move_offset = off * (1.0 / max(radius, 1));
-			Touch_ApplyMove(touch_move_offset);
+			Touch_ApplyMove(Touch_StickRead(pos));
 		}
 		else if (role == TOUCH_ROLE_LOOK)
 		{
 			look_active = true;
-			look_accum = touch_finger_accum[i];
+			look_accum += touch_finger_accum[i];
 			look_last = pos;
 			look_first = touch_finger_first[i];
+			look_finger = true;
 		}
-		else if (role == TOUCH_ROLE_FIRE || role == TOUCH_ROLE_HOOK || role == TOUCH_ROLE_NADE)
+		else if (role == TOUCH_ROLE_FIRE || role == TOUCH_ROLE_HOOK || role == TOUCH_ROLE_NADE
+			|| role == TOUCH_ROLE_FIRE2 || role == TOUCH_ROLE_JUMP || role == TOUCH_ROLE_RESPAWN
+			|| role == TOUCH_ROLE_CROUCH || role == TOUCH_ROLE_ZOOM)
 		{
-			// NADE too: a drag off the row aims the throw
+			bool aim_button = (role == TOUCH_ROLE_FIRE || role == TOUCH_ROLE_HOOK || role == TOUCH_ROLE_NADE);
 			if (role == TOUCH_ROLE_FIRE)
 				fire_count += 1;
 			else if (role == TOUCH_ROLE_HOOK)
 				hook_down = true;
-			else
+			else if (role == TOUCH_ROLE_NADE)
 				nade_down = true;
-			// CoD Mobile's "R-Fire BTN for camera rotation": the fire button is
-			// also an aim surface, so shoot-while-aiming is one finger instead of
-			// two. Fire is not released when the drag starts. A dedicated look
-			// finger keeps priority. HOOK too: the hook goes where the view looks.
-			if (autocvar_touch_fire_drag_look && !look_active)
+			// Secondary fire: the claw, and for a spectator the way back to observing.
+			else if (role == TOUCH_ROLE_FIRE2)
+				fire2_down = true;
+			else if (role == TOUCH_ROLE_JUMP || role == TOUCH_ROLE_RESPAWN)
+				jump_down = true;
+			else if (role == TOUCH_ROLE_CROUCH)
+				crouch_down = true;
+			else
+				zoom_down = true;
+			// A held button is also an aim surface ("fire and drag"): a thumb
+			// that lands on it and then drags turns the view while the button
+			// stays down, so shooting, hopping or ducking never costs the look.
+			// touch_fire_drag_look: FIRE, HOOK, NADE; touch_button_drag_look:
+			// ALT, HOP, DUCK, ZOOM. It adds to any other finger turning the view.
+			if (role != TOUCH_ROLE_RESPAWN && (aim_button ? autocvar_touch_fire_drag_look : cvar("touch_button_drag_look")))
 			{
 				vector from_down = pos - touch_finger_down_pos[i];
 				from_down.z = 0;
+				bool starting = false;
 				if (!touch_finger_draglook[i]
 					&& vlen(from_down) >= autocvar_touch_look_deadzone_px)
 				{
 					touch_finger_draglook[i] = true;
-					// Start already escaped: the finger has demonstrably moved,
-					// so re-running the deadzone would waste a frame of aim.
-					Touch_Look_BeginGestureEscaped(pos);
+					starting = true;
 				}
 				if (touch_finger_draglook[i])
 				{
 					look_active = true;
-					look_accum = touch_finger_accum[i];
-					look_last = pos;
-					look_first = false;
+					// the travel that proved it a drag counts too
+					look_accum += starting ? from_down : touch_finger_accum[i];
+					if (!look_finger)
+					{
+						look_last = pos;
+						look_first = false;
+					}
+					look_drag = true;
 				}
 			}
 		}
-		// Secondary fire, as the engine HUD has it: the claw, and for a
-		// spectator the way back to observing.
-		else if (role == TOUCH_ROLE_FIRE2)
-			fire2_down = true;
-		else if (role == TOUCH_ROLE_JUMP || role == TOUCH_ROLE_RESPAWN)
-			jump_down = true;
-		else if (role == TOUCH_ROLE_CROUCH)
-			crouch_down = true;
-		else if (role == TOUCH_ROLE_ZOOM)
-			zoom_down = true;
 		else if (role == TOUCH_ROLE_RELOAD && touch_finger_first[i])
 			localcmd("weapon_reload\n");
 		else if (role == TOUCH_ROLE_DODGE && touch_finger_first[i])
@@ -972,9 +1058,14 @@ void Touch_Frame(void)
 	if (!move_active)
 	{
 		touch_move_offset = '0 0 0';
+		touch_stick_held = false;
 		Touch_ApplyMove('0 0 0');
 	}
 
+	// A button drag alone begins a look already past the deadzone: the finger
+	// has demonstrably moved.
+	if (look_drag && !look_finger && !Touch_Look_Escaped())
+		Touch_Look_BeginGestureEscaped(look_last - look_accum);
 	Touch_Look_Frame(look_accum, look_last, look_first, look_active);
 	Touch_ReportWeaponClass();
 	Touch_ReportHudState((look_active || fire_count > 0) ? 1 : 0);

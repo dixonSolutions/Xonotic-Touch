@@ -26,6 +26,7 @@ applies to both.
 #include "touch_spectate.h"
 #include "touch_hudmode.h"
 #include "touch_topbar.h"
+#include "touch_feel.h"
 
 extern cvar_t vid_touchscreen;
 extern cvar_t vid_conwidth;
@@ -78,8 +79,6 @@ static const float C_WARNING[3]      = {0.784f, 0.533f, 0.000f};
 #define FONT_FIT_W       0.70f
 #define FONT_ADVANCE     0.55f
 #define FONT_READOUT     24.0f
-#define LOOK_DEG_PER_PX  0.18f
-#define LOOK_REF_WIDTH   960.0f
 // The pills kept with the controls off (keyboard and mouse) draw fainter.
 #define DESK_ALPHA       0.6f
 
@@ -122,12 +121,19 @@ static float dp_units(void)
 }
 static float widget_radius(float nsize)
 {
-	// a circle is a touch target: never under 44 dp across
+	// a circle is a touch target: never under 48 dp across
 	return max(screen_min() * nsize * 0.5f * widget_scale(), TOUCHDP_MIN_TARGET * 0.5f * dp_units());
+}
+// The move stick: its ring is the thumb's travel, so it has its own floor.
+#define TOUCHDP_STICK_RADIUS 64.0f
+static float cv(const char *name, float def);
+static float stick_radius(void)
+{
+	return max(widget_radius(cv("touch_move_size", 0.300f)), TOUCHDP_STICK_RADIUS * dp_units());
 }
 static void widget_half(float nsize, float aspect, float *hx, float *hy)
 {
-	// a pill is drawn 36 dp tall at least; hit_rect grows its target to 44 dp
+	// a pill is drawn 36 dp tall at least; hit_rect grows its target to 48 dp
 	float short_axis = max(screen_min() * nsize * widget_scale(), TOUCHDP_PILL_HEIGHT * dp_units());
 	float long_axis = short_axis * max(1.0f, aspect);
 	*hx = long_axis * 0.5f;
@@ -443,7 +449,15 @@ typedef struct finger_s
 } finger_t;
 
 static finger_t fingers[MAX_FINGERS];
-static float move_off_x, move_off_y;
+static float move_off_x, move_off_y;   // the knob, -1..1, for drawing
+// The move stick (touch_feel.h): where its centre floats to while a thumb
+// holds it, and what it asks for as an analog move (x right, y down, length
+// 0..1). csqc_axis is the same from the port's CSQC HUD (touch_move).
+static touchstick_t stick;
+static qbool stick_held;
+static float stick_axis_x, stick_axis_y;
+static float csqc_axis_x, csqc_axis_y;
+static cvar_t touch_move_analog_cap = {CF_CLIENT | CF_READONLY, "_touch_move_analog", "1", "this engine takes an analog move from the touch stick (the touch_move command); read-only"};
 static qbool key_forward, key_back, key_left, key_right, key_attack, key_attack2, key_jump, key_crouch, key_scores, key_zoom;
 static int strip_selected_impulse = -1;  // last row tapped: the only "current" we can know here
 static qbool hop_latched, hop_cancelling;
@@ -452,8 +466,7 @@ static double tapfire_until;
 static qbool was_active;
 
 // look
-static float look_vel_x, look_vel_y, look_prev_raw_x, look_prev_raw_y, look_dvel_x, look_dvel_y;
-static float look_carry_x, look_carry_y, look_carry_dt; // movement too small to apply yet (look_apply)
+static touchlook_t look_state;   // touch_feel.h
 static qbool look_active;
 static double look_prev_time;
 
@@ -506,8 +519,10 @@ void TouchHUD_ReleaseAll(void)
 	tapfire_until = 0;
 	TouchAim_SetHudAimTouch(false);
 	move_off_x = move_off_y = 0;
+	stick_held = false;
+	stick_axis_x = stick_axis_y = 0;
 	look_active = false;
-	look_vel_x = look_vel_y = 0;
+	TouchLook_Reset(&look_state);
 	for (i = 0; i < MAX_FINGERS; i++)
 		fingers[i].used = false;
 }
@@ -533,6 +548,68 @@ static cvar_t cl_touch_weplist_scale = {CF_CLIENT | CF_ARCHIVE, "cl_touch_weplis
 	"Touch controls: size of the weapon strip, 0.7 - 2.4 (also set by dragging the grip under the strip)"};
 
 static cvar_t touch_topbar_auto = {CF_CLIENT | CF_ARCHIVE, "touch_topbar_auto", "1", "Godnotic: 1 lays out the in-match top bar (console button, MENU, SCORE, CHAT, vote chip) in the top corner in dp, clear of each other and of the game's own score list, messages and clock; 0 leaves touch_pause_x/y, touch_scores_x/y and touch_chat_x/y where the layout editor put them"};
+// Haptics: a short tick when a button takes a finger. The platform says it
+// can vibrate by setting TouchLua_VibrateHook (touch_lua.h); until one does,
+// _touch_haptics_available is 0 and the setting is not offered.
+static cvar_t touch_haptics = {CF_CLIENT | CF_ARCHIVE, "touch_haptics", "1", "Godnotic: a short vibration when a touch button is pressed, on a device whose app can vibrate (_touch_haptics_available)"};
+static cvar_t touch_haptics_ms = {CF_CLIENT | CF_ARCHIVE, "touch_haptics_ms", "8", "length of the button-press vibration in milliseconds"};
+static cvar_t touch_haptics_available = {CF_CLIENT | CF_READONLY, "_touch_haptics_available", "0", "1 when the platform gave the engine a way to vibrate; read-only"};
+extern qbool (*TouchLua_VibrateHook)(int ms);
+static void haptic_tick(void)
+{
+	if (touch_haptics.integer && TouchLua_VibrateHook)
+		TouchLua_VibrateHook(bound(1, touch_haptics_ms.integer, 50));
+}
+static void TouchHaptic_f(cmd_state_t *cmd)
+{
+	haptic_tick();
+}
+// touch_move <x> <y>: the port's CSQC HUD hands its stick over (x right, y
+// down, length 0..1; "touch_move 0 0" when the thumb lifts).
+static void TouchMove_f(cmd_state_t *cmd)
+{
+	float x = (float)atof(Cmd_Argv(cmd, 1)), y = (float)atof(Cmd_Argv(cmd, 2));
+	float mag = sqrt(x * x + y * y);
+	if (mag > 1)
+	{
+		x /= mag;
+		y /= mag;
+	}
+	csqc_axis_x = x;
+	csqc_axis_y = y;
+}
+
+// Called by CL_Input after the movement keys: adds the stick's analog move.
+// Full deflection is exactly what the keys give (cl_forwardspeed and the
+// rest), so top speed, strafing and bunny-hopping are the keyboard's; the
+// angle in between is the thumb's.
+void TouchHUD_MoveAxes(float *forwardmove, float *sidemove)
+{
+	float x, y;
+	if (key_dest != key_game || (key_consoleactive & KEY_CONSOLEACTIVE_USER) || cls.state != ca_connected)
+	{
+		csqc_axis_x = csqc_axis_y = 0;
+		return;
+	}
+	if (cl_touch_csqc_active)
+	{
+		x = csqc_axis_x;
+		y = csqc_axis_y;
+	}
+	else
+	{
+		csqc_axis_x = csqc_axis_y = 0;
+		if (!was_active)
+			return;
+		x = stick_axis_x;
+		y = stick_axis_y;
+	}
+	if (x == 0 && y == 0)
+		return;
+	*forwardmove += (y < 0 ? cl_forwardspeed.value : cl_backspeed.value) * -y;
+	*sidemove += cl_sidespeed.value * x;
+}
+
 static void TouchHUD_RestoreViewmodel_f(cmd_state_t *cmd)
 {
 	if (touch_viewmodel_restored.integer >= TOUCH_VIEWMODEL_REV)
@@ -552,6 +629,12 @@ void TouchHUD_Init(void)
 	Cvar_RegisterVariable(&touch_viewmodel_restored);
 	Cvar_RegisterVariable(&cl_touch_weplist_scale);
 	Cvar_RegisterVariable(&touch_topbar_auto);
+	Cvar_RegisterVariable(&touch_move_analog_cap);
+	Cvar_RegisterVariable(&touch_haptics);
+	Cvar_RegisterVariable(&touch_haptics_ms);
+	Cvar_RegisterVariable(&touch_haptics_available);
+	Cmd_AddCommand(CF_CLIENT, "touch_haptic", TouchHaptic_f, "a button-press vibration, if touch_haptics is on and the device can (the CSQC HUD asks for it)");
+	Cmd_AddCommand(CF_CLIENT, "touch_move", TouchMove_f, "the touch stick's analog move from the CSQC HUD: touch_move <x right> <y down>, length 0..1");
 	Cmd_AddCommand(CF_CLIENT, "_touch_cancel_join", TouchHUD_CancelJoin_f, "stop a connect attempt (CANCEL on the loading screen)");
 	Cmd_AddCommand(CF_CLIENT, "_touch_restore_viewmodel", TouchHUD_RestoreViewmodel_f, "turn r_drawviewmodel back on once for installs that archived the old forced 0 (queued by Host_Init)");
 }
@@ -646,6 +729,8 @@ static void topbar_sync(void)
 	const char *insets = Cvar_VariableString(&cvars_all, "_touch_safe_insets", ~0);
 	qbool flip = cv("touch_handedness", 0) != 0;
 	topbar_valid = false;
+	if ((TouchLua_VibrateHook != NULL) != (touch_haptics_available.integer != 0))
+		Cvar_SetValueQuick(&touch_haptics_available, TouchLua_VibrateHook != NULL);
 	if (!touch_topbar_auto.integer || !vid_touchscreen.integer || cls.state != ca_connected || W < 16 || H < 16)
 		return;
 	if (insets && insets[0])
@@ -1413,7 +1498,7 @@ static int assign_role(float px, float py)
 		return ROLE_WEPSTRIP;
 	if (in_edge_deadzone(px, py))
 		return ROLE_IGNORED;
-	if (cv("touch_fire_visible", 1) && hit_circle(px, py, cv("touch_fire_x", 0.855f), cv("touch_fire_y", 0.680f), cv("touch_fire_size", 0.140f), 1.15f))
+	if (cv("touch_fire_visible", 1) && hit_circle(px, py, cv("touch_fire_x", 0.855f), cv("touch_fire_y", 0.680f), cv("touch_fire_size", 0.160f), 1.15f))
 		return ROLE_FIRE;
 	if (fire2_available() && hit_circle(px, py, cv("touch_fire2_x", 0.770f), cv("touch_fire2_y", 0.755f), cv("touch_fire2_size", 0.100f), 1.15f))
 		return ROLE_FIRE2;
@@ -1421,7 +1506,7 @@ static int assign_role(float px, float py)
 		return ROLE_JUMP;
 	if (hoplock_shown() && hoplock_hit(px, py))
 		return ROLE_HOPLOCK;
-	if (cv("touch_crouch_visible", 1) && hit_circle(px, py, cv("touch_crouch_x", 0.700f), cv("touch_crouch_y", 0.885f), cv("touch_crouch_size", 0.066f), 1.10f))
+	if (cv("touch_crouch_visible", 1) && hit_circle(px, py, cv("touch_crouch_x", 0.700f), cv("touch_crouch_y", 0.885f), cv("touch_crouch_size", 0.080f), 1.10f))
 		return ROLE_CROUCH;
 	if (weapon_button_shown() && hit_circle(px, py, cv("touch_weapon_x", 0.540f), cv("touch_weapon_y", 0.860f), cv("touch_weapon_size", 0.100f), 1.10f))
 		return ROLE_WEAPON;
@@ -1435,7 +1520,7 @@ static int assign_role(float px, float py)
 		return ROLE_RELOAD;
 	if (cv("touch_dodge_visible", 0) && hit_circle(px, py, cv("touch_dodge_x", 0.165f), cv("touch_dodge_y", 0.480f), cv("touch_dodge_size", 0.100f), 1.10f))
 		return ROLE_DODGE;
-	if (in_move_zone(px, py) || (cv("touch_move_visible", 1) && hit_circle(px, py, cv("touch_move_x", 0.170f), cv("touch_move_y", 0.680f), cv("touch_move_size", 0.229f), 1.0f)))
+	if (in_move_zone(px, py) || (cv("touch_move_visible", 1) && hit_circle(px, py, cv("touch_move_x", 0.170f), cv("touch_move_y", 0.680f), cv("touch_move_size", 0.300f), 1.0f)))
 	{
 		if (role_owned(ROLE_MOVE))
 			return ROLE_IGNORED;
@@ -1452,91 +1537,64 @@ static int assign_role(float px, float py)
 	return ROLE_LOOK;
 }
 
-static float look_alpha(float cutoff, float dt)
+// The look (touch_feel.h): degrees per dp of finger travel, a gain that rises
+// with finger speed, and a smoothing that never loses travel.
+static void look_cfg(touchlook_cfg_t *c)
 {
-	float tau = 1.0f / (2.0f * (float)M_PI * max(cutoff, 0.0001f));
-	return 1.0f / (1.0f + tau / dt);
+	c->sens = cv("touch_sens_base", 3.6f);
+	c->y_mult = cv("touch_sens_y_mult", 0.85f);
+	c->accel = cv("touch_look_accel", 0.8f);
+	c->accel_lo = cv("touch_look_accel_lo", 150);
+	c->accel_hi = cv("touch_look_accel_hi", 900);
+	c->filter = (int)cv("touch_look_filter", 1);
+	c->fcmin = cv("touch_look_fcmin", 4.0f);
+	c->beta = cv("touch_look_beta", 0.05f);
+	// a clamp for contacts that jump, not a limit on turning: it rises with
+	// the sensitivity and the acceleration
+	c->max_rate = cv("touch_look_max_deg_per_s", 900) * max(1.0f, c->sens / 2.8f) * (1 + max(0.0f, c->accel));
 }
 
-static void look_apply(float raw_x, float raw_y, float dt)
+static void look_turn(float yaw, float pitch)
 {
-	float vrx, vry, a, cutoff, dvx, dvy, da, k, yaw, pitch, cap;
-	dt = bound(1.0f / 240.0f, dt, 0.1f);
-	// A frame's movement under a quarter of the deadzone (1 px) is carried,
-	// not dropped, and applied once it adds up: a resting finger's sensor
-	// noise stays out (a 1 px hysteresis on its position) while a slow aiming
-	// drag still turns the view. Dropping it lost every drag slower than
-	// 1 px a frame -- 60 px/s at 60 fps -- and made slow aim depend on the
-	// frame rate.
-	look_carry_x += raw_x;
-	look_carry_y += raw_y;
-	look_carry_dt += dt;
-	if (sqrt(look_carry_x * look_carry_x + look_carry_y * look_carry_y) < cv("touch_look_deadzone_px", 4) * 0.25f)
-		return;
-	raw_x = look_carry_x;
-	raw_y = look_carry_y;
-	dt = bound(1.0f / 240.0f, look_carry_dt, 0.1f);
-	look_carry_x = look_carry_y = look_carry_dt = 0;
-	vrx = raw_x / dt;
-	vry = raw_y / dt;
-	if (cv("touch_look_filter", 1) == 0)
-	{
-		look_vel_x = vrx;
-		look_vel_y = vry;
-	}
-	else if (cv("touch_look_filter", 1) == 2)
-	{
-		float tau = 0, s = cv("touch_look_smoothing", 1);
-		if (s == 1) tau = 0.035f; else if (s >= 2) tau = 0.070f;
-		a = 1.0f;
-		if (tau > 0)
-			a = 1.0f - expf(-dt / tau);
-		look_vel_x += (vrx - look_vel_x) * a;
-		look_vel_y += (vry - look_vel_y) * a;
-	}
-	else
-	{
-		// one-euro filter (touch_look.qc)
-		dvx = (vrx - look_prev_raw_x) / dt;
-		dvy = (vry - look_prev_raw_y) / dt;
-		da = look_alpha(1.0f, dt);
-		look_dvel_x += (dvx - look_dvel_x) * da;
-		look_dvel_y += (dvy - look_dvel_y) * da;
-		look_prev_raw_x = vrx;
-		look_prev_raw_y = vry;
-		cutoff = max(cv("touch_look_fcmin", 3.0f), 0.01f)
-			+ max(cv("touch_look_beta", 0.03f), 0.0f) * sqrt(look_dvel_x * look_dvel_x + look_dvel_y * look_dvel_y);
-		a = look_alpha(cutoff, dt);
-		look_vel_x += (vrx - look_vel_x) * a;
-		look_vel_y += (vry - look_vel_y) * a;
-	}
-	k = LOOK_DEG_PER_PX * cv("touch_sens_base", 2.8f) * (LOOK_REF_WIDTH / max((float)vid.mode.width, 1.0f));
-	yaw = look_vel_x * dt * k;
-	pitch = look_vel_y * dt * k * cv("touch_sens_y_mult", 0.85f);
 	if (cv("touch_invert_y", 0))
 		pitch = -pitch;
 	// aim friction: the drag turns slower over an enemy (touch_aim.c)
 	yaw *= TouchAim_LookScale();
 	pitch *= TouchAim_LookScale();
-	// a clamp on finger speed, not on turn speed: it rises with sensitivity
-	// (touch_look.qc)
-	cap = cv("touch_look_max_deg_per_s", 900) * max(1.0f, cv("touch_sens_base", 2.8f) / 2.8f) * dt;
-	yaw = bound(-cap, yaw, cap);
-	pitch = bound(-cap, pitch, cap);
 	cl.viewangles[YAW] -= yaw;
 	cl.viewangles[PITCH] += pitch;
 	cl.viewangles[PITCH] = bound(-89, cl.viewangles[PITCH], 89);
 	cl.viewangles[ROLL] = 0;
 }
 
+// raw_x, raw_y: finger travel this frame in console units.
+static void look_apply(float raw_x, float raw_y, float dt)
+{
+	touchlook_cfg_t c;
+	float yaw, pitch, u = max(0.001f, dp_units());
+	look_cfg(&c);
+	TouchLook_Step(&look_state, &c, raw_x / u, raw_y / u, dt, &yaw, &pitch);
+	look_turn(yaw, pitch);
+}
+
 static void look_begin(void)
 {
+	if (!look_active)
+		TouchLook_Reset(&look_state);
 	look_active = true;
-	look_vel_x = look_vel_y = 0;
-	look_prev_raw_x = look_prev_raw_y = 0;
-	look_dvel_x = look_dvel_y = 0;
-	look_carry_x = look_carry_y = look_carry_dt = 0;
 	look_prev_time = host.realtime;
+}
+
+// The last look finger lifted: the turn still owed is paid at once.
+static void look_end(void)
+{
+	if (look_active)
+	{
+		float yaw, pitch;
+		TouchLook_Flush(&look_state, &yaw, &pitch);
+		look_turn(yaw, pitch);
+	}
+	look_active = false;
 }
 
 // The controls are hidden -- a keyboard is attached, or Keyboard & mouse mode
@@ -1567,7 +1625,10 @@ void TouchHUD_LookWithoutControls(void)
 		return;
 	}
 	if (finger >= 0 && !multitouch[finger][0])
+	{
 		finger = -1;
+		look_end();
+	}
 	// The port's CSQC claims the fingers on its own strip, grip and pills
 	// (one bit per finger slot); those do not turn the view.
 	claimed = (int)cv("_cl_touch_desk_fingers", 0);
@@ -1595,13 +1656,16 @@ void TouchHUD_LookWithoutControls(void)
 	}
 }
 
-// touch_fire_drag_look: FIRE (and HOOK, which goes where the player looks) is
-// also an aim surface. The drag starts once the finger has left the look
-// deadzone; a dedicated look finger keeps priority.
-static void button_drag_look(finger_t *f, qbool *look_seen, float *look_dx, float *look_dy)
+// A held button is also an aim surface: a thumb that lands on FIRE and then
+// drags turns the view while the button stays down ("fire and drag"), so
+// shooting never costs the look. touch_fire_drag_look covers FIRE, HOOK and
+// NADE; touch_button_drag_look covers ALT, HOP, DUCK and ZOOM. The drag
+// starts once the finger has left the look deadzone, and adds to any other
+// finger that is turning the view: two thumbs never fight over it.
+static void button_drag_look(finger_t *f, qbool aim_button, qbool *look_seen, float *look_dx, float *look_dy)
 {
 	float ddx, ddy;
-	if (!cv("touch_fire_drag_look", 1) || *look_seen)
+	if (!cv(aim_button ? "touch_fire_drag_look" : "touch_button_drag_look", 1))
 		return;
 	ddx = f->last_x - f->down_x;
 	ddy = f->last_y - f->down_y;
@@ -1609,8 +1673,9 @@ static void button_drag_look(finger_t *f, qbool *look_seen, float *look_dx, floa
 	{
 		f->draglook = true;
 		look_begin();
-		f->prev_look_x = f->last_x;
-		f->prev_look_y = f->last_y;
+		// the travel that proved it a drag counts too
+		f->prev_look_x = f->down_x;
+		f->prev_look_y = f->down_y;
 	}
 	if (f->draglook)
 	{
@@ -2108,8 +2173,20 @@ void TouchHUD_Frame(void)
 			f->down_time = now;
 			f->first_frame = true;
 			f->role = role;
+			if (f->role != ROLE_LOOK && f->role != ROLE_MOVE && f->role != ROLE_IGNORED)
+				haptic_tick();
 			if (f->role == ROLE_LOOK)
 				look_begin();
+			if (f->role == ROLE_MOVE)
+			{
+				// the stick's centre: under the thumb, or its drawn place
+				float r = stick_radius();
+				stick_held = true;
+				if (cv("touch_stick_float", 1))
+					TouchStick_Land(&stick, px, py, r, ui_w(), ui_h());
+				else
+					widget_center(cv("touch_move_x", 0.170f), cv("touch_move_y", 0.680f), &stick.cx, &stick.cy);
+			}
 			if (f->role == ROLE_JUMP)
 				hop_press_time = now;
 			if (f->role == ROLE_WEPSTRIP)
@@ -2191,8 +2268,6 @@ void TouchHUD_Frame(void)
 			Host_SaveConfig(CONFIGFILENAME);
 			Con_DPrintf("Touch HUD: weapon strip size %.2f saved\n", cl_touch_weplist_scale.value);
 		}
-		else if ((f->role == ROLE_FIRE || f->role == ROLE_HOOK || f->role == ROLE_NADE) && f->draglook)
-			look_active = false;
 		else if (f->role == ROLE_LOOK)
 		{
 			// tap in the look zone fires once (touch_look_tap_fire); not at
@@ -2202,7 +2277,6 @@ void TouchHUD_Frame(void)
 			if (!desk && !TouchUI_IsSpectating() && cv("touch_look_tap_fire", 1) && now - f->down_time < cv("touch_look_tap_ms", 200) * 0.001
 				&& fabs(dx) < 12 && fabs(dy) < 12)
 				tapfire_until = now + 0.08;
-			look_active = false;
 		}
 		f->used = false;
 	}
@@ -2217,23 +2291,11 @@ void TouchHUD_Frame(void)
 		switch (f->role)
 		{
 		case ROLE_MOVE:
-		{
-			float cx, cy, r, ox, oy, mag;
-			widget_center(cv("touch_move_x", 0.170f), cv("touch_move_y", 0.680f), &cx, &cy);
-			r = max(1.0f, widget_radius(cv("touch_move_size", 0.229f)) * max(0.1f, cv("touch_stick_range", 1.0f)));
-			ox = f->last_x - cx;
-			oy = f->last_y - cy;
-			mag = sqrt(ox * ox + oy * oy);
-			if (mag > r)
-			{
-				ox = ox / mag * r;
-				oy = oy / mag * r;
-			}
-			move_off_x = ox / r;
-			move_off_y = oy / r;
+			TouchStick_Read(&stick, f->last_x, f->last_y, stick_radius() * max(0.1f, cv("touch_stick_range", 1.0f)),
+				cv("touch_stick_follow", 1) != 0 && cv("touch_stick_float", 1) != 0,
+				cv("touch_stick_deadzone", 0.12f), cv("touch_stick_run", 0.6f), &stick_axis_x, &stick_axis_y, &move_off_x, &move_off_y);
 			move_active = true;
 			break;
-		}
 		case ROLE_LOOK:
 			look_seen = true;
 			if (f->first_frame)
@@ -2241,29 +2303,35 @@ void TouchHUD_Frame(void)
 			break;
 		case ROLE_FIRE:
 			fire_count = true;
-			button_drag_look(f, &look_seen, &look_dx, &look_dy);
+			button_drag_look(f, true, &look_seen, &look_dx, &look_dy);
 			break;
 		case ROLE_HOOK:
 			hook_down = true;
-			button_drag_look(f, &look_seen, &look_dx, &look_dy);
+			button_drag_look(f, true, &look_seen, &look_dx, &look_dy);
 			break;
 		case ROLE_NADE:
 			// held: cooking; a drag off the row aims the throw, as FIRE does
 			nade_down = true;
-			button_drag_look(f, &look_seen, &look_dx, &look_dy);
+			button_drag_look(f, true, &look_seen, &look_dx, &look_dy);
 			break;
 		case ROLE_FIRE2:
 			fire2_down = true;
+			button_drag_look(f, false, &look_seen, &look_dx, &look_dy);
 			break;
 		case ROLE_ZOOM:
 			zoom_down = true;
+			button_drag_look(f, false, &look_seen, &look_dx, &look_dy);
 			break;
 		case ROLE_JUMP:
+			jump_down = true;
+			button_drag_look(f, false, &look_seen, &look_dx, &look_dy);
+			break;
 		case ROLE_RESPAWN:
 			jump_down = true;
 			break;
 		case ROLE_CROUCH:
 			crouch_down = true;
+			button_drag_look(f, false, &look_seen, &look_dx, &look_dy);
 			break;
 		case ROLE_SCORES:
 			scores_down = true;
@@ -2296,13 +2364,20 @@ void TouchHUD_Frame(void)
 
 	TouchAim_SetHudAimTouch(!desk && (look_seen || fire_count));
 
-	// movement keys from the stick (Touch_ApplyMove thresholds)
-	if (move_active && sqrt(move_off_x * move_off_x + move_off_y * move_off_y) > cv("touch_stick_deadzone", 0.18f))
+	// The stick: an analog move (TouchHUD_MoveAxes adds it to the frame's
+	// move), or the four movement keys with touch_stick_analog 0.
+	if (!move_active)
 	{
-		set_key("forward", &key_forward, move_off_y < -0.15f);
-		set_key("back", &key_back, move_off_y > 0.15f);
-		set_key("moveleft", &key_left, move_off_x < -0.15f);
-		set_key("moveright", &key_right, move_off_x > 0.15f);
+		stick_held = false;
+		stick_axis_x = stick_axis_y = 0;
+	}
+	if (move_active && !cv("touch_stick_analog", 1))
+	{
+		set_key("forward", &key_forward, stick_axis_y < -0.38f);
+		set_key("back", &key_back, stick_axis_y > 0.38f);
+		set_key("moveleft", &key_left, stick_axis_x < -0.38f);
+		set_key("moveright", &key_right, stick_axis_x > 0.38f);
+		stick_axis_x = stick_axis_y = 0;
 	}
 	else
 	{
@@ -2312,8 +2387,11 @@ void TouchHUD_Frame(void)
 		set_key("moveright", &key_right, false);
 	}
 
-	// look
-	if (look_seen && look_active && !look_first)
+	// look: every finger that turns the view adds up; when the last one has
+	// lifted, what is still owed is paid
+	if (!look_seen)
+		look_end();
+	else if (look_active && !look_first)
 		look_apply(look_dx, look_dy, dt);
 	look_prev_time = now;
 
@@ -2531,11 +2609,17 @@ static void draw_move_stick(float a)
 	float knob_a = A_SURFACE_ACTIVE;
 	qbool active;
 	widget_center(cv("touch_move_x", 0.170f), cv("touch_move_y", 0.680f), &cx, &cy);
-	r = widget_radius(cv("touch_move_size", 0.229f));
+	r = stick_radius();
 	if (r < 4)
 		return;
+	if (stick_held)
+	{
+		// floating: drawn where the thumb put it
+		cx = stick.cx;
+		cy = stick.cy;
+	}
 	mag = sqrt(move_off_x * move_off_x + move_off_y * move_off_y);
-	active = mag > cv("touch_stick_deadzone", 0.18f);
+	active = stick_held && mag > cv("touch_stick_deadzone", 0.12f);
 	knob_r = r * 0.34f;
 	knob_x = cx + move_off_x * (r - knob_r);
 	knob_y = cy + move_off_y * (r - knob_r);
@@ -2648,7 +2732,7 @@ static void spec_fly_part(qbool up, float *cx, float *cy, float *r)
 {
 	float u = dp_units(), mx, my, mr;
 	widget_center(cv("touch_move_x", 0.170f), cv("touch_move_y", 0.680f), &mx, &my);
-	mr = widget_radius(cv("touch_move_size", 0.229f));
+	mr = stick_radius();
 	*r = TOUCHDP_MIN_TARGET * 0.5f * u;
 	*cx = mx + (cv("touch_handedness", 0) ? -1 : 1) * (mr + *r * 1.6f);
 	*cy = my + (up ? -1 : 1) * (*r * 1.15f);
@@ -2693,7 +2777,7 @@ static int assign_spec_role(float px, float py)
 				return up ? ROLE_SPEC_UP : ROLE_SPEC_DOWN;
 		}
 		if (in_move_zone(px, py)
-			|| (cv("touch_move_visible", 1) && hit_circle(px, py, cv("touch_move_x", 0.170f), cv("touch_move_y", 0.680f), cv("touch_move_size", 0.229f), 1.0f)))
+			|| (cv("touch_move_visible", 1) && hit_circle(px, py, cv("touch_move_x", 0.170f), cv("touch_move_y", 0.680f), cv("touch_move_size", 0.300f), 1.0f)))
 			return role_owned(ROLE_MOVE) ? ROLE_IGNORED : ROLE_MOVE;
 	}
 	return role_owned(ROLE_LOOK) ? ROLE_IGNORED : ROLE_LOOK;
@@ -3134,7 +3218,7 @@ void TouchHUD_Draw(void)
 	if (cv("touch_move_visible", 1))
 		draw_move_stick(a);
 	if (cv("touch_fire_visible", 1))
-		draw_circle_widget("touch_fire_x", 0.855f, "touch_fire_y", 0.680f, "touch_fire_size", 0.140f, "FIRE", key_attack || TouchAim_AutoFiring(), a, C_DANGER);
+		draw_circle_widget("touch_fire_x", 0.855f, "touch_fire_y", 0.680f, "touch_fire_size", 0.160f, "FIRE", key_attack || TouchAim_AutoFiring(), a, C_DANGER);
 	if (cv("touch_jump_visible", 1))
 	{
 		widget_center(cv("touch_jump_x", 0.855f), cv("touch_jump_y", 0.885f), &cx, &cy);
@@ -3148,7 +3232,7 @@ void TouchHUD_Draw(void)
 		widget_check(cx, cy, hx, hy, "KEEP", hop_latched, role_owned(ROLE_HOPLOCK), a, C_ACCENT);
 	}
 	if (cv("touch_crouch_visible", 1))
-		draw_circle_widget("touch_crouch_x", 0.700f, "touch_crouch_y", 0.885f, "touch_crouch_size", 0.066f, "DUCK", key_crouch, a, C_ACCENT);
+		draw_circle_widget("touch_crouch_x", 0.700f, "touch_crouch_y", 0.885f, "touch_crouch_size", 0.080f, "DUCK", key_crouch, a, C_ACCENT);
 	if (weapon_button_shown())
 		draw_circle_widget("touch_weapon_x", 0.540f, "touch_weapon_y", 0.860f, "touch_weapon_size", 0.100f, "WEP", role_owned(ROLE_WEAPON), a, C_ACCENT);
 	// ALT fades out rather than vanishing, so the eye sees why it went; it
@@ -3273,7 +3357,7 @@ void TouchHUD_PrintRects(void)
 		if (TouchSpec_StickShown(state))
 		{
 			widget_center(cv("touch_move_x", 0.170f), cv("touch_move_y", 0.680f), &cx, &cy);
-			Con_Printf("TOUCHRECT c stick %.1f %.1f %.1f\n", cx, cy, widget_radius(cv("touch_move_size", 0.229f)));
+			Con_Printf("TOUCHRECT c stick %.1f %.1f %.1f\n", cx, cy, stick_radius());
 			spec_fly_part(true, &cx, &cy, &r);
 			Con_Printf("TOUCHRECT c UP %.1f %.1f %.1f\n", cx, cy, r);
 			spec_fly_part(false, &cx, &cy, &r);
@@ -3291,10 +3375,10 @@ void TouchHUD_PrintRects(void)
 	if (cv("touch_move_visible", 1))
 	{
 		widget_center(cv("touch_move_x", 0.170f), cv("touch_move_y", 0.680f), &cx, &cy);
-		Con_Printf("TOUCHRECT c stick %.1f %.1f %.1f\n", cx, cy, widget_radius(cv("touch_move_size", 0.229f)));
+		Con_Printf("TOUCHRECT c stick %.1f %.1f %.1f\n", cx, cy, stick_radius());
 	}
 	if (cv("touch_fire_visible", 1))
-		rect_circle("FIRE", "touch_fire_x", 0.855f, "touch_fire_y", 0.680f, "touch_fire_size", 0.140f);
+		rect_circle("FIRE", "touch_fire_x", 0.855f, "touch_fire_y", 0.680f, "touch_fire_size", 0.160f);
 	if (cv("touch_fire2_visible", 2) > 0)
 		rect_circle("ALT", "touch_fire2_x", 0.770f, "touch_fire2_y", 0.755f, "touch_fire2_size", 0.100f);
 	if (cv("touch_jump_visible", 1))
@@ -3306,7 +3390,7 @@ void TouchHUD_PrintRects(void)
 		rect_box("KEEP", cx, cy, hx, hy);
 	}
 	if (cv("touch_crouch_visible", 1))
-		rect_circle("DUCK", "touch_crouch_x", 0.700f, "touch_crouch_y", 0.885f, "touch_crouch_size", 0.066f);
+		rect_circle("DUCK", "touch_crouch_x", 0.700f, "touch_crouch_y", 0.885f, "touch_crouch_size", 0.080f);
 	if (TouchTurn_ButtonShown())
 		rect_circle("TURN", "touch_turn_x", 0.300f, "touch_turn_y", 0.840f, "touch_turn_size", 0.085f);
 	if (cv("touch_zoom_visible", 2) > 0)

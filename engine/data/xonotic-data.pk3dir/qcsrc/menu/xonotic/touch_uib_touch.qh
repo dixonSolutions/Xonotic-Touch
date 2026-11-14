@@ -4,9 +4,10 @@
 #include "touch_uib_screens.qh"
 
 // Godnotic UI bridge: what the in-match touch HUD adds to the descriptions.
-// The file is touch_uib_join.qc; the hooks that call it are single lines in
-// touch_uib_screens.qc (UIB_Build, UIB_Action, UIB_Back, UIB_Tick, the pause
-// screen's buttons).
+// The files are touch_uib_join.qc and touch_uib_touchcontrols.qc; the hooks
+// that call them are single lines in touch_uib_screens.qc (UIB_Build,
+// UIB_Action, UIB_Back, UIB_Tick, the pause screen's buttons) and
+// touch_uib_settings.qc (UIB_SecTouch, UIB_SettingsAction).
 
 // The join popup, id "join": Xonotic's join dialog as a description.
 void UIB_BuildJoin();
@@ -15,7 +16,13 @@ bool UIB_JoinAction(string action);  // join.open, join.auto, join.red ... join.
 bool UIB_JoinBack();                 // Back on the popup: closes to the match, not to the pause menu
 void UIB_JoinTick();                 // closes it once the player is in the game
 
-// from touch_uib_screens.qc
+// Settings > Controls > Touch controls.
+void UIB_SecTouchControls();
+bool UIB_TouchControlsAction(string action);
+
+// from touch_uib_screens.qc / touch_uib_settings.qc
 void UIB_DropLast(bool modal);
 void UIB_Nav();
 void UIB_Build(string id);
+bool UIB_SubTab(string key, string label);
+string UIB_Opts3(string v1, string l1, string v2, string l2, string v3, string l3);

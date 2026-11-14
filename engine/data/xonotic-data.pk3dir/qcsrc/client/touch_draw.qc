@@ -1,4 +1,5 @@
 #include "touch_draw.qh"
+#include "touch_feel.qh"
 #include "touch_customize.qh"
 #include "touch_hud.qh"
 #include "touch_glass.qh"
@@ -44,15 +45,16 @@ void Touch_DrawHopBar(float theAlpha)
 // thumb would only be clutter.
 void Touch_DrawMoveStick(float theAlpha)
 {
-	vector base = Touch_WidgetCenter(autocvar_touch_move_x, autocvar_touch_move_y, autocvar_touch_move_size);
-	float r = Touch_WidgetRadius(autocvar_touch_move_size);
+	// floating: drawn where the thumb put it while it is held
+	vector base = Touch_StickCenter();
+	float r = Touch_StickRadius();
 	if (r < 4)
 		return;
 
 	vector off = Touch_MoveStickOffset();
 	if (Touch_PreviewStates())
 		off = '-0.55 -0.62 0';
-	bool active = vlen(off) > autocvar_touch_stick_deadzone;
+	bool active = (Touch_StickHeld() || Touch_PreviewStates()) && vlen(off) > autocvar_touch_stick_deadzone;
 	float knob_r = r * 0.34;
 	vector knob_c = base + off * (r - knob_r);
 
