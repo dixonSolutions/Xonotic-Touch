@@ -99,10 +99,9 @@
    },
    {
     "id": "home/tiles",
-    "type": "grid",
+    "type": "tabbar",
     "props": {
-     "minItem": 240,
-     "maxColumns": 3
+     "current": ""
     },
     "children": [
      "home/tiles/sp",
@@ -118,12 +117,10 @@
      "subtitle": "Stormkeep · Deathmatch · 4 bots",
      "icon": "singleplayer",
      "image": "pk3:maps/stormkeep",
-     "aspect": "16:9",
-     "featured": true,
      "primary": {
       "id": "sp",
-      "label": "Open",
-      "icon": "chevron"
+      "label": "Singleplayer",
+      "icon": "singleplayer"
      }
     },
     "children": []
@@ -137,12 +134,10 @@
      "image": "pk3:maps/boil",
      "progress": 0,
      "icon": "trophy",
-     "aspect": "16:9",
-     "featured": true,
      "primary": {
       "id": "campaign",
-      "label": "Open",
-      "icon": "chevron"
+      "label": "Campaign",
+      "icon": "trophy"
      }
     },
     "children": []
@@ -155,13 +150,11 @@
      "subtitle": "Join a server, or create a game",
      "icon": "multiplayer",
      "image": "pk3:maps/xoylent",
-     "aspect": "16:9",
-     "featured": true,
      "live": true,
      "primary": {
       "id": "mp",
-      "label": "Open",
-      "icon": "chevron"
+      "label": "Multiplayer",
+      "icon": "multiplayer"
      }
     },
     "children": []

@@ -100,7 +100,8 @@ fn action_button(app: &App, node: &str, a: &Map<String, Value>, primary: bool) -
 
 /// The Home banner (`image` with `role: "banner"`): large, about a quarter of a normal window.
 const BANNER_HEIGHT: i32 = 240;
-const BANNER_HEIGHT_NARROW: i32 = 150;
+/// ... and the least it shrinks to on Home, where it is sized from the window's width.
+const BANNER_MIN_HEIGHT: i32 = 80;
 
 /// The native skeleton shown before the engine's first snapshot: the banner and placeholder cards.
 pub fn skeleton() -> adw::NavigationPage {
@@ -176,6 +177,7 @@ pub fn screen(app: &App, store: &Store, s: &Node) -> gtk::Widget {
 
     let kids = store.children(&s.id);
     let mut body: Vec<&Node> = Vec::new();
+    let mut tabs: Option<&Node> = None;
     for k in &kids {
         if k.hidden() {
             continue;
@@ -187,6 +189,7 @@ pub fn screen(app: &App, store: &Store, s: &Node) -> gtk::Widget {
                 tv.add_top_bar(&t);
             }
             "actionbar" => tv.add_bottom_bar(&actionbar(app, store, k)),
+            "tabbar" => tabs = Some(k),
             _ => body.push(k),
         }
     }
@@ -197,6 +200,10 @@ pub fn screen(app: &App, store: &Store, s: &Node) -> gtk::Widget {
             bar.set_center_widget(Some(&action_button(app, &s.id, p, true)));
             tv.add_bottom_bar(&bar);
         }
+    }
+    // Home's bar of tabs: the last bottom bar, under the action bar.
+    if let Some(t) = tabs {
+        tv.add_bottom_bar(&tabbar(app, store, t));
     }
 
     // One scrolling region: a list that fills the screen scrolls by itself; everything else in one scrolled column.
@@ -355,7 +362,14 @@ pub fn node(app: &App, store: &Store, n: &Node) -> gtk::Widget {
                 p.set_content_fit(gtk::ContentFit::Contain);
             }
             let banner = n.str("role").as_deref() == Some("banner") || r == "asset:banner";
-            p.set_height_request(if banner { if app.narrow.get() { BANNER_HEIGHT_NARROW } else { BANNER_HEIGHT } } else { 220 });
+            if banner {
+                // Home's banner, at the top: as wide as the column, its height following its own
+                // shape (a picture is measured height-for-width), so it scales with the window.
+                p.set_height_request(BANNER_MIN_HEIGHT);
+                p.set_valign(gtk::Align::Start);
+            } else {
+                p.set_height_request(220);
+            }
             p.set_alternative_text(n.str("alt").as_deref());
             p.add_css_class("gn-banner");
             p.upcast()
@@ -869,6 +883,75 @@ fn card(app: &App, n: &Node) -> gtk::Button {
     }
     register_activator(app, &n.id, &b);
     b
+}
+
+/// Home's three modes (`tabbar`): one strip of tabs joined edge to edge along the bottom, each
+/// with its faint map preview, icon, title and a line of state. The `current` tab (the screen
+/// that is open) is a darker shade with an ember line on top; tapping another opens it.
+fn tabbar(app: &App, store: &Store, n: &Node) -> gtk::Widget {
+    let bar = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    bar.set_homogeneous(true);
+    bar.add_css_class("gn-tabbar");
+    let current = n.str("current").unwrap_or_default();
+    for k in store.children(&n.id) {
+        if k.hidden() {
+            continue;
+        }
+        let b = gtk::Button::new();
+        b.add_css_class("gn-tab");
+        let is_current = k.bool("selected").unwrap_or(false) || (!current.is_empty() && k.id.ends_with(&format!("/{current}")));
+        if is_current {
+            b.add_css_class("gn-tab-current");
+        }
+        let o = gtk::Overlay::new();
+        if let Some(r) = k.str("image") {
+            let p = picture(app, &r, 480, 120);
+            p.add_css_class("gn-tab-pic");
+            p.set_height_request(if app.narrow.get() { 48 } else { 60 });
+            o.set_child(Some(&p));
+        } else {
+            let filler = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            filler.set_height_request(if app.narrow.get() { 48 } else { 60 });
+            o.set_child(Some(&filler));
+        }
+        let t = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        t.set_valign(gtk::Align::Center);
+        t.set_halign(gtk::Align::Center);
+        let head = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        head.set_halign(gtk::Align::Center);
+        if let Some(i) = k.str("icon").and_then(|i| icon(&i)) {
+            head.append(&gtk::Image::from_icon_name(i));
+        }
+        let title = label(&k.title(), &["gn-tab-title"]);
+        title.set_wrap(false);
+        title.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        head.append(&title);
+        t.append(&head);
+        if let Some(sub) = k.str("subtitle").filter(|_| !app.narrow.get()) {
+            let l = label(&sub, &["gn-tab-sub"]);
+            l.set_wrap(false);
+            l.set_xalign(0.5);
+            l.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            t.append(&l);
+        }
+        o.add_overlay(&t);
+        b.set_child(Some(&o));
+        b.set_tooltip_text(k.str("subtitle").as_deref());
+        if let Some(p) = k.obj("primary").cloned() {
+            let w = Rc::downgrade(app);
+            let id = k.id.clone();
+            b.connect_clicked(move |_| {
+                if !is_current {
+                    if let Some(a) = w.upgrade() {
+                        invoke(&a, &id, &p);
+                    }
+                }
+            });
+        }
+        register_activator(app, &k.id, &b);
+        bar.append(&b);
+    }
+    bar.upcast()
 }
 
 /// A short grid of cards (home tiles, modes). Long ones are `list` with `display: cards`.

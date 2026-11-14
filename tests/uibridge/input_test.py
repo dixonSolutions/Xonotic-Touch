@@ -86,6 +86,8 @@ engine = os.environ.get("UIB_ENGINE", os.path.join(ROOT, "build", "bin", "xonoti
 cmd = ["timeout", str(int(t + 60)), engine, "-xonotic", "-nosound", "-basedir", os.environ["UIB_BASEDIR"], "-userdir", ud,
        "+vid_width", W, "+vid_height", H, "+vid_fullscreen", "0", "+vid_touchscreen", "1" if mode == "touch" else "0",
        "+set", "menu_mouse_absolute", "1", "+set", "touch_firstrun_done", "1", "+set", "_touch_assets_ready", "1",
+       # a player who has a name: no welcome dialog over the screens under test
+       "+set", "touch_profile_done", "1",
        "+set", "net_slist_lan_only", "1", "+set", "cl_curl_enabled", "0", "+exec", "input.cfg"]
 if subprocess.run(["unshare", "-rn", "true"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
     cmd = ["unshare", "-rn"] + cmd
