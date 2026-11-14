@@ -726,6 +726,20 @@ class ViewRenderer(
         return e
     }
 
+    /**
+     * A map row's download state (`maps` cells `state`, `progress`; docs/DATA_FETCH.md):
+     * the label its tile shows (null: it can be played) and the bar's fraction while it
+     * downloads (0 while it waits its turn).
+     */
+    private fun mapState(cells: Map<String, Any?>): Pair<String?, Double?> {
+        val progress = cells.num("progress", -1.0)
+        return when (cells.str("state")) {
+            "downloading" -> if (progress >= 0) Pair("${(progress * 100).toInt()}%", progress.coerceAtMost(1.0)) else Pair("Downloading", 0.0)
+            "missing" -> Pair("Not downloaded", null)
+            else -> Pair(null, null)
+        }
+    }
+
     private fun badge(b: Map<String, Any?>): TextView = Kit.text(ctx, b.str("text"), Theme.SP_CAPTION, toneColor(b.str("tone")), bold = true).apply {
         Kit.icon(this, b.str("icon"), toneColor(b.str("tone")), 16f)
         compoundDrawablePadding = dp(4f)
@@ -1219,7 +1233,8 @@ class ViewRenderer(
         val vl: VirtualList
         if (cards) {
             val gap = dp(14f)
-            class CardCell(val card: FrameLayout, val img: RoundImage, val titleV: TextView, val sub: TextView, val badges: FlowGrid) : VirtualList.Cell(card) {
+            class CardCell(val card: FrameLayout, val img: RoundImage, val titleV: TextView, val sub: TextView, val badges: FlowGrid,
+                           val state: TextView, val bar: ProgressBar) : VirtualList.Cell(card) {
                 override fun recycled() { img.tag = null; img.set(null) }
             }
             vl = VirtualList(ctx, id, request, 60, grid = true, minCellPx = dp(props.num("minItem", 220.0).toFloat()) + gap,
@@ -1235,6 +1250,13 @@ class ViewRenderer(
                     c.img.aspect = aspect(mapOf("aspect" to e.props.str("aspectItem", "16:9")), 16f / 9f)
                     val ref = row?.str("image") ?: ""
                     if (ref.isEmpty()) { if (row == null) c.img.set(null) else c.img.none() } else picture(c.img, ref)
+                    // a map still to download (cells state, progress; docs/DATA_FETCH.md): dimmed, a label, a bar
+                    val ms = mapState(cells)
+                    c.img.alpha = if (ms.first != null) 0.5f else 1f
+                    c.state.text = ms.first ?: ""
+                    c.state.visibility = if (ms.first != null) View.VISIBLE else View.GONE
+                    c.bar.visibility = if (ms.second != null) View.VISIBLE else View.GONE
+                    c.bar.progress = ((ms.second ?: 0.0) * 1000).toInt()
                     c.card.isSelected = row != null && e.props["selected"].list().contains(row.str("key"))
                     (c.card.layoutParams as? ViewGroup.MarginLayoutParams)?.let { lp ->
                         // `rows: N`: fixed tiles in rows that scroll sideways
@@ -1244,7 +1266,7 @@ class ViewRenderer(
                         val h = f?.height ?: ViewGroup.LayoutParams.WRAP_CONTENT
                         if (lp.width != w || lp.height != h) { lp.width = w; lp.height = h; c.card.layoutParams = lp }
                     }
-                    c.card.contentDescription = row?.let { "${c.titleV.text}. ${c.sub.text}" } ?: "Loading"
+                    c.card.contentDescription = row?.let { listOf(c.titleV.text, ms.first ?: "", c.sub.text).filter { it.isNotEmpty() }.joinToString(". ") } ?: "Loading"
                     bindTap(c.card, e, id, row)
                 },
                 makeCell = { _ ->
@@ -1257,12 +1279,25 @@ class ViewRenderer(
                     val s = Kit.text(ctx, "", Theme.SP_CAPTION, Theme.TEXT_MUTED, lines = 1)
                     val b = FlowGrid(ctx, 0, dp(4f), wrap = true)
                     texts.addView(t); texts.addView(s); texts.addView(b)
-                    col.addView(img); col.addView(texts)
+                    // the picture with a download label and bar over it (no height of their own)
+                    val pic = FrameLayout(ctx)
+                    pic.addView(img, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                    val st = Kit.text(ctx, "", Theme.SP_CAPTION, Theme.TEXT, bold = true, lines = 1).apply {
+                        setPadding(dp(8f), dp(2f), dp(8f), dp(2f))
+                        background = Theme.rounded(0xD9091022.toInt(), dp(10f).toFloat(), 0, Color.TRANSPARENT)
+                        visibility = View.GONE
+                    }
+                    pic.addView(st, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.START).apply { setMargins(dp(6f), dp(6f), dp(6f), 0) })
+                    val bar = ProgressBar(ctx, null, android.R.attr.progressBarStyleHorizontal).apply {
+                        max = 1000; progressTintList = android.content.res.ColorStateList.valueOf(Theme.EMBER); visibility = View.GONE
+                    }
+                    pic.addView(bar, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(4f), Gravity.BOTTOM))
+                    col.addView(pic); col.addView(texts)
                     card.addView(col)
                     val lp = androidx.recyclerview.widget.RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                     lp.setMargins(gap / 2, gap / 2, gap / 2, gap / 2)
                     card.layoutParams = lp
-                    CardCell(card, img, t, s, b)
+                    CardCell(card, img, t, s, b, st, bar)
                 })
             vl.cellGap = gap
             vl.cellChrome = {

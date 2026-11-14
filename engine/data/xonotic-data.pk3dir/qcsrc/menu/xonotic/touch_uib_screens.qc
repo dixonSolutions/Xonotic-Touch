@@ -1329,6 +1329,7 @@ void UIB_Build(string id)
 		case "credits": UIB_BuildCredits(); return;
 		case "dialog.quit": UIB_BuildQuit(); return;
 		case "dialog.joinfail": UIB_BuildJoinFail(); return;
+		case "data.hold": TouchData_BuildHold(); return; // Touch: a map or join held for its download
 	}
 	if (substring(id, 0, 8) == "settings" || substring(id, 0, 4) == "mods")
 		UIB_BuildSettings(id);
@@ -1414,6 +1415,7 @@ void UIB_Tick()
 	UIB_LanPopupTick();
 	UIB_JoinFailTick();
 	UIB_JoinTick();
+	TouchData_UIBTick();
 	// time-varying screens
 	string top = UIB_TopScreen();
 	if ((top == "home" || top == "mp") && uib_gettime(1) > uib_next_tick)
@@ -1448,6 +1450,8 @@ void UIB_Action(string node, string a, string payload)
 	if (UIB_SettingsAction(node, a, payload))
 		return;
 	if (UIB_JoinAction(a))
+		return;
+	if (TouchData_Action(a))
 		return;
 	switch (a)
 	{

@@ -34,5 +34,12 @@ float TouchData_MapProgress(string map);
 /** "Getting the rest of the maps: 180 of 300 MB", or "" when there is nothing to say. */
 string TouchData_StatusLine();
 
+/** UI bridge: the dialog over the menu while a map or a join is held for its
+    map (screen "data.hold": progress and Cancel). Each bridge tick. */
+void TouchData_UIBTick();
+void TouchData_BuildHold();
+/** "data.cancel": drop the held command (touch_data_cancel). */
+bool TouchData_Action(string a);
+
 /** Once a frame (menu.qc): packs that landed make the map list stale. */
 void TouchData_MenuFrame();

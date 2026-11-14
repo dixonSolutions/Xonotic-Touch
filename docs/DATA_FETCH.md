@@ -182,6 +182,15 @@ and no `.bsp`. While `touch_data_state` is `fetching`, `paused`, `waiting` or
   `touch_datafetch.h` is the same for a native front end, and
   `qcsrc/menu/xonotic/touch_data.qh` for QuakeC (`TouchData_StatusLine()`
   gives "Getting the rest of the maps: 180 of 300 MB").
+- Every renderer of the UI bridge (QuakeC, GTK, Kotlin) draws a map tile that
+  is not `ready` dimmed with a label on its picture: `Downloading`, the wanted
+  map's percent with a bar along the picture's bottom, or `Not downloaded`.
+- While `touch_data_pending` holds a command, the menu shows the dialog
+  `data.hold` (`touch_data.qc`): "Getting the map boil", then joining or
+  starting, the wanted map's MB and bar, and Cancel (action `data.cancel`,
+  which runs `touch_data_cancel`; the map keeps downloading with the rest).
+  Back or a tap outside only hides it: the command still runs when the map
+  is here.
 - A join that waits for its map is not a failed join: `touch_joinfail.c` stays
   quiet while `touch_data_pending` holds the `connect`.
 
