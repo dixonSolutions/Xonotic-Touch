@@ -323,3 +323,16 @@ fn the_player_answers_a_choice_like_the_engine() {
     let r = p.handle(&obj(&c.row("mp/join", &key, "select")));
     assert_eq!(r[0]["t"], "error");
 }
+
+#[test]
+fn compact_home_joins_singleplayer_and_campaign_into_play() {
+    let s = snap("home-compact.json");
+    let cards = s.children("home/tiles");
+    assert_eq!(cards.iter().map(|c| c.title()).collect::<Vec<_>>(), ["Play", "Multiplayer"]);
+    assert_eq!(s.node("home/tiles").unwrap().f64("maxColumns"), Some(2.0), "one row of two, never stacked");
+    assert_eq!(snap("home.json").node("home/tiles").unwrap().f64("maxColumns"), Some(3.0), "one row of three");
+    let actions: Vec<String> = cards[0].arr("actions").iter().filter_map(|a| a["id"].as_str().map(str::to_string)).collect();
+    assert_eq!(actions, ["sp", "campaign"], "Play carries Singleplayer and Campaign");
+    assert!(cards.iter().all(|c| c.bool("featured") == Some(true) && c.str("image").is_some()));
+    assert_eq!(s.children("home")[0].str("role").as_deref(), Some("banner"));
+}

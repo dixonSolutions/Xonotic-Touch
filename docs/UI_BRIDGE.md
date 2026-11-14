@@ -27,6 +27,22 @@ Owner rules that the descriptions follow and renderers must not undo:
   game's own data: **Singleplayer** (the last map played), **Campaign** (the next level),
   **Multiplayer** (with "N servers · M players" once the list is known). Settings, Credits
   and Quit are the screen's `actions` (small, in the header), never cards. Nothing else.
+- **Home's cards are one horizontal row at every size**: side by side, never stacked,
+  never scrolled down to. A featured `grid` shows all its cards (`maxColumns` of them)
+  in one row. To make them fit a small window a renderer shrinks, in this order: the
+  banner (it takes what is left once each card has a picture of at least 96 dp and its
+  two lines of text, up to 30% of the page, never under 44 dp), then the cards'
+  pictures (cropped to fit, never squeezed; at least 72 dp), then it shortens subtitles
+  with an ellipsis; titles stay at 16 sp or more. Scrolling the row sideways is the last
+  resort; a vertical layout is not an option.
+- **The compact breakpoint.** A renderer that reports `widthClass: "compact"` (under
+  600 dp wide) cannot seat three cards comfortably and is described a row of **two**
+  (`maxColumns: 2`): **Play**, whose `actions` are Singleplayer (`sp`) and Campaign
+  (`campaign`), drawn as two buttons inside the card (side by side while their labels
+  fit, else one under the other), beside Multiplayer. Every wider renderer gets the row
+  of three (`maxColumns: 3`), down to a 640 x 360 dp window. The menu VM decides;
+  renderers only send their caps (again on a resize or a rotation) and draw what is
+  described, including a card's `actions`.
 - Singleplayer is a local game: mode, map, bots. Nothing on it is about the network, and
   the engine opens no network socket for it (docs/LAN.md). Campaign is its own screen.
 - Multiplayer is one screen: a search field, one row of checkboxes (LAN, Empty, Full,
@@ -518,6 +534,24 @@ constant that stands for "where the console button probably is".
 
 In a match the button is placed by the engine beside MENU, away from CHAT and the score
 list (`touch_shellbtn.c`); the HUD reads `_touch_shell_rect` for the same reason.
+
+### 4.13 One loading presentation
+
+While a game is joined or a map loads, the same facts must show once. The engine's own
+loading screen draws a picture, a bar, and text: the step or connect status (the line at
+the bottom, `cl_connect_status` / the loading stack), the download lines of the infobar
+("Downloading ...", size, speed, time left) and console notify lines. A front end that
+shows its own loading card (the described `loading` screen and `app.busy`: stage, file,
+progress, detail, Cancel; a failed join arrives as section 4.8's `_join_fail_*`) sets
+the cvar **`_touch_loading_card 1`** when the card goes up and `0` when it leaves. While
+it is 1 and a join or load is under way (`TouchUIB_LoadingCardUp`), the engine leaves out
+its status line, its infobar download lines and its notify lines (one `// Touch:` line
+each in `cl_screen.c` and `console.c`) and keeps the picture and the bar. Nothing is
+removed from the console: the console button shows the whole log. The value hides
+nothing outside a join or load, so a card that forgets to reset it does no harm.
+
+The QuakeC renderer does not set it: during a join the engine's loading screen covers the
+menu, so there the engine's line is the only presentation.
 
 ### 4.11 Settings: vertical tabs with horizontal sub-tabs
 

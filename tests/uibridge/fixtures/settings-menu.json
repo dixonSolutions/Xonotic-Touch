@@ -103,7 +103,7 @@
     "id": "home/tiles",
     "type": "grid",
     "props": {
-     "minItem": 240,
+     "minItem": 200,
      "maxColumns": 3
     },
     "children": [
@@ -176,8 +176,7 @@
      "kind": "page"
     },
     "children": [
-     "settings/split",
-     "settings/advanced"
+     "settings/split"
     ]
    },
    {
@@ -326,8 +325,8 @@
     "children": [
      "settings/split/menu/size",
      "settings/split/menu/uib",
-     "settings/split/menu/classic",
-     "settings/split/menu/quitdialog"
+     "settings/split/menu/quitdialog",
+     "settings/split/menu/classic"
     ]
    },
    {
@@ -357,16 +356,26 @@
     "children": []
    },
    {
-    "id": "settings/split/menu/classic",
-    "type": "section",
+    "id": "settings/split/menu/quitdialog",
+    "type": "switch",
     "props": {
-     "title": "Classic menu",
-     "subtitle": "Screens of the classic menu; closing one brings you back here"
+     "label": "Ask before quitting",
+     "bind": "cvar:menu_showquitdialog"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/menu/classic",
+    "type": "row",
+    "props": {
+     "label": "Classic menu",
+     "wrap": true
     },
     "children": [
      "settings/split/menu/classic/advanced",
      "settings/split/menu/classic/media",
-     "settings/split/menu/classic/profile"
+     "settings/split/menu/classic/profile",
+     "settings/split/menu/classic/credits"
     ]
    },
    {
@@ -387,7 +396,7 @@
     "id": "settings/split/menu/classic/media",
     "type": "button",
     "props": {
-     "label": "Demos, screenshots and music",
+     "label": "Media",
      "action": {
       "id": "classic.media",
       "label": "Demos, screenshots and music",
@@ -401,7 +410,7 @@
     "id": "settings/split/menu/classic/profile",
     "type": "button",
     "props": {
-     "label": "Player model and statistics",
+     "label": "Player model",
      "action": {
       "id": "classic.profile",
       "label": "Player model and statistics",
@@ -412,11 +421,16 @@
     "children": []
    },
    {
-    "id": "settings/split/menu/quitdialog",
-    "type": "switch",
+    "id": "settings/split/menu/classic/credits",
+    "type": "button",
     "props": {
-     "label": "Ask before quitting",
-     "bind": "cvar:menu_showquitdialog"
+     "label": "Xonotic credits",
+     "action": {
+      "id": "classic.credits",
+      "label": "Everyone who made Xonotic",
+      "icon": "credits"
+     },
+     "style": "secondary"
     },
     "children": []
    },
@@ -428,20 +442,6 @@
      "label": "Mods",
      "icon": "mods",
      "subtitle": "Client and server mods, pages from mods"
-    },
-    "children": []
-   },
-   {
-    "id": "settings/advanced",
-    "type": "button",
-    "props": {
-     "label": "Advanced settings",
-     "action": {
-      "id": "settings.advanced",
-      "label": "Advanced settings",
-      "icon": "more"
-     },
-     "style": "link"
     },
     "children": []
    }

@@ -71,3 +71,7 @@ columnview.gn-dense { font-size: 14px; }
 /* The map picker: tiles in rows that scroll sideways; one line for the name. */
 .gn-card .gn-tile-text { padding: 6px 10px 8px 10px; }
 .gn-card .gn-tile-text .gn-card-title { font-size: 14px; }
+
+/* A card's own actions (the compact Home's Play card): two buttons that share the card's width. */
+.gn-card .gn-featured-text button { min-width: 0; padding-left: 10px; padding-right: 10px; }
+.gn-card .gn-featured-text button label { font-size: 15px; }

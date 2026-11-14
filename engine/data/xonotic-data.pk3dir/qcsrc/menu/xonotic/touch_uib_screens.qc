@@ -289,9 +289,34 @@ void UIB_BuildHome()
 	if (!uib_camp_loaded)
 		UIB_CampaignLoad();
 	UIB_ServerSummary();
+	// Home's cards are always one horizontal row, never stacked and never
+	// scrolled down to. The compact breakpoint: a renderer too narrow for three
+	// cards side by side (widthClass compact, under 600 dp) gets a row of two:
+	// Play, with Singleplayer and Campaign as its two actions, beside
+	// Multiplayer. Wider renderers get the row of three.
+	bool compact = (uib_caps("widthClass") == "compact" || uib_narrow);
 	UIB_Open("tiles", "grid");
-		uib_f("minItem", 240);
-		uib_f("maxColumns", 3);
+		uib_f("minItem", (compact ? 150 : 200));
+		uib_f("maxColumns", (compact ? 2 : 3));   // one row: every card of the grid side by side
+		if (compact)
+		{
+			UIB_Open("play", "card");
+				uib_s("title", _("Play"));
+				if (campaign_entries > 0)
+					uib_s("subtitle", sprintf(_("%s · Campaign level %d of %d"), UIB_MapTitle(map), uib_camp_index + 1, campaign_entries));
+				else
+					uib_s("subtitle", sprintf(_("%s · %s"), UIB_MapTitle(map), UIB_ModeName(mode)));
+				uib_s("icon", "play");
+				uib_s("image", strcat("pk3:maps/", map));
+				uib_s("aspect", "16:9");
+				uib_b("featured", 1);
+				uib_j("primary", UIB_A("sp", _("Singleplayer"), "singleplayer"));
+				uib_push("actions", UIB_A("sp", _("Singleplayer"), "singleplayer"));
+				uib_push("actions", UIB_A("campaign", _("Campaign"), "trophy"));
+			UIB_Close();
+		}
+		else
+		{
 		UIB_Open("sp", "card");
 			uib_s("title", _("Singleplayer"));
 			uib_s("subtitle", sprintf(_("%s · %s · %d bots"), UIB_MapTitle(map), UIB_ModeName(mode), bots));
@@ -319,6 +344,7 @@ void UIB_BuildHome()
 			uib_b("featured", 1);
 			uib_j("primary", UIB_A("campaign", _("Open"), "chevron"));
 		UIB_Close();
+		}
 		UIB_Open("mp", "card");
 			uib_s("title", _("Multiplayer"));
 			uib_s("subtitle", (uib_mp_summary != "") ? uib_mp_summary : _("Join a server, or create a game"));
@@ -1141,7 +1167,6 @@ void UIB_BuildCredits()
 	UIB_Close();
 	UIB_Section("xonotic", "Xonotic", false);
 		UIB_Text("text", _("Xonotic is made by the Xonotic team and its many contributors."), "");
-		UIB_Button("list", _("Everyone who made Xonotic"), UIB_A("credits.full", _("Everyone who made Xonotic"), "credits"), "link");
 	UIB_Close();
 	UIB_Section("licence", _("Licence"), false);
 		UIB_Text("text", _("The engine and game code are free software under the GNU General Public License, version 2 or later. Game data is under its authors' licences (see each pack's licence file)."), "caption");
@@ -1401,7 +1426,6 @@ void UIB_Action(string node, string a, string payload)
 		case "disconnect": localcmd("\ndisconnect\n"); return;
 		// disconnect alone does not stop a join the server has not answered yet
 		case "loading.cancel": localcmd("\ndisconnect\n_touch_cancel_join\n"); return;
-		case "credits.full": m_goto("Credits", false); return;
 	}
 }
 

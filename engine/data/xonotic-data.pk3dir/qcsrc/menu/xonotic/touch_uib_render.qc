@@ -554,25 +554,66 @@ float RB_LayoutGrid(string id, float x, float y, float w, float region)
 	int cols = max(1, floor((w + gap) / (minw + gap)));
 	if (stof(uib_get(id, "maxColumns")) > 0) cols = min(cols, stof(uib_get(id, "maxColumns")));
 	bool featured = n && uib_get(first, "featured") == "1";
-	// the big cards of Home: side by side whenever three fit at 150 dp each
-	if (featured && n <= 4 && w >= n * D(150) + (n - 1) * gap) cols = n;
+	float maxc = stof(uib_get(id, "maxColumns"));
+	// the big cards of Home: always one row, side by side (never stacked)
+	if (featured && n <= 4 && (maxc <= 0 || n <= maxc)) cols = n;
 	float cw = (w - (cols - 1) * gap) / cols;
 	float rowy = y, rowh = 0;
 	// ... and as tall as the page allows, so Home needs no scrolling
 	float fit = rg_s[0].y - y - D(30) - D(62);
 	int rowfirst = rb_n;
 	// one image height for the whole grid, so images and icons line up
-	bool anyimg = false;
+	bool anyimg = false, anyactions = false, actstack = false;
+	float actextra = 0;
 	for (int i = 0; i < n; ++i)
-		if (uib_get(uib_child(id, i), "image") != "") anyimg = true;
+	{
+		string gc = uib_child(id, i);
+		if (uib_get(gc, "image") != "") anyimg = true;
+		int gna = stof(uib_get(gc, "actions.#"));
+		if (gna > 0)
+		{
+			anyactions = true;
+			// the card's buttons sit side by side while their labels fit, else one
+			// under the other inside the card
+			float each = (cw - D(20) - (gna - 1) * D(8)) / gna;
+			for (int ai = 0; ai < gna; ++ai)
+				if (RB_ButtonW(uib_get(gc, sprintf("actions.%d.label", ai)), "") - D(22) > each) actstack = true;
+			actextra = max(actextra, actstack ? gna * D(46) + D(4) : D(54));
+		}
+	}
 	for (int i = 0; i < n; ++i)
 	{
 		string c = uib_child(id, i);
 		float ih = anyimg ? RB_AspectH(uib_get(c, "aspect"), cw) * 0.62 : 0;
 		if (featured && anyimg)
-			ih = (cols == n) ? bound(D(84), fit, RB_AspectH(uib_get(c, "aspect"), cw)) : min(RB_AspectH(uib_get(c, "aspect"), cw), D(150));
+		{
+			if (cols == n)
+				ih = bound(D(72), fit - actextra, RB_AspectH(uib_get(c, "aspect"), cw));
+			else
+			{
+				// stacked (the compact Home): every card's picture shares the height the page has
+				float each = (rg_s[0].y - y - D(30) - n * D(62) - (n - 1) * gap - (anyactions ? D(54) : 0)) / n;
+				ih = bound(D(72), each, min(RB_AspectH(uib_get(c, "aspect"), cw), D(190)));
+			}
+		}
 		if (i % cols == 0) rowfirst = rb_n;
 		float hh = RB_LayoutCard(c, x + (i % cols) * (cw + gap), rowy, cw, region, ih);
+		int cna = stof(uib_get(c, "actions.#"));
+		if (featured && cna > 0)
+		{
+			// the card's actions (Home's Play card: Singleplayer, Campaign): buttons
+			// across the bottom of the card
+			float cx0 = x + (i % cols) * (cw + gap) + D(10);
+			float bwid = (cw - D(20) - (cna - 1) * D(8)) / cna;
+			for (int ai = 0; ai < cna; ++ai)
+			{
+				entity ab;
+				if (actstack) ab = RB_Item("button", c, region, eX * cx0 + eY * (rowy + hh + ai * D(46)), eX * (cw - D(20)) + eY * D(40));
+				else ab = RB_Item("button", c, region, eX * (cx0 + ai * (bwid + D(8))) + eY * (rowy + hh), eX * bwid + eY * D(44));
+				if (ab) { ab.rb_style = ai ? 2 : 1; RB_SetAction(ab, c, strcat("actions.", ftos(ai))); ab.rb_style = ai ? 2 : 1; strcpy(ab.rb_icon, ""); }
+			}
+		}
+		if (featured && anyactions) hh += actextra;
 		rowh = max(rowh, hh);
 		if (i % cols == cols - 1 || i == n - 1)
 		{
@@ -1027,7 +1068,13 @@ float RB_LayoutNode(string id, float x, float y, float w, float region)
 			float ih = RB_AspectH(uib_get(id, "aspect"), w);
 			if (uib_get(id, "role") == "banner")
 				// the Home banner: about a quarter of the page, never a thin strip
-				ih = min(ih, bound(D(84), rg_s[0].y * 0.3, D(260)));
+			{
+				// the banner gives way before the cards do: the cards keep a 96 dp
+				// picture and their two lines of text, the banner takes what is left
+				// (never under 44 dp), up to 30% of the page
+				float room = rg_s[0].y - D(14 + 16 + 30 + 62 + 96);
+				ih = min(ih, bound(D(44), min(rg_s[0].y * 0.3, room), D(260)));
+			}
 			else if (uib_get(id, "fit") == "contain") ih = min(ih, D(120));
 			e = RB_Item("image", id, region, eX * x + eY * y, eX * w + eY * ih);
 			if (e) { strcpy(e.rb_img, uib_get(id, "ref")); e.rb_sel = uib_get(id, "fit") == "contain"; }
@@ -1241,7 +1288,13 @@ void RB_Layout()
 	float hdr = D(58);
 	rb_narrow = W < D(600);
 	rb_short = (H - hdr - D(66)) < D(330);
-	uib_narrow = rb_narrow;
+	if (uib_narrow != rb_narrow)
+	{
+		// the compact breakpoint changed (first layout, a resize, a rotation):
+		// the screens that describe themselves by it (Home, Settings) follow
+		uib_narrow = rb_narrow;
+		UIB_RebuildAll();
+	}
 	for (int r = 0; r < RB_REGIONS; ++r) { rg_o[r] = '0 0 0'; rg_s[r] = '0 0 0'; rg_content[r] = 0; rg_max[r] = 0; }
 	string sc = rb_top;
 	// header: back, title, actions
@@ -2239,7 +2292,13 @@ void RB_DrawItem(entity e, int idx)
 	{
 		// the keyboard cursor on a row of the focused list
 		RB_ListCell(e, bound(0, lc_cur[e.rb_list], lc_total[e.rb_list] - 1));
-		RB_Card(p + rb_cell_o - '2 2 0', rb_cell_s + '4 4 0', D(12), RB_BLUE, 0, RB_TEXT, 0.95 * a);
+		// four thin bars: RB_Card would paint its outline colour over the whole cell
+		vector ro = p + rb_cell_o - '2 2 0', rs = rb_cell_s + '4 4 0';
+		float rt = max(2, D(2));
+		RB_Fill(ro, eX * rs.x + eY * rt, RB_TEXT, 0.95 * a);
+		RB_Fill(ro + eY * (rs.y - rt), eX * rs.x + eY * rt, RB_TEXT, 0.95 * a);
+		RB_Fill(ro, eX * rt + eY * rs.y, RB_TEXT, 0.95 * a);
+		RB_Fill(ro + eX * (rs.x - rt), eX * rt + eY * rs.y, RB_TEXT, 0.95 * a);
 	}
 	if (idx == rb_focusi && e.rb_kind != "table" && e.rb_kind != "cards")
 	{
