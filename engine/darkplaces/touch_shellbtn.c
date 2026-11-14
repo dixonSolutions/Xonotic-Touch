@@ -184,6 +184,15 @@ static void place(void)
 		float hh = s * cv("touch_pause_size", 0.060f) * scale * 0.5f;
 		float hw = hh * max(1.0f, cv("touch_pause_aspect", 2.9f));
 		float my = cv("touch_pause_y", 0.088f) * H;
+		float tx, ty, tw, th;
+		// the top bar's own slot (touch_topbar.h), when it lays the row out
+		if (TouchHUD_TopBarRect(0, &tx, &ty, &tw, &th))
+		{
+			bs = min(tw, th);
+			bx = tx + (tw - bs) * 0.5f;
+			by = ty + (th - bs) * 0.5f;
+			return;
+		}
 		if (cv("touch_handedness", 0) != 0)
 		{
 			mx = 1 - mx;

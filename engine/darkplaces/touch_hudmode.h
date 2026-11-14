@@ -12,14 +12,18 @@ copies, the native front ends and the tests share.
   - the MENU sheet's action list (TouchMode_Actions): Resume, Join, Move to
     spectators, Change team, Settings, Leave, each available, disabled or
     asking for a confirm, for the in-match menu and the native pause menus.
-  - the join swipe (TouchSwipe_*): the only way to join from spectating, a
-    mostly vertical swipe up that starts on the handle at the bottom middle.
+  - joining (TouchJoinDlg_*): Xonotic's own join dialog (the menu's Team
+    Selection: auto-select, the teams, spectate), which comes up by itself
+    for an observer when a match starts and from the MENU sheet after that.
+    There is no join gesture and no join button on the HUD.
 
 No engine headers: scripts/test-touch-hudmode.sh compiles this alone. The
 QuakeC side mirrors the numbers in qcsrc/client/touch_mode.qh.
 */
 #ifndef TOUCH_HUDMODE_H
 #define TOUCH_HUDMODE_H
+
+#include <string.h>
 
 #include "touch_spectate.h"
 
@@ -177,7 +181,7 @@ static inline const char *TouchMode_JoinName(int join)
 #define TOUCHCTL_VITALS   (1 << 16)
 #define TOUCHCTL_SPECBAR  (1 << 17)   // previous / follow-or-free / next
 #define TOUCHCTL_FLY      (1 << 18)   // up / down while free-flying
-#define TOUCHCTL_JOIN     (1 << 19)   // the join swipe handle
+#define TOUCHCTL_JOIN     (1 << 19)   // unused: joining is the join dialog (the bit stays reserved)
 #define TOUCHCTL_TOSPEC   (1 << 20)   // "move to spectators", when placed
 #define TOUCHCTL_READY    (1 << 21)
 #define TOUCHCTL_VOTECHIP (1 << 22)   // a vote called in the match
@@ -200,13 +204,13 @@ static inline int TouchMode_Controls(int mode, int flags)
 		c = TOUCHCTL_CHROME | TOUCHCTL_LOOK | TOUCHCTL_RESPAWN | TOUCHCTL_TOSPEC;
 		break;
 	case TOUCHMODE_OBSERVING:
-		c = TOUCHCTL_CHROME | TOUCHCTL_MOVE | TOUCHCTL_LOOK | TOUCHCTL_SPECBAR | TOUCHCTL_FLY | TOUCHCTL_JOIN;
+		c = TOUCHCTL_CHROME | TOUCHCTL_MOVE | TOUCHCTL_LOOK | TOUCHCTL_SPECBAR | TOUCHCTL_FLY;
 		break;
 	case TOUCHMODE_OUT_FREE:
 		c = TOUCHCTL_CHROME | TOUCHCTL_MOVE | TOUCHCTL_LOOK | TOUCHCTL_SPECBAR | TOUCHCTL_FLY;
 		break;
 	case TOUCHMODE_FOLLOWING:
-		c = TOUCHCTL_CHROME | TOUCHCTL_SPECBAR | TOUCHCTL_VITALS | TOUCHCTL_JOIN;
+		c = TOUCHCTL_CHROME | TOUCHCTL_SPECBAR | TOUCHCTL_VITALS;
 		break;
 	case TOUCHMODE_OUT:
 		c = TOUCHCTL_CHROME | TOUCHCTL_SPECBAR | TOUCHCTL_VITALS;
@@ -249,7 +253,7 @@ static inline const char *TouchAct_Id(int act)
 
 static inline const char *TouchAct_Label(int act)
 {
-	static const char *labels[TOUCHACT_COUNT] = { "Resume", "Join", "Move to spectators", "Change team", "Settings", "Leave" };
+	static const char *labels[TOUCHACT_COUNT] = { "Resume", "Join game", "Spectate", "Change team", "Settings", "Leave" };
 	return act >= 0 && act < TOUCHACT_COUNT ? labels[act] : "";
 }
 
@@ -289,16 +293,18 @@ static inline int TouchAct_State(const touchmode_t *m, int act)
 	}
 }
 
-// The console command an action runs. JOIN in a team game opens the stock
-// team selection (it has Auto as well as the teams); otherwise "join".
+// The console command an action runs. JOIN and TEAM open the join dialog
+// (touch_join_dialog: Xonotic's Team Selection, with auto-select, the teams
+// the server offers and spectate).
 static inline const char *TouchAct_Command(const touchmode_t *m, int act)
 {
+	(void)m;
 	switch (act)
 	{
 	case TOUCHACT_RESUME: return "togglemenu 0";
-	case TOUCHACT_JOIN: return (m->flags & TOUCHMODE_F_TEAMS) ? "menu_showteamselect" : "join";
+	case TOUCHACT_JOIN: return "touch_join_dialog";
 	case TOUCHACT_SPECTATE: return "spec";
-	case TOUCHACT_TEAM: return "menu_showteamselect";
+	case TOUCHACT_TEAM: return "touch_join_dialog";
 	case TOUCHACT_SETTINGS: return "menu_cmd settings";
 	case TOUCHACT_LEAVE: return "disconnect; g_campaign 0; menu_cmd sync; menu_cmd directmenu Welcome RESET";
 	default: return "";
@@ -306,107 +312,93 @@ static inline const char *TouchAct_Command(const touchmode_t *m, int act)
 }
 
 // ---------------------------------------------------------------------------
-// The join swipe. Positions in pixels of a w x h screen, times in seconds.
-// It starts only on the handle's zone at the bottom middle, has to go up a
-// fair way, mostly straight, at a swipe's speed, and is decided on release:
-// let go early, too slowly or too slanted and it springs back. A finger that
-// sets off sideways or down was looking around: it is handed to the look.
+// Joining. The join dialog is Xonotic's own (the menu's Team Selection:
+// "join 'best' team (auto-select)", the teams, "spectate"), finger-sized on a
+// touchscreen. It is owed once per match to a player who starts it as an
+// observer, and opens when that has lasted a moment and nothing else has the
+// screen; after that it is the MENU sheet's "Join game" (observing) and
+// "Change team". A game hosted on this device with no team to pick skips it:
+// the player goes straight in ("cmd join", a few tries while the server is
+// not ready for it). Picking Spectate, or being in the game once, settles
+// it: spectating later in the same match is the player's own choice.
 // ---------------------------------------------------------------------------
-#define TOUCHSWIPE_ZONE_HALF_W  0.11f   // of the width, either side of the middle
-#define TOUCHSWIPE_ZONE_H       0.16f   // of the height, from the bottom edge
-#define TOUCHSWIPE_DIST         0.14f   // of the height, upwards
-#define TOUCHSWIPE_SLANT        0.60f   // |dx| / dy at most (about 31 degrees)
-#define TOUCHSWIPE_SLOP         0.025f  // of the height: below this nothing is decided
-#define TOUCHSWIPE_MIN_SPEED    0.25f   // heights per second, on average
-#define TOUCHSWIPE_MAX_TIME     1.20f   // seconds from down to release
+#define TOUCHJOINDLG_SETTLE  0.75f  // seconds as an observer before it opens
+#define TOUCHJOINDLG_RETRY   1.5f   // a game hosted here: between "join" tries
+#define TOUCHJOINDLG_TRIES   6
 
-#define TOUCHSWIPE_TRACKING  0
-#define TOUCHSWIPE_ACCEPT    1
-#define TOUCHSWIPE_LOOK      2   // handed to the look: sideways or down
-#define TOUCHSWIPE_SHORT     3   // released before the threshold
-#define TOUCHSWIPE_SLOW      4
-#define TOUCHSWIPE_SLANTED   5
+#define TOUCHJOINDLG_NOTHING 0
+#define TOUCHJOINDLG_OPEN    1   // open the join dialog
+#define TOUCHJOINDLG_JOIN    2   // hosted here, no team to pick: join now
 
-typedef struct touchswipe_s
+typedef struct touchjoindlg_s
 {
-	float x0, y0, x, y;
-	double t0, t;
-	int state;
-} touchswipe_t;
+	int owed;       // this match still owes the observer the dialog
+	int tries;      // straight-in joins left (a game hosted here)
+	double since;   // an observer since, 0 = not
+	double next;    // nothing before this time
+} touchjoindlg_t;
 
-static inline int TouchSwipe_InZone(float x, float y, float w, float h)
+// One frame. local_game: the server is this process. campaign: the campaign
+// joins by itself. screen_free: the game has the screen (no menu, console,
+// chat sheet or CSQC pointer UI). enabled: touch_join_dialog allows it here.
+static inline int TouchJoinDlg_Frame(touchjoindlg_t *d, int mode, int flags, int local_game, int campaign, int screen_free, int enabled, double now)
 {
-	float dx = x - w * 0.5f;
-	return (dx < 0 ? -dx : dx) <= w * TOUCHSWIPE_ZONE_HALF_W && y >= h * (1.0f - TOUCHSWIPE_ZONE_H) && y <= h;
-}
-
-static inline void TouchSwipe_Begin(touchswipe_t *s, float x, float y, double t)
-{
-	s->x0 = s->x = x;
-	s->y0 = s->y = y;
-	s->t0 = s->t = t;
-	s->state = TOUCHSWIPE_TRACKING;
-}
-
-static inline int TouchSwipe_Move(touchswipe_t *s, float x, float y, double t, float h)
-{
-	float dx, up, adx;
-	if (s->state != TOUCHSWIPE_TRACKING)
-		return s->state;
-	s->x = x;
-	s->y = y;
-	s->t = t;
-	dx = x - s->x0;
-	up = s->y0 - y;
-	adx = dx < 0 ? -dx : dx;
-	// Off sideways or downwards before it went up: a look, not a join.
-	if (up < h * TOUCHSWIPE_SLOP && (adx > h * TOUCHSWIPE_SLOP || -up > h * TOUCHSWIPE_SLOP))
-		s->state = TOUCHSWIPE_LOOK;
-	else if (adx > up && adx > h * TOUCHSWIPE_SLOP)
-		s->state = TOUCHSWIPE_LOOK;
-	return s->state;
-}
-
-static inline int TouchSwipe_End(touchswipe_t *s, float x, float y, double t, float h)
-{
-	float dx, up, adx, dt;
-	if (TouchSwipe_Move(s, x, y, t, h) != TOUCHSWIPE_TRACKING)
-		return s->state;
-	dx = x - s->x0;
-	up = s->y0 - y;
-	adx = dx < 0 ? -dx : dx;
-	dt = (float)(t - s->t0);
-	if (up < h * TOUCHSWIPE_DIST)
-		s->state = TOUCHSWIPE_SHORT;
-	else if (adx > up * TOUCHSWIPE_SLANT)
-		s->state = TOUCHSWIPE_SLANTED;
-	else if (dt > TOUCHSWIPE_MAX_TIME || up / (dt > 0.001f ? dt : 0.001f) < h * TOUCHSWIPE_MIN_SPEED)
-		s->state = TOUCHSWIPE_SLOW;
-	else
-		s->state = TOUCHSWIPE_ACCEPT;
-	return s->state;
-}
-
-// How far up, 0 at the start, 1 at the threshold (more past it), for the
-// handle following the finger.
-static inline float TouchSwipe_Progress(const touchswipe_t *s, float h)
-{
-	float p = (s->y0 - s->y) / (h * TOUCHSWIPE_DIST);
-	return p < 0 ? 0 : p;
-}
-
-static inline const char *TouchSwipe_Name(int state)
-{
-	switch (state)
+	if (mode == TOUCHMODE_OFF || TouchMode_IsMatchEnd(mode))
 	{
-	case TOUCHSWIPE_TRACKING: return "tracking";
-	case TOUCHSWIPE_ACCEPT: return "accept";
-	case TOUCHSWIPE_LOOK: return "look";
-	case TOUCHSWIPE_SHORT: return "short";
-	case TOUCHSWIPE_SLOW: return "slow";
-	case TOUCHSWIPE_SLANTED: return "slanted";
-	default: return "?";
+		d->owed = 1;
+		d->tries = TOUCHJOINDLG_TRIES;
+		d->since = 0;
+		d->next = 0;
+		return TOUCHJOINDLG_NOTHING;
 	}
+	if (mode == TOUCHMODE_PLAYING || TouchMode_IsOutOfRound(mode))
+	{
+		d->owed = 0;
+		d->since = 0;
+		return TOUCHJOINDLG_NOTHING;
+	}
+	if (!TouchMode_IsSpectating(mode))
+	{
+		// dead: also what a client reads before its first scoreboard arrives
+		d->since = 0;
+		return TOUCHJOINDLG_NOTHING;
+	}
+	if (!d->owed || campaign)
+		return TOUCHJOINDLG_NOTHING;
+	if (!d->since)
+		d->since = now;
+	if (now - d->since < TOUCHJOINDLG_SETTLE || now < d->next || !screen_free)
+		return TOUCHJOINDLG_NOTHING;
+	if (local_game && !(flags & TOUCHMODE_F_TEAMS) && d->tries > 0)
+	{
+		d->tries--;
+		d->next = now + TOUCHJOINDLG_RETRY;
+		return TOUCHJOINDLG_JOIN;
+	}
+	d->owed = 0;
+	return enabled ? TOUCHJOINDLG_OPEN : TOUCHJOINDLG_NOTHING;
+}
+
+// The player answered the dialog (or the MENU sheet's Spectate): nothing is
+// owed any more in this match.
+static inline void TouchJoinDlg_Answered(touchjoindlg_t *d)
+{
+	d->owed = 0;
+}
+
+// What a choice in the dialog sends. Choices: "auto", "red", "blue",
+// "yellow", "pink", "spectate". teams: a team game. Returns "" for a choice
+// that is not one. The same commands the stock dialog's buttons run
+// (team_auto, team_red, ...; "cmd spectate"), without the menu toggles.
+static inline const char *TouchJoinDlg_Command(const char *choice, int teams)
+{
+	if (!strcmp(choice, "auto")) return teams ? "cmd selectteam auto; cmd join" : "cmd join";
+	if (!strcmp(choice, "red")) return "cmd selectteam red; cmd join red";
+	if (!strcmp(choice, "blue")) return "cmd selectteam blue; cmd join blue";
+	if (!strcmp(choice, "yellow")) return "cmd selectteam yellow; cmd join yellow";
+	if (!strcmp(choice, "pink")) return "cmd selectteam pink; cmd join pink";
+	if (!strcmp(choice, "spectate")) return "cmd spectate";
+	return "";
 }
 
 // ---------------------------------------------------------------------------

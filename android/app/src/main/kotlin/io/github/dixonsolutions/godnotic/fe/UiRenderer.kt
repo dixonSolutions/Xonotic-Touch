@@ -39,6 +39,8 @@ interface UiEvents {
     fun submit(node: String, value: Any?)
     fun row(list: String, key: String, kind: String = "activate")
     fun window(list: String, source: String, offset: Int, limit: Int, sort: String, desc: Boolean, filter: String)
+    /** The rows on screen; [touching] whether a finger is on the list (its source then holds still). */
+    fun visible(list: String, offset: Int, limit: Int, touching: Boolean?) {}
     fun image(ref: String, w: Int, h: Int)
     fun back()
 }

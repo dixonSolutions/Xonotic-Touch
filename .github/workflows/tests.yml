@@ -45,12 +45,20 @@ jobs:
         run: bash scripts/test-touch-spectate.sh
 
   touch-hudmode:
-    name: Touch HUD modes, menu actions and the join swipe
+    name: Touch HUD modes, menu actions and the join dialog
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Mode derivation, controls per mode, action list, swipe traces
+      - name: Mode derivation, controls per mode, action list, when the join dialog opens
         run: bash scripts/test-touch-hudmode.sh
+
+  touch-controls:
+    name: Touch top bar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Top bar layout without overlaps at three screen sizes
+        run: bash scripts/test-touch-controls.sh
 
   phone-assets:
     name: Phone pack repack tool

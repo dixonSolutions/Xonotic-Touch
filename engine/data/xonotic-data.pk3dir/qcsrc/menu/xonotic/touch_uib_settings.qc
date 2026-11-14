@@ -106,7 +106,6 @@ void UIB_BuildSettingsRoot()
 			UIB_Close();
 		}
 	UIB_Close();
-	UIB_Button("advanced", _("Advanced settings"), UIB_A("settings.advanced", _("Advanced settings"), "more"), "link");
 	UIB_Done();
 }
 
@@ -347,7 +346,6 @@ void UIB_SecPlayer()
 		uib_f("maxLength", 32);
 		UIB_Apply("reconnect");
 	UIB_Close();
-	UIB_Button("model", _("Player model"), UIB_A("settings.model", _("Player model"), "player"), "tonal");
 	}
 	UIB_Close();
 	if (UIB_SubTab("colours", _("Colours")))
@@ -408,13 +406,16 @@ void UIB_SecMenuSettings()
 {
 	UIB_Slider("size", _("Menu size"), "cvar:menu_touch_size", 0.7, 1.5, 0.05, "x", _("Applies the next time the menu opens"));
 	UIB_Switch("uib", _("New menu"), "cvar:menu_touch_uib", _("Off: the classic Xonotic menu. Turn it on again in its Settings > Mobile > Menu, or with menu_touch_uib 1 in the console"));
-	UIB_Section("classic", _("Classic menu"), false);
-		uib_s("subtitle", _("Screens of the classic menu; closing one brings you back here"));
-		UIB_Button("advanced", _("Advanced settings"), UIB_A("settings.advanced", _("Advanced settings"), "settings"), "secondary");
-		UIB_Button("media", _("Demos, screenshots and music"), UIB_A("classic.media", _("Demos, screenshots and music"), "folder"), "secondary");
-		UIB_Button("profile", _("Player model and statistics"), UIB_A("classic.profile", _("Player model and statistics"), "player"), "secondary");
-	UIB_Close();
 	UIB_Switch("quitdialog", _("Ask before quitting"), "cvar:menu_showquitdialog", "");
+	// the one place that leads to the classic menu's dialogs: one row, last on this tab
+	UIB_Open("classic", "row");
+		uib_s("label", _("Classic menu"));
+		uib_b("wrap", 1);
+		UIB_Button("advanced", _("Advanced settings"), UIB_A("settings.advanced", _("Advanced settings"), "settings"), "secondary");
+		UIB_Button("media", _("Media"), UIB_A("classic.media", _("Demos, screenshots and music"), "folder"), "secondary");
+		UIB_Button("profile", _("Player model"), UIB_A("classic.profile", _("Player model and statistics"), "player"), "secondary");
+		UIB_Button("credits", _("Xonotic credits"), UIB_A("classic.credits", _("Everyone who made Xonotic"), "credits"), "secondary");
+	UIB_Close();
 }
 
 // ---------------------------------------------------------------- mods
@@ -540,13 +541,19 @@ void UIB_SecContent(string k)
 void UIB_BuildModDetail()
 {
 	string sel = UIB_VM("mods.sel");
-	UIB_Lines(cvar_string("_lua_detail"));
-	string title = sel, state = "", ver = "", author = "", desc = "", err = "";
-	bool enabled = false;
+	string title = sel, state = "", ver = "", author = "", desc = "", err = "", icon = "";
+	string can = ""; // what turning it on lets it do, for the confirmation
+	bool enabled = false, fromlink = false;
 	if (!UIB_Screen("mods.detail", sel)) return;
+	UIB_Lines(cvar_string("_lua_detail"));
 	uib_s("kind", "detail");
+	// Tiers (docs/LUA_API.md): only the ones the mod declares, each with the
+	// mod's own reason. Standard comes with turning the mod on; the others are
+	// switches that grant or revoke at once; Full engine access asks first
+	// (the switch's confirm) and, for a mod installed from a link, a second
+	// time on a card of its own (the engine's "grant engine_full confirm").
 	UIB_Open("perms", "section");
-	uib_s("title", _("Permissions"));
+	uib_s("title", _("What it may do"));
 	uib_b("sticky", 1);
 	int np = 0;
 	for (int i = 0; i < uib_tmpn; ++i)
@@ -561,24 +568,72 @@ void UIB_BuildModDetail()
 			case "author": author = v; break;
 			case "description": desc = v; break;
 			case "error": err = v; break;
+			case "icon": icon = v; break;
 			case "enabled": enabled = v == "1"; break;
+			case "fromlink": fromlink = v == "1"; break;
 			case "perm":
-				UIB_Open(strcat("p", ftos(np++)), "text");
-					uib_s("body", sprintf("%s %s: %s", ((argv(2) == "1") ? "✓" : "✗"), v, argv(3)));
-					uib_s("style", argv(2) == "1" ? "body" : "caption");
+			{
+				bool on = argv(2) == "1";
+				string why = argv(3), name = v;
+				switch (v)
+				{
+					case "standard": name = _("Standard"); break;
+					case "gamerules": name = _("Game rules"); break;
+					case "internet": name = _("Internet"); break;
+					case "engine_full": name = _("Full engine access"); break;
+				}
+				can = strcat(can, (can == "" ? "" : "\n"), name, ": ", why);
+				UIB_Open(strcat("p", ftos(np++)), "switch");
+					uib_s("label", name);
+					uib_s("help", why);
+					if (v == "standard")
+					{
+						// on with the mod itself
+						uib_b("value", enabled);
+						uib_b("enabled", 0);
+					}
+					else
+					{
+						uib_s("bind", strcat("vm:mods.perm.", v));
+						uib_b("value", on);
+						if (v == "engine_full")
+							uib_j("confirm", sprintf("{\"title\":%s,\"body\":%s,\"ok\":%s,\"destructive\":true}",
+								uib_q(_("Full engine access?")),
+								uib_q(_("The mod can run any console command and change any setting except passwords and keys, as if you typed it. Allow this only for a mod you trust.")),
+								uib_q((fromlink ? _("Continue") : _("Allow")))));
+					}
 				UIB_Close();
+				if (v == "engine_full" && !on && fromlink && UIB_VM("mods.engine_pending") == sel)
+				{
+					// second step for a mod installed from a link
+					UIB_Open("engine_confirm", "card");
+						uib_s("title", _("This mod came from a link"));
+						uib_s("subtitle", _("Nobody checked it. With full access it can do anything you can type in the console."));
+						uib_s("icon", "warning");
+						uib_j("primary", sprintf("{\"id\":\"mod.perm.engine_confirm\",\"label\":%s,\"icon\":\"warning\",\"style\":\"destructive\",\"confirm\":{\"title\":%s,\"ok\":%s,\"destructive\":true}}",
+							uib_q(_("Give full access")), uib_q(_("Give full engine access?")), uib_q(_("Give full access"))));
+					UIB_Close();
+				}
 				break;
+			}
 		}
 	}
-	if (!np) UIB_Text("none", _("Asks for nothing"), "caption");
+	if (!np) UIB_Text("none", _("It declares nothing: it can only do what every mod can."), "caption");
 	UIB_Close();
 	UIB_Open("about", "preview");
 		uib_s("title", title);
 		uib_s("subtitle", sprintf("%s %s", ver, author));
 		uib_s("body", desc);
+		if (icon != "") uib_s("image", icon); // a picture only when the mod brings an icon
 		uib_push("attrs", UIB_Attr(_("State"), state, "info"));
 		if (err != "") uib_push("badges", UIB_Badge("error", err, "danger"));
-		uib_j("primary", enabled ? UIB_AS("mod.disable", _("Turn off"), "close", "secondary") : UIB_AS("mod.enable", _("Turn on"), "check", "primary"));
+		if (enabled)
+			uib_j("primary", UIB_AS("mod.disable", _("Turn off"), "close", "secondary"));
+		else
+			// what it can do, before it runs (one tap for a mod that declares only the standard tier)
+			uib_j("primary", sprintf("{\"id\":\"mod.enable\",\"label\":%s,\"icon\":\"check\",\"style\":\"primary\",\"confirm\":{\"title\":%s,\"body\":%s,\"ok\":%s}}",
+				uib_q(_("Turn on")), uib_q(sprintf(_("Turn on %s?"), title)),
+				uib_q((can == "" ? _("It can only do what every mod can.") : can)), uib_q(_("Turn on"))));
 		uib_push("actions", UIB_AC("mod.uninstall", _("Uninstall"), "delete", "destructive", _("Uninstall this mod?"), _("Uninstall"), true));
 	UIB_Close();
 	UIB_Done();
@@ -637,6 +692,7 @@ bool UIB_SettingsAction(string node, string a, string payload)
 		case "settings.advanced": m_goto("settings", false); return true;
 		case "classic.media": m_goto("media", false); return true;
 		case "classic.profile": m_goto("profile", false); return true;
+		case "classic.credits": m_goto("Credits", false); return true;
 		case "settings.model": m_goto("profile", true); return true;
 		case "touch.preset":
 			localcmd(strcat("exec touch/profiles/", cvar_string("touch_preset"), ".cfg\n"));
@@ -672,6 +728,26 @@ bool UIB_SettingsAction(string node, string a, string payload)
 		case "mod.enable": localcmd(sprintf("\n%senable %s\n", p, sel)); UIB_RebuildAll(); return true;
 		case "mod.disable": localcmd(sprintf("\n%sdisable %s\n", p, sel)); UIB_RebuildAll(); return true;
 		case "mod.uninstall": localcmd(sprintf("\n%suninstall %s\n", p, sel)); UIB_Back(); return true;
+		case "mod.perm.engine_confirm":
+			// installed from a link: the engine's second, explicit confirmation
+			UIB_VMSet("mods.engine_pending", "");
+			localcmd(sprintf("\n%spermission %s grant engine_full confirm\n", p, sel));
+			UIB_RebuildAll();
+			return true;
+	}
+	if (substring(a, 0, 9) == "mod.perm.")
+	{
+		// mod.perm.grant.<tier> / mod.perm.revoke.<tier> (tiers are a-z and _)
+		string rest = substring(a, 9, -1);
+		int dot = strstrofs(rest, ".", 0);
+		string verb = substring(rest, 0, dot), tier = substring(rest, dot + 1, -1);
+		if (dot < 0 || (verb != "grant" && verb != "revoke") || (tier != "gamerules" && tier != "internet" && tier != "engine_full"))
+			return true;
+		localcmd(sprintf("\n%spermission %s %s %s\n", p, sel, verb, tier));
+		// engine_full for a mod from a link: the first grant only warns; the card asks again
+		UIB_VMSet("mods.engine_pending", ((verb == "grant" && tier == "engine_full") ? sel : ""));
+		UIB_RebuildAll();
+		return true;
 	}
 	return false;
 }
@@ -708,6 +784,20 @@ bool UIB_SettingsValue(string node, string value)
 			UIB_RebuildAll();
 			return true;
 		case "vm:mods.url": UIB_VMSet("mods.url", value); return true;
+		case "vm:mods.perm.gamerules":
+		case "vm:mods.perm.internet":
+		case "vm:mods.perm.engine_full":
+		{
+			// a tier switch of the mod detail: grant or revoke at once
+			string tier = substring(bind, 13, -1);
+			string pfx = (UIB_VM("mods.realm") == "server") ? "sv_lua_plugin_" : "lua_mod_";
+			bool grant = value == "1" || value == "true";
+			localcmd(sprintf("\n%spermission %s %s %s\n", pfx, UIB_VM("mods.sel"), (grant ? "grant" : "revoke"), tier));
+			// engine_full for a mod from a link: the first grant only warns; the card asks again
+			UIB_VMSet("mods.engine_pending", ((grant && tier == "engine_full") ? UIB_VM("mods.sel") : ""));
+			UIB_RebuildAll();
+			return true;
+		}
 	}
 	if (substring(bind, 0, 7) == "vm:key.")
 	{

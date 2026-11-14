@@ -94,6 +94,7 @@
 #include <menu/xonotic/dialog_touch_credits.qc> // Touch
 #include <menu/xonotic/dialog_touch_esp.qc> // Touch
 #include <menu/xonotic/dialog_touch_gamemenu.qc>
+#include <menu/xonotic/dialog_touch_join.qc> // Touch: the join dialog
 #include <menu/xonotic/dialog_touch_launcher.qc> // Touch
 #include <menu/xonotic/dialog_touch_mods.qc> // Touch: Lua mods tab
 #include <menu/xonotic/dialog_touch_lan.qc> // Touch: LAN games
@@ -147,6 +148,7 @@
 #include <menu/xonotic/touch_uib_build.qc> // Touch: UI bridge
 #include <menu/xonotic/touch_uib_screens.qc> // Touch: UI bridge
 #include <menu/xonotic/touch_uib_settings.qc> // Touch: UI bridge
+#include <menu/xonotic/touch_uib_join.qc> // Touch: UI bridge, the join popup
 #include <menu/xonotic/touch_uib_render.qc> // Touch: UI bridge
 #include <menu/xonotic/touch_startup_util.qc>
 #include <menu/xonotic/touch_data.qc> // Touch: progressive data download

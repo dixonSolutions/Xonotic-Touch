@@ -102,6 +102,28 @@ jobs:
           path: build/android/prefix/${{ matrix.abi }}
           key: xonotic-android-prefix-${{ matrix.abi }}-${{ env.NDK_VERSION }}-${{ hashFiles('scripts/android-deps.sh') }}
 
+      # The Rust loader core (loader/crates/android) for this ABI; android-build.sh
+      # builds it with GODNOTIC_RUST_CORE=1 and fails without it.
+      - name: Rust toolchain
+        run: |
+          case "${{ matrix.abi }}" in
+            arm64-v8a) t=aarch64-linux-android ;; armeabi-v7a) t=armv7-linux-androideabi ;;
+            x86_64) t=x86_64-linux-android ;; x86) t=i686-linux-android ;;
+          esac
+          rustup toolchain install stable --profile minimal
+          rustup target add "$t"
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            build/android/cargo-target
+          key: godnotic-android-cargo-${{ matrix.abi }}-${{ hashFiles('loader/Cargo.lock') }}
+          restore-keys: |
+            godnotic-android-cargo-${{ matrix.abi }}-
+
       - name: Decode signing keystore
         if: env.HAS_KEYSTORE == 'true'
         env:
@@ -114,6 +136,8 @@ jobs:
       - name: Build APK
         env:
           ANDROID_ABI: ${{ matrix.abi }}
+          GODNOTIC_RUST_CORE: '1'
+          CARGO_TARGET_DIR: ${{ github.workspace }}/build/android/cargo-target
           CCACHE_DIR: ${{ github.workspace }}/.ccache
           CCACHE_MAXSIZE: 500M
           PROJECT_VERSION: ${{ steps.ver.outputs.version }}

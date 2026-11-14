@@ -36,8 +36,8 @@ Two-thumb layout tuned for Xonotic strafe movement and nine weapons.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  ✚ 100 ▬▬▬▬   14:31        [scores]                     │
-│  ⛊   5 ▬              MENU     CHAT                     │
+│  ✚ 100 ▬▬▬▬   14:31       (i) >_ MENU SCORE CHAT        │
+│  ⛊   5 ▬                       [messages] [scores]      │
 │  ▮  28                    [kill feed]      1 ▰          │
 │  [chat feed]                               2 ▰          │
 │                              RIGHT ~68% = look (drag)   │
@@ -48,11 +48,10 @@ Two-thumb layout tuned for Xonotic strafe movement and nine weapons.
 └─────────────────────────────────────────────────────────┘
 ```
 
-The top band is split into thirds: player state left, match clock centre, scores
-right, with MENU and CHAT beneath the scores. CONSOLE and SCORE sit in the
-bottom-left — four pills do not fit beside two readouts on a 3:2 panel, so the two
-corners split by how often they are used: the top-right holds what a player reaches
-for mid-match, the bottom-left what is worth a deliberate reach.
+The top band is split into thirds: player state left, match clock centre, and
+the [top bar](#the-top-bar) in the right corner: the vote chip's slot, the console
+button, MENU, SCORE and CHAT in one row, with the game's own score list and
+messages under it.
 
 Health, armour and ammo are one group of three rows in the top-left corner, sharing
 an icon column and a right-aligned number column. Ammo used to sit out by FIRE, on
@@ -75,16 +74,16 @@ feed and the chat feed each get a band that touches neither.
 | Weapon strip (right edge) | Tap a weapon to switch to it; drag the grip under the strip to resize it — see [Weapon strip](#weapon-strip) | `impulse N` of the row |
 | WEP | Off by default (the strip switches); `touch_weapon_visible 1` brings the button back | cycle, wheel or 3-slot (`touch_weapon_mode`) |
 | Reload | Tap; hidden by default | `weapon_reload` |
-| **MENU** (top bar) | Tap → the game menu sheet (Resume, Join / Move to spectators, Change team, Settings, Leave — see [Menu actions](#menu-actions)) | Native Xonotic pause menu — see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md) |
+| **MENU** (top bar) | Tap → the game menu sheet (Resume, Join game / Spectate, Change team, Settings, Leave — see [Menu actions](#menu-actions)) | Native Xonotic pause menu — see [TOUCH_PAUSE_SPEC.md](TOUCH_PAUSE_SPEC.md) |
 | Console button (top bar, left of MENU) | Tap → `toggleconsole` | `touch_shellbtn.c`. The CONSOLE pill that used to sit bottom-left is off (`touch_con_visible 0`; 1 brings it back, drag to reposition) — see [TOUCH_CONSOLE_SPEC.md](TOUCH_CONSOLE_SPEC.md) |
 | **SCORE** (top bar, between MENU and CHAT) | Tap → full scoreboard, tap again to clear; Escape also clears | `+showscores` / `-showscores`; also the `touch_scores` command |
 | **CHAT** (top bar, right) | Tap → modal chat sheet: backlog, field, on-screen QWERTY | `say` / `say_team`; also the `touch_chat [team]` command for a hardware key |
 | Mobile HUD | Health, armour and ammo as one group, top-left | Bars for the two that have a maximum; reserve rounds beside the clip for weapons that reload |
-| Respawn / join | Respawn: tap **RESPAWN** (HOP's place while dead). Join: **swipe up** from the handle at the bottom middle while spectating; with a free mouse pointer, click it | `+jump` (a team game: the stock team selection); the prompts name the control, not a key — see [HUD modes](#hud-modes) |
+| Respawn / join | Respawn: tap **RESPAWN** (HOP's place while dead). Join: Xonotic's own join dialog, which comes up by itself for an observer when a match starts and from MENU > Join game — see [Joining](#joining-xonotics-join-dialog) | `+jump`; `cmd join` / `cmd selectteam` from the dialog |
 | **i** (vote chip, top bar) | Right of CHAT, at the end of the top bar, while a vote waits for your answer, a red dot while it is new; tap → vote card — see [Votes](#votes) | `vote yes` / `vote no` / `vote abstain`, `impulse N` for the map vote |
 
 Prompts that would normally name a key name the on-screen control instead in a touch
-session: "You are dead, press **HOP** to respawn", "Press **SWIPE UP** to join",
+session: "You are dead, press **HOP** to respawn", "Press **MENU** to join",
 "Press **FOLLOW** to spectate". Only controls that are actually visible get named, and
 commands with no touch control (gametype info) keep their key name.
 
@@ -101,16 +100,16 @@ the native front ends read it rather than guessing again.
 |------|-----------|-----------|
 | **Playing** | Top bar (console button, MENU, SCORE, CHAT); move stick, look, FIRE, ALT, HOP + KEEP, DUCK, TURN, weapon strip, NADE, HOOK / ZOOM when the weapon has them, vitals; optional SPECTATE (`touch_tospec_visible 1`, placed in the layout editor); READY in warmup | — |
 | **Dead** (waiting to respawn) | Top bar; **RESPAWN** where HOP is (`+jump`), look; SPECTATE if placed; READY in warmup | stick, FIRE, ALT, DUCK, strip, vitals |
-| **Spectating, free-fly** | Top bar; move stick + **UP / DOWN** rocker beside it (`+moveup` / `+movedown`), look; the spectator bar **< FOLLOW >** bottom right; the **join handle** bottom middle | weapons, FIRE, ALT, HOP, DUCK, TURN, HOOK, NADE, CONSOLE pill |
-| **Following a player** | Top bar; the bar **< FREE >** with the player's name above it; their vitals (read only); the join handle | stick and rocker (the view is theirs), everything above |
-| **Out of the round** (Clan Arena and the like) | As following / free-fly, no join handle (the player is in the game; the join waits for the next round); the bar's middle reads WATCHING | as above |
+| **Spectating, free-fly** | Top bar; move stick + **UP / DOWN** rocker beside it (`+moveup` / `+movedown`), look; the spectator bar **< FOLLOW >** bottom right | weapons, FIRE, ALT, HOP, DUCK, TURN, HOOK, NADE, CONSOLE pill, any join control (joining is the join dialog) |
+| **Following a player** | Top bar; the bar **< FREE >** with the player's name above it; their vitals (read only) | stick and rocker (the view is theirs), everything above |
+| **Out of the round** (Clan Arena and the like) | As following / free-fly (the player is in the game; the join waits for the next round); the bar's middle reads WATCHING | as above |
 | **Intermission** (end-of-match scoreboard) | **MENU** alone, top-left corner (top-right left-handed); the console button | every other control, the vote chip |
 | **Next-map / gametype vote** | **MENU** alone, top-left; the console button. The vote cards are the game's own screen and take taps directly | every other control; the touch vote card over the vote (`touch_vote_mapcard 1` brings it back) |
 
 A vote called in the match (yes / no) keeps its chip at the end of the top bar
 in every in-match mode.
 
-![Spectating, free-fly: stick and UP/DOWN rocker, the < FOLLOW > bar, the join handle](media/hud-spectating.jpg)
+![Spectating, free-fly: stick and UP/DOWN rocker, the < FOLLOW > bar (an older shot: the join handle at the bottom is gone)](media/hud-spectating.jpg)
 ![Following a player: < FREE >, the name over the bar, their vitals](media/hud-following.jpg)
 ![Playing: the top bar holds the chrome, the bottom is the hands'](media/hud-playing.jpg)
 ![Next-map vote: MENU alone in the corner, the vote cards untouched](media/hud-mapvote.jpg)
@@ -131,49 +130,46 @@ join. A look-zone tap does not fire while spectating, and auto-shoot never
 fires. `touch_specbar_x`, `_y` and `_size` move and size the bar (46 dp tall at
 least).
 
-#### Joining: the swipe handle
+#### Joining: Xonotic's join dialog
 
-Joining from spectating is a swipe, and only a swipe. A slim **^ SWIPE UP TO
-JOIN** pill sits at the bottom middle and breathes gently (still with
-`touch_reduce_motion 1`). Put a thumb on it and swipe up: the pill follows the
-finger, fills, and on release past the threshold rises and fades as the join
-goes out; let go early and it springs back.
+There is no join gesture and no join button on the HUD. Joining is the dialog
+stock Xonotic has for it, the menu's **Team Selection** (`menu_cmd directmenu
+TeamSelect`, what `team_selection_show` runs): auto-select, the teams the
+server offers, and spectate. On a touchscreen it is drawn finger-sized
+(`dialog_touch_join.qc`, 60 dp rows), over the match (and over the redesigned
+menu, as the game menu is). With a native front end attached (Android's Kotlin
+screens, the GTK app) it is the UI bridge popup `join` (`touch_uib_join.qc`),
+which the native renderer shows as its own dialog; it comes up even when the
+menu VM never initialised because the native UI owned the menu from the start. In a game without teams it is two buttons, Join
+and Spectate. It is the menu's, so it works under any server's game code.
 
-| Parameter | Value | |
-|-----------|-------|---|
-| Start zone | the pill, or the bottom 16 % of the screen within 11 % of the width either side of the middle | a swipe that starts anywhere else is an ordinary look drag |
-| Distance | 14 % of the screen height, upwards | about 150 px (60 dp) on a 1080 px phone |
-| Direction | sideways movement at most 0.6 × the upward (about 31°) | a slanted swipe is cancelled |
-| Hand-over | a finger that goes sideways or down by 2.5 % of the height before it goes up was looking around: it becomes a look finger on the spot | the handle never steals the look |
-| Speed | 0.25 heights per second on average, 1.2 s at most | a slow drag is cancelled |
-| Decided | on release | |
+| When | What happens |
+|------|--------------|
+| A match starts and the player is an observer (every public server) | the dialog opens by itself after 0.75 s as an observer, once nothing else has the screen (`touch_join_dialog_auto`: 0 never, 1 on a device with a touchscreen, 2 always) |
+| Join / a team | `cmd join`, or `cmd selectteam <team>; cmd join <team>` — the stock dialog's commands; the dialog closes |
+| Spectate, or dismissing it | stays an observer; the dialog does not come back in this match |
+| MENU > **Join game** (observing), **Change team** (team games) | the dialog again |
+| MENU > **Spectate** (playing) | `spec`; no dialog follows: it was the player's choice |
+| A game hosted on this device, no team to pick (Singleplayer, a LAN game you host) | no dialog: straight into the game (`cmd join`, retried up to 6 times 1.5 s apart while the server is not ready; `touch_local_autojoin 0` turns it off). A team game hosted here shows the dialog |
+| The player is in the game (the server's own auto-join, another way in) | the dialog closes itself |
+| The server does not take the join (locked, full) | said once on screen 3 s later; `_touch_hud_join` reads `locked` for 15 s; MENU > Join game tries again |
 
-What it does: in a team game the stock team selection (Auto and the teams);
-otherwise `+jump` held for 0.25 s, which every server reads as "join". The
-handle shows the server's answer instead of failing silently: **JOINING...**
-while it waits, **IN QUEUE FOR A SLOT** when the server queued the player (the
-port's CSQC reads the queue; on other servers it shows as waiting), and
-**LOCKED - SWIPE TO RETRY** for 15 s when the player is still spectating 3 s
-later (joining locked, teams full, spectate-only). Warmup changes nothing for
-the join; READY is for players.
+A newer server's own game code opens the game's **Welcome** dialog on connect
+(the server's name and message, **Join!** and **Spectate**). When that came up,
+the join dialog above is not owed for the match: one question, asked once
+(`touch_join_answered`, sent by the menu). Xonotic 0.8.6 servers, most of the
+public ones, have no such dialog, which is where the join dialog matters.
 
-With a mouse it is a button: **CLICK TO JOIN (JUMP)**, clickable while the
-pointer is free (the web page before pointer lock, a released mouse,
-`vid_mouse 0`). With the mouse grabbed for aiming a click is the stock fire
-(follow / next), and the jump key joins as it always has. The spectator bar is
-there at a desk too, quieter, clickable the same way (`touch_desk_specbar`).
+Commands: `touch_join_dialog` opens it; `touch_join <auto|red|blue|yellow|pink|spectate>`
+is what a row runs. The rule for when it opens is `TouchJoinDlg_Frame` in
+`engine/darkplaces/touch_hudmode.h`, tested by `scripts/test-touch-hudmode.sh`;
+the whole flow against a server running stock game code, in Deathmatch and CTF,
+by `scripts/test-touch-controls-live.sh join`. At a desk the stock keys work as
+ever (jump joins).
 
-The recogniser is `TouchSwipe_*` in `engine/darkplaces/touch_hudmode.h`,
-tested over recorded traces (accepted, short, dragged back, slow, diagonal,
-sideways, downwards, looking first, outside the zone, a tap) by
-`scripts/test-touch-hudmode.sh`. The handle is the engine's
-(`touch_hud.c`, taking its fingers before the finger table from the one hook
-`vid_sdl.c` calls for every finger, `TouchVote_Finger`), so it is the same
-under the port's CSQC and a server's. `touch_join_handle 0` hides it.
+#### Spectate (move to spectators)
 
-#### Move to spectators
-
-The MENU sheet's **Move to spectators** (and the optional SPECTATE pill on the
+The MENU sheet's **Spectate** (and the optional SPECTATE pill on the
 HUD) runs the stock `spec`. It asks for a second tap within 3 s only when it
 would forfeit something: a round under way in a round-based mode, or a flag
 or ball carried (the port's CSQC tells the engine, `_touch_hint_round`,
@@ -197,10 +193,10 @@ untouched while playing and comes back on the next touch or mode change.
 |--------|-----|
 | CONSOLE pill, bottom-left | the console button in the top bar (every mode); `touch_con_visible 1` restores the pill |
 | SCORE pill, bottom-left | the top bar, between MENU and CHAT |
-| the held join pill, bottom middle | the swipe handle (touch), a click on it (mouse, pointer free), MENU sheet **Join**, the jump key |
+| the held join pill, then the swipe handle, bottom middle | Xonotic's join dialog: by itself at match start, MENU sheet **Join game**; the jump key at a desk |
 | FOLLOW / NEXT on FIRE, PREV on ALT, FREE or UP on HOP, DOWN on DUCK | the spectator bar (`< FOLLOW >`, `< FREE >`) and the UP / DOWN rocker by the stick |
 | TURN while spectating | gone: a spectator turns with the look drag |
-| (none) | **Move to spectators**: MENU sheet; optional SPECTATE pill |
+| (none) | **Spectate**: MENU sheet; optional SPECTATE pill |
 | play controls at intermission on a server | none; MENU in the corner |
 | touch vote card over the next-map vote | none; the vote's own cards (`touch_vote_mapcard 1` restores it) |
 
@@ -215,9 +211,9 @@ the same list.
 | Id | Label | Shown | Command |
 |----|-------|-------|---------|
 | `resume` | Resume | in a match | `togglemenu 0` |
-| `join` | Join | spectating (free-fly or following); disabled while a join is pending or queued | `touch_action join`: team selection in a team game, else `+jump` |
-| `spectate` | Move to spectators | playing, dead, out of the round; **confirm** when it would forfeit the round or an objective | `touch_action spectate confirm` → `spec` |
-| `team` | Change team | team games, not at match end | `menu_showteamselect` |
+| `join` | Join game | spectating (free-fly or following); disabled while a join is pending or queued | `touch_action join` → `touch_join_dialog` (the join dialog) |
+| `spectate` | Spectate | playing, dead, out of the round; **confirm** when it would forfeit the round or an objective | `touch_action spectate confirm` → `spec` |
+| `team` | Change team | team games, not at match end | `touch_join_dialog` |
 | `settings` | Settings | in a match | `menu_cmd settings` |
 | `leave` | Leave | in a match | `disconnect; g_campaign 0; menu_cmd sync; menu_cmd directmenu Welcome RESET` |
 
@@ -239,18 +235,63 @@ Published by the engine (`touch_hudmode.c`) every frame it changes, read-only:
 | `_touch_hud_target` | the followed player's name, `""` when not following |
 | `_touch_hud_flags` | bits: 1 warmup, 2 warmup waits for this player's ready, 4 team game, 8 a round under way, 16 carrying an objective |
 | `_touch_hud_join` | `none`, `open`, `pending`, `queued`, `locked` |
-| `_touch_hud_controls` | the mode's control set, `TOUCHCTL_*` bits (`touch_hudmode.h`) |
+| `_touch_hud_controls` | the mode's control set, `TOUCHCTL_*` bits (`touch_hudmode.h`; bit 19, the old join handle, is never set now) |
 | `_touch_hud_actions`, `_touch_act_<id>` | the menu actions above |
 
 The mode comes from the client state (the scoreboard's spectator frags, the
 view entity, health, `cl.intermission`) and the loaded CSQC's own globals
 (`intermission`, `mv_active`, `warmup_stage`, `ready_waiting_for_me`,
 `teamplay`), which the port's game code and a stock server's name the same.
-`touch_shellbtn.c` should place the console button from `_touch_hud_mode`
-too (the intermission case: `intermission` / `mapvote` → the corner); that
-file is being edited on `work/menu4`, so the change is left to that branch:
-in `place()`, test `TouchHudMode_Current()->mode` with `TouchMode_IsMatchEnd`
-instead of `cl.intermission`.
+`touch_hud_state` prints what the mode was derived from (frags, view entity,
+health, whose game code is loaded), what the controls are doing to the player
+(`TOUCHFEEL`: view angles, attack, jump, the frame's move), whether a menu has
+the screen (`TOUCHMENU`), and with `rects` every control on screen as a rect
+(`TOUCHRECT`); the tests read these.
+
+### The top bar
+
+One layout for everything on the top edge while the touch controls are on
+(`engine/darkplaces/touch_topbar.h`):
+
+```
+[vitals]   [radar]  [clock]        (i) [>_] [MENU] [SCORE] [CHAT]
+                    [mode icons]            [info messages][scores]
+[chat feed]         [vote print]            [kill feed          ]
+```
+
+The chrome row is laid out in dp from the top corner on the look hand's side
+(right; left when left-handed), inside the safe-area insets: CHAT outermost,
+then SCORE, MENU, the console button and the vote chip's slot at the inner end
+(kept free, so nothing jumps when a vote is called). Members are 8 dp apart and
+6 dp from the top, pills 36 dp tall at least and 2.4 times as wide; a row that
+would reach the match clock narrows its pills (down to 1.6), and on a screen too
+narrow even for that (under about 650 dp wide) the gaps halve and the chip's
+slot goes under CHAT. The engine writes the result into the pills' own layout
+cvars (`touch_pause_x/_y/_aspect`, `touch_scores_*`, `touch_chat_*`), so both
+HUD copies and the hit tests use one answer, and gives the console button
+(`touch_shellbtn.c`) and the vote chip (`touch_vote.c`) their slots
+(`TouchHUD_TopBarRect`).
+
+The game's own panels are placed around the row by cvar, under the port's CSQC
+and a server's alike (`TouchHUD_SyncStockPanels`): `hud_panel_score` and
+`hud_panel_infomessages` directly under the row, `hud_panel_notify` (the kill
+feed) under those, `hud_panel_timer` top centre with `hud_panel_modicons` and
+`hud_panel_vote` beneath it, `hud_panel_radar` between the vitals and the clock,
+`hud_panel_chat` on the left above the move zone, `hud_panel_itemstime` on the
+right edge. The port's CSQC used to do part of this, and only when it ran: a
+player who only joined public servers kept the stock places (kill feed under
+FIRE, chat feed under the stick).
+
+`touch_topbar_auto 0` stops all of it and leaves the pills where the layout
+editor put them. At the end of the match and on the map vote the row is gone:
+MENU alone in the top-left corner, the console button top-right.
+
+`scripts/test-touch-controls.sh` checks the layout (no two members intersect,
+all on the safe area, clear of the clock) at 1920x1200, 2340x1080, 1280x720 and
+a 360 dp tall phone, either hand, with and without insets;
+`scripts/test-touch-controls-live.sh rects` checks every control and the score
+list, clock and info messages against each other in a running game, spectating,
+playing, with the scoreboard, dead, at intermission and on the map vote.
 
 ### Weapon strip
 
@@ -536,6 +577,9 @@ Engine movement (already in `touch/xonotic.cfg`):
 |------|------|--------|---------|-------|
 | `touch_fire_mode` | int | 0=hold, 1=toggle | `0` | Hold for arena FPS |
 | `touch_fire_drag_look` | int | 0/1 | `1` | Sliding off FIRE keeps firing and steers — one thumb aims and shoots |
+| `touch_topbar_auto` | int | 0/1 | `1` | The engine lays out the top bar — see [The top bar](#the-top-bar) |
+| `touch_join_dialog_auto` | int | 0–2 | `1` | The join dialog opens by itself for an observer at match start — see [Joining](#joining-xonotics-join-dialog) |
+| `touch_local_autojoin` | int | 0/1 | `1` | A game hosted on this device with no team to pick joins straight away |
 | `touch_fire_slide_release` | int | 0/1 | `0` | Legacy: treat sliding off FIRE as release |
 | `touch_hop_mode` | int | 0=plain, 1=hold HOP to latch, 2=auto-hop while moving, 3=plain HOP + KEEP switch | `3` | Bunny-hop is a *held* key in Xonotic; the latch frees the thumb. Layouts on 1 move to 3 once (`touch_hop_version`) |
 | `touch_hoplock_x` / `_y` / `_size` / `_visible` | float | KEEP switch placement (mode 3) | `0.675` / `0.760` / `0.052` / `1` | Off the thumb's path to HOP, FIRE, DUCK, ALT and the strip, at least its own width clear of their grab margins |

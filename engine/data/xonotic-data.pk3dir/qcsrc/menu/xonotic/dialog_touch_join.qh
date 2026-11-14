@@ -1,0 +1,40 @@
+#pragma once
+
+// Joining a match on a touchscreen: Xonotic's own join dialog (Team
+// Selection: auto-select, the teams, spectate) with finger-sized rows. It is
+// what "menu_cmd directmenu TeamSelect" opens on a touch device
+// (TouchGameMenu_Route): the engine sends that for an observer when a match
+// starts and from MENU > Join game / Change team (touch_hudmode.c), and a
+// server sends it through team_selection_show. A row runs "touch_join
+// <choice>", which sends the stock join commands. In a game without teams
+// the team row is not there: Join and Spectate.
+#include "rootdialog.qh"
+#include "touchbutton.qh"
+CLASS(GodnoticJoinDialog, XonoticRootDialog)
+	METHOD(GodnoticJoinDialog, fill, void(entity));
+	METHOD(GodnoticJoinDialog, showNotify, void(entity));
+	METHOD(GodnoticJoinDialog, draw, void(entity));
+	METHOD(GodnoticJoinDialog, configureDialog, void(entity));
+	ATTRIB(GodnoticJoinDialog, title, string, _("Join game"));
+	ATTRIB(GodnoticJoinDialog, color, vector, SKINCOLOR_DIALOG_TEAMSELECT);
+	ATTRIB(GodnoticJoinDialog, intendedWidth, float, 0.56);
+	ATTRIB(GodnoticJoinDialog, rows, float, 8);
+	ATTRIB(GodnoticJoinDialog, columns, float, 4);
+	ATTRIB(GodnoticJoinDialog, name, string, "TouchJoin");
+	ATTRIB(GodnoticJoinDialog, autoButton, entity);
+	ATTRIB(GodnoticJoinDialog, team1, entity);
+	ATTRIB(GodnoticJoinDialog, team2, entity);
+	ATTRIB(GodnoticJoinDialog, team3, entity);
+	ATTRIB(GodnoticJoinDialog, team4, entity);
+	ATTRIB(GodnoticJoinDialog, wasWatching, bool, false);
+	ATTRIB(GodnoticJoinDialog, requiresConnection, bool, true);
+ENDCLASS(GodnoticJoinDialog)
+
+// A team's button: not drawn at all while the server does not offer the team.
+CLASS(GodnoticTeamButton, GodnoticCommandButton)
+	METHOD(GodnoticTeamButton, draw, void(entity));
+ENDCLASS(GodnoticTeamButton)
+
+// Whether the player is watching the match rather than playing it, from the
+// engine's HUD mode.
+bool TouchJoin_Watching();

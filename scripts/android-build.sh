@@ -93,6 +93,38 @@ for so in libSDL2.so libpng16.so libcurl.so; do
     install -m 644 "$PREFIX/lib/$so" "$JNI_LIBS/$so"
 done
 
+##### The Rust loader core ###################################################
+
+# loader/crates/android (libgodnotic_android.so): the core that reads the UI
+# bridge and drives the native views (fe/RustCore.kt, docs/ANDROID.md). Built
+# for this ABI with cargo when it is installed; without it the APK still works
+# (the Kotlin reader UibClient takes over). GODNOTIC_RUST_CORE=1 makes it
+# required (CI), =0 leaves it out.
+RUST_CORE="${GODNOTIC_RUST_CORE:-auto}"
+case "$ABI" in
+    arm64-v8a)   RUST_TARGET=aarch64-linux-android;   RUST_CC=aarch64-linux-android21-clang ;;
+    armeabi-v7a) RUST_TARGET=armv7-linux-androideabi; RUST_CC=armv7a-linux-androideabi21-clang ;;
+    x86_64)      RUST_TARGET=x86_64-linux-android;    RUST_CC=x86_64-linux-android21-clang ;;
+    x86)         RUST_TARGET=i686-linux-android;      RUST_CC=i686-linux-android21-clang ;;
+esac
+if [ "$RUST_CORE" != 0 ]; then
+    if command -v cargo >/dev/null 2>&1 && rustup target list --installed 2>/dev/null | grep -qx "$RUST_TARGET"; then
+        log "Rust loader core ($RUST_TARGET)"
+        NDK_BIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
+        RUST_TARGET_DIR="${CARGO_TARGET_DIR:-$CACHE_DIR/cargo-target}"
+        TARGET_ENV="$(echo "$RUST_TARGET" | tr 'a-z-' 'A-Z_')"
+        ( cd "$ROOT/loader" && env "CARGO_TARGET_${TARGET_ENV}_LINKER=$NDK_BIN/$RUST_CC" \
+            CARGO_PROFILE_RELEASE_STRIP=true CARGO_TARGET_DIR="$RUST_TARGET_DIR" \
+            cargo build --locked --release -p godnotic-loader-android --target "$RUST_TARGET" )
+        install -m 644 "$RUST_TARGET_DIR/$RUST_TARGET/release/libgodnotic_android.so" "$JNI_LIBS/libgodnotic_android.so"
+    elif [ "$RUST_CORE" = 1 ]; then
+        echo "GODNOTIC_RUST_CORE=1 but cargo or the Rust target $RUST_TARGET is missing" >&2
+        exit 1
+    else
+        echo "   No cargo/$RUST_TARGET: the APK uses the Kotlin UI-bridge reader" >&2
+    fi
+fi
+
 ##### Branding ################################################################
 
 # The launcher icon: scripts/gen-branding.py writes it as res folders under

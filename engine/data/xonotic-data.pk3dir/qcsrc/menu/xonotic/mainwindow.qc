@@ -62,6 +62,7 @@
 #include "dialog_credits.qh"
 #include "dialog_touch_credits.qh" // Touch
 #include "dialog_touch_launcher.qh" // Touch
+#include "dialog_touch_join.qh" // Touch
 #include "dialog_quit.qh"
 
 /** Open the asset-fetch wizard instantly (no zoom animation).
@@ -335,6 +336,10 @@ void MainWindow_configureMainWindow(entity me)
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
 
 	i = NEW(GodnoticGameMenuDialog); // Touch: finger-sized game menu
+	i.configureDialog(i); // Touch
+	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z); // Touch
+
+	i = NEW(GodnoticJoinDialog); // Touch: finger-sized join dialog
 	i.configureDialog(i); // Touch
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z); // Touch
 

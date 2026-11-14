@@ -103,7 +103,7 @@
     "id": "home/tiles",
     "type": "grid",
     "props": {
-     "minItem": 240,
+     "minItem": 200,
      "maxColumns": 3
     },
     "children": [
@@ -176,8 +176,7 @@
      "kind": "page"
     },
     "children": [
-     "settings/split",
-     "settings/advanced"
+     "settings/split"
     ]
    },
    {
@@ -306,8 +305,7 @@
      "label": "Profile"
     },
     "children": [
-     "settings/split/player/tabs/profile/name",
-     "settings/split/player/tabs/profile/model"
+     "settings/split/player/tabs/profile/name"
     ]
    },
    {
@@ -320,20 +318,6 @@
      "maxLength": 32,
      "apply": "reconnect",
      "value": ""
-    },
-    "children": []
-   },
-   {
-    "id": "settings/split/player/tabs/profile/model",
-    "type": "button",
-    "props": {
-     "label": "Player model",
-     "action": {
-      "id": "settings.model",
-      "label": "Player model",
-      "icon": "player"
-     },
-     "style": "tonal"
     },
     "children": []
    },
@@ -398,20 +382,6 @@
      "label": "Mods",
      "icon": "mods",
      "subtitle": "Client and server mods, pages from mods"
-    },
-    "children": []
-   },
-   {
-    "id": "settings/advanced",
-    "type": "button",
-    "props": {
-     "label": "Advanced settings",
-     "action": {
-      "id": "settings.advanced",
-      "label": "Advanced settings",
-      "icon": "more"
-     },
-     "style": "link"
     },
     "children": []
    }

@@ -143,7 +143,11 @@ public class BootActivity extends Activity {
             // player's match or join.
             // The rest of the split set carries on too, if something stopped it.
             DataService.start(this);
-            startActivity(new Intent(this, XonoticActivity.class).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION));
+            Intent back = new Intent(this, XonoticActivity.class).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
+            if (getIntent() != null && getIntent().getData() != null) {
+                back.setData(getIntent().getData()); // a godnotic://join link: onNewIntent joins
+            }
+            startActivity(back);
             overridePendingTransition(0, 0);
             finish();
             return;

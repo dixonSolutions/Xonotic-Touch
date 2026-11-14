@@ -2,6 +2,7 @@
 #include "touch_data.qh"
 #include "touch_uib_screens.qh"
 #include "touch_startup_util.qh"
+#include "touch_uib_touch.qh" // Touch HUD: the join popup, Touch controls settings
 #include <common/mapinfo.qh>
 #include <common/campaign_common.qh>
 #include <common/campaign_file.qh>
@@ -167,6 +168,8 @@ bool uib_narrow;  // the QuakeC renderer's own layout is one column
 
 void UIB_Back()
 {
+	if (UIB_JoinBack())
+		return;
 	if (uibn_modal == "" && UIB_TopScreen() == "settings" && UIB_VMf("settings.open")
 		&& (uib_caps("widthClass") == "compact" || uib_narrow))
 	{
@@ -249,32 +252,19 @@ void UIB_CampaignRows()
 	uib_rows_end();
 }
 
-// "N servers · M players" from the server list the engine already holds; ""
-// while it holds none (nothing is asked of the network for Home).
-float uib_mp_rev = -1;
+// "N servers · M players": the engine's own figure (_slist_summary, docs/NETWORK.md),
+// filled from the saved list in the first frame and live from the first refresh on.
+// _slist_refreshing says a refresh is running. True when either changed.
 string uib_mp_summary;
+float uib_mp_refreshing = -1;
 bool UIB_ServerSummary()
 {
-	float rev = uib_srcrev("servers.all");
-	if (rev == uib_mp_rev)
-		return false;
-	uib_mp_rev = rev;
-	int total = 0, players = 0;
-	for (int off = 0; off < 600; off += 200)
-	{
-		int n = uib_window("servers.all", off, 200, "", 0, "");
-		total = uib_wtotal();
-		for (int i = 0; i < n; ++i)
-			players += max(0, stof(uib_wcell(i, "players")) - stof(uib_wcell(i, "bots")));
-		if (off + n >= total || n <= 0)
-			break;
-	}
-	string out = "";
-	if (total > 0)
-		out = sprintf(_("%d servers · %d players"), total, players);
-	if (out == uib_mp_summary)
+	string out = cvar_string("_slist_summary");
+	float r = cvar("_slist_refreshing");
+	if (out == uib_mp_summary && r == uib_mp_refreshing)
 		return false;
 	strcpy(uib_mp_summary, out);
+	uib_mp_refreshing = r;
 	return true;
 }
 
@@ -307,9 +297,34 @@ void UIB_BuildHome()
 	if (!uib_camp_loaded)
 		UIB_CampaignLoad();
 	UIB_ServerSummary();
+	// Home's cards are always one horizontal row, never stacked and never
+	// scrolled down to. The compact breakpoint: a renderer too narrow for three
+	// cards side by side (widthClass compact, under 600 dp) gets a row of two:
+	// Play, with Singleplayer and Campaign as its two actions, beside
+	// Multiplayer. Wider renderers get the row of three.
+	bool compact = (uib_caps("widthClass") == "compact" || uib_narrow);
 	UIB_Open("tiles", "grid");
-		uib_f("minItem", 240);
-		uib_f("maxColumns", 3);
+		uib_f("minItem", (compact ? 150 : 200));
+		uib_f("maxColumns", (compact ? 2 : 3));   // one row: every card of the grid side by side
+		if (compact)
+		{
+			UIB_Open("play", "card");
+				uib_s("title", _("Play"));
+				if (campaign_entries > 0)
+					uib_s("subtitle", sprintf(_("%s · Campaign level %d of %d"), UIB_MapTitle(map), uib_camp_index + 1, campaign_entries));
+				else
+					uib_s("subtitle", sprintf(_("%s · %s"), UIB_MapTitle(map), UIB_ModeName(mode)));
+				uib_s("icon", "play");
+				uib_s("image", strcat("pk3:maps/", map));
+				uib_s("aspect", "16:9");
+				uib_b("featured", 1);
+				uib_j("primary", UIB_A("sp", _("Singleplayer"), "singleplayer"));
+				uib_push("actions", UIB_A("sp", _("Singleplayer"), "singleplayer"));
+				uib_push("actions", UIB_A("campaign", _("Campaign"), "trophy"));
+			UIB_Close();
+		}
+		else
+		{
 		UIB_Open("sp", "card");
 			uib_s("title", _("Singleplayer"));
 			uib_s("subtitle", sprintf(_("%s · %s · %d bots"), UIB_MapTitle(map), UIB_ModeName(mode), bots));
@@ -337,6 +352,7 @@ void UIB_BuildHome()
 			uib_b("featured", 1);
 			uib_j("primary", UIB_A("campaign", _("Open"), "chevron"));
 		UIB_Close();
+		}
 		UIB_Open("mp", "card");
 			uib_s("title", _("Multiplayer"));
 			uib_s("subtitle", (uib_mp_summary != "") ? uib_mp_summary : _("Join a server, or create a game"));
@@ -746,7 +762,11 @@ void UIB_BuildServers()
 	if (!UIB_Screen("mp", _("Multiplayer")))
 		return;
 	uib_s("kind", "page");
-	if (uib_mp_summary != "") uib_s("subtitle", uib_mp_summary);
+	UIB_ServerSummary();
+	if (uib_mp_summary != "")
+		uib_s("subtitle", cvar("_slist_refreshing") ? sprintf(_("%s · refreshing…"), uib_mp_summary) : uib_mp_summary);
+	else if (cvar("_slist_refreshing"))
+		uib_s("subtitle", _("Looking for servers…"));
 	uib_j("header", "{\"collapsible\":true}");
 	UIB_Open("bar", "toolbar");
 		UIB_Open("search", "field");
@@ -1029,9 +1049,16 @@ void UIB_BuildPause()
 		uib_f("minItem", 200);
 		UIB_Button("resume", _("Resume"), UIB_AS("resume", _("Resume"), "resume", "primary"), "primary");
 		UIB_Button("settings", _("Settings"), UIB_A("settings", _("Settings"), "settings"), "secondary");
+		// the engine's action list (_touch_act_*): Join game while watching, Spectate while playing
+		if (cvar("_touch_act_join"))
+			UIB_Button("join", _("Join game"), UIB_A("join.open", _("Join game"), "play"), "secondary");
+		if (cvar("_touch_act_team"))
+			UIB_Button("team", _("Change team"), UIB_A("join.open", _("Change team"), "team"), "secondary");
 		// a local game has its player in it (sv_spectate 0): nothing to watch from outside
-		if (hosting || !(gamestatus & GAME_ISSERVER))
-			UIB_Button("spectate", _("Spectate"), UIB_A("spectate", _("Spectate"), "esp"), "secondary");
+		if (cvar("_touch_act_spectate") && (hosting || !(gamestatus & GAME_ISSERVER)))
+			UIB_Button("spectate", _("Spectate"), ((cvar("_touch_act_spectate") == 3)
+				? UIB_AC("spectate", _("Spectate"), "esp", "secondary", _("Spectate? You give up this round or what you carry."), _("Spectate"), false)
+				: UIB_A("spectate", _("Spectate"), "esp")), "secondary");
 		UIB_Open("disconnect", "button");
 			// the host leaving ends a LAN game for everyone in it
 			uib_s("label", hosting ? _("End the game") : _("Leave match"));
@@ -1219,13 +1246,54 @@ void UIB_BuildCredits()
 	UIB_Close();
 	UIB_Section("xonotic", "Xonotic", false);
 		UIB_Text("text", _("Xonotic is made by the Xonotic team and its many contributors."), "");
-		UIB_Button("list", _("Everyone who made Xonotic"), UIB_A("credits.full", _("Everyone who made Xonotic"), "credits"), "link");
 	UIB_Close();
 	UIB_Section("licence", _("Licence"), false);
 		UIB_Text("text", _("The engine and game code are free software under the GNU General Public License, version 2 or later. Game data is under its authors' licences (see each pack's licence file)."), "caption");
 		UIB_Button("source", _("Source code"), UIB_ALink("credits.source", _("Source code"), "link", "https://github.com/dixonSolutions/Godnotic"), "link");
 	UIB_Close();
 	UIB_Done();
+}
+
+void UIB_BuildJoinFail()
+{
+	if (!UIB_Screen("dialog.joinfail", _("Could not join")))
+		return;
+	uib_s("presentation", "dialog");
+	uib_b("dismissable", 1);
+	uib_j("primary", UIB_AS("joinfail.retry", _("Retry"), "refresh", "primary"));
+	UIB_Open("text", "text");
+		uib_s("body", cvar_string("_join_fail_text"));
+		uib_s("style", "title");
+		uib_s("icon", "warning");
+	UIB_Close();
+	if (cvar_string("_join_fail_detail") != "")
+		UIB_Text("detail", cvar_string("_join_fail_detail"), "");
+	UIB_Open("buttons", "row");
+		uib_s("align", "end");
+		UIB_Button("close", _("Close"), "{\"id\":\"dialog.cancel\",\"label\":\"\",\"kind\":\"back\"}", "secondary");
+	UIB_Close();
+	UIB_Done();
+}
+
+float uib_jf_serial = -1;
+// A join failed (the serial counts up): the dialog, over whatever the menu shows.
+void UIB_JoinFailTick()
+{
+	// this menu shows the reason itself; the classic dialog stays shut
+	if (cvar("touch_joinfail_dialog"))
+		cvar_set("touch_joinfail_dialog", "0");
+	float serial = cvar("_join_fail_serial");
+	if (uib_jf_serial < 0)
+		uib_jf_serial = serial;
+	if (serial == uib_jf_serial)
+		return;
+	uib_jf_serial = serial;
+	if (strstrofs(strcat(" ", uibn_modal, " "), " dialog.joinfail ", 0) >= 0)
+		UIB_Build("dialog.joinfail");
+	else
+		UIB_Modal("dialog.joinfail");
+	if (!Menu_Active)
+		m_display();
 }
 
 void UIB_BuildQuit()
@@ -1252,6 +1320,7 @@ void UIB_Build(string id)
 		case "sp.map": UIB_BuildMapPreview(); return;
 		case "campaign": UIB_BuildCampaign(); return;
 		case "lan.host": UIB_BuildLanPopup(); return;
+		case "join": UIB_BuildJoin(); return;
 		case "mp": UIB_BuildServers(); return;
 		case "mp.password": UIB_BuildPassword(); return;
 		case "welcome": UIB_BuildWelcome(); return;
@@ -1259,6 +1328,7 @@ void UIB_Build(string id)
 		case "loading": UIB_BuildLoading(); return;
 		case "credits": UIB_BuildCredits(); return;
 		case "dialog.quit": UIB_BuildQuit(); return;
+		case "dialog.joinfail": UIB_BuildJoinFail(); return;
 	}
 	if (substring(id, 0, 8) == "settings" || substring(id, 0, 4) == "mods")
 		UIB_BuildSettings(id);
@@ -1322,7 +1392,7 @@ void UIB_Init()
 	UIB_Context();
 }
 
-float uib_next_tick;
+float uib_next_tick, uib_mp_next_refresh; // real time: the menu VM's `time` stands still while a native front end hides the menu
 void UIB_Tick()
 {
 	if (!uib_inited)
@@ -1342,17 +1412,25 @@ void UIB_Tick()
 		uib_toast(dbg, "success", "check", 4);
 	}
 	UIB_LanPopupTick();
+	UIB_JoinFailTick();
+	UIB_JoinTick();
 	// time-varying screens
 	string top = UIB_TopScreen();
-	if (top == "home" && time > uib_next_tick)
+	if ((top == "home" || top == "mp") && uib_gettime(1) > uib_next_tick)
 	{
-		uib_next_tick = time + 1;
+		uib_next_tick = uib_gettime(1) + 0.5;
 		if (UIB_ServerSummary())
 			UIB_Build(top);
+		// while Multiplayer shows: a refresh every 10 s keeps the list live (the engine throttles it)
+		if (top == "mp" && uib_gettime(1) > uib_mp_next_refresh)
+		{
+			uib_mp_next_refresh = uib_gettime(1) + 10;
+			refreshhostcache(false);
+		}
 	}
-	if ((top == "pause" || top == "lan.host" || top == "mods.detail" || top == "settings.data") && time > uib_next_tick)
+	if ((top == "pause" || top == "lan.host" || top == "mods.detail" || top == "settings.data") && uib_gettime(1) > uib_next_tick)
 	{
-		uib_next_tick = time + 1;
+		uib_next_tick = uib_gettime(1) + 1;
 		UIB_Build(top);
 	}
 }
@@ -1369,6 +1447,8 @@ void UIB_Action(string node, string a, string payload)
 	}
 	if (UIB_SettingsAction(node, a, payload))
 		return;
+	if (UIB_JoinAction(a))
+		return;
 	switch (a)
 	{
 		case "sp": UIB_VMSet("create.from", "home"); UIB_Push("sp"); return;
@@ -1384,11 +1464,15 @@ void UIB_Action(string node, string a, string payload)
 		case "host.close": UIB_LanPopupClose(true); return;
 		case "host.copy": case "host.copylink": case "host.share": return;   // the renderer copied or shared the text
 		case "create": UIB_VMSet("create.from", "mp"); UIB_Push("sp"); return;
-		case "mp": UIB_VMSet("mp.server", ""); UIB_Push("mp"); UIB_Refresh(); return;
+		case "mp": UIB_VMSet("mp.server", ""); UIB_Push("mp"); UIB_Refresh(); uib_mp_next_refresh = uib_gettime(1) + 10; return;
 		case "credits": UIB_Push("credits"); return;
 		case "quit": localcmd("\nquit\n"); return;   // the renderer already confirmed
 		case "quit.confirm": localcmd("\nquit\n"); return;
 		case "dialog.cancel": UIB_Back(); return;
+		case "joinfail.retry":
+			if (UIB_TopScreen() == "dialog.joinfail") UIB_Back();
+			localcmd("\njoin_retry\n");
+			return;
 		case "play":
 		{
 			string map = cvar_string("touch_lan_map");
@@ -1423,11 +1507,10 @@ void UIB_Action(string node, string a, string payload)
 			return;
 		}
 		case "resume": m_hide(); return;
-		case "spectate": localcmd("\nspec\n"); m_hide(); return;
+		case "spectate": localcmd("\ntouch_action spectate confirm\n"); m_hide(); return;
 		case "disconnect": localcmd("\ndisconnect\n"); return;
 		// disconnect alone does not stop a join the server has not answered yet
 		case "loading.cancel": localcmd("\ndisconnect\n_touch_cancel_join\n"); return;
-		case "credits.full": m_goto("Credits", false); return;
 	}
 }
 

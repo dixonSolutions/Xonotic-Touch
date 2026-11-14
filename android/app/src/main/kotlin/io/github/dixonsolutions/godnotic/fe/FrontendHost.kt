@@ -51,7 +51,13 @@ import java.io.File
 class FrontendHost(private val activity: Activity, private val baseDir: File?) : ViewRenderer.Host, UiEvents {
     private val tag = "Godnotic"
     private val main = Handler(Looper.getMainLooper())
-    val root = FrameLayout(activity)
+    val root: FrameLayout = object : FrameLayout(activity) {
+        override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+            // the engine's console button under the pause scrim takes its own touches (4.12)
+            if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN && passThrough(ev.x, ev.y)) return false
+            return super.dispatchTouchEvent(ev)
+        }
+    }
     private val screenLayer = FrameLayout(activity)
     private val dialogLayer = FrameLayout(activity)
     private val toastLayer = FrameLayout(activity)
@@ -64,7 +70,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     private var attached = false
     private var failed = false
     private var renderer: ViewRenderer? = null
-    private var client: UibClient? = null
+    private var client: UiClient? = null
     private var stopgap: StopgapActions? = null
     private val screens = ArrayList<String>()
     private var drainPosted = false
@@ -122,6 +128,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         val sk = skeleton ?: return
         skeleton = null
         Log.i(tag, "Native UI: skeleton lifted after ${SystemClock.elapsedRealtime() - started} ms ($why)")
+        pendingJoin?.let { addr -> pendingJoin = null; if (!failed) askJoin(addr) }
         val gone = { screenLayer.removeView(sk); if (screens.isEmpty()) root.visibility = View.GONE }
         if (Theme.reducedMotion(activity)) gone() else sk.animate().alpha(0f).setDuration(150).withEndAction(gone).start()
     }
@@ -155,7 +162,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
      */
     private fun checkStuck() {
         val top = screens.lastOrNull() ?: return
-        val kind = client?.store?.node(top)?.str("kind") ?: ""
+        val kind = client?.topKind ?: ""
         val stuck = app.str("state") == "menu" && kind == "loading" && root.visibility == View.VISIBLE && dialogLayer.visibility != View.VISIBLE
         val now = SystemClock.elapsedRealtime()
         if (!stuck) { stuckSince = 0; return }
@@ -198,7 +205,9 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
             "app" -> onApp(Json.parseOrNull(json).obj())
             "event" -> onEvent(Json.parseOrNull(json).obj())
             "image" -> Json.parseOrNull(json).obj().let { renderer?.imageReady(it.str("ref"), it.str("path")) }
-            "ui" -> if (!failed) client?.receive(Json.parseOrNull(json).obj())
+            "ui" -> if (!failed) client?.receiveText(json)
+            "mods" -> onMods(Json.parseOrNull(json).obj())
+            "connect" -> onConnect(Json.parseOrNull(json).obj())
         }
     }
 
@@ -213,6 +222,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
             if (!a.bool("enabled") || a.int("proto") != 1) { fallBack("touch_native_frontend is off or the protocol differs"); return }
             attach()
         }
+        if (attached && resumed && !a.bool("attached")) reattach()
         val state = a.str("state")
         val sig = "$state menu=${a.bool("menu")} owns=${a.bool("owns_menu")} adv=${a.bool("advanced")} console=${a.bool("console")}"
         if (sig != lastSig) { lastSig = sig; Log.i(tag, "Native UI: engine $sig") }
@@ -223,30 +233,215 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
             else -> { showBackPill(false); setVisible(false) } // in a match, or the engine's loading screen
         }
         reportPower("_android_idle_home", if (state == "menu" && root.visibility == View.VISIBLE) "1" else "0")
+        showReconnect(a.str("reconnect"))
+        if (state != "loading" && state != "connecting" && loadingStrip != null) onConnect(mapOf("stage" to "idle"))
+        onJoinFail(a)
+        val note = a.str("reconnect_note")
+        if (note != lastReconnectNote) { lastReconnectNote = note; if (note.isNotEmpty() && note.startsWith("Disconnected")) toast(note, "warning") }
+    }
+
+    private var joinFailKnown = false
+    private var joinFailSeen = -1
+
+    /**
+     * A join that failed (touch_joinfail.c publishes it; the app topic carries it):
+     * our own dialog, kind and reason, with Retry (`join_retry`) and Close. The
+     * engine's QuakeC dialog is off while we are attached (touch_joinfail_dialog 0).
+     */
+    private fun onJoinFail(a: Map<String, Any?>) {
+        if (!a.containsKey("join_fail_serial")) return
+        val serial = a.int("join_fail_serial")
+        if (!joinFailKnown) {
+            joinFailKnown = true
+            joinFailSeen = serial // failures from before we attached are not ours to show
+            NativeBridge.enqueue(FeArgs.command("set", "touch_joinfail_dialog", "0"))
+            return
+        }
+        if (serial == joinFailSeen) return
+        joinFailSeen = serial
+        if (a.str("join_fail_kind").isEmpty() && a.str("join_fail_text").isEmpty()) return
+        // a password prompt answers those itself
+        if (a.str("join_fail_kind") == "refused" && a.str("join_fail_text").contains("password", ignoreCase = true)) return
+        val title = when (a.str("join_fail_kind")) {
+            "timeout" -> "The server did not answer"
+            "busy" -> "The server is full"
+            "refused" -> "The server refused the join"
+            "network" -> "No network"
+            "dropped" -> "The connection dropped"
+            "files" -> "Missing game files"
+            else -> "Could not join"
+        }
+        val body = listOf(a.str("join_fail_text"), a.str("join_fail_detail"), a.str("join_fail_address"))
+            .filter { it.isNotEmpty() }.distinct().joinToString("\n")
+        main.postDelayed({
+            confirm(mapOf("title" to title, "body" to body, "ok" to "Retry", "cancel" to "Close")) {
+                NativeBridge.enqueue(FeArgs.command("join_retry"))
+            }
+        }, 300)
+    }
+
+    private var loadingStrip: android.widget.LinearLayout? = null
+    private var loadingText: android.widget.TextView? = null
+    private var loadingBar: android.widget.ProgressBar? = null
+    private var loadingTitle: android.widget.TextView? = null
+
+    /**
+     * A join or a map load: the engine publishes its progress from inside the
+     * blocking load (TouchFE_Loading, a few times a second). The engine's own
+     * loading screen stops redrawing during a long item; this strip is drawn
+     * by Android on its own thread, so the player always sees it moving
+     * (an indeterminate bar) with the step and the percentage.
+     */
+    private fun onConnect(c: Map<String, Any?>) {
+        val stage = c.str("stage")
+        val busy = stage in setOf("connecting", "downloading", "loading", "signon") && !failed
+        if (!busy || root.visibility == View.VISIBLE) {
+            loadingStrip?.let { (it.parent as? ViewGroup)?.removeView(it) }
+            loadingStrip = null; loadingText = null; loadingBar = null; loadingTitle = null
+            return
+        }
+        if (loadingStrip == null) {
+            // one presentation of a join or a load: an opaque Android screen over
+            // the engine's own loading screen and status text (they stay in the
+            // console), drawn by Android so it moves during a blocking load
+            val screen = android.widget.LinearLayout(activity)
+            screen.orientation = android.widget.LinearLayout.VERTICAL
+            screen.gravity = Gravity.CENTER_HORIZONTAL
+            screen.setBackgroundColor(android.graphics.Color.BLACK)
+            screen.isClickable = true // nothing reaches the engine underneath
+            val banner = BootSplash.view(activity, 0.5f, 720)
+            screen.addView(banner, android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            val card = android.widget.LinearLayout(activity)
+            card.orientation = android.widget.LinearLayout.VERTICAL
+            val p = Theme.dp(activity, 16f)
+            card.setPadding(Theme.dp(activity, 24f), p, Theme.dp(activity, 24f), p)
+            card.background = Theme.rounded(0xFF0B1730.toInt(), Theme.dp(activity, 18f).toFloat(), Theme.dp(activity, 1f), Theme.BLUE)
+            val title = Kit.text(activity, "", Theme.SP_TITLE, Theme.TEXT, bold = true, lines = 1)
+            title.typeface = Theme.display
+            val t = Kit.text(activity, "", Theme.SP_BODY, Theme.TEXT_MUTED, lines = 1)
+            t.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+            val bar = android.widget.ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal)
+            bar.isIndeterminate = true
+            bar.indeterminateTintList = android.content.res.ColorStateList.valueOf(Theme.EMBER)
+            val cancel = Kit.button(activity, "Cancel") { NativeBridge.enqueue(FeArgs.command("cancel")) }
+            val row = Kit.row(activity, 16f)
+            row.gravity = Gravity.CENTER_VERTICAL
+            val texts = Kit.column(activity, 4f)
+            texts.addView(title); texts.addView(t)
+            row.addView(texts, android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(cancel)
+            card.addView(row)
+            card.addView(bar, android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(activity, 6f)).apply { topMargin = Theme.dp(activity, 12f) })
+            screen.addView(card, android.widget.LinearLayout.LayoutParams(Theme.dp(activity, 640f).coerceAtMost(activity.resources.displayMetrics.widthPixels - Theme.dp(activity, 32f)), ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = Theme.dp(activity, 48f) })
+            activity.addContentView(screen, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            reconnectBar?.bringToFront()
+            loadingStrip = screen; loadingText = t; loadingBar = bar; loadingTitle = title
+        }
+        val pct = when (stage) {
+            "downloading" -> c.num("download_progress")
+            "loading" -> c.num("load_progress")
+            else -> 0.0
+        }
+        val map = app.str("map")
+        loadingTitle?.text = when {
+            c.bool("local") -> if (map.isNotEmpty()) "Starting ${map.replaceFirstChar { it.uppercase() }}" else "Starting the match"
+            c.str("address").isNotEmpty() -> "Joining ${c.str("address")}"
+            else -> "Joining"
+        }
+        val load = c.str("load")
+        val what = when (stage) {
+            "connecting" -> "Waiting for the server"
+            "downloading" -> {
+                val kib = c.num("speed") / 1024.0
+                "Downloading ${c.str("file").substringAfterLast('/')}" + if (kib > 0) "  ·  ${kib.toInt()} KiB/s" else ""
+            }
+            "signon" -> "Entering the game"
+            // the engine's step names are file names ("progs/bolt.mdl", "*1"): say it plainly
+            else -> when {
+                load.isEmpty() || load.startsWith("*") -> "Loading the map"
+                load.contains('/') -> "Loading " + load.substringAfterLast('/').substringBeforeLast('.')
+                else -> load.replaceFirstChar { it.uppercase() }
+            }
+        }
+        // the engine reports 1% for most of a map load: a number only once it says something
+        loadingText?.text = if (pct >= 0.02) "$what  ·  ${(pct * 100).toInt()}%" else what
+    }
+
+    private var reconnectBar: View? = null
+    private var reconnectText: android.widget.TextView? = null
+    private var lastReconnectNote = ""
+
+    /**
+     * The automatic reconnect (docs/NETWORK.md, touch_net.c) over whatever is
+     * on screen, the game or the loading screen: "Reconnecting to ... (attempt
+     * n of 5)" and Cancel (net_reconnect_cancel). Added to the activity, not
+     * the overlay, because the overlay is hidden while the engine draws.
+     */
+    private fun showReconnect(text: String) {
+        if (text.isEmpty()) { reconnectBar?.let { (it.parent as? ViewGroup)?.removeView(it) }; reconnectBar = null; reconnectText = null; return }
+        reconnectText?.let { if (it.text != text) it.text = text; return }
+        val bar = android.widget.LinearLayout(activity)
+        bar.orientation = android.widget.LinearLayout.HORIZONTAL
+        bar.gravity = Gravity.CENTER_VERTICAL
+        val p = Theme.dp(activity, 12f)
+        bar.setPadding(Theme.dp(activity, 16f), p / 2, p / 2, p / 2)
+        bar.background = Theme.rounded(0xF20B1730.toInt(), Theme.dp(activity, 14f).toFloat(), Theme.dp(activity, 2f), Theme.WARN)
+        val t = Kit.text(activity, text, Theme.SP_BODY, Theme.TEXT, bold = true)
+        t.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        bar.addView(t)
+        val cancel = Kit.button(activity, "Cancel") { NativeBridge.enqueue(FeArgs.command("reconnect_cancel")) }
+        bar.addView(cancel, android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = p })
+        val lp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL)
+        lp.topMargin = Theme.dp(activity, 12f)
+        activity.addContentView(bar, lp)
+        reconnectBar = bar
+        reconnectText = t
     }
 
     private fun attach() {
         val r = ViewRenderer(activity, this, this)
         renderer = r
-        val c = UibClient(r) { msg -> NativeBridge.enqueue(FeArgs.command("ui", msg)) }
+        val send: (String) -> Unit = { msg -> NativeBridge.enqueue(FeArgs.command("ui", msg)) }
+        // the Rust core (loader/crates/android) when this build carries it; the Kotlin reader otherwise
+        val c: UiClient = (if (app.bool("ui_bridge") && !File(baseDir, "fe-kotlin-core").isFile) RustCore.create(r, send) else null)
+            ?: UibClient(r, send)
+        Log.i(tag, "Native UI: UI bridge read by ${if (c is RustCore) "the Rust core" else "the Kotlin reader"}")
         c.ignoreRows = testRows
         client = c
         attached = true
+        reattachAt = SystemClock.elapsedRealtime() + 2000 // the first app snapshots still say detached
         NativeBridge.frontendBeat()
         NativeBridge.enqueue(FeArgs.command("attach", "1"))
         if (app.bool("ui_bridge")) {
             // touch_warm prepares the map Home's Play starts: the hero's picture names it
-            c.onChanged = { st ->
-                val ref = st.nodes.values.firstOrNull { it.type == "hero" }?.str("image") ?: ""
+            c.onChanged = {
+                val ref = c.hero
                 if (ref.startsWith("pk3:maps/")) reportPower("touch_warm_map", ref.removePrefix("pk3:maps/"))
             }
             c.hello(caps())
         }
         else {
-            stopgap = StopgapActions(activity, c)
+            stopgap = StopgapActions(activity, c as UibClient)
             // touch_warm prepares what Play starts while Home is idle
             NativeBridge.enqueue(FeArgs.command("set", "touch_warm_map", StopgapActions.STOPGAP_MAP))
         }
+    }
+
+    private var reattachAt = 0L
+
+    /**
+     * The engine dropped the UI (no heartbeat for 30 s, the bridge closed):
+     * attach again and ask for the screens anew, rather than leave the
+     * QuakeC menu running under a native screen nobody updates.
+     */
+    private fun reattach() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - reattachAt < 3000) return
+        reattachAt = now
+        Log.w(tag, "Native UI: the engine detached us; attaching again")
+        NativeBridge.frontendBeat()
+        NativeBridge.enqueue(FeArgs.command("attach", "1"))
+        if (app.bool("ui_bridge")) client?.hello(caps())
     }
 
     private fun caps(): Map<String, Any?> {
@@ -267,9 +462,10 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         if (!attached) return
         when (ev.str("type")) {
             "overflow" -> { NativeBridge.enqueue(FeArgs.command("get", "app")); client?.sync() }
-            "disconnected" -> toast("Disconnected: ${ev.str("reason")}", "error")
-            "rejected" -> toast("Refused: ${ev.str("reason")}", "error")
-            "failed" -> toast(ev.str("reason"), "error")
+            // with touch_joinfail.c the Could not join dialog says it (app.join_fail_*); a toast otherwise
+            "disconnected" -> if (!joinFailKnown) toast("Disconnected: ${ev.str("reason")}", "error")
+            "rejected" -> if (!joinFailKnown) toast("Refused: ${ev.str("reason")}", "error")
+            "failed" -> if (!joinFailKnown) toast(ev.str("reason"), "error")
             "password" -> {
                 val wrong = ev.str("kind") == "wrong"
                 val addr = ev.str("address")
@@ -277,7 +473,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
                 // description did not come back to it) a native one, so a refused
                 // join always ends at a password prompt with the reason
                 main.postDelayed({
-                    val modal = client?.store?.app?.props?.get("modal").list()
+                    val modal = client?.modal
                     if (modal.isNullOrEmpty() && app.str("state") == "menu") passwordPrompt(addr, wrong)
                 }, 700)
             }
@@ -309,6 +505,107 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         backPill = b
     }
 
+    // ---------------------------------------------------------------- install from a file
+
+    private var pendingFile: Pair<String, Map<String, Any?>>? = null
+    private var installSeen = ""
+
+    /** `kind: file` (Mods > Install from file): the system picker, the file copied where the engine can read it. */
+    private fun pickFile(node: String, action: Map<String, Any?>) {
+        pendingFile = node to action
+        // tests: `<basedir>/fe-test-install` lists zips (one per line, relative to the basedir);
+        // the first one stands for the picker's choice and is taken off the list
+        val hook = baseDir?.let { File(it, "fe-test-install") }
+        if (hook != null && hook.isFile) {
+            val lines = hook.readLines().map { it.trim() }.filter { it.isNotEmpty() }
+            if (lines.isNotEmpty()) {
+                hook.writeText(lines.drop(1).joinToString("\n"))
+                onActivityResult(PICK_FILE, Activity.RESULT_OK, Intent().setData(Uri.fromFile(File(baseDir, lines[0]))))
+                return
+            }
+        }
+        val i = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+            .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"))
+        try { activity.startActivityForResult(i, PICK_FILE) } catch (e: Exception) { pendingFile = null; toast("No app can pick a file here", "error") }
+    }
+
+    /** From XonoticActivity.onActivityResult: true when it was the picker's. */
+    fun onActivityResult(request: Int, result: Int, data: Intent?): Boolean {
+        if (request != PICK_FILE) return false
+        val (node, action) = pendingFile ?: return true
+        pendingFile = null
+        val uri = data?.data ?: return true
+        Thread({
+            val path = try { importFile(uri) } catch (e: Exception) { Log.w(tag, "Native UI: could not copy the chosen file", e); null }
+            main.post {
+                if (path == null) { toast("Could not read that file", "error"); return@post }
+                // the install is reviewed before anything is written: the mods topic says when
+                NativeBridge.enqueue(FeArgs.command("sub", "mods", "1"))
+                client?.event("action", mapOf("node" to node, "action" to action.str("id"), "payload" to mapOf("path" to path)))
+            }
+        }, "godnotic-import").start()
+        return true
+    }
+
+    private fun importFile(uri: Uri): String {
+        var name = if (uri.scheme == "file") uri.lastPathSegment ?: "mod.zip" else "mod.zip"
+        if (uri.scheme != "file") activity.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0)?.let { name = it }
+        }
+        // the file's stem names the mod when the archive has no top folder: keep it, plainly
+        val ext = if (name.lowercase().endsWith(".pk3")) ".pk3" else ".zip"
+        val stem = name.substringBeforeLast('.').lowercase().replace(Regex("[^a-z0-9_-]"), "_").take(48).ifEmpty { "mod" }
+        // where ModImport (the QuakeC menu's picker) puts it too: no mod can reach it
+        val dir = java.io.File(baseDir ?: activity.getExternalFilesDir(null) ?: activity.filesDir, "userdata/luastate/incoming")
+        dir.mkdirs()
+        val out = java.io.File(dir, stem + ext)
+        var total = 0L
+        activity.contentResolver.openInputStream(uri)!!.use { input ->
+            out.outputStream().use { o ->
+                val buf = ByteArray(64 * 1024)
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    total += n
+                    if (total > 8L * 1024 * 1024) throw java.io.IOException("over 8 MB, the engine's limit for a package")
+                    o.write(buf, 0, n)
+                }
+            }
+        }
+        return out.absolutePath
+    }
+
+    /** The install review (`_lua_install`): what the package is and asks for, then Install or Cancel. */
+    private fun onMods(m: Map<String, Any?>) {
+        val raw = m.str("install")
+        if (raw == installSeen) return
+        installSeen = raw
+        val kv = LinkedHashMap<String, String>()
+        val perms = ArrayList<String>()
+        for (line in raw.split('\n')) {
+            val f = line.split('\t')
+            if (f.size < 2) continue
+            if (f[0] == "perm" && f.size >= 4) perms.add("${if (f[2] == "kept") "✓" else "•"} ${f[1]}: ${f[3]}${if (f[2] == "new") " (new)" else ""}")
+            else kv[f[0]] = f[1]
+        }
+        when (kv["state"]) {
+            "review" -> {
+                val body = buildString {
+                    append(listOf(kv["version"], kv["author"]).filter { !it.isNullOrEmpty() }.joinToString(" · "))
+                    kv["description"]?.takeIf { it.isNotEmpty() }?.let { append("\n\n").append(it) }
+                    append("\n\n").append(kv["files"] ?: "")
+                    if (perms.isNotEmpty()) append("\n\nAsks for:\n").append(perms.joinToString("\n"))
+                    append("\n\nIt is installed turned off, with nothing granted.")
+                }
+                confirmOrCancel(mapOf("title" to (if (kv["update"] == "1") "Update ${kv["title"]}?" else "Install ${kv["title"]}?"), "body" to body.trim(), "ok" to "Install"),
+                    ok = { NativeBridge.enqueue(FeArgs.command("mod", "confirm")) },
+                    cancel = { NativeBridge.enqueue(FeArgs.command("mod", "cancel")) })
+            }
+            "done" -> { toast(kv["message"]?.ifEmpty { null } ?: "Installed", "success"); NativeBridge.enqueue(FeArgs.command("sub", "mods", "0")) }
+            "error" -> { toast(kv["message"]?.ifEmpty { null } ?: "Could not install it", "error"); NativeBridge.enqueue(FeArgs.command("sub", "mods", "0")) }
+        }
+    }
+
     // ---------------------------------------------------------------- UiEvents (from the views)
 
     override fun action(node: String, action: Map<String, Any?>) {
@@ -317,6 +614,10 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     }
     override fun value(node: String, value: Any?) { client?.event("value", mapOf("node" to node, "value" to value)) }
     override fun submit(node: String, value: Any?) { client?.event("submit", mapOf("node" to node, "value" to value)) }
+    override fun visible(list: String, offset: Int, limit: Int, touching: Boolean?) {
+        if (testRows) return
+        client?.event("visible", linkedMapOf<String, Any?>("node" to list, "offset" to offset, "limit" to limit).apply { if (touching != null) put("touching", touching) })
+    }
     override fun row(list: String, key: String, kind: String) { client?.event("row", mapOf("node" to list, "row" to key, "kind" to kind)) }
     override fun window(list: String, source: String, offset: Int, limit: Int, sort: String, desc: Boolean, filter: String) {
         if (testRows) {
@@ -361,6 +662,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     private fun reportAll() {
         val pm = activity.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
         reportPower("touch_device_powersave", if (pm.isPowerSaveMode) "1" else "0")
+        reportPower("touch_device_charging", if (charging()) "1" else "0")
         if (Build.VERSION.SDK_INT >= 29) reportPower("touch_device_thermal", pm.currentThermalStatus.toString())
     }
 
@@ -370,10 +672,16 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     private fun watchPower() {
         val pm = activity.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
         powerReceiver = object : BroadcastReceiver() {
-            override fun onReceive(c: Context, i: Intent) { reportPower("touch_device_powersave", if (pm.isPowerSaveMode) "1" else "0") }
+            override fun onReceive(c: Context, i: Intent) {
+                reportPower("touch_device_powersave", if (pm.isPowerSaveMode) "1" else "0")
+                reportPower("touch_device_charging", if (charging()) "1" else "0")
+            }
         }
         try {
-            activity.registerReceiver(powerReceiver, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
+            val f = IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
+            f.addAction(Intent.ACTION_POWER_CONNECTED)
+            f.addAction(Intent.ACTION_POWER_DISCONNECTED)
+            activity.registerReceiver(powerReceiver, f)
         } catch (e: Exception) { powerReceiver = null }
         if (Build.VERSION.SDK_INT >= 29) {
             val l = PowerManager.OnThermalStatusChangedListener { s -> reportPower("touch_device_thermal", s.toString()) }
@@ -382,12 +690,23 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         }
     }
 
+    /** Plugged in (AC, USB, wireless): touch_warm then runs fully under battery saver. */
+    private fun charging(): Boolean {
+        // tests: `<basedir>/fe-test-unplugged` measures touch_warm's battery-saver pass on a tablet on USB
+        if (baseDir != null && File(baseDir, "fe-test-unplugged").isFile) return false
+        val bm = activity.getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager
+        if (Build.VERSION.SDK_INT >= 23 && bm != null && bm.isCharging) return true
+        val st = try { activity.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) } catch (e: Exception) { null }
+        return (st?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
+    }
+
     fun onResume() { resumed = true; if (attached) NativeBridge.frontendBeat() }
     fun onPause() { resumed = false }
 
     fun onDestroy() {
         NativeBridge.onDirty = null
         main.removeCallbacks(tick)
+        client?.close()
         powerReceiver?.let { try { activity.unregisterReceiver(it) } catch (e: Exception) {} }
         if (Build.VERSION.SDK_INT >= 29) (thermalListener as? PowerManager.OnThermalStatusChangedListener)?.let {
             (activity.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.removeThermalStatusListener(it)
@@ -471,10 +790,26 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         main.postDelayed({ toastLayer.removeView(t) }, 3500)
     }
 
-    override fun canBack(): Boolean = client?.store?.app?.bool("canBack") ?: false
+    override fun canBack(): Boolean = client?.canBack ?: false
 
-    override fun platformAction(action: Map<String, Any?>): Boolean {
+    override fun reserved(): List<Map<String, Any?>> = client?.reserved ?: emptyList()
+
+    /**
+     * A touch in a reserved rect (the engine's console button) while the game
+     * shows through the pause scrim: the overlay lets it go to the engine.
+     */
+    fun passThrough(xPx: Float, yPx: Float): Boolean {
+        if (client?.topKind != "game" || dialogLayer.visibility == View.VISIBLE) return false
+        val d = activity.resources.displayMetrics.density
+        return reserved().any { r ->
+            val x = xPx / d; val y = yPx / d
+            x >= r.num("x") && x < r.num("x") + r.num("w") && y >= r.num("y") && y < r.num("y") + r.num("h")
+        }
+    }
+
+    override fun platformAction(node: String, action: Map<String, Any?>): Boolean {
         when (action.str("kind")) {
+            "file" -> { pickFile(node, action); return true }
             "link" -> {
                 val url = action.str("url")
                 if (!url.startsWith("https://") && !url.startsWith("http://")) return true
@@ -498,13 +833,15 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         return false
     }
 
-    override fun confirm(confirm: Map<String, Any?>, ok: () -> Unit) {
+    override fun confirm(confirm: Map<String, Any?>, ok: () -> Unit) = confirmOrCancel(confirm, ok) {}
+
+    private fun confirmOrCancel(confirm: Map<String, Any?>, ok: () -> Unit, cancel: () -> Unit) {
         val col = Kit.column(activity, 14f)
         col.addView(Kit.text(activity, confirm.str("title"), Theme.SP_HEADLINE, Theme.TEXT, bold = true))
         confirm.str("body").takeIf { it.isNotEmpty() }?.let { col.addView(Kit.text(activity, it, Theme.SP_BODY, Theme.TEXT_MUTED)) }
         val actions = Kit.row(activity, 12f)
         actions.gravity = Gravity.END
-        actions.addView(Kit.button(activity, confirm.str("cancel", "Cancel")) { showDialog(null) })
+        actions.addView(Kit.button(activity, confirm.str("cancel", "Cancel")) { showDialog(null); cancel() })
         val okB = Kit.button(activity, confirm.str("ok", "OK"), primary = true) { showDialog(null); ok() }
         if (confirm.bool("destructive")) okB.setTextColor(0xFF3A0000.toInt())
         actions.addView(okB)
@@ -512,7 +849,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         val frame = FrameLayout(activity)
         frame.setBackgroundColor(0xB3000000.toInt())
         frame.isClickable = true
-        frame.setOnClickListener { showDialog(null) }
+        frame.setOnClickListener { showDialog(null); cancel() }
         val box = Kit.card(activity, clickable = false, radiusDp = 24f)
         box.isClickable = true
         val p = Theme.dp(activity, 24f)
@@ -567,17 +904,36 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     // ---------------------------------------------------------------- join links
 
     /** A godnotic://join/<host>:<port> link: a native confirmation, then `fe connect`. */
+    private var pendingJoin: String? = null
+
     fun handleJoinLink(uri: Uri?): Boolean {
         val addr = joinAddress(uri) ?: return false
+        // at a cold start the question waits for Home: the first screen would cover it
+        if (skeleton != null) { pendingJoin = addr; return true }
+        askJoin(addr)
+        return true
+    }
+
+    private fun askJoin(addr: String) {
+        // in a match the overlay is hidden: open the pause menu first, then ask over it
+        if (app.str("state") == "ingame") {
+            NativeBridge.enqueue(FeArgs.command("menu", "open"))
+            main.postDelayed({ askJoinNow(addr) }, 600)
+            return
+        }
+        askJoinNow(addr)
+    }
+
+    private fun askJoinNow(addr: String) {
         main.post {
             confirm(mapOf("title" to "Join this game?", "body" to addr, "ok" to "Join")) {
                 NativeBridge.enqueue(FeArgs.command("connect", addr))
             }
         }
-        return true
     }
 
     companion object {
+        const val PICK_FILE = 0x6d6f64
         fun joinAddress(uri: Uri?): String? {
             if (uri == null || uri.scheme != "godnotic" || uri.host != "join") return null
             return parseJoin(uri.path?.trimStart('/') ?: "")

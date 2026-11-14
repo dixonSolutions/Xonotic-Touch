@@ -47,6 +47,9 @@
     <string name="boot_notice_channel">Game downloads</string>
     <string name="keepalive_channel">Staying connected in the background</string>
     <string name="keepalive_connection_title">Godnotic is staying connected</string>
+    <string name="ready_channel">Ready to play</string>
+    <string name="ready_title">Ready to play</string>
+    <string name="ready_text">Tap to return to the game</string>
     <string name="keepalive_download_title">Godnotic is downloading</string>
     <string name="keepalive_download_text">Game data: maps, textures and sounds</string>
     <string name="boot_notice_ready_title">Godnotic is ready</string>

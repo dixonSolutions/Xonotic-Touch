@@ -102,6 +102,24 @@ fn action_button(app: &App, node: &str, a: &Map<String, Value>, primary: bool) -
 const BANNER_HEIGHT: i32 = 240;
 const BANNER_HEIGHT_NARROW: i32 = 150;
 
+fn window_height(app: &App) -> i32 {
+    app.ui.borrow().as_ref().map(|u| u.win.height()).filter(|h| *h > 0).unwrap_or(760)
+}
+
+/// The banner gives way before the cards do (docs/UI_BRIDGE.md, the compact breakpoint):
+/// up to 30% of the window, never more than what is left once the cards have their room.
+fn banner_height(app: &App) -> i32 {
+    let h = window_height(app);
+    let max = if app.narrow.get() { BANNER_HEIGHT_NARROW } else { BANNER_HEIGHT };
+    (h * 30 / 100).min(h - if app.narrow.get() { 400 } else { 330 }).clamp(56, max)
+}
+
+/// A featured card's picture: as tall as a window of this height leaves it, at least 96.
+fn featured_picture_height(app: &App) -> i32 {
+    let h = window_height(app);
+    if app.narrow.get() { (h - banner_height(app) - 330).clamp(72, 200) } else { (h - banner_height(app) - 230).clamp(96, 230) }
+}
+
 /// The native skeleton shown before the engine's first snapshot: the banner and placeholder cards.
 pub fn skeleton() -> adw::NavigationPage {
     let tv = adw::ToolbarView::new();
@@ -158,8 +176,13 @@ pub fn screen(app: &App, store: &Store, s: &Node) -> gtk::Widget {
     for a in s.arr("actions").iter().rev() {
         if let Some(a) = a.as_object() {
             let b = action_button(app, &s.id, a, false);
-            if a.str_of("icon").is_some() {
+            if let Some(i) = a.str_of("icon").and_then(|i| icon(&i)) {
                 b.add_css_class("flat");
+                if app.narrow.get() {
+                    // a phone-width header has room for icons, not for three labelled buttons
+                    b.set_child(Some(&gtk::Image::from_icon_name(i)));
+                    b.set_tooltip_text(a.str_of("label").as_deref());
+                }
             }
             header.pack_end(&b);
         }
@@ -341,6 +364,7 @@ pub fn node(app: &App, store: &Store, n: &Node) -> gtk::Widget {
     let w: gtk::Widget = match n.kind.as_str() {
         "section" | "form" => section(app, store, n),
         "hero" => hero(app, n),
+        "card" if !n.arr("actions").is_empty() => card_with_actions(app, n),
         "card" => card(app, n).upcast(),
         "grid" => grid(app, store, n),
         "row" => row(app, store, n),
@@ -355,7 +379,7 @@ pub fn node(app: &App, store: &Store, n: &Node) -> gtk::Widget {
                 p.set_content_fit(gtk::ContentFit::Contain);
             }
             let banner = n.str("role").as_deref() == Some("banner") || r == "asset:banner";
-            p.set_height_request(if banner { if app.narrow.get() { BANNER_HEIGHT_NARROW } else { BANNER_HEIGHT } } else { 220 });
+            p.set_height_request(if banner { banner_height(app) } else { 220 });
             p.set_alternative_text(n.str("alt").as_deref());
             p.add_css_class("gn-banner");
             p.upcast()
@@ -815,7 +839,7 @@ fn card(app: &App, n: &Node) -> gtk::Button {
             // Map shots fill the card; artwork (mode icons) is shown whole.
             if r.starts_with("pk3:maps/") {
                 let featured = n.bool("featured").unwrap_or(false);
-                p.set_height_request(if featured { if app.narrow.get() { 150 } else { 230 } } else { aspect_height(n.str("aspect"), 240).clamp(80, 200) });
+                p.set_height_request(if featured { featured_picture_height(app) } else { aspect_height(n.str("aspect"), 240).clamp(80, 200) });
                 if featured {
                     b.add_css_class("gn-featured");
                 }
@@ -871,6 +895,43 @@ fn card(app: &App, n: &Node) -> gtk::Button {
     b
 }
 
+/// A card that carries its own actions (the compact Home's Play card: Singleplayer and
+/// Campaign): the picture and text as the card, its actions as buttons across its bottom.
+fn card_with_actions(app: &App, n: &Node) -> gtk::Widget {
+    let v = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    v.add_css_class("card");
+    v.add_css_class("gn-card");
+    if let Some(r) = n.str("image") {
+        let p = picture(app, &r, 720, 405);
+        p.set_height_request(featured_picture_height(app));
+        p.add_css_class("gn-card-pic");
+        v.append(&p);
+    }
+    let t = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    t.add_css_class("gn-card-text");
+    t.add_css_class("gn-featured-text");
+    t.append(&label(&n.title(), &["gn-card-title"]));
+    if let Some(s) = n.str("subtitle") {
+        t.append(&label(&s, &["dim-label"]));
+    }
+    // side by side while there is room, one under the other inside the card on a narrow window
+    let row = gtk::Box::new(if app.narrow.get() { gtk::Orientation::Vertical } else { gtk::Orientation::Horizontal }, 8);
+    row.set_homogeneous(true);
+    row.set_margin_top(8);
+    for (i, a) in n.arr("actions").iter().enumerate() {
+        if let Some(a) = a.as_object() {
+            let b = action_button(app, &n.id, a, i == 0);
+            b.set_size_request(-1, 48);
+            b.set_hexpand(true);
+            register_activator(app, &format!("{}:{}", n.id, a.str_of("id").unwrap_or_default()), &b);
+            row.append(&b);
+        }
+    }
+    t.append(&row);
+    v.append(&t);
+    v.upcast()
+}
+
 /// A short grid of cards (home tiles, modes). Long ones are `list` with `display: cards`.
 fn grid(app: &App, store: &Store, n: &Node) -> gtk::Widget {
     let f = gtk::FlowBox::new();
@@ -881,7 +942,8 @@ fn grid(app: &App, store: &Store, n: &Node) -> gtk::Widget {
     let min = n.f64("minItem").unwrap_or(160.0);
     let kids = store.children(&n.id);
     let featured = kids.first().is_some_and(|k| k.bool("featured").unwrap_or(false));
-    f.set_min_children_per_line(if app.narrow.get() { 1 } else if featured { kids.len().clamp(1, 4) as u32 } else { 2 });
+    // Home's featured cards are one row at every width, never stacked.
+    f.set_min_children_per_line(if featured { kids.len().clamp(1, 4) as u32 } else if app.narrow.get() { 1 } else { 2 });
     f.set_max_children_per_line(n.f64("maxColumns").map(|m| m as u32).unwrap_or(((1100.0 / (min + 12.0)) as u32).clamp(1, 6)));
     for k in store.children(&n.id) {
         if k.hidden() {

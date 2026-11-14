@@ -30,9 +30,13 @@ means the prepared assets go unused and the end of that load frees them
 quality change restarts the renderer, which reloads loaded models as before.
 
 Never in a game, a demo, with the console open, the window hidden or
-unfocused, on battery saver (touch_device_powersave 1) or when the device is
-warm (touch_device_thermal >= touch_warm_maxthermal); the platform layer sets
-those two (Android: PowerManager.isPowerSaveMode and getCurrentThermalStatus).
+unfocused, or when the device is warm (touch_device_thermal >=
+touch_warm_maxthermal). Under battery saver (touch_device_powersave 1) it runs
+fully while charging (touch_device_charging 1) and otherwise does one reduced
+pass, world first then models, stopped after touch_warm_saver_work seconds of
+work (touch_warm_saver 1, the default; 0 does nothing under battery saver, 2
+ignores it). The platform layer sets those cvars (Android:
+PowerManager.isPowerSaveMode, getCurrentThermalStatus, the battery's plug).
 Any input stops it until the menu is idle again. It prepares a map once and
 then does nothing until the target changes or a game is played. On a
 low-memory warning (SDL_APP_LOWMEMORY, or the touch_warm_drop command) the
@@ -67,6 +71,9 @@ static cvar_t touch_warm_pics = {CF_CLIENT | CF_ARCHIVE, "_touch_warm_pics", "",
 static cvar_t touch_warm_maxthermal = {CF_CLIENT, "touch_warm_maxthermal", "2", "touch_warm does nothing while touch_device_thermal is at least this"};
 static cvar_t touch_device_thermal = {CF_CLIENT, "touch_device_thermal", "0", "the device's thermal status as the platform reports it (Android: 0 none, 1 light, 2 moderate, 3 severe, ...); set by the platform layer"};
 static cvar_t touch_device_powersave = {CF_CLIENT, "touch_device_powersave", "0", "1 while the device is in battery saver; set by the platform layer"};
+static cvar_t touch_device_charging = {CF_CLIENT, "touch_device_charging", "0", "1 while the device is plugged in; set by the platform layer"};
+static cvar_t touch_warm_saver = {CF_CLIENT | CF_ARCHIVE, "touch_warm_saver", "1", "touch_warm under battery saver: 0 nothing, 1 all of it while charging and otherwise a reduced pass (touch_warm_saver_work), 2 all of it"};
+static cvar_t touch_warm_saver_work = {CF_CLIENT, "touch_warm_saver_work", "0.5", "seconds of work the reduced touch_warm pass may spend under battery saver (world first, then models: the costliest items of a join)"};
 
 #define TW_MAXITEMS 1024
 
@@ -83,6 +90,7 @@ static struct
 	tw_item_t *items;
 	int count, next;
 	qbool done;
+	qbool capped;          // the reduced pass stopped at its cap: the rest when it may run fully
 	qbool dropped;         // low memory: nothing until the next game
 	double last_input;
 	double started, spent;
@@ -169,6 +177,7 @@ static void TW_Reset(void)
 	tw.map[0] = 0;
 	tw.count = tw.next = 0;
 	tw.done = false;
+	tw.capped = false;
 	tw.spent = 0;
 	memset(tw.loaded, 0, sizeof(tw.loaded));
 	tw.already = tw.missing = 0;
@@ -268,11 +277,19 @@ static qbool TW_MayRun(void)
 		return false;
 	if (vid_hidden || !vid_activewindow)
 		return false;
-	if (touch_device_powersave.integer || touch_device_thermal.integer >= touch_warm_maxthermal.integer)
+	if (touch_device_thermal.integer >= touch_warm_maxthermal.integer)
+		return false;
+	if (touch_device_powersave.integer && !touch_warm_saver.integer)
 		return false;
 	if (host.realtime - tw.last_input < touch_warm_idle.value)
 		return false;
 	return true;
+}
+
+// battery saver on battery (touch_warm_saver 1): one pass capped at touch_warm_saver_work
+static qbool TW_Reduced(void)
+{
+	return touch_device_powersave.integer && touch_warm_saver.integer == 1 && !touch_device_charging.integer;
 }
 
 static void TW_Drop(const char *why)
@@ -326,6 +343,8 @@ static void TW_Frame(void)
 		return;
 	if (strcmp(tw.map, target))
 		TW_Plan(target);
+	if (tw.done && tw.capped && !TW_Reduced())
+		tw.done = tw.capped = false; // plugged in or out of battery saver: the rest
 	if (tw.done)
 		return;
 
@@ -339,7 +358,15 @@ static void TW_Frame(void)
 			break;
 	}
 	tw.spent += Sys_DirtyTime() - start;
-	if (tw.next >= tw.count)
+	if (tw.next < tw.count && TW_Reduced() && tw.spent >= touch_warm_saver_work.value)
+	{
+		// battery saver on battery: the costliest items (world, models) and stop
+		tw.done = tw.capped = true;
+		if (developer_loading.integer || Cvar_VariableValue(&cvars_all, "touch_loadtime", ~0))
+			Con_Printf("LOADTIME warm %s reduced (battery saver): %d/%d items, world=%d models=%d, work=%.1f ms\n",
+				tw.map, tw.next, tw.count, tw.loaded[0], tw.loaded[1], tw.spent * 1000.0);
+	}
+	else if (tw.next >= tw.count)
 	{
 		tw.done = true;
 		if (developer_loading.integer || Cvar_VariableValue(&cvars_all, "touch_loadtime", ~0))
@@ -365,10 +392,10 @@ static void TouchWarm_Status_f(cmd_state_t *cmd)
 		TW_Target(), tw.map, tw.next, tw.count, tw.done ? " done" : "", tw.dropped ? " (dropped: low memory)" : "",
 		tw.spent * 1000.0, host.realtime - tw.last_input);
 	// why it would not run now: every gate of TW_MayRun
-	Con_Printf("touch_warm: gates: enabled %d dropped %d state %d server %d demo %d console %d hidden %d active %d powersave %d thermal %d/%d idle %.1f/%.1f -> %s\n",
+	Con_Printf("touch_warm: gates: enabled %d dropped %d state %d server %d demo %d console %d hidden %d active %d powersave %d charging %d saver %d thermal %d/%d idle %.1f/%.1f -> %s%s\n",
 		touch_warm.integer, tw.dropped, (int)cls.state, (int)sv.active, (int)cls.demoplayback, key_consoleactive, (int)vid_hidden, (int)vid_activewindow,
-		touch_device_powersave.integer, touch_device_thermal.integer, touch_warm_maxthermal.integer,
-		host.realtime - tw.last_input, touch_warm_idle.value, TW_MayRun() ? "runs" : "waits");
+		touch_device_powersave.integer, touch_device_charging.integer, touch_warm_saver.integer, touch_device_thermal.integer, touch_warm_maxthermal.integer,
+		host.realtime - tw.last_input, touch_warm_idle.value, TW_MayRun() ? "runs" : "waits", TW_Reduced() ? " (reduced pass)" : "");
 }
 
 #ifdef TOUCH_WARM_SDL
@@ -392,6 +419,9 @@ void TouchWarm_Init(void)
 	Cvar_RegisterVariable(&touch_warm_maxthermal);
 	Cvar_RegisterVariable(&touch_device_thermal);
 	Cvar_RegisterVariable(&touch_device_powersave);
+	Cvar_RegisterVariable(&touch_device_charging);
+	Cvar_RegisterVariable(&touch_warm_saver);
+	Cvar_RegisterVariable(&touch_warm_saver_work);
 	Cmd_AddCommand(CF_CLIENT, "touch_warm_drop", TouchWarm_Drop_f, "free the models and sounds no game uses and stop touch_warm until the next game (low memory)");
 	Cmd_AddCommand(CF_CLIENT, "touch_warm_status", TouchWarm_Status_f, "what touch_warm prepared");
 	// load-time switches with no init hook of their own in an upstream file
