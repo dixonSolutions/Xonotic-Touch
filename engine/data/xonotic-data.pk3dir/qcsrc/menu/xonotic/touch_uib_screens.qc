@@ -1594,6 +1594,12 @@ void UIB_Tick()
 		uib_next_tick = uib_gettime(1) + 1;
 		UIB_Build(top);
 	}
+	// Settings > Updates follows the updater: rebuilt when its status file changes
+	if (top == "settings" && UIB_VM("settings.section") == "updates" && uib_gettime(1) > uib_next_tick)
+	{
+		uib_next_tick = uib_gettime(1) + 1;
+		if (TouchAndySU_changed()) UIB_Build(top);
+	}
 }
 
 // ---------------------------------------------------------------- events
