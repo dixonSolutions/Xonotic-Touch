@@ -1194,6 +1194,14 @@
   }
   /** The folder chosen earlier: opened, or {pending} while the browser wants to be asked again, or null. */
   async function folderAtStart(gpu) {
+    // The packs of an installed Godnotic app, copied in earlier (appdata.js).
+    if (store.get('appdata', '') === '1' && typeof XTAppData !== 'undefined') {
+      const a = await XTAppData.open().catch(() => null);
+      const big = a && a.files.find((x) => x.kind === 'data');
+      if (big && typeof XTLazyFS !== 'undefined' && await XTLazyFS.probe(big.file)) return a;
+      store.del('appdata');
+      problem('The game data copied from the Godnotic app is no longer whole in this browser (it clears storage when space runs short). Pick it again, or download it.');
+    }
     if (store.get('folder', '') !== '1' || typeof indexedDB === 'undefined') return null;
     let h = null;
     try { h = await folderKv('readonly', (s) => s.get('root')); } catch (e) { return null; }
@@ -1208,6 +1216,56 @@
       return null;
     }
   }
+  // "Use the game data from the Godnotic app": the folder picker where the
+  // browser has one off Android (read in place, nothing copied), else the
+  // file picker, where the app's packs are listed (appdata.js); those are
+  // checked, copied into the browser's files and used from the next start.
+  const appDataOk = () => typeof XTAppData !== 'undefined' && XTAppData.supported();
+  function appDataHint() {
+    if (isAndroid) return 'In the picker, open its menu (☰), choose Godnotic, then select every file.';
+    if (/Ubuntu/i.test(ua) && touchOnly) return 'On Ubuntu Touch the picker does not list the app yet: open the app instead.';
+    if (isLinux) return FOLDER_HINT.replace(' (type the path with Ctrl+L: the folder is hidden).', '. It is hidden: press Ctrl+L in the picker and type the path, then ' + (window.showDirectoryPicker ? 'choose that folder.' : 'select every file.'));
+    return '';
+  }
+  async function useAppData() {
+    const out = $('xt-download').hidden ? $('xt-verify-text') : $('xt-app-data-hint');
+    if (window.showDirectoryPicker && !isAndroid) return $('xt-folder').onclick();
+    const files = await XTAppData.pick({ android: isAndroid });
+    if (!files.length) return;
+    let got;
+    try {
+      got = await XTAppData.check(files, { packKind, zipDirectory, hasBytes, gpu: state.gpu });
+      const big = got.packs.find((p) => p.kind === 'data');
+      if (typeof XTLazyFS === 'undefined' || !(await XTLazyFS.probe(big.file))) throw new Error('This browser cannot read game files in place');
+    } catch (e) {
+      out.hidden = false;
+      out.textContent = String(e && e.message || e).replace(/([^.…])$/, '$1.');
+      return;
+    }
+    const size = got.packs.reduce((n, p) => n + p.size, 0);
+    const noRoom = await freeSpaceLine(size);
+    if (noRoom) { out.hidden = false; out.textContent = noRoom; return; }
+    popover(false);
+    show('xt-status');
+    $('xt-status-text').textContent = 'Copying the game data from the Godnotic app…';
+    try {
+      await XTAppData.save(got.packs, (n, total, name) => { $('xt-status-detail').textContent = `${name} · ${mbPair(n, total)}`; });
+    } catch (e) {
+      await XTAppData.remove();
+      return fail('Copying the game data failed: ' + (e && e.message || e) + '. What was copied has been removed; reload to try again.');
+    }
+    if (got.config) {
+      const text = await got.config.text().catch(() => '');
+      const fresh = !store.keys().some((k) => k.startsWith('started'));
+      if (looksLikeConfig(text) && (fresh || confirm('Also use the settings (config.cfg) you picked? They replace the settings of the game in this browser.'))) store.set('import-config', text);
+    }
+    // Drop a folder chosen before: one source of stock packs at a time.
+    try { await folderKv('readwrite', (s) => s.delete('root')); } catch (e) { /* none */ }
+    store.del('folder');
+    store.set('appdata', 1);
+    location.reload();
+  }
+
   function mountFolder() {
     if (!state.lazy) throw new Error('This browser cannot read game files in place from a folder. Stop using the folder in the menu.');
     for (const x of state.folder.files) {
@@ -1310,10 +1368,11 @@
     const kept = await persisted();
     let where = (BACKEND_LABEL[data.kind] || data.kind) + (data.why && data.why.length && data.kind !== 'opfs' ? ` (${data.why.join('; ')})` : '');
     const fold = state.folder;
-    if (fold) where = `Folder “${fold.name}” (read only, ${mb(fold.files.reduce((n, x) => n + x.size, 0))}) · ${where}`;
+    if (fold) where = `${fold.app ? 'Copied from the Godnotic app' : `Folder “${fold.name}”`} (${fold.app ? '' : 'read only, '}${mb(fold.files.reduce((n, x) => n + x.size, 0))}) · ${where}`;
     $('xt-st-backend').textContent = where;
-    $('xt-folder').hidden = !window.showDirectoryPicker || !!fold || !!state.folderPending;
+    $('xt-folder').hidden = !(window.showDirectoryPicker || appDataOk()) || !!fold || !!state.folderPending;
     $('xt-folder-stop').hidden = !fold && !state.folderPending;
+    $('xt-folder-stop').textContent = fold && fold.app ? 'Stop using the app’s game data' : 'Stop using the folder';
     $('xt-st-quota').textContent = est && est.quota ? `${mb(est.usage || 0)} used of ${mb(est.quota)}` : 'not reported';
     const sw = $('xt-opt-persist');
     $('xt-opt-persist-row').hidden = data.kind === 'memory' || !(navigator.storage && navigator.storage.persist);
@@ -1662,13 +1721,19 @@
           $('xt-dl-go').textContent = already >= 1e6 ? 'Continue' : 'Download';
           // The installed app, or a folder waiting for its permission.
           const app = hadStart ? null : await nativeApp();
+          const appData = !!app && appDataOk() && !state.folderPending;
           $('xt-app').hidden = !app && !state.folderPending;
+          $('xt-app-data').hidden = !appData;
+          $('xt-app-data').classList.toggle('adw-suggested', !!(app && app.known));
+          $('xt-app-data').onclick = () => useAppData().catch((e) => toast(e.message || String(e), 8000));
+          $('xt-app-data-hint').hidden = !appData || !appDataHint();
+          $('xt-app-data-hint').textContent = appDataHint();
           $('xt-app-text').hidden = !(app && app.known);
           $('xt-app-open').hidden = !app;
           if (app) {
             $('xt-app-open').href = app.href;
             $('xt-app-open').textContent = app.known ? 'Open the Godnotic app' : 'Have the Godnotic app? Open it';
-            $('xt-app-open').classList.toggle('adw-suggested', app.known);
+            $('xt-app-open').classList.toggle('adw-suggested', app.known && !appData);
             $('xt-app-open').classList.toggle('adw-flat', !app.known);
             $('xt-dl-go').classList.toggle('adw-suggested', !app.known);
             state.app = app;
@@ -1781,6 +1846,7 @@
   };
   $('xt-opt-persist').onchange = (e) => { setPersist(e.target).catch(() => {}); };
   $('xt-folder').onclick = async () => {
+    if (!window.showDirectoryPicker || isAndroid) return useAppData().catch((e) => toast(e.message || String(e), 8000));
     const out = $('xt-verify-text');
     let h;
     try {
@@ -1807,6 +1873,8 @@
   };
   $('xt-folder-stop').onclick = async () => {
     try { await folderKv('readwrite', (s) => s.delete('root')); } catch (e) { /* gone */ }
+    if (typeof XTAppData !== 'undefined') await XTAppData.remove();
+    store.del('appdata');
     store.del('folder');
     location.reload();
   };
@@ -1837,6 +1905,8 @@
       await root.removeEntry(XTStore.NAME, { recursive: true });
     } catch (e) { /* no OPFS */ }
     await caches.delete(XTStore.NAME).catch(() => {});
+    if (typeof XTAppData !== 'undefined') await XTAppData.remove();
+    store.del('appdata');
     location.reload();
   };
 

@@ -175,7 +175,7 @@ for icon in "$ROOT"/web/icon-*.png; do
     [ -f "$icon" ] && install -m 644 "$icon" "$OUT/"
 done
 rm -f "$OUT/config.js" "$OUT/build.json" "$OUT/godnotic.js" "$OUT/godnotic.wasm" \
-    "$OUT/shell.js" "$OUT/shell.css" "$OUT/store.js" "$OUT/lazyfs.js" "$OUT/godnotic-banner.png" "$OUT/godnotic-banner.webp"
+    "$OUT/shell.js" "$OUT/shell.css" "$OUT/store.js" "$OUT/lazyfs.js" "$OUT/appdata.js" "$OUT/godnotic-banner.png" "$OUT/godnotic-banner.webp"
 rm -f "$OUT/mods.js"
 rev="${VERCEL_GIT_COMMIT_SHA:-${GITHUB_SHA:-$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo local)}}"
 XT_BUILD_ID="$(date -u +%Y%m%d%H%M%S)-${rev:0:7}" XT_WEB_DATA_URL="${XT_WEB_DATA_URL:-}" \
@@ -195,7 +195,7 @@ names = {
     'godnotic.js': hashed(os.path.join(engine, 'godnotic.js'), 'godnotic.js'),
     'godnotic.wasm': hashed(os.path.join(engine, 'godnotic.wasm'), 'godnotic.wasm'),
 }
-for f in ('shell.js', 'shell.css', 'store.js', 'lazyfs.js', 'godnotic-banner.webp'):
+for f in ('shell.js', 'shell.css', 'store.js', 'lazyfs.js', 'appdata.js', 'godnotic-banner.webp'):
     names[f] = hashed(os.path.join(web, f), f)
 
 names['mods.js'] = hashed(os.path.join(web, 'mods.js'), 'mods.js')  # Lua mods from a file
@@ -203,7 +203,7 @@ names['mods.js'] = hashed(os.path.join(web, 'mods.js'), 'mods.js')  # Lua mods f
 html = open(os.path.join(web, 'index.html'), encoding='utf-8').read()
 html, n = re.subn(r'(src=")mods\.js"', r'\g<1>' + names['mods.js'] + '"', html)
 assert n == 1, 'mods.js'
-for plain in ('shell.js', 'shell.css', 'store.js', 'lazyfs.js', 'godnotic-banner.webp'):
+for plain in ('shell.js', 'shell.css', 'store.js', 'lazyfs.js', 'appdata.js', 'godnotic-banner.webp'):
     html, n = re.subn(r'((?:src|href)=")' + re.escape(plain) + '"', r'\g<1>' + names[plain] + '"', html)
     assert n == 1, plain
 cfg = {'engine': names['godnotic.js'], 'wasm': names['godnotic.wasm'], 'manifest': '',

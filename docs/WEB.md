@@ -28,7 +28,7 @@ page.
 | Interrupted downloads | Carry on where they stopped, after Cancel, a reload, a lost connection or the browser killing the page |
 | Storage | The origin private file system (OPFS) of the browser: it survives reloads, closing the tab, restarting the browser and new releases of the page. The page never asks for persistent storage by itself, so by default the browser may clear it when the device runs short of space; what is gone is downloaded again at the next start, only that, without a question |
 | Storage popover | The ⋮ button beside the main action (Download, Pause/Cancel, Reload), placed under or beside it (or `web_storage` in the console, in the middle of the screen over the game): how much game data is here, the switch "Keep on this device" (persistent storage, with the browser's real answer), render resolution, fullscreen; Install app, Verify data, Use an existing Godnotic folder (desktop Chromium), Import settings, Clear data; where the data is kept, the site's quota, the GPU and the last problem as small print. There is no header bar: the page is the banner, at one fixed place on the theme's background in every state, with what there is to do under it |
-| Already have the app | On Android in Chrome, a first visit says when the Godnotic app is installed and offers "Open the Godnotic app" instead of the download; other browsers on Android and Linux get the same hand-over as a plain link. See "An existing install" |
+| Already have the app | On Android in Chrome, a first visit says when the Godnotic app is installed and offers "Use the game data from the Godnotic app" (the app's packs from the system file picker, copied once) and "Open the Godnotic app" instead of the download; other browsers on Android and Linux get the same two as secondary buttons. See "An existing install" |
 | Saved | `config.cfg`, touch layouts and everything else the game writes, kept in IndexedDB |
 | Display | Fills the window; fullscreen at the first tap or key (Storage popover), or the game's own fullscreen setting |
 | Mouse | Click to capture (pointer lock, raw motion where the browser offers it); Esc opens the menu |
@@ -590,7 +590,7 @@ against the documents linked here on 2026-11-14:
 | Route | Possible? | What was done |
 |---|---|---|
 | The page finds the install's files by itself | **No.** A page cannot list or read the device's files, or another app's storage. The only way to files outside its own storage is `showDirectoryPicker()`, which "requires transient user activation" (a click) and always shows the browser's folder picker ([MDN](https://developer.mozilla.org/en-US/docs/Web/API/Window/showDirectoryPicker)). It exists in Chrome and Edge 86+ on desktop and Chrome for Android 132+, not in Firefox or Safari ([compat data](https://github.com/mdn/browser-compat-data/blob/main/api/Window.json)) | nothing to do |
-| Reading the Android app's data folder with the picker | **No.** The app keeps its packs in its private storage, which Android gives to no other app, and the system picker that Chrome for Android opens does not show app-private directories. (No Chrome or Android document says this in one sentence; it follows from Android's app sandbox, and is not tested on a device here.) | nothing to do |
+| Reading the Android app's data folder with the picker | **Not the folder, but the files, yes.** The app keeps its packs under `Android/data/<package>`, which the system picker cannot open since Android 11. An app can add itself to that picker with a document provider: exported, protected by `MANAGE_DOCUMENTS`, with the `android.content.action.DOCUMENTS_PROVIDER` intent filter ([Android docs](https://developer.android.com/guide/topics/providers/create-document-provider)). Every Android browser's `<input type=file>` opens that picker | done: `GameDataProvider` lists the packs and `config.cfg` read only as "Godnotic"; the page copies the picked packs into its own storage (below) |
 | The browser tells the page the app is installed | **Chrome on Android only**: `navigator.getInstalledRelatedApps()` (Chrome for Android 80+), when the web manifest lists the app in `related_applications` and the app names the site in an `asset_statements` entry of its manifest ([Chrome docs](https://developer.chrome.com/docs/capabilities/get-installed-related-apps)). Nothing there requires the app to come from Google Play, but sideloaded installs are not verified here | done: web side (`manifest.webmanifest`, `shell.js`), app side (`AndroidManifest.xml`, `res/values/asset_statements.xml`) |
 | Handing over to the app (no pick, no download) | **Yes, with one tap.** A link to a URL the app handles opens it. Chrome for Android takes `intent://…#Intent;scheme=…;package=…;S.browser_fallback_url=…;end` from a tap, not from a typed URL or a script without a gesture ([Chrome docs](https://developer.chrome.com/docs/android/intents)); other browsers and Linux take the custom scheme, `godnotic://open` | done: the first-visit page offers "Open the Godnotic app" (see below); the app declares the `godnotic` scheme; the Flatpak's desktop file already registered `x-scheme-handler/godnotic` |
 | Links to the web game open the app (Android App Links) | **Yes, on one host.** The app's intent filter with `autoVerify` plus `/.well-known/assetlinks.json` at the root of the host, naming the package and its signing certificate, served as JSON without redirects ([Android docs](https://developer.android.com/training/app-links/configure-assetlinks)). That works for `godnotic.vercel.app`; it cannot for the GitHub Pages copy, whose host root (`dixonsolutions.github.io/.well-known/`) belongs to another repository. A verified link opens the app from other apps and from links tapped on other sites; a URL typed into the browser stays in the browser | done: `web/.well-known/assetlinks.json` (copied by `scripts/build-web.sh`), the intent filter for `https://godnotic.vercel.app/` |
@@ -666,7 +666,8 @@ manifest):
 | Flatpak | `~/.var/app/io.github.dixonSolutions.Godnotic/data/godnotic/data/` | `~/.xonotic/data/config.cfg` | Yes: `~/.var` is not on Chromium's block list. It is hidden, so the path has to be typed (Ctrl+L in the GTK picker) |
 | Local package (no Flatpak) | `~/.local/share/godnotic/data/` | `~/.xonotic/data/config.cfg` | **No**: Chromium refuses `~/.local/share` and everything below it, like `~/.config`, `~/.ssh` and the home folder itself ([source](https://github.com/chromium/chromium/blob/main/chrome/browser/file_system_access/chrome_file_system_access_permission_context.cc), `kBlockPaths`). A copy or a symlinked folder elsewhere works |
 | Stock Xonotic | its `data/` folder (`~/.var/app/org.xonotic.Xonotic/…`, `/usr/share/xonotic/data`, an unpacked zip) | `~/.xonotic/data/config.cfg` | as its location allows; `/usr/share` works |
-| Ubuntu Touch, Android | app-confined storage | | no picker reaches it |
+| Android | app-confined storage | | Not as a folder; the packs are files in the system picker under "Godnotic" (`GameDataProvider`), picked with `<input type=file>` in any browser (below) |
+| Ubuntu Touch | app-confined storage | | No: Morph's picker is the Content Hub, which lists apps that are content sources; the click package is not one yet (it needs `content_exchange_source` and an export handler) |
 
 The settings live in another tree than the Flatpak's packs, and the home
 folder itself cannot be picked, so one pick cannot cover both: "Import
@@ -680,6 +681,40 @@ answers `showDirectoryPicker()` with a directory handle it fills itself
 permission prompts and "Allow on every visit" are checked by hand only.
 A pack that the app replaces while the page is open fails its reads
 (`EIO` to the engine) until a reload.
+
+### The app's packs in the file picker (every browser)
+
+"Use the game data from the Godnotic app", on the download page wherever
+the hand-over to the app is offered (Android, Linux), the main button when
+Chrome reports the app installed; also "Use an installed Godnotic's game
+data" in the ⋮ popover. Desktop Chromium off Android goes to the folder
+picker above (read in place, nothing copied). Elsewhere it opens the
+browser's file picker (`web/appdata.js`), with one line on where the
+packs are: on Android, the picker's menu, then "Godnotic", then every
+file; on Linux, the Flatpak path to type with Ctrl+L.
+
+- The picked files are checked as a folder's are (a data and a maps pack,
+  the newest of each kind, whole zips, ASTC only where the GPU has it); a
+  wrong pick says what is missing and nothing is copied.
+- They are copied into the browser's own files (OPFS directory
+  `xt-appdata`, outside the chunk store, so a prune never touches them),
+  then an index; a copy cut short has no index and is never used. 1.06 GB
+  copied in about 4 s on this machine's SSD (headless Chrome, 2026-11-14);
+  nothing comes from the network but this build's own files.
+- From then on they are used exactly like a picked folder, with no picker,
+  no permission and no app: a return visit starts with no data requests.
+  A `config.cfg` picked with them becomes the browser game's settings (asked
+  first when it has some).
+- "Stop using the app's game data" in the popover and "Clear data" delete
+  the copy. If the browser clears part of it, the page says so and offers
+  the pick or the download again.
+
+The provider shows only whole packs (`*.pk3`; a download in progress is
+`*.pk3.part`) and the player's `config.cfg`; it opens them read only and
+lists nothing else. Not tested on a device yet: the picker's menu, the
+provider's entry in it and how Chrome for Android streams a 300 MB pick.
+The headless test drives the real `<input type=file>` through
+`Page.setInterceptFileChooserDialog`.
 
 ### The app serving its packs on loopback: evaluated, not done
 
