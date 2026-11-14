@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "touch_uib_screens.qh"
+#include "touch_uib_touch.qh" // Touch HUD: the join popup, Touch controls settings
 
 // Godnotic UI bridge: Settings. Twelve sections, each bound to the cvars players change;
 // "Advanced" opens the stock dialogs for the long tail. Mods is a top-level section:
@@ -251,6 +252,7 @@ void UIB_SecInput()
 void UIB_SecTouch()
 {
 	UIB_SubTabs("touch");
+	UIB_SecTouchControls();   // Touch controls: look, stick, buttons, layout (touch_uib_touchcontrols.qc)
 	if (UIB_SubTab("controls", _("Controls")))
 	{
 		UIB_Choice("preset", _("Preset"), "cvar:touch_preset", "cards", strcat("[", UIB_Opt("balanced", _("Balanced")), ",", UIB_Opt("casual", _("Casual")), ",",
@@ -629,6 +631,7 @@ bool UIB_SettingsAction(string node, string a, string payload)
 		UIB_Push(strcat("mods.page.", substring(a, 8, -1)));
 		return true;
 	}
+	if (UIB_TouchControlsAction(a)) return true;   // touch_uib_touchcontrols.qc
 	string sel = UIB_VM("mods.sel");
 	string p = (UIB_VM("mods.realm") == "server") ? "sv_lua_plugin_" : "lua_mod_";
 	switch (a)

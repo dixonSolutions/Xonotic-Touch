@@ -1,0 +1,16 @@
+#pragma once
+
+#include "tab.qh"
+
+// Settings > Mobile > Touch: how the in-match touch controls feel (look
+// sensitivity and acceleration, the move stick, the buttons, the layout).
+// The same rows as the UI bridge's "Touch controls" sub-tab
+// (touch_uib_touchcontrols.qc); each is one cvar (docs/CONTROLS.md).
+CLASS(GodnoticTouchControlsTab, XonoticTab)
+	METHOD(GodnoticTouchControlsTab, fill, void(entity));
+	ATTRIB(GodnoticTouchControlsTab, intendedWidth, float, 0.9);
+	ATTRIB(GodnoticTouchControlsTab, rows, float, 14);
+	ATTRIB(GodnoticTouchControlsTab, columns, float, 6);
+	ATTRIB(GodnoticTouchControlsTab, name, string, "mobiletouchcontrols");
+ENDCLASS(GodnoticTouchControlsTab)
+entity makeGodnoticTouchControlsTab();
