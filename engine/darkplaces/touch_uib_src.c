@@ -14,6 +14,7 @@ tree shows them; a change bumps the source's rev and every renderer gets a `sour
 #include "netconn.h"
 #include "touch_lan_logic.h"
 #include "touch_srvlist.h"
+#include "touch_datafetch.h"
 #include "touch_uib_int.h"
 
 typedef struct
@@ -363,6 +364,15 @@ static void build_maps(source_t *s)
 		cell_s(r, "author", author, strlen(author));
 		cell_s(r, "description", desc, strlen(desc));
 		cell_s(r, "modes", modes, strlen(modes));
+		{
+			// "ready", or "downloading" with progress 0..1 (-1: queued) while the
+			// split set is still coming in (docs/DATA_FETCH.md)
+			float progress;
+			int st = TouchData_MapState(name, &progress);
+			const char *state = st == 0 ? "ready" : st == 1 ? "downloading" : "missing";
+			cell_s(r, "state", state, strlen(state));
+			cell_n(r, "progress", progress);
+		}
 	}
 	FS_FreeSearch(search);
 }
@@ -429,7 +439,7 @@ static void refresh(source_t *s, int force)
 		return;
 	if (!force && now < s->next_poll)
 		return;
-	s->next_poll = now + (s->kind == 2 ? 3600 : 0.25);
+	s->next_poll = now + (s->kind == 2 ? 0.5 : 0.25); // maps: packs land while the game runs (touch_datafetch.c)
 	if (s->kind == 1)
 	{
 		// A finger on the list (the QuakeC renderer: the engine sees it) or a
@@ -446,10 +456,11 @@ static void refresh(source_t *s, int force)
 	}
 	else if (s->kind == 2)
 	{
-		if (s->sig && !force)
+		unsigned sig = TouchData_Generation() | 0x80000000u;
+		if (s->sig == sig && !force)
 			return;
 		build_maps(s);
-		s->sig = 1;
+		s->sig = sig;
 		s->rev++;
 	}
 }
