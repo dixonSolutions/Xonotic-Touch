@@ -583,6 +583,8 @@ void CL_EstablishConnection(const char *address, int firstarg)
 	if (Sys_CheckParm("-benchmark"))
 		return;
 
+	TouchNet_ConnectAgain(address); // Touch: the same server again: leave it first, so it frees the slot before the new connect
+
 	// make sure the client ports are open before attempting to connect
 	NetConn_UpdateSockets();
 

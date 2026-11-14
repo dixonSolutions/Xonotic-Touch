@@ -270,6 +270,53 @@ reconnect, 11 minutes in the background neither moved the player to the
 spectators nor left the server (the server shows them playing throughout);
 a fresh join does move to the spectators after 20 s.
 
+**Joining again into a slot the server still holds.** That bug was the
+server's, and stock DarkPlaces has it. The server froze, so it had not timed
+the player out when the client gave up and joined again from the same
+IP:port. Stock keeps the slot ("client crashed and is coming back") *and its
+connection's sequence numbers*, while the client starts a new connection at
+sequence 0. From then on every reliable message is taken for a duplicate in
+both directions. Entity updates (unreliable) still flow, so the game looks
+fine, but no command of the client's reaches the server: `cmd spectate`
+while away, the clean disconnect at the away limit. Now:
+
+- the server starts that connection over (sequences, buffers, window) and
+  answers as for a new one (`TouchNet_ServerRejoin`, one hook line in
+  netconn.c). This also helps stock clients;
+- a client still in its signon that connects again gets the same treatment.
+  The server can tell it from a lost accept, which also brings a repeated
+  connect, because the client has already sent packets on that connection
+  (`TouchNet_ServerDuplicate`);
+- a client that reconnects by itself first sends its disconnect on the lost
+  connection, so a server that still hears it frees the slot;
+- `connect` to the server the client is already on, in the game or while
+  joining, leaves it first (`TouchNet_ConnectAgain`, one hook line in
+  cl_main.c). Stock keeps the old connection until the new accept and only
+  then sends its disconnect. The server sees the connect, then the
+  disconnect, and drops the player who just joined again; the new
+  connection then hangs until a timeout, about 30 s. A stock client still
+  does this against any server;
+- away, the client asks for the spectators not once but whenever the
+  scoreboard says it plays (frags other than -666), at most every 5 s and
+  three refused requests in a row. A rejoin or a map change is checked again
+  at once. On a fresh slot Xonotic makes the player an observer, and a
+  request sent then does nothing, so a single request at signon 4 was lost
+  to anything that joined the player later (a slot the server kept, an
+  auto-join). An observer by choice is left alone, and on return only a
+  player the client moved is joined again. The away time still counts from
+  when the app left;
+- the short silence limit after a freeze (3 s for 10 s) runs on the wall
+  clock. A freeze usually lands inside a frame, whose `host.realtime` was
+  taken before it, so the window counted from realtime had ended by the
+  next frame. The silence after the freeze was then judged by the 30 s
+  limit, and the away limit could come first: its clean disconnect went to
+  a server that had dropped the player long before (`away-freeze`).
+
+`scripts/test-net-away.sh` covers these with `svfreeze-away`,
+`reconnect-away`, `away-freeze`, `mapchange-away`, `manual-away`,
+`connect-again` and `restart-signon`. On origin/main, `svfreeze-away`,
+`connect-again` and `restart-signon` fail.
+
 Battery: a backgrounded connected client runs its loop at `cl_maxidlefps`
 (20 Hz) without rendering (`vid_hidden`), reading packets and sending a
 move per frame. Not measured on a phone; the estimate is that the Wi-Fi
@@ -429,10 +476,18 @@ did fail or look like failing:
   loopback (`scripts/test-joinfail.sh`). It applies to a second device at
   home, to players behind one carrier-grade NAT address, and to a join from a
   new port right after an abandoned one.
-  Now (`net_connect_backoff 1`): after three challenges answered with a
-  connect and no accept, the client stays silent for 5.6 s, once, and asks
-  again; the block has ended and the join goes through, about 9 s after it
-  began.
+  Now (`net_connect_backoff 1`): after four challenges answered with a
+  connect and no accept, the client stays silent until 5.6 s after its last
+  connect, once, and asks again. By then the block has ended and the join
+  goes through, about 8.6 s after it began. Up to three lost connects the
+  join is exactly as fast as stock. Four in a row, with every challenge
+  answered, is the block, not packet loss (`scripts/test-net-connect.sh`):
+
+  | connects ignored | stock | Godnotic |
+  |---|---|---|
+  | 0-3 | 0 / 1.0 / 2.0 / 3.0 s | the same |
+  | 4 | 4.0 s | 8.6 s |
+  | flood block (a second device joined just before) | never | 8.6 s |
 - **Long joins that look dead.** A 0.8.5 / 0.8.6 server without a pack URL
   sends its 3.3 MB CSQC over the stock UDP download: 45-60 s at 130-270 ms
   ping. Servers with their own packs need them over HTTP first: 36 MB for the
@@ -498,7 +553,7 @@ build; these runs were a desktop build of the same network code).
 | `net_slist_hold` | 1 | no reordering while a finger is on the menu |
 | `net_slist_stats`, `net_slist_stats_print`, `net_slist_open` | | timings of the last refresh; print them when a refresh settles; refresh as opening the list does |
 | `_slist_summary`, `_slist_servers`, `_slist_players`, `_slist_refreshing`, `_slist_saved` | | "N servers · M players" and its parts; a refresh is running; the numbers still include saved rows that have not answered |
-| `net_connect_backoff` | 1 | wait out a server's connect flood block once instead of renewing it every second |
+| `net_connect_backoff` | 1 | after four ignored connects, wait out a server's connect flood block once instead of renewing it every second |
 | `_join_fail_serial`, `_join_fail_kind`, `_join_fail_text`, `_join_fail_detail`, `_join_fail_address`, `join_retry` | | the last failed join, for every front end; join it again |
 | `touch_joinfail_dialog` | 1 | open the menu's Could not join dialog (a native front end that shows its own sets 0) |
 
@@ -661,9 +716,9 @@ Logic lives in `touch_net.c`; upstream files carry single `// Touch:` lines:
 
 | file | hook |
 |---|---|
-| `netconn.c` | include; `NetConn_Read`/`NetConn_Write`: `TouchNet_TracePacket`; `NetConn_SendUnreliableMessage`: `TouchNet_SendReliable`; `NetConn_Close`: `TouchNet_Close`; `NetConn_ReceivedMessage`: `TouchNet_Handles`/`TouchNet_Received`; challenge reply: `TouchNet_AppendConnect`; connectionless parse: `TouchNet_ClientConnectionless`; accept: `TouchNet_Established`; end of `NetConn_ClientParsePacket`: `TouchNet_ClientAfterParse`; server connect (new and repeated): `if (!TouchNet_ServerAccept(...))` before the stock `accept`; after `SV_ReadClientMessage`: `TouchNet_ServerAfterRead` |
+| `netconn.c` | include; `NetConn_Read`/`NetConn_Write`: `TouchNet_TracePacket`; `NetConn_SendUnreliableMessage`: `TouchNet_SendReliable`; `NetConn_Close`: `TouchNet_Close`; `NetConn_ReceivedMessage`: `TouchNet_Handles`/`TouchNet_Received`; challenge reply: `TouchNet_AppendConnect`; connectionless parse: `TouchNet_ClientConnectionless`; accept: `TouchNet_Established`; end of `NetConn_ClientParsePacket`: `TouchNet_ClientAfterParse`; server connect: new `if (!TouchNet_ServerAccept(...))`, repeated during the signon `if (!TouchNet_ServerDuplicate(...))`, rejoin of a begun slot `if (!TouchNet_ServerRejoin(...))`, each before the stock `accept`; after `SV_ReadClientMessage`: `TouchNet_ServerAfterRead` |
 | `cl_input.c` | include; `CL_SendMove`: `important = important \|\| TouchNet_ClientUrgent();` |
-| `cl_main.c` | include; `CL_DisconnectEx`: `TouchNet_Disconnecting(kicked, reason)` |
+| `cl_main.c` | include; `CL_DisconnectEx`: `TouchNet_Disconnecting(kicked, reason)`; `CL_EstablishConnection`: `TouchNet_ConnectAgain(address)` |
 | `libcurl.c` | `#include "touch_net.h"`, `#include "touch_curl.h"`; `CURL_fwrite`: `TouchCurl_Clip`; `Curl_EndDownload`: `TouchCurl_End`; `Curl_Frame`: `TouchCurl_Frame`, `TouchCurl_Done`, `TouchCurl_Finished`; `Curl_GetDownloadInfo`: `TouchCurl_Info` |
 | `cl_screen.c` | include; `SCR_DrawCurlDownload`: `TouchNet_CurlText` |
 | `sv_send.c` | include; `SV_SendClientDatagram`: `TouchNet_ClampDatagram` |

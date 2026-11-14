@@ -273,6 +273,56 @@ qbool TouchNet_ServerAccept(netconn_t *conn, lhnetsocket_t *mysocket, lhnetaddre
 	return true;
 }
 
+// A client that was in the game connects again from the same address (it
+// timed out, or the app was frozen and it joined again by itself). Stock
+// DarkPlaces keeps the slot and its connection as they were and sends a new
+// serverinfo; but the client starts a new connection at sequence 0, so with
+// the old sequences every reliable message is a "duplicate" both ways: the
+// client never gets through its signon, and none of its commands (spectate,
+// a clean disconnect) reach the server. Start the connection over, and
+// answer as for a new one (with a window if it offered one); false = send
+// the stock "accept" (it was reset all the same).
+qbool TouchNet_ServerRejoin(netconn_t *conn, lhnetsocket_t *mysocket, lhnetaddress_t *peeraddress, const char *connectstring)
+{
+	if (!conn)
+		return false;
+	TouchNet_Close(conn);
+	conn->nq.ackSequence = conn->nq.sendSequence = 0;
+	conn->nq.receiveSequence = conn->nq.unreliableReceiveSequence = 0;
+	conn->outgoing_unreliable_sequence = 0;
+	conn->sendMessageLength = 0;
+	conn->receiveMessageLength = 0;
+	conn->packetsReceived = 0; // TouchNet_ServerDuplicate: nothing on this connection yet
+	SZ_Clear(&conn->message);
+	conn->message.overflowed = false;
+	if (touch_net_trace.integer)
+		Con_Printf("NETTRACE sv %.3f rejoin %s\n", Sys_DirtyTime() * 1000.0, conn->address);
+	return TouchNet_ServerAccept(conn, mysocket, peeraddress, connectstring);
+}
+
+// A client still in its signon connects again from the same address. Stock
+// DarkPlaces answers with a duplicate accept and keeps the connection: right
+// when the first accept was lost (the client has no connection yet, so it
+// has sent nothing on this one), wrong when the client started over (it
+// timed out or joined again during the loading screen, and its disconnect
+// did not arrive): the same stale sequences as a rejoin (TouchNet_ServerRejoin),
+// so the join hangs until the server times it out. A client that has sent
+// anything on this connection has started over: the connection starts over
+// and the signon begins again with a new serverinfo.
+qbool TouchNet_ServerDuplicate(client_t *client, lhnetsocket_t *mysocket, lhnetaddress_t *peeraddress, const char *connectstring)
+{
+	netconn_t *conn = client->netconnection;
+	qbool sent;
+	if (!conn || !conn->packetsReceived)
+		return TouchNet_ServerAccept(conn, mysocket, peeraddress, connectstring); // the same window again
+	Con_Printf("%s joined again during its signon: starting its connection over\n", conn->address);
+	sent = TouchNet_ServerRejoin(conn, mysocket, peeraddress, connectstring);
+	if (!sent)
+		NetConn_WriteString(mysocket, "\377\377\377\377accept", peeraddress);
+	SV_SendServerinfo(client);
+	return true;
+}
+
 /*
 ==============
 Sending
@@ -952,11 +1002,14 @@ static struct
 	qbool user;           // the player disconnected or cancelled
 	char localip[64];     // this device's address toward the server
 	double next_check;
-	double quick_until;   // short silence limit until then (after a freeze)
+	double quick_until;   // short silence limit until then (Sys_DirtyTime: after a freeze)
 	double last_frame;
 	qbool away;
 	double away_since;
-	qbool spectated;
+	qbool spectated;      // moved to the spectators for being away (joins again on return)
+	qbool in_game;        // was at signon 4 last frame
+	double spectate_next; // the next spectate request while away is not before this
+	int spectate_tries;   // spectate requests in a row that left us playing
 }
 tn_rc;
 
@@ -990,13 +1043,28 @@ void TouchNet_Disconnecting(qbool kicked, const char *reason)
 	// server that timed us out says only "Server disconnected", which then
 	// arrives in the first frame after the freeze)
 	if (kicked && reason && (!strncmp(reason, "Connection timed out", 20) || !strncmp(reason, "Lost connection", 15)
-		|| (!strcmp(reason, "Server disconnected") && tn_rc.last_frame > 0 && (Sys_DirtyTime() - tn_rc.last_frame > 5 || host.realtime < tn_rc.quick_until)))
+		|| (!strcmp(reason, "Server disconnected") && tn_rc.last_frame > 0 && (Sys_DirtyTime() - tn_rc.last_frame > 5 || Sys_DirtyTime() < tn_rc.quick_until)))
 	 && net_reconnect.integer && !tn_rc.user)
 	{
 		if (strcmp(tn_rc.addr, addr))
 			tn_rc.tries = 0;
 		dp_strlcpy(tn_rc.addr, addr, sizeof(tn_rc.addr));
 		tn_rc.next = host.realtime + (tn_rc.tries ? (double)(1 << min(tn_rc.tries - 1, 5)) : 0.2);
+		// a lost connection says nothing to the server (CL_DisconnectEx sends
+		// clc_disconnect only when the player leaves); say it now, so a server
+		// that still hears us frees the slot instead of waiting out its timeout
+		if (cls.protocol != PROTOCOL_QUAKEWORLD)
+		{
+			sizebuf_t buf;
+			unsigned char bufdata[8];
+			int i;
+			memset(&buf, 0, sizeof(buf));
+			buf.data = bufdata;
+			buf.maxsize = sizeof(bufdata);
+			MSG_WriteByte(&buf, clc_disconnect);
+			for (i = 0; i < 3; i++)
+				NetConn_SendUnreliableMessage(cls.netcon, &buf, cls.protocol, 10000, 0, false);
+		}
 		Con_Printf("%s: joining %s again\n", reason, addr);
 		dpsnprintf(line, sizeof(line), "Reconnecting to %s...", addr);
 		TN_SetState(line);
@@ -1009,6 +1077,25 @@ void TouchNet_Disconnecting(qbool kicked, const char *reason)
 		dpsnprintf(line, sizeof(line), "Disconnected by %s: %s", addr, reason);
 		TN_SetState(line);
 	}
+}
+
+// connect (or a join from the menu) to the server this client is connected
+// to, in the game or still joining. Stock DarkPlaces keeps the connection
+// until the new one is accepted and only then sends its disconnect: the
+// server sees the connect first (and takes it for a rejoin of the slot),
+// then the old connection's disconnect, and drops the player who just
+// joined again; the new connection hangs until it times out. Leaving first
+// sends the disconnect ahead of the connect, so the server frees the slot
+// and the connect gets a fresh one.
+void TouchNet_ConnectAgain(const char *address)
+{
+	lhnetaddress_t to;
+	if (cls.state != ca_connected || !cls.netcon || sv.active || cls.demoplayback || !address)
+		return;
+	if (!LHNETADDRESS_FromString(&to, address, 26000) || LHNETADDRESS_Compare(&to, &cls.netcon->peeraddress))
+		return;
+	Con_DPrintf("Joining %s again: leaving it first\n", address);
+	CL_Disconnect();
 }
 
 static void TouchNet_ReconnectCancel_f(cmd_state_t *cmd)
@@ -1029,6 +1116,8 @@ void TouchNet_Away(qbool away)
 	if (away)
 	{
 		tn_rc.away_since = host.realtime;
+		tn_rc.spectate_next = 0;
+		tn_rc.spectate_tries = 0;
 		return;
 	}
 	// back: into the game again if we went to the spectators for the player
@@ -1039,7 +1128,7 @@ void TouchNet_Away(qbool away)
 	}
 	tn_rc.spectated = false;
 	// a frozen process may have missed packets: listen closely for a while
-	tn_rc.quick_until = host.realtime + 10;
+	tn_rc.quick_until = Sys_DirtyTime() + 10;
 }
 
 static void TouchNet_Away_f(cmd_state_t *cmd)
@@ -1052,16 +1141,46 @@ const char *TouchNet_ReconnectState(void)
 	return tn_rc.next ? net_reconnect_state.string : NULL;
 }
 
+// in the game as a player by the scoreboard: Nexuiz-derived games mark
+// observers and spectators -666 (touch_ui.c, cl_collision.c); players out of
+// the round (-616, -669) count as playing, they go to the spectators too
+static qbool TN_Playing(void)
+{
+	int me = cl.realplayerentity;
+	if (cl.intermission || !cl.scores || me < 1 || me > cl.maxclients)
+		return false;
+	return cl.scores[me - 1].frags != -666;
+}
+
 static void TN_StayConnected(void)
 {
 	double now = host.realtime, silence;
 	double gap = Sys_DirtyTime() - tn_rc.last_frame;
 	char ip[64], line[256];
 	qbool remote = cls.state == ca_connected && cls.netcon && !sv.active && !cls.demoplayback;
+	// The frames stopped (the app was frozen). The window runs on the wall
+	// clock: a freeze usually lands inside a frame, whose host.realtime was
+	// taken before it, so a window from realtime had ended by the next frame
+	// and the silence after the freeze was judged by the 30 s limit (the
+	// away limit could come first, and its clean disconnect went to a server
+	// that had long dropped the player).
 	if (tn_rc.last_frame > 0 && gap > 5)
-		tn_rc.quick_until = now + 10; // the frames stopped (the app was frozen)
+		tn_rc.quick_until = Sys_DirtyTime() + 10;
 	tn_rc.last_frame = Sys_DirtyTime();
 
+	if (remote && cls.signon == SIGNONS && !tn_rc.in_game)
+	{
+		// (back) in the game: a new connection or a new map. Away, the
+		// player is checked again at once (TN_Playing); the time away
+		// counts from when the app left, not from this join.
+		tn_rc.in_game = true;
+		tn_rc.spectate_next = 0;
+		tn_rc.spectate_tries = 0;
+		if (tn_rc.away)
+			Con_Printf("In the game again while away (%.0f s so far)\n", now - tn_rc.away_since);
+	}
+	else if (!remote || cls.signon < SIGNONS)
+		tn_rc.in_game = false;
 	if (remote && cls.signon == SIGNONS)
 	{
 		// in: forget the attempts
@@ -1088,7 +1207,7 @@ static void TN_StayConnected(void)
 			if (ip[0])
 				dp_strlcpy(tn_rc.localip, ip, sizeof(tn_rc.localip));
 		}
-		silence = now < tn_rc.quick_until ? 3 : net_reconnect_silence.value;
+		silence = Sys_DirtyTime() < tn_rc.quick_until ? 3 : net_reconnect_silence.value;
 		if (net_reconnect_silence.value > 0 && net_reconnect.integer && now - cls.netcon->lastMessageTime > silence)
 		{
 			CL_DisconnectEx(true, "Lost connection to server (nothing from it for %.0f s)", now - cls.netcon->lastMessageTime);
@@ -1096,15 +1215,33 @@ static void TN_StayConnected(void)
 		}
 		if (tn_rc.away)
 		{
-			if (net_away_spectate.value > 0 && !tn_rc.spectated && now - tn_rc.away_since > net_away_spectate.value)
+			// Not once but whenever the server says we play: after a
+			// reconnect or a map change the player may be put back in the
+			// game (a server that kept the slot, an auto-join) after the
+			// first request, and a request sent while still an observer does
+			// nothing. Three refused requests in a row (a server without
+			// spectating) and it stops asking until the next join.
+			if (net_away_spectate.value > 0 && now - tn_rc.away_since > net_away_spectate.value
+			 && now >= tn_rc.spectate_next && tn_rc.spectate_tries < 3)
 			{
-				Con_Printf("In the background for %.0f s: going to the spectators\n", now - tn_rc.away_since);
-				Cbuf_AddText(cmd_local, "cmd spectate\n");
-				tn_rc.spectated = true;
+				if (TN_Playing())
+				{
+					Con_Printf("In the background for %.0f s: going to the spectators\n", now - tn_rc.away_since);
+					Cbuf_AddText(cmd_local, "cmd spectate\n");
+					tn_rc.spectated = true;
+					tn_rc.spectate_tries++;
+					tn_rc.spectate_next = now + 5;
+				}
+				else
+					tn_rc.spectate_tries = 0;
 			}
 			if (net_away_limit.value > 0 && now - tn_rc.away_since > net_away_limit.value)
 			{
-				dpsnprintf(line, sizeof(line), "Left %s after %.0f minutes in the background", tn_rc.addr, net_away_limit.value / 60);
+				if (net_away_limit.value >= 120)
+					dpsnprintf(line, sizeof(line), "Left %s after %.0f minutes in the background", tn_rc.addr, net_away_limit.value / 60);
+				else
+					dpsnprintf(line, sizeof(line), "Left %s after %.0f s in the background", tn_rc.addr, net_away_limit.value);
+				Con_Printf("%s\n", line);
 				tn_rc.user = true;
 				CL_DisconnectEx(false, "%s", line);
 				TN_SetState(line);
