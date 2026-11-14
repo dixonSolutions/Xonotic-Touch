@@ -275,9 +275,19 @@ pinned to 8 cores of a busy host (load 6-10); medians of 3 runs:
 | First-play files stored, by chunks fetched at once (3 runs each) | one: 39.2 s; two: 38.0 s; three: 38.1 s |
 
 (These runs fetched two chunks at a time before the start, started the
-background with the engine and waited 1.1 s before each `fs_mountpack`; the
-page now fetches six before the start, three on phones, starts the
-background 10 s after the engine and does not wait. Not measured again.)
+background with the engine and waited 1.1 s before each `fs_mountpack`.)
+Measured again the same way with the page as it is now (six chunks before
+the start, the background 10 s after the engine, no wait before
+`fs_mountpack`, the engine with `touch_datafetch.c`), medians of 3 runs:
+first-play files stored 38.0 s (the line is the limit, six chunks or two);
+the menu 39.7 s (39.3-40.7), 88.3 MB received by then; the stormkeep match
+46.7 s (44.9-47.5), 89.0 MB received; `map boil` 5.5 s (5.5-5.6);
+everything stored and mounted 176 s (174-185); xoylent afterwards 1.8 s.
+No "could not find" from `fs_mountpack`, no unknown command, no missing-file
+line on the late maps; `g_cdtracks_remaplist` was filled after the music
+pack landed; the engine's own `touch_data_status` printed `"fetching"`
+with 86154 of 377068 KiB in the match and `"complete"` with 377068 of
+377068 KiB at the end.
 One at a time while playing: the line is the limit either way (142 MB were
 in at the same moment with one, two and three), and one left the frames
 alone.
