@@ -58,6 +58,8 @@ when the player ticks "remember".
 #include "touch_nativefe.h"
 #include "touch_lan_logic.h"
 #include "touch_net.h"
+#include "touch_joinfail.h"
+#include "touch_srvlist.h"
 
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 #define TOUCHLAN_SOCKETS 1
@@ -1103,7 +1105,7 @@ void TouchLAN_Broadcast(lhnetsocket_t *sock)
 	if (i == num_query_sockets && num_query_sockets < (int)(sizeof(query_sockets) / sizeof(query_sockets[0])))
 		query_sockets[num_query_sockets++] = sock;
 	lan_query(sock, true);
-	if (!cache_queried)
+	if (!cache_queried && !TouchSrvList_Fast()) // the fast list asks the saved servers itself
 		cache_query(sock);
 	repeats_left = bound(0, net_slist_lan_repeats.integer, 10);
 	next_repeat = host.realtime + bound(0.05, net_slist_lan_repeatdelay.value, 5);
@@ -1217,8 +1219,11 @@ static void host_status(void)
 void TouchLAN_Frame(void)
 {
 	static double next_status;
+	TouchJoinFail_Frame();
+	TouchSrvList_Frame();
 	if (!host_pw_ready)
 	{
+		TouchSrvList_FirstFrame();
 		// The file system and config.cfg are in by the first frame.
 		if (touch_lan_host_password_remember.integer)
 			load_host_password();
@@ -1470,6 +1475,8 @@ void TouchLAN_Init(void)
 {
 	cvar_t *v;
 	TouchNet_Init(); // joins over real networks: touch_net.c
+	TouchJoinFail_Init(); // a failed join says why: touch_joinfail.c
+	TouchSrvList_Init(); // the fast server list: touch_srvlist.c
 	Cvar_RegisterVariable(&sv_touch_lan_password);
 	Cvar_RegisterVariable(&net_slist_lan_only);
 	Cvar_RegisterVariable(&net_slist_lan_ports);

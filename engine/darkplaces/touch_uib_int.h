@@ -179,6 +179,8 @@ void UIBSrc_StaticBegin(const char *source);
 void UIBSrc_StaticRow(const char *key, const char *cellsjson, const char *image);
 void UIBSrc_StaticEnd(void);
 void UIBSrc_Param(const char *source, const char *key, const char *value);
+// a list node's `visible` event said whether a finger is on it: hold or release its source
+void UIBSrc_HoldNode(const char *nodeid, int touching);
 // The QuakeC renderer's window (engine-thread cache)
 int UIBSrc_LocalWindow(const char *source, int offset, int limit, const char *sort, int desc, const char *filter);
 int UIBSrc_LocalTotal(void);
