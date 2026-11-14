@@ -194,12 +194,15 @@ mkmod decl_std $'api: 3\nrealm: client\npermissions: standard'
 mkmod nomani ""
 mkmod decl_eng $'api: 3\nrealm: client\npermissions: standard, engine_full\nreason.engine_full: tests the switch'
 mkmod decl_new $'api: 3\nrealm: client\npermissions: standard, internet, engine_full'
+mkmod decl_keep $'api: 3\nrealm: client\npermissions: standard, internet, engine_full'
 printf 'decl_std\nnomani\ndecl_new\n' > "$DUD/mods/enabled.txt"
 # grant bits written by hand for tiers the mod does not declare
 printf 'v1 4001\n' > "$DUD/luastate/mods/grants/decl_std.txt"
 printf 'v1 7001\n' > "$DUD/luastate/mods/grants/nomani.txt"
 # an update that added engine_full: internet was granted before, engine_full is new
 printf 'v1 2000\n' > "$DUD/luastate/mods/grants/decl_new.txt"
+# a turn-on screen whose switches already granted internet: "with keep" settles the rest as off
+printf 'v1 2000\n' > "$DUD/luastate/mods/grants/decl_keep.txt"
 cat > "$DUD/data/declared.cfg" <<'CFG'
 defer 2 "lua_decl_std_probe"
 defer 2.5 "lua_nomani_probe"
@@ -212,6 +215,7 @@ defer 6 "lua_decl_eng_probe"
 defer 6.5 "lua_mod_permission decl_eng revoke engine_full"
 defer 7 "lua_decl_eng_probe"
 defer 7.5 "lua_mod_permission decl_new decline engine_full"
+defer 7.7 "lua_mod_enable decl_keep with keep"
 defer 8 "_cl_lua_permissions"
 defer 8.5 "lua_mod_info decl_new"
 defer 9 "quit"
@@ -231,6 +235,7 @@ dhas 'DECL decl_eng allowed' && ok "turning a mod on with a declared tier grants
 dhas 'DECL decl_eng denied: .*not turned on' && ok "a revoke takes effect on the next call, no restart" || bad "revoke not live: $(grep -a 'DECL decl_eng' "$DLOG")"
 grep -qaP '^decl_new\tv1\tstandard,internet,engine_full\tstandard,internet\tengine_full$' "$DLOG" && ok "an update that declares more keeps the old grant and asks about the new tier only" || bad "update status: $(grep -aP '^decl_new\t' "$DLOG" | head -1)"
 grep -qaP '^decl_new\tv1\tstandard,internet,engine_full\tstandard,internet\t?$' "$DLOG" && ok "decline settles the new tier, off, and keeps the old grant" || bad "decline status: $(grep -aP '^decl_new\t' "$DLOG" | tail -1)"
+grep -qaP '^decl_keep\tv1\tstandard,internet,engine_full\tstandard,internet\t?$' "$DLOG" && [ "$(cat "$DUD/luastate/mods/grants/decl_keep.txt")" = 'v1 2000' ] && ok "lua_mod_enable ... with keep turns on with the grants as they are and settles the rest" || bad "with keep: $(grep -aP '^decl_keep\t' "$DLOG" | tail -1) / $(cat "$DUD/luastate/mods/grants/decl_keep.txt")"
 [ "$(cat "$DUD/luastate/mods/grants/decl_new.txt")" = 'v1 2000' ] && ok "decline keeps the grant file as it was" || bad "decline changed grants ($(cat "$DUD/luastate/mods/grants/decl_new.txt"))"
 
 # Exercise the server realm in a local match too, with an independent grant store.

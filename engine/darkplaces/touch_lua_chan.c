@@ -403,7 +403,7 @@ static qbool tlua_cl_is_blocked(const char *channel)
 		const char *e = strchr(line, '\n');
 		char one[200];
 		size_t n = e ? (size_t)(e - line) : strlen(line);
-		dp_strlcpy(one, line, min(n + 1, sizeof(one)));
+		TLua_CopyN(one, sizeof(one), line, n);
 		if (sscanf(one, "%127s %63s", srv, ch) >= 1)
 			if ((!strcmp(srv, "*") || !strcmp(srv, server)) && (!ch[0] || !strcmp(ch, "*") || !strcmp(ch, channel)))
 				return true;

@@ -120,6 +120,7 @@ HTTP_PID=$!
 	done
 	for m in $SERVER_MODS; do
 		echo "defer $t \"sv_lua_plugin_install $ZIPS/plugins/$m.zip\""; t=$(echo "$t + 0.3" | bc)
+		[ "$m" = vampire ] && echo "defer $(echo "$t - 0.1" | bc) \"_lua_install\""
 		echo "defer $t \"lua_install_confirm\""; t=$(echo "$t + 0.3" | bc)
 	done
 	for f in probe_sv; do echo "defer $t \"sv_lua_plugin_install $ROOT/tests/lua-mods/probe/$f\""; t=$(echo "$t + 0.3" | bc); echo "defer $t \"lua_install_confirm\""; t=$(echo "$t + 0.3" | bc); done
@@ -213,6 +214,7 @@ if [ -z "${ONLY:-}" ] || [ "${ONLY:-}" = install ]; then
 	has "$LOG1" "^  icon: none"; check "hit_feedback: no icon, none shown (no placeholder)" $?
 	grep -a "^panel_clock	" "$LOG1" | grep -aq "	mod:panel_clock/icon.png"; check "panel_clock: the icon is in its _cl_lua_mods row" $?
 	! grep -a "^hit_feedback	" "$LOG1" | grep -aq "mod:"; check "hit_feedback: no icon field in its _cl_lua_mods row" $?
+	grep -aqP '^perm\tstandard\task\twatches damage' "$LOG1" && grep -aqP '^perm\tgamerules\task\tchanges damage' "$LOG1"; check "install review (_lua_install) lists every tier vampire declares, with its reasons" $?
 	has "$LOG1" "touch_weapon: button pressed"; check "touch_weapon: a touch button press reaches the mod" $?
 	has "$LOG1" "touch_weapon: long press"; check "touch_weapon: hold runs every frame" $?
 	has "$LOG1" "touch_weapon: button released"; check "touch_weapon: release" $?

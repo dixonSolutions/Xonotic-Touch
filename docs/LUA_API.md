@@ -446,7 +446,7 @@ key `server-<page>`), `TouchUIB_ModRemove` when it goes, and the bridge's `value
 (`tier<TAB>N calls`), `hosts`, `engine_commands`), `_lua_last` (the manager's last message), `_lua_top`
 (cost, JSON), and the commands `lua_mod_enable/disable/permission/install/update/uninstall`.
 A tier switch is `lua_mod_permission <mod> grant|revoke|decline <tier>` (declared tiers
-only); turning a mod on is `lua_mod_enable <mod> [with <tiers>|all|none]` (standard needs
+only); turning a mod on is `lua_mod_enable <mod> [with <tiers>|all|none|keep]` (standard needs
 no grant); `engine_full` for a mod installed from a link needs
 `lua_mod_permission <mod> grant engine_full confirm` after the first grant printed its
 warning.

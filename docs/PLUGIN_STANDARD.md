@@ -356,7 +356,7 @@ section 5 with four tiers; the details and every function are in
 
 | Tier | Bit in the grant file | Turned on | Allows |
 |---|---|---|---|
-| `standard` | 0 (always on) | with the mod, no prompt | everything a normal mod does (every API 1/2 scope except `hooks_write`) |
+| `standard` | 0 (always on) | with the mod, no prompt | what every mod can do (every API 1/2 scope except `hooks_write`) |
 | `gamerules` | 12 (was `hooks_write`) | a switch | hook outputs and cancelling; changing players, entities and the match (server) |
 | `internet` | 13 | a switch | `xt.http` to the hosts of the manifest's `http:` line |
 | `engine_full` | 14 | a switch with a warning | `xt.engine.cmd`, `xt.engine.cvar`, `xt.engine.setcvar`; private cvars stay hidden |
@@ -408,7 +408,9 @@ file edited by hand cannot reach past the manifest and a revoke applies to the n
 * **Shown before it runs.** The install review lists each declared tier in plain words
   with the mod's `reason.<tier>`. Turning a mod on is one screen:
   `lua_mod_enable <id> with <tier>[,<tier>...]|all|none [confirm]` grants the chosen
-  declared tiers and turns it on (a standard-only mod: one tap, nothing to choose).
+  declared tiers and turns it on (a standard-only mod: one tap, nothing to choose);
+  `with keep` turns it on with the grants as they are and settles the other declared
+  tiers as off (a screen whose switches already granted what the player chose).
 * **Not decided yet.** Each mod has a *seen* mask, `luastate/<realm>/seen/<id>.txt`
   (`<hex>`; without the file, what is granted counts as seen). A declared optional tier
   not in it is *not decided yet*: off, and named by `lua_mod_enable`, the Mods page,

@@ -1129,7 +1129,7 @@ static void tlua_dl_cb(int status, size_t length, unsigned char *buffer, void *c
 	b = strrchr(tlua_pkg.source, '/');
 	b = b ? b + 1 : tlua_pkg.source;
 	e = strchr(b, '?');
-	dp_strlcpy(stem, b, min(sizeof(stem), (size_t)((e ? e : b + strlen(b)) - b) + 1));
+	TLua_CopyN(stem, sizeof(stem), b, (size_t)((e ? e : b + strlen(b)) - b));
 	if ((e = strstr(stem, ".zip")))
 		stem[e - stem] = 0;
 	tlua_pkg_got(buffer, length, stem);

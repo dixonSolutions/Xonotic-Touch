@@ -225,7 +225,7 @@ From the console:
 
 ```
 lua_mod_permission hello                         what it declares, what is on, what is new
-lua_mod_enable hello with internet               turn on and grant (with none: grant nothing)
+lua_mod_enable hello with internet               turn on and grant (none: nothing; keep: as granted now)
 lua_mod_permission hello grant internet          a switch on
 lua_mod_permission hello revoke internet         a switch off (the next call fails)
 lua_mod_permission hello decline engine_full     a new tier after an update: seen, left off

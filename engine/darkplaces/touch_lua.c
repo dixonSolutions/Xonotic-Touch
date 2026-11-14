@@ -1001,7 +1001,7 @@ static unsigned long long *tlua_maskof(tlua_mod_t *m)
 
 // docs/PLUGIN_STANDARD.md, "Tiers"
 const tlua_permission_t tlua_permissions[] = {
-	{"standard", TLUA_TIER_STANDARD, 1, "everything a normal mod does: events and hooks, drawing, touch buttons, sounds, its own settings, storage and pages, messages with the server you joined"},
+	{"standard", TLUA_TIER_STANDARD, 1, "what every mod can do: draw, listen to the game, its own settings, buttons and storage"},
 	{"gamerules", TLUA_TIER_GAMERULES, 1, "change the game in matches you host: damage, items, players, entities, votes, the match"},
 	{"internet", TLUA_TIER_INTERNET, 3, "connect to the web sites its manifest names (https)"},
 	{"engine_full", TLUA_TIER_ENGINE, 3, "WARNING: full engine access: any console command and any setting except passwords and keys"},
@@ -3214,7 +3214,11 @@ static void tlua_enable_f(cmd_state_t *cmd)
 			TLua_Say("%s: its manifest is invalid", m->name);
 			return;
 		}
-		if (!tlua_parsetiers(m, Cmd_Argv(cmd, 3), true, &mask))
+		// keep: settle the declared tiers as they are now (a turn-on screen whose
+		// switches already granted what the player chose)
+		if (!strcmp(Cmd_Argv(cmd, 3), "keep"))
+			mask = m->granted & m->requested & TLUA_PERM_OPTIONAL;
+		else if (!tlua_parsetiers(m, Cmd_Argv(cmd, 3), true, &mask))
 			return;
 		dpsnprintf(how, sizeof(how), "%s %s with %s confirm", Cmd_Argv(cmd, 0), m->name, Cmd_Argv(cmd, 3));
 		if (!tlua_engine_ok(m, mask, Cmd_Argc(cmd) >= 5 && !strcmp(Cmd_Argv(cmd, 4), "confirm"), how))
@@ -3225,7 +3229,7 @@ static void tlua_enable_f(cmd_state_t *cmd)
 	}
 	else if (Cmd_Argc(cmd) > 2)
 	{
-		Con_Printf("usage: %s <name> [with <tier>[,<tier>...]|all|none [confirm]]\n", Cmd_Argv(cmd, 0));
+		Con_Printf("usage: %s <name> [with <tier>[,<tier>...]|all|none|keep [confirm]]\n", Cmd_Argv(cmd, 0));
 		return;
 	}
 	// turning on a mod the crash marker names is the user's retry

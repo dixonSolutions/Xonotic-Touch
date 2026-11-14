@@ -1122,7 +1122,7 @@ static int tlua_push_notification(lua_State *L, void *ud)
 		if (k > 4)
 		{
 			char num[64];
-			dp_strlcpy(num, p, min(len + 1, sizeof(num)));
+			TLua_CopyN(num, sizeof(num), p, len);
 			lua_pushnumber(L, atof(num));
 		}
 		else
@@ -1248,8 +1248,8 @@ static void VM_CL_touch_lua_clevent(prvm_prog_t *prog)
 			if (t)
 			{
 				const char *t2 = strchr(t + 1, '\t');
-				dp_strlcpy(victim, s2, min((size_t)(t - s2) + 1, sizeof(victim)));
-				dp_strlcpy(attacker, t + 1, min((size_t)((t2 ? t2 : t + 1 + strlen(t + 1)) - (t + 1)) + 1, sizeof(attacker)));
+				TLua_CopyN(victim, sizeof(victim), s2, (size_t)(t - s2));
+				TLua_CopyN(attacker, sizeof(attacker), t + 1, t2 ? (size_t)(t2 - (t + 1)) : strlen(t + 1));
 			}
 			e.s1 = victim;
 			e.s2 = attacker;
