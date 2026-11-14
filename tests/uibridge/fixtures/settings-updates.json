@@ -352,17 +352,35 @@
    },
    {
     "id": "settings/split/updates/staged",
-    "type": "card",
+    "type": "section",
     "props": {
-     "title": "Version 1.2.361 is ready",
-     "subtitle": "Downloaded and checked. It applies the next time Godnotic starts, or now (the game may restart).",
-     "icon": "update",
-     "primary": {
+     "title": "Version 1.2.361 is ready"
+    },
+    "children": [
+     "settings/split/updates/staged/about",
+     "settings/split/updates/staged/apply"
+    ]
+   },
+   {
+    "id": "settings/split/updates/staged/about",
+    "type": "text",
+    "props": {
+     "body": "Downloaded and checked. It applies the next time Godnotic starts, or now (the game may restart).",
+     "style": "caption"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/updates/staged/apply",
+    "type": "button",
+    "props": {
+     "label": "Apply now",
+     "action": {
       "id": "updates.apply",
       "label": "Apply now",
-      "icon": "check",
-      "style": "primary"
-     }
+      "icon": "check"
+     },
+     "style": "primary"
     },
     "children": []
    },
@@ -396,7 +414,7 @@
     "props": {
      "label": "Automatic updates",
      "bind": "vm:updates.auto",
-     "help": "Download updates and apply them by themselves. Off: Godnotic only tells you when there is one.",
+     "help": "Download and apply updates by themselves",
      "value": true
     },
     "children": []
@@ -418,7 +436,7 @@
     "props": {
      "label": "Apply live",
      "bind": "vm:updates.live",
-     "help": "Swap an update in while you play when it can. Off: updates apply the next time Godnotic starts.",
+     "help": "Swap updates in while you play; off: at the next start",
      "value": true
     },
     "children": []

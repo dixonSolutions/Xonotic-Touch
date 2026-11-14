@@ -456,14 +456,14 @@ void UIB_SecUpdatesAndySU()
 			uib_s("detail", detail);
 		UIB_Close();
 	}
+	// a release to act on: a section with what it is and one button (every renderer draws a
+	// button; a card's tap would be invisible on some)
 	string staged = TouchAndySU_extra("staged"); // also while a newer one downloads: it still applies
 	if (staged != "")
 	{
-		UIB_Open("staged", "card");
-			uib_s("title", sprintf(_("Version %s is ready"), staged));
-			uib_s("subtitle", _("Downloaded and checked. It applies the next time Godnotic starts, or now (the game may restart)."));
-			uib_s("icon", "update");
-			uib_j("primary", UIB_AS("updates.apply", _("Apply now"), "check", "primary"));
+		UIB_Section("staged", sprintf(_("Version %s is ready"), staged), false);
+			UIB_Text("about", _("Downloaded and checked. It applies the next time Godnotic starts, or now (the game may restart)."), "caption");
+			UIB_Button("apply", _("Apply now"), UIB_A("updates.apply", _("Apply now"), "check"), "primary");
 		UIB_Close();
 	}
 	else if (state == "available")
@@ -471,24 +471,20 @@ void UIB_SecUpdatesAndySU()
 		string hold = TouchAndySU_extra("hold");
 		string size = TouchAndySU_extra("size");
 		string why = (hold == "wifi") ? _("Waiting for Wi-Fi") : ((hold == "auto") ? _("Automatic updates are off") : _("Ready to download"));
-		UIB_Open("available", "card");
-			uib_s("title", sprintf(_("Version %s is available"), latest));
-			uib_s("subtitle", (size != "") ? sprintf(_("%s · %s"), TouchAndySU_bytes(stof(size)), why) : why);
-			uib_s("icon", "download");
+		UIB_Section("available", sprintf(_("Version %s is available"), latest), false);
+			UIB_Text("about", ((size != "") ? sprintf(_("%s · %s"), TouchAndySU_bytes(stof(size)), why) : why), "caption");
 			if (TouchAndySU_extra("net") == "metered")
-				uib_j("primary", UIB_AC("updates.download", _("Download now"), "download", "primary",
-					_("Download on mobile data?"), _("Download"), false));
+				UIB_Button("download", _("Download now"), UIB_AC("updates.download", _("Download now"), "download", "primary",
+					_("Download on mobile data?"), _("Download"), false), "primary");
 			else
-				uib_j("primary", UIB_AS("updates.download", _("Download now"), "download", "primary"));
+				UIB_Button("download", _("Download now"), UIB_A("updates.download", _("Download now"), "download"), "primary");
 		UIB_Close();
 	}
 	else if (state == "shell-update")
 	{
-		UIB_Open("shell", "card");
-			uib_s("title", _("This update needs a new app install"));
-			uib_s("subtitle", _("Android asks you to confirm it. Your settings and maps stay."));
-			uib_s("icon", "update");
-			uib_j("primary", UIB_AS("updates.apply", _("Install"), "download", "primary"));
+		UIB_Section("shell", _("This update needs a new app install"), false);
+			UIB_Text("about", _("Android asks you to confirm it. Your settings and maps stay."), "caption");
+			UIB_Button("install", _("Install"), UIB_A("updates.apply", _("Install"), "download"), "primary");
 		UIB_Close();
 	}
 	if (state == "error" && TouchAndySU_message() != "")
@@ -503,9 +499,9 @@ void UIB_SecUpdatesAndySU()
 	UIB_Close();
 	UIB_Text("checked", UIB_UpdChecked(), "caption");
 
-	UIB_UpdSwitch("auto", _("Automatic updates"), _("Download updates and apply them by themselves. Off: Godnotic only tells you when there is one."));
+	UIB_UpdSwitch("auto", _("Automatic updates"), _("Download and apply updates by themselves"));
 	UIB_UpdSwitch("wifi", _("Update on Wi-Fi only"), _("Downloads wait for Wi-Fi or another unmetered network"));
-	UIB_UpdSwitch("live", _("Apply live"), _("Swap an update in while you play when it can. Off: updates apply the next time Godnotic starts."));
+	UIB_UpdSwitch("live", _("Apply live"), _("Swap updates in while you play; off: at the next start"));
 }
 
 void UIB_SecUpdates()
