@@ -1952,6 +1952,8 @@
       '+vid_width', String(w),
       '+vid_height', String(h),
     ];
+    // Settings > Updates: the web version updates by reloading, so it offers no installer
+    args.push('+set', '_godnotic_platform', 'web');
     if (state.sampleRate) args.push('+snd_speed', String(state.sampleRate));
     const languages = browserLanguages();
     if (languages) args.push('+set', '_menu_system_languages', languages);

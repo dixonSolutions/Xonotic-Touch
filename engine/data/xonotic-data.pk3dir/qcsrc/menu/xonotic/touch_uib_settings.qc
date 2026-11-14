@@ -70,7 +70,7 @@ string UIB_SecHelp(string k)
 		case "esp": return _("Offline matches only");
 		case "player": return _("Name and colours");
 		case "privacy": return _("Statistics and identity");
-		case "updates": return _("What is new");
+		case "updates": return _("Version, checks and downloads");
 		case "data": return _("Game data and downloads");
 		case "menu": return _("Size and layout");
 		case "mods": return _("Client and server mods, pages from mods");
@@ -383,11 +383,11 @@ void UIB_SecPrivacy()
 
 // A switch the player flipped shows their value until the updater's status agrees (it serves
 // requests once a second), or for 5 s at most: otherwise it would flick back for a moment.
-float UIB_UpdSwitch(string key, string label, string help)
+// have: "on" / "off" from the status; anything else: this install cannot change it (no switch).
+float UIB_UpdSwitchV(string key, string label, string have, string help)
 {
-	string have = TouchAndySU_extra(key);
 	if (have != "on" && have != "off")
-		return 0; // this host cannot change it: no switch
+		return 0;
 	string want = UIB_VM(strcat("updates.", key, ".want"));
 	if (want != "" && (want == have || uib_gettime(1) > UIB_VMf(strcat("updates.", key, ".at")) + 5))
 	{
@@ -399,9 +399,27 @@ float UIB_UpdSwitch(string key, string label, string help)
 	return 1;
 }
 
-string UIB_UpdChecked()
+float UIB_UpdSwitch(string key, string label, string help)
 {
-	string ago = TouchAndySU_extra("checked_min");
+	return UIB_UpdSwitchV(key, label, TouchAndySU_extra(key), help);
+}
+
+// Apply live where there is no AndySU host: shown, off and disabled, with the reason as its help.
+void UIB_UpdLiveOff(string why)
+{
+	UIB_VMSet("updates.live", "0");
+	UIB_Open("live", "switch");
+		uib_s("label", _("Apply live"));
+		uib_s("bind", "vm:updates.live");
+		uib_s("help", why);
+		uib_b("value", 0);
+		uib_b("enabled", 0);
+	UIB_Close();
+}
+
+// "Last checked 5 min ago: up to date". ago: minutes, "" for never; res: how it ended.
+string UIB_UpdCheckedLine(string ago, string res)
+{
 	if (ago == "") return _("Not checked yet");
 	float m = stof(ago);
 	string when;
@@ -409,7 +427,6 @@ string UIB_UpdChecked()
 	else if (m < 60) when = sprintf(_("%d min ago"), m);
 	else if (m < 1440) when = sprintf(_("%d h ago"), floor(m / 60));
 	else when = sprintf(_("%d days ago"), floor(m / 1440));
-	string res = TouchAndySU_extra("checked_result");
 	switch (res)
 	{
 		case "uptodate": res = _("up to date"); break;
@@ -423,20 +440,54 @@ string UIB_UpdChecked()
 	return (res == "") ? sprintf(_("Last checked %s"), when) : sprintf(_("Last checked %s: %s"), when, res);
 }
 
-// Android with AndySU: what delivers updates, the version, Check now, a staged release and
-// Apply now, the download's progress, and the three switches. Elsewhere (Linux, web, an APK
-// without an AndySU host) only the version and What is new: those rows never appear.
-void UIB_SecUpdatesAndySU()
+string UIB_UpdChecked()
 {
-	string state = TouchAndySU_state();
-	string installed = TouchAndySU_installed();
-	if (installed == "") installed = cvar_string("g_xonoticversion");
-	UIB_Text("andysu", _("Updates are delivered by AndySU, the updater built into Godnotic. Every update is signed, and if a new version does not start properly, AndySU goes back to the one that worked."), "caption");
-	UIB_Text("version", sprintf(_("Version %s"), installed), "title");
-	string channel = TouchAndySU_extra("channel"), abi = TouchAndySU_extra("abi");
+	return UIB_UpdCheckedLine(TouchAndySU_extra("checked_min"), TouchAndySU_extra("checked_result"));
+}
+
+// "Version 1.2.204", then "Channel stable · arm64-v8a" when the platform says them.
+void UIB_UpdVersion(string channel, string abi)
+{
+	UIB_Text("version", sprintf(_("Version %s"), TouchUpdate_versionNumber()), "title");
 	if (channel != "" || abi != "")
 		UIB_Text("build", ((channel != "" && abi != "") ? sprintf(_("Channel %s · %s"), channel, abi)
 			: (channel != "" ? sprintf(_("Channel %s"), channel) : abi)), "caption");
+}
+
+// Check now as a tonal button, off while something runs.
+void UIB_UpdCheckButton(bool checking, bool busy)
+{
+	UIB_Open("check", "button");
+		uib_s("label", checking ? _("Checking…") : _("Check now"));
+		uib_j("action", UIB_A("updates.check", _("Check now"), "refresh"));
+		uib_s("style", "tonal");
+		if (checking || busy) uib_b("enabled", 0);
+	UIB_Close();
+}
+
+// A download's bar: "12.3 MB of 34.5 MB · 1.2 MB/s · 20 s left" under it.
+void UIB_UpdProgress(string latest, float percent, float done, float total, float speed, string eta)
+{
+	UIB_Open("download", "progress");
+		uib_s("label", (latest != "") ? sprintf(_("Downloading version %s"), latest) : _("Downloading the update"));
+		if (total > 0) uib_f("value", bound(0, done / total, 1));
+		else if (percent > 0) uib_f("value", bound(0, percent / 100, 1));
+		else uib_b("indeterminate", 1);
+		string detail = (total > 0) ? sprintf(_("%s of %s"), TouchAndySU_bytes(done), TouchAndySU_bytes(total))
+			: ((done > 0) ? TouchAndySU_bytes(done) : sprintf(_("%d%%"), percent));
+		if (speed > 0) detail = strcat(detail, " · ", sprintf(_("%s/s"), TouchAndySU_bytes(speed)));
+		if (eta != "" && stof(eta) >= 0) detail = strcat(detail, " · ", sprintf(_("%s left"), TouchAndySU_duration(stof(eta))));
+		uib_s("detail", detail);
+	UIB_Close();
+}
+
+// Android with AndySU: what delivers updates, the version, Check now, a staged release and
+// Apply now, the download's progress, and the three switches.
+void UIB_SecUpdatesAndySU()
+{
+	string state = TouchAndySU_state();
+	UIB_Text("andysu", _("Updates are delivered by AndySU, the updater built into Godnotic. Every update is signed, and if a new version does not start properly, AndySU goes back to the one that worked."), "caption");
+	UIB_UpdVersion(TouchAndySU_extra("channel"), TouchAndySU_extra("abi"));
 	if (state == "incompatible")
 	{
 		UIB_Text("old", _("This install's updater is too old to be controlled from here. Updates still arrive by themselves."), "note");
@@ -445,20 +496,8 @@ void UIB_SecUpdatesAndySU()
 
 	string latest = TouchAndySU_latest();
 	if (state == "downloading")
-	{
-		float total = stof(TouchAndySU_extra("total")), done = stof(TouchAndySU_extra("done"));
-		float speed = stof(TouchAndySU_extra("speed"));
-		string eta = TouchAndySU_extra("eta");
-		UIB_Open("download", "progress");
-			uib_s("label", (latest != "") ? sprintf(_("Downloading version %s"), latest) : _("Downloading the update"));
-			if (total > 0) uib_f("value", bound(0, done / total, 1));
-			else uib_b("indeterminate", 1);
-			string detail = (total > 0) ? sprintf(_("%s of %s"), TouchAndySU_bytes(done), TouchAndySU_bytes(total)) : TouchAndySU_bytes(done);
-			if (speed > 0) detail = strcat(detail, " · ", sprintf(_("%s/s"), TouchAndySU_bytes(speed)));
-			if (eta != "" && stof(eta) >= 0) detail = strcat(detail, " · ", sprintf(_("%s left"), TouchAndySU_duration(stof(eta))));
-			uib_s("detail", detail);
-		UIB_Close();
-	}
+		UIB_UpdProgress(latest, TouchAndySU_percent(), stof(TouchAndySU_extra("done")), stof(TouchAndySU_extra("total")),
+			stof(TouchAndySU_extra("speed")), TouchAndySU_extra("eta"));
 	// a release to act on: a section with what it is and one button (every renderer draws a
 	// button; a card's tap would be invisible on some)
 	string staged = TouchAndySU_extra("staged"); // also while a newer one downloads: it still applies
@@ -493,13 +532,7 @@ void UIB_SecUpdatesAndySU()
 	if (state == "error" && TouchAndySU_message() != "")
 		UIB_Text("error", TouchAndySU_message(), "warning");
 
-	bool checking = state == "checking";
-	UIB_Open("check", "button");
-		uib_s("label", checking ? _("Checking…") : _("Check now"));
-		uib_j("action", UIB_A("updates.check", _("Check now"), "refresh"));
-		uib_s("style", "tonal");
-		if (checking || state == "downloading") uib_b("enabled", 0);
-	UIB_Close();
+	UIB_UpdCheckButton(state == "checking", state == "downloading");
 	UIB_Text("checked", UIB_UpdChecked(), "caption");
 
 	UIB_UpdSwitch("auto", _("Automatic updates"), _("Download and apply updates by themselves"));
@@ -507,18 +540,130 @@ void UIB_SecUpdatesAndySU()
 	UIB_UpdSwitch("live", _("Apply live"), _("Swap updates in while you play; off: at the next start"));
 }
 
+// Android without an AndySU host (the plain APK of a release, a store or test build): the
+// app's own updater (AppUpdater.java) checks the release feed, downloads the new APK with a
+// progress bar and hands it to Android's installer. The same switches where they apply.
+void UIB_SecUpdatesApp()
+{
+	string state = TouchUpdate_stateName();
+	string latest = TouchUpdate_latest();
+	UIB_Text("how", _("Updates come from Godnotic's releases on GitHub. Android asks before it installs one; your settings and maps stay."), "caption");
+	UIB_UpdVersion(TouchUpdate_extra("channel"), TouchUpdate_extra("abi"));
+
+	bool live = TouchUpdate_extra("asset") == "live";
+	string size = TouchUpdate_extra("size");
+	if (state == TOUCH_UPDATE_DOWNLOADING)
+		UIB_UpdProgress(latest, TouchUpdate_percent(), stof(TouchUpdate_extra("done")), stof(TouchUpdate_extra("total")),
+			stof(TouchUpdate_extra("speed")), TouchUpdate_extra("eta"));
+	else if (state == TOUCH_UPDATE_INSTALLING)
+		UIB_Text("installing", sprintf(_("Android is installing version %s. Godnotic restarts when it is done."), latest), "note");
+	else if ((state == TOUCH_UPDATE_READY || state == TOUCH_UPDATE_NEEDS_PERMISSION) && latest != "")
+	{
+		UIB_Section("ready", sprintf(_("Version %s is downloaded"), latest), false);
+			UIB_Text("about", ((state == TOUCH_UPDATE_NEEDS_PERMISSION)
+				? _("Android needs your permission for Godnotic to install updates: allow it, then press Install now.")
+				: _("It installs the next time Godnotic starts, or now.")), "caption");
+			UIB_Button("install", _("Install now"), UIB_A("updates.install", _("Install now"), "download"), "primary");
+		UIB_Close();
+	}
+	else if (latest != "" && TouchUpdate_isBehind()
+		&& (state == TOUCH_UPDATE_AVAILABLE || state == TOUCH_UPDATE_PAUSED || state == TOUCH_UPDATE_ERROR))
+	{
+		string hold = TouchUpdate_extra("hold");
+		string why = (hold == "wifi") ? _("Waiting for Wi-Fi")
+			: ((hold == "auto") ? _("Automatic updates are off")
+			: ((hold == "offline") ? _("Waiting for a connection") : _("Ready to download")));
+		if (state == TOUCH_UPDATE_PAUSED && TouchUpdate_percent() > 0)
+			why = sprintf(_("Paused at %d%%: it carries on from there"), TouchUpdate_percent());
+		UIB_Section("available", sprintf(_("Version %s is available"), latest), false);
+			UIB_Text("about", ((size != "" && stof(size) > 0) ? sprintf(_("%s · %s"), TouchAndySU_bytes(stof(size)), why) : why), "caption");
+			if (live)
+				UIB_Text("andysu", _("This version brings AndySU: after it, updates download and apply by themselves, without reinstalling."), "caption");
+			if (TouchUpdate_extra("net") == "metered")
+				UIB_Button("install", _("Download and install"), UIB_AC("updates.install", _("Download and install"), "download", "primary",
+					_("Download on mobile data?"), _("Download"), false), "primary");
+			else
+				UIB_Button("install", _("Download and install"), UIB_A("updates.install", _("Download and install"), "download"), "primary");
+		UIB_Close();
+	}
+	if (state == TOUCH_UPDATE_ERROR && TouchUpdate_message() != "")
+		UIB_Text("error", TouchUpdate_message(), "warning");
+
+	bool checking = state == TOUCH_UPDATE_CHECKING;
+	UIB_UpdCheckButton(checking, state == TOUCH_UPDATE_DOWNLOADING || state == TOUCH_UPDATE_INSTALLING);
+	UIB_Text("checked", (checking ? _("Checking for updates...")
+		: UIB_UpdCheckedLine(TouchUpdate_extra("checked_min"), TouchUpdate_extra("checked_result"))), "caption");
+
+	UIB_UpdSwitchV("auto", _("Automatic updates"), (TouchUpdate_autoEnabled() ? "on" : "off"),
+		_("Check at start and download new versions by themselves"));
+	UIB_UpdSwitchV("wifi", _("Update on Wi-Fi only"), TouchUpdate_extra("wifi"),
+		_("Downloads wait for Wi-Fi or another unmetered network"));
+	UIB_UpdLiveOff(_("Needs AndySU, in the Godnotic-live APK"));
+}
+
+// Linux (Flatpak, Click, a local build) and the web: the version, how updates arrive, and a
+// Check now that asks the published changelog for the newest release (nothing installs here).
+void UIB_SecUpdatesManaged()
+{
+	string via = TouchUpdate_extra("via");
+	bool web = TouchUpdate_platform() == "web";
+	string how;
+	if (web)
+		how = _("The web version updates itself: reload the page and it runs the newest release. Downloaded maps stay.");
+	else if (via == "flatpak")
+		how = _("Godnotic updates through its Flatpak remote: GNOME Software, Discover or flatpak update install new versions.");
+	else if (via == "click")
+		how = _("Godnotic updates through the OpenStore.");
+	else if (TouchUpdate_stateName() == TOUCH_UPDATE_MANAGED)
+		how = _("Updates arrive through the package manager that installed Godnotic.");
+	else
+		how = _("This build does not update itself: install a release to get updates.");
+	UIB_Text("how", how, "caption");
+	UIB_UpdVersion("", "");
+
+	// The page always runs the newest release, and a build from source has no release to
+	// compare with: neither has a check to offer.
+	if (web || TouchUpdate_stateName() != TOUCH_UPDATE_MANAGED || TouchUpdate_installed() == "")
+		return;
+
+	string check = TouchUpdate_changelogCheck();
+	// once a session, when the screen opens (not when downloads are switched off)
+	if (check == "" && cvar("cl_curl_enabled"))
+	{
+		TouchUpdate_checkChangelog();
+		check = TouchUpdate_changelogCheck();
+	}
+	string newest = TouchUpdate_changelogLatest();
+	if (check == "available" && newest != "")
+	{
+		UIB_Section("available", sprintf(_("Version %s is out"), newest), false);
+			UIB_Text("about", ((via == "flatpak") ? _("Update Godnotic in your software centre, or run flatpak update.")
+				: ((via == "click") ? _("Update Godnotic in the OpenStore.") : _("Install it the way you installed this one."))), "caption");
+		UIB_Close();
+	}
+	UIB_UpdCheckButton(check == "checking", false);
+	string line;
+	if (check == "checking")
+		line = _("Checking for updates...");
+	else if (check == "")
+		line = _("Not checked yet");
+	else
+		line = UIB_UpdCheckedLine(ftos(floor(max(0, uib_gettime(1) - TouchUpdate_changelogCheckedAt()) / 60)), check);
+	UIB_Text("checked", line, "caption");
+}
+
 void UIB_SecUpdates()
 {
-	TouchAndySU_read();
+	TouchUpdate_read(); // both status files
 	if (TouchAndySU_active())
 		UIB_SecUpdatesAndySU();
+	else if (TouchUpdate_appUpdater())
+		UIB_SecUpdatesApp();
 	else
-		UIB_Text("version", sprintf(_("Version %s"), cvar_string("g_xonoticversion")), "title");
+		UIB_SecUpdatesManaged();
 	string url = cvar_string("_touch_update_changelog_url");
 	if (substring(url, 0, 8) == "https://")
 		UIB_Button("changes", _("What is new"), UIB_ALink("updates.changes", _("What is new"), "info", url), "link");
-	if (!TouchAndySU_active())
-		UIB_Text("how", _("Updates arrive through your app store, Flatpak or the web page; the game data updates itself."), "caption");
 }
 
 void UIB_SecData()
@@ -836,9 +981,16 @@ bool UIB_SettingsAction(string node, string a, string payload)
 			uib_toast(_("Preset applied"), "success", "check", 2);
 			return true;
 		case "data.fetch": localcmd("\ntouch_assets_fetch\n"); return true;
-		case "updates.check": TouchAndySU_request("check"); return true;
+		case "updates.check":
+			TouchUpdate_read();
+			if (TouchAndySU_active()) TouchAndySU_request("check");
+			else if (TouchUpdate_appUpdater()) TouchUpdate_request("check");
+			else TouchUpdate_checkChangelog();
+			UIB_RebuildAll();
+			return true;
 		case "updates.apply": TouchAndySU_request("apply"); return true;
 		case "updates.download": TouchAndySU_request("download"); return true;
+		case "updates.install": TouchUpdate_request("install"); return true;
 		case "mods.install.link": UIB_Modal("mods.link"); return true;
 		case "mods.install.url":
 		{
@@ -931,7 +1083,13 @@ bool UIB_SettingsValue(string node, string value)
 			bool on = value == "1" || value == "true";
 			UIB_VMSet(strcat("updates.", key, ".want"), on ? "on" : "off");
 			UIB_VMSet(strcat("updates.", key, ".at"), ftos(uib_gettime(1)));
-			TouchAndySU_request(strcat(key, on ? "-on" : "-off"));
+			TouchUpdate_read();
+			if (TouchAndySU_active())
+				TouchAndySU_request(strcat(key, on ? "-on" : "-off"));
+			else if (key != "live" && TouchUpdate_appUpdater())
+				TouchUpdate_request(strcat(key, on ? "-on" : "-off")); // AppUpdater: auto and wifi
+			else
+				UIB_VMSet(strcat("updates.", key, ".want"), "");
 			UIB_RebuildAll();
 			return true;
 		}

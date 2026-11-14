@@ -23,11 +23,25 @@
  *   6  percent 0-100, meaningful only while downloading
  *   7  one-line human-readable status
  *   8  auto-update preference, "on" or "off"
+ *
+ *  then key=value lines, each optional (menus that read only eight lines ignore them):
+ *   via                   app (Android's own updater: AppUpdater), or flatpak / click / local
+ *                         (packaging/start.sh, with state managed)
+ *   channel, abi          what the app updater follows (stable) and this build's ABI
+ *   wifi                  on / off: background downloads wait for an unmetered network
+ *   live                  na: no Apply live here (that needs an AndySU host)
+ *   net                   unmetered / metered / offline
+ *   hold                  why a found release waits: auto, wifi, offline, or absent
+ *   size, asset           the found release's APK size in bytes; asset=live when that APK
+ *                         brings an AndySU host
+ *   done, total, speed, eta   download progress: bytes, bytes, bytes per second, seconds (-1 unknown)
+ *   checked_min, checked_result   minutes since the last check, and how it ended
+ *                         (uptodate, available, error)
  */
 const string TOUCH_UPDATE_STATUS_FILE = "touch/update-status.txt";
 
 /** Written by the menu, consumed and deleted by the platform layer. One token:
- *  check | download | install | skip | auto-on | auto-off
+ *  check | download | install | skip | auto-on | auto-off | wifi-on | wifi-off
  *
  *  download fetches the new build into the update cache and stops there
  *  (state ready); install fetches it if it is not cached yet and installs it
@@ -156,10 +170,28 @@ string TouchUpdate_buildLine();
 bool TouchAndySU_request(string token);
 /** One of the key=value lines after line 8, "" when absent. Valid after TouchAndySU_read(). */
 string TouchAndySU_extra(string key);
-/** Re-read the status file; true when anything in it changed since the last call. */
+/** Re-read both status files; true when anything in them (or the changelog check) changed since
+ *  the last call. The Updates screen rebuilds on it. */
 bool TouchAndySU_changed();
 /** True on an install where AndySU delivers updates (a host with the update API). */
 bool TouchAndySU_active();
+/** One of the key=value lines after line 8 of update-status.txt, "" when absent. Valid after TouchUpdate_read(). */
+string TouchUpdate_extra(string key);
+/** Android without an AndySU host: the app's own updater publishes the status. */
+bool TouchUpdate_appUpdater();
+/** The running version as a number ("1.2.204"), or what stands for one: a web build's commit,
+ *  "development build". Never the game's name. */
+string TouchUpdate_versionNumber();
+/** "web" in the browser (the page passes _godnotic_platform), "" elsewhere. */
+string TouchUpdate_platform();
+/** Where the platform layer cannot check (Linux, the web), Check now asks the changelog for the
+ *  newest release instead. */
+void TouchUpdate_checkChangelog();
+/** That check: "" before one, else "checking", "uptodate", "available" or "error";
+ *  TouchUpdate_changelogCheckedAt() is when it ended (uib_gettime(1) seconds). */
+string TouchUpdate_changelogCheck();
+float TouchUpdate_changelogCheckedAt();
+
 /** "12.3 MB": decimal units, like Android's file sizes. */
 string TouchAndySU_bytes(float n);
 /** "45 s", "3 min", "1 h 5 min". */

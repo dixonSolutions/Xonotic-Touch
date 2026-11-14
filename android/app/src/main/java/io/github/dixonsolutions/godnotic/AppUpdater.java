@@ -79,6 +79,11 @@ final class AppUpdater {
     private static final String PREF_FOUND_SIZE = "found_size";
     private static final String PREF_FOUND_NAME = "found_name";
     private static final String PREF_FOUND_SHA256 = "found_sha256";
+    /** Background downloads wait for an unmetered connection (on by default, like the game data). */
+    private static final String PREF_WIFI_ONLY = "wifi_only";
+    /** When the last check that ran ended, and how (AppUpdateState.RESULT_*): the Updates screen. */
+    private static final String PREF_CHECKED_AT = "checked_at";
+    private static final String PREF_CHECKED_RESULT = "checked_result";
 
     private static final String INSTALL_ACTION =
         "io.github.dixonsolutions.godnotic.INSTALL_STATUS";
@@ -150,6 +155,24 @@ final class AppUpdater {
         prefs(context).edit().putBoolean(PREF_AUTO_INSTALL, enabled).apply();
     }
 
+    static boolean isWifiOnly(Context context) {
+        return prefs(context).getBoolean(PREF_WIFI_ONLY, true);
+    }
+
+    static void setWifiOnly(Context context, boolean enabled) {
+        prefs(context).edit().putBoolean(PREF_WIFI_ONLY, enabled).apply();
+    }
+
+    /** When the last check ended (ms since the epoch), 0 before the first. */
+    static long checkedAt(Context context) {
+        return prefs(context).getLong(PREF_CHECKED_AT, 0);
+    }
+
+    /** How the last check ended: AppUpdateState.RESULT_*, "" before the first. */
+    static String checkedResult(Context context) {
+        return prefs(context).getString(PREF_CHECKED_RESULT, "");
+    }
+
     void skip(Update update) {
         prefs(context).edit().putString(PREF_SKIPPED_TAG, update.version).apply();
     }
@@ -169,6 +192,11 @@ final class AppUpdater {
         // release an earlier check found for the menu's Install and Skip.
         if (!checkFailed) {
             rememberFound(found);
+        }
+        // A check that never ran (a live build: AndySU checks) leaves the last one standing.
+        if (isEnabled(context)) {
+            prefs(context).edit().putLong(PREF_CHECKED_AT, System.currentTimeMillis())
+                .putString(PREF_CHECKED_RESULT, AppUpdateState.checkResult(found != null, checkFailed)).apply();
         }
         return found;
     }

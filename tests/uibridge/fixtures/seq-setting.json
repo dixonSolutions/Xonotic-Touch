@@ -436,7 +436,7 @@
      "key": "updates",
      "label": "Updates",
      "icon": "update",
-     "subtitle": "What is new"
+     "subtitle": "Version, checks and downloads"
     },
     "children": []
    },

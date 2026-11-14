@@ -27,6 +27,10 @@ import java.util.List;
  *
  * The file format is documented once, in
  * {@code qcsrc/menu/xonotic/touch_update_util.qh}. Keep the two in step.
+ * After the eight lines come key=value details (channel, ABI, switches,
+ * last check, download bytes: {@link AppUpdateState}); menus that read only
+ * eight lines never see them. This is what Settings &gt; Updates shows on
+ * every Android install without an AndySU host.
  */
 final class UpdateBridge {
 
@@ -46,9 +50,17 @@ final class UpdateBridge {
     static final String STATE_READY = "ready";
     static final String STATE_PAUSED = "paused";
 
+    /** Every bridge writes the one file: a refresh must not interleave with a download's report. */
+    private static final Object LOCK = new Object();
+    /** What the last write put there, whichever bridge made it: an equal record is not rewritten. */
+    private static String lastRecord = "";
+
     private final Context context;
     private final File statusFile;
     private final File requestFile;
+    private final AppUpdateState.Rate rate = new AppUpdateState.Rate();
+    private long downloadDone = -1;
+    private long downloadTotal = -1;
 
     UpdateBridge(Context context, File baseDir) {
         this.context = context.getApplicationContext();
@@ -127,6 +139,20 @@ final class UpdateBridge {
                 versionsBehind(installed, latest), percent, "");
     }
 
+    /**
+     * A download under way, with the bytes in the update cache so far: the screen shows
+     * "12.3 MB of 34.5 MB · 1.2 MB/s · 20 s left" under its bar.
+     */
+    void publishDownloading(String installed, String latest, int percent, long done, long total) {
+        synchronized (LOCK) {
+            rate.sample(System.currentTimeMillis(), done, total);
+            downloadDone = done;
+            downloadTotal = total;
+            publish(STATE_DOWNLOADING, installed, latest,
+                    versionsBehind(installed, latest), percent, "");
+        }
+    }
+
     void publishInstalling(String installed, String latest) {
         publish(STATE_INSTALLING, installed, latest,
                 versionsBehind(installed, latest), 100,
@@ -201,8 +227,108 @@ final class UpdateBridge {
         }
     }
 
+    /**
+     * Write the record again with what may have changed around it: the switches, the network,
+     * the minutes since the last check. The update service calls it every so often, and after
+     * a switch, so the screen never shows "just now" for an hour-old check.
+     */
+    void refresh() {
+        synchronized (LOCK) {
+            if (!statusFile.isFile()) {
+                return;
+            }
+            List<String> lines;
+            try {
+                lines = Files.readAllLines(statusFile.toPath(), StandardCharsets.UTF_8);
+            } catch (IOException | RuntimeException e) {
+                return;
+            }
+            if (lines.size() < 7 || !String.valueOf(FORMAT).equals(lines.get(0).trim())
+                    || STATE_DOWNLOADING.equals(lines.get(1).trim())) {
+                return; // a download reports often enough by itself
+            }
+            int behind;
+            int percent;
+            try {
+                behind = Integer.parseInt(lines.get(4).trim());
+                percent = Integer.parseInt(lines.get(5).trim());
+            } catch (NumberFormatException e) {
+                return;
+            }
+            publish(lines.get(1).trim(), lines.get(2), lines.get(3), behind, percent, lines.get(6));
+        }
+    }
+
+    /** The ABI this build's native code is, from where Android unpacked it. */
+    static String abi(Context context) {
+        String dir = context.getApplicationInfo().nativeLibraryDir;
+        String fallback = android.os.Build.SUPPORTED_ABIS.length > 0 ? android.os.Build.SUPPORTED_ABIS[0] : "";
+        return AppUpdateState.abiOfLibDir(dir == null ? "" : new File(dir).getName(), fallback);
+    }
+
+    private static String netName(Context context) {
+        Net.Kind kind = Net.kind(context);
+        if (kind == Net.Kind.OFFLINE) return AppUpdateState.NET_OFFLINE;
+        return kind == Net.Kind.UNMETERED ? AppUpdateState.NET_UNMETERED : AppUpdateState.NET_METERED;
+    }
+
+    /**
+     * What the Updates screen shows besides the eight lines (touch_update_util.qh): where updates
+     * come from, the channel and ABI, the switches, the network, the last check, the release the
+     * check found (its size, whether it brings AndySU) and a download's bytes.
+     */
+    private AppUpdateState.Extras extras(String state, String latest) {
+        boolean auto = AppUpdater.isAutoInstall(context);
+        boolean wifiOnly = AppUpdater.isWifiOnly(context);
+        String net = netName(context);
+        AppUpdateState.Extras x = new AppUpdateState.Extras()
+                .put("via", "app")
+                .put("channel", AppUpdateState.CHANNEL)
+                .put("abi", abi(context))
+                .flag("wifi", wifiOnly)
+                .put("live", "na")
+                .put("net", net)
+                .put("hold", AppUpdateState.hold(state, auto, wifiOnly, net));
+        long at = AppUpdater.checkedAt(context);
+        if (at > 0) {
+            x.put("checked_min", AppUpdateState.minutesSince(at, System.currentTimeMillis()))
+                    .put("checked_result", AppUpdater.checkedResult(context));
+        }
+        AppUpdater.Update found = latest == null || latest.isEmpty() ? null : new AppUpdater(context).lastFound();
+        if (found != null && found.version.equals(latest.trim())) {
+            if (found.size > 0) x.put("size", found.size);
+            if (AppUpdateState.isLiveAsset(found.name)) x.put("asset", "live");
+        }
+        if (STATE_DOWNLOADING.equals(state) && downloadDone >= 0) {
+            x.put("done", downloadDone);
+            if (downloadTotal > 0) x.put("total", downloadTotal);
+            x.put("speed", rate.speed).put("eta", rate.eta);
+        }
+        return x;
+    }
+
     private void publish(String state, String installed, String latest,
                          int behind, int percent, String message) {
+        synchronized (LOCK) {
+            if (!STATE_DOWNLOADING.equals(state)) {
+                rate.reset();
+                downloadDone = -1;
+                downloadTotal = -1;
+            }
+            write(state, installed, latest, behind, percent, message);
+        }
+    }
+
+    private void write(String state, String installed, String latest,
+                       int behind, int percent, String message) {
+        String extras;
+        try {
+            extras = extras(state, latest).encode();
+        } catch (RuntimeException e) {
+            // The eight lines matter more than the extras: never lose a status over them.
+            Log.w(TAG, "Could not gather update details", e);
+            extras = "";
+        }
         StringBuilder out = new StringBuilder()
                 .append(FORMAT).append('\n')
                 .append(state).append('\n')
@@ -212,6 +338,11 @@ final class UpdateBridge {
                 .append(Math.max(0, Math.min(100, percent))).append('\n')
                 .append(oneLine(message)).append('\n')
                 .append(AppUpdater.isAutoInstall(context) ? "on" : "off").append('\n');
+        out.append(extras);
+        String record = out.toString();
+        if (record.equals(lastRecord) && statusFile.isFile()) {
+            return;
+        }
 
         try {
             File dir = statusFile.getParentFile();
@@ -223,11 +354,13 @@ final class UpdateBridge {
             // half-written one would be read as a truncated record rather than
             // simply being missed.
             File tmp = new File(statusFile.getPath() + ".tmp");
-            Files.write(tmp.toPath(), out.toString().getBytes(StandardCharsets.UTF_8));
+            Files.write(tmp.toPath(), record.getBytes(StandardCharsets.UTF_8));
             if (!tmp.renameTo(statusFile)) {
                 Log.w(TAG, "Could not replace " + statusFile);
                 //noinspection ResultOfMethodCallIgnored
                 tmp.delete();
+            } else {
+                lastRecord = record;
             }
         } catch (IOException | RuntimeException e) {
             Log.w(TAG, "Could not publish update status", e);

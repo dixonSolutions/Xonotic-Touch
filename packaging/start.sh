@@ -176,6 +176,14 @@ xonotic_publish_update_status() {
         printf '%s\n' 0
         printf '%s\n' "Installed and updated by your package manager."
         printf '%s\n' off
+        # Which one, so Settings > Updates says how updates arrive (touch_update_util.qh).
+        if [ -n "${FLATPAK_ID:-}" ] || [ -f /.flatpak-info ]; then
+            printf '%s\n' via=flatpak
+        elif [ -n "$CLICK_PKGNAME" ]; then
+            printf '%s\n' via=click
+        else
+            printf '%s\n' via=local
+        fi
     } > "$_pus_dir/update-status.txt.tmp" 2>/dev/null \
         && mv -f "$_pus_dir/update-status.txt.tmp" "$_pus_dir/update-status.txt" 2>/dev/null \
         || true

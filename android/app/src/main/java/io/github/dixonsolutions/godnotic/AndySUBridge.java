@@ -374,14 +374,7 @@ final class AndySUBridge {
     }
 
     private String abi() {
-        String dir = context.getApplicationInfo().nativeLibraryDir;
-        String name = dir == null ? "" : new File(dir).getName();
-        switch (name) {
-            case "arm64": return "arm64-v8a";
-            case "arm": return "armeabi-v7a";
-            case "x86_64": case "x86": return name;
-            default: return android.os.Build.SUPPORTED_ABIS.length > 0 ? android.os.Build.SUPPORTED_ABIS[0] : "";
-        }
+        return UpdateBridge.abi(context);
     }
 
     /** The system notification follows the download: shown while one runs, gone after. */

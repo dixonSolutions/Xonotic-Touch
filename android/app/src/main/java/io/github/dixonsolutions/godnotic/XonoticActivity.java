@@ -467,7 +467,12 @@ public final class XonoticActivity extends SDLActivity {
         updateService = new Thread(() -> {
             // Whatever BootActivity last published stands until someone asks for
             // something; re-checking here would double every launch's API call.
+            // Only its details move on: the minutes since the last check, the network.
+            int tick = 0;
             while (!Thread.currentThread().isInterrupted()) {
+                if (tick++ % 30 == 0) {
+                    bridge.refresh();
+                }
                 try {
                     Thread.sleep(1000);
                 } catch (InterruptedException e) {
@@ -529,7 +534,9 @@ public final class XonoticActivity extends SDLActivity {
             return;
         }
         Net.Kind network = Net.kind(this);
-        if (!asked && network != Net.Kind.UNMETERED) {
+        String net = network == Net.Kind.OFFLINE ? AppUpdateState.NET_OFFLINE
+                : (network == Net.Kind.UNMETERED ? AppUpdateState.NET_UNMETERED : AppUpdateState.NET_METERED);
+        if (!asked && !AppUpdateState.mayDownloadUnasked(AppUpdater.isWifiOnly(this), net)) {
             // Say what the connection really is: "waiting for Wi-Fi" while the
             // Wi-Fi icon shows was a Wi-Fi without internet, with mobile data
             // carrying everything.
@@ -546,7 +553,8 @@ public final class XonoticActivity extends SDLActivity {
         Thread worker = new Thread(() -> {
             try {
                 updater.download(update,
-                        (text, note, percent) -> bridge.publishDownloading(installed, update.version, Math.max(0, percent)));
+                        (text, note, percent) -> bridge.publishDownloading(installed, update.version, Math.max(0, percent),
+                                updater.cachedBytes(update), update.size));
                 if (installAfter) {
                     installCachedFromMenu(bridge, updater, installed, update);
                 } else {
@@ -581,6 +589,14 @@ public final class XonoticActivity extends SDLActivity {
             case "auto-on":
             case "auto-off":
                 AppUpdater.setAutoInstall(this, "auto-on".equals(request));
+                bridge.refresh();
+                autoDownloadIfDue();
+                return;
+            case "wifi-on":
+            case "wifi-off":
+                AppUpdater.setWifiOnly(this, "wifi-on".equals(request));
+                bridge.refresh();
+                autoDownloadIfDue();
                 return;
             case "skip": {
                 AppUpdater.Update target = targetUpdate(bridge, updater, installed);
