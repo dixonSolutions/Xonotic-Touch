@@ -9,6 +9,10 @@
   - hostile mod pages are refused whole, good ones are labelled with their origin
   - the Linux transport: listen socket 0600, reconnect, the engine quits when nobody comes back
   - with no renderer attached and menu_touch_uib 0 nothing is described (zero cost)
+  - what the tablet check of release round 2 found: Duel's Bots stepper, Home's card and
+    Play use Duel's own count (0 or 1) and
+    leave every other mode's alone; the picker's tiles lead with its own mode; the pause
+    page of a local game says so, with no action on its card
 """
 import base64, json, os, socket, stat, subprocess, sys, tempfile, time
 
@@ -147,6 +151,68 @@ def hello(c):
     return h
 
 
+def wait_for(c, cond, limit):
+    end = time.monotonic() + limit
+    while time.monotonic() < end and not cond():
+        c.recv(1.0)
+    return cond()
+
+
+def modes_and_match():
+    """Per-mode bots, mode chips and a local game's pause page (no network)."""
+    ud = tempfile.mkdtemp(prefix="uibt-modes-", dir=os.environ.get("TMPDIR"))
+    sock = os.path.join(ud, "run", "uib.sock")
+    pre = ("set touch_lan_bots 15\nset touch_lan_gametype duel\nset touch_lan_map afterslime\n"
+           "set g_warmup 0\nset touch_profile_done 1\nset net_slist_lan_only 1\nset cl_curl_enabled 0\n")
+    p, log = spawn(["-uibridge", "listen:" + sock], ud, pre)
+    try:
+        c = Conn(connect(sock))
+        hello(c)
+        c.settle()
+        card = c.nodes.get("home/tiles/sp", {}).get("props", {}).get("subtitle", "")
+        check(card.endswith("· 1 bot"), f"Home's Singleplayer card says what a Duel starts with: one bot, not 15 ({card!r})")
+        c.send({"t": "ev", "ev": "action", "node": "home/tiles/sp", "action": "sp"})
+        c.settle()
+        bots = c.nodes.get("sp/match/form/bots", {}).get("props", {})
+        check(bots.get("max") == 1 and bots.get("value") == 1 and bots.get("bind") == "cvar:touch_lan_bots_duel",
+              f"in Duel the Bots stepper goes 0 to 1 and shows 1 ({bots.get('min')}-{bots.get('max')}, value {bots.get('value')}, {bots.get('bind')})")
+        r = c.request({"t": "window", "source": "maps.duel", "offset": 0, "limit": 60})
+        rows = r.get("rows", []) if r else []
+        lead = [x["key"] for x in rows if not x["cells"].get("modes", "").startswith("duel")]
+        after = next((x["cells"]["modes"] for x in rows if x["key"] == "afterslime"), "")
+        check(rows and not lead and after.split()[:1] == ["duel"],
+              f"every tile in Duel's picker leads with DUEL (Afterslime: {after!r}; not leading: {lead[:4]})")
+        c.send({"t": "ev", "ev": "value", "node": "sp/match/form/bots", "value": 0})
+        c.settle()
+        c.send({"t": "ev", "ev": "action", "node": "sp/modes/grid/dm", "action": "mode.dm"})
+        c.settle()
+        bots = c.nodes.get("sp/match/form/bots", {}).get("props", {})
+        check(bots.get("max") == 15 and bots.get("value") == 15 and bots.get("bind") == "cvar:touch_lan_bots",
+              f"Duel's 0 left Deathmatch's 15 alone ({bots.get('min')}-{bots.get('max')}, value {bots.get('value')})")
+        c.send({"t": "ev", "ev": "action", "node": "sp/modes/grid/duel", "action": "mode.duel"})
+        c.settle()
+        bots = c.nodes.get("sp/match/form/bots", {}).get("props", {})
+        check(bots.get("value") == 0, f"... and Duel kept its own 0 (value {bots.get('value')})")
+        c.send({"t": "ev", "ev": "back"})
+        c.settle()
+        # a local Deathmatch game: its pause page
+        c.send({"t": "ev", "ev": "action", "node": "home/tiles/sp", "action": "sp"})
+        c.settle()
+        c.send({"t": "ev", "ev": "action", "node": "sp/modes/grid/dm", "action": "mode.dm"})
+        c.settle()
+        c.send({"t": "ev", "ev": "action", "node": "sp", "action": "play"})
+        ok = wait_for(c, lambda: c.nodes.get("app", {}).get("props", {}).get("context") == "game" and "pause/match" in c.nodes, 60)
+        c.settle(quiet=2, limit=6)
+        m = c.nodes.get("pause/match", {}).get("props", {})
+        check(ok and m.get("subtitle", "").endswith("your local game") and "primary" not in m,
+              f"a local game's pause page says so, and its card has no action ({m.get('title')!r} / {m.get('subtitle')!r}, primary {m.get('primary')})")
+    finally:
+        if p.poll() is None:
+            p.kill()
+            p.wait()
+        log.close()
+
+
 def main():
     ud = tempfile.mkdtemp(prefix="uibt-", dir=os.environ.get("TMPDIR"))
     sock = os.path.join(ud, "run", "uib.sock")
@@ -260,6 +326,8 @@ def main():
     logtxt = open(os.path.join(ud, "engine.log"), errors="replace").read()
     check(logtxt.count("uib_modpage: refused") == len(HOSTILE), f"{logtxt.count('uib_modpage: refused')}/{len(HOSTILE)} hostile pages refused")
     check("uib_modpage: ok" in logtxt, "the good page was accepted")
+
+    modes_and_match()
 
     # zero cost: no renderer, menu_touch_uib 0
     ud2 = tempfile.mkdtemp(prefix="uibt0-", dir=os.environ.get("TMPDIR"))

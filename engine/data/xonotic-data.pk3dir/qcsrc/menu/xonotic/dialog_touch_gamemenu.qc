@@ -31,9 +31,16 @@ string TouchGameMenu_Route(string itemname)
 		return "TouchGameMenu";
 	// The Welcome dialog a newer server's game code opens on connect has
 	// Join! and Spectate itself: the engine's own join dialog is then not
-	// owed for this match (touch_hudmode.c).
+	// owed for this match (touch_hudmode.c). A native front end cannot draw
+	// a stock dialog: there the question is the join popup, which stays owed
+	// (it used to be marked answered by a dialog nobody saw, so a player who
+	// joined a newer server mid-match was asked nothing until the next map).
 	if (itemname == "Welcome" && (gamestatus & (GAME_ISSERVER | GAME_CONNECTED)))
+	{
+		if (UIB_WelcomeNative())
+			return "welcome.native";   // no dialog: the stock menu does nothing with it
 		localcmd("\ntouch_join_answered\n");
+	}
 	// Xonotic's join dialog (team_selection_show, the engine's
 	// touch_join_dialog): the bridge's popup where a bridge renderer draws
 	// the menu, else the finger-sized dialog on a touchscreen.

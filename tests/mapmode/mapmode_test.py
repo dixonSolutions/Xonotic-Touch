@@ -187,9 +187,11 @@ def run_case(path, mode, plays, oracle_rows):
     ud = tempfile.mkdtemp(prefix=f"mm-{path}-{mode}-", dir=os.environ.get("TMPDIR"))
     os.makedirs(os.path.join(ud, "data"))
     sock = os.path.join(ud, "run", "uib.sock")
-    # Duel asks for three bots: a duel has two places, so Play must start it with one
+    # Duel asks for three bots (its own setting, and the other modes' too): a duel has two
+    # places, so Play must start it with one
     bots = 3 if mode == "duel" else 0
-    pre = f"set touch_profile_done 1\nset menu_touch_uib 1\nset touch_lan_bots {bots}\nset g_warmup 0\n" + PRE_CHECK
+    pre = (f"set touch_profile_done 1\nset menu_touch_uib 1\nset touch_lan_bots {bots}\nset touch_lan_bots_duel {bots}\n"
+           "set g_warmup 0\n" + PRE_CHECK)
     if path.startswith("native"):
         pre += PRE_NATIVE
     if path == "native-restart":

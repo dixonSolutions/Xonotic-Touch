@@ -158,7 +158,11 @@ A newer server's own game code opens the game's **Welcome** dialog on connect
 (the server's name and message, **Join!** and **Spectate**). When that came up,
 the join dialog above is not owed for the match: one question, asked once
 (`touch_join_answered`, sent by the menu). Xonotic 0.8.6 servers, most of the
-public ones, have no such dialog, which is where the join dialog matters.
+public ones, have no such dialog, which is where the join dialog matters. With a
+native front end (Android, the GTK app) the Welcome dialog is a stock dialog
+nobody can see, so it is left out and the join popup asks instead, also when
+the player joins a match already under way (`UIB_WelcomeNative`,
+`scripts/test-native-menu-live.sh joinmid`).
 
 Commands: `touch_join_dialog` opens it; `touch_join <auto|red|blue|yellow|pink|spectate>`
 is what a row runs. The rule for when it opens is `TouchJoinDlg_Frame` in

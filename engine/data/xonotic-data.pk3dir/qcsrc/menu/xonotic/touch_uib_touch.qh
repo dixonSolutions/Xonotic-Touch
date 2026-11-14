@@ -15,6 +15,7 @@ bool UIB_JoinOpen();                 // true: a bridge renderer shows the menu a
 bool UIB_JoinAction(string action);  // join.open, join.auto, join.red ... join.spectate
 bool UIB_JoinBack();                 // Back on the popup: closes to the match, not to the pause menu
 void UIB_JoinTick();                 // closes it once the player is in the game
+bool UIB_WelcomeNative();            // a native renderer draws the menu: a server's Welcome dialog is left to the join popup
 
 // Settings > Controls > Touch controls.
 void UIB_SecTouchControls();

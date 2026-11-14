@@ -670,7 +670,11 @@ class ViewRenderer(
             val icon = Icons.drawable(p.str("icon"), dp(32f), Theme.BLUE)
             slotIcon.background = icon
             slot.visibility = if (!photo && (icon != null)) View.VISIBLE else View.GONE
-            chevron.visibility = if (photo || actions.childCount > 0 || nodes[x.parent ?: ""]?.type == "grid") View.GONE else View.VISIBLE
+            // a chevron promises somewhere to go: only on a card that has a primary action
+            // (the pause page's card for someone else's server has none, and did nothing when tapped)
+            val tappable = p["primary"] is Map<*, *>
+            chevron.visibility = if (!tappable || photo || actions.childCount > 0 || nodes[x.parent ?: ""]?.type == "grid") View.GONE else View.VISIBLE
+            c.isClickable = tappable
             img.aspect = aspect(p, 16f / 9f)
             img.maxHeight = (ctx.resources.displayMetrics.heightPixels * 0.22f).toInt()
             if (photo) { img.visibility = View.VISIBLE; picture(img, ref) } else img.visibility = View.GONE
