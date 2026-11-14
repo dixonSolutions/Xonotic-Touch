@@ -115,36 +115,18 @@ def mode_meta(modes):
 
 def home(last="stormkeep", servers=None):
     m = next(x for x in MAPS if x[0] == last)
-    tiles = N("home/tiles", "grid", [
+    # Home's three modes: a bar of tabs along the bottom (none is current on Home itself)
+    tiles = N("home/tiles", "tabbar", [
         N("home/tiles/sp", "card", title="Singleplayer", subtitle=f"{m[1]} · Deathmatch · 4 bots",
-          icon="singleplayer", image=f"pk3:maps/{last}", aspect="16:9", featured=True,
-          primary=A("sp", "Open", "chevron")),
+          icon="singleplayer", image=f"pk3:maps/{last}",
+          primary=A("sp", "Singleplayer", "singleplayer")),
         N("home/tiles/campaign", "card", title="Campaign", subtitle="Level 3 of 31 · Capture the Flag: Implosion",
-          icon="trophy", image="pk3:maps/implosion", aspect="16:9", featured=True, progress=2 / 31,
-          primary=A("campaign", "Open", "chevron")),
+          icon="trophy", image="pk3:maps/implosion", progress=2 / 31,
+          primary=A("campaign", "Campaign", "trophy")),
         N("home/tiles/mp", "card", title="Multiplayer", subtitle=(servers or "Join a server, or create a game"),
-          icon="multiplayer", image="pk3:maps/xoylent", aspect="16:9", featured=True, live=True,
-          primary=A("mp", "Open", "chevron")),
-    ], minItem=200, maxColumns=3)
-    return N("home", "screen", [N("home/banner", "image", ref="asset:banner", role="banner", emphasis="high", aspect="21:9",
-                                  fit="contain", alt="Godnotic"), tiles],
-             title="Godnotic", kind="home", background="asset:background",
-             actions=[A("settings", "Settings", "settings"), A("credits", "Credits", "credits"),
-                      A("quit", "Quit", "quit", style="secondary",
-                        confirm={"title": "Quit Godnotic?", "ok": "Quit"})])
-
-
-def home_compact(last="stormkeep"):
-    """Home as described for a renderer under 600 dp wide: Play (Singleplayer / Campaign) and Multiplayer."""
-    m = next(x for x in MAPS if x[0] == last)
-    tiles = N("home/tiles", "grid", [
-        N("home/tiles/play", "card", title="Play", subtitle=f"{m[1]} · Campaign level 3 of 31", icon="play", image=f"pk3:maps/{last}",
-          aspect="16:9", featured=True, primary=A("sp", "Singleplayer", "singleplayer"),
-          actions=[A("sp", "Singleplayer", "singleplayer"), A("campaign", "Campaign", "trophy")]),
-        N("home/tiles/mp", "card", title="Multiplayer", subtitle="Join a server, or create a game",
-          icon="multiplayer", image="pk3:maps/xoylent", aspect="16:9", featured=True, live=True,
-          primary=A("mp", "Open", "chevron")),
-    ], minItem=150, maxColumns=2)
+          icon="multiplayer", image="pk3:maps/xoylent", live=True,
+          primary=A("mp", "Multiplayer", "multiplayer")),
+    ], current="")
     return N("home", "screen", [N("home/banner", "image", ref="asset:banner", role="banner", emphasis="high", aspect="21:9",
                                   fit="contain", alt="Godnotic"), tiles],
              title="Godnotic", kind="home", background="asset:background",
@@ -580,9 +562,6 @@ def main():
                           app([h]), rows=None, caps=CAPS_PHONE))
     write("home-live", fixture("home-live", "Home with the server list known: the Multiplayer card says how many servers and players.",
                                app([home(servers="214 servers · 87 players")]), rows=None))
-    write("home-compact", fixture("home-compact", "Home as described for a renderer under 600 dp wide (widthClass compact): the banner, a Play card "
-                                  "whose two actions are Singleplayer and Campaign, beside Multiplayer: one row of two cards.",
-                                  app([home_compact()]), rows=None, caps=dict(CAPS_PHONE, width=393, height=851, widthClass="compact", heightClass="medium")))
     write("campaign", fixture("campaign", "Campaign: the chosen level beside its picture, the levels as cards (won, next, locked).",
                               app([h, campaign_screen()]), rows={"campaign": campaign_rows()}))
     write("singleplayer", fixture("singleplayer", "Singleplayer: mode cards, map picker (cards over maps:dm), match options, recent.",
