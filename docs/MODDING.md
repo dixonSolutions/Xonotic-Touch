@@ -35,7 +35,7 @@ xt.command("greet", function(who) print("hi " .. (who or "there")) end, "say hi"
 
 | Where you play | Mods folder |
 |---|---|
-| Android | `Android/data/io.github.dixonsolutions.xonotictouch/files/userdata/mods/` (the app's files folder; many file managers cannot open it, so installing the zip is easier) |
+| Android | `Android/data/io.github.dixonsolutions.godnotic/files/userdata/mods/` (the app's files folder; many file managers cannot open it, so installing the zip is easier) |
 | Linux, Flatpak | `~/.xonotic/mods/` (the Flatpak uses the same folder) |
 | Web build | no folder you can reach from outside the browser, and no `https://` downloads (no libcurl): write and test mods on Android or Linux |
 

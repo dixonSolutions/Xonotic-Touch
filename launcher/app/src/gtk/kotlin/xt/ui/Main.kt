@@ -112,7 +112,7 @@ private const val HELP = """Usage: xt-launcher [OPTION]
 
 fun main(args: Array<String>) {
     val env = Sys.env()
-    val configDir = (env["XDG_CONFIG_HOME"]?.takeIf { it.isNotEmpty() } ?: "${env["HOME"]}/.config") + "/xonotic-touch"
+    val configDir = (env["XDG_CONFIG_HOME"]?.takeIf { it.isNotEmpty() } ?: "${env["HOME"]}/.config") + "/godnotic"
     val configPath = "$configDir/launcher.conf"
     val cfg = Sys.readText(configPath)?.let { LauncherConfig.parse(it) } ?: LauncherConfig()
     val c = Ctx(env, configPath, cfg)

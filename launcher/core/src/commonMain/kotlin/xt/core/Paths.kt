@@ -42,9 +42,9 @@ object PathResolver {
         val home = env["HOME"] ?: "/tmp"
         val flatpak = !env["FLATPAK_ID"].isNullOrEmpty()
 
-        val explicitStart = env["XONOTIC_TOUCH_START"]?.takeIf { it.isNotEmpty() && exists(it) }
+        val explicitStart = env["GODNOTIC_START"]?.takeIf { it.isNotEmpty() && exists(it) }
         val rootCandidates = listOfNotNull(
-            env["XONOTIC_TOUCH_APP_ROOT"]?.takeIf { it.isNotEmpty() },
+            env["GODNOTIC_APP_ROOT"]?.takeIf { it.isNotEmpty() },
             "/app".takeIf { flatpak },
             exeDir?.let { parent(it) },
             "/app",
@@ -55,9 +55,9 @@ object PathResolver {
 
         val userBase = when {
             userBaseOverride.isNotBlank() -> userBaseOverride.trim().trimEnd('/')
-            !env["XONOTIC_TOUCH_USER_BASE"].isNullOrEmpty() -> env.getValue("XONOTIC_TOUCH_USER_BASE")
-            flatpak && !env["XDG_DATA_HOME"].isNullOrEmpty() -> env.getValue("XDG_DATA_HOME") + "/xonotic-touch"
-            else -> "$home/.local/share/xonotic-touch"
+            !env["GODNOTIC_USER_BASE"].isNullOrEmpty() -> env.getValue("GODNOTIC_USER_BASE")
+            flatpak && !env["XDG_DATA_HOME"].isNullOrEmpty() -> env.getValue("XDG_DATA_HOME") + "/godnotic"
+            else -> "$home/.local/share/godnotic"
         }
         return GamePaths(appRoot, start, engine, userBase, "$home/.xonotic", flatpak)
     }

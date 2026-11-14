@@ -45,9 +45,9 @@ class LaunchTest {
             """.trimIndent()
         )
         val p = Launch.game(cfg, "/app/bin/start.sh")
-        assertEquals("minimal", p.env["XONOTIC_TOUCH_PROFILE"])
-        assertEquals("balanced", p.env["XONOTIC_TOUCH_PERF_PROFILE"])
-        assertEquals("always", p.env["XONOTIC_TOUCH_MODE"])
+        assertEquals("minimal", p.env["GODNOTIC_PROFILE"])
+        assertEquals("balanced", p.env["GODNOTIC_PERF_PROFILE"])
+        assertEquals("always", p.env["GODNOTIC_MODE"])
         assertEquals(
             listOf("+vid_fullscreen", "0", "+vid_width", "1280", "+vid_height", "720", "+vid_conheight", "720",
                 "+cl_touch_aimassist", "0", "+cl_touch_autoshoot", "1", "+map", "dance"),
@@ -89,9 +89,9 @@ class PathsTest {
         val p = PathResolver.resolve(env, "/app/bin", { it in files })
         assertEquals("/app", p.appRoot)
         assertEquals("/app/bin/start.sh", p.startScript)
-        assertEquals("/h/.var/app/io.x/data/xonotic-touch", p.userBase)
+        assertEquals("/h/.var/app/io.x/data/godnotic", p.userBase)
         assertEquals("/h/.xonotic/mods", p.modsDir)
-        assertEquals(listOf("/h/.xonotic/data", "/h/.var/app/io.x/data/xonotic-touch/data", "/app/data"), p.dataDirs)
+        assertEquals(listOf("/h/.xonotic/data", "/h/.var/app/io.x/data/godnotic/data", "/app/data"), p.dataDirs)
     }
 
     @Test fun localInstallAndOverride() {

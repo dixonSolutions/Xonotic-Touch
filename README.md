@@ -4,10 +4,25 @@
 
 | | |
 |---|---|
-| **Install** | Android `.apk` from [GitHub Releases](https://github.com/dixonSolutions/Godnotic/releases/latest), Flatpak remote (any Linux distro), [OpenStore](https://open-store.io/app/xonotictouch.dixonsolutions) / Ubuntu Touch `.click`, or [in the browser](https://godnotic.vercel.app). Every push to `main` is a versioned release |
+| **Install** | Android `.apk` from [GitHub Releases](https://github.com/dixonSolutions/Godnotic/releases/latest), Flatpak remote (any Linux distro), [OpenStore](https://open-store.io/app/godnotic.dixonsolutions) / Ubuntu Touch `.click`, or [in the browser](https://godnotic.vercel.app). Every push to `main` is a versioned release |
 | **Platforms** | Android: `arm64-v8a`, `armeabi-v7a`, `x86_64` (Waydroid, Chromebooks). Flatpak: `x86_64` and `aarch64`, Wayland or X11 (postmarketOS, Mobian, Fedora, Ubuntu, …). Click: Ubuntu Touch `arm64` and `armhf`. Web: WebAssembly and WebGL 2 |
 | **Input** | Touch, keyboard and mouse, together or apart, detected from the system. The on-screen controls show on a touchscreen with no keyboard attached and step aside while one is plugged in; touch and a mouse keep working either way (fingers press menus and turn the view, a mouse aims). **Ctrl+Alt+1** switches by hand and **Ctrl+Alt+2** locks the choice: see [TOUCH_DETECTION.md](docs/TOUCH_DETECTION.md) |
 | **Download** | The package is small (about 60 MB). Game data comes on first launch: the slim set is about 390 MB (ASTC textures, zstd packs, Opus music, always including the music) against about 1 GB for stock Xonotic's packs; devices without ASTC take the full set |
+
+## Repositories
+
+Godnotic is four repositories. **This one is the game as it ships**: it is where releases are built, where issues go, and the only one you need to clone to build everything.
+
+| Repository | What it is | What it holds |
+|---|---|---|
+| **[Godnotic](https://github.com/dixonSolutions/Godnotic)** (this one) | The product | Packaging for Android, Flatpak, Ubuntu Touch and the web; the native interfaces (Kotlin on Android, Rust with GTK 4 on Linux, the HTML shell in the browser); touch defaults and presets; the release pipeline; the docs. It also carries a copy of the two component repositories below, each at the commit pinned in [`components.json`](components.json), so one checkout builds the whole game |
+| [Godnotic-darkplaces](https://github.com/dixonSolutions/Godnotic-darkplaces) | The engine | Godnotic's fork of the DarkPlaces engine as Xonotic uses it: the touch HUD and input, the UI bridge the native interfaces talk to, the Lua mod runtime, the faster loaders and network code. Carried here in `engine/darkplaces` |
+| [Godnotic-data](https://github.com/dixonSolutions/Godnotic-data) | The game code and the data packs | Godnotic's fork of Xonotic's `xonotic-data.pk3dir`: the QuakeC game, menu and HUD code and the configs, carried here in `engine/data/xonotic-data.pk3dir`. Its releases are the data packs every client downloads on first launch (`data-<date>` the full set, `data-slim` the phone-sized one) |
+| [dixonSolutions.github.io](https://github.com/dixonSolutions/dixonSolutions.github.io) | The compatibility site | No game source. It keeps the update addresses of installs made before the project was renamed pointing at the current ones |
+
+The sites are published from this repository, not from one of their own: the browser build at **https://godnotic.vercel.app** (Vercel, from `web/`), and the Flatpak remote, the `.click` downloads and a mirror of the browser build on GitHub Pages at <https://dixonSolutions.github.io/Godnotic/>.
+
+Work on the engine or the game code happens here, where everything builds together; `scripts/component-push.sh` then publishes it to the component repository. A commit made directly in a component repository is built and tested inside this one, then merged and released from here. The rules are in [AGENTS.md](AGENTS.md).
 
 ## What Godnotic changes
 
@@ -30,7 +45,7 @@ The engine's real console is one tap away on every platform (the console button 
 
 **LAN games and mods.** Host a game on your network from the Create screen (a LAN switch, a port, an optional password), find games without a master server, including over a VPN ([LAN.md](docs/LAN.md)). Lua mods for the client and the server run in a light sandbox with four permission tiers, their own settings pages and HUD panels, and 15 tested examples ([MODDING.md](docs/MODDING.md)).
 
-The repository is split in three: this one (packaging, native interfaces, releases), [Godnotic-darkplaces](https://github.com/dixonSolutions/Godnotic-darkplaces) (the engine) and [Godnotic-data](https://github.com/dixonSolutions/Godnotic-data) (game code and the data packs). What has been measured and what is still unfinished is written down in [GODNOTIC.md](docs/GODNOTIC.md).
+What has been measured and what is still unfinished is written down in [GODNOTIC.md](docs/GODNOTIC.md).
 
 ## In a match
 
@@ -59,8 +74,8 @@ On screen: the **MOVE** stick on the left (drag on the right side of the screen 
 ```bash
 flatpak remote-add --user --if-not-exists godnotic \
   https://dixonSolutions.github.io/Godnotic/flatpak
-flatpak install --user godnotic io.github.dixonSolutions.XonoticTouch
-flatpak run io.github.dixonSolutions.XonoticTouch
+flatpak install --user godnotic io.github.dixonSolutions.Godnotic
+flatpak run io.github.dixonSolutions.Godnotic
 ```
 
 Or download offline bundles from [GitHub Releases](https://github.com/dixonSolutions/Godnotic/releases/latest) (new `v1.2.*` tag per build; older tags kept).
@@ -69,7 +84,7 @@ Or download offline bundles from [GitHub Releases](https://github.com/dixonSolut
 
 Preferred: install from OpenStore on the device.
 
-<a href="https://open-store.io/app/xonotictouch.dixonsolutions"><img src="https://open-store.io/badges/en_US.svg" alt="OpenStore" width="200" /></a>
+<a href="https://open-store.io/app/godnotic.dixonsolutions"><img src="https://open-store.io/badges/en_US.svg" alt="OpenStore" width="200" /></a>
 
 Sideload (Pages download remote):
 

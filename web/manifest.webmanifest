@@ -11,7 +11,7 @@
   "theme_color": "#0b0f14",
   "categories": ["games"],
   "related_applications": [
-    { "platform": "play", "id": "io.github.dixonsolutions.xonotictouch" }
+    { "platform": "play", "id": "io.github.dixonsolutions.godnotic" }
   ],
   "prefer_related_applications": false,
   "icons": [

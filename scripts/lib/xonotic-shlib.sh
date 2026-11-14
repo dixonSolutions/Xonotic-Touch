@@ -397,9 +397,9 @@ xonotic_stage_touch_runtime() {
     data_dir="$(xonotic_data_dir)"
     startup_cfg="$data_dir/touch/startup.cfg"
 
-    local touch_profile="${XONOTIC_TOUCH_PROFILE:-standard}"
-    local touch_perf="${XONOTIC_TOUCH_PERF_PROFILE:-thermal}"
-    local user_layout="${XONOTIC_TOUCH_LAYOUT:-${HOME}/.xonotic/data/touch.layout.cfg}"
+    local touch_profile="${GODNOTIC_PROFILE:-standard}"
+    local touch_perf="${GODNOTIC_PERF_PROFILE:-thermal}"
+    local user_layout="${GODNOTIC_LAYOUT:-${HOME}/.xonotic/data/touch.layout.cfg}"
     local user_layout_legacy="${HOME}/.xonotic/touch.layout.cfg"
     # Where touch_save writes it (fopen adds a data/); see packaging/start.sh.
     local engine_layout="${HOME}/.xonotic/data/data/touch.layout.cfg"
@@ -445,9 +445,9 @@ xonotic_write_screen_layout() {
         cat > "$layout_cfg" <<EOF
 vid_width ${XONOTIC_DEFAULT_WIDTH:-1280}
 vid_height ${XONOTIC_DEFAULT_HEIGHT:-720}
-vid_touchscreen_xdpi ${XONOTIC_TOUCH_XDPI:-320}
-vid_touchscreen_ydpi ${XONOTIC_TOUCH_YDPI:-320}
-vid_touchscreen_density ${XONOTIC_TOUCH_DENSITY:-2.0}
+vid_touchscreen_xdpi ${GODNOTIC_XDPI:-320}
+vid_touchscreen_ydpi ${GODNOTIC_YDPI:-320}
+vid_touchscreen_density ${GODNOTIC_DENSITY:-2.0}
 EOF
     fi
 }
@@ -473,10 +473,10 @@ xonotic_preflight_run() {
     fi
 }
 
-# Sets XONOTIC_TOUCH_ASSET_FETCH_ACTIVE / XONOTIC_TOUCH_ASSETS_READY and may
+# Sets GODNOTIC_ASSET_FETCH_ACTIVE / GODNOTIC_ASSETS_READY and may
 # start a background fetch. Must run in the launcher shell (not a subshell) so
 # XONOTIC_ASSET_FETCH_PID stays owned for shutdown-on-exit.
-xonotic_touch_begin_asset_fetch() {
+godnotic_begin_asset_fetch() {
     local data_dir asset_lib discover_lib progress_file needle pid cmdline
     data_dir="$(xonotic_data_dir)"
     asset_lib="$(xonotic_root)/scripts/lib/asset-fetch.sh"
@@ -486,8 +486,8 @@ xonotic_touch_begin_asset_fetch() {
     progress_file="$data_dir/touch/asset-progress.txt"
     mkdir -p "$data_dir/touch"
 
-    XONOTIC_TOUCH_ASSET_FETCH_ACTIVE=0
-    XONOTIC_TOUCH_ASSETS_READY=0
+    GODNOTIC_ASSET_FETCH_ACTIVE=0
+    GODNOTIC_ASSETS_READY=0
 
     if [ "${XONOTIC_SKIP_ASSET_FETCH:-0}" = "1" ] || [ ! -f "$asset_lib" ]; then
         return 0
@@ -503,11 +503,11 @@ xonotic_touch_begin_asset_fetch() {
 
     # Fast sync only: ready? → no wizard. Otherwise fullscreen wizard + background.
     if xonotic_assets_are_ready "$data_dir"; then
-        XONOTIC_TOUCH_ASSETS_READY=1
+        GODNOTIC_ASSETS_READY=1
         return 0
     fi
 
-    XONOTIC_TOUCH_ASSET_FETCH_ACTIVE=1
+    GODNOTIC_ASSET_FETCH_ACTIVE=1
 
     # Avoid stacking fetch jobs when the engine relaunches after setup.
     if [ "${XONOTIC_ASSET_FETCH_JOB_STARTED:-0}" = "1" ]; then
@@ -546,7 +546,7 @@ xonotic_touch_begin_asset_fetch() {
     XONOTIC_ASSET_FETCH_PID=$!
 }
 
-xonotic_touch_stop_asset_fetch() {
+godnotic_stop_asset_fetch() {
     local data_dir progress_file pid child pct
     data_dir="$(xonotic_data_dir)"
     progress_file="$data_dir/touch/asset-progress.txt"
@@ -589,8 +589,8 @@ xonotic_run_native() {
     root="$(xonotic_root)"
     base_dir="$root/engine"
     bin="$(xonotic_bin)"
-    touch_profile="${XONOTIC_TOUCH_PROFILE:-standard}"
-    touch_perf="${XONOTIC_TOUCH_PERF_PROFILE:-thermal}"
+    touch_profile="${GODNOTIC_PROFILE:-standard}"
+    touch_perf="${GODNOTIC_PERF_PROFILE:-thermal}"
     fullscreen="${XONOTIC_FULLSCREEN:-0}"
 
     xonotic_preflight_run
@@ -598,14 +598,14 @@ xonotic_run_native() {
     xonotic_write_screen_layout
 
     local touch_mode
-    case "${XONOTIC_TOUCH_MODE:-auto}" in
+    case "${GODNOTIC_MODE:-auto}" in
         always|2) touch_mode=2 ;;
         off|0)    touch_mode=0 ;;
         *)        touch_mode=1 ;;
     esac
 
     XONOTIC_ASSET_FETCH_PID=""
-    xonotic_touch_begin_asset_fetch
+    godnotic_begin_asset_fetch
 
     # Mirrors packaging/start.sh: the download wizard asks for a relaunch so the
     # engine picks up packs that appeared after it built its search path.
@@ -625,9 +625,9 @@ xonotic_run_native() {
     printf '\n'
 
     # Download stops with the app; partial zips resume on the next launch.
-    trap 'xonotic_touch_stop_asset_fetch' EXIT
-    trap 'xonotic_touch_stop_asset_fetch; exit 130' INT
-    trap 'xonotic_touch_stop_asset_fetch; exit 143' TERM
+    trap 'godnotic_stop_asset_fetch' EXIT
+    trap 'godnotic_stop_asset_fetch; exit 130' INT
+    trap 'godnotic_stop_asset_fetch; exit 143' TERM
 
     # -customgamename also renames the game in master server queries, which
     # then list no servers; -customgamenetworkfiltername puts the stock name back.
@@ -640,8 +640,8 @@ xonotic_run_native() {
             +exec config.cfg \
             +exec autoexec.cfg \
             +exec touch/startup.cfg \
-            +set _touch_asset_fetch_active "${XONOTIC_TOUCH_ASSET_FETCH_ACTIVE:-0}" \
-            +set _touch_assets_ready "${XONOTIC_TOUCH_ASSETS_READY:-0}" \
+            +set _touch_asset_fetch_active "${GODNOTIC_ASSET_FETCH_ACTIVE:-0}" \
+            +set _touch_assets_ready "${GODNOTIC_ASSETS_READY:-0}" \
             +vid_fullscreen "$fullscreen" \
             +vid_touchscreen_mode "$touch_mode" \
             +vid_touchscreen_touchonly 1 \
@@ -655,11 +655,11 @@ xonotic_run_native() {
         fi
         rm -f "$restart_marker" "$restart_marker_home"
         printf 'Relaunching engine so downloaded game data is loaded\n'
-        xonotic_touch_begin_asset_fetch
+        godnotic_begin_asset_fetch
         status=0
     done
 
     trap - EXIT INT TERM
-    xonotic_touch_stop_asset_fetch
+    godnotic_stop_asset_fetch
     return "$status"
 }

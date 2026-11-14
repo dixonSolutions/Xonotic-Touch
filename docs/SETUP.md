@@ -76,7 +76,7 @@ Implemented in `scripts/lib/asset-discover.sh` (steps 1–2) and `packaging/star
 
 A **fast** ready-check runs before launch. Flatpak copy and download run in the **background** and drive the fullscreen setup wizard via `data/touch/asset-progress.txt`. If our data is already ready, the wizard never appears. Gameplay stays blocked until `.assets-ready` exists.
 
-Flatpak stores packs under the app’s own data dir (`~/.var/app/…/data/xonotic-touch/`), so Software “Delete app data” clears them. The old host path `~/.local/share/xonotic-touch` is only read for a one-time migration.
+Flatpak stores packs under the app’s own data dir (`~/.var/app/…/data/godnotic/`), so Software “Delete app data” clears them.
 
 ### Boot assets (why the package is not empty)
 
@@ -90,7 +90,7 @@ The packaged launcher re-execs `config.cfg` / `autoexec.cfg` **after** `xonotic.
 
 ### Launcher behavior
 
-`packaging/start.sh` (and dev `xonotic_touch_begin_asset_fetch()` in `scripts/lib/xonotic-shlib.sh`):
+`packaging/start.sh` (and dev `godnotic_begin_asset_fetch()` in `scripts/lib/xonotic-shlib.sh`):
 
 1. Sync slim bundle into the user data directory.
 2. If **our** data is already ready → skip import/download.
@@ -115,7 +115,7 @@ The `discover` phase covers “our data ready?” then “copy from Flatpak Xono
 
 Closing the window ends the session. The one thing that outlives it is a download already in flight: the host-side `fetchd` keeps going, sends a notification when the packs are ready, and re-opens the app if it is not already running. The setup wizard's **Download in background** does the same deliberately — it closes the UI and hands the job to `fetchd`. Reopening while a download is live joins the existing `fetch.lock` job (no duplicate curls). Closing with no download running writes `paused`; the next launch resumes the partial zip.
 
-Missing pack zips (core, maps, music) download **in parallel** (default up to 3–4 jobs; override with `XONOTIC_FETCH_PARALLEL`). When `aria2c` is on PATH, each large zip also uses multiple HTTP connections (`XONOTIC_FETCH_CONNECTIONS`, default 6). Each zip **resumes** with `curl -C -` / `aria2c -c`; packs already installed are skipped. Finished zips are extracted as soon as they complete. The open-menu theme (`rising-of-the-phoenix`, ~7 MB) is fetched first into `xonotic-touch-theme.pk3dir` so the wizard can play BGM via `touch/music-ready.txt` while core/maps packs continue. The setup wizard shows the Xonotic logo from `gfx/xonotic_logo` (staged via `touch/gfx/`).
+Missing pack zips (core, maps, music) download **in parallel** (default up to 3–4 jobs; override with `XONOTIC_FETCH_PARALLEL`). When `aria2c` is on PATH, each large zip also uses multiple HTTP connections (`XONOTIC_FETCH_CONNECTIONS`, default 6). Each zip **resumes** with `curl -C -` / `aria2c -c`; packs already installed are skipped. Finished zips are extracted as soon as they complete. The open-menu theme (`rising-of-the-phoenix`, ~7 MB) is fetched first into `godnotic-theme.pk3dir` so the wizard can play BGM via `touch/music-ready.txt` while core/maps packs continue. The setup wizard shows the Xonotic logo from `gfx/xonotic_logo` (staged via `touch/gfx/`).
 
 The launcher seeds this file *before* exec so the wizard is never blank, and never deletes it — the background worker overwrites it in place.
 
@@ -139,7 +139,7 @@ Detection logic (same as fetch): core `xonotic-data.pk3dir` asset dirs or matchi
 |----------|---------|
 | `XONOTIC_ASSET_FETCH_PROGRESS` | Path to progress file (set by launcher) |
 | `XONOTIC_SKIP_ASSET_FETCH=1` | Skip all fetch (testing) |
-| `XONOTIC_TOUCH_DATA_DIR` | Data directory for `fetch-assets-runtime.sh` |
+| `GODNOTIC_DATA_DIR` | Data directory for `fetch-assets-runtime.sh` |
 
 ## Touch-only menus (no cursor)
 

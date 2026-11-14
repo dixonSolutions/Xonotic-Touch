@@ -11,7 +11,7 @@ OUT="${1:-/tmp/xonotic-screen.layout.cfg}"
 xonotic_screen_calc "$OUT"
 
 echo "vid: ${XONOTIC_VID_WIDTH}x${XONOTIC_VID_HEIGHT}"
-echo "dpi: ${XONOTIC_TOUCH_XDPI}x${XONOTIC_TOUCH_YDPI} density ${XONOTIC_TOUCH_DENSITY}"
+echo "dpi: ${GODNOTIC_XDPI}x${GODNOTIC_YDPI} density ${GODNOTIC_DENSITY}"
 echo "orientation: ${XONOTIC_ORIENTATION:-unknown}"
 echo "layout: $OUT"
 cat "$OUT"

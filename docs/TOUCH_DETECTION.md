@@ -278,7 +278,7 @@ tablet-mode switch, a keyboard that never types, a pen without
 | Desktop test window (`XONOTIC_DESKTOP_DEV`) | Always | On (ignored) |
 
 `touch/xonotic.cfg` no longer sets `vid_touchscreen 1`. The launcher does not
-pass `+vid_touchscreen 1`. Override with `XONOTIC_TOUCH_MODE=always|auto|off`.
+pass `+vid_touchscreen 1`. Override with `GODNOTIC_MODE=always|auto|off`.
 
 ## Why not always-on in the Touch port
 

@@ -26,7 +26,7 @@ concurrency:
 
 env:
   # Must match the OpenStore app id exactly (createRevisionFromClick rejects mismatches).
-  CLICK_NAME: xonotictouch.dixonsolutions
+  CLICK_NAME: godnotic.dixonsolutions
 
 jobs:
   openstore:

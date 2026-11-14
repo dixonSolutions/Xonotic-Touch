@@ -75,7 +75,7 @@ For engine work on a desktop without Flatpak — mouse emulates touch when `vid_
 
 ```bash
 ./scripts/compile-and-install-deps.sh
-./scripts/fetch-assets-runtime.sh "$HOME/.local/share/xonotic-touch/data"
+./scripts/fetch-assets-runtime.sh "$HOME/.local/share/godnotic/data"
 ./scripts/run-local.sh
 ```
 

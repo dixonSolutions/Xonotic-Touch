@@ -550,9 +550,9 @@ wrong answer.
 
 ### 9.1 Deploys were going nowhere
 
-`scripts/dev-deploy.sh` had been uploading into `~/.local/share/xonotic-touch/data`,
+`scripts/dev-deploy.sh` had been uploading into `~/.local/share/godnotic/data`,
 which the Flatpak build abandoned when it moved its packs under
-`~/.var/app/<id>/data/xonotic-touch/data` so that "Delete app data" would wipe
+`~/.var/app/<id>/data/godnotic/data` so that "Delete app data" would wipe
 them. Every deploy silently did nothing. It now probes for the directory that
 actually holds `xonotic-*-data.pk3` and fails loudly if neither has assets.
 

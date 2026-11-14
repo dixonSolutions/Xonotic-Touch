@@ -2341,9 +2341,6 @@ static qbool VID_OpenURL_Allowed(const char *url)
 {
 	static const char *const prefixes[] =
 	{
-		"https://github.com/dixonSolutions/Xonotic-Touch",
-		"https://dixonsolutions.github.io/Xonotic-Touch",
-		"https://dixonSolutions.github.io/Xonotic-Touch",
 		"https://github.com/dixonSolutions/Godnotic",
 		"https://dixonsolutions.github.io/Godnotic",
 		"https://dixonSolutions.github.io/Godnotic",

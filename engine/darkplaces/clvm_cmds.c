@@ -2303,7 +2303,7 @@ static void VM_CL_gettouchfinger(prvm_prog_t *prog)
 	VectorSet(PRVM_G_VECTOR(OFS_RETURN), nx * vid_conwidth.integer, ny * vid_conheight.integer, active);
 }
 
-//#644 void(vector center, vector half, float radius, float stroke, vector rgb, float alpha) drawroundedbox (XONOTIC_TOUCH_DRAWROUNDEDBOX)
+//#644 void(vector center, vector half, float radius, float stroke, vector rgb, float alpha) drawroundedbox (GODNOTIC_DRAWROUNDEDBOX)
 // A circle, capsule or rounded rectangle as antialiased geometry
 // (DrawQ_RoundedBox): stroke is the border width inside the edge, 0 fills.
 static void VM_CL_drawroundedbox(prvm_prog_t *prog)
@@ -5686,7 +5686,7 @@ VM_CL_V_CalcRefdef,					// #640 void(entity e) V_CalcRefdef (DP_CSQC_V_CALCREFDE
 NULL,							// #641
 VM_coverage,						// #642
 VM_CL_gettouchfinger,				// #643 vector(float slot) gettouchfinger (DP_UT_TOUCHFINGER)
-VM_CL_drawroundedbox,				// #644 void(vector center, vector half, float radius, float stroke, vector rgb, float alpha) drawroundedbox (XONOTIC_TOUCH_DRAWROUNDEDBOX)
+VM_CL_drawroundedbox,				// #644 void(vector center, vector half, float radius, float stroke, vector rgb, float alpha) drawroundedbox (GODNOTIC_DRAWROUNDEDBOX)
 NULL
 };
 

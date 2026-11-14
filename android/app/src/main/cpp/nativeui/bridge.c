@@ -13,7 +13,7 @@ static unsigned head, count;
 static char status[STATUS_CAP];
 static char permissions[STATUS_CAP];
 
-JNIEXPORT jboolean JNICALL Java_io_github_dixonsolutions_xonotictouch_NativeBridge_enqueueBytes(JNIEnv *env, jobject self, jbyteArray command)
+JNIEXPORT jboolean JNICALL Java_io_github_dixonsolutions_godnotic_NativeBridge_enqueueBytes(JNIEnv *env, jobject self, jbyteArray command)
 {
     (void)self;
     if (!command) return JNI_FALSE;
@@ -46,12 +46,12 @@ static jbyteArray copy_status(JNIEnv *env, const char *source)
     if (result) (*env)->SetByteArrayRegion(env, result, 0, n, (const jbyte *)copy);
     return result;
 }
-JNIEXPORT jbyteArray JNICALL Java_io_github_dixonsolutions_xonotictouch_NativeBridge_statusBytes(JNIEnv *env, jobject self)
+JNIEXPORT jbyteArray JNICALL Java_io_github_dixonsolutions_godnotic_NativeBridge_statusBytes(JNIEnv *env, jobject self)
 {
     (void)self;
     return copy_status(env, status);
 }
-JNIEXPORT jbyteArray JNICALL Java_io_github_dixonsolutions_xonotictouch_NativeBridge_permissionsBytes(JNIEnv *env, jobject self)
+JNIEXPORT jbyteArray JNICALL Java_io_github_dixonsolutions_godnotic_NativeBridge_permissionsBytes(JNIEnv *env, jobject self)
 {
     (void)self;
     return copy_status(env, permissions);
@@ -91,7 +91,7 @@ void nativeui_presented(void)
 {
     presented = 1;
 }
-JNIEXPORT jboolean JNICALL Java_io_github_dixonsolutions_xonotictouch_NativeBridge_presented(JNIEnv *env, jobject self)
+JNIEXPORT jboolean JNICALL Java_io_github_dixonsolutions_godnotic_NativeBridge_presented(JNIEnv *env, jobject self)
 {
     (void)env;
     (void)self;
@@ -145,7 +145,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved)
     /* Resolved here, on a Java thread whose class loader knows the app: the
      * engine thread's FindClass would only see the system's classes. A dex
      * without the callback (older code) leaves it NULL: no wake-ups. */
-    jclass cls = (*env)->FindClass(env, "io/github/dixonsolutions/xonotictouch/NativeBridge");
+    jclass cls = (*env)->FindClass(env, "io/github/dixonsolutions/godnotic/NativeBridge");
     if (cls) {
         fe_dirty = (*env)->GetStaticMethodID(env, cls, "onFrontendDirty", "()V");
         if (fe_dirty)
@@ -245,7 +245,7 @@ int nativeui_fe_cancel_requested(void)
 /* Records of "topic\x1fjson", separated by \x1e: every topic that changed
  * since the last take (all of them with all != 0), then the queued messages
  * in order ("event\x1fjson", "ui\x1fjson"). */
-JNIEXPORT jbyteArray JNICALL Java_io_github_dixonsolutions_xonotictouch_NativeBridge_feTakeBytes(JNIEnv *env, jobject self, jboolean all)
+JNIEXPORT jbyteArray JNICALL Java_io_github_dixonsolutions_godnotic_NativeBridge_feTakeBytes(JNIEnv *env, jobject self, jboolean all)
 {
     size_t n = 0, cap = 1;
     char *out;
@@ -284,7 +284,7 @@ JNIEXPORT jbyteArray JNICALL Java_io_github_dixonsolutions_xonotictouch_NativeBr
     return result;
 }
 
-JNIEXPORT void JNICALL Java_io_github_dixonsolutions_xonotictouch_NativeBridge_feBeat(JNIEnv *env, jobject self)
+JNIEXPORT void JNICALL Java_io_github_dixonsolutions_godnotic_NativeBridge_feBeat(JNIEnv *env, jobject self)
 {
     (void)env;
     (void)self;
@@ -293,14 +293,14 @@ JNIEXPORT void JNICALL Java_io_github_dixonsolutions_xonotictouch_NativeBridge_f
     pthread_mutex_unlock(&mutex);
 }
 
-JNIEXPORT void JNICALL Java_io_github_dixonsolutions_xonotictouch_NativeBridge_feCancel(JNIEnv *env, jobject self)
+JNIEXPORT void JNICALL Java_io_github_dixonsolutions_godnotic_NativeBridge_feCancel(JNIEnv *env, jobject self)
 {
     (void)env;
     (void)self;
     fe_cancel = 1;
 }
 
-JNIEXPORT jint JNICALL Java_io_github_dixonsolutions_xonotictouch_NativeBridge_feVersion(JNIEnv *env, jobject self)
+JNIEXPORT jint JNICALL Java_io_github_dixonsolutions_godnotic_NativeBridge_feVersion(JNIEnv *env, jobject self)
 {
     (void)env;
     (void)self;

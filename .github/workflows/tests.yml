@@ -131,6 +131,14 @@ jobs:
       - name: Check updater selection and configuration
         run: bash scripts/test-andysu-release.sh
 
+  old-name:
+    name: The project's earlier name stays out
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tracked files and paths
+        run: bash scripts/test-old-name.sh
+
   host-resources:
     name: No R ids in app code (AndySU hosts keep their own resource table)
     runs-on: ubuntu-latest

@@ -34,7 +34,7 @@ Each of these produced a *plausible* wrong answer, which is why they are written
 down rather than just fixed.
 
 1. **Deploys went nowhere.** `dev-deploy.sh` uploaded to
-   `~/.local/share/xonotic-touch/data`, abandoned when the Flatpak build moved
+   `~/.local/share/godnotic/data`, abandoned when the Flatpak build moved
    packs under `~/.var/app/<id>/`. Symptom: code changes with no visible effect.
    Now probes for the directory holding `xonotic-*-data.pk3` and fails loudly.
 

@@ -9,8 +9,8 @@ set -euo pipefail
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 WORK="${WORK:-$ROOT/build/test-confined}"
 APP_ROOT="$WORK/app"
-USER_BASE="$WORK/home/.local/share/xonotic-touch"
-CLICK_USER_BASE="$WORK/home/.local/share/xonotictouch.dixonsolutions"
+USER_BASE="$WORK/home/.local/share/godnotic"
+CLICK_USER_BASE="$WORK/home/.local/share/godnotic.dixonsolutions"
 ENGINE_LOG="$WORK/engine-args.txt"
 
 FAILURES=0
@@ -147,10 +147,10 @@ EOF
     ( cd "$APP_ROOT" && env -i \
         HOME="$WORK/home" \
         PATH=/nonexistent \
-        APP_ID=xonotictouch.dixonsolutions_xonotic_1.2.49 \
+        APP_ID=godnotic.dixonsolutions_xonotic_1.2.49 \
         XDG_DATA_HOME="$WORK/home/.local/share" \
         UBUNTU_APPLICATION_ISOLATION=1 \
-        XONOTIC_TOUCH_NO_BASH=1 \
+        GODNOTIC_NO_BASH=1 \
         /bin/sh -c 'exec bin/start.sh' ) >/dev/null 2>&1 || true
 
     # The fetcher runs in a background subshell; give it a moment to land.
@@ -173,22 +173,36 @@ EOF
 
 stage_fake_click
 expect_launch 'launches confined (bash available)' "$USER_BASE" \
-    XONOTIC_TOUCH_USER_BASE="$USER_BASE"
+    GODNOTIC_USER_BASE="$USER_BASE"
 expect_launch 'launches confined (POSIX sh only)' "$USER_BASE" \
-    XONOTIC_TOUCH_USER_BASE="$USER_BASE" XONOTIC_TOUCH_NO_BASH=1
+    GODNOTIC_USER_BASE="$USER_BASE" GODNOTIC_NO_BASH=1
+
+# An install from before the rename: its data folder is taken over, not left
+# behind for a second download.
+OLD_NAME='xonotic-touch'
+rm -rf "$USER_BASE" "${USER_BASE%/*}/$OLD_NAME"
+mkdir -p "${USER_BASE%/*}/$OLD_NAME/data"
+echo kept > "${USER_BASE%/*}/$OLD_NAME/data/old-pack.marker"
+expect_launch 'launches from a data folder under the old name' "$USER_BASE" \
+    GODNOTIC_NO_BASH=1
+if [ -f "$USER_BASE/data/old-pack.marker" ] && [ ! -e "${USER_BASE%/*}/$OLD_NAME" ]; then
+    pass 'old-name data folder was taken over'
+else
+    fail 'old-name data folder was not taken over'
+fi
 
 # issue #19: APP_ID selects the AppArmor-writable APP_PKGNAME data dir.
 rm -rf "$CLICK_USER_BASE" "$USER_BASE"
 expect_launch 'launches confined (APP_ID writable path)' "$CLICK_USER_BASE" \
-    APP_ID=xonotictouch.dixonsolutions_xonotic_1.2.42 \
+    APP_ID=godnotic.dixonsolutions_xonotic_1.2.42 \
     XDG_DATA_HOME="$WORK/home/.local/share" \
-    XONOTIC_TOUCH_NO_BASH=1 \
+    GODNOTIC_NO_BASH=1 \
     UBUNTU_APPLICATION_ISOLATION=1
 
 if [ -d "$USER_BASE" ]; then
-    fail 'APP_ID launch wrote to legacy ~/.local/share/xonotic-touch'
+    fail 'APP_ID launch wrote to ~/.local/share/godnotic'
 else
-    pass 'APP_ID launch did not use legacy xonotic-touch path'
+    pass 'APP_ID launch did not use the unconfined data path'
 fi
 
 # issue #19: flock on PATH but unusable must not abort or pretend "already running".
@@ -200,10 +214,10 @@ exit 126
 EOF
 chmod 755 "$WORK/fake-bin/flock"
 expect_launch 'launches when flock exec is denied' "$CLICK_USER_BASE" \
-    APP_ID=xonotictouch.dixonsolutions_xonotic_1.2.42 \
+    APP_ID=godnotic.dixonsolutions_xonotic_1.2.42 \
     XDG_DATA_HOME="$WORK/home/.local/share" \
     PATH="$WORK/fake-bin" \
-    XONOTIC_TOUCH_NO_BASH=1
+    GODNOTIC_NO_BASH=1
 
 # No bash: the POSIX downloader must actually start, in both packaging layouts.
 expect_posix_fetch 'POSIX downloader runs when no fetchd is packaged (click)' 'no-fetchd'
@@ -255,7 +269,7 @@ EOF
     ( cd "$APP_ROOT" && env -i \
         HOME="$WORK/home" \
         PATH=/usr/bin:/bin \
-        APP_ID=xonotictouch.dixonsolutions_xonotic_1.2.49 \
+        APP_ID=godnotic.dixonsolutions_xonotic_1.2.49 \
         XDG_DATA_HOME="$WORK/home/.local/share" \
         UBUNTU_APPLICATION_ISOLATION=1 \
         /bin/sh -c 'exec bin/start.sh' ) >/dev/null 2>&1 || true
