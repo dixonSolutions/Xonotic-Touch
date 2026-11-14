@@ -15,9 +15,8 @@ writes `build/mods/round_hud.zip`. Then:
   `lua_mod_install /path/to/round_hud.zip` in the console, then `lua_install_confirm`.
 - **Android**: Settings > Mods > *Install from file* and pick the zip (the system file
   picker), then *Install*.
-- **Web**: the web build has no file picker for mods yet: open the console and run
-  `lua_mod_install` with the zip's path in the browser's file system, or copy the folder
-  into `mods/` with the browser's developer tools.
+- **Web**: Settings > Mods > *Install* > *Pick file* and pick the zip (the browser's file
+  picker), or drop the zip on the page; then *Install*.
 - From the folder while developing: copy `touch/lua/examples/mods/round_hud` to
   `<userdir>/mods/round_hud` (a folder works as well as a zip).
 
