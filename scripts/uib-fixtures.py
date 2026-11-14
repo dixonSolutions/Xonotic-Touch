@@ -83,6 +83,9 @@ class Engine:
         os.makedirs(os.path.dirname(p), exist_ok=True)
         with open(p, "w") as f:
             f.write(text)
+        # Written behind the engine's back, as AndySUBridge.java does: the engine's cached
+        # directory listings (touch_loadfs.c) see it after touch_fs_dirindex_ttl (5 s).
+        time.sleep(5.5)
 
     def send(self, m):
         self.mid += 1
