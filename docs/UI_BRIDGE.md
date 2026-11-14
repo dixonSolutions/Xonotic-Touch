@@ -390,7 +390,7 @@ Nothing else in a description can open a URL or a file.
 | `servers` | every server the engine knows: Internet, LAN, VPN | cells: `name`, `map`, `mode`, `players`, `max`, `bots`, `ping`, `lock`, `fav`, `address`, `net` (`internet`, `lan`, `vpn`), `version`, `stale` (bool: shown from the saved list, not answered yet this refresh; draw it dimmed). No row `image`: the list is text |
 | `servers.lan` | LAN and VPN rows only | as above (the Servers screen keeps source `servers` and its LAN checkbox filters it engine-side) |
 | `servers.fav` | favourites | as above |
-| `maps` | installed maps | `name`, `title`, `author`, `modes` (space-separated mode ids), `players` (recommended, string), `size` (`small`, `medium`, `large`); row `image` is the preview ref |
+| `maps` | installed maps | `name`, `title`, `author`, `modes` (space-separated mode ids), `players` (recommended, string), `size` (`small`, `medium`, `large`), `state` (`ready`, `downloading`, `missing`: a map of the data set still to come, docs/DATA_FETCH.md; draw it dimmed with a label) and `progress` (0..1 for the map being fetched first, a bar on its picture; -1 otherwise); row `image` is the preview ref |
 | `maps:<mode>` | maps that support a game type | as above |
 | `modes` | game types | `id`, `name`, `help`, `team` (bool); row `image` is the mode artwork |
 | `mods.client`, `mods.server` | installed mods | `id`, `name`, `version`, `enabled`, `state` (`ok`, `error`, `stopped`), `tier` (permission tier as the engine reports it) |

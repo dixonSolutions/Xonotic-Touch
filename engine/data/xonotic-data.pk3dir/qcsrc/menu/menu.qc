@@ -4,6 +4,7 @@
 #include "xonotic/touch_menu_scale.qh" // Touch
 #include "xonotic/touch_menu_sheet.qh" // Touch
 #include "xonotic/touch_uib_render.qh" // Touch: UI bridge renderer
+#include "xonotic/touch_data.qh" // Touch: progressive data download
 
 #include "item.qh"
 
@@ -981,6 +982,7 @@ void m_draw(float width, float height)
 	}
 
 	draw_reset_cropped();
+	TouchData_MenuFrame(); // Touch: packs that landed while the game runs
 	if (TouchUIB_Draw(menuAlpha)) { postMenuDraw(); frametime = 0; IL_ENDFRAME(); return; } // Touch: UI bridge renderer
 
 	if (!(gamestatus & (GAME_CONNECTED | GAME_ISSERVER)))

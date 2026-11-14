@@ -139,4 +139,37 @@ void Touch_FS_Init(void)
 	Cvar_RegisterVariable(&fs_zstd_lazy);
 }
 
+// fs_opentrace <file>: append "<pack>\t<entry>" to that file (under the user
+// directory) for every pack entry opened, from the FS_OpenPackedFile hook.
+// The data split is built from such traces (scripts/split-data-packs.py) and
+// scripts/test-data-split.sh checks a split set against them.
+static cvar_t fs_opentrace = {CF_CLIENT | CF_SERVER, "fs_opentrace", "", "append the name of every pack entry opened to this file in the user directory (Godnotic data split traces); empty = off"};
+
+static void Touch_FS_Trace(const pack_t *pack, const packfile_t *pfile)
+{
+	static qfile_t *trace;
+	static char tracename[MAX_OSPATH];
+	if (!fs_opentrace.string[0])
+	{
+		if (trace)
+		{
+			FS_Close(trace);
+			trace = NULL;
+			tracename[0] = 0;
+		}
+		return;
+	}
+	if (!trace || strcmp(tracename, fs_opentrace.string))
+	{
+		if (trace)
+			FS_Close(trace);
+		dp_strlcpy(tracename, fs_opentrace.string, sizeof(tracename));
+		trace = FS_OpenRealFile(tracename, "ab", false); // a real file: never back here
+	}
+	if (trace)
+	{
+		FS_Printf(trace, "%s\t%s\n", pack->shortname, pfile->name);
+	}
+}
+
 #endif

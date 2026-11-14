@@ -91,6 +91,16 @@ published. Browsers whose GPU has ASTC download the same slim set (405 MB with t
 build's own files); other browsers and desktop installs use the full set. Music is part
 of every set; there is no music choice anywhere.
 
+The set is also published split (docs/DATA_FETCH.md): about 73 packs inside one stored
+archive, with a manifest that orders them. A client fetches the `first_play` packs (the
+core and the first map, 75 MB of 373 MB for ASTC), starts the game, and gets the rest by
+byte range while it runs: music first, then the other maps, each mounted as it lands
+(`fs_mountpack`). A map the player picks, or a server runs, goes to the front. Clients
+use the single archive when the manifest is absent. Measured with the loader's
+downloader against a local server limited to one shared link: first play after 6.4 s at
+100 Mbit/s (the link alone needs 6.0 s). Not verified: any of it on a device, and the
+published assets (nothing is published yet).
+
 ## Start-up and loading
 
 Fonts, menu pictures, sounds and models load on first use; what a map loaded late is

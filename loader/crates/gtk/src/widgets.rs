@@ -1729,6 +1729,20 @@ fn sideways_tile_height(app: &App, rows: u32) -> i32 {
     (room / rows as i32 - 26).clamp(96, 170)
 }
 
+/// A map row's download state (`maps` cells `state`, `progress`; docs/DATA_FETCH.md): the
+/// label its tile shows, none when it can be played, and the bar's fraction while it downloads
+/// (0 while it waits its turn).
+pub fn map_state(cells: Option<&Map<String, Value>>) -> (Option<String>, Option<f64>) {
+    let state = cells.map(|c| cell_text(c.get("state"))).unwrap_or_default();
+    let progress = cells.and_then(|c| c.get("progress")).and_then(Value::as_f64).unwrap_or(-1.0);
+    match state.as_str() {
+        "downloading" if progress >= 0.0 => (Some(format!("{}%", (progress * 100.0).floor() as i64)), Some(progress.min(1.0))),
+        "downloading" => (Some("Downloading".into()), Some(0.0)),
+        "missing" => (Some("Not downloaded".into()), None),
+        _ => (None, None),
+    }
+}
+
 fn card_grid(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
     let model = lv.borrow().model.clone();
     let f = gtk::SignalListItemFactory::new();
@@ -1743,7 +1757,23 @@ fn card_grid(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
         p.set_height_request(tile.map(|t| t - 34).unwrap_or(120));
         p.set_can_shrink(true);
         p.add_css_class("gn-card-pic");
-        v.append(&p);
+        // a map still to download (cells state, progress; docs/DATA_FETCH.md): a label
+        // on the picture and a bar along its bottom
+        let ov = gtk::Overlay::new();
+        ov.set_child(Some(&p));
+        let state = gtk::Label::new(None);
+        state.set_halign(gtk::Align::Start);
+        state.set_valign(gtk::Align::Start);
+        state.add_css_class("gn-map-state");
+        state.add_css_class("caption");
+        state.set_visible(false);
+        ov.add_overlay(&state);
+        let bar = gtk::ProgressBar::new();
+        bar.set_valign(gtk::Align::End);
+        bar.add_css_class("gn-map-bar");
+        bar.set_visible(false);
+        ov.add_overlay(&bar);
+        v.append(&ov);
         let t = gtk::Box::new(gtk::Orientation::Vertical, 2);
         t.add_css_class("gn-card-text");
         let title = gtk::Label::new(None);
@@ -1776,8 +1806,9 @@ fn card_grid(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
         let pos = app::index(&obj);
         saw(&app, &lv2, pos);
         let row = row_cells(&app, &src, pos);
-        let Some(p) = v.first_child().and_downcast::<gtk::Picture>() else { return };
-        let Some(t) = p.next_sibling() else { return };
+        let Some(ov) = v.first_child().and_downcast::<gtk::Overlay>() else { return };
+        let Some(p) = ov.child().and_downcast::<gtk::Picture>() else { return };
+        let Some(t) = ov.next_sibling() else { return };
         let title = t.first_child().and_downcast::<gtk::Label>();
         let sub = title.as_ref().and_then(|l| l.next_sibling()).and_downcast::<gtk::Label>();
         let cells = row.as_ref().and_then(|r| r.get("cells")).and_then(Value::as_object);
@@ -1788,6 +1819,19 @@ fn card_grid(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
         if cells.and_then(|c| c.get("locked")).and_then(Value::as_bool).unwrap_or(false) { v.add_css_class("gn-dim") } else { v.remove_css_class("gn-dim") }
         if let Some(l) = title {
             l.set_text(&cells.map(|c| cell_text(c.get("title").or(c.get("name")))).unwrap_or_default());
+        }
+        let (label, progress) = map_state(cells);
+        p.set_opacity(if label.is_some() { 0.5 } else { 1.0 });
+        let mut c = p.next_sibling();
+        while let Some(w) = c {
+            if let Some(l) = w.downcast_ref::<gtk::Label>() {
+                l.set_visible(label.is_some());
+                l.set_text(label.as_deref().unwrap_or_default());
+            } else if let Some(b) = w.downcast_ref::<gtk::ProgressBar>() {
+                b.set_visible(progress.is_some());
+                b.set_fraction(progress.unwrap_or(0.0));
+            }
+            c = w.next_sibling();
         }
         if let Some(l) = sub {
             l.set_text(&cells.map(|c| {
@@ -1816,7 +1860,7 @@ fn card_grid(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
     // Unbound cards drop their picture (the texture stays in the bounded cache).
     f.connect_unbind(|_, item| {
         let item = item.downcast_ref::<gtk::ListItem>().expect("list item");
-        if let Some(p) = item.child().and_then(|v| v.first_child()).and_downcast::<gtk::Picture>() {
+        if let Some(p) = item.child().and_then(|v| v.first_child()).and_downcast::<gtk::Overlay>().and_then(|o| o.child()).and_downcast::<gtk::Picture>() {
             p.set_paintable(gtk::gdk::Paintable::NONE);
         }
     });
@@ -1888,4 +1932,25 @@ pub fn dialog(app: &App, id: &str) -> adw::Dialog {
         }
     });
     d
+}
+
+#[cfg(test)]
+mod tests {
+    use super::map_state;
+    use serde_json::{json, Map, Value};
+
+    fn cells(v: Value) -> Map<String, Value> {
+        v.as_object().cloned().unwrap_or_default()
+    }
+
+    #[test]
+    fn map_tile_download_state() {
+        assert_eq!(map_state(Some(&cells(json!({"state": "ready", "progress": -1})))), (None, None));
+        assert_eq!(map_state(None), (None, None));
+        assert_eq!(map_state(Some(&cells(json!({"state": "downloading", "progress": 0.426})))), (Some("42%".into()), Some(0.426)));
+        assert_eq!(map_state(Some(&cells(json!({"state": "downloading", "progress": -1})))), (Some("Downloading".into()), Some(0.0)));
+        assert_eq!(map_state(Some(&cells(json!({"state": "missing", "progress": -1})))), (Some("Not downloaded".into()), None));
+        // a campaign level's state is not a download state
+        assert_eq!(map_state(Some(&cells(json!({"state": "locked"})))), (None, None));
+    }
 }

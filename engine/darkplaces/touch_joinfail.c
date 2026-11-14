@@ -26,6 +26,7 @@ touch_joinfail_logic.h.
 #include "touch_joinfail.h"
 #include "touch_joinfail_logic.h"
 #include "touch_nativefe.h"
+#include "touch_datafetch.h"
 
 static cvar_t join_fail_serial = {CF_CLIENT | CF_READONLY, "_join_fail_serial", "0", "Godnotic: counts the joins that failed this session; the other _join_fail_* cvars describe the last one"};
 static cvar_t join_fail_kind = {CF_CLIENT | CF_READONLY, "_join_fail_kind", "", "Godnotic: why the last join failed: timeout, busy, refused, network, dropped, files, error"};
@@ -113,7 +114,7 @@ void TouchJoinFail_Frame(void)
 	{
 		int kind = jf.pending_kind;
 		jf.pending_kind = 0;
-		if (!trying && cls.state != ca_connected)
+		if (!trying && cls.state != ca_connected && !TouchData_JoinPending()) // the map is still downloading: touch_datafetch.c joins again
 			report(kind, jf.pending_text, jf.pending_detail);
 	}
 

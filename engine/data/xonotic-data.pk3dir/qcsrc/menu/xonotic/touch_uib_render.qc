@@ -1583,7 +1583,7 @@ void RB_ListFetch(int k, float first, float want)
 	int nc = stof(uib_get(id, "columns.#"));
 	for (int i = 0; i < nc; ++i)
 		cols = strcat(cols, uib_get(id, sprintf("columns.%d.key", i)), " ");
-	cols = strcat(cols, "max bots lock title author name stale");
+	cols = strcat(cols, "max bots lock title author name stale state progress");
 	strcpy(lc_cols[k], cols);
 	float start = max(0, first - 24);
 	int got = uib_window(lc_src[k], start, 120, sort, desc, filter);
@@ -1906,6 +1906,28 @@ void RB_DrawTable(entity e, vector p)
 	}
 }
 
+// A map of the split data set not here yet (cells state, progress; docs/DATA_FETCH.md):
+// the picture dimmed, a label, and a bar along its bottom while it downloads.
+void RB_MapTileState(vector io, vector is, string state, float progress)
+{
+	if (state != "downloading" && state != "missing")
+		return;
+	RB_Fill(io, is, RB_BG, 0.5 * rb_a);
+	string lab = _("Not downloaded");
+	if (state == "downloading")
+		lab = (progress >= 0) ? sprintf(_("%d%%"), floor(progress * 100)) : _("Downloading");
+	float sz = D(12);
+	float lw = min(RB_TextW(lab, sz) + D(14), is.x - D(12));
+	RB_RRect(io + eX * D(6) + eY * D(6), eX * lw + eY * D(20), D(10), RB_BG, 0.85 * rb_a);
+	RB_TextFit(io + eX * D(13) + eY * D(10), lab, sz, lw - D(14), ((state == "missing") ? RB_MUTED : RB_TEXT), rb_a);
+	if (state != "downloading")
+		return;
+	vector bo = io + eY * (is.y - D(4));
+	RB_Fill(bo, eX * is.x + eY * D(4), RB_SURFACE, 0.9 * rb_a);
+	if (progress > 0)
+		RB_Fill(bo, eX * (is.x * bound(0, progress, 1)) + eY * D(4), RB_EMBER, rb_a);
+}
+
 // A card list of N rows that scrolls sideways (the map picker): tiles are laid
 // column by column, only the columns in view are fetched and drawn, and a thin
 // scroll bar sits inside the list under the tiles.
@@ -1941,6 +1963,7 @@ void RB_DrawCardsSideways(entity e, vector p, string sel)
 			continue;
 		}
 		RB_Image(img, io, is, rb_a, false);
+		RB_MapTileState(io, is, RB_Cell(row, lc_cols[k], "state"), stof(RB_Cell(row, lc_cols[k], "progress")));
 		string title = RB_Cell(row, lc_cols[k], "title");
 		if (title == "") title = RB_Cell(row, lc_cols[k], "name");
 		drawfont = FONT_USER + 3;
@@ -2006,6 +2029,7 @@ void RB_DrawCards(entity e, vector p)
 			continue;
 		}
 		RB_Image(img, io, is, rb_a, false);
+		RB_MapTileState(io, is, RB_Cell(row, lc_cols[k], "state"), stof(RB_Cell(row, lc_cols[k], "progress")));
 		string title = RB_Cell(row, lc_cols[k], "title");
 		if (title == "") title = RB_Cell(row, lc_cols[k], "name");
 		drawfont = FONT_USER + 3;

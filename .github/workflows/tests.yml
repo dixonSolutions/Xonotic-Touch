@@ -74,6 +74,8 @@ jobs:
           PYTHON=python sh scripts/test-phone-assets.sh
       - name: The archive the app streams
         run: PYTHON=python sh scripts/test-phone-archive.sh
+      - name: The split set (core, maps, shared, music, detail, extras; manifest)
+        run: PYTHON=python bash scripts/test-data-split.sh
 
   touch-aim:
     name: Touch auto-shoot weapon logic

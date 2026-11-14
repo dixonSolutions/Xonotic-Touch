@@ -215,6 +215,23 @@ static double Touch_Opus_Tag(const OpusTags *tags, const char *name, double fall
 	return v ? atof(v) : fallback;
 }
 
+/// ReplayGain tags, as OGG_LoadVorbisFile applies them
+static void Touch_Opus_Gain(const OpusTags *tags, sfx_t *sfx)
+{
+	double peak = Touch_Opus_Tag(tags, "REPLAYGAIN_TRACK_PEAK", 0);
+	double gaindb = Touch_Opus_Tag(tags, "REPLAYGAIN_TRACK_GAIN", 0);
+	if (peak)
+	{
+		sfx->volume_mult = min(1.0f / peak, exp(gaindb * 0.05f * log(10.0f)));
+		sfx->volume_peak = peak;
+	}
+	else if (gaindb != 0)
+	{
+		sfx->volume_mult = exp(gaindb * 0.05f * log(10.0f));
+		sfx->volume_peak = 1.0;
+	}
+}
+
 /// whether the first Ogg page of "filename" starts an Opus stream
 static qbool Touch_Opus_Sniff(const char *filename)
 {
@@ -243,7 +260,7 @@ qbool Touch_Opus_LoadFile(const char *filename, sfx_t *sfx)
 	const OpusTags *tags;
 	int err = 0, nch;
 	int64_t total;
-	double scale, peak, gaindb, loopstart, loopend;
+	double scale, loopstart, loopend;
 
 	if (sfx->fetcher != NULL)
 		return true;
@@ -339,18 +356,97 @@ qbool Touch_Opus_LoadFile(const char *filename, sfx_t *sfx)
 		data = NULL;
 	}
 
-	peak = Touch_Opus_Tag(tags, "REPLAYGAIN_TRACK_PEAK", 0);
-	gaindb = Touch_Opus_Tag(tags, "REPLAYGAIN_TRACK_GAIN", 0);
-	if (peak)
-	{
-		sfx->volume_mult = min(1.0f / peak, exp(gaindb * 0.05f * log(10.0f)));
-		sfx->volume_peak = peak;
-	}
-	else if (gaindb != 0)
-	{
-		sfx->volume_mult = exp(gaindb * 0.05f * log(10.0f));
-		sfx->volume_peak = 1.0;
-	}
+	Touch_Opus_Gain(tags, sfx);
 	qop_free(of);
 	return true;
+}
+
+// ---- decoded on a worker thread (snd_lazyload_async, touch_loadogg.h) ------
+//
+// The three steps of Touch_Opus_LoadFile for a sound that is decoded whole:
+// open on the main thread, decode anywhere (a decoder handle is only ever
+// used by one thread), install on the main thread.
+
+void *Touch_Opus_AsyncOpen(const char *filename, unsigned char **filedata, int *channels, int64_t *frames);
+void Touch_Opus_AsyncDecode(void *handle, int channels, short *pcm, int64_t frames);
+void Touch_Opus_AsyncInstall(void *handle, sfx_t *sfx, short *pcm, int channels, int64_t frames);
+void Touch_Opus_AsyncClose(void *handle);
+
+/// NULL when this is not an Opus file to decode whole (not Opus, no decoder,
+/// or long enough to be streamed): the caller loads it the normal way.
+void *Touch_Opus_AsyncOpen(const char *filename, unsigned char **filedata, int *nch, int64_t *frames)
+{
+	unsigned char *data;
+	fs_offset_t filesize;
+	touch_opusfile_t *of;
+	int err = 0;
+	int64_t total;
+
+	if (!Touch_Opus_Sniff(filename) || !Touch_Opus_Open())
+		return NULL;
+	data = FS_LoadFile(filename, snd_mempool, true, &filesize);
+	if (!data)
+		return NULL;
+	of = qop_open_memory(data, (size_t)filesize, &err);
+	if (!of)
+	{
+		Mem_Free(data);
+		return NULL;
+	}
+	total = qop_pcm_total(of, -1);
+	// (a loop tag can only shorten it: what is not streamed whole is not streamed looped)
+	if (total <= 0 || total > INT_MAX / 4
+	 || (snd_streaming.integer && (snd_streaming.integer >= 2 || total > (int64_t)max(sizeof(opus_perchannel_t), snd_streaming_length.value * OPUS_RATE))))
+	{
+		qop_free(of);
+		Mem_Free(data);
+		return NULL;
+	}
+	*filedata = data;
+	*nch = qop_channel_count(of, -1) >= 2 ? 2 : 1;
+	*frames = total;
+	return of;
+}
+
+void Touch_Opus_AsyncDecode(void *handle, int nch, short *pcm, int64_t frames)
+{
+	int got = Touch_Opus_Decode((touch_opusfile_t *)handle, nch, pcm, (int)frames);
+	if (got < frames)
+		memset(pcm + got * nch, 0, (size_t)(frames - got) * nch * 2);
+}
+
+void Touch_Opus_AsyncInstall(void *handle, sfx_t *sfx, short *pcm, int nch, int64_t frames)
+{
+	touch_opusfile_t *of = (touch_opusfile_t *)handle;
+	const OpusHead *head = qop_head(of, -1);
+	const OpusTags *tags = qop_tags(of, -1);
+	double scale, loopstart, loopend;
+
+	sfx->format.speed = OPUS_RATE;
+	sfx->format.channels = nch;
+	sfx->format.width = 2;
+	sfx->total_length = (unsigned int)frames;
+	scale = (head && head->input_sample_rate) ? (double)OPUS_RATE / head->input_sample_rate : 1.0;
+	loopstart = Touch_Opus_Tag(tags, "LOOP_START", -1);
+	if (loopstart >= 0)
+	{
+		loopend = Touch_Opus_Tag(tags, "LOOP_END", -1);
+		if (loopend < 0 && Touch_Opus_Tag(tags, "LOOP_LENGTH", -1) >= 0)
+			loopend = loopstart + Touch_Opus_Tag(tags, "LOOP_LENGTH", 0);
+		sfx->loopstart = (unsigned int)bound(0, loopstart * scale, (double)frames);
+		if (loopend >= 0)
+			sfx->total_length = (unsigned int)bound(0, loopend * scale, (double)frames);
+	}
+	else
+		sfx->loopstart = sfx->total_length;
+	sfx->flags &= ~SFXFLAG_STREAMED;
+	sfx->memsize += (size_t)frames * nch * 2;
+	sfx->fetcher = &wav_fetcher;
+	sfx->fetcher_data = pcm;
+	Touch_Opus_Gain(tags, sfx);
+}
+
+void Touch_Opus_AsyncClose(void *handle)
+{
+	qop_free((touch_opusfile_t *)handle);
 }

@@ -327,11 +327,23 @@ final class GameData {
     private static final String OLD_STAGING = "download";
 
     /**
-     * True while the game cannot start: a core pk3 is missing, or a setup
-     * started and has not got every non-optional pack in yet (the fonts, the
-     * compatibility packs).
+     * True while the game cannot start. For the single archive: a core pk3
+     * is missing, or a setup started and has not got every non-optional pack
+     * in yet (the fonts, the compatibility packs).
      */
     boolean assetsMissing() {
+        DataSession split = session();
+        if (split.manifest() != null) {
+            // The split set (docs/DATA_FETCH.md): its first_play packs, or a
+            // complete install from before the split. Music and the other
+            // maps arrive behind the running game and are not waited for.
+            return !split.playable();
+        }
+        return singleArchiveMissing();
+    }
+
+    /** {@link #assetsMissing} as it was before the split set, for an install no manifest covers. */
+    private boolean singleArchiveMissing() {
         File data = dataDir();
         for (String suffix : REQUIRED_PK3S) {
             if (!hasPk3(data, suffix)) {
@@ -348,6 +360,15 @@ final class GameData {
 
     boolean musicInstalled() {
         return hasPk3(dataDir(), "-music.pk3");
+    }
+
+    /**
+     * The music pack is missing from an install of the single archive, which
+     * then gets the setup step for it. Never true for the split set: there
+     * the music is one of the packs still on their way.
+     */
+    boolean musicMissing() {
+        return session().manifest() == null && !musicInstalled();
     }
 
     /** Music was asked for by a setup that has not finished it. */
@@ -383,7 +404,7 @@ final class GameData {
         // full set (GpuProbe). The slim archive being unusable must not block
         // the setup either: the full set has every pack too.
         String full = FULL_DATA + "/" + ASSET_ARCHIVE;
-        boolean astc = GpuProbe.astc();
+        boolean astc = astc();
         String slim = astc ? assetLine("godnotic-data-url.txt") : null;
         if (slim != null) {
             try {
@@ -396,6 +417,190 @@ final class GameData {
         }
         Log.i(TAG, "Game data set: full " + full + (astc ? "" : " (GPU without ASTC)"));
         return PackFetch.plan(full, null, ARCHIVE_DATA);
+    }
+
+    // ------------------------------------------------------------- split set
+
+    /** One session per process: its lock is what keeps a part file to one writer. */
+    private static DataSession session;
+    private static File sessionDir;
+    /** What GpuProbe said, asked once per process (it makes an EGL context). */
+    private static Boolean astcProbe;
+
+    private static final String SPLIT_PREFS = "data-fetch";
+
+    /** The split set's download for this data directory (docs/DATA_FETCH.md). */
+    DataSession session() {
+        File data = dataDir();
+        synchronized (GameData.class) {
+            if (session == null || !data.equals(sessionDir)) {
+                if (!data.isDirectory() && !data.mkdirs()) {
+                    Log.w(TAG, "Cannot create " + data);
+                }
+                session = new DataSession(data, new File(engineWriteDir(baseDir()), "touch"),
+                        new DataFetch.Env() {
+                            @Override
+                            public void log(String line) {
+                                Log.i(TAG, line);
+                            }
+
+                            @Override
+                            public long freeBytes(File dir) {
+                                return PackFetch.freeBytes(dir);
+                            }
+                        });
+                sessionDir = data;
+            }
+            return session;
+        }
+    }
+
+    private boolean astc() {
+        synchronized (GameData.class) {
+            if (astcProbe == null) {
+                // Remembered across starts: the GPU does not change, and the
+                // background download begins beside the engine, which is
+                // setting up EGL itself just then and must not be raced.
+                android.content.SharedPreferences prefs =
+                        context.getSharedPreferences(SPLIT_PREFS, Context.MODE_PRIVATE);
+                String known = prefs.getString("profile", null);
+                if (known != null) {
+                    astcProbe = known.equals("astc");
+                } else {
+                    astcProbe = GpuProbe.astc();
+                    prefs.edit().putString("profile", astcProbe ? "astc" : "dxt").apply();
+                }
+            }
+            return astcProbe;
+        }
+    }
+
+    /**
+     * Where the split set's manifest is published: beside the pinned archive,
+     * "astc" or, for a GPU without ASTC, "dxt". Asks the GPU the first time;
+     * off the UI thread, and not while the engine starts.
+     */
+    String manifestUrl() {
+        return DataSession.manifestUrl(assetLine("godnotic-data-url.txt"), astc() ? "astc" : "dxt");
+    }
+
+    /** {@link #manifestUrl} from what an earlier start learned about the GPU; null when none did. */
+    String knownManifestUrl() {
+        String profile = context.getSharedPreferences(SPLIT_PREFS, Context.MODE_PRIVATE)
+                .getString("profile", null);
+        return profile == null ? null
+                : DataSession.manifestUrl(assetLine("godnotic-data-url.txt"), profile);
+    }
+
+    /** What the setup step offers: the split set's first_play, or the single archive's packs. */
+    static final class Setup {
+        /** The single archive (no manifest is published); null with a manifest. */
+        final PackFetch.Plan plan;
+        final DataSession split;
+
+        Setup(PackFetch.Plan plan, DataSession split) {
+            this.plan = plan;
+            this.split = split;
+        }
+
+        PackFetch.Entry music() {
+            return plan != null ? plan.music() : null;
+        }
+
+        /** What the step downloads and needs in storage, counting resumable parts. */
+        PackFetch.Need need(File dir) {
+            if (plan != null) {
+                return PackFetch.need(dir, PackFetch.todo(dir, plan, true), plan);
+            }
+            long[] first = split.firstPlayNeed();
+            PackFetch.Need need = new PackFetch.Need();
+            need.fetch = first[0];
+            need.disk = first[0];
+            need.resumed = first[1];
+            return need;
+        }
+
+        /** Bytes that follow in the background once the game runs; 0 for the single archive. */
+        long rest() {
+            return plan != null ? 0 : split.restBytes();
+        }
+    }
+
+    /**
+     * Asks for the manifest and says what there is to download before the
+     * game can start; network, so off the UI thread. With a manifest that is
+     * first_play. Without one (none published, an unknown format, a GPU
+     * profile that has none) it is the single archive, exactly as before.
+     */
+    Setup planSetup() throws IOException {
+        DataSession split = session();
+        String url = manifestUrl();
+        if (url != null) {
+            split.stopBackground();
+            DataSession.Refresh answer = split.refresh(url);
+            if (answer == DataSession.Refresh.UNREACHABLE && split.manifest() == null) {
+                // Not "no manifest": nobody answered. Falling back here would
+                // commit this install to the whole archive over a hiccup.
+                throw new IOException("Could not reach the download server");
+            }
+        }
+        if (split.manifest() != null) {
+            split.reconcile();
+            return new Setup(null, split);
+        }
+        return new Setup(planDownload(), null);
+    }
+
+    /** Fetches what the setup step offered. Interrupt to stop. */
+    void download(Setup setup, boolean music, Progress progress) throws IOException {
+        if (setup.plan != null) {
+            download(setup.plan, music, progress);
+            return;
+        }
+        synchronized (PREPARE_LOCK) {
+            String status = HostRes.string(context, "boot_downloading");
+            long started = System.currentTimeMillis();
+            long[] mark = { started, -1 };
+            double[] rate = { 0 };
+            Log.i(TAG, "Fetching the first packs of set " + setup.split.manifest().set);
+            try {
+                setup.split.firstPlay((done, total, verifying) -> {
+                    // The same line as the single archive's (download below).
+                    long now = System.currentTimeMillis();
+                    if (mark[1] < 0) {
+                        mark[0] = now;
+                        mark[1] = done;
+                    } else if (now - mark[0] >= 1000) {
+                        double r = Math.max(0, done - mark[1]) * 1000.0 / (now - mark[0]);
+                        rate[0] = rate[0] == 0 ? r : rate[0] * 0.7 + r * 0.3;
+                        mark[0] = now;
+                        mark[1] = done;
+                    }
+                    int percent = total > 0 ? (int) (done * 100 / total) : -1;
+                    String detail = verifying != null
+                            ? HostRes.string(context, "boot_verifying", verifying)
+                            : HostRes.string(context, "boot_progress", megabytes(done), megabytes(total),
+                                    String.format(java.util.Locale.US, "%.1f", rate[0] / (1024 * 1024)),
+                                    timeLeft(total - done, rate[0]));
+                    progress.update(status, detail, percent);
+                });
+            } catch (DataFetch.NoSpace e) {
+                // The boot screen knows this one: Retry brings the setup step back.
+                throw new PackFetch.NoSpace(e.needed, e.available);
+            }
+            if (assetsMissing()) {
+                throw new IOException("The first packs did not all arrive");
+            }
+            Log.i(TAG, "First packs downloaded in " + (System.currentTimeMillis() - started) / 1000 + " s");
+        }
+    }
+
+    /**
+     * Before the engine starts: the status file says what is true now, not
+     * what a killed process left (touch_datafetch.c reads it while it exists).
+     */
+    void publishDataStatus() {
+        session().publishIdle(DataService.mayFetch(context));
     }
 
     private String assetLine(String name) {

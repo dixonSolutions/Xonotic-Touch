@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "touch_data.qh"
 #include "touch_uib_screens.qh"
 #include "touch_startup_util.qh"
 #include "touch_uib_touch.qh" // Touch HUD: the join popup, Touch controls settings
@@ -668,6 +669,13 @@ void UIB_AddRecent(string map, string mode)
 
 void UIB_StartGame(string map, string mode)
 {
+	if (TouchData_MapDownloading(map))
+	{
+		// still coming in (docs/DATA_FETCH.md): fetch it first, never start another map instead
+		TouchData_Want(map);
+		uib_toast(sprintf(_("%s is still downloading. It is next; start it when it is here."), map), "info", "download", 5);
+		return;
+	}
 	bool lan = UIB_CreateLan();
 	Gametype gt = MapInfo_Type_FromString(mode, false, false);
 	if (!gt)
@@ -1482,6 +1490,7 @@ void UIB_Build(string id)
 		case "credits": UIB_BuildCredits(); return;
 		case "dialog.quit": UIB_BuildQuit(); return;
 		case "dialog.joinfail": UIB_BuildJoinFail(); return;
+		case "data.hold": TouchData_BuildHold(); return; // Touch: a map or join held for its download
 	}
 	if (substring(id, 0, 8) == "settings" || substring(id, 0, 4) == "mods")
 		UIB_BuildSettings(id);
@@ -1570,6 +1579,7 @@ void UIB_Tick()
 	UIB_LanPopupTick();
 	UIB_JoinFailTick();
 	UIB_JoinTick();
+	TouchData_UIBTick();
 	// time-varying screens
 	string top = UIB_TopScreen();
 	if ((top == "home" || top == "mp") && uib_gettime(1) > uib_next_tick)
@@ -1615,6 +1625,8 @@ void UIB_Action(string node, string a, string payload)
 	if (UIB_SettingsAction(node, a, payload))
 		return;
 	if (UIB_JoinAction(a))
+		return;
+	if (TouchData_Action(a))
 		return;
 	switch (a)
 	{
@@ -1698,6 +1710,7 @@ void UIB_RowEvent(string node, string row, string json)
 			if (isaction)
 			{
 				UIB_VMSet("map.sel", row);
+				TouchData_Want(row); // a map still downloading goes to the front of the queue
 				if (strstrofs(json, "map.preview", 0) >= 0) { UIB_Push("sp.map"); return; }
 				cvar_set("touch_lan_map", row);
 				UIB_RebuildAll();

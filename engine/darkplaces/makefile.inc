@@ -52,6 +52,7 @@ OBJ_COMMON= \
 	touch_srvlist.o \
 	touch_frontend.o \
 	touch_pause.o \
+	touch_datafetch.o \
 	touch_nade.o \
 	touch_android.o \
 	touch_lua.o \

@@ -153,6 +153,7 @@
 #include <menu/xonotic/touch_uib_touchcontrols.qc> // Touch: UI bridge, Touch controls settings
 #include <menu/xonotic/touch_uib_render.qc> // Touch: UI bridge
 #include <menu/xonotic/touch_startup_util.qc>
+#include <menu/xonotic/touch_data.qc> // Touch: progressive data download
 #include <menu/xonotic/touch_update_util.qc>
 #include <menu/xonotic/touchbutton.qc>
 #include <menu/xonotic/util.qc>

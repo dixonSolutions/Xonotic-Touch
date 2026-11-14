@@ -10,8 +10,9 @@
 // OGG_LoadVorbisFile would (wav fetcher, loop tags, ReplayGain) at the next
 // host frame, or waits for it if the sound is played first. Workers exit
 // when the queue is empty: nothing spins while idle. Builds without threads
-// (the web build) decode at precache as before. Opus files, files that would
-// be streamed and files that fail to open go the normal way.
+// (the web build) decode at precache as before. Opus files take the same road
+// (touch_assets_opus.c opens, decodes and installs them); files that would be
+// streamed and files that fail to open go the normal way.
 
 #ifndef TOUCH_SFXFLAG_DEFERRED
 #define TOUCH_SFXFLAG_DEFERRED (1u << 28) // as in touch_loadtime.h
@@ -40,9 +41,16 @@ typedef struct touchogg_job_s
 	int64_t len;
 	int rate, channels;
 	int64_t total;
+	void *opus;                      // an Opus file: its decoder (vf and ov_decode unused)
 	int done;                        // set by the worker, under the mutex
 }
 touchogg_job_t;
+
+// touch_assets_opus.c
+void *Touch_Opus_AsyncOpen(const char *filename, unsigned char **filedata, int *channels, int64_t *frames);
+void Touch_Opus_AsyncDecode(void *handle, int channels, short *pcm, int64_t frames);
+void Touch_Opus_AsyncInstall(void *handle, sfx_t *sfx, short *pcm, int channels, int64_t frames);
+void Touch_Opus_AsyncClose(void *handle);
 
 static void *touchogg_mutex;
 static touchogg_job_t *touchogg_jobs, *touchogg_queue, *touchogg_queuetail;
@@ -77,6 +85,9 @@ static int TouchOgg_Worker(void *p)
 		Thread_UnlockMutex(touchogg_mutex);
 		if (!job)
 			return 0;
+		if (job->opus)
+			Touch_Opus_AsyncDecode(job->opus, job->channels, (short *)job->pcm, job->total);
+		else
 		while (done < job->len && (ret = qov_read(&job->vf, job->pcm + done, (int)(job->len - done), mem_bigendian, 2, 1, &bs)) > 0)
 			done += ret;
 		Thread_LockMutex(touchogg_mutex);
@@ -125,13 +136,22 @@ qbool TouchOgg_StartAsync(sfx_t *sfx, const char *filename)
 	fs_offset_t filesize;
 	if (!snd_lazyload_async.integer || !Thread_HasThreads())
 		return false;
-#ifndef LINK_TO_LIBVORBIS
-	if (!vf_dll)
-		return false;
-#endif
 	if (!touchogg_mutex && !(touchogg_mutex = Thread_CreateMutex()))
 		return false;
 	job = (touchogg_job_t *)Z_Malloc(sizeof(*job));
+	job->opus = Touch_Opus_AsyncOpen(filename, &job->data, &job->channels, &job->total);
+	if (job->opus)
+	{
+		job->rate = 48000;
+		goto queue;
+	}
+#ifndef LINK_TO_LIBVORBIS
+	if (!vf_dll)
+	{
+		Z_Free(job);
+		return false;
+	}
+#endif
 	job->data = FS_LoadFile(filename, snd_mempool, true, &filesize);
 	if (!job->data)
 	{
@@ -141,7 +161,6 @@ qbool TouchOgg_StartAsync(sfx_t *sfx, const char *filename)
 	job->ov_decode.buffer = job->data;
 	job->ov_decode.ind = 0;
 	job->ov_decode.buffsize = filesize;
-	// Opus in Ogg fails here and is left to Touch_Opus_LoadFile
 	if (qov_open_callbacks(&job->ov_decode, &job->vf, NULL, 0, callbacks) < 0)
 	{
 		Mem_Free(job->data);
@@ -160,6 +179,7 @@ qbool TouchOgg_StartAsync(sfx_t *sfx, const char *filename)
 	}
 	job->rate = vi->rate;
 	job->channels = vi->channels;
+queue:
 	job->len = job->total * job->channels * 2;
 	job->pcm = (char *)Mem_Alloc(snd_mempool, (size_t)job->len);
 	job->sfx = sfx;
@@ -173,6 +193,7 @@ qbool TouchOgg_StartAsync(sfx_t *sfx, const char *filename)
 	touchogg_queuetail = job;
 	Thread_UnlockMutex(touchogg_mutex);
 	TouchOgg_Workers();
+	Con_DPrintf("snd_lazyload_async: %s (%s) decodes on a worker\n", filename, job->opus ? "Opus" : "Vorbis");
 	return true;
 }
 
@@ -205,6 +226,17 @@ static void TouchOgg_Install(touchogg_job_t **link)
 	touchogg_job_t *job = *link;
 	sfx_t *sfx = job->sfx;
 	*link = job->next;
+	if (job->opus)
+	{
+		if (sfx && !sfx->fetcher)
+			Touch_Opus_AsyncInstall(job->opus, sfx, (short *)job->pcm, job->channels, job->total);
+		else
+			Mem_Free(job->pcm);
+		Touch_Opus_AsyncClose(job->opus);
+		Mem_Free(job->data);
+		Z_Free(job);
+		return;
+	}
 	if (sfx && !sfx->fetcher)
 	{
 		vorbis_comment *vc;
@@ -267,6 +299,9 @@ static void TouchOgg_Complete(touchogg_job_t *job)
 		int64_t done = 0;
 		long ret;
 		int bs = 0;
+		if (job->opus)
+			Touch_Opus_AsyncDecode(job->opus, job->channels, (short *)job->pcm, job->total);
+		else
 		while (done < job->len && (ret = qov_read(&job->vf, job->pcm + done, (int)(job->len - done), mem_bigendian, 2, 1, &bs)) > 0)
 			done += ret;
 		Thread_LockMutex(touchogg_mutex);

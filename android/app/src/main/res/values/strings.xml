@@ -75,4 +75,7 @@
     <string name="update_installing">Installing update…</string>
     <!-- The system notification while AndySU downloads an update (UpdateNotice). -->
     <string name="update_notice_title">Downloading Godnotic %1$s</string>
+    <!-- The split data set (docs/DATA_FETCH.md): the setup step's line about what follows, and DataService's notification. -->
+    <string name="boot_setup_rest">The other maps and the music (%1$s) follow by themselves while you play.</string>
+    <string name="data_rest_progress">Getting the rest of the maps: %1$s of %2$s MB</string>
 </resources>

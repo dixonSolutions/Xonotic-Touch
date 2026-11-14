@@ -130,6 +130,7 @@
       return null;
     }
     const files = new Map();
+    const writing = new Set(); // names being written: their size is not final
     const viaWorker = useWorker ? workerWriter() : null;
     return {
       kind: 'opfs',
@@ -148,8 +149,11 @@
           try {
             // Chunks never change once written: keep the File (a snapshot
             // that reads from disk) for the mount that follows the check.
+            // (Not one caught half-written, by a download going on while
+            // the game runs: an entry exists, empty, until its write ends.)
+            const busy = writing.has(name);
             const f = await (await dir.getFileHandle(name)).getFile();
-            if (name.startsWith('c-')) files.set(name, f);
+            if (name.startsWith('c-') && !busy && !writing.has(name)) files.set(name, f);
             return f.size;
           } catch (e) {
             if (e && (e.name === 'NotFoundError' || e.name === 'TypeMismatchError')) return -1;
@@ -166,6 +170,15 @@
       },
       async write(name, bytes) {
         files.delete(name);
+        writing.add(name);
+        try {
+          await this.write1(name, bytes);
+        } finally {
+          writing.delete(name);
+          files.delete(name);
+        }
+      },
+      async write1(name, bytes) {
         if (viaWorker) return viaWorker(name, bytes);
         // createWritable() writes a swap file that replaces the entry on
         // close(): a reader never sees half a chunk.

@@ -24,6 +24,19 @@ import sys
 import zipfile
 
 
+def add_stored(z, path, name):
+    """A stored entry with a fixed time and mode: the same packs always make
+    the same archive, byte for byte (zipfile.write would take the file's
+    mtime)."""
+    info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+    info.compress_type = zipfile.ZIP_STORED
+    info.external_attr = 0o644 << 16
+    info.create_system = 3
+    with open(path, "rb") as src, z.open(info, "w") as dst:
+        for chunk in iter(lambda: src.read(1 << 22), b""):
+            dst.write(chunk)
+
+
 def official_name(pack):
     """The name a phone pack installs under: `xonotic-...-maps-phone.pk3` -> `xonotic-...-maps.pk3`."""
     base = os.path.basename(pack)
@@ -59,7 +72,7 @@ def main():
             seen.add(name)
             size = os.path.getsize(pack)
             total += size
-            z.write(pack, name)
+            add_stored(z, pack, name)
             print("  %-46s %7.1f MB" % (name, size / 1e6), file=sys.stderr)
     print("%s: %d packs, %.1f MB, sha256 %s"
           % (args.out, len(seen), total / 1e6, sha256(args.out)), file=sys.stderr)

@@ -120,6 +120,7 @@ public final class XonoticActivity extends SDLActivity {
         modImport = new ModImport(this, new File(baseDir)); // Settings → Mobile → Mods → Import mod
         modImport.start();
         watchNetState();
+        DataService.start(this); // Touch: the rest of the split data set, behind the game (docs/DATA_FETCH.md)
     }
 
     /**

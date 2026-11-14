@@ -465,7 +465,7 @@
   // without them (served from web/, or the release zip) asks
   // data/profiles.json, then data/manifest.json.
   const dataBase = new URL(params.get('data') || CONFIG.dataUrl || 'data/', location.href);
-  const SMALL_UPDATE = 50e6;
+  const SMALL_UPDATE = Number(params.get('small')) || 50e6; // ?small=BYTES: tests
   const manifestId = (p) => (/([0-9a-f]{8,64})\.json$/.exec(p || '') || [])[1];
 
   // A no-cache pointer file (profiles.json, stock.json, manifest.json).
@@ -558,6 +558,9 @@
     const ids = [main.id];
     const files = main.m.files.map((f) => Object.assign({}, f, { base: dataBase.href }));
     let defaultMap = main.m.defaultMap || '';
+    // A split set (format 5): what to fetch before the game starts, and what each map needs.
+    const splitOf = (m) => (m && Array.isArray(m.firstPlay) ? { set: m.set || '', firstPlay: m.firstPlay, maps: m.maps || {} } : null);
+    let split = splitOf(main.m);
     if (main.m.stock) {
       const stockBase = new URL(params.get('stock') || main.m.stock, dataBase);
       const j = await pointer(stockBase, 'stock.json');
@@ -565,11 +568,12 @@
       const stock = await getManifest(stockBase, sp.manifest);
       ids.push(stock.id);
       defaultMap = defaultMap || stock.m.defaultMap || '';
+      split = split || splitOf(stock.m);
       const have = new Set(files.map((f) => f.name));
       for (const f of stock.m.files) if (!have.has(f.name)) files.push(Object.assign({}, f, { base: stockBase.href }));
     }
     if (main.m.chunk) data.chunk = main.m.chunk;
-    return { name, ids, files, defaultMap, keep: !!spec.keep };
+    return { name, ids, files, defaultMap, keep: !!spec.keep, split };
   }
 
   // The stock host's profiles, for a shell (its own config lists only its
@@ -729,6 +733,7 @@
                 concurrency: DOWNLOADS,
                 onBytes: (c, n) => {
                   got.set(c.h, n);
+                  noteBytes(c, n);
                   paint();
                   if (n === c.size && main) crumb('download', { done: [...got].filter(([h, v]) => v === sizeOf.get(h)).length, total: list.length });
                 },
@@ -817,7 +822,15 @@
     return blobs;
   }
 
-  async function mount(f) {
+  // (The background download and a map being asked for may both want a file.)
+  const mounting = new Map();
+  function mount(f) {
+    const path = pathOf(f);
+    if (mounts.has(path)) return Promise.resolve();
+    if (!mounting.has(path)) mounting.set(path, mountOne(f).finally(() => mounting.delete(path)));
+    return mounting.get(path);
+  }
+  async function mountOne(f) {
     const path = pathOf(f);
     if (mounts.has(path)) return;
     const FS = Module.FS;
@@ -829,6 +842,7 @@
       FS.writeFile(path, buf, { canOwn: true });
     }
     mounts.set(path, f);
+    mountedAt.set(path, performance.now());
   }
 
   function unmount(f) {
@@ -877,7 +891,10 @@
   function needMap(raw, line) {
     const name = normMap(raw);
     const f = maps.byName.get(name);
-    const here = !f || (enginePaths.has(pathOf(f)) && !state.rescanPending);
+    let here = !f || (enginePaths.has(pathOf(f)) && !state.rescanPending);
+    // A split set in memory: with another map's packs still there, go the
+    // long way, which drops them.
+    if (here && f && prog.on && !state.lazy && otherMapPacks(mapNeeds(name, f)).length) here = false;
     if (here && (!state.lazy || maps.warmed === line)) {
       maps.warmed = '';
       maps.current = name;
@@ -893,31 +910,47 @@
   async function fetchMap() {
     while (maps.pending) {
       const { name, line, f } = maps.pending;
-      const missing = f ? hosted(await data.missing([f])) : [];
+      // A split set: the shared packs the map needs, then its own pack.
+      const need = mapNeeds(name, f);
+      let missing = need.length ? hosted(await data.missing(need)) : [];
       if (missing.length) {
         $('xt-map-title').textContent = `Downloading ${name}`;
         if (document.pointerLockElement) document.exitPointerLock();
-        if (maps.bgController) maps.bgController.abort(); // this map first
+        // This map first: the background download waits.
+        await bgHold();
         try {
+          missing = hosted(await data.missing(need));
+          wantMap(name, need, missing);
           await runDownload(missing, `Downloading the map ${name}…`, MAP_UI);
         } catch (e) {
+          wantDone(name);
           if (maps.pending && maps.pending.name !== name) continue; // another map was asked for meanwhile
           maps.pending = null;
           if (e && e.name === 'AbortError') { toast(`${name}: download cancelled.`); return; }
           throw new Error(`Could not download the map ${name}: ${e.message || e}`);
+        } finally {
+          bgRelease();
         }
       }
       if (maps.pending && maps.pending.name !== name) continue;
       if (f && !state.lazy) {
-        // In memory: one map pack at a time.
-        for (const g of maps.byName.values()) if (g !== f) unmount(g);
+        // In memory: one map's packs at a time.
+        for (const g of otherMapPacks(need)) { unmount(g); state.rescanPending = true; }
       }
-      if (f) await mount(f);
+      for (const g of need) { prog.have.add(g.name); await mount(g); }
+      wantDone(name);
       await warm(f);
       if (maps.pending && maps.pending.name !== name) continue;
       maps.pending = null;
       maps.warmed = line;
-      if (state.rescanPending || (f && !enginePaths.has(pathOf(f)))) rescanAnd(line);
+      if (prog.set && state.lazy) {
+        // Packs that came after the engine started go to the end of its
+        // search path, the map's own pack last; then the command again.
+        for (const g of need) announce(g);
+        await announced;
+        command(line);
+        mountReady().catch(() => {});
+      } else if (state.rescanPending || (f && !enginePaths.has(pathOf(f)))) rescanAnd(line);
       else Module.ccall('xt_web_command', null, ['string'], [line]);
       return;
     }
@@ -957,7 +990,7 @@
     const all = (path, size) => { for (let k = 0; k * XTLazyFS.BLOCK < size; k++) order.push([path, k]); };
     for (const [p, ks] of Object.entries(hotList())) for (const k of ks) order.push([p, k]);
     const known = order.length;
-    if (mapFile) all(pathOf(mapFile), mapFile.size);
+    for (const g of mapFile ? mapNeeds(mapFile.map, mapFile).slice().reverse() : []) all(pathOf(g), g.size);
     const withMap = order.length;
     for (const [p, f] of mounts) if (f.group === 'core') all(p, f.size);
     // Once earlier loads have shown what gets read, that and a margin will
@@ -987,56 +1020,13 @@
   // the first map. The rest (the other maps, the textures no map was traced
   // to, the music) comes one chunk at a time once the game runs, and steps
   // aside for a map the player asks for. With lazy reads, what arrives is
-  // mounted at once and the engine sees it at the next map change. Not on a
-  // connection that asks to save data: there a map downloads when played.
-  const isLater = (f) => f.group === 'map' || f.group === 'extra' || f.group === 'music';
-  const laterFiles = () => (state.files || []).filter((f) => f.hosted !== false && isLater(f));
+  // mounted at once. Not on a connection that asks to save data
+  // (?background=0 for a visit): there a map downloads when played.
   const wantLater = () => params.get('background') !== '0' && !(navigator.connection && navigator.connection.saveData);
+  // (The queue itself is "progressive download", below.)
   function startBackground() {
-    // (Without lazy reads the first download was everything.)
-    if (!state.started || !state.lazy || maps.bgOn || maps.bgDone || !wantLater()) return;
-    maps.bgOn = true;
-    backgroundLoop().catch((e) => {
-      // A dropped connection, a full disk: what arrived is kept, and a map
-      // still downloads when it is played. Try the rest again in a while.
-      console.warn('Background download stopped: ' + (e && (e.stack || e.message) || e));
-      maps.bgOn = false;
-      setTimeout(startBackground, 60000);
-    });
-  }
-  async function backgroundLoop() {
-    // The music first (the menu plays it), then the maps, smallest first.
-    const order = { music: 0, extra: 1, map: 2 };
-    const files = laterFiles().sort((a, b) => order[a.group] - order[b.group] || a.size - b.size);
-    let fetched = false;
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i];
-      while (maps.pending || state.downloading) {
-        if (!state.started) return;
-        await new Promise((r) => setTimeout(r, 500));
-      }
-      if (!state.started) return;
-      const missing = hosted(await data.missing([f]));
-      if (missing.length) {
-        fetched = true;
-        maps.bgController = new AbortController();
-        try {
-          await data.download(missing, { urlFor: blobUrl, signal: maps.bgController.signal, onBytes() {}, concurrency: 1 });
-        } catch (e) {
-          if (e && e.name === 'AbortError') { i--; continue; } // a map was asked for: this file again after it
-          throw e;
-        } finally {
-          maps.bgController = null;
-        }
-      }
-      if (state.lazy && !mounts.has(pathOf(f))) {
-        await mount(f);
-        state.rescanPending = true;
-      }
-    }
-    maps.bgOn = false;
-    maps.bgDone = true;
-    if (fetched && state.started) toast('Every map and the music are downloaded.');
+    if (!state.started || !state.engineUp) return;
+    if (bg.files.length || bg.want) bgRun();
   }
 
   // The engine's console command "web_maps" (sys_wasm.c): what is stored.
@@ -1048,10 +1038,435 @@
   }
   function mapsCommand(arg) {
     if (arg === 'storage') { popover(true); return ''; }
-    backgroundStatus().then((s) => toast(s.left ? `Game data: ${mb(s.total - s.left)} of ${mb(s.total)} here; a map that is missing downloads when played.` : `Game data: all ${mb(s.total)} here.`));
+    if (arg === 'pause' || arg === 'resume') bgPause(arg === 'pause');
+    const going = bg.running && !bg.paused;
+    backgroundStatus().then((s) => toast(s.left ? `Game data: ${mb(s.total - s.left)} of ${mb(s.total)} here; ` +
+      (going ? 'the rest is downloading while you play.' : bg.paused ? 'the download is paused (web_maps resume).' : 'a map that is missing downloads when played.') : `Game data: all ${mb(s.total)} here.`));
     return '';
   }
   const MAP_UI = { panel: 'xt-map', fill: 'xt-map-fill', bar: 'xt-map-bar', detail: 'xt-map-detail', label: 'xt-map-label', cancel: 'xt-map-cancel' };
+
+  // ---------------------------------------------- progressive download
+  //
+  // A split set (docs/WEB.md, "Progressive download"; the contract every
+  // client follows is docs/DATA_FETCH.md): the game starts once the core
+  // group and the "first play" packs are stored; the rest is fetched while
+  // it runs, in the packs' priority order (the music, then map by map with
+  // the shared packs each needs, then detail and extras), a map that is
+  // asked for first. A pack that lands is mounted in place and announced
+  // with "fs_mountpack <name>", which adds it at the end of the engine's
+  // search path; a map's own pack (the one with its .bsp) only once every
+  // other pack the map needs is in, so ".bsp there" means "playable". The
+  // engine hears the progress as "touch_data_status ...".
+  //
+  // Data that is not a split set (the maps pk3 split by the stager, whose
+  // core pack has a stand-in .bsp per map) goes the same way where reads in
+  // place are likely: the core group and the default map's pack first, then
+  // the music, the extra pack and the maps, smallest first. A stand-in
+  // would hide a pack added at the end of the search path, so those are
+  // only mounted, and the engine sees them at its next "fs_rescan" (the
+  // next map change).
+  //
+  // Where the packs are copied into memory (no reads in place), or kept in
+  // memory (nothing can be stored), only the music follows by itself; a
+  // map's packs come when the map is asked for.
+  // (While playing: one. On a 20 Mbit/s line two or three fetched no faster.)
+  const BG_PARALLEL = Math.max(1, Math.min(6, Number(params.get('bgparallel')) || 1));
+  const prog = {
+    on: false, // the game starts on part of the data; the rest follows
+    set: false, // ...of a split set: packs announced with fs_mountpack
+    setId: '', // that set's id, for the engine's touch_data_set
+    first: new Set(), // names of the packs a start waits for, besides the core group
+    needs: new Map(), // map -> its packs besides the core group, its own pack last
+    have: new Set(), // names of the files whole in storage
+    counted: [], // the files whose progress the engine hears about
+    sizes: new Map(), // their chunks: hash -> size
+    got: new Map(), // chunk hash -> bytes here
+    want: null, // {name, chunks: [[hash, size]], total}: the map asked for
+  };
+  const bg = {
+    files: [], // what is fetched while the game runs, in order
+    storeOnly: false, // an older set is running: the new one is stored, not mounted
+    onDemand: false, // only the music by itself (in memory)
+    want: '', // the map QuakeC asked for (dataWant)
+    running: false, paused: false, held: 0, parkedNow: false, parked: [], wake: null,
+    current: null, controller: null, skip: new Set(), whenDone: null,
+    state: '', message: '', sent: '', sentAt: 0, timer: 0, mountFailures: 0,
+  };
+  const isFirst = (f) => f.group === 'core' || prog.first.has(f.name);
+  const mapNeeds = (name, f) => (prog.on && prog.needs.get(name)) || (f ? [f] : []);
+  const otherMapPacks = (need) => [...mounts.values()].filter((g) => g.group === 'map' && !need.includes(g));
+  // A map's own pack waits for the other packs the map needs.
+  const mountable = (f) => !(prog.on && f.map && prog.needs.has(f.map)) || prog.needs.get(f.map).every((g) => prog.have.has(g.name));
+  const kb = (n) => Math.round(n / 1024);
+
+  function progSetup(profile, files, older) {
+    if (older) return;
+    if (!profile.split) {
+      // (Without lazy reads nothing can be added to a running game: there,
+      // and with the background off, the first download is everything.)
+      const lazyLikely = params.get('lazy') !== '0' && typeof XTLazyFS !== 'undefined';
+      prog.on = wantLater() && lazyLikely && files.some((f) => f.group === 'map');
+      for (const f of files) {
+        if (f.group !== 'map' || !f.map) continue;
+        prog.needs.set(normMap(f.map), [f]);
+        if (f.map === profile.defaultMap) prog.first.add(f.name);
+      }
+      return;
+    }
+    const byName = new Map(files.map((f) => [f.name, f]));
+    // (With a Godnotic folder holding packs, only what it lacks is left.)
+    prog.set = prog.on = files.some((f) => f.kind);
+    prog.setId = String(profile.split.set || '').replace(/[^A-Za-z0-9_.+-]/g, '_');
+    prog.first = new Set(profile.split.firstPlay);
+    for (const [map, names] of Object.entries(profile.split.maps)) {
+      const list = names.map((n) => byName.get(n)).filter(Boolean);
+      if (!list.length) continue;
+      prog.needs.set(normMap(map), list);
+      // (Its own pack is in the folder: the last pack it still needs stands for it.)
+      if (!maps.byName.has(normMap(map))) maps.byName.set(normMap(map), list[list.length - 1]);
+    }
+  }
+
+  /**
+   * A new data set, cut differently (no chunk in common), while the set of
+   * the last start is whole in this browser: that one keeps running, with
+   * this build's own files, and the new one is fetched in the background;
+   * a later start takes the new set once all of it is here. Nothing waits,
+   * nothing is asked, and no map goes missing meanwhile. Returns the files
+   * to run and the older manifests' ids, or null: a first visit, the same
+   * set, a change small enough to wait for, or an older set with holes.
+   */
+  async function olderSet(profile) {
+    if (!profile.split || params.get('older') === '0') return null;
+    const ids = (store.get('ids-' + profile.name, '') || '').split(',').filter(Boolean);
+    if (!ids.length || ids.join(',') === profile.ids.join(',')) return null;
+    const firstNames = new Set(profile.split.firstPlay);
+    const first = profile.files.filter((f) => f.hosted !== false && (f.group === 'core' || firstNames.has(f.name)));
+    const lack = sum(await data.missing(first));
+    if (lack <= SMALL_UPDATE || lack <= first.reduce((n, f) => n + f.size, 0) / 4) return null;
+    const old = [];
+    const seen = new Set();
+    for (const id of ids) {
+      const m = await data.loadManifest(id);
+      if (!m) return null;
+      for (const f of m.files) {
+        if (!f.stock || seen.has(f.name)) continue;
+        seen.add(f.name);
+        old.push(Object.assign({}, f, { hosted: false }));
+      }
+    }
+    if (!old.length || (await data.missing(old)).length) return null;
+    return { ids, files: profile.files.filter((f) => !f.stock).concat(old) };
+  }
+
+  // After the mount: what is left for the background. True when anything is.
+  async function progPlan(profile, files, older) {
+    if (!older && !prog.on) return false;
+    // This build's own files have no priority: they are here before the start.
+    const order = (f) => (f.priority === undefined ? -1 : f.priority);
+    bg.storeOnly = !!older;
+    prog.counted = (older ? profile.files : files).filter((f) => f.hosted !== false);
+    // (Not a split set: the music, the extra pack, the maps, smallest first.)
+    const rank = { music: 0, extra: 1, map: 2 };
+    let list = prog.counted.slice().sort((a, b) => (older || prog.set ? order(a) - order(b) : (rank[a.group] || 0) - (rank[b.group] || 0) || a.size - b.size));
+    const all = !!older || (state.lazy && data.kind !== 'memory' && (wantLater() || params.get('background') === '1'));
+    if (!all) {
+      bg.onDemand = true;
+      list = prog.set && wantLater() ? list.filter((f) => f.group === 'music') : [];
+    }
+    const missing = new Set((await data.missing(prog.counted)).map((c) => c.h));
+    for (const f of prog.counted) {
+      for (const c of data.chunks(f)) {
+        prog.sizes.set(c.h, c.size);
+        if (!missing.has(c.h)) prog.got.set(c.h, c.size);
+      }
+      if (!f.chunks.some((h) => missing.has(h))) prog.have.add(f.name);
+    }
+    bg.files = list.filter((f) => !prog.have.has(f.name));
+    return missing.size > 0;
+  }
+
+  function command(text) {
+    if (!state.engineUp || !state.started) return;
+    try { Module.ccall('xt_web_command', null, ['string'], [text]); } catch (e) { /* the engine is gone */ }
+  }
+
+  // Tell the running engine about a pack mounted after it started, in the
+  // order asked. (ANNOUNCE_AFTER_MS: how old the file has to be first. The
+  // engine looks files up through a listing of its data directory that it
+  // reads again at most once a second; fs_mountpack drops that listing
+  // itself, so no wait is needed. An engine that did not would answer
+  // "could not find" for a file under 1100 ms old.)
+  const ANNOUNCE_AFTER_MS = 0;
+  const mountedAt = new Map(); // engine path -> when the file appeared
+  const announcing = new Set();
+  let announced = Promise.resolve();
+  function announce(f) {
+    const path = pathOf(f);
+    if (enginePaths.has(path) || announcing.has(path) || !mounts.has(path)) return announced;
+    announcing.add(path);
+    announced = announced.then(async () => {
+      const wait = (mountedAt.get(path) || 0) + ANNOUNCE_AFTER_MS - performance.now();
+      if (state.engineUp && wait > 0) await new Promise((r) => setTimeout(r, wait));
+      announcing.delete(path);
+      if (!mounts.has(path)) return;
+      enginePaths.add(path);
+      if (/\.pk3$/i.test(f.name)) command('fs_mountpack ' + f.name);
+    });
+    return announced;
+  }
+  const announcedOrSoon = (f) => enginePaths.has(pathOf(f)) || announcing.has(pathOf(f));
+
+  // Mount and announce what is stored and not mounted yet (reads in place).
+  async function mountReady() {
+    if (!prog.on || !state.lazy || bg.storeOnly) return;
+    for (const f of prog.counted) {
+      if (!prog.have.has(f.name) || announcedOrSoon(f)) continue;
+      if (!prog.set) {
+        // Stand-ins in the core: seen at the engine's next fs_rescan.
+        if (!mounts.has(pathOf(f))) { await mount(f); state.rescanPending = true; }
+        continue;
+      }
+      if (f.map && prog.needs.has(f.map) && !prog.needs.get(f.map).every((g) => g === f || announcedOrSoon(g))) continue;
+      await mount(f);
+      // The pk3's directory, which the engine reads when it mounts the pack:
+      // read ahead here, so that read does not cost the game a frame.
+      if (state.engineUp && XTLazyFS.tail) { try { await XTLazyFS.tail(pathOf(f), 2 << 20); } catch (e) { /* the engine reads it itself */ } }
+      announce(f);
+    }
+  }
+
+  // ---- what the engine hears (docs/DATA_FETCH.md, "Host to game")
+  function noteBytes(c, n) {
+    if (!prog.sizes.has(c.h)) return;
+    prog.got.set(c.h, n);
+    statusSoon();
+  }
+  function statusLine() {
+    let done = 0;
+    let total = 0;
+    for (const [h, size] of prog.sizes) { total += size; done += Math.min(size, prog.got.get(h) || 0); }
+    let line = `touch_data_status state ${bg.state}`;
+    if (prog.setId) line += ` set ${prog.setId}`; // the split set's id (docs/DATA_FETCH.md)
+    line += ` done_kb ${kb(done)} total_kb ${kb(total)}`;
+    const w = prog.want;
+    if (w) {
+      let d = 0;
+      for (const [h, size] of w.chunks) d += Math.min(size, prog.got.get(h) || 0);
+      line += ` want ${w.name.replace(/[^A-Za-z0-9_.+-]/g, '_')} want_done_kb ${kb(d)} want_total_kb ${kb(w.total)}`;
+    }
+    if (bg.message && (bg.state === 'error' || bg.state === 'waiting')) line += ` message "${bg.message.replace(/["\;\r\n]/g, ' ').slice(0, 120)}"`;
+    return line;
+  }
+  // At most twice a second, and only when something changed.
+  function statusSoon(now) {
+    if (!state.engineUp || !bg.state) return;
+    const t = performance.now();
+    if (!now && t - bg.sentAt < 500) {
+      if (!bg.timer) bg.timer = setTimeout(() => { bg.timer = 0; statusSoon(true); }, 500);
+      return;
+    }
+    const line = statusLine();
+    if (line === bg.sent) return;
+    bg.sent = line;
+    bg.sentAt = t;
+    command(line);
+  }
+  function bgSay(st) {
+    if (bg.state === st) return;
+    bg.state = st;
+    statusSoon(true);
+  }
+  function wantMap(name, need, missing) {
+    if (!prog.on) return;
+    prog.want = { name, chunks: missing.map((c) => [c.h, c.size]), total: sum(missing) };
+    statusSoon(true);
+  }
+  function wantDone(name) {
+    if (!prog.want || prog.want.name !== name) return;
+    prog.want = null;
+    statusSoon(true);
+  }
+
+  /**
+   * The engine wants this map (QuakeC asked for it; sys_wasm.c / the
+   * engine's touch_datafetch.c call Module.xt.dataWant): its packs jump the
+   * queue. No command is run again here: the engine goes on when the map's
+   * .bsp appears. 1 when the map is one of the set's.
+   */
+  function dataWant(raw) {
+    const name = normMap(raw);
+    const need = prog.set ? prog.needs.get(name) : null;
+    if (!need || !state.engineUp) return 0;
+    bg.want = name;
+    (async () => {
+      const missing = hosted(await data.missing(need));
+      if (bg.want !== name) return;
+      wantMap(name, need, missing);
+      // What is being fetched now is not one of them: let go of it (what
+      // arrived of it is kept).
+      if (bg.current && !need.includes(bg.current) && bg.controller) bg.controller.abort();
+      bgRun();
+    })().catch(() => {});
+    return 1;
+  }
+
+  // ---- the download while the game runs
+  /** Stop the background download until bgRelease(): a map is being fetched with its own progress card. */
+  async function bgHold() {
+    bg.held++;
+    if (bg.controller) bg.controller.abort();
+    if (bg.running && !bg.parkedNow) await new Promise((r) => bg.parked.push(r));
+  }
+  function bgWake() {
+    const w = bg.wake;
+    bg.wake = null;
+    if (w) w();
+  }
+  function bgRelease() {
+    if (bg.held && !--bg.held) bgWake();
+  }
+  // The console's "web_maps pause" and "web_maps resume".
+  function bgPause(on) {
+    bg.paused = on;
+    if (on && bg.controller) bg.controller.abort();
+    if (!on) { bgWake(); bgRun(); }
+    if (bg.running || !on) bgSay(on ? 'paused' : 'fetching');
+  }
+  async function bgNext() {
+    if (bg.want) {
+      const name = bg.want;
+      const need = prog.needs.get(name) || [];
+      const f = need.find((g) => !prog.have.has(g.name) && !bg.skip.has(g.name));
+      if (f) return f;
+      bg.want = '';
+      try {
+        // In memory: mounted now, next to the map being played (the next
+        // "map" command drops the packs it does not need).
+        if (!state.lazy) for (const g of need) { await mount(g); announce(g); }
+        else await mountReady();
+        await announced;
+      } catch (e) { toast(e.message || String(e), 8000); }
+      wantDone(name);
+    }
+    return bg.files.find((f) => !prog.have.has(f.name) && !bg.skip.has(f.name)) || null;
+  }
+  async function bgFetch(f, signal) {
+    const run = async () => {
+      // (Another tab may have stored it while this one waited for the lock.)
+      const list = hosted(await data.missing([f]));
+      if (list.length) await data.download(list, { urlFor: blobUrl, signal, concurrency: BG_PARALLEL, onBytes: noteBytes });
+      for (const c of data.chunks(f)) noteBytes(c, c.size);
+    };
+    // One tab downloads at a time.
+    if (locks) await locks.request('xt-data-download', { signal }, run); else await run();
+  }
+  // false: stop for this visit.
+  async function bgFailed(f, e) {
+    const quota = e && e.name === 'QuotaExceededError';
+    bg.message = quota ? 'no room left in this browser' : (e && e.message) || String(e);
+    if (quota) {
+      const est = await estimate();
+      problem('The rest of the game data did not fit: the browser stopped the download at its limit for this site' +
+        (est && est.quota ? ` (${mb(est.usage || 0)} of ${mb(est.quota)})` : '') + '. What is here plays; a map that is missing downloads when it is played.');
+      bgSay('error');
+      return false;
+    }
+    if (e && e.fatal) {
+      // Not on the server any more, or damaged twice: the other packs go on.
+      bg.skip.add(f.name);
+      bgSay('error');
+      return true;
+    }
+    // The connection (the chunk was tried six times over half a minute).
+    bgSay(navigator.onLine === false ? 'waiting' : 'error');
+    await new Promise((r) => {
+      const t = setTimeout(r, 30000);
+      bg.wake = () => { clearTimeout(t); r(); };
+      window.addEventListener('online', () => bgWake(), { once: true });
+    });
+    bg.wake = null;
+    return true;
+  }
+  async function bgRun() {
+    if (bg.running || !state.engineUp) return;
+    bg.running = true;
+    let stopped = false;
+    try {
+      for (;;) {
+        if (bg.paused || bg.held) {
+          bg.parkedNow = true;
+          for (const r of bg.parked.splice(0)) r();
+          await new Promise((r) => { bg.wake = r; });
+          bg.parkedNow = false;
+          continue;
+        }
+        const f = await bgNext();
+        if (!f) break;
+        bg.current = f;
+        bg.controller = new AbortController();
+        bg.message = '';
+        bgSay('fetching');
+        try {
+          await bgFetch(f, bg.controller.signal);
+          bg.fetched = true;
+        } catch (e) {
+          if (e && e.name === 'AbortError') continue; // paused, held, or another map is wanted
+          if (await bgFailed(f, e)) continue;
+          stopped = true;
+          break;
+        } finally {
+          bg.current = null;
+          bg.controller = null;
+        }
+        prog.have.add(f.name);
+        try {
+          await mountReady();
+        } catch (e) {
+          // A stored pack that cannot be mounted (a chunk gone from under
+          // the page): what is not whole any more is fetched again.
+          console.warn('Godnotic:', e && e.message || e);
+          if (++bg.mountFailures > 5) throw e;
+          for (const g of prog.counted) {
+            if (!prog.have.has(g.name) || enginePaths.has(pathOf(g)) || !(await data.missing([g])).length) continue;
+            prog.have.delete(g.name);
+            if (!bg.files.includes(g)) bg.files.push(g);
+          }
+        }
+        statusSoon();
+        // The game's frames come first.
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      await announced;
+      const whole = prog.counted.every((f) => prog.have.has(f.name));
+      if (!stopped) bgSay(whole ? 'complete' : bg.skip.size ? 'error' : 'paused');
+      if (whole) maps.bgDone = true;
+      if (whole && bg.fetched && !bg.storeOnly && state.started) toast('Every map and the music are downloaded.');
+      if (whole && bg.whenDone) {
+        const done = bg.whenDone;
+        bg.whenDone = null;
+        done();
+      }
+    } catch (e) {
+      console.warn('Godnotic: the background download stopped:', e);
+      bg.message = (e && e.message) || String(e);
+      bgSay('error');
+    } finally {
+      bg.running = false;
+      bg.parkedNow = false;
+      for (const r of bg.parked.splice(0)) r();
+    }
+  }
+  // The engine is up: say where the data stands, fetch the rest.
+  function dataStart() {
+    state.engineUp = true;
+    const whole = prog.counted.every((f) => prog.have.has(f.name));
+    // "legacy": a set that was downloaded whole before the game started.
+    bg.state = !prog.counted.length ? 'legacy' : whole ? 'complete' : bg.files.length ? 'fetching' : 'paused';
+    statusSoon(true);
+    // (The rest starts with startBackground, once the menu is up.)
+  }
 
   function mountUserdir() {
     const FS = Module.FS;
@@ -1116,7 +1531,22 @@
     m = /^(font-[a-z0-9]+)-[^-]+\.pk3$/i.exec(name);
     return m ? m[1].toLowerCase() : '';
   }
-  /** The shallowest directory under root (depth 4) with a data and a maps pk3. */
+  /**
+   * The packs of this profile's split set, for a folder (or the app's
+   * packs) that holds that layout: every name with its size, and the ones
+   * the game needs to start. null when the profile is not a split set.
+   */
+  function setPacksOf(profile) {
+    if (!profile || !profile.split) return null;
+    const packs = profile.files.filter((f) => f.kind);
+    const firstPlay = new Set(profile.split.firstPlay);
+    return { size: new Map(packs.map((f) => [f.name, f.size])), first: packs.filter((f) => f.group === 'core' || firstPlay.has(f.name)).map((f) => f.name) };
+  }
+  /**
+   * The shallowest directory under root (depth 4) with a data and a maps pk3,
+   * or with the split set's packs the game needs to start ("set": name ->
+   * handle of every pack of the set found there).
+   */
   async function folderScan(root) {
     let level = [root];
     let seen = 0;
@@ -1124,16 +1554,19 @@
       const next = [];
       for (const dir of level) {
         const pk3 = new Map();
+        const set = new Map();
         let config = null;
         for await (const [name, h] of dir.entries()) {
           if (++seen > 20000) return null;
           if (h.kind === 'file') {
+            if (state.setPacks && state.setPacks.size.has(name)) set.set(name, h);
             const kind = packKind(name, true);
             if (kind && (!pk3.has(kind) || name > pk3.get(kind).name)) pk3.set(kind, { name, handle: h });
             if (name === 'config.cfg') config = h;
           } else if (!/\.pk3dir$/i.test(name) && name !== 'dlcache') next.push(h);
         }
         if (pk3.has('data') && pk3.has('maps')) return { dir, pk3, config };
+        if (state.setPacks && state.setPacks.first.every((n) => set.has(n))) return { dir, pk3: new Map(), set, config };
       }
       level = next;
     }
@@ -1165,6 +1598,15 @@
     const found = await folderScan(root);
     if (!found) throw new Error(`No Godnotic game data in “${root.name}”: it needs xonotic-…-data.pk3 and xonotic-…-maps.pk3. ${FOLDER_HINT}`);
     const files = [];
+    // The split layout: the packs that are whole (the manifest's size); the
+    // game needs the first-play ones, the rest is downloaded.
+    for (const [name, handle] of found.set || []) {
+      const file = await handle.getFile();
+      if (file.size === state.setPacks.size.get(name)) files.push({ kind: 'set', name, file, size: file.size });
+    }
+    if (found.set && !state.setPacks.first.every((n) => files.some((x) => x.name === n))) {
+      throw new Error(`The packs in “${root.name}” are not all complete yet (still downloading in the app?)`);
+    }
     for (const [kind, { name, handle }] of found.pk3) {
       const file = await handle.getFile();
       const dir = await zipDirectory(file);
@@ -1174,7 +1616,7 @@
       }
       files.push({ kind, name, file, size: file.size });
     }
-    const big = files.find((x) => x.kind === 'data');
+    const big = files.find((x) => x.kind === 'data') || files[0];
     if (typeof XTLazyFS === 'undefined' || !(await XTLazyFS.probe(big.file))) throw new Error('This browser cannot read game files in place from a folder');
     return { name: root.name, files, kinds: new Set(files.map((x) => x.kind)), config: found.config };
   }
@@ -1234,7 +1676,7 @@
     if (!files.length) return;
     let got;
     try {
-      got = await XTAppData.check(files, { packKind, zipDirectory, hasBytes, gpu: state.gpu });
+      got = await XTAppData.check(files, { packKind, zipDirectory, hasBytes, gpu: state.gpu, setPacks: state.setPacks });
       const big = got.packs.find((p) => p.kind === 'data');
       if (typeof XTLazyFS === 'undefined' || !(await XTLazyFS.probe(big.file))) throw new Error('This browser cannot read game files in place');
     } catch (e) {
@@ -1418,7 +1860,7 @@
     // at end of file.
     stdin: () => null,
     xt: {
-      renderSize, setFullscreen, mouseGrab, screenKeyboard, quit, needMap, mapsCommand,
+      renderSize, setFullscreen, mouseGrab, screenKeyboard, quit, needMap, mapsCommand, dataWant,
       syncFS: () => syncFS(false),
       fatal(title, text) {
         state.aborted = true;
@@ -1547,6 +1989,7 @@
     }
     // Normally done by the engine's startup command buffer (sys_wasm.c).
     try { Module._xt_web_hook_maps(); } catch (e) { /* older engine */ }
+    dataStart();
     settleLater();
     refit();
     resumeAudio();
@@ -1609,12 +2052,22 @@
     } catch (e) { return fail(e.message || String(e)); }
     // A Godnotic folder the player picked (Storage popover): its stock packs
     // are read in place, and only the rest is kept in the browser.
+    state.setPacks = setPacksOf(profile);
     const fold = await folderAtStart(gpu);
     if (fold && fold.files) state.folder = fold;
     else if (fold && fold.pending) state.folderPending = fold;
-    const files = state.folder ? profile.files.filter((f) => !(f.stock && state.folder.kinds.has(packKind(f.name)))) : profile.files;
+    // A new data set while the last one is whole in this browser: that one
+    // keeps running, the new one arrives in the background.
+    const older = await olderSet(profile);
+    const runFiles = older ? older.files : profile.files;
+    // (A split set's packs are what the folder's data and maps pk3 hold.)
+    // (A folder with the split layout holds some of the packs by name.)
+    const folderKind = (f) => (f.kind ? (f.group === 'music' ? 'music' : 'data') : packKind(f.name));
+    const inFolder = (f) => (state.folder.kinds.has('set') ? state.folder.files.some((x) => x.name === f.name) : state.folder.kinds.has(folderKind(f)));
+    const files = state.folder ? runFiles.filter((f) => !(f.stock && inFolder(f))) : runFiles;
     state.files = files;
     state.profile = profile.name;
+    progSetup(profile, files, older);
     {
       const others = await otherPages();
       state.prevAlive = !!(others && prevCrumb && prevCrumb.id && others.includes(prevCrumb.id));
@@ -1623,7 +2076,8 @@
     mark('manifest');
     // Claim this release's chunks before downloading any: another tab's
     // prune (an older release) keeps what a recorded manifest lists.
-    data.ref(location.pathname, profile.ids).catch(() => {});
+    const refIds = older ? profile.ids.concat(older.ids) : profile.ids;
+    data.ref(location.pathname, refIds).catch(() => {});
 
     // The download before the game starts: what it needs to run and the
     // first map. The other maps and the music follow while it is played
@@ -1633,11 +2087,9 @@
     const startedKey = profile.name === 'web' ? 'started' : 'started-' + profile.name;
     const idsKey = 'ids-' + profile.name;
     const hadStart = store.get(startedKey, '') === '1' || (profile.name === 'full' && store.get('started', '') === '1');
-    const firstMap = files.find((f) => f.group === 'map' && f.map && f.map === profile.defaultMap);
-    const lazyLikely = params.get('lazy') !== '0' && typeof XTLazyFS !== 'undefined';
-    // (Without lazy reads nothing can be added to a running game.)
-    const split = wantLater() && lazyLikely && files.some((f) => f.group === 'map');
-    const selected = () => files.filter((f) => f.hosted !== false && (!split || !isLater(f) || f === firstMap));
+    // (progSetup decided which files those are: isFirst.)
+    const split = prog.on;
+    const selected = () => files.filter((f) => f.hosted !== false && (!split || isFirst(f)));
 
     let missing = await data.missing(selected());
     let adopted = 0;
@@ -1709,7 +2161,8 @@
           const stored = await data.storedBytes(selected());
           const need = sum(missing) - partial;
           $('xt-dl-size').textContent = mb(need);
-          const later = split ? sum(hosted(await data.missing(laterFiles().filter((f) => f !== firstMap)))) : 0;
+          const later = split ? sum(hosted(await data.missing(files.filter((f) => !isFirst(f))))) : 0;
+          state.dlRest = later;
           $('xt-dl-what').textContent = later ? `to play. Maps and music (${mb(later)}) follow as you play.` : 'to play, once. It stays in this browser.';
           $('xt-dl-title').textContent = hadStart || adopted || stored ? 'Finish downloading Godnotic' : 'Download Godnotic';
           const already = stored + partial;
@@ -1788,10 +2241,13 @@
       // traced to may still be used by one); maps when they are played.
       const complete = [];
       const here = await Promise.all(files.map(async (f) => !(await data.missing([f])).length));
+      files.forEach((f, i) => { if (here[i]) prog.have.add(f.name); });
       files.forEach((f, i) => {
         if (!here[i]) return;
         // In memory: everything but the map packs (one at a time, when played).
         if (!state.lazy && f.group === 'map') return;
+        // A split set: a map's own pack only once everything it needs is here.
+        if (!mountable(f)) return;
         complete.push(f);
       });
       await mountData(complete);
@@ -1803,12 +2259,14 @@
     mark('mounted');
     state.warming = warm(null).then(() => mark('warmed'));
     store.set(startedKey, 1);
-    store.set(idsKey, profile.ids.join(','));
+    store.set(idsKey, (older ? older.ids : profile.ids).join(','));
     store.set('via', state.folder ? 'folder' : 'store');
     store.set('profile', profile.name);
     // Every file this start needs was there: drop what no page path that
     // started recently still lists (older releases' chunks, old layouts).
-    data.prune(location.pathname, profile.ids).then((r) => { state.pruned = r; }).catch(() => {});
+    // (With a download still going in the background: once that is whole.)
+    const prune = () => data.prune(location.pathname, refIds).then((r) => { state.pruned = r; }).catch(() => {});
+    if (await progPlan(profile, files, older)) bg.whenDone = prune; else prune();
 
     $('xt-opt-fullscreen').checked = store.get('fullscreen', touchOnly ? '1' : '0') === '1';
     const fsSupported = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
@@ -1975,6 +2433,7 @@
     mounts,
     lazyStats: () => typeof XTLazyFS !== 'undefined' ? Object.assign({ cacheBytes: XTLazyFS.cacheBytes }, XTLazyFS.stats) : null,
     backgroundStatus,
+    prog, bg, dataWant,
     folder: { packKind, folderScan, folderOpen, zipDirectory },
     nativeApp,
   };

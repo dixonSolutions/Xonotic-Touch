@@ -9,6 +9,9 @@
 #   --slim DIR   take an already staged copy of this fork's files (tests)
 #   --no-split   keep the maps pk3 whole (one profile, the layout before
 #                maps on demand)
+#   --astc-manifest FILE, --web-manifest FILE
+#                the split set's godnotic-data-<profile>.json, when --astc /
+#                --web is its archive (a directory is looked through for it)
 #
 # Profiles (docs/WEB.md, "Game data"): the page picks one per browser.
 #   web    the stock pk3s, or with --web a prebuilt "web" repack of them
@@ -20,8 +23,17 @@
 #          demand stored them. Its maps pk3 is not hosted ("hosted": false):
 #          a page keeps this profile only while every chunk of it is
 #          already in the browser, so returning visitors download nothing
-# In web and astc the maps pk3 is split (scripts/split-web-maps.py) into a
-# core pack, one pack per map, and an "extra" pack of textures no map uses.
+#
+# A profile's source is either the split set (docs/PHONE_ASSETS.md, "Split
+# set": godnotic-<date>-*.pk3 with godnotic-data-<profile>.json, astc or dxt)
+# or pk3s under the official names. The split set is staged as it is, pack
+# by pack, and the page starts the game after its "first_play" packs and
+# fetches the rest while it runs (docs/WEB.md, "Progressive download"). With
+# the official names (the fallback while no split set is published) the maps
+# pk3 is split here (scripts/split-web-maps.py) into a core pack, one pack
+# per map, and an "extra" pack of textures no map uses, and the page
+# downloads everything before it starts. With a split set as --web, --stock
+# is only needed for the full profile.
 #
 # --shell stages only this fork's own files (about 15 MB) and points the page
 # at another deployment's data/ for the stock pk3s, which the page reads at
@@ -30,11 +42,18 @@
 # Download groups in a manifest:
 #   core   this fork's files (zz-*.pk3 override the stock files; later pk3
 #          names win), the loose configs, the stock data, xoncompat and font
-#          pk3s, the maps core pack: needed before the menu
-#   map    one map's pack ("map": its name): fetched when the map is asked
-#          for, or in the background ("Download all maps")
-#   extra  the maps pk3's unused textures: background only
-#   music  the music pk3: optional, background
+#          pk3s, the maps core pack; of a split set, its core pack: needed
+#          before the menu
+#   map    one map's pack ("map": its name), and of a split set the shared
+#          packs maps need ("kind": "shared"): fetched in the background, or
+#          at once when a map that needs them is asked for
+#   extra  the maps pk3's unused textures; a split set's detail and extras
+#          packs: background only
+#   music  the music pk3: background
+# A split set's manifest also has "set", "firstPlay" (the packs to fetch
+# before the game starts, besides the core group) and "maps" (per map, the
+# packs it needs besides the core group, its own pack last), and each of its
+# packs "kind" and "priority" (the background order).
 # Left out: nexcompat (old Nexuiz map textures, 125 MB; only servers running
 # Nexuiz maps need it, and the browser cannot join servers).
 #
@@ -68,9 +87,11 @@ OWN_ONLY=0
 SLIM=""
 ASTC=""
 WEBSET=""
+ASTC_MANIFEST=""
+WEB_MANIFEST=""
 SPLIT=1
 
-usage() { sed -n '2,62p' "$0" >&2; exit 2; }
+usage() { sed -n '2,80p' "$0" >&2; exit 2; }
 while [ $# -gt 0 ]; do
     case "$1" in
         --stock) STOCK="${2:?}"; shift 2 ;;
@@ -80,6 +101,8 @@ while [ $# -gt 0 ]; do
         --slim) SLIM="${2:?}"; shift 2 ;;
         --astc) ASTC="${2:?}"; shift 2 ;;
         --web) WEBSET="${2:?}"; shift 2 ;;
+        --astc-manifest) ASTC_MANIFEST="${2:?}"; shift 2 ;;
+        --web-manifest) WEB_MANIFEST="${2:?}"; shift 2 ;;
         --no-split) SPLIT=0; shift ;;
         --out) OUT="${2:?}/data"; shift 2 ;;
         -h|--help) usage ;;
@@ -102,12 +125,28 @@ if [ -n "$ZIP" ]; then
     echo "Extracting stock pk3s from $ZIP…"
     STOCK="$(unpack "$ZIP" stock)"
 fi
+# The split set's manifest of a source: the one named, else the one lying
+# in its directory (godnotic-data-<profile>.json, or godnotic-data.json as
+# scripts/split-data-packs.py writes it).
+split_manifest() { # NAMED SRC PROFILE -> prints the manifest's path (or nothing)
+    if [ -n "$1" ]; then
+        [ -f "$1" ] || { echo "stage-web-data: no manifest $1" >&2; exit 1; }
+        echo "$1"
+    elif [ -d "$2" ]; then
+        for f in "$2/godnotic-data-$3.json" "$2/godnotic-data.json"; do
+            if [ -f "$f" ]; then echo "$f"; return; fi
+        done
+    fi
+}
 if [ -n "$SHELL_STOCK" ] || [ "$OWN_ONLY" = "1" ]; then
     STOCK=""
     ASTC=""
     WEBSET=""
-else
-    [ -n "$STOCK" ] || { echo "stage-web-data: pass --stock DIR, --zip FILE or --shell URL" >&2; usage; }
+fi
+[ -z "$ASTC" ] || ASTC_MANIFEST="$(split_manifest "$ASTC_MANIFEST" "$ASTC" astc)"
+[ -z "$WEBSET" ] || WEB_MANIFEST="$(split_manifest "$WEB_MANIFEST" "$WEBSET" dxt)"
+if [ -z "$SHELL_STOCK" ] && [ "$OWN_ONLY" != "1" ] && { [ -n "$STOCK" ] || [ -z "$WEB_MANIFEST" ]; }; then
+    [ -n "$STOCK" ] || { echo "stage-web-data: pass --stock DIR, --zip FILE, --web with a split set, or --shell URL" >&2; usage; }
     [ -d "$STOCK" ] || { echo "stage-web-data: $STOCK is not a directory" >&2; exit 1; }
     ls "$STOCK"/xonotic-*-data.pk3 >/dev/null 2>&1 || { echo "stage-web-data: no xonotic-*-data.pk3 in $STOCK" >&2; exit 1; }
 fi
@@ -132,20 +171,21 @@ split() { # SRCDIR NAME -> prints the directory of split packs (or nothing)
         echo "$work/split-$2"
     fi
 }
+# (Not for a split set: its packs are staged as they are.)
 WEB_SRC="${WEBSET:-$STOCK}"
 WEB_SPLIT=""
-[ -z "$WEB_SRC" ] || WEB_SPLIT="$(split "$WEB_SRC" web)"
+[ -z "$WEB_SRC" ] || [ -n "$WEB_MANIFEST" ] || WEB_SPLIT="$(split "$WEB_SRC" web)"
 ASTC_SPLIT=""
-[ -z "$ASTC" ] || ASTC_SPLIT="$(split "$ASTC" astc)"
+[ -z "$ASTC" ] || [ -n "$ASTC_MANIFEST" ] || ASTC_SPLIT="$(split "$ASTC" astc)"
 
 rm -rf "$OUT"
 mkdir -p "$OUT/blobs" "$OUT/m"
 
 COMMIT="${VERCEL_GIT_COMMIT_SHA:-${GITHUB_SHA:-$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo local)}}" \
-"$PY" -I - "$SLIM" "$OUT" "$SHELL_STOCK" "$work/pack" "$STOCK" "$WEB_SRC" "$WEB_SPLIT" "$ASTC" "$ASTC_SPLIT" <<'PY'
-import hashlib, json, os, sys, time, zipfile, zlib
+"$PY" -I - "$SLIM" "$OUT" "$SHELL_STOCK" "$work/pack" "$STOCK" "$WEB_SRC" "$WEB_SPLIT" "$ASTC" "$ASTC_SPLIT" "$WEB_MANIFEST" "$ASTC_MANIFEST" <<'PY'
+import hashlib, json, os, re, sys, time, zipfile, zlib
 
-slim, out, shell_stock, work_dir, stock, web_src, web_split, astc, astc_split = sys.argv[1:10]
+slim, out, shell_stock, work_dir, stock, web_src, web_split, astc, astc_split, web_manifest, astc_manifest = sys.argv[1:12]
 os.makedirs(work_dir, exist_ok=True)
 
 # 32 MiB: the page stores, verifies and resumes in units of this size, and
@@ -153,7 +193,8 @@ os.makedirs(work_dir, exist_ok=True)
 # hash, so every visitor would download everything again: leave it.
 CHUNK = 32 * 1024 * 1024
 # The map a first visit downloads with the core data, so a first match on
-# it needs no second wait: small (4 MB) and in most game types.
+# it needs no second wait: small (4 MB) and in most game types. (A split
+# set names its own: "default_map".)
 DEFAULT_MAP = 'stormkeep'
 
 def put_blob(data, host):
@@ -262,7 +303,7 @@ for d, dirs, fs in os.walk(slim):
         own.append(record(full, rel, 'core'))
 
 # ---- the stock files of one profile
-def stock_files(src, split_dir, host_maps=True):
+def stock_files(src, split_dir, host_maps=True, host=True):
     files = []
     split = None
     if split_dir:
@@ -273,7 +314,7 @@ def stock_files(src, split_dir, host_maps=True):
             continue
         full = os.path.join(src, f)
         if f.endswith('-music.pk3'):
-            files.append(record(full, f, 'music', stock=True))
+            files.append(record(full, f, 'music', stock=True, host=host))
         elif split and f == split['source']:
             files.append(record(os.path.join(split_dir, split['index']), split['index'], 'core', stock=True))
             if split.get('extra'):
@@ -283,8 +324,87 @@ def stock_files(src, split_dir, host_maps=True):
                 files.append(record(os.path.join(split_dir, p), p, 'map', stock=True, map=name))
         else:
             maps_pk3 = f.endswith('-maps.pk3')
-            files.append(record(full, f, 'core', stock=True, host=host_maps or not maps_pk3))
+            files.append(record(full, f, 'core', stock=True, host=host and (host_maps or not maps_pk3)))
     return files
+
+# ---- a split set (docs/PHONE_ASSETS.md, "Split set"), staged as it is
+PACK_NAME = re.compile(r'^godnotic-[A-Za-z0-9._-]+\.pk3$')
+GROUP_OF = {'core': 'core', 'map': 'map', 'shared': 'map', 'music': 'music', 'detail': 'extra', 'extras': 'extra'}
+
+def split_set(src, manifest_path):
+    """The packs of a split set and what the page needs of its manifest:
+    (files, {'set', 'defaultMap', 'firstPlay', 'maps'}). The manifest is
+    checked the way the apps check it (docs/DATA_FETCH.md), and every pack
+    against its size and sha256."""
+    def bad(why):
+        sys.exit(f'stage-web-data: {manifest_path}: {why}')
+    with open(manifest_path) as f:
+        m = json.load(f)
+    if not isinstance(m, dict) or m.get('format') != 1:
+        bad('not a format 1 data manifest')
+    if not (isinstance(m.get('set'), str) and m['set']):
+        bad('no "set"')
+    packs = {}
+    for p in m.get('packs') or []:
+        name = p.get('name')
+        if not name or name in packs:
+            bad(f'pack without a name, or twice: {name}')
+        if not PACK_NAME.match(p.get('install_as') or ''):
+            bad(f'{name}: bad install_as')
+        if p.get('kind') not in GROUP_OF:
+            bad(f'{name}: unknown kind {p.get("kind")}')
+        if not (isinstance(p.get('size'), int) and p['size'] > 0 and re.fullmatch(r'[0-9a-f]{64}', p.get('sha256') or '')
+                and isinstance(p.get('priority'), int)):
+            bad(f'{name}: size, sha256 or priority missing')
+        packs[name] = p
+    maps = m.get('maps') or {}
+    for n in list(m.get('first_play') or []) + [n for v in maps.values() for n in v.get('needs', [])] \
+            + [n for p in packs.values() for n in p.get('depends', [])]:
+        if n not in packs:
+            bad(f'{n} is named but is not a pack')
+    if not m.get('first_play'):
+        bad('no "first_play"')
+    files = []
+    for p in sorted(packs.values(), key=lambda p: (p['priority'], p['name'])):
+        full = os.path.join(src, p['file'] if os.path.exists(os.path.join(src, p.get('file') or '')) else p['install_as'])
+        if not os.path.exists(full):
+            bad(f'{p["name"]}: {p["install_as"]} is not in {src}')
+        extra = {'pack': p['name'], 'kind': p['kind'], 'priority': p['priority']}
+        own = [n for n, v in maps.items() if v.get('pack') == p['name']]
+        if p['kind'] == 'map':
+            if len(own) != 1:
+                bad(f'{p["name"]}: a map pack is one map\'s own pack, this is the pack of {own}')
+            extra['map'] = own[0]
+        e = record(full, p['install_as'], GROUP_OF[p['kind']], stock=True, **extra)
+        if e['size'] != p['size'] or e['sha256'] != p['sha256']:
+            bad(f'{p["install_as"]} is not the pack the manifest lists (size or sha256)')
+        # A pack mounted while the game runs goes to the end of the search
+        # path: a .bsp anywhere but in its map's own pack (a stand-in, as
+        # the split made here has) would be the one the engine loads, or
+        # would make a map look playable before its pack is in.
+        with zipfile.ZipFile(full) as z:
+            for n in z.namelist():
+                mm = re.fullmatch(r'maps/([^/]+)\.bsp', n)
+                if mm and extra.get('map') != mm.group(1):
+                    bad(f'{p["install_as"]} has {n}: a map\'s .bsp belongs in that map\'s own pack only')
+        files.append(e)
+    by_pack = {f['pack']: f for f in files}
+    core = {n for n, p in packs.items() if p['kind'] == 'core'}
+    for n in core:
+        if n not in m['first_play']:
+            bad(f'the core pack {n} is not in first_play')
+    need = {}
+    for name, v in sorted(maps.items()):
+        if v.get('pack') not in packs:
+            bad(f'map {name}: no pack')
+        # What the map needs besides the core group, its own pack last: the
+        # page mounts in this order, so "the .bsp is there" means "playable".
+        rest = [n for n in v.get('needs', []) if n not in core and n != v['pack']] + [v['pack']]
+        need[name] = [by_pack[n]['name'] for n in rest]
+    meta = {'set': m['set'], 'firstPlay': [by_pack[n]['name'] for n in m['first_play'] if n not in core], 'maps': need}
+    if m.get('default_map') in need:
+        meta['defaultMap'] = m['default_map']
+    return files, meta
 
 def write_manifest(doc):
     """Writes m/<id>.json, id = the start of its own text's sha256."""
@@ -294,26 +414,43 @@ def write_manifest(doc):
         f.write(text)
     return 'm/' + mid + '.json'
 
-def manifest(profile, stock_list, with_own=True):
+def manifest(profile, stock_list, with_own=True, meta=None):
     files = (own if with_own else []) + stock_list
-    doc = {'format': 4, 'chunk': CHUNK, 'profile': profile, 'files': files}
-    if any(f.get('map') == DEFAULT_MAP for f in files):
+    # Format 5: a split set's "set", "firstPlay" and "maps", and "kind",
+    # "pack" and "priority" on its packs. Without them it reads as format 4.
+    doc = {'format': 5 if meta else 4, 'chunk': CHUNK, 'profile': profile, 'files': files}
+    if meta:
+        doc.update(meta)
+    elif any(f.get('map') == DEFAULT_MAP for f in files):
         doc['defaultMap'] = DEFAULT_MAP
     if shell_stock and with_own:
         doc['stock'] = shell_stock  # stock files: that host's stock.json
     return write_manifest(doc)
 
+def profile_files(src, split_dir, set_manifest):
+    """(stock files, split-set meta or None) of one profile's source."""
+    if set_manifest:
+        return split_set(src, set_manifest)
+    return stock_files(src, split_dir), None
+
 profiles = {}
 stock_profiles = {}
-web_stock = stock_files(web_src, web_split)
-profiles['web'] = {'manifest': manifest('web', web_stock)}
+web_stock, web_meta = profile_files(web_src, web_split, web_manifest)
+profiles['web'] = {'manifest': manifest('web', web_stock, meta=web_meta)}
 if web_stock:
-    stock_profiles['web'] = {'manifest': manifest('web', web_stock, with_own=False)}
+    stock_profiles['web'] = {'manifest': manifest('web', web_stock, with_own=False, meta=web_meta)}
 if astc:
-    astc_stock = stock_files(astc, astc_split)
-    profiles['astc'] = {'manifest': manifest('astc', astc_stock), 'gpu': 'astc'}
-    stock_profiles['astc'] = {'manifest': manifest('astc', astc_stock, with_own=False), 'gpu': 'astc'}
-if stock and web_split:
+    astc_stock, astc_meta = profile_files(astc, astc_split, astc_manifest)
+    profiles['astc'] = {'manifest': manifest('astc', astc_stock, meta=astc_meta), 'gpu': 'astc'}
+    stock_profiles['astc'] = {'manifest': manifest('astc', astc_stock, with_own=False, meta=astc_meta), 'gpu': 'astc'}
+if stock and web_meta:
+    # The web profile is a split set, which shares no chunk with the stock
+    # pk3s: none of them is hosted for the full profile, whose visitors
+    # hold them all (or get the web profile).
+    full_stock = stock_files(stock, None, host=False)
+    profiles['full'] = {'manifest': manifest('full', full_stock), 'keep': True}
+    stock_profiles['full'] = {'manifest': manifest('full', full_stock, with_own=False), 'keep': True}
+elif stock and web_split:
     # What pages before maps on demand stored: the stock pk3s whole. Only
     # the maps pk3 differs from the web profile, and it is not hosted.
     full_stock = stock_files(stock, None, host_maps=False)
@@ -362,6 +499,10 @@ def summary(name, path):
     for f in m['files']:
         by[f['group']] = by.get(f['group'], 0) + f['size']
     first = sum(f["size"] for f in m["files"] if f.get("hosted", True))
+    if 'firstPlay' in m:
+        play = sum(f["size"] for f in m["files"] if f['group'] == 'core' or f['name'] in m['firstPlay'])
+        return f"{name}: set {m['set']}, " + ', '.join(f'{g} {v/1e6:.0f} MB' for g, v in sorted(by.items())) + \
+            f"; first play {play/1e6:.0f} MB, then {(first - play)/1e6:.0f} MB in the background"
     return f"{name}: " + ', '.join(f'{g} {v/1e6:.0f} MB' for g, v in sorted(by.items())) + f"; one download {first/1e6:.0f} MB"
 blobs = os.listdir(os.path.join(out, 'blobs'))
 for name, p in profiles.items():

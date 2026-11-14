@@ -22,6 +22,7 @@
 
 static cvar_t snd_lazyload = {CF_CLIENT, "snd_lazyload", "1", "precached sounds are decoded when first played, or in the background during the game (Godnotic); 0 = all at precache"};
 static cvar_t snd_lazyload_maxsize = {CF_CLIENT, "snd_lazyload_maxsize", "48", "sound files bigger than this many KiB are decoded at precache even with snd_lazyload (one decode of a big file would be a long frame in the game)"};
+static cvar_t snd_lazyload_maxlength = {CF_CLIENT, "snd_lazyload_maxlength", "4", "Ogg sounds (Vorbis or Opus) that decode to more than this many seconds are decoded during the load, on worker threads where there are any, even with snd_lazyload: what a first play would cost goes by the length, and an Opus file holds about twice the audio of a Vorbis file of its size; 0 = go by snd_lazyload_maxsize alone (Godnotic)"};
 static cvar_t snd_lazyload_budget = {CF_CLIENT, "snd_lazyload_budget", "4", "milliseconds per frame spent decoding precached sounds not played yet while a menu or dialog is open in the game (0 = only on first play)"};
 
 // The file S_LoadSound would read for name (sound/<name> or <name>, a .wav
@@ -69,7 +70,67 @@ static fs_offset_t TouchSnd_File(const char *name, char *path, size_t pathsize)
 	return -1;
 }
 
-// snd_ogg.c (touch_loadogg.h): big Vorbis files decoded on worker threads
+// How long an Ogg file plays, from its first page (codec, sample rate, Opus
+// pre-skip) and the granule position of its last page; -1 when it is not an
+// Ogg Vorbis or Opus file or cannot be told. Two small reads, no decoder.
+static double TouchSnd_OggSeconds(const char *path, fs_offset_t size)
+{
+	unsigned char head[64], tail[8192];
+	fs_offset_t n, i, at;
+	double rate, skip = 0;
+	int64_t granule = -1;
+	qfile_t *f = FS_OpenVirtualFile(path, true);
+	if (!f)
+		return -1;
+	n = FS_Read(f, head, sizeof(head));
+	if (n < 48 || memcmp(head, "OggS", 4))
+	{
+		FS_Close(f);
+		return -1;
+	}
+	i = 27 + head[26];
+	if (i + 19 <= n && !memcmp(head + i, "OpusHead", 8))
+	{
+		rate = 48000;
+		skip = head[i + 10] | (head[i + 11] << 8);
+	}
+	else if (i + 16 <= n && !memcmp(head + i, "\x01vorbis", 7))
+		rate = head[i + 12] | (head[i + 13] << 8) | (head[i + 14] << 16) | ((unsigned)head[i + 15] << 24);
+	else
+		rate = 0;
+	// the last page starts within its own size of the end: 8 KiB holds it for
+	// every sound effect (a page is a quarter second or so of audio)
+	at = max(0, size - (fs_offset_t)sizeof(tail));
+	if (rate > 0 && FS_Seek(f, at, SEEK_SET) == 0)
+	{
+		n = FS_Read(f, tail, sizeof(tail));
+		for (i = n - 27; i >= 0; i--)
+		{
+			if (!memcmp(tail + i, "OggS", 4) && tail[i + 4] == 0)
+			{
+				int b;
+				granule = 0;
+				for (b = 7; b >= 0; b--)
+					granule = (granule << 8) | tail[i + 6 + b];
+				break;
+			}
+		}
+	}
+	FS_Close(f);
+	if (granule < 0)
+		return -1;
+	return max(0, (double)granule - skip) / rate;
+}
+
+// An Ogg file by its name: .ogg (Vorbis or Opus), or .opus (the name
+// TouchSnd_File and Touch_Opus_LoadFile also try for a .ogg)
+static qbool TouchSnd_IsOgg(const char *path)
+{
+	size_t len = strlen(path);
+	return (len >= 4 && !strcasecmp(path + len - 4, ".ogg")) || (len >= 5 && !strcasecmp(path + len - 5, ".opus"));
+}
+
+// snd_ogg.c (touch_loadogg.h): big Vorbis and Opus files decoded on worker threads
 void TouchOgg_Init(void);
 qbool TouchOgg_StartAsync(sfx_t *sfx, const char *filename);
 qbool TouchOgg_Pending(const sfx_t *sfx);
@@ -82,6 +143,7 @@ static qbool TouchSnd_Defer(sfx_t *sfx)
 {
 	fs_offset_t size;
 	char path[MAX_QPATH + 16];
+	qbool big;
 	if (sfx->fetcher || (sfx->flags & TOUCH_SFXFLAG_DEFERRED))
 		return sfx->fetcher == NULL;
 	if (!snd_lazyload.integer || nosound.integer || !snd_precache.integer || snd_renderbuffer == NULL)
@@ -92,11 +154,23 @@ static qbool TouchSnd_Defer(sfx_t *sfx)
 	size = TouchSnd_File(sfx->name, path, sizeof(path));
 	if (size < 0)
 		return false;
-	if (size > snd_lazyload_maxsize.value * 1024)
+	{
+		// By decoded length where it can be told: at 32 kbit/s and up, a file
+		// of maxlength * 4000 bytes or less cannot be longer than maxlength.
+		double seconds = -1;
+		big = size > snd_lazyload_maxsize.value * 1024;
+		if (snd_lazyload_maxlength.value > 0 && TouchSnd_IsOgg(path))
+		{
+			if (size <= snd_lazyload_maxlength.value * 4000)
+				big = false;
+			else if ((seconds = TouchSnd_OggSeconds(path, size)) >= 0)
+				big = seconds > snd_lazyload_maxlength.value;
+		}
+	}
+	if (big)
 	{
 		// decoded on a worker thread while the load goes on
-		size_t len = strlen(path);
-		if (len < 4 || strcasecmp(path + len - 4, ".ogg") || !TouchOgg_StartAsync(sfx, path))
+		if (!TouchSnd_IsOgg(path) || !TouchOgg_StartAsync(sfx, path))
 			return false;
 	}
 	sfx->flags |= TOUCH_SFXFLAG_DEFERRED;
@@ -199,6 +273,7 @@ static void TouchSnd_Init(void)
 	Cvar_RegisterVariable(&snd_lazyload);
 	Cvar_RegisterVariable(&snd_lazyload_budget);
 	Cvar_RegisterVariable(&snd_lazyload_maxsize);
+	Cvar_RegisterVariable(&snd_lazyload_maxlength);
 	touch_snd_loadsome = TouchSnd_LoadSome;
 	touch_snd_poll = TouchOgg_Poll;
 	TouchOgg_Init();

@@ -3,6 +3,7 @@
 //   node tests/web-cache/e2e.mjs --chrome PATH --url URL --profile DIR [--label NAME]
 //        [--no-click] [--timeout SEC] [--throttle-bps N] [--latency MS] [--stop-after-bytes N]
 //        [--map NAME] [--map2 NAME] [--expect-fetch] [--bots N] [--settle SEC] [--cpu N]
+//        [--scan] [--wait-complete] [--map3 NAME] [--bg-frames SEC]
 //
 // --map: once the menu is up, start a bot match on NAME ("map NAME" from
 // the console, bot_number N, default 4) and wait until it is playable (the
@@ -11,7 +12,7 @@
 // pack first; --expect-fetch fails the run when it needed none). Each
 // step's time, data bytes and peak heap go in the JSON. A map change on
 // demand, from a fresh profile:
-//   tests/web-cache/e2e.sh /tmp/p 'http://localhost:8080/?autoplay&allmaps=0' first \
+//   tests/web-cache/e2e.sh /tmp/p 'http://localhost:8080/?autoplay&background=0' first \
 //       --map stormkeep --map2 dance --expect-fetch
 //
 // Opens URL in a Chrome profile kept in DIR (so a second run is a reload with
@@ -20,6 +21,13 @@
 // one JSON line: times since navigation (ms), every request under data/, and
 // the page's own timing marks. Options go on the command line, not in the
 // environment (the node wrapper on the dev machine drops environment).
+//
+// The split set (progressive download): --scan (with ?debug in the URL)
+// keeps every engine console line that looks like a missing file or an
+// error; --wait-complete waits, after the maps, until the background
+// download has stored and mounted everything; --map3 then plays a map whose
+// packs were mounted while the game ran. Each map step also samples the
+// frames for 3 s: frames a second, the longest gap, gaps over 50 ms.
 //
 // It drives Chrome with the GPU (ANGLE on EGL); without it the engine runs
 // on SwiftShader and every evaluation times out.
@@ -76,6 +84,10 @@ for (let i = 0; i < 100; i++) {
 }
 await new Promise((r, j) => { ws.onopen = r; ws.onerror = j; });
 let id = 0;
+const scan = flag('scan');
+const SUSPECT = /not found|couldn't|could not|can't|cannot|missing|failed|unknown command|error|unable/i;
+const problems = [];
+const engineStatus = []; // what the engine's own "touch_data_status" printed (mid-download, at the end)
 const pending = new Map();
 const requests = [];
 const byId = new Map();
@@ -95,6 +107,10 @@ ws.onmessage = (ev) => {
     if (r) { r.status = m.params.response.status; r.cached = !!(m.params.response.fromDiskCache || m.params.response.fromMemoryCache); }
   } else if (m.method === 'Network.dataReceived') {
     if (byId.has(m.params.requestId)) dataBytes += m.params.dataLength;
+  } else if (m.method === 'Runtime.consoleAPICalled' && scan) {
+    const text = m.params.args.map((a) => a.value === undefined ? a.description || '' : String(a.value)).join(' ').replace(/\x1b\[[0-9;]*m|\^[0-9]|\^x[0-9a-f]{3}/gi, '');
+    if (/^touch_data_state "/.test(text)) engineStatus.push(text);
+    else if (SUSPECT.test(text) && !problems.includes(text) && problems.length < 80) problems.push(text);
   }
 };
 // A page busy with a long task (the engine loading a map) answers late:
@@ -231,16 +247,54 @@ const playMap = async (name, key) => {
   console.error(`${(Date.now() - t0) / 1000}s: ${key} loaded`);
   out.events[key] = Date.now() - t0;
   out[key + 'Ms'] = Date.now() - t;
-  const f = await evaluate('(() => new Promise((r) => { let n = 0; const t = performance.now(); const step = () => { n++; if (performance.now() - t < 3000) requestAnimationFrame(step); else r(n); }; requestAnimationFrame(step); }))()');
-  out[key + 'Fps'] = f / 3;
+  const f = await frames(3000);
+  out[key + 'Fps'] = f.n / 3;
+  out[key + 'Frames'] = f;
+  out[key + 'Data'] = await dataState();
   out[key + 'Bytes'] = dataBytes - before;
   out[key + 'Heap'] = await heap();
   out[key + 'Lazy'] = await evaluate('window.xt && xt.lazyStats ? xt.lazyStats() : null');
 };
+// Frames over `ms`: how many, the longest gap between two, gaps over 50 ms.
+const frames = async (ms) => (await evaluate(`(() => new Promise((r) => { let n = 0, max = 0, over = 0, last = performance.now(); const t = last; const step = () => { const now = performance.now(); const d = now - last; last = now; n++; if (d > max) max = d; if (d > 50) over++; if (now - t < ${ms}) requestAnimationFrame(step); else r({ n, maxGapMs: Math.round(max), over50: over }); }; requestAnimationFrame(step); }))()`)) || {};
+// Where the background download stands.
+const dataState = () => evaluate('window.xt && xt.bg ? { state: xt.bg.state, have: xt.prog.have.size, of: xt.prog.counted.length, mounted: xt.mounts.size, sent: xt.bg.sent } : null');
+if (done) { out.bytesAtMenu = dataBytes; out.dataAtMenu = await dataState(); }
 if (done && map1) await playMap(map1, 'map1');
+if (done && scan) await evaluate(`xt.command('touch_data_status')`);
+// --bg-frames SEC: in the match, the frames over SEC seconds with the
+// background download running, then with it paused ("web_maps pause").
+const bgFrames = Number(opt('bg-frames', '0'));
+if (done && bgFrames && !out.error) {
+  await sleep(6000); // the load settles
+  out.bgRunning = Object.assign(await frames(bgFrames * 1000), { data: await dataState() });
+  await evaluate(`xt.command('web_maps pause')`);
+  await sleep(1500);
+  out.bgPaused = Object.assign(await frames(bgFrames * 1000), { data: await dataState() });
+  await evaluate(`xt.command('web_maps resume')`);
+}
 if (done && map2 && !out.error) await playMap(map2, 'map2');
 // --expect-fetch: the second map must have been downloaded on demand.
 if (done && map2 && flag('expect-fetch') && !out.error && !(out.map2Bytes > 0)) out.error = `${map2} was not fetched on demand`;
+if (done && flag('wait-complete') && !out.error) {
+  const t = Date.now();
+  let st = null;
+  while (Date.now() - t < timeout) {
+    st = await dataState();
+    if (st && (st.state === 'complete' || st.state === 'error')) break;
+    await sleep(500);
+  }
+  out.events.complete = Date.now() - t0;
+  out.dataAtEnd = st;
+  out.framesAfter = await frames(3000);
+  // The music's track list, run again when its pack landed.
+  await evaluate(`xt.command('touch_data_status; echo XTREMAP $g_cdtracks_remaplist')`);
+  await sleep(500);
+  out.remap = await evaluate(`(xt.log().filter((l) => l.includes('XTREMAP')).pop() || '')`);
+  if (!st || st.state !== 'complete') out.error = 'the background download did not complete: ' + JSON.stringify(st);
+  else if (opt('map3')) await playMap(opt('map3'), 'map3');
+}
+if (scan) { out.problems = problems; out.engineStatus = engineStatus; }
 out.peak = peak;
 // --settle SEC: keep playing, then sample again (the page gives read-ahead
 // memory back about 15 s after a load).
