@@ -140,45 +140,48 @@ fn snap(name: &str) -> Store {
 }
 
 #[test]
-fn home_is_the_banner_and_a_bar_of_three_tabs() {
+fn home_is_the_banner_three_cards_and_a_bar_of_settings_credits_quit() {
     for name in ["home.json", "home-live.json"] {
         let s = snap(name);
         let kids = s.children("home");
-        assert_eq!(kids.iter().map(|k| k.kind.as_str()).collect::<Vec<_>>(), ["image", "tabbar"], "{name}: Home holds the banner and the bar of tabs");
+        assert_eq!(kids.iter().map(|k| k.kind.as_str()).collect::<Vec<_>>(), ["image", "grid", "tabbar"], "{name}: banner, the cards, the bar");
         let banner = kids[0];
         assert_eq!(banner.str("role").as_deref(), Some("banner"), "{name}");
         assert_eq!(banner.str("emphasis").as_deref(), Some("high"), "{name}: the banner is asked to be large");
-        // On Home itself no tab is the open one.
-        assert_eq!(kids[1].str("current").as_deref(), Some(""), "{name}");
-        let tabs = s.children(&kids[1].id);
-        assert_eq!(tabs.iter().map(|c| c.title()).collect::<Vec<_>>(), ["Singleplayer", "Campaign", "Multiplayer"], "{name}");
-        for c in &tabs {
-            assert_eq!(c.kind, "card", "{name}: a renderer without tabs still shows {} as a card", c.id);
+        // the three cards, one row
+        assert_eq!(kids[1].f64("maxColumns"), Some(3.0), "{name}");
+        let cards = s.children(&kids[1].id);
+        assert_eq!(cards.iter().map(|c| c.title()).collect::<Vec<_>>(), ["Singleplayer", "Campaign", "Multiplayer"], "{name}");
+        for c in &cards {
+            assert_eq!(c.kind, "card");
+            assert_eq!(c.bool("featured"), Some(true), "{name}: {} is a large card", c.id);
             assert!(c.str("image").is_some_and(|i| i.starts_with("pk3:maps/")), "{name}: {} shows a picture from the game", c.id);
             assert!(c.obj("primary").is_some());
-            assert_ne!(c.bool("selected"), Some(true), "{name}: {} is not open on Home", c.id);
         }
-        // Settings, Credits and Quit are small header actions, never tabs.
+        // Settings, Credits and Quit: the bar along the bottom, none current on Home; not in the header
+        let bar = kids[2];
+        assert_eq!(bar.str("current").as_deref(), Some(""), "{name}");
+        let tabs = s.children(&bar.id);
+        let ids: Vec<String> = tabs.iter().filter_map(|t| t.obj("action").and_then(|a| a["id"].as_str().map(str::to_string))).collect();
+        assert_eq!(ids, ["settings", "credits", "quit"], "{name}");
+        assert!(tabs.iter().all(|t| t.kind == "button"), "{name}: the bar holds buttons");
+        assert!(tabs[2].obj("action").unwrap().get("confirm").is_some(), "{name}: Quit asks first");
         let home = s.node("home").unwrap();
-        let actions: Vec<String> = home.arr("actions").iter().filter_map(|a| a["id"].as_str().map(str::to_string)).collect();
-        assert_eq!(actions, ["settings", "credits", "quit"], "{name}");
+        assert!(home.arr("actions").is_empty(), "{name}: the header has no Settings, Credits or Quit");
     }
     assert!(snap("home-live.json").node("home/tiles/mp").unwrap().str("subtitle").unwrap().contains("servers"));
 }
 
 #[test]
-fn the_three_mode_screens_carry_the_bar_with_their_own_tab_current() {
-    for (name, screen) in [("singleplayer.json", "sp"), ("campaign.json", "campaign"), ("servers.json", "mp")] {
+fn settings_and_credits_carry_the_bar_with_their_own_tab_current() {
+    for (name, screen) in [("settings.json", "settings"), ("credits.json", "credits")] {
         let s = snap(name);
-        let bar = s.children(screen).into_iter().find(|k| k.kind == "tabbar").unwrap_or_else(|| panic!("{name}: no bar of tabs"));
+        let bar = s.children(screen).into_iter().find(|k| k.kind == "tabbar").unwrap_or_else(|| panic!("{name}: no bar"));
         assert_eq!(bar.str("current").as_deref(), Some(screen), "{name}");
-        let open: Vec<String> = s.children(&bar.id).iter().filter(|c| c.bool("selected") == Some(true)).map(|c| c.id.clone()).collect();
-        assert_eq!(open, [format!("{}/{screen}", bar.id)], "{name}: exactly the open screen's tab is current");
     }
-    // Create a game (Create from Multiplayer) is not one of the three: no bar there.
-    let s = snap("singleplayer-create-lan.json");
-    if s.node("sp").is_some_and(|n| n.title() == "Create a game") {
-        assert!(s.children("sp").iter().all(|k| k.kind != "tabbar"));
+    // the mode screens have no bar
+    for (name, screen) in [("singleplayer.json", "sp"), ("campaign.json", "campaign"), ("servers.json", "mp")] {
+        assert!(snap(name).children(screen).iter().all(|k| k.kind != "tabbar"), "{name}: no bar on {screen}");
     }
 }
 

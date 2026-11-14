@@ -556,12 +556,12 @@ float RB_LayoutGrid(string id, float x, float y, float w, float region)
 	int cols = max(1, floor((w + gap) / (minw + gap)));
 	if (stof(uib_get(id, "maxColumns")) > 0) cols = min(cols, stof(uib_get(id, "maxColumns")));
 	bool featured = n && uib_get(first, "featured") == "1";
-	// the big cards of Home: side by side whenever three fit at 150 dp each
-	if (featured && n <= 4 && w >= n * D(150) + (n - 1) * gap) cols = n;
+	// the big cards of Home: always side by side in one row, never stacked
+	if (featured && n <= 4) cols = n;
 	float cw = (w - (cols - 1) * gap) / cols;
 	float rowy = y, rowh = 0;
 	// ... and as tall as the page allows, so Home needs no scrolling
-	float fit = rg_s[0].y - y - D(30) - D(62);
+	float fit = rg_s[0].y - y - D(featured ? 12 : 30) - D(62);
 	int rowfirst = rb_n;
 	// one image height for the whole grid, so images and icons line up
 	bool anyimg = false;
@@ -572,7 +572,7 @@ float RB_LayoutGrid(string id, float x, float y, float w, float region)
 		string c = uib_child(id, i);
 		float ih = anyimg ? RB_AspectH(uib_get(c, "aspect"), cw) * 0.62 : 0;
 		if (featured && anyimg)
-			ih = (cols == n) ? bound(D(84), fit, RB_AspectH(uib_get(c, "aspect"), cw)) : min(RB_AspectH(uib_get(c, "aspect"), cw), D(150));
+			ih = (cols == n) ? bound(D(64), fit, RB_AspectH(uib_get(c, "aspect"), cw)) : min(RB_AspectH(uib_get(c, "aspect"), cw), D(150));
 		if (i % cols == 0) rowfirst = rb_n;
 		float hh = RB_LayoutCard(c, x + (i % cols) * (cw + gap), rowy, cw, region, ih);
 		rowh = max(rowh, hh);
@@ -1028,10 +1028,10 @@ float RB_LayoutNode(string id, float x, float y, float w, float region)
 		{
 			float ih = RB_AspectH(uib_get(id, "aspect"), w);
 			if (uib_get(id, "role") == "banner")
-				// the Home banner, at the top: scaled to the window, most of the
-				// height between the header and the bar of tabs, as wide as the
-				// content allows (the picture keeps its own shape inside)
-				ih = max(D(44), min(w * 9 / 21, rg_s[0].y * 0.78 - D(8)));
+				// the Home banner, at the top: scaled to the window, it takes the
+				// height the row of cards leaves (they keep a 72 dp picture and their
+				// two lines), up to 45% of the page and 21:9 of its width
+				ih = bound(D(44), rg_s[0].y - y - D(16 + 12 + 62 + 72), min(w * 9 / 21, rg_s[0].y * 0.45));
 			else if (uib_get(id, "fit") == "contain") ih = min(ih, D(120));
 			e = RB_Item("image", id, region, eX * x + eY * y, eX * w + eY * ih);
 			if (e) { strcpy(e.rb_img, uib_get(id, "ref")); e.rb_sel = uib_get(id, "fit") == "contain"; }
@@ -1237,18 +1237,14 @@ float RB_LayoutSplit(string split, float top, float bottom, float cx, float cw)
 	return y;
 }
 
-// Home's bar of tabs (a "tabbar" node): one strip along the bottom of the window,
-// its tabs joined edge to edge, no cards and no gaps. The "current" tab (the
-// screen that is open) is a darker shade with an ember line on top. Returns
-// the bar's height.
+// Home's bar (a "tabbar" node: Settings, Credits, Quit): one strip along the
+// bottom of the window, its buttons joined edge to edge like tabs, no cards and
+// no gaps. The "current" one (its screen is open), a pressed one and the
+// focused one are a darker shade. Returns the bar's height.
 float RB_LayoutTabBar(string id, float W, float H)
 {
 	string cur = uib_get(id, "current");
-	float th = D(rb_short ? 52 : 64);
-	// a short window (a phone on its side): on the three screens themselves the
-	// tabs are one line each, so the screen keeps its room
-	if (rb_short && cur != "") th = D(44);
-	if (H - D(58) - th < D(160)) th = D(44);
+	float th = D(rb_short ? 48 : 56);
 	rg_o[7] = eY * (H - th);
 	rg_s[7] = eX * W + eY * th;
 	int n = uib_count(id);
@@ -1265,16 +1261,14 @@ float RB_LayoutTabBar(string id, float W, float H)
 		entity e = RB_Item("navtab", c, 7, eX * floor(j * tw) + eY * 0, eX * (floor((j + 1) * tw) - floor(j * tw)) + eY * th);
 		++j;
 		if (!e) break;
-		strcpy(e.rb_t1, uib_get(c, "title"));
-		strcpy(e.rb_t2, uib_get(c, "subtitle"));
-		strcpy(e.rb_img, uib_get(c, "image"));
-		strcpy(e.rb_icon, uib_get(c, "icon"));
+		strcpy(e.rb_t1, uib_get(c, "label"));
+		strcpy(e.rb_icon, uib_get(c, "action.icon"));
 		bool bycur = (cur != "") && (substring(c, strlen(c) - strlen(cur) - 1, -1) == strcat("/", cur));
-		if (bycur || uib_get(c, "selected") == "1") e.rb_sel = 1;
+		if (bycur) e.rb_sel = 1;
 		e.rb_style = j - 1;   // 0 = the first tab (no divider on its left)
-		if (uib_has(c, "primary"))
+		if (uib_has(c, "action"))
 		{
-			strcpy(e.rb_val, "primary");
+			strcpy(e.rb_val, "action");
 			e.rb_focus = 1;
 		}
 	}
@@ -1463,6 +1457,18 @@ void RB_Layout()
 		}
 	}
 	rg_content[0] = y + D(28);
+	if (uib_get(sc, "kind") == "home" && split == "" && rg_content[0] < rg_s[0].y)
+	{
+		// Home with room to spare: the banner stays at the top, the cards sit in
+		// the middle of what is left above the bar
+		float slack = (rg_s[0].y - rg_content[0]) * 0.5;
+		for (int i = 0; i < rb_n; ++i)
+		{
+			entity it = rb_item[i];
+			if (it.rb_region == 0 && !(it.rb_kind == "image" && uib_get(it.rb_id, "role") == "banner"))
+				it.rb_o_y += slack;
+		}
+	}
 	rg_max[0] = max(0, rg_content[0] - rg_s[0].y);
 	rg_max[4] = max(0, rg_content[4] - rg_s[4].y);
 	// the top modal (dialog or sheet)
@@ -2077,32 +2083,20 @@ void RB_DrawItem(entity e, int idx)
 		}
 		case "navtab":
 		{
-			// one tab of Home's bar: flat, joined to its neighbours; the open one darker
-			vector fill = e.rb_sel ? RB_BG : ((hot || pressed) ? RB_CARD_HI : RB_CARD);
-			RB_Fill(p, s, fill, a);
-			if (e.rb_img != "")
-			{
-				// the mode's map preview, faint behind the label
-				RB_Image(e.rb_img, p, s, (e.rb_sel ? 0.16 : 0.3) * a, false);
-				RB_Fill(p, s, fill, 0.35 * a);
-			}
+			// one segment of Home's bar: flat, joined to its neighbours; the open,
+			// pressed or focused one darker
+			bool dark = e.rb_sel || pressed || idx == rb_focusi;
+			RB_Fill(p, s, (dark ? RB_BG : (hot ? RB_CARD_HI : RB_CARD)), a);
 			if (e.rb_style > 0) RB_Fill(p, eX * max(1, D(1)) + eY * s.y, RB_BLUE, 0.3 * a);
 			if (e.rb_sel)
 				RB_Fill(p, eX * s.x + eY * max(2, D(3)), RB_EMBER, a);
 			else
 				RB_Fill(p, eX * s.x + eY * 1, RB_BLUE, 0.35 * a);
 			string lbl = strcat(RB_Glyph(e.rb_icon), "  ", e.rb_t1);
-			bool two = s.y >= D(52) && e.rb_t2 != "";
-			float ly = p.y + (two ? (s.y - D(16) - D(18)) / 2 : (s.y - D(16)) / 2);
 			drawfont = FONT_USER + 3;
 			string fl = RB_Fit(lbl, D(16), s.x - D(20));
-			RB_Text(eX * (p.x + (s.x - RB_TextW(fl, D(16))) / 2) + eY * ly, fl, D(16), (e.rb_sel ? RB_EMBER : RB_TEXT), a);
+			RB_Text(eX * (p.x + (s.x - RB_TextW(fl, D(16))) / 2) + eY * (p.y + (s.y - D(16)) / 2), fl, D(16), (e.rb_sel ? RB_EMBER : RB_TEXT), a);
 			drawfont = FONT_USER;
-			if (two)
-			{
-				string sl = RB_Fit(e.rb_t2, D(12), s.x - D(20));
-				RB_Text(eX * (p.x + (s.x - RB_TextW(sl, D(12))) / 2) + eY * (ly + D(22)), sl, D(12), (e.rb_sel ? RB_TEXT : RB_MUTED), a);
-			}
 			break;
 		}
 		case "hero":
@@ -2651,6 +2645,7 @@ void RB_Activate(int idx, vector m)
 			if (e.rb_val != "" && !e.rb_dis) RB_Invoke(e.rb_id, e.rb_val);
 			return;
 		case "navtab":
+			// Quit asks first (RB_Invoke shows the action's confirm)
 			if (e.rb_val != "" && !e.rb_sel) RB_Invoke(e.rb_id, e.rb_val);
 			return;
 		case "switch": case "check":

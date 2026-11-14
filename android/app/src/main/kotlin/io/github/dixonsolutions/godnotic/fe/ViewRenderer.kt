@@ -78,7 +78,7 @@ class ViewRenderer(
 
     override fun create(id: String, parent: String?, index: Int, type: String, props: Map<String, Any?>, hints: Map<String, Any?>) {
         nodes[id]?.let { remove(id) }
-        // a child of Home's bar of tabs is drawn as a tab, whatever its type (a card)
+        // a child of Home's bar is drawn as one of its joined segments (a button)
         val inTabBar = parent?.let { nodes[it] }?.type == "tabbar"
         val e = try { if (inTabBar) tab(id, props) else build(id, type, props) } catch (ex: RuntimeException) { generic(id, type, props) }
         e.parent = parent
@@ -497,7 +497,12 @@ class ViewRenderer(
             return Entry(id, "grid", hs, row, props)
         }
         val g = FlowGrid(ctx, dp(props.num("minItem", 160.0).toFloat()), gap)
-        return Entry(id, "grid", g, g, props)
+        val e = Entry(id, "grid", g, g, props)
+        // Home's cards: always side by side in one row, whatever the width (the
+        // owner's rule); they shrink, and the description joins two when three
+        // do not fit (`compact`)
+        e.bind = { x -> val one = screenKind(x) == "home"; if (g.singleRow != one) { g.singleRow = one; g.requestLayout() } }
+        return e
     }
 
     private fun tabs(id: String, props: Map<String, Any?>): Entry {
@@ -829,9 +834,13 @@ class ViewRenderer(
             img.contain = x.props.str("fit") == "contain"
             // a banner or picture never takes more than a fifth (contain) or two fifths of the screen's height
             img.maxHeight = (ctx.resources.displayMetrics.heightPixels * if (img.contain) 0.2f else 0.4f).toInt()
-            // Home's banner is a compact header there: the cards must fit below it
-            // Home's banner sits at the top, scaled to the screen (the modes are a bar of tabs below)
-            if (img.contain && screenKind(x) == "home") img.maxHeight = (ctx.resources.displayMetrics.heightPixels * 0.5f).toInt()
+            // `role: banner` with `emphasis: high` (Home, docs/UI_BRIDGE.md): at the top, scaled to the
+            // screen; on a short screen (phone landscape) it gives way first: the row of cards and the
+            // bar of Settings, Credits and Quit must fit under it
+            val h = ctx.resources.displayMetrics.heightPixels
+            val hdp = h / ctx.resources.displayMetrics.density
+            if (x.props.str("role") == "banner" && x.props.str("emphasis") == "high") img.maxHeight = (h * (if (hdp < 480f) 0.16f else if (hdp < 640f) 0.22f else 0.3f)).toInt()
+            else if (img.contain && screenKind(x) == "home") img.maxHeight = (h * 0.11f).toInt()
             img.contentDescription = x.props.str("alt")
             val r = x.props.str("ref")
             if (r.isEmpty()) img.none() else picture(img, r)
@@ -839,7 +848,7 @@ class ViewRenderer(
         return e
     }
 
-    /** Home's three modes (`tabbar`): one strip along the bottom, its tabs joined edge to edge. */
+    /** Home's bar (`tabbar`: Settings, Credits, Quit): one strip along the bottom, joined edge to edge. */
     private fun tabbar(id: String, props: Map<String, Any?>): Entry {
         val row = Kit.row(ctx)
         row.setBackgroundColor(Theme.PANEL)
@@ -849,51 +858,44 @@ class ViewRenderer(
     }
 
     /**
-     * One tab of Home's bar: flat (no card), its map preview faint behind an icon, title and a line
-     * of state. The open screen's tab ("selected") is a darker shade with an ember line on top.
+     * One segment of Home's bar (Settings, Credits, Quit): a flat button joined to its neighbours.
+     * The open screen's one (the bar's `current`) is a darker shade with an ember line on top and
+     * does nothing when tapped; a pressed or focused one is darker too. Quit asks first (invoke).
      */
     private fun tab(id: String, props: Map<String, Any?>): Entry {
         val frame = FrameLayout(ctx)
-        frame.minimumHeight = dp(60f)
+        frame.minimumHeight = dp(56f)
         frame.isClickable = true
         frame.isFocusable = true
-        val img = RoundImage(ctx, 0f)
-        img.aspect = 1000f // the frame's height comes from its label, the picture only fills it
-        frame.addView(img, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        val col = Kit.column(ctx, 2f)
-        col.gravity = Gravity.CENTER
-        col.setPadding(dp(8f), dp(8f), dp(8f), dp(8f))
         val titleV = Kit.text(ctx, "", Theme.SP_BODY, Theme.TEXT, bold = true, lines = 1)
         titleV.gravity = Gravity.CENTER
         titleV.ellipsize = android.text.TextUtils.TruncateAt.END
         titleV.compoundDrawablePadding = dp(8f)
-        val sub = Kit.text(ctx, "", Theme.SP_CAPTION, Theme.TEXT_MUTED, lines = 1)
-        sub.gravity = Gravity.CENTER
-        sub.ellipsize = android.text.TextUtils.TruncateAt.END
-        col.addView(titleV)
-        col.addView(sub)
-        frame.addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        titleV.setPadding(dp(8f), 0, dp(8f), 0)
+        frame.addView(titleV, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
         val line = View(ctx)
         frame.addView(line, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, max(1, dp(1f)), Gravity.TOP))
         val e = Entry(id, "tab", frame, null, props)
         e.bind = { x ->
             val p = x.props
-            val current = p.bool("selected")
-            frame.setBackgroundColor(if (current) Theme.BG else Theme.PANEL_HI)
-            img.alpha = if (current) 0.14f else 0.3f
+            val cur = nodes[x.parent ?: ""]?.props?.str("current").orEmpty()
+            val current = cur.isNotEmpty() && x.id.endsWith("/$cur")
+            frame.background = android.graphics.drawable.StateListDrawable().apply {
+                val dark = android.graphics.drawable.ColorDrawable(Theme.BG)
+                addState(intArrayOf(android.R.attr.state_pressed), dark)
+                addState(intArrayOf(android.R.attr.state_focused), dark)
+                addState(intArrayOf(), android.graphics.drawable.ColorDrawable(if (current) Theme.BG else Theme.PANEL_HI))
+            }
             line.setBackgroundColor(if (current) Theme.EMBER else Theme.OUTLINE)
             (line.layoutParams as? FrameLayout.LayoutParams)?.let { it.height = if (current) dp(3f) else max(1, dp(1f)); line.layoutParams = it }
+            val a = p["action"].obj()
             val tint = if (current) Theme.EMBER else Theme.TEXT
-            titleV.text = title(p)
+            titleV.text = p.str("label").ifEmpty { a.str("label") }
             titleV.setTextColor(tint)
-            titleV.setCompoundDrawablesRelative(Icons.drawable(p.str("icon"), dp(18f), tint), null, null, null)
-            sub.text = p.str("subtitle")
-            sub.visibility = if (sub.text.isEmpty()) View.GONE else View.VISIBLE
-            frame.contentDescription = title(p)
+            titleV.setCompoundDrawablesRelative(Icons.drawable(a.str("icon"), dp(18f), tint), null, null, null)
+            frame.contentDescription = titleV.text
             frame.isSelected = current
-            val r = p.str("image")
-            if (r.isEmpty()) img.none() else picture(img, r)
-            frame.setOnClickListener { if (!e.props.bool("selected")) invoke(id, e.props["primary"].obj()) }
+            frame.setOnClickListener { if (!current) invoke(id, e.props["action"].obj()) }
         }
         return e
     }
@@ -1602,6 +1604,8 @@ class CarouselRow(ctx: Context, private val item: Int, private val gap: Int) : V
  * (or, with [wrap], at their own widths like words in a line).
  */
 class FlowGrid(ctx: Context, private val minChild: Int, private val gap: Int, private val wrap: Boolean = false) : ViewGroup(ctx) {
+    /** Every child in one row (Home's cards), however narrow. */
+    var singleRow = false
     override fun onMeasure(wSpec: Int, hSpec: Int) {
         val width = MeasureSpec.getSize(wSpec)
         if (wrap) {
@@ -1617,7 +1621,8 @@ class FlowGrid(ctx: Context, private val minChild: Int, private val gap: Int, pr
             setMeasuredDimension(width, y + line)
             return
         }
-        val cols = max(1, (width + gap) / (max(1, minChild) + gap))
+        val visible = (0 until childCount).count { getChildAt(it).visibility != GONE }
+        val cols = if (singleRow) max(1, visible) else max(1, (width + gap) / (max(1, minChild) + gap))
         val cw = (width - gap * (cols - 1)) / cols
         var y = 0; var rowH = 0; var col = 0
         for (i in 0 until childCount) {
@@ -1647,7 +1652,7 @@ class FlowGrid(ctx: Context, private val minChild: Int, private val gap: Int, pr
             return
         }
         val visible = (0 until childCount).map { getChildAt(it) }.filter { it.visibility != GONE }
-        val cols = max(1, (width + gap) / (max(1, minChild) + gap))
+        val cols = if (singleRow) max(1, visible.size) else max(1, (width + gap) / (max(1, minChild) + gap))
         val cw = (width - gap * (cols - 1)) / cols
         var y = 0
         var i = 0

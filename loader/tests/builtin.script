@@ -15,7 +15,7 @@ waitvisible 90000
 snapshot OUT/b3-back-after-match.png
 back
 wait 800
-click home:settings
+click home/nav/settings
 wait 2000
 waitvisible 60000
 snapshot OUT/b4-back-after-settings.png
