@@ -294,7 +294,7 @@ A badge is `{text, icon, tone}`, a chip `{icon, text}`; `tone` is one of `neutra
 | `selected` | string[] | selected row keys |
 | `rowSelect` | action | the name of choosing a row (label, icon) in a list whose `selection` is `single` or `multi`: there one tap or click chooses the row (event `row`, kind `select`) and `rowPrimary` needs a double tap, a double click or Enter (section 6.1) |
 | `rowPrimary` | action | what activating a row does (event `row`, kind `activate`): a tap when `selection` is `none` or absent, a double tap when it is `single` or `multi` |
-| `rows`, `scroll` | int 1..4, `vertical` / `horizontal` | `display: cards` with `scroll: horizontal`: the cards run in exactly `rows` rows and scroll sideways. The renderer sizes the tiles so that all `rows` rows (picture at `aspectItem`, one line of name) are in view between the sticky header and the action bar, never a cut-off row, with the scroll bar inside the list |
+| `rows`, `scroll` | int 1..4, `vertical` / `horizontal` | `display: cards` with `scroll: horizontal`: the cards run in exactly `rows` rows and scroll sideways. The renderer sizes the tiles so that all `rows` rows (picture at `aspectItem`, one line of name) are in view between the sticky header and the action bar, never a cut-off row, with the scroll bar inside the list. On a short window (a phone on its side) the GTK renderer shows fewer, taller rows (at least one) that fit under what is above the list rather than rows reached only by scrolling the page |
 | `rowActions` | action[] | per-row actions (swipe, context menu, trailing buttons) |
 | `state` | `ready`, `loading`, `error` | |
 | `empty` | `{title, text, icon, action}` | shown when `total` is 0 and `state` is ready |

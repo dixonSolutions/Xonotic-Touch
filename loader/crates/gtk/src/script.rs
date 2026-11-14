@@ -18,6 +18,9 @@
 //! join <addr> [pw]    start a session joining a server (as a godnotic:// link would)
 //! play                start the game the classic way
 //! waitvisible <ms>    wait until the window shows again (the session ended)
+//! measure <file> [node...]  append the window's size and the width its content needs, the
+//!                     number of map pictures that arrived, then each node's widget box in
+//!                     window coordinates and its own minimum width
 //! quit
 //! ```
 
@@ -193,6 +196,30 @@ fn step(w: std::rc::Weak<app::Shared>, mut lines: VecDeque<String>) {
                 }
             }
             println!("toplevels {n}");
+        }
+        "measure" => {
+            // layout checks: "window W H min M" (M > W: the content does not fit and is cut off),
+            // then "<node> X Y W H min M" for each node asked for (or "<node> none")
+            let mut out = String::new();
+            if let Some(win) = &win {
+                let content = win.content().map(|c| c.measure(gtk::Orientation::Horizontal, -1).0).unwrap_or(0);
+                out.push_str(&format!("window {} {} min {}\n", win.width(), win.height(), content));
+                out.push_str(&format!("map-pictures {}\n", app.images.borrow().arrived_count("pk3:maps/")));
+                for id in args.iter().skip(1) {
+                    let w = app.ui.borrow().as_ref().and_then(|u| u.activators.get(*id).cloned());
+                    match w.and_then(|w| w.compute_bounds(win).map(|b| (b, w.measure(gtk::Orientation::Horizontal, -1).0))) {
+                        Some((b, min)) => out.push_str(&format!("{id} {:.0} {:.0} {:.0} {:.0} min {min}\n", b.x(), b.y(), b.width(), b.height())),
+                        None => out.push_str(&format!("{id} none\n")),
+                    }
+                }
+            }
+            if let Some(p) = args.first() {
+                use std::io::Write;
+                if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(p) {
+                    let _ = f.write_all(out.as_bytes());
+                }
+            }
+            print!("{out}");
         }
         "quit" => {
             if let Some(a) = win.and_then(|w| w.application()) {

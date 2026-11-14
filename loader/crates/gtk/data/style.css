@@ -30,6 +30,11 @@ button.gn-play:hover { box-shadow: 0 6px 22px alpha(@gn_ember, 0.55); }
 .gn-card.gn-selected { box-shadow: inset 0 0 0 3px @accent_bg_color; }
 .gn-card.gn-featured .gn-card-title { font-size: 20px; }
 .gn-card.gn-featured .gn-card-text { padding: 14px 16px 16px 16px; }
+/* Home on a phone: three cards in one row, each a third of the width. The progress bar's
+ * own minimum (150px in Adwaita) would hold the row wider than the window. */
+.gn-narrow .gn-card.gn-featured .gn-card-title { font-size: 15px; }
+.gn-narrow .gn-card.gn-featured .gn-card-text { padding: 10px 8px 12px 8px; }
+.gn-card.gn-featured progressbar > trough, .gn-card.gn-featured progressbar > trough > progress { min-width: 0; }
 .gn-card.gn-dim { opacity: 0.5; }
 
 .gn-chip { border-radius: 999px; padding: 3px 10px; font-size: 12px; background: alpha(currentColor, 0.08); }

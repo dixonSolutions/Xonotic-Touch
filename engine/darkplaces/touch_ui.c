@@ -7,6 +7,7 @@
 #include "touch_shellbtn.h"
 #include "draw.h"
 #include "ft2.h"
+#include "ft2_fontdefs.h"
 #include "utf8lib.h"
 // OBJ_COMMON also goes into the dedicated server, which is built without SDL.
 #if defined(__has_include)
@@ -327,6 +328,8 @@ static const struct { const char *label; const char *cmd; } touchui_builtin_pale
 	{ "ready", "ready" },
 };
 
+static void TouchUI_LabelFont_f(cmd_state_t *cmd);
+
 void TouchUI_RegisterCvars(void)
 {
 	Cvar_RegisterVariable(&touch_kb_height);
@@ -342,6 +345,7 @@ void TouchUI_RegisterCvars(void)
 	Cvar_RegisterVariable(&touch_menu_keyboard);
 	Cvar_RegisterVariable(&touch_menu_keys_top);
 	Cvar_RegisterVariable(&touch_menu_keys_ask);
+	Cmd_AddCommand(CF_CLIENT, "touch_ui_labelfont", TouchUI_LabelFont_f, "print the font the touch keys' labels use, and the pixels of a label (argument: height in virtual units, default 22) against its glyph map's (tests)");
 }
 
 void TouchUI_Init(void)
@@ -987,14 +991,48 @@ static int TouchUI_LayoutSampleLog(float x, float y, float w, float h,
 	return n;
 }
 
-/* Draws in the console and chat fonts as itself, not as a missing-glyph box. */
+/*
+ * The keys' labels: the game's text font (user1, loadfont'ed at 4 to 32
+ * virtual pixels, each size rendered when first drawn), so a label has a
+ * glyph map near its own size. The chat font has one size, con_chatsize
+ * (10): a 20-unit label drew its 9-pixel glyphs at twice their size, blurred
+ * and misshapen on a phone (the web there renders at 1.25 pixels per CSS
+ * pixel, so 10 virtual units are 9 pixels). The chat font only without user1.
+ */
+static dp_font_t *TouchUI_LabelFont(void)
+{
+	return FONT_USER(1)->ft2 ? FONT_USER(1) : FONT_CHAT;
+}
+
+/* touch_ui_labelfont [height]: the font a key label of that height (virtual
+ * units, default 22) is drawn in, the pixels it covers and the pixels of the
+ * glyph map that draws it (scripts/test-touch-labels.sh). */
+static void TouchUI_LabelFont_f(cmd_state_t *cmd)
+{
+	dp_font_t *f = TouchUI_LabelFont();
+	float th = Cmd_Argc(cmd) > 1 ? atof(Cmd_Argv(cmd, 1)) : 22.0f;
+	float want = vid_conheight.value > 0 ? th * vid.mode.height / vid_conheight.value : th;
+	float w = th, h = th;
+	int m;
+	ft2_font_map_t *map;
+	if (!f->ft2)
+	{
+		Con_Printf("touch_ui_labelfont: %s has no FreeType font\n", f->title);
+		return;
+	}
+	m = Font_IndexForSize(f->ft2, th * f->settings.scale, &w, &h);
+	map = Font_MapForIndex(f->ft2, m);
+	Con_Printf("touch_ui_labelfont %s want %.1f px map %.1f px\n", f->title, want * f->settings.scale, map ? map->size : 0.0f);
+}
+
+/* Draws in the console and label fonts as itself, not as a missing-glyph box. */
 static qbool TouchUI_GlyphDraws(Uchar ch)
 {
 	if (!utf8_enable.integer)
 		return false;
 	if (!FONT_CONSOLE->ft2 || !Font_HasGlyph(FONT_CONSOLE->ft2, ch))
 		return false;
-	if (!FONT_CHAT->ft2 || !Font_HasGlyph(FONT_CHAT->ft2, ch))
+	if (!TouchUI_LabelFont()->ft2 || !Font_HasGlyph(TouchUI_LabelFont()->ft2, ch))
 		return false;
 	return true;
 }
@@ -1569,8 +1607,8 @@ void TouchUI_DrawGlassItem(const touchui_item_t *it, float pressed, float opacit
 	if (it->label[0])
 	{
 		th = it->textheight > 0 ? it->textheight : bound(10.0f, it->h * 0.4f, 22.0f);
-		tw = DrawQ_TextWidth(it->label, 0, th, th, false, FONT_CHAT);
+		tw = DrawQ_TextWidth(it->label, 0, th, th, false, TouchUI_LabelFont());
 		DrawQ_String(it->x + (it->w - tw) * 0.5f, it->y + (it->h - th) * 0.5f,
-			it->label, 0, th, th, 1, 1, 1, 1, 0, NULL, false, FONT_CHAT);
+			it->label, 0, th, th, 1, 1, 1, 1, 0, NULL, false, TouchUI_LabelFont());
 	}
 }

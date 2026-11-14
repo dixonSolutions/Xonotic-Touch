@@ -18,6 +18,11 @@ pub struct Images {
 const MAX_TEXTURES: usize = 300;
 
 impl Images {
+    /// How many pictures whose ref starts with `prefix` have arrived (script `measure`).
+    pub fn arrived_count(&self, prefix: &str) -> usize {
+        self.textures.keys().filter(|r| r.starts_with(prefix)).count()
+    }
+
     /// Shows the cached texture or registers the picture to receive it; true when the engine must be asked.
     pub fn attach(&mut self, r: &str, pic: &gtk::Picture) -> bool {
         if let Some(t) = self.textures.get(r) {
