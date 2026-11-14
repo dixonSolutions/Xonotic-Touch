@@ -1,7 +1,8 @@
 # Handoff: Android native-UI follow-ups (`work/android3`)
 
 Written 2026-11-14 by the android3 agent. Scratch clone: `~/.cache/godnotic-work/android3`.
-Based on `origin/work/integration`, last merged at 664916d (main's new Home tab bar).
+Based on `origin/work/integration`; `origin/main` f617cab (release candidate 1, corrected Home)
+merged in at 7eb1556. **Ready to merge.**
 
 ## Commits
 
@@ -12,6 +13,7 @@ Based on `origin/work/integration`, last merged at 664916d (main's new Home tab 
 | c792ea8 | **Resume bug**: the player-statistics question becomes its own dialog, so Resume leaves the pause page | Android, Tests, Loader green (43549270340) |
 | 3f2660a | merge origin/work/integration 664916d | Tests, Loader green |
 | 3cf74dc | Android: d0_blind_id + GMP for every ABI, shipped in the APK with `key_0.d0pk` | Android green on all 3 ABIs (43550768168), Tests green |
+| 7eb1556 | merge origin/main f617cab. HANDOFF.md conflict: this branch's kept; main's was hometabs2's | pushed as ci/android3 |
 
 `engine/data/xonotic-data.pk3dir` changed (c792ea8, 39eb6da), so the data pin is needed at
 merge. `engine/darkplaces` was not changed. `components.json` was not touched and
@@ -38,8 +40,8 @@ it over the match.
 - Headless regression test `scripts/test-native-menu-live.sh`: all 14 checks pass on this
   branch. On the old androidui2 build it fails with the tablet's symptom: after Resume the
   states are `ingame`, `paused`.
-- **Tablet** (perf package, builds 1.2.400/401/402-a3 from this branch, LAN server on the
-  desktop running stock game code):
+- **Tablet** (perf package, builds 1.2.400/401/402/403-a3 from this branch; 403 is the main
+  merge; LAN server on the desktop running stock game code):
   - the question shows as the native dialog over the running match;
   - No (first run) and Yes (second run) close it;
   - Privacy then shows "Show my name in records: On";
@@ -84,6 +86,9 @@ it over the match.
 
 ### Also seen on the tablet
 - Settings has no "Advanced settings" bar.
+- 1.2.403-a3 (the main merge): question, then join dialog, Spectate, MENU, Resume all work.
+  Leave match asks to confirm and then shows the new Home (three cards, Settings / Credits /
+  Quit bar).
 - The top bar (console, MENU, SCORE, CHAT) has no overlaps while playing or spectating.
 
 ## Tests run (this branch, 3cf74dc working tree)
@@ -96,8 +101,24 @@ scripts/test-touch-hudmode.sh                                           # all pa
 scripts/test-old-name.sh                                                # PASS
 ENGINE=build/bin/xonotic BASEDIR=<clone basedir> STOCKBASE=~/.cache/godnotic-work/controls-stock \
 LIBS=~/.cache/godnotic-slimtest/lib scripts/test-native-menu-live.sh    # all checks passed
-~/.cache/godnotic-work/run-suites.sh <clone> <logs>   (SKIP_BUILD=1; results in the report)
+SKIP_BUILD=1 ~/.cache/godnotic-work/run-suites.sh <clone> <logs>
 ```
+
+run-suites.sh, every step passed:
+- old-name, cargo-core, cargo-android, uibridge, touch-spectate, touch-hudmode, lan-logic,
+  host-resources, frontend, lan, lan-private;
+- lua-sandbox, lua-match, join-world, srvlist, joinfail, uib-engine, mods (105/105),
+  touch-controls, net-away.
+
+Two notes on that run:
+- `net` failed the first time only because SKIP_BUILD left no `darkplaces-dedicated`. After
+  `make sv-release` it passes (gn-0, gn-100).
+- touch-controls-live skipped (77): the runner sets no STOCKBASE.
+
+After the main merge, these were run again and pass: test-native-menu-live, test-uibridge,
+touch-hudmode, old-name, cargo core and android. Not rebuilt for this check: `make
+sv-release` (rebuilt before the merge) and `build-web.sh --engine-only`. The merge brought no
+engine C changes.
 
 Kotlin compiles only in CI. The Gradle unit test added to `UiBridgeTest.kt`
 (`joinDialogOverTheMatch`) is not run by CI, which runs only `assembleRelease`.
@@ -113,7 +134,7 @@ Kotlin compiles only in CI. The Gradle unit test added to `UiBridgeTest.kt`
   renderer. Its "over the match" presentation is untested.
 - `scripts/test-native-menu-live.sh` is not wired into a workflow; run-suites.sh does not
   run it either.
-- The tablet still has the perf package 1.2.402-a3 installed, with a generated player ID
+- The tablet still has the perf package 1.2.403-a3 installed (it ended on the new Home), with a generated player ID
   (`key_0.d0si`) and `cl_allow_uid2name 1`. `xonotic.args` was removed.
 
 ## Tools
