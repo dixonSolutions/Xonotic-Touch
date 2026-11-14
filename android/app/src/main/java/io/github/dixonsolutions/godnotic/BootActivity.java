@@ -33,7 +33,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.util.Collections;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -52,9 +51,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * unpacking stops between files (each lands under a temporary name and is
  * renamed when whole), and the screen then offers Resume and Quit.
  *
- * The pk3 download asks first: the setup step says how much it fetches, how
- * much space is free, and offers the music pack (off by default). A
- * launcher shortcut, "Download music", opens the same step later.
+ * The pk3 download asks first: the setup step says how much it fetches and
+ * how much space is free. With the split data set (docs/DATA_FETCH.md) that
+ * is only first_play, the packs the first match needs; the game then starts
+ * and {@link DataService} fetches the other maps and the music behind it,
+ * without asking again. Without a manifest it is the single archive, music
+ * included, as before the split.
  */
 public class BootActivity extends Activity {
 
@@ -112,8 +114,8 @@ public class BootActivity extends Activity {
     private Button download;
     private Button later;
     private Button recheck;
-    /** The archive's file list while the setup step waits for the player. */
-    private static volatile PackFetch.Plan pendingPlan;
+    /** What there is to download (GameData.Setup) while the setup step waits for the player. */
+    private static volatile GameData.Setup pendingPlan;
     /** Download or Resume was pressed in this process: music on or off; null: ask. */
     private static volatile Boolean chosenMusic;
     /** The setup step is for the music pack only (the shortcut), the game is playable. */
@@ -139,6 +141,8 @@ public class BootActivity extends Activity {
             // has a task of its own): back to it as it was. No update install and
             // no data preparation under a running engine, which would end the
             // player's match or join.
+            // The rest of the split set carries on too, if something stopped it.
+            DataService.start(this);
             Intent back = new Intent(this, XonoticActivity.class).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
             if (getIntent() != null && getIntent().getData() != null) {
                 back.setData(getIntent().getData()); // a godnotic://join link: onNewIntent joins
@@ -160,6 +164,7 @@ public class BootActivity extends Activity {
                 // Waiting for Wi-Fi: go ahead on this connection.
                 mobileThisRun = true;
                 saveConsent(this, consentMusic(this), true);
+                DataService.setMobileAllowed(this, true);
                 stopNetworkWatch();
                 useMobile.setVisibility(View.GONE);
                 waitWifi.setVisibility(View.GONE);
@@ -167,13 +172,14 @@ public class BootActivity extends Activity {
             }
         });
         waitWifi.setOnClickListener(v -> {
-            PackFetch.Plan plan = pendingPlan;
+            GameData.Setup plan = pendingPlan;
             if (plan == null) {
                 return;
             }
             // Agreed, but not on this connection: it starts by itself on Wi-Fi.
             boolean music = true;
             saveConsent(this, music, false);
+            DataService.setMobileAllowed(this, false);
             pendingPlan = null;
             chosenMusic = music;
             showWaitingForNetwork();
@@ -185,13 +191,13 @@ public class BootActivity extends Activity {
             launchEngine(new GameData(this));
         });
         recheck.setOnClickListener(v -> {
-            PackFetch.Plan plan = pendingPlan;
+            GameData.Setup plan = pendingPlan;
             if (plan != null) {
                 showChoice(plan);
             }
         });
         musicBox.setOnCheckedChangeListener((b, checked) -> {
-            PackFetch.Plan plan = pendingPlan;
+            GameData.Setup plan = pendingPlan;
             if (plan != null) {
                 updateChoice(plan);
             }
@@ -570,15 +576,17 @@ public class BootActivity extends Activity {
             applyProgress(lastStatus, lastDetail, lastPercent);
             return;
         }
-        PackFetch.Plan waiting = pendingPlan;
+        GameData.Setup waiting = pendingPlan;
         if (waiting != null) {
             // The setup step was up when the last screen went: show it again.
             preparing.set(false);
             showChoice(waiting);
             return;
         }
-        // Music is part of the game: a missing music pack is fetched like any other.
-        boolean music = !data.musicInstalled();
+        // Music is part of the game: a missing music pack is fetched like any
+        // other. Only for an install of the single archive; with the split
+        // set the music is one of the packs DataService fetches later.
+        boolean music = data.musicMissing();
         Boolean agreed = chosenMusic;
         if (agreed == null && consentGiven(this) && data.assetsMissing()) {
             // Agreed in an earlier run that was quit, killed or lost its
@@ -604,13 +612,36 @@ public class BootActivity extends Activity {
         Thread preparation = new Thread(() -> {
             try {
                 data.prepare(BootActivity::report);
+                // Split-set packs that are whole but unrecorded (a kill
+                // between the rename and the save) count before the decision.
+                data.session().reconcile();
                 boolean missing = data.assetsMissing();
                 if (!missing && !music) {
+                    // Asked here, while no engine is up, so DataService knows
+                    // which manifest to ask for when it starts beside one.
+                    data.manifestUrl();
                     ui.post(() -> prepared(data));
                     return;
                 }
                 report(HostRes.string(appContext, "boot_checking"), "", -1);
-                PackFetch.Plan plan = data.planDownload();
+                // The manifest first; the single archive when there is none.
+                GameData.Setup plan = data.planSetup();
+                if (plan.split != null) {
+                    // What the split set needs before the game starts is
+                    // first_play alone, and a complete old install needs
+                    // nothing: no music step either way.
+                    if (!data.assetsMissing()) {
+                        ui.post(() -> prepared(data));
+                        return;
+                    }
+                    if (chosen == null) {
+                        ui.post(() -> planned(plan, false));
+                        return;
+                    }
+                    data.download(plan, true, BootActivity::report);
+                    ui.post(() -> prepared(data));
+                    return;
+                }
                 if (chosen == null) {
                     ui.post(() -> planned(plan, !missing));
                     return;
@@ -645,7 +676,7 @@ public class BootActivity extends Activity {
     }
 
     /** The file list is in: the setup step waits for the player. */
-    private static void planned(PackFetch.Plan plan, boolean onlyMusic) {
+    private static void planned(GameData.Setup plan, boolean onlyMusic) {
         preparationThread = null;
         pendingPlan = plan;
         musicOnly = onlyMusic;
@@ -657,7 +688,7 @@ public class BootActivity extends Activity {
     }
 
     /** The setup step: size, the music choice and the free space, then Download. */
-    private void showChoice(PackFetch.Plan plan) {
+    private void showChoice(GameData.Setup plan) {
         reveal();
         GameData data = new GameData(this);
         PackFetch.Entry music = plan.music();
@@ -682,16 +713,19 @@ public class BootActivity extends Activity {
         updateChoice(plan);
     }
 
-    private void updateChoice(PackFetch.Plan plan) {
+    private void updateChoice(GameData.Setup plan) {
         File dir = new GameData(this).dataDir();
-        boolean music = true;
-        List<PackFetch.Entry> todo = PackFetch.todo(dir, plan, music);
-        PackFetch.Need need = PackFetch.need(dir, todo, plan);
+        PackFetch.Need need = plan.need(dir);
         long free = PackFetch.freeBytes(dir);
         StringBuilder text = new StringBuilder(HostRes.string(this,
                 musicOnly ? "boot_setup_music_size" : "boot_setup_size", size(need.fetch)));
         if (need.resumed > 0) {
             text.append('\n').append(HostRes.string(this, "boot_setup_resumed", size(need.resumed)));
+        }
+        if (plan.rest() > 0) {
+            // The split set: the choice made here (this connection, or Wi-Fi
+            // only) also holds for what follows behind the game.
+            text.append('\n').append(HostRes.string(this, "boot_setup_rest", size(plan.rest())));
         }
         Net.Kind net = Net.kind(this);
         boolean metered = net != Net.Kind.UNMETERED && net != Net.Kind.OFFLINE;
@@ -729,7 +763,7 @@ public class BootActivity extends Activity {
 
     /** Download pressed: the planned packs, with or without music. */
     private void startDownload(boolean music, boolean mobile) {
-        PackFetch.Plan plan = pendingPlan;
+        GameData.Setup plan = pendingPlan;
         if (plan == null || !preparing.compareAndSet(false, true)) {
             return;
         }
@@ -742,6 +776,9 @@ public class BootActivity extends Activity {
         // Remembered until the data is in, so a quit, a kill or a lost
         // connection carries on next start without asking again.
         saveConsent(this, withMusic, mobile || consentMobile(this));
+        // The consent above is forgotten once the game can start; what was
+        // said about mobile data also governs the packs that follow.
+        DataService.setMobileAllowed(this, mobile || consentMobile(this));
         useMobile.setVisibility(View.GONE);
         waitWifi.setVisibility(View.GONE);
         choice.setVisibility(View.GONE);
@@ -929,6 +966,11 @@ public class BootActivity extends Activity {
         musicOnly = false;
         KeepAliveService.stop(appContext);
         updateMusicShortcut(data);
+        try {
+            data.publishDataStatus();
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Could not write the data status", e);
+        }
         BootActivity live = visibleScreen();
         if (live != null) {
             live.launchEngine(data);

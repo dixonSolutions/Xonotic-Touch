@@ -53,11 +53,11 @@ jobs:
         run: bash scripts/test-touch-hudmode.sh
 
   touch-controls:
-    name: Touch top bar
+    name: Touch controls, top bar, look and stick
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Top bar layout without overlaps at three screen sizes
+      - name: Top bar layout without overlaps, look and stick maths, both HUD copies agree
         run: bash scripts/test-touch-controls.sh
 
   phone-assets:
@@ -74,6 +74,8 @@ jobs:
           PYTHON=python sh scripts/test-phone-assets.sh
       - name: The archive the app streams
         run: PYTHON=python sh scripts/test-phone-archive.sh
+      - name: The split set (core, maps, shared, music, detail, extras; manifest)
+        run: PYTHON=python bash scripts/test-data-split.sh
 
   touch-aim:
     name: Touch auto-shoot weapon logic

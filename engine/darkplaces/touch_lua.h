@@ -32,6 +32,7 @@ struct prvm_prog_s;
 // menu and console (SCR_DrawScreen): registers everything on the first call,
 // loads/unloads client mods, runs "frame", "hud" (in a match) and "draw".
 void TouchLua_ClientFrame(void);
+void TouchLua_ClientTick(void); // the frame without drawing (a covered screen)
 
 // A key in the game (Key_Event, key_dest game, not Escape): true when a mod
 // took it, and the binding must not run.

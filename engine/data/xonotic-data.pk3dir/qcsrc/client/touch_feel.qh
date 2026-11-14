@@ -1,0 +1,17 @@
+#pragma once
+
+// How a finger turns the view and how the move stick reads a thumb: the
+// QuakeC mirror of engine/darkplaces/touch_feel.h (the engine HUD uses that
+// one on servers). scripts/test-touch-controls.sh checks the constants here
+// against the header's. docs/TOUCH_CONTROLS_REVIEW.md has the reasons.
+
+const float TOUCHFEEL_DEG_PER_DP = 0.16;
+const float TOUCHFEEL_SPEED_HZ = 8.0;
+// The stick's radius is never under this many dp (touch_hud.c TOUCHDP_STICK_RADIUS).
+const float TOUCHDP_STICK_RADIUS = 64;
+
+// The stick: its radius, where its centre is now (under the thumb while
+// held, its drawn place otherwise) and whether a thumb holds it.
+float Touch_StickRadius(void);
+vector Touch_StickCenter(void);
+bool Touch_StickHeld(void);

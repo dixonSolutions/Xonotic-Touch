@@ -25,8 +25,11 @@ bash "$ROOT/scripts/stage-slim-data.sh" "$STAGE/data"
 
 mkdir -p "$(dirname "$OUT_ZIP")"
 rm -f "$OUT_ZIP"
+# Xonotic's public key (player IDs, crypto.c): read from the basedir itself.
+cp "$ROOT/engine/key_0.d0pk" "$STAGE/key_0.d0pk"
+
 # Store paths relative to $STAGE so entries read as data/... and unpack straight
 # into the engine's basedir.
-( cd "$STAGE" && zip -q -r -X "$OUT_ZIP" data )
+( cd "$STAGE" && zip -q -r -X "$OUT_ZIP" data key_0.d0pk )
 
 printf 'Staged %s (%s)\n' "$OUT_ZIP" "$(du -h "$OUT_ZIP" | cut -f1)"

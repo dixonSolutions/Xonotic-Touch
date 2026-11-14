@@ -19,11 +19,11 @@ page.
 
 | | |
 |---|---|
-| First visit | One button, one size: what the game needs to start (the core packs and the first map: 159 MB on GPUs with ASTC, phones, tablets, Apple, Intel; about 444 MB elsewhere), six chunks at a time (three on phones); percent, speed, time left, Pause/Resume and Cancel. The game starts by itself when it is done, and the other maps and the music (246 MB with ASTC) follow one chunk at a time while it runs, mounted as they arrive. A map asked for before its pack is here downloads first, with its own progress card. Without lazy reads (`?lazy=0`, or a browser that cannot) and on a connection that asks to save data, the first download is everything, as before |
+| First visit | One button, one size: what the game needs to start, six chunks at a time (three on phones); percent, speed, time left, Pause/Resume and Cancel. With the split set (see "Progressive download") that is 88 MB on GPUs with ASTC (phones, tablets, Apple, Intel) and 243 MB elsewhere: the menu and the first map. Until it is published, the core packs and the first map of today's sets: 159 MB with ASTC, about 444 MB elsewhere. The game starts by itself when that is in, and the music, the other maps and the rest (298 MB, 616 MB with the split set) follow one chunk at a time while it runs, mounted as they arrive. A map asked for before its packs are here downloads first, with its own progress card. On a connection that asks to save data, or with `?background=0`, nothing follows by itself: a map downloads when it is played (today's sets: the first download is everything, as it is without lazy reads) |
 | Later visits | Straight from a splash into the game: no download screen, no Play button, no data requests |
 | Why it downloads | Whenever the page has to download again it says why in one line (cleared by the browser, closed by the browser mid-download, not enough space, private window, an update) |
 | Memory | Game data is read from the browser's storage as the engine needs it, not copied into memory: about 30 MB of JS heap at the menu instead of 1.08 GB |
-| Returning visitors | Keep the full download they already have; nothing is downloaded again |
+| Returning visitors | Keep playing what they have. When the data set itself is replaced (the split set, which shares no chunk with the sets before it), the old set goes on running and the new one arrives in the background; a later start uses it once all of it is here |
 | Updates | A new release fetches only the files that changed; under 50 MB (new game code is about 3 MB) it does so without asking |
 | Interrupted downloads | Carry on where they stopped, after Cancel, a reload, a lost connection or the browser killing the page |
 | Storage | The origin private file system (OPFS) of the browser: it survives reloads, closing the tab, restarting the browser and new releases of the page. The page never asks for persistent storage by itself, so by default the browser may clear it when the device runs short of space; what is gone is downloaded again at the next start, only that, without a question |
@@ -74,7 +74,8 @@ scripts/vercel-build.sh       Vercel's build (tools, SDK, engine, data)
 engine/darkplaces/sys_wasm.c  engine side of the shim (Module.xt, xt_web_*)
 scripts/build-web.sh          engine + QuakeC + page -> build/web
 scripts/stage-web-data.sh     game data -> build/web/data, one manifest per profile
-scripts/split-web-maps.py     a maps pk3 -> core pack + one pack per map
+scripts/split-web-maps.py     a maps pk3 -> core pack + one pack per map (only
+                              for data that is not the split set)
 .github/workflows/web.yml     build, release asset, GitHub Pages shell
 ```
 
@@ -82,8 +83,9 @@ scripts/split-web-maps.py     a maps pk3 -> core pack + one pack per map
 
 - **Game data.** See "Game data" below: hash-checked 32 MiB chunks in the
   origin private file system (OPFS), or the Cache API where OPFS is not
-  writable, which the engine reads in place (lazy reads); maps fetched when
-  the engine asks for them.
+  writable, which the engine reads in place (lazy reads); the game starts
+  on the first-play packs and the rest is fetched while it runs, a map the
+  engine asks for first.
 - **User data.** The engine's userdir is IndexedDB-backed (IDBFS), synced a
   moment after each write and when the tab is hidden or closed. Settings and
   key bindings changed in the menu or console are written to `config.cfg`
@@ -110,9 +112,9 @@ Engine changes for the web, all behind `__EMSCRIPTEN__`:
 
 - libpng, libjpeg, Ogg Vorbis, libopus and opusfile linked statically (no
   `dlopen` in WebAssembly; Opus is the slim set's music).
-- `map` and `changelevel` ask the page first (maps on demand, see "Game
-  data"): wrapped from `sys_wasm.c` at start-up, no upstream file changed.
-  `web_maps status` says how much of the game data is here.
+- `map` and `changelevel` ask the page first (see "Progressive download"):
+  wrapped from `sys_wasm.c` at start-up, no upstream file changed.
+  `web_maps pause|resume|status` controls the download while playing.
 - ASTC textures (the slim set's KTX files) under WebGL's extension name.
 - The clock from `performance.now()`: Emscripten's `CLOCK_MONOTONIC_RAW` returns garbage.
 - No threads (no `-pthread` build): the task queue runs everything on the main
@@ -139,16 +141,18 @@ the engine would open every frame.
 
 ## Game data
 
-### One download, picked by GPU
+### One data set, picked by GPU
 
-There is one download and nothing to choose: the page picks the data set by
-the GPU at the first visit and keeps it:
+There is nothing to choose: the page picks the data set by the GPU at the
+first visit and keeps it:
 
-| Set | What | For | The download |
+| Set | What | For | To start / in all |
 |---|---|---|---|
-| `astc` | the slim phone set (`Godnotic-data` release `data-slim`): ASTC textures in KTX, zstd entries, Opus music, re-encoded JPEGs, no editor files | GPUs with `WEBGL_compressed_texture_astc`: phones and tablets (Mali, Adreno, PowerVR, Apple), Apple Silicon, Intel's integrated GPUs | 405 MB |
-| `web` | the stock pk3s (DXT); with the web slim set published, that set instead | every other GPU: desktops with NVIDIA or AMD (S3TC), the rare phone with neither (DXT decoded in software at reduced resolution) | 1.07 GB stock, 878 MB web slim |
-| `full` | the stock pk3s as whole files, as pages before this layout stored them | only browsers that already hold all of it | nothing |
+| `astc` | the phone set: ASTC textures in KTX, zstd entries, Opus music, re-encoded JPEGs, no editor files. The split set `godnotic-data-astc.json` when it is published, else the slim archive (`Godnotic-data` release `data-slim`) | GPUs with `WEBGL_compressed_texture_astc`: phones and tablets (Mali, Adreno, PowerVR, Apple), Apple Silicon, Intel's integrated GPUs | split: 88 MB / 386 MB; slim: 405 MB at once |
+| `web` | DXT textures: the split set `godnotic-data-dxt.json` when it is published, else the stock pk3s (or the web slim set) | every other GPU: desktops with NVIDIA or AMD (S3TC), the rare phone with neither (DXT decoded in software at reduced resolution) | split: 243 MB / 859 MB; stock: 1.07 GB at once (878 MB web slim) |
+| `full` | the stock pk3s as whole files, as pages before maps on demand stored them | only browsers that already hold all of it | nothing |
+
+(The split sizes are the set's packs plus this fork's own files, 13.5 MB.)
 
 The slim set's textures are ASTC except where DXT came out smaller, so a GPU
 without ASTC cannot use it; S3TC is on nearly every desktop GPU and on
@@ -173,10 +177,157 @@ takes long on Vercel's 2 cores, so it is a release asset:
 
 `?profile=web` (or `astc`, `full`) forces a set for a visit.
 
-### Maps on demand
+### Progressive download
 
-`scripts/split-web-maps.py` splits each profile's maps pk3 (626 MB stock,
-230 MB slim) into:
+The split set ([PHONE_ASSETS.md](PHONE_ASSETS.md), "Split set";
+[DATA_FETCH.md](DATA_FETCH.md) is the contract the apps and this page
+follow) comes as a core pack, one pack per map, shared packs for what
+several maps use, the music, `detail` and `extras`.
+`scripts/stage-web-data.sh` stages the packs as they are, so the page fetches
+the same packs as the apps, as content-addressed chunks from its own host.
+
+- **First visit.** The page asks once, naming the size of the core group
+  (this fork's files and the core pack) plus the `first_play` packs: the
+  default map and the shared packs it needs. When those are stored the
+  engine starts. Nothing else is asked.
+- **While the game runs**, the rest is fetched in the packs' `priority`
+  order: the music, then map by map (the shared packs a map needs before
+  its own), `detail`, `extras`. One pack at a time, one chunk at a time
+  (`?bgparallel=N`; see the measurements below); the store resumes chunks, so a reload, a closed
+  tab or a killed browser carries on where it was. `web_maps pause` and
+  `web_maps resume` in the console stop and restart it.
+- **A pack that lands** is mounted in place (`web/lazyfs.js`) and announced
+  with `fs_mountpack <name>`, which adds it at the end of the engine's
+  search path: it adds files and shadows none. A map's own pack, the one
+  with its `.bsp`, is mounted only when every other pack the map needs is,
+  so "the `.bsp` is there" means "playable"; a warm start holds a stored
+  own pack back the same way while a pack it needs is missing. The page
+  reads the pack's directory ahead (the last 2 MiB) so the engine's read of
+  it costs no frame. (`fs_mountpack` drops the engine's once-a-second
+  listing of its data directory itself, so a file that just appeared is
+  found; and the engine runs the music pack's `cdtracks.cfg` when that pack
+  is mounted.)
+- **A map that is not in yet.** `sys_wasm.c` wraps `map` and `changelevel`
+  at start-up, through the command list (the menu, the console, map
+  rotation, votes and QuakeC's changelevel builtin all go through those
+  two), and asks the page first. When the map's packs are not all mounted
+  the page stops the background download (what arrived of the chunk in
+  flight is kept), fetches that map's missing packs with a progress card
+  over the game (Cancel keeps what arrived), mounts them, own pack last,
+  and runs the same command again; then the background goes on.
+  `Module.xt.dataWant(map)` (the engine calls it when QuakeC asks for a map)
+  puts a map's packs at the front of the queue the same way, without a card
+  and without a command: the engine goes on when the `.bsp` appears. The
+  engine never waits on the network, so nothing needed Asyncify (which
+  instruments every function that can be on the stack under the call site:
+  the whole main loop here, typically +30-50% code size and slower calls)
+  or JSPI.
+- **What the engine hears**: `touch_data_status state fetching done_kb N
+  total_kb M [want <map> want_done_kb a want_total_kb b]` through
+  `xt_web_command`, at most twice a second and only when it changed;
+  `state complete` at the end, `paused` after `web_maps pause`, `waiting`
+  or `error` (with `message "..."`) when the connection or the browser's
+  quota stops it (a failed pack is tried again after 30 s, or when the
+  browser comes back online). Data that was downloaded whole before the
+  start (not a split set, without lazy reads or with the background off)
+  reports `legacy`.
+- **No stand-ins.** The core has every map's real `.mapinfo` and level
+  shot and no `.bsp`; the menu lists maps from the `.mapinfo` files. The
+  stager refuses a split set with a `.bsp` anywhere but in its map's own
+  pack: mounted late, at the lowest priority, the real one would lose to
+  it.
+- **In memory.** Where the page cannot read in place (below) and copies
+  packs into memory, or nothing can be stored at all (a private window),
+  only the music follows by itself; a map's packs are fetched when the map
+  is played, copied in, the last map's dropped, and the engine told with
+  `fs_rescan` as before (`fs_mountpack` cannot let go of a pack). The
+  engine hears `paused` while nothing is being fetched. The same on a
+  connection that asks to save data and with `?background=0`, without the
+  music; `?background=1` fetches everything in memory too.
+- **A Godnotic folder in use** (below), or the app's packs copied in
+  (`web/appdata.js`). With the stock packs whole (`xonotic-…-data.pk3`,
+  `-maps.pk3`): the split set's packs are not fetched, only this fork's
+  files and the music where the folder has none. With the split layout
+  (`godnotic-<date>-*.pk3`, as an install keeps it now): usable when every
+  first-play pack of this page's manifest is there by name and size; the
+  packs that are there whole are read from it, the rest is downloaded like
+  any other.
+
+A manifest of a split set (format 5) carries `set`, `firstPlay`, `maps` (per
+map the packs it needs besides the core group, its own pack last) and, per
+pack, `kind` and `priority`; the page takes all of it from there.
+
+Measured 2026-11-14 with the ASTC split set (`20261107-4c53098165d2`,
+386 MB with this fork's files), the real engine, headless Chromium 1248 on
+an Intel iGPU, `tests/web-cache/e2e.sh` against a local server, the network
+throttled to 20 Mbit/s with CDP, a fresh profile each run, the browser
+pinned to 8 cores of a busy host (load 6-10); medians of 3 runs:
+
+| | |
+|---|---|
+| First-play files stored (88.2 MB requested before the engine starts) | 38.0 s |
+| The menu | 39.1 s (39.0-39.4; a fourth run 45.8 s). The single download before: 176 s |
+| A bot match on stormkeep playable (`map stormkeep` sent at the menu) | 44.2 s after navigation; 107.8 MB received by then, 19.6 MB of it the music arriving behind the game |
+| `map boil` right after, its five packs (8.3 MB) not in yet: fetched first, mounted, the map playable | 6.0 s (5.6-6.1), 1.1 s of it a wait before `fs_mountpack` that the engine no longer needs |
+| Everything stored and mounted | 167 s after navigation (166-171) |
+| A match on xoylent then, from packs mounted while the game ran | 1.7 s; no "not found" or "couldn't" line from the engine on either late map |
+| Frames in the stormkeep match over 10 s, background running / paused (one run each) | 599 / 600 with one chunk at a time (longest gap 49 ms / 24 ms); 593 / 601 with two (99 ms, two gaps over 50 ms); 598 with three (58 ms) |
+| First-play files stored, by chunks fetched at once (3 runs each) | one: 39.2 s; two: 38.0 s; three: 38.1 s |
+
+(These runs fetched two chunks at a time before the start, started the
+background with the engine and waited 1.1 s before each `fs_mountpack`.)
+Measured again the same way with the page as it is now (six chunks before
+the start, the background 10 s after the engine, no wait before
+`fs_mountpack`, the engine with `touch_datafetch.c`), medians of 3 runs:
+first-play files stored 38.0 s (the line is the limit, six chunks or two);
+the menu 39.7 s (39.3-40.7), 88.3 MB received by then; the stormkeep match
+46.7 s (44.9-47.5), 89.0 MB received; `map boil` 5.5 s (5.5-5.6);
+everything stored and mounted 176 s (174-185); xoylent afterwards 1.8 s.
+No "could not find" from `fs_mountpack`, no unknown command, no missing-file
+line on the late maps; `g_cdtracks_remaplist` was filled after the music
+pack landed; the engine's own `touch_data_status` printed `"fetching"`
+with 86154 of 377068 KiB in the match and `"complete"` with 377068 of
+377068 KiB at the end.
+One at a time while playing: the line is the limit either way (142 MB were
+in at the same moment with one, two and three), and one left the frames
+alone.
+
+#### A new data set, for a browser that holds an older one
+
+Chunks are named by their content, and the split set is cut differently
+from everything before it: no chunk of the slim archive, of the stock pk3s
+or of their per-map split is a chunk of it (the music pack too was encoded
+again). So a visitor from before downloads the whole new set once: 373 MB
+(ASTC), 846 MB (DXT); only this fork's own files (13.5 MB) are the same
+chunks. They do not wait for it:
+
+- The set the last start ran is whole in the browser (every chunk of its
+  stored manifest): that set keeps running, with this build's own files
+  (new game code is fetched first, as on any update, with no question).
+  The new set is fetched in the background, first-play packs first, and
+  only stored. A later start finds all of it and runs it; until then every
+  map plays from the old set. The old chunks are in a manifest the page
+  still refers to, so pruning leaves them; they go two days after the
+  first start on the new set.
+- It has holes (a first download that never finished, chunks the browser
+  removed): the old map packs are no longer hosted, so the page asks for
+  the new set's first play, as on a first visit, and what it holds of the
+  old set stays until the new one is whole.
+- A change small enough to wait for (under 50 MB or a quarter of the first
+  play: new game code, a changed pack) is fetched before the start, as
+  before, without a question.
+
+It takes both sets on disk for a while (about 780 MB for ASTC, 1.9 GB for
+DXT). When the browser's quota does not allow that, the background download
+stops with a line in the Storage popover and the old set keeps playing.
+`full` (the stock pk3s whole) is kept as it is and never replaced.
+
+### Maps on demand (data that is not the split set)
+
+For a profile whose source is not a split set (until one is published: the
+slim archive for `astc`, the stock pk3s for `web`), the stager splits the
+maps pk3 itself with `scripts/split-web-maps.py` (626 MB stock, 230 MB
+slim):
 
 | | stock | slim |
 |---|---|---|
@@ -189,35 +340,24 @@ keys relative to `sound/`, worldspawn's `sky` with its six sides), the shaders b
 (skyparms' six sides), md3/iqm models and their .skin files, and a
 texture's `_norm`/`_gloss`/`_glow`/`_pants`/`_shirt`/`_reflect` companions;
 whatever the data pk3's QuakeC, configs, shaders and models name stays in
-the core. Entries are copied byte for byte (no recompression, zstd entries
-too) into zips with fixed timestamps: the same input gives the same packs.
-Putting the 98 MB of shared textures into every map that uses them instead
-would have added 339 MB; grouping them by the set of maps using them makes
-254 packs. Neither was worth it.
+the core. Entries are copied byte for byte into zips with fixed timestamps.
 
-The menu lists every map whether or not its pack is mounted: the core pack
-has, for each map, the level shot, the .mapinfo and an empty
-`maps/<map>.bsp` (the menu enumerates `maps/*.bsp`). The map pack sorts
-after the core pack, so once it is mounted its real .bsp wins.
-
-The engine asks the page before every `map` and `changelevel` (the menu,
-the console, map rotation, votes and QuakeC's changelevel builtin all go
-through those two commands): `sys_wasm.c` wraps both at start-up, through
-the command list, so no upstream file changes. When the map's pack is not
-mounted, the page fetches it with a progress card over the game (Cancel
-keeps what arrived), mounts it, and runs `fs_rescan` and the same command
-again. The engine never waits on the network, so nothing needed Asyncify
-(which instruments every function that can be on the stack under the call
-site: the whole main loop here, typically +30-50% code size and slower
-calls) or JSPI: the cost is one frame and a rescan of the pk3 list.
-
-The first download is everything, so the per-map packs are not about
-downloading any more but about memory: where the page cannot read in place
-(below) it copies everything but the map packs into memory, and the one
-map being played; a new map's pack replaces the last one. The fetch-when-played path
-stays as the fallback for a pack that is missing (removed by the browser,
-or an interrupted update): a card over the game shows its download.
-`web_maps` in the console says how much of the data is stored.
+It goes through the same queue as a split set: the core group and the
+default map's pack before the start, then the music, the extra pack and
+the maps, smallest first, while the game runs; a map that is asked for
+first. What differs: that core pack has, for each map, the level shot, the
+.mapinfo and an empty `maps/<map>.bsp`, and the map pack sorts after it, so
+its real .bsp wins. A pack added with `fs_mountpack` goes to the end of the
+search path and would lose to the stand-in, so what arrives is only mounted
+and the engine sees it at its next `fs_rescan`, which the page runs with
+the next `map` command. Without lazy reads, on a connection that asks to
+save data and with `?background=0`, the first download is everything; the
+per-map packs matter for memory there: the page copies everything but the
+map packs, and the one map being played. A pack that went missing (removed
+by the browser, an interrupted update) is fetched when its map is played,
+with the same card. The script stays for this path only: taking the stand-ins
+out of it would change the core pack's bytes, and with them a download
+for every visitor of today's sets, for a layout that is on its way out.
 
 ### Memory: lazy reads
 
@@ -378,10 +518,14 @@ production URL:
 ```
 data/blobs/<sha256>.bin   every hosted file cut into 32 MiB chunks, each
                           named by its hash; small files are one chunk  immutable
-data/m/<id>.json          one manifest per profile (format 4): every file's
-                          path, size, sha256, group, chunk hashes, "map" for
-                          a map pack, "hosted": false for the full set's maps
-                          pk3; <id> is the start of the sha256 of its text immutable
+data/m/<id>.json          one manifest per profile (format 4; 5 for a split
+                          set): every file's path, size, sha256, group,
+                          chunk hashes, "map" for a map's own pack,
+                          "hosted": false for what the full set no longer
+                          gets from the host; of a split set also "set",
+                          "firstPlay", "maps" and each pack's "kind" and
+                          "priority"; <id> is the start of the sha256 of
+                          its text                                     immutable
 data/profiles.json        {default, profiles: {web, astc, full: {manifest,
                           gpu?, keep?}}}; the built page carries a copy  no-cache
 data/stock.json           the same for the stock files alone, for the
@@ -391,10 +535,13 @@ data/manifest.json        the web profile in the format pages before
                           content addressing read (url/parts)          no-cache
 ```
 
-Groups: `core` (needed before the menu: this fork's files, the stock data,
-xoncompat and font pk3s, the maps core pack), `map` (one map's pack),
-`extra`, `music`. All of them are one download; the groups only say what
-the in-memory fallback mounts when. The page is built knowing its
+Groups: `core` (needed before the menu: this fork's files and the split
+set's core pack; or the stock data, xoncompat and font pk3s and the maps
+core pack), `map` (a map's own pack, and a split set's shared packs),
+`extra` (a split set's `detail` and `extras`), `music`. With a split set
+the page waits for `core` and the `firstPlay` packs; otherwise all of them
+are one download and the groups only say what the in-memory fallback
+mounts when. The page is built knowing its
 profiles: `index.html` carries them in its `xt-config` block, next to the
 content-hashed engine and page files (see "Start-up"); a page without them
 (served from `web/`, or the release zip) asks `data/profiles.json`.
@@ -402,10 +549,13 @@ content-hashed engine and page files (see "Start-up"); a page without them
 What goes in: this fork's pk3dirs as `zz-*.pk3` (they sort after the stock
 pk3s, so they win), the compiled game code (`progs.dat`, `csprogs.dat`,
 `menu.dat`) alone in `zz-progs.pk3`, the loose configs (`xonotic.cfg`, touch
-profiles), and the stock pk3s from the pinned data releases
-(`scripts/vercel-build.sh`: `data-20261107` and `data-slim`) except
-nexcompat. All profiles share this fork's files (same chunks), and `web`
-and `full` share every stock chunk but the maps pk3's.
+profiles), and per profile either the split set's packs (each checked
+against its manifest's size and sha256) or the pk3s from the pinned data
+releases (`scripts/vercel-build.sh`: `data-20261107` and `data-slim`)
+except nexcompat. The split packs sort before `zz-`, so this fork's files
+still win. All profiles share this fork's files (same chunks). While `web`
+is the stock pk3s, it and `full` share every stock chunk but the maps
+pk3's; with a split set as `web`, none of `full`'s stock files is hosted.
 
 Reproducible: the zips get fixed timestamps (`SOURCE_DATE_EPOCH`, else
 1980-01-01), modes, order and compression level, so the same commit stages
@@ -414,8 +564,10 @@ release that changes no data changes no file. The game code carries a
 per-commit watermark, which is why it is a file of its own: a code push
 changes `zz-progs.pk3` (about 3 MB) and nothing else.
 `scripts/test-web-cache-repro.sh` stages twice from differently timestamped
-copies and compares, and splits a made-up maps pk3 twice and checks where
-each file went; the Pages job compares its files with Vercel's when both
+copies and compares, splits a made-up maps pk3 twice and checks where
+each file went, and stages a made-up split set twice (and checks that one
+with a stand-in `.bsp` in its core, or a pack that is not the one its
+manifest lists, is refused); the Pages job compares its files with Vercel's when both
 are on the same commit.
 
 ### In the browser (`web/store.js`)
@@ -461,8 +613,11 @@ What the store does, against what was asked of it:
 - **Warm start** checks that each chunk exists with the right size (about
   20 ms for the 40 chunks); it does not hash. "Verify data" (Settings and
   storage) hashes everything and drops what is damaged.
-- **Downloads** run two chunks at a time; Pause, Cancel, a reload or a lost
-  connection keep every finished chunk and the pieces of the rest.
+- **Downloads** before the start run six chunks at a time, three on phones; Pause, Cancel, a
+  reload or a lost connection keep every finished chunk and the pieces of
+  the rest. A chunk's stored copy is not looked at while it is being
+  written (the entry exists, empty, until the write ends): the download
+  while the game runs made that possible.
 - **Updates.** What is missing after a release is fetched without a question
   when it is under 50 MB or under a quarter of the whole, and not a first
   install (`?ask` forces the dialog); bigger downloads and the first install
@@ -484,7 +639,8 @@ What the store does, against what was asked of it:
   written, the old copy removed once its file is whole. Nothing is
   downloaded again; a move from the Cache API to OPFS (a browser update)
   works the same way.
-- **Pruning** runs only after a start that had every file it needed. It
+- **Pruning** runs only after a start that had every file it needed, and
+  with a split set only once the whole set is stored. It
   keeps every chunk of every manifest any page path started with in the last
   60 days (two Pages paths share one origin), and stops if one of those
   manifests cannot be read.
@@ -527,6 +683,7 @@ after runs were interleaved.
 |---|---|---|
 | Downloaded before playing | 1.076 GB | 405 MB (ASTC set; 1.07 GB stock DXT, 878 MB web slim) |
 | First visit, 20 Mbit/s: to the menu / a bot match | 442 s / 462 s | 176 s / 183 s |
+| Same with the split set (see "Progressive download") | | 39 s / 44 s, 88 MB before the start |
 | First visit, 5 Mbit/s: to the menu | about 29 min (1.076 GB at 625 KB/s) | about 11 min (405 MB) |
 | First visit, local: to the menu | 13-54 s | 5-12 s |
 | Warm start: mount phase | 1.0-1.6 s (copying 1.08 GB) | 0.04-0.3 s |
@@ -555,7 +712,8 @@ slower than the old copy (26 s at 4x CPU); it now makes none.
 
 ### The slim data set on the web
 
-The `astc` profile is the phone set as the apps stream it. Two things made
+The `astc` profile is the phone set as the apps fetch it (pack by pack
+once the split set is published). Two things made
 it usable in the browser:
 
 - **Opus.** `touch_assets_opus.c` decodes Opus with libopusfile, linked on
@@ -840,6 +998,15 @@ scripts/stage-web-data.sh --zip data.zip --astc slim.zip
 python3 web/serve.py build/web
 ```
 
+With a split set (a directory of `godnotic-<date>-*.pk3` with its
+`godnotic-data.json` or `godnotic-data-<profile>.json`, as
+`scripts/split-data-packs.py` writes it; or its archive with
+`--astc-manifest` / `--web-manifest`), no stock pk3s are needed:
+
+```bash
+scripts/stage-web-data.sh --web split-dxt --astc split-astc
+```
+
 `serve.py` sends the same cache headers as Vercel, answers Range requests,
 and with `XT_SERVE_LOG=FILE` logs every request (for counting them).
 
@@ -861,10 +1028,16 @@ Debugging:
   `?manifest=m/<id>.json`, `?data=URL` and `?stock=URL` pick other data.
 - `?profile=web|astc|full` picks the data set; `?lazy=0` copies the data
   into memory instead of reading it in place (the fallback path);
-  `?background=0` makes the first download everything (no background
-  download of the maps and music while playing).
+  `?background=0` turns the download while playing off for a visit (a split
+  set: only what is asked for; other data: the first download is
+  everything); `?bgparallel=N` sets how many chunks are fetched at once
+  while playing; `?older=0` does not keep an older data set running;
+  `?small=BYTES` moves the 50 MB line of a "small" update (tests).
 - `xt.lazyStats()` in the devtools console: synchronous reads, their time,
-  read-ahead, cache size; `xt.backgroundStatus()`, `xt.maps`.
+  read-ahead, cache size; `xt.backgroundStatus()`, `xt.maps`, `xt.prog`
+  (what is stored, what each map needs), `xt.bg` (the download while
+  playing: its queue, state and the last status line sent to the engine),
+  `xt.dataWant('boil')`.
 
 Tests: `scripts/test-web-cache.sh` runs `tests/web-cache/cache.test.mjs` (the
 store and the loader flow in node, against an in-memory OPFS, Cache API and
@@ -875,9 +1048,23 @@ browser, a new deploy with the same packs, the installed-app offer, the
 checks on a picked folder; maps on demand, a cancelled map download,
 the background download with pause and resume, a map asked for during it,
 the profile by GPU, a returning visitor keeping the full set, and one whose
-full set is incomplete) and `scripts/test-web-cache-repro.sh` (staging and
-the map split are reproducible; where each traced file goes). CI
-runs both on every push and pull request that touches the web loader.
+full set is incomplete; the split set: the start after the first-play
+packs, the rest announced with `fs_mountpack` in order, a reload
+mid-download, a map asked for by `map` and by `dataWant`, the in-memory
+fallback, an older layout kept running while the new set arrives) and
+`scripts/test-web-cache-repro.sh` (staging and the map split are
+reproducible; where each traced file goes; a split set is staged as it is
+and a wrong one refused). CI runs both on every push and pull request that
+touches the web loader. Where Chromium or Firefox is installed (not in CI)
+the script goes on with `tests/web-cache/split.sh`: the page's own
+`shell.js`, `store.js` and `lazyfs.js` in headless Chromium and Firefox,
+against a local server with a made-up split set of 1.6 MB
+(`make-split-set.py`) and a stand-in engine (`stub-engine.js`: a small
+file system on which the reads in place are the real ones, the engine's
+search path, `fs_mountpack`, `map` asking the page first). It checks what was requested
+before the engine started, the packs announced while it ran and that every
+file in them reads back right, the browser killed mid-download, a map
+that is not in yet, and a browser holding the older layout.
 `tests/web-cache/browser.sh` runs the store in real browsers (headless
 Chromium and Firefox), killing and restarting them between steps: a
 download into OPFS cut off and resumed, a restart, the worker writer, an
@@ -890,10 +1077,14 @@ with `--install DIR` an existing folder (see tests/web-cache/README.md).
 through a visit (clicks Download, waits for the menu) and prints times,
 heap (V8 heap, ArrayBuffer backing stores, the renderer's private memory)
 and every data request; run it twice on one profile for a reload. With
-`--map stormkeep --map2 dance --expect-fetch` (and `?autoplay&allmaps=0` in
-the URL) it then plays a bot match and changes to a map that has to be
-downloaded on demand, and fails if it was not; `--throttle-bps`,
-`--settle SEC` measure slow connections and memory after a load.
+`--map stormkeep --map2 dance --expect-fetch` it then plays a bot match and
+changes to a map that has to be downloaded on demand, and fails if it was
+not; `--throttle-bps`, `--settle SEC` measure slow connections and memory
+after a load; `--wait-complete --map3 NAME` waits for the download while
+playing to finish and plays a map whose packs were mounted meanwhile;
+`--bg-frames SEC` compares the frames with that download running and
+paused; `--scan` (with `?debug`) lists engine lines that look like a
+missing file.
 - `xt.command('...')` in the devtools console runs a console command.
 - `scripts/build-web.sh --debug` keeps function names and Emscripten
   assertions.
@@ -911,13 +1102,22 @@ are needed:
   Python 3.10+ and GCC 12+ from `dnf` where the build image lacks them, and
   the Emscripten SDK, kept in `.vercel/cache` between builds.
 - `buildCommand` (`scripts/vercel-build.sh`): `scripts/build-web.sh` (and
-  libopus, cached), then the stock data from the pinned Godnotic data
-  release (`data-20261107`; move the pin to change the data) and the slim
-  set (`data-slim`, sha256-pinned: the build fails when it cannot be
-  fetched or is not the pinned file, rather than deploying without the
-  ASTC profile or with other data), split and staged with `scripts/stage-web-data.sh` (the split
-  takes seconds). Output: about 1.46 GB of blobs (web 1.07 GB, astc 0.40 GB,
-  the full set's shared chunks counted once, its maps pk3 not hosted).
+  libopus, cached), then the data. Per profile it asks the data release
+  for the split set's manifest (`godnotic-data-astc.json`,
+  `godnotic-data-dxt.json` beside the apps' archive on `data-slim`). HTTP
+  404: that profile is built as before, from the stock data of the pinned
+  release (`data-20261107`) and the slim set (sha256-pinned). There: its
+  archive (`archive.url`) is fetched and checked against the manifest's
+  size and sha256, and the manifest's `set` against the pin in the script
+  (`SPLIT_SET_ASTC`, `SPLIT_SET_DXT`); a set that is not the pinned one, an
+  archive that cannot be fetched, or any other answer than 200 or 404 for
+  the manifest fails the build rather than deploying other data: every
+  visitor would download it again. Everything is staged with
+  `scripts/stage-web-data.sh`. The stock data is fetched in either case,
+  for the `full` profile's hashes. Output today: about 1.46 GB of blobs
+  (web 1.07 GB, astc 0.40 GB, the full set's shared chunks counted once,
+  its maps pk3 not hosted); with both split sets, about 1.23 GB (dxt
+  0.85 GB, astc 0.37 GB, this fork's files; nothing of the full set).
   About 3½ minutes on the Hobby build machine (2 cores); the SDK comes from
   the build cache.
 - `headers`: everything is `no-cache` except the content-addressed paths
@@ -954,11 +1154,14 @@ podman run --rm -v "$PWD:/vercel/path0" -w /vercel/path0 \
   bash -c 'bash scripts/vercel-build.sh --install && bash scripts/vercel-build.sh'
 ```
 
-Bandwidth: a new player downloads 159-444 MB to play, about 1.07 GB (web)
-or 0.40 GB (astc) once every map and the music are in. Before maps on
-demand, each new player downloaded about 1 GB. Vercel's Hobby plan includes
-100 GB of transfer a month (about 100 players who download everything,
-300-600 who play a few maps), and is for non-commercial
+Bandwidth: today a new player downloads 1.07 GB (web) or 0.40 GB (astc).
+With the split sets, 88 MB (astc) or 243 MB (dxt) to play, and 386 MB or
+859 MB once everything is in, which happens by itself while the page stays
+open; a returning player downloads the new set once (see "A new data
+set"). Vercel's Hobby plan includes
+100 GB of transfer a month (with the split sets about 260 players on the
+ASTC set or 115 on the DXT set who stay until everything is in; about 100
+players on today's stock set), and is for non-commercial
 use. Pro, or another host for the stock data (any static host that sends
 `Access-Control-Allow-Origin: *`), raises that; point the Pages shell at it
 with the repository variable `XT_WEB_DATA_URL`.
@@ -970,11 +1173,15 @@ creates them):
 |---|---|---|
 | `data-20261107/Godnotic-data-20261107.zip` | the stock set: `web` today, and `full` | the upstream pk3s |
 | `data-slim/Godnotic-data.zip` (sha256 pinned in `scripts/vercel-build.sh`) | `astc` | `repack-phone-assets.py --profile slim` (ASTC) |
-| a web slim set, e.g. `data-web-20261107/Godnotic-data-web.zip` with its `.sha256` | `web`, once `XT_WEB_DATA_ARCHIVE`/`XT_WEB_DATA_SHA256` (or the defaults in `scripts/vercel-build.sh`) name it | `python3.14 scripts/repack-phone-assets.py --profile slim --textures keep -j $(nproc) -o out Xonotic/data/{font-unifont,font-xolonium}-20261107.pk3 Xonotic/data/xonotic-20261107-{data,maps,music,xoncompat}.pk3`, then each `out/<name>-phone.pk3` zipped as `Xonotic/data/<name>.pk3` (the layout of the other archives); 878 MB measured |
+| `data-slim/godnotic-data-astc.json` and the archive it names (`data-astc-20261107-r1/Godnotic-data-astc.zip`) | `astc`, as a split set, in place of the slim archive; set pinned as `SPLIT_SET_ASTC` | `scripts/split-data-packs.py` (PHONE_ASSETS.md, "Split set") |
+| `data-slim/godnotic-data-dxt.json` and its archive (`data-dxt-20261107-r1/Godnotic-data-dxt.zip`) | `web`, as a split set, in place of the stock pk3s; set pinned as `SPLIT_SET_DXT` | the same, from the DXT repack |
+| a web slim set, e.g. `data-web-20261107/Godnotic-data-web.zip` with its `.sha256` | `web` while there is no dxt split set, once `XT_WEB_DATA_ARCHIVE`/`XT_WEB_DATA_SHA256` (or the defaults in `scripts/vercel-build.sh`) name it | `python3.14 scripts/repack-phone-assets.py --profile slim --textures keep -j $(nproc) -o out Xonotic/data/{font-unifont,font-xolonium}-20261107.pk3 Xonotic/data/xonotic-20261107-{data,maps,music,xoncompat}.pk3`, then each `out/<name>-phone.pk3` zipped as `Xonotic/data/<name>.pk3` (the layout of the other archives); 878 MB measured |
 
-The zip must keep the stock file names under `Xonotic/data/`: the stager
-finds the data and maps pk3 by `xonotic-*-data.pk3` / `xonotic-*-maps.pk3`
-and splits the maps pk3 itself. `data-slim` is a tag that moves: the build
+A zip that is not a split set must keep the stock file names under
+`Xonotic/data/`: the stager finds the data and maps pk3 by
+`xonotic-*-data.pk3` / `xonotic-*-maps.pk3` and splits the maps pk3 itself.
+A split set's archive holds its packs under `Xonotic/data/` as well, named
+as its manifest's `install_as`. `data-slim` is a tag that moves: the build
 is pinned to the asset's hash and fails when it changes. The slim set
 should be published under an immutable tag (`data-slim-<stock date>-<n>`,
 for example `data-slim-20261107-1`, asset `Godnotic-data.zip` with its

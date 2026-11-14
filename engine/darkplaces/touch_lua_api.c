@@ -979,6 +979,7 @@ int TLuaAPI_engine_cmd(lua_State *L)
 		return luaL_error(L, "xt.engine.cmd: %s", why);
 	if (m->engcmds-- <= 0)
 		return luaL_error(L, "xt.engine.cmd: too many commands in one call (16)");
+	m->engcmds_used++;
 	dpsnprintf(text, sizeof(text), "%s\n", line);
 	Cbuf_AddText(cmd_local, text);
 	return 0;
@@ -1137,6 +1138,7 @@ static int tlua_http_start(lua_State *L, const char *url, const char *body, size
 		memcpy(h->post, body, bodylen);
 	}
 	h->ref = TLua_Ref(L, fnidx);
+	TLua_NoteHost(m, hn);
 	tlua_http_local = local;
 #ifdef __EMSCRIPTEN__
 	if (!TouchWeb_Begin_ToMemory_POST(url, body ? type : NULL, body ? h->post : NULL, body ? bodylen : 0, h->buf, TLUA_HTTP_BODY, local, tlua_http_cb, h))
@@ -1155,6 +1157,24 @@ static int tlua_http_start(lua_State *L, const char *url, const char *body, size
 	tlua_http_local = false;
 	lua_pushboolean(L, 1);
 	return 1;
+}
+
+// the hosts a mod's requests went to (for the Mods page), up to what fits
+void TLua_NoteHost(tlua_mod_t *m, const char *hn)
+{
+	char padded[200];
+	dpsnprintf(padded, sizeof(padded), ",%s,", m->hosts);
+	{
+		char want[140];
+		dpsnprintf(want, sizeof(want), ",%s,", hn);
+		if (strstr(padded, want))
+			return;
+	}
+	if (strlen(m->hosts) + strlen(hn) + 2 >= sizeof(m->hosts))
+		return;
+	if (m->hosts[0])
+		dp_strlcat(m->hosts, ",", sizeof(m->hosts));
+	dp_strlcat(m->hosts, hn, sizeof(m->hosts));
 }
 
 int TLuaAPI_http_get(lua_State *L)

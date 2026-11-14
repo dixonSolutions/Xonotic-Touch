@@ -36,6 +36,9 @@ button.gn-play:hover { box-shadow: 0 6px 22px alpha(@gn_ember, 0.55); }
 .gn-narrow .gn-card.gn-featured .gn-card-text { padding: 10px 8px 12px 8px; }
 .gn-card.gn-featured progressbar > trough, .gn-card.gn-featured progressbar > trough > progress { min-width: 0; }
 .gn-card.gn-dim { opacity: 0.5; }
+.gn-map-state { margin: 6px; padding: 2px 8px; border-radius: 10px; background: alpha(black, 0.7); color: white; }
+.gn-map-bar { margin: 0; min-height: 4px; }
+.gn-map-bar trough, .gn-map-bar progress { min-height: 4px; border-radius: 0; }
 
 .gn-chip { border-radius: 999px; padding: 3px 10px; font-size: 12px; background: alpha(currentColor, 0.08); }
 .gn-badge { border-radius: 6px; padding: 1px 7px; font-size: 11px; font-weight: 700; background: alpha(currentColor, 0.1); }

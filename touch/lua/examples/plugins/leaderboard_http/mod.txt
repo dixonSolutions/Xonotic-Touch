@@ -5,7 +5,8 @@ author: Godnotic
 description: Posts the scores to a leaderboard web site at the end of each match.
 api: 3
 realm: server
-permissions: internet
+permissions: standard, internet
+reason.standard: reads the scores at the end of a match
 reason.internet: sends the scores to the leaderboard site
 http: 127.0.0.1, leaderboard.example.org
 setting.url: text http://127.0.0.1:8765/scores | Leaderboard address

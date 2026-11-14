@@ -19,3 +19,7 @@ trap 'rm -rf "$out"' EXIT
 
 python3 "$dir/mirror_check.py" "$ROOT/engine/darkplaces/touch_hudmode.h" \
     "$ROOT/engine/data/xonotic-data.pk3dir/qcsrc/client/touch_mode.qh"
+
+# The touch game menu's order: the actions that matter on a phone's first screen.
+python3 "$dir/gamemenu_order.py" \
+    "$ROOT/engine/data/xonotic-data.pk3dir/qcsrc/menu/xonotic/dialog_touch_gamemenu.qc"

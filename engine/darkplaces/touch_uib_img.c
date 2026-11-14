@@ -10,6 +10,7 @@ Decoding is spread over frames: at most ~6 ms of image work per frame.
 #include "quakedef.h"
 #include "image.h"
 #include "touch_uib_int.h"
+unsigned char *TLua_ModImageBGRA(const char *ref); // touch_lua.c
 
 typedef struct
 {
@@ -220,7 +221,7 @@ static void process(const imgreq_t *r)
 			return;
 		}
 	}
-	unsigned char *bgra = loadimagepixelsbgra(path, false, false, false, NULL);
+	unsigned char *bgra = !strncmp(r->ref, "mod:", 4) ? TLua_ModImageBGRA(r->ref) : loadimagepixelsbgra(path, false, false, false, NULL); // Touch: a mod's icon comes from its package (touch_lua.c)
 	if (!bgra)
 	{
 		UIB_SendError(r->conn, r->re, "not_found", "no such image");
@@ -309,7 +310,7 @@ int UIBImg_Thumb(const char *ref, int w, int h, char *out, size_t outsize)
 	dpsnprintf(rel, sizeof(rel), "uib-cache/%08x_%dx%d.png", hashref(ref), w, h);
 	if (!FS_FileExists(rel))
 	{
-		unsigned char *bgra = loadimagepixelsbgra(path, false, false, false, NULL);
+		unsigned char *bgra = !strncmp(ref, "mod:", 4) ? TLua_ModImageBGRA(ref) : loadimagepixelsbgra(path, false, false, false, NULL); // Touch: a mod's icon from its package (touch_lua.c)
 		if (!bgra)
 			return 0;
 		int iw = image_width, ih = image_height;

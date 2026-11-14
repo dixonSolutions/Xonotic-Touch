@@ -142,6 +142,15 @@ typedef struct tlua_mod_s
 	size_t mempeak;
 	int engcmds;                    // xt.engine.cmd left in the current call
 	int depth;                      // nesting of calls into this mod (re-entrancy)
+	// declared x granted (docs/PLUGIN_STANDARD.md, section 13)
+	qbool nomanifest;               // a folder with only init.lua: standard, and nothing can be granted
+	qbool declares;                 // mod.txt has a permissions: line
+	unsigned seen;                  // the tiers the player was shown (luastate/<realm>/seen/<id>.txt)
+	char icon[64];                  // icon: in mod.txt (a .png/.tga of the package), "" when none
+	// what it actually used, since it started (lua_mod_info, _lua_detail, lua_mod_top)
+	unsigned tiercalls[TLUA_NUMPERMS];
+	char hosts[192];                // hosts xt.http reached, comma separated
+	int engcmds_used;
 } tlua_mod_t;
 
 typedef struct tlua_realm_s
@@ -275,6 +284,24 @@ int TLua_Ref(lua_State *L, int idx);
 void TLua_Unref(tlua_mod_t *m, int ref);
 // the offline-only rule (touch_weapons.h): true when open; why says why not
 qbool TLua_Offline(const char **why);
+// a mod's icon decoded to BGRA (image_width/image_height set), or NULL:
+// ref is "mod:<id>/<file>" and file must be the icon its mod.txt names
+unsigned char *TLua_ModImageBGRA(const char *ref);
+// usage notes from the API (touch_lua_api.c)
+void TLua_NoteHost(tlua_mod_t *m, const char *host);
+
+// copies the first n bytes of src (or less to fit) and ends the string: a prefix
+// copy, cut on purpose, which dp_strlcpy would report as a truncation warning
+static inline void TLua_CopyN(char *dst, size_t dstsize, const char *src, size_t n)
+{
+	if (!dstsize)
+		return;
+	if (n >= dstsize)
+		n = dstsize - 1;
+	memcpy(dst, src, n);
+	dst[n] = 0;
+}
+
 // the client: whose CSQC runs (0 none, 1 foreign, 2 this game's)
 int TLua_CL_CsqcKind(void);
 // the realm modules API 3 adds

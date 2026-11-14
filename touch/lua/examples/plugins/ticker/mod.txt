@@ -5,3 +5,5 @@ author: Godnotic
 description: Continuous work three ways: a coroutine loop, a repeating timer and a one-shot timer.
 api: 3
 realm: server
+permissions: standard
+reason.standard: prints a counter on a timer

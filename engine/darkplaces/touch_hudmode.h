@@ -403,11 +403,11 @@ static inline const char *TouchJoinDlg_Command(const char *choice, int teams)
 
 // ---------------------------------------------------------------------------
 // Sizes in density-independent pixels: primary actions 56-64 dp, secondary
-// 44-48 dp, never a touch target under 44 dp.
+// 46-48 dp, never a touch target under 48 dp.
 // ---------------------------------------------------------------------------
 #define TOUCHDP_PRIMARY     60.0f
 #define TOUCHDP_SECONDARY   46.0f
-#define TOUCHDP_MIN_TARGET  44.0f
+#define TOUCHDP_MIN_TARGET  48.0f
 #define TOUCHDP_PILL_HEIGHT 36.0f   // drawn; its target is TOUCHDP_MIN_TARGET or more
 
 // Physical pixels per dp from a reported dpi; without one, a guess from the

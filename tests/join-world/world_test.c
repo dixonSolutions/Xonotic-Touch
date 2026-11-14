@@ -19,8 +19,28 @@ static void Host_Error(const char *format, ...)
     longjmp(aborted, 1);
 }
 #include "touch_join.h"
+/* touch_datafetch.c's part: a map of the data set that is still downloading */
+void TouchData_Init(void) {}
+void TouchData_Frame(void) {}
+qbool TouchData_JoinPending(void) { return 0; }
+int TouchData_MapState(const char *map, float *progress) { (void)map; (void)progress; return 0; }
+unsigned TouchData_Generation(void) { return 0; }
+qbool TouchData_JoinNeedsMap(const char *worldmodel, char *text, size_t textsize)
+{
+    if (!worldmodel || strcmp(worldmodel, "maps/queued.bsp"))
+        return 0;
+    snprintf(text, textsize, "Godnotic: map queued is still downloading. Joining when it is here.\n");
+    return 1;
+}
 int main(void)
 {
+    if (!setjmp(aborted)) {
+        TouchJoin_RequireWorld(0, "maps/queued.bsp");
+        assert(!"a world that is still downloading must abort this signon too");
+    }
+    assert(strstr(error, "still downloading"));
+    assert(!strstr(error, "cannot load"));
+    assert(!(key_consoleactive & KEY_CONSOLEACTIVE_USER));
     TouchJoin_RequireWorld(1, "maps/present.bsp");
     if (!setjmp(aborted)) {
         TouchJoin_RequireWorld(0, "maps/missing.bsp");

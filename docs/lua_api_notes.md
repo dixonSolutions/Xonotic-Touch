@@ -1,8 +1,9 @@
 ## Calls, errors and limits
 
-Every function above checks its tier on every call. A call without its tier raises
-`permission denied: the <tier> tier is not turned on for this mod` (or `needs the <tier>
-tier` when `mod.txt` does not ask for it), and an error the mod does not catch with
+Every function above checks its tier on every call against what the mod declares and
+what the player granted. A call without its tier raises
+`permission denied: the <tier> tier is not turned on for this mod` (declared, not granted),
+or `needs the <tier> tier` when `mod.txt` does not declare it (whatever is granted), and an error the mod does not catch with
 `pcall` stops that mod, never the game.
 
 | Limit | Cvar | Default | What happens past it |
@@ -244,13 +245,16 @@ key `server-<page>`), `TouchUIB_ModRemove` when it goes, and the bridge's `value
 `action` events (`TouchUIB_ModSetEventHandler`) come back through `tlua_ui_event`.
 
 **The Mods manager's own state** (for the menus that draw it): `_cl_lua_mods` and
-`_sv_lua_plugins` (one line per mod: `name<TAB>state<TAB>title<TAB>error<TAB>description`),
-`_cl_lua_permissions` (`name<TAB>mode<TAB>requested tiers<TAB>granted tiers`), `_lua_select`
+`_sv_lua_plugins` (one line per mod: `name<TAB>state<TAB>title<TAB>error<TAB>description<TAB>icon`,
+`icon` an image ref `mod:<mod>/<file>` or empty), `_cl_lua_permissions`
+(`name<TAB>mode<TAB>declared tiers<TAB>granted tiers<TAB>not decided yet`), `_lua_select`
 + `_lua_detail` (one mod in detail: `key<TAB>value` lines; `perm` lines are
-`tier<TAB>granted 0/1<TAB>reason`), `_lua_last` (the manager's last message), `_lua_top`
+`tier<TAB>granted 0/1<TAB>reason`; `declares`, `unseen`, `icon`, `used`
+(`tier<TAB>N calls`), `hosts`, `engine_commands`), `_lua_last` (the manager's last message), `_lua_top`
 (cost, JSON), and the commands `lua_mod_enable/disable/permission/install/update/uninstall`.
-A tier switch is `lua_mod_permission <mod> grant|revoke <tier>`; turning a mod on needs
-no grant (standard); `engine_full` for a mod installed from a link needs
+A tier switch is `lua_mod_permission <mod> grant|revoke|decline <tier>` (declared tiers
+only); turning a mod on is `lua_mod_enable <mod> [with <tiers>|all|none|keep]` (standard needs
+no grant); `engine_full` for a mod installed from a link needs
 `lua_mod_permission <mod> grant engine_full confirm` after the first grant printed its
 warning.
 

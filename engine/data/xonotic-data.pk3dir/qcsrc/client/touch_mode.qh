@@ -50,7 +50,7 @@ const int TOUCHCTL_RESPAWN = 8388608;
 
 // Sizes in dp (touch_hudmode.h TOUCHDP_*).
 const float TOUCHDP_SECONDARY = 46;
-const float TOUCHDP_MIN_TARGET = 44;
+const float TOUCHDP_MIN_TARGET = 48;
 const float TOUCHDP_PILL_HEIGHT = 36;
 
 int Touch_Mode(void);

@@ -1,12 +1,13 @@
 #include "touch_look.qh"
 #include "touch_init.qh"
 #include "touch_defs.qh"
+#include "touch_feel.qh"
+#include "touch_mode.qh"
 
-vector touch_look_vel;
-vector touch_look_carry;
+vector touch_look_owed;    // degrees turned by the finger, not yet applied (x yaw, y pitch)
+float touch_look_speed;    // smoothed finger speed, dp/s
+bool touch_look_primed;
 vector touch_look_down_pos;
-vector touch_look_prev_raw;
-vector touch_look_dvel;
 bool touch_look_escaped;
 bool touch_look_active;
 float touch_look_prev_time;
@@ -14,10 +15,9 @@ bool touch_look_owns_sensitivity;
 
 void Touch_Look_Reset(void)
 {
-	touch_look_vel = '0 0 0';
-	touch_look_carry = '0 0 0';
-	touch_look_prev_raw = '0 0 0';
-	touch_look_dvel = '0 0 0';
+	touch_look_owed = '0 0 0';
+	touch_look_speed = 0;
+	touch_look_primed = false;
 	touch_look_escaped = false;
 	touch_look_active = false;
 	touch_look_down_pos = '0 0 0';
@@ -28,11 +28,14 @@ void Touch_Look_BeginGesture(vector down_pos)
 {
 	touch_look_down_pos = down_pos;
 	touch_look_escaped = false;
+	// a second finger joining a look in progress adds to it: nothing owed is dropped
+	if (!touch_look_active)
+	{
+		touch_look_owed = '0 0 0';
+		touch_look_speed = 0;
+		touch_look_primed = false;
+	}
 	touch_look_active = true;
-	touch_look_vel = '0 0 0';
-	touch_look_carry = '0 0 0';
-	touch_look_prev_raw = '0 0 0';
-	touch_look_dvel = '0 0 0';
 }
 
 void Touch_Look_BeginGestureEscaped(vector pos)
@@ -50,9 +53,13 @@ bool Touch_Look_Escaped(void)
 
 void Touch_Look_EndGesture(void)
 {
+	// the finger lifted: the turn still owed is paid at once
+	if (touch_look_active && touch_look_owed != '0 0 0')
+		Touch_Look_Turn(touch_look_owed.x, touch_look_owed.y);
+	touch_look_owed = '0 0 0';
+	touch_look_primed = false;
 	touch_look_active = false;
 	touch_look_escaped = false;
-	touch_look_vel = '0 0 0';
 }
 
 void Touch_Look_SetOwnership(bool own)
@@ -80,85 +87,34 @@ void Touch_Look_ApplyDelta(float dx, float dy)
 	Touch_Look_Update(dx * eX + dy * eY, 1.0 / 30.0);
 }
 
-// One-euro filter (Casiez et al., CHI 2012), the same approach Valve shipped for
-// Steam Deck gyro. A fixed low-pass trades jitter for latency at *every* speed;
-// this raises its cutoff with speed instead, because people notice jitter when
-// moving slowly and latency when moving fast. Touch-look is a drag, the most
-// latency-sensitive input class there is, so constant lag is not affordable.
+// The look, as engine/darkplaces/touch_feel.h (TouchLook_Step): degrees per dp
+// of finger travel, so the same swipe in centimetres turns the same angle on
+// every screen; a gain that rises with finger speed (touch_look_accel); and a
+// smoothing whose cutoff rises with speed (the 1 euro filter's idea, Casiez et
+// al., CHI 2012) applied to the turn still owed, so nothing a finger moved is
+// lost when it lifts.
 const float TOUCH_TWO_PI = 6.28318530717958647693;
 
 float Touch_Look_Alpha(float cutoff, float dt)
 {
-	// Standard exponential-smoothing coefficient for a given cutoff frequency.
 	float tau = 1.0 / (TOUCH_TWO_PI * max(cutoff, 0.0001));
 	return 1.0 / (1.0 + tau / dt);
 }
 
-vector Touch_Look_Filter(vector v_raw, float dt)
+float Touch_Look_Gain(float speed)
 {
-	int mode = autocvar_touch_look_filter;
-
-	if (mode == TOUCH_LOOK_FILTER_OFF)
-		return v_raw;
-
-	if (mode == TOUCH_LOOK_FILTER_EMA)
-	{
-		// Legacy fixed exponential smoother, kept so a player who preferred the
-		// old feel can get it back.
-		float tau = 0;
-		if (autocvar_touch_look_smoothing == 1)
-			tau = 0.035;
-		else if (autocvar_touch_look_smoothing >= 2)
-			tau = 0.070;
-		float a = 1.0;
-		if (tau > 0)
-			a = 1.0 - exp(-dt / tau);
-		return touch_look_vel + (v_raw - touch_look_vel) * a;
-	}
-
-	// Derivative of the signal, itself low-passed at a fixed cutoff, gives the
-	// speed estimate that drives the adaptive cutoff.
-	vector dv = (v_raw - touch_look_prev_raw) * (1.0 / dt);
-	float da = Touch_Look_Alpha(1.0, dt);
-	touch_look_dvel = touch_look_dvel + (dv - touch_look_dvel) * da;
-	touch_look_prev_raw = v_raw;
-
-	// fcmin governs slow-speed jitter, beta governs high-speed lag.
-	float cutoff = max(autocvar_touch_look_fcmin, 0.01)
-		+ max(autocvar_touch_look_beta, 0) * vlen(touch_look_dvel);
-	float a = Touch_Look_Alpha(cutoff, dt);
-	return touch_look_vel + (v_raw - touch_look_vel) * a;
+	float accel = cvar("touch_look_accel");
+	float lo = cvar("touch_look_accel_lo"), hi = cvar("touch_look_accel_hi");
+	if (accel <= 0 || hi <= lo)
+		return 1;
+	float t = bound(0, (speed - lo) / (hi - lo), 1);
+	return 1 + accel * t * t * (3 - 2 * t);
 }
 
-void Touch_Look_Update(vector raw_px, float dt)
+void Touch_Look_Turn(float yaw, float pitch)
 {
-	if (!touch_look_active)
-	{
-		touch_look_vel = '0 0 0';
-		return;
-	}
-
-	dt = bound(1.0 / 240.0, dt, 0.1);
-	raw_px.z = 0;
-
-	if (!touch_look_escaped)
-	{
-		// Escape is handled in Touch_Look_Frame with down_pos; raw path skips if tiny.
-		if (vlen(raw_px) < autocvar_touch_look_deadzone_px * 0.25)
-			return;
-	}
-
-	vector v_raw = raw_px * (1.0 / dt);
-	touch_look_vel = Touch_Look_Filter(v_raw, dt);
-	vector applied = touch_look_vel * dt;
-
-	vector vf = getpropertyvec(VF_SIZE);
-	float k = TOUCH_LOOK_DEG_PER_PX * autocvar_touch_sens_base * (TOUCH_LOOK_REF_WIDTH / max(vf.x, 1));
-	float yaw = applied.x * k;
-	float pitch = applied.y * k * autocvar_touch_sens_y_mult;
 	if (autocvar_touch_invert_y)
 		pitch = -pitch;
-
 	// Aim friction: the engine's touch aim assist (touch_aim.c) slows the drag
 	// while the crosshair is on or near an enemy. It publishes the multiplier
 	// because it also runs on servers whose CSQC is not this one.
@@ -168,24 +124,51 @@ void Touch_Look_Update(vector raw_px, float dt)
 		yaw *= assist;
 		pitch *= assist;
 	}
-
-	// The clamp is there for contact-id jumps, so it limits how fast the finger
-	// can move, not how fast the view can turn. A flat 900°/s held sensitivity
-	// 50 to a 200 px/s drag: it rises with touch_sens_base past the 2.8 default.
-	float cap = autocvar_touch_look_max_deg_per_s * max(1, autocvar_touch_sens_base / 2.8) * dt;
-	yaw = bound(-cap, yaw, cap);
-	pitch = bound(-cap, pitch, cap);
-
-	touch_look_carry.x += yaw;
-	touch_look_carry.y += pitch;
-
 	vector ang = getpropertyvec(VF_CL_VIEWANGLES);
-	ang.y -= touch_look_carry.x;
-	ang.x += touch_look_carry.y;
+	ang.y -= yaw;
+	ang.x += pitch;
 	ang.x = bound(-89, ang.x, 89);
 	ang.z = 0;
 	setproperty(VF_CL_VIEWANGLES, ang);
-	touch_look_carry = '0 0 0';
+}
+
+void Touch_Look_Update(vector raw_px, float dt)
+{
+	if (!touch_look_active)
+		return;
+
+	dt = bound(1.0 / 240.0, dt, 0.1);
+	raw_px.z = 0;
+	// console units to dp
+	vector d = raw_px * (1 / max(0.001, Touch_DpUnits()));
+	float v = vlen(d) / dt;
+	if (!touch_look_primed)
+	{
+		touch_look_speed = v;
+		touch_look_primed = true;
+	}
+	else
+		touch_look_speed += (v - touch_look_speed) * Touch_Look_Alpha(TOUCHFEEL_SPEED_HZ, dt);
+	float sens = autocvar_touch_sens_base;
+	float accel = max(0, cvar("touch_look_accel"));
+	float g = Touch_Look_Gain(touch_look_speed);
+	touch_look_owed.x += d.x * TOUCHFEEL_DEG_PER_DP * sens * g;
+	touch_look_owed.y += d.y * TOUCHFEEL_DEG_PER_DP * sens * autocvar_touch_sens_y_mult * g;
+	float a = 1;
+	if (autocvar_touch_look_filter == 1)
+		a = Touch_Look_Alpha(max(autocvar_touch_look_fcmin, 0.01) + max(autocvar_touch_look_beta, 0) * touch_look_speed, dt);
+	else if (autocvar_touch_look_filter >= 2)
+		a = Touch_Look_Alpha(max(autocvar_touch_look_fcmin, 0.01), dt);
+	vector out = touch_look_owed * a;
+	// a clamp for contacts that jump, not a limit on turning
+	float cap = autocvar_touch_look_max_deg_per_s * max(1, sens / 2.8) * (1 + accel) * dt;
+	if (cap > 0)
+	{
+		out.x = bound(-cap, out.x, cap);
+		out.y = bound(-cap, out.y, cap);
+	}
+	touch_look_owed -= out;
+	Touch_Look_Turn(out.x, out.y);
 }
 
 void Touch_Look_Frame(vector accum_px, vector last_pos, bool first_frame, bool active)
@@ -212,7 +195,9 @@ void Touch_Look_Frame(vector accum_px, vector last_pos, bool first_frame, bool a
 		if (vlen(from_down) < autocvar_touch_look_deadzone_px)
 			return;
 		touch_look_escaped = true;
-		accum_px = from_down * autocvar_touch_look_escape_carry;
+		// all of the travel that proved it a drag: half of it used to be
+		// dropped here, which a flick (most of it in one frame) felt
+		accum_px = from_down;
 	}
 
 	Touch_Look_Update(accum_px, dt);

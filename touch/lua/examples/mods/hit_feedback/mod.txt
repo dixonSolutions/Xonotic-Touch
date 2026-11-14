@@ -5,4 +5,6 @@ author: Godnotic
 description: Damage numbers, a hit sound, and a restyled kill feed.
 api: 3
 realm: client
+permissions: standard
+reason.standard: draws damage numbers and its own kill feed, plays a hit sound
 setting.feed: bool 1 | Restyle the kill feed

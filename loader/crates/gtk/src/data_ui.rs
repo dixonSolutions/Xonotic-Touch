@@ -4,13 +4,20 @@
 //! set, and Download / Check again with progress; music is always part of
 //! the set. The downloader is the core's (ranged, resumable, CRC-checked).
 
-use godnotic_core::fetch::{self, datasets, http_ureq::UreqHttp, CancelToken, PackFetch, Progress};
+use godnotic_core::fetch::{self, datasets, http_ureq::UreqHttp, CancelToken, Progress};
 use godnotic_core::paths::GamePaths;
 use gtk::glib;
 use gtk::prelude::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
+
+/// Where the engine's QuakeC reads and writes (`<userdir>/data/data`): the download's status and request files.
+fn engine_write_dir() -> PathBuf {
+    let env: HashMap<String, String> = std::env::vars().collect();
+    let exe = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_string_lossy().to_string()));
+    PathBuf::from(GamePaths::resolve(&env, exe.as_deref(), &|f| Path::new(f).exists(), "").engine_user_dir).join("data/data")
+}
 
 fn data_dir() -> PathBuf {
     let env: HashMap<String, String> = std::env::vars().collect();
@@ -116,17 +123,17 @@ pub fn button() -> gtk::MenuButton {
             let dir = data_dir();
             let http = UreqHttp::new();
             let choice = datasets::choose(None, std::env::var(datasets::ENV).ok().as_deref(), None, None);
-            let r = (|| -> Result<(), fetch::Error> {
-                let (_, plan) = datasets::plan_choice(&http, &choice, &t, datasets::FULL_URL)?;
+            let r: Result<(), fetch::Error> = {
                 let tx2 = tx.clone();
                 let listen = move |p: Progress| {
                     let _ = tx2.send(Msg::Progress(p));
                 };
                 let free = |p: &Path| free_space(p);
-                PackFetch::new(&http, &dir, &plan, fetch::Config::default(), &free, &listen).run(&t, true)?;
-                datasets::mark_installed(&dir, &plan);
-                Ok(())
-            })();
+                // The split set when the server has its manifest (first the packs a match needs, then the
+                // rest while the game may already run: the status file tells it what landed), else one archive.
+                let engine_dir = engine_write_dir();
+                datasets::fetch_all(&http, &choice, None, &dir, Some(&engine_dir), fetch::Config::default(), &free, &t, &listen, &|| {}, datasets::FULL_URL)
+            };
             let _ = tx.send(Msg::Done(r.map_err(|e| e.to_string())));
         });
         let (go, bar, stop, status, refresh) = (go.clone(), bar2.clone(), stop2.clone(), status2.clone(), refresh.clone());
@@ -154,5 +161,9 @@ pub fn button() -> gtk::MenuButton {
             glib::ControlFlow::Continue
         });
     });
+    // a split set that is not whole yet carries on by itself (docs/DATA_FETCH.md)
+    if datasets::split_unfinished(&data_dir()) {
+        go.emit_clicked();
+    }
     mb
 }

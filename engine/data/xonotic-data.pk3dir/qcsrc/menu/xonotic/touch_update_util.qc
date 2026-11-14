@@ -22,6 +22,12 @@ string touchAndySU_installed;
 string touchAndySU_latest;
 string touchAndySU_message;
 float touchAndySU_percent;
+// key=value lines after line 8, and the whole record to notice changes
+const int TOUCH_ANDYSU_MAXEXTRA = 32;
+string touchAndySU_keys[TOUCH_ANDYSU_MAXEXTRA];
+string touchAndySU_values[TOUCH_ANDYSU_MAXEXTRA];
+int touchAndySU_nextra;
+string touchAndySU_raw;
 
 /** The auto-update value we have asked the platform layer for and not yet seen
  *  come back on line 8; -1 when nothing is in flight.
@@ -112,11 +118,23 @@ void TouchUpdate_read()
 		cvar_set(TOUCH_UPDATE_AUTO_CVAR, touchUpdate_auto ? "1" : "0");
 }
 
+void TouchAndySU_clearExtras()
+{
+	for (int i = 0; i < touchAndySU_nextra; ++i)
+	{
+		strfree(touchAndySU_keys[i]);
+		strfree(touchAndySU_values[i]);
+	}
+	touchAndySU_nextra = 0;
+}
+
 void TouchAndySU_read()
 {
+	TouchAndySU_clearExtras();
 	float fh = fopen(TOUCH_ANDYSU_STATUS_FILE, FILE_READ);
 	if (fh < 0)
 	{
+		strcpy(touchAndySU_raw, "");
 		strcpy(touchAndySU_state, "unavailable");
 		strcpy(touchAndySU_installed, "");
 		strcpy(touchAndySU_latest, "");
@@ -130,9 +148,22 @@ void TouchAndySU_read()
 	string latest = fgets(fh);
 	string percent = fgets(fh);
 	string message = fgets(fh);
-	fgets(fh); // automatic mode, mirrored by the shared checkbox above
-	fgets(fh); // effective host mode
+	string autoLine = fgets(fh); // automatic mode, mirrored by the shared checkbox above
+	string modeLine = fgets(fh); // effective host mode
+	string raw = strcat(format, "\n", state, "\n", installed, "\n", latest, "\n");
+	raw = strcat(raw, percent, "\n", message, "\n", autoLine, "\n", modeLine);
+	for (string line; (line = fgets(fh)); )
+	{
+		raw = strcat(raw, "\n", line);
+		int eq = strstrofs(line, "=", 0);
+		if (eq <= 0 || touchAndySU_nextra >= TOUCH_ANDYSU_MAXEXTRA)
+			continue;
+		touchAndySU_keys[touchAndySU_nextra] = strzone(substring(line, 0, eq));
+		touchAndySU_values[touchAndySU_nextra] = strzone(substring(line, eq + 1, -1));
+		++touchAndySU_nextra;
+	}
 	fclose(fh);
+	strcpy(touchAndySU_raw, raw);
 	if (stof(format) != TOUCH_ANDYSU_FORMAT)
 	{
 		strcpy(touchAndySU_state, "unavailable");
@@ -177,6 +208,46 @@ string TouchAndySU_statusText()
 	if (state == "uptodate")
 		return sprintf(_("Up to date: version %s"), installed);
 	return sprintf(_("Version %s"), installed);
+}
+
+string TouchAndySU_extra(string key)
+{
+	for (int i = 0; i < touchAndySU_nextra; ++i)
+		if (touchAndySU_keys[i] == key)
+			return touchAndySU_values[i];
+	return "";
+}
+
+bool TouchAndySU_changed()
+{
+	string before = (touchAndySU_raw != string_null) ? strzone(touchAndySU_raw) : strzone("");
+	TouchAndySU_read();
+	bool changed = before != ((touchAndySU_raw != string_null) ? touchAndySU_raw : "");
+	strunzone(before);
+	return changed;
+}
+
+bool TouchAndySU_active()
+{
+	string state = TouchAndySU_state();
+	return state != "unavailable" && state != "";
+}
+
+string TouchAndySU_bytes(float n)
+{
+	if (n < 1000) return sprintf(_("%d B"), n);
+	if (n < 1000000) return sprintf(_("%d KB"), floor(n / 1000));
+	if (n < 1000000000) return sprintf(_("%s MB"), ftos_decimals(n / 1000000, 1));
+	return sprintf(_("%s GB"), ftos_decimals(n / 1000000000, 2));
+}
+
+string TouchAndySU_duration(float seconds)
+{
+	if (seconds < 0) return "";
+	if (seconds < 60) return sprintf(_("%d s"), seconds);
+	float m = ceil(seconds / 60);
+	if (m < 60) return sprintf(_("%d min"), m);
+	return sprintf(_("%d h %d min"), floor(m / 60), m - 60 * floor(m / 60));
 }
 
 bool TouchAndySU_request(string token)

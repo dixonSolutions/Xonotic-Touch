@@ -30,6 +30,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "andysu_engine.h"
 #endif
 #include "touch_uib.h" // Touch: UI bridge
+#include "touch_datafetch.h" // Touch: progressive data download
 
 /*
 
@@ -285,6 +286,7 @@ static void Host_InitLocal (void)
 {
 	TouchLoadTime_Init(); // Touch: load-time phases and restless loading
 	TouchUIB_Init(); // Touch: UI bridge
+	TouchData_Init(); // Touch: progressive data download
 	Cmd_AddCommand(CF_SHARED, "quit", Host_Quit_f, "quit the game");
 	Cmd_AddCommand(CF_SHARED, "version", Host_Version_f, "print engine version");
 	Cmd_AddCommand(CF_SHARED, "saveconfig", Host_SaveConfig_f, "save settings to config.cfg (or a specified filename) immediately (also automatic when quitting)");
@@ -683,6 +685,7 @@ double Host_Frame(double time)
 	// process console commands
 	Cbuf_Frame(host.cbuf);
 	TouchUIB_Frame(); // Touch: UI bridge
+	TouchData_Frame(); // Touch: progressive data download
 
 	R_TimeReport("---");
 

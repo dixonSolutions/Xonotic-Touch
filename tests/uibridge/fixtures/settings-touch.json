@@ -304,9 +304,10 @@
      "presentation": "horizontal",
      "swipe": true,
      "bind": "vm:settings.touch.tab",
-     "value": "controls"
+     "value": "feel"
     },
     "children": [
+     "settings/split/touch/tabs/feel",
      "settings/split/touch/tabs/controls",
      "settings/split/touch/tabs/hud",
      "settings/split/touch/tabs/aim",
@@ -315,32 +316,286 @@
     ]
    },
    {
-    "id": "settings/split/touch/tabs/controls",
+    "id": "settings/split/touch/tabs/feel",
     "type": "pane",
     "props": {
-     "key": "controls",
-     "label": "Controls"
+     "key": "feel",
+     "label": "Touch controls"
     },
     "children": [
-     "settings/split/touch/tabs/controls/preset",
-     "settings/split/touch/tabs/controls/reset",
-     "settings/split/touch/tabs/controls/scale",
-     "settings/split/touch/tabs/controls/fire",
-     "settings/split/touch/tabs/controls/hand",
-     "settings/split/touch/tabs/controls/dodge"
+     "settings/split/touch/tabs/feel/look",
+     "settings/split/touch/tabs/feel/stick",
+     "settings/split/touch/tabs/feel/buttons",
+     "settings/split/touch/tabs/feel/layout"
     ]
    },
    {
-    "id": "settings/split/touch/tabs/controls/preset",
+    "id": "settings/split/touch/tabs/feel/look",
+    "type": "section",
+    "props": {
+     "title": "Look"
+    },
+    "children": [
+     "settings/split/touch/tabs/feel/look/sens",
+     "settings/split/touch/tabs/feel/look/sensy",
+     "settings/split/touch/tabs/feel/look/accel",
+     "settings/split/touch/tabs/feel/look/invert"
+    ]
+   },
+   {
+    "id": "settings/split/touch/tabs/feel/look/sens",
+    "type": "slider",
+    "props": {
+     "label": "Swipe sensitivity",
+     "bind": "cvar:touch_sens_base",
+     "min": 1,
+     "max": 8,
+     "step": 0.100000001,
+     "format": "x",
+     "help": "How far the view turns for a swipe. The same swipe turns the same angle on every screen size",
+     "value": 3.6
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/touch/tabs/feel/look/sensy",
+    "type": "slider",
+    "props": {
+     "label": "Up and down, compared with sideways",
+     "bind": "cvar:touch_sens_y_mult",
+     "min": 0.400000006,
+     "max": 1.39999998,
+     "step": 0.0500000007,
+     "format": "x",
+     "value": 0.85
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/touch/tabs/feel/look/accel",
+    "type": "choice",
+    "props": {
+     "label": "Faster for quick swipes",
+     "bind": "cvar:touch_look_accel",
+     "style": "segmented",
+     "options": [
+      {
+       "value": "0",
+       "label": "Off"
+      },
+      {
+       "value": "0.8",
+       "label": "On"
+      },
+      {
+       "value": "1.4",
+       "label": "Strong"
+      }
+     ],
+     "help": "A slow drag aims exactly; a quick swipe turns further, enough to turn around in one",
+     "value": "0.8"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/touch/tabs/feel/look/invert",
+    "type": "switch",
+    "props": {
+     "label": "Invert up and down",
+     "bind": "cvar:touch_invert_y",
+     "value": false
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/touch/tabs/feel/stick",
+    "type": "section",
+    "props": {
+     "title": "Move stick"
+    },
+    "children": [
+     "settings/split/touch/tabs/feel/stick/sticksize",
+     "settings/split/touch/tabs/feel/stick/float",
+     "settings/split/touch/tabs/feel/stick/deadzone",
+     "settings/split/touch/tabs/feel/stick/analog"
+    ]
+   },
+   {
+    "id": "settings/split/touch/tabs/feel/stick/sticksize",
+    "type": "slider",
+    "props": {
+     "label": "Size",
+     "bind": "cvar:touch_move_size",
+     "min": 0.200000003,
+     "max": 0.449999988,
+     "step": 0.00999999978,
+     "format": "x",
+     "value": 0.3
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/touch/tabs/feel/stick/float",
+    "type": "switch",
+    "props": {
+     "label": "Appears under your thumb",
+     "bind": "cvar:touch_stick_float",
+     "help": "The stick starts wherever your left thumb lands and follows it; off, it stays where it is drawn",
+     "value": true
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/touch/tabs/feel/stick/deadzone",
+    "type": "slider",
+    "props": {
+     "label": "Dead zone",
+     "bind": "cvar:touch_stick_deadzone",
+     "min": 0,
+     "max": 0.349999994,
+     "step": 0.00999999978,
+     "format": "percent",
+     "help": "How far the thumb moves before you do",
+     "value": 0.12
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/touch/tabs/feel/stick/analog",
+    "type": "switch",
+    "props": {
+     "label": "Move at any angle",
+     "bind": "cvar:touch_stick_analog",
+     "help": "Off: eight directions, like keys",
+     "value": true
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/touch/tabs/feel/buttons",
+    "type": "section",
+    "props": {
+     "title": "Buttons"
+    },
+    "children": [
+     "settings/split/touch/tabs/feel/buttons/size",
+     "settings/split/touch/tabs/feel/buttons/opacity",
+     "settings/split/touch/tabs/feel/buttons/firedrag",
+     "settings/split/touch/tabs/feel/buttons/buttondrag",
+     "settings/split/touch/tabs/feel/buttons/hop",
+     "settings/split/touch/tabs/feel/buttons/assist"
+    ]
+   },
+   {
+    "id": "settings/split/touch/tabs/feel/buttons/size",
+    "type": "slider",
+    "props": {
+     "label": "Size",
+     "bind": "cvar:touch_scale",
+     "min": 0.699999988,
+     "max": 1.39999998,
+     "step": 0.0500000007,
+     "format": "x",
+     "value": 1
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/touch/tabs/feel/buttons/opacity",
+    "type": "slider",
+    "props": {
+     "label": "Opacity",
+     "bind": "cvar:touch_opacity",
+     "min": 0.300000012,
+     "max": 1,
+     "step": 0.0500000007,
+     "format": "percent",
+     "value": 0.9
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/touch/tabs/feel/buttons/firedrag",
+    "type": "switch",
+    "props": {
+     "label": "Aim while firing",
+     "bind": "cvar:touch_fire_drag_look",
+     "help": "Drag your thumb off FIRE to turn while it keeps firing",
+     "value": true
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/touch/tabs/feel/buttons/buttondrag",
+    "type": "switch",
+    "props": {
+     "label": "Aim from HOP, DUCK and ALT too",
+     "bind": "cvar:touch_button_drag_look",
+     "value": true
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/touch/tabs/feel/buttons/hop",
+    "type": "choice",
+    "props": {
+     "label": "HOP",
+     "bind": "cvar:touch_hop_mode",
+     "style": "segmented",
+     "options": [
+      {
+       "value": "3",
+       "label": "Hold, and a KEEP switch"
+      },
+      {
+       "value": "0",
+       "label": "Hold"
+      },
+      {
+       "value": "2",
+       "label": "Jumps while you move"
+      }
+     ],
+     "help": "Holding HOP keeps jumping, which is how you gain speed",
+     "value": "3"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/touch/tabs/feel/buttons/assist",
+    "type": "switch",
+    "props": {
+     "label": "Aim assist",
+     "bind": "cvar:cl_touch_aimassist",
+     "help": "In matches on this device, and on servers that allow it",
+     "value": true
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/touch/tabs/feel/layout",
+    "type": "section",
+    "props": {
+     "title": "Layout"
+    },
+    "children": [
+     "settings/split/touch/tabs/feel/layout/preset",
+     "settings/split/touch/tabs/feel/layout/hand",
+     "settings/split/touch/tabs/feel/layout/edit",
+     "settings/split/touch/tabs/feel/layout/reset"
+    ]
+   },
+   {
+    "id": "settings/split/touch/tabs/feel/layout/preset",
     "type": "choice",
     "props": {
      "label": "Preset",
      "bind": "cvar:touch_preset",
-     "style": "cards",
+     "style": "segmented",
      "options": [
       {
-       "value": "balanced",
-       "label": "Balanced"
+       "value": "standard",
+       "label": "Standard"
       },
       {
        "value": "casual",
@@ -353,94 +608,63 @@
       {
        "value": "minimal",
        "label": "Minimal"
-      },
-      {
-       "value": "left",
-       "label": "Left-handed"
       }
      ],
-     "help": "A starting point; every setting below can still be changed",
      "value": "standard"
     },
     "children": []
    },
    {
-    "id": "settings/split/touch/tabs/controls/reset",
-    "type": "button",
-    "props": {
-     "label": "Apply the preset again",
-     "action": {
-      "id": "touch.preset",
-      "label": "Apply the preset again",
-      "icon": "refresh"
-     },
-     "style": "tonal"
-    },
-    "children": []
-   },
-   {
-    "id": "settings/split/touch/tabs/controls/scale",
-    "type": "slider",
-    "props": {
-     "label": "Control size",
-     "bind": "cvar:touch_scale",
-     "min": 0.600000024,
-     "max": 1.60000002,
-     "step": 0.0500000007,
-     "format": "x",
-     "value": 1
-    },
-    "children": []
-   },
-   {
-    "id": "settings/split/touch/tabs/controls/fire",
-    "type": "choice",
-    "props": {
-     "label": "Fire button",
-     "bind": "cvar:touch_fire_mode",
-     "style": "segmented",
-     "options": [
-      {
-       "value": "0",
-       "label": "Hold"
-      },
-      {
-       "value": "1",
-       "label": "Toggle"
-      }
-     ],
-     "value": "0"
-    },
-    "children": []
-   },
-   {
-    "id": "settings/split/touch/tabs/controls/hand",
-    "type": "choice",
-    "props": {
-     "label": "Handedness",
-     "bind": "cvar:touch_handedness",
-     "style": "segmented",
-     "options": [
-      {
-       "value": "0",
-       "label": "Right"
-      },
-      {
-       "value": "1",
-       "label": "Left"
-      }
-     ],
-     "value": "0"
-    },
-    "children": []
-   },
-   {
-    "id": "settings/split/touch/tabs/controls/dodge",
+    "id": "settings/split/touch/tabs/feel/layout/hand",
     "type": "switch",
     "props": {
-     "label": "Dodge button",
-     "bind": "cvar:touch_dodge_visible",
+     "label": "Left-handed",
+     "bind": "cvar:touch_handedness",
+     "help": "Mirrors the layout: move on the right, aim on the left",
      "value": false
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/touch/tabs/feel/layout/edit",
+    "type": "button",
+    "props": {
+     "label": "Edit layout",
+     "action": {
+      "id": "touch.edit",
+      "label": "Edit layout",
+      "icon": "edit"
+     },
+     "style": "secondary"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/touch/tabs/feel/layout/reset",
+    "type": "button",
+    "props": {
+     "label": "Reset to defaults",
+     "style": "destructive",
+     "action": {
+      "id": "touch.reset",
+      "label": "Reset to defaults",
+      "icon": "refresh",
+      "style": "destructive",
+      "confirm": {
+       "title": "Put every touch control setting back to its default?",
+       "ok": "Reset",
+       "destructive": true
+      }
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/touch/tabs/controls",
+    "type": "pane",
+    "props": {
+     "key": "controls",
+     "label": "Controls"
     },
     "children": []
    },

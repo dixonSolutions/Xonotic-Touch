@@ -164,8 +164,8 @@ valuable:
 - A stock Xonotic client is refused with the readable reason
   "[pw-required] This game needs a password."; it cannot send the proof.
 - The game itself is plain UDP, like any Xonotic game. If both sides have
-  `d0_blind_id` (Linux builds that ship `libd0_blind_id`; not the Android or
-  web builds), DarkPlaces authenticates the server and, when one side asks for
+  `d0_blind_id` (Linux builds that ship `libd0_blind_id`, and Android; not the
+  web build), DarkPlaces authenticates the server and, when one side asks for
   it with `crypto_aeslevel` 2 or 3, encrypts the connection, the join proof
   included. Without it nothing is encrypted.
 

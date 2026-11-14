@@ -12,7 +12,8 @@
 #     encryption, junk, a bad id, a newer API, the wrong realm, a planted
 #     .install.tmp symlink, a pinned sha256 that does not match
 #   - update: keeps data/ and the grants still requested; new permissions stay
-#     ungranted and are named; lua_mod_update from the recorded source
+#     ungranted and are named (and listed as not decided yet), old grants kept;
+#     a package without mod.txt is refused; lua_mod_update from the recorded source
 #   - uninstall: removes folder, grants and source record; keepdata keeps data/
 #   - enabling with missing grants names them all; "grant all" and the restart
 #   - a server's text (a demo's svc_stufftext) cannot install, confirm,
@@ -69,7 +70,7 @@ cp "$P/pkgmod-1.zip" "$WORK/www/pkgmod.zip"
 HTTPPID=$!
 sleep 1
 
-ATTACKS="traversal traversal2 absolute backslash drive symlink hidden type data dupcase big total many noinit badid api notzip bomb encrypted realm"
+ATTACKS="traversal traversal2 absolute backslash drive symlink hidden type data dupcase big total many noinit nomanifest badid api notzip bomb encrypted realm"
 {
 	t=1
 	for a in $ATTACKS; do
@@ -94,10 +95,12 @@ defer 35 "lua_mod_permission pkgmod grant all"
 defer 35.5 "lua_mods"
 defer 36 "echo STEP data"
 defer 36.1 "lua_mod_permission pkgmod revoke all"
+defer 36.5 "lua_mod_permission pkgmod grant internet"
 defer 37 "echo STEP update"
 defer 37.1 "lua_mod_install $P/pkgmod-2.zip"
 defer 38 "lua_install_confirm"
 defer 38.5 "lua_mod_info pkgmod"
+defer 38.7 "_cl_lua_permissions"
 defer 39 "echo STEP folder"
 defer 39.1 "lua_mod_install $P/folder/pkgfolder"
 defer 39.5 "lua_install_confirm"
@@ -155,6 +158,7 @@ expect_attack big "over 1 MB"
 expect_attack total "over 8 MB unpacked"
 expect_attack many "more than 256 files"
 expect_attack noinit "no init.lua"
+expect_attack nomanifest "no mod.txt: a package declares what it needs"
 expect_attack badid "no usable name"
 expect_attack api "needs API 9"
 expect_attack notzip "not a zip archive"
@@ -172,10 +176,12 @@ between "STEP review" "STEP confirm" "draws on the hud event" && ok "the review 
 if between "STEP review" "STEP confirm" "pkgmod "; then bad "pkgmod listed before lua_install_confirm"; else ok "nothing written before lua_install_confirm"; fi
 between "STEP confirm" "STEP enable-missing" "installed pkgmod: it is off and has no permissions" && ok "installed off, nothing granted" || bad "install message wrong"
 grep -aqE "^ *pkgmod +off" "$LOG" && ok "the installed mod is listed off" || bad "pkgmod not listed off"
-between "STEP enable-missing" "STEP data" "permissions not granted: internet" && ok "enabling names the tiers still off" || bad "missing tiers not named"
+between "STEP enable-missing" "STEP data" "it declares internet, not decided yet and off" && ok "enabling names the declared tiers not decided yet" || bad "missing tiers not named"
 between "STEP enable-missing" "STEP data" "granted all, restarted: running" && ok "grant all restarts a mod stopped for permissions" || bad "no restart after grant"
 between "STEP update" "STEP folder" "NEW engine_full" && ok "update review marks the new tier" || bad "new tier not marked"
 between "STEP update" "STEP folder" "asks for new permissions, not granted: engine_full" && ok "update says the new tier stays off" || bad "update message wrong"
+between "STEP update" "STEP folder" "not decided yet (off): engine_full" && ok "after the update lua_mod_info names the new tier, not decided" || bad "new tier not shown as undecided"
+grep -aqP '(^|")pkgmod\tv1\tstandard,internet,engine_full\tstandard,internet\tengine_full$' "$LOG" && ok "an update that declares more keeps the old grant (internet) and asks about engine_full only" || bad "update grants: $(grep -aP 'pkgmod\t' "$LOG" | tail -1)"
 [ "$(cat "$UD/mods/pkgmod/data/size.txt" 2>/dev/null)" = keep-me ] && ok "update kept the mod's data/" || bad "update lost data/"
 between "STEP update" "STEP folder" "version: 2.0" && ok "update installed version 2.0" || bad "version not updated"
 has "installed pkgfolder: it is off" && ok "install from a folder" || bad "folder install failed"

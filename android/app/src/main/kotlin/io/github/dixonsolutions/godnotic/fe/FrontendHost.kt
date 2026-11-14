@@ -177,6 +177,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         failed = true
         Log.i(tag, "Native UI: not used ($why); the QuakeC menu is in charge")
         if (attached) NativeBridge.enqueue(FeArgs.command("detach", why))
+        loadingCard(false) // the engine's own loading text is the presentation again
         attached = false
         liftSkeleton(why)
         root.visibility = View.GONE
@@ -223,6 +224,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
             attach()
         }
         if (attached && resumed && !a.bool("attached")) reattach()
+        syncOverGame()
         val state = a.str("state")
         val sig = "$state menu=${a.bool("menu")} owns=${a.bool("owns_menu")} adv=${a.bool("advanced")} console=${a.bool("console")}"
         if (sig != lastSig) { lastSig = sig; Log.i(tag, "Native UI: engine $sig") }
@@ -334,6 +336,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
             card.addView(bar, android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(activity, 6f)).apply { topMargin = Theme.dp(activity, 12f) })
             screen.addView(card, android.widget.LinearLayout.LayoutParams(Theme.dp(activity, 640f).coerceAtMost(activity.resources.displayMetrics.widthPixels - Theme.dp(activity, 32f)), ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = Theme.dp(activity, 48f) })
             activity.addContentView(screen, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            loadingCard(true)
             reconnectBar?.bringToFront()
             loadingStrip = screen; loadingText = t; loadingBar = bar; loadingTitle = title
         }
@@ -365,6 +368,24 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         }
         // the engine reports 1% for most of a map load: a number only once it says something
         loadingText?.text = if (pct >= 0.02) "$what  ·  ${(pct * 100).toInt()}%" else what
+    }
+
+    private var loadingCardSent = ""
+
+    /**
+     * `_touch_loading_card` (docs/UI_BRIDGE.md 4.13): while it is 1 the engine
+     * leaves its status, download and notify lines out of its loading screen,
+     * so this card is the one place they show. The engine applies it only
+     * during a join or a load, so it stays 1 for as long as this front end
+     * presents every join and load with its card (from attach until a fall
+     * back), not only while a card is up: a local map load blocks the engine
+     * from its first frame, and a `set` sent when the card appears would only
+     * run once the load is over, after the lines it should have hidden.
+     */
+    private fun loadingCard(on: Boolean) {
+        val v = if (on && !failed) "1" else "0"
+        if (loadingCardSent == v) return
+        if (NativeBridge.enqueue(FeArgs.command("set", "_touch_loading_card", v))) loadingCardSent = v
     }
 
     private var reconnectBar: View? = null
@@ -401,14 +422,23 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     private fun attach() {
         val r = ViewRenderer(activity, this, this)
         renderer = r
+        // a dialog the bridge describes (Back and a tap outside go to the engine), told
+        // apart from the host's own confirms and prompts (closed here)
+        val seam = object : UiRenderer by r {
+            override fun dialog(id: String?) {
+                bridgeOp = true
+                try { r.dialog(id) } finally { bridgeOp = false }
+            }
+        }
         val send: (String) -> Unit = { msg -> NativeBridge.enqueue(FeArgs.command("ui", msg)) }
         // the Rust core (loader/crates/android) when this build carries it; the Kotlin reader otherwise
-        val c: UiClient = (if (app.bool("ui_bridge") && !File(baseDir, "fe-kotlin-core").isFile) RustCore.create(r, send) else null)
-            ?: UibClient(r, send)
+        val c: UiClient = (if (app.bool("ui_bridge") && !File(baseDir, "fe-kotlin-core").isFile) RustCore.create(seam, send) else null)
+            ?: UibClient(seam, send)
         Log.i(tag, "Native UI: UI bridge read by ${if (c is RustCore) "the Rust core" else "the Kotlin reader"}")
         c.ignoreRows = testRows
         client = c
         attached = true
+        loadingCard(true)
         reattachAt = SystemClock.elapsedRealtime() + 2000 // the first app snapshots still say detached
         NativeBridge.frontendBeat()
         NativeBridge.enqueue(FeArgs.command("attach", "1"))
@@ -417,6 +447,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
             c.onChanged = {
                 val ref = c.hero
                 if (ref.startsWith("pk3:maps/")) reportPower("touch_warm_map", ref.removePrefix("pk3:maps/"))
+                syncOverGame()
             }
             c.hello(caps())
         }
@@ -483,6 +514,38 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     /** What the engine's state asks for; applied again when the first screen arrives. */
     private var wantVisible = false
 
+    /** The dialog showing came from the bridge (renderer.dialog), not from the host. */
+    private var bridgeDialog = false
+    private var bridgeOp = false
+
+    /** A dialog over the running match (client.overGame): the pause page under it is not shown. */
+    private var overGame = false
+    private var holdPauseUntil = 0L
+
+    /**
+     * Xonotic's join dialog opens by itself for an observer, with no gesture:
+     * the engine puts its (hidden) menu up, so the app state reads "paused",
+     * and the bridge's stack still holds the pause page. Show the dialog alone
+     * over the match, with the engine drawing (cover 0), and when it closes
+     * keep the pause page from flashing up while the engine hides the menu.
+     */
+    private fun syncOverGame() {
+        val now = client?.overGame == true && app.str("state") != "menu"
+        val was = overGame
+        if (was && !now) {
+            holdPauseUntil = SystemClock.elapsedRealtime() + 600
+            main.postDelayed({ syncOverGame() }, 650)
+        }
+        overGame = now
+        val hold = SystemClock.elapsedRealtime() < holdPauseUntil && app.str("state") == "paused"
+        val v = if (now || hold) View.INVISIBLE else View.VISIBLE
+        if (screenLayer.visibility != v) screenLayer.visibility = v
+        if (now != was) {
+            Log.i(tag, "Native UI: ${if (now) "dialog over the match: ${client?.modal}" else "dialog over the match closed"}")
+            if (wantVisible) setVisible(true)
+        }
+    }
+
     private fun setVisible(show: Boolean) {
         wantVisible = show
         val v = if (show && screens.isNotEmpty()) View.VISIBLE else View.GONE
@@ -490,8 +553,10 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
             root.visibility = v
             if (v == View.VISIBLE) { shownAt = SystemClock.elapsedRealtime(); root.requestFocus() }
         }
-        // opaque: the engine draws nothing behind it and idles at cl_maxidlefps
-        NativeBridge.enqueue(FeArgs.command("screen", if (v == View.VISIBLE) screens.lastOrNull() ?: "home" else "none", if (v == View.VISIBLE) "2" else "0"))
+        // opaque: the engine draws nothing behind it and idles at cl_maxidlefps;
+        // see-through for a dialog over the match, which goes on being drawn
+        val name = if (overGame) client?.modal?.lastOrNull() ?: "join" else screens.lastOrNull() ?: "home"
+        NativeBridge.enqueue(FeArgs.command("screen", if (v == View.VISIBLE) name else "none", if (v == View.VISIBLE && !overGame) "2" else "0"))
     }
 
     /** While the QuakeC menu is up on purpose (Advanced, a stopgap screen): a way back to the native one. */
@@ -641,7 +706,13 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         }
     }
     override fun back() {
-        if (dialogLayer.visibility == View.VISIBLE) { showDialog(null); return }
+        if (dialogLayer.visibility == View.VISIBLE) {
+            // a described dialog is the engine's to close (the join popup then hides the
+            // menu, never falls back to the pause page); the host's own ones close here
+            if (bridgeDialog && client?.modal?.isNotEmpty() == true) client?.event("back", emptyMap())
+            else showDialog(null)
+            return
+        }
         if (stopgap?.back() == true) return
         client?.event("back", emptyMap())
     }
@@ -770,7 +841,15 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
 
     override fun showDialog(view: View?) {
         dialogLayer.removeAllViews()
-        if (view == null) { dialogLayer.visibility = View.GONE; hideKeyboard(); return }
+        bridgeDialog = bridgeOp && view != null
+        if (view == null) {
+            dialogLayer.visibility = View.GONE; hideKeyboard()
+            // nothing else asked for the overlay (in a match): give the touches back to the game
+            if (skeleton == null && (!wantVisible || screens.isEmpty())) root.visibility = View.GONE
+            return
+        }
+        // over the running match the game stays in view, only lightly dimmed
+        if (bridgeOp && client?.overGame == true) view.setBackgroundColor(0x59000000)
         dialogLayer.addView(view, match())
         dialogLayer.visibility = View.VISIBLE
         root.visibility = View.VISIBLE

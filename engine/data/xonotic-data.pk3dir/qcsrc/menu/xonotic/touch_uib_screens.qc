@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "touch_data.qh"
 #include "touch_uib_screens.qh"
 #include "touch_startup_util.qh"
 #include "touch_uib_touch.qh" // Touch HUD: the join popup, Touch controls settings
@@ -168,6 +169,8 @@ bool uib_narrow;  // the QuakeC renderer's own layout is one column
 void UIB_Back()
 {
 	if (UIB_JoinBack())
+		return;
+	if (UIB_Uid2NameBack()) // Touch: the player-statistics question
 		return;
 	if (uibn_modal == "" && UIB_TopScreen() == "settings" && UIB_VMf("settings.open")
 		&& (uib_caps("widthClass") == "compact" || uib_narrow))
@@ -477,6 +480,153 @@ void UIB_MapInfo(string map)
 	UIB_VMSet(strcat("map.title.", map), uib_map_title);
 }
 
+// ---------------------------------------------------------------- maps a match can start on
+
+// The map picker, the mode cards and Play all read MapInfo, the list a match is
+// started from, so the picker offers exactly the maps Play can start (implied
+// modes such as Duel on DM maps, flags such as hidden, included). The stock menu
+// builds MapInfo in preMenuInit(), called from m_draw; a native front end hides
+// the menu and m_draw never runs, so MapInfo stayed empty there and every Play
+// said that no map supports the mode. The bridge builds it itself.
+bool uib_mapinfo_ready;
+float uib_mapinfo_gen;
+float uib_mapinfo_mounts; // fs_mountpack_count when MapInfo was built
+void UIB_MapInfoEnumerate()
+{
+	MapInfo_Cache_Create();
+	MapInfo_Enumerate();
+	uib_mapinfo_ready = true;
+	uib_mapinfo_mounts = cvar("fs_mountpack_count");
+	++uib_mapinfo_gen;
+}
+// Not built yet, or packs of the split data set landed since (docs/DATA_FETCH.md):
+// m_draw's TouchData_MenuFrame never runs while a native front end hides the menu.
+bool UIB_MapInfoStale() { return !uib_mapinfo_ready || uib_mapinfo_mounts != cvar("fs_mountpack_count"); }
+
+// MapInfo's maps for a mode, as Play uses them: MapInfo_count, MapInfo_BSPName_ByID
+float UIB_FilterMaps(Gametype gt)
+{
+	if (UIB_MapInfoStale())
+		UIB_MapInfoEnumerate();
+	MapInfo_FilterGametype(gt, 0, MapInfo_RequiredFlags(), MapInfo_ForbiddenFlags(), 0);
+	return MapInfo_count;
+}
+
+bool UIB_FilteredHas(string map)
+{
+	for (int i = 0; i < MapInfo_count; ++i)
+		if (MapInfo_BSPName_ByID(i) == map)
+			return true;
+	return false;
+}
+
+float uib_modemaps[UIB_NMODES];
+float uib_modemaps_gen;
+// how many maps Play can start in a mode (0 for a mode MapInfo does not know)
+float UIB_ModeMaps(string id)
+{
+	if (UIB_MapInfoStale() || uib_modemaps_gen != uib_mapinfo_gen)
+	{
+		for (int i = 0; i < UIB_NMODES; ++i)
+		{
+			Gametype gt = MapInfo_Type_FromString(UIB_ModeId(i), false, false);
+			uib_modemaps[i] = gt ? UIB_FilterMaps(gt) : 0;
+		}
+		uib_modemaps_gen = uib_mapinfo_gen;
+	}
+	for (int i = 0; i < UIB_NMODES; ++i)
+		if (UIB_ModeId(i) == id)
+			return uib_modemaps[i];
+	return 0;
+}
+
+string UIB_MapField(string s, string unset) { return (s == unset) ? "" : s; }
+
+// One picker row from the MapInfo_Map_* globals; state and progress as the
+// engine's "maps" source has them ("ready", or "downloading" with 0..1, -1 queued).
+void UIB_MapRow(string name, string state, float progress)
+{
+	string title = UIB_MapField(MapInfo_Map_title, "<TITLE>");
+	string modes = "";
+	FOREACH(Gametypes, MapInfo_Map_supportedGametypes & it.gametype_flags, modes = strcat(modes, ((modes == "") ? "" : " "), it.mdl));
+	uib_row(name, sprintf("{\"name\":%s,\"title\":%s,\"author\":%s,\"description\":%s,\"modes\":%s,\"state\":%s,\"progress\":%s}", uib_qv(name),
+		uib_qv((title != "") ? title : name), uib_qv(UIB_MapField(MapInfo_Map_author, "<AUTHOR>")),
+		uib_qv(UIB_MapField(MapInfo_Map_description, "<DESCRIPTION>")), uib_qv(modes), uib_qv(state), ftos(progress)), strcat("pk3:maps/", name));
+}
+
+// The picker's rows: source "maps.<mode>", MapInfo's list for the mode (the
+// engine's "maps" source lists every installed map, for the map details).
+string uib_maprows_key, uib_maprows_mode;
+string UIB_MapRows(string mode)
+{
+	string src = strcat("maps.", mode);
+	if (UIB_MapInfoStale())
+		UIB_MapInfoEnumerate();
+	string key = strcat(src, " ", ftos(uib_mapinfo_gen));
+	bool fetching = TouchData_Active();
+	if (fetching) // the wanted map's bar moves
+		key = strcat(key, " ", cvar_string("touch_data_want"), " ", ftos(floor(TouchData_MapProgress(cvar_string("touch_data_want")) * 100)));
+	if (key == uib_maprows_key)
+		return src;
+	Gametype gt = MapInfo_Type_FromString(mode, false, false);
+	float n = gt ? UIB_FilterMaps(gt) : 0;
+	uib_rows_begin(src);
+	for (int i = 0; i < n; ++i)
+	{
+		string name = MapInfo_BSPName_ByID(i);
+		if (!MapInfo_Get_ByID(i))
+			continue;
+		UIB_MapRow(name, "ready", -1);
+	}
+	// Maps of the split data set still to come (a .mapinfo in the core pack, no .bsp
+	// yet) are not in MapInfo; they show as downloading tiles, like the engine's
+	// "maps" source: a tap asks for them first, Play waits for them (UIB_StartGame).
+	if (fetching && gt)
+	{
+		float glob = search_begin("maps/*.mapinfo", true, true);
+		float k = (glob >= 0) ? search_getsize(glob) : 0;
+		for (int i = 0; i < k; ++i)
+		{
+			string fn = search_getfilename(glob, i);
+			string name = substring(fn, 5, strlen(fn) - 13); // without maps/ and .mapinfo
+			if (!TouchData_MapDownloading(name) || !MapInfo_Get_ByName(name, 0, NULL))
+				continue;
+			if (!(MapInfo_Map_supportedGametypes & gt.gametype_flags) || (MapInfo_Map_flags & MapInfo_ForbiddenFlags())
+				|| (MapInfo_Map_flags & MapInfo_RequiredFlags()) != MapInfo_RequiredFlags())
+				continue;
+			UIB_MapRow(name, "downloading", TouchData_MapProgress(name));
+		}
+		if (glob >= 0)
+			search_end(glob);
+	}
+	uib_rows_end();
+	strcpy(uib_maprows_key, key);
+	strcpy(uib_maprows_mode, mode);
+	return src;
+}
+
+// While Create is on top: packs that land add their maps, the wanted map's bar
+// moves (each bridge tick; nothing is rebuilt while nothing changed).
+void UIB_MapRowsTick()
+{
+	if (uib_maprows_mode == "")
+		return;
+	float gen = uib_mapinfo_gen;
+	UIB_MapRows(uib_maprows_mode);
+	if (gen != uib_mapinfo_gen)
+		UIB_RebuildAll(); // the mode cards follow what can be started now
+}
+
+// A new mode keeps the chosen map when the mode has it, else takes its first map,
+// so Play never stands on a map the mode cannot start.
+void UIB_SetMode(string mode)
+{
+	cvar_set("touch_lan_gametype", mode);
+	Gametype gt = MapInfo_Type_FromString(mode, false, false);
+	if (gt && UIB_FilterMaps(gt) > 0 && !UIB_FilteredHas(cvar_string("touch_lan_map")))
+		cvar_set("touch_lan_map", MapInfo_BSPName_ByID(0));
+}
+
 // Create is one screen (id "sp") used two ways. From Home's Singleplayer card it
 // makes a local game: mode, map, bots; nothing about the network, and nobody
 // else can find or join it. From Multiplayer's Create it also offers player
@@ -510,6 +660,8 @@ void UIB_BuildCreate()
 			for (int i = 0; i < UIB_NMODES; ++i)
 			{
 				string id = UIB_ModeId(i);
+				if (UIB_ModeMaps(id) <= 0 && id != mode)
+					continue;   // no map you have can start it: not offered
 				UIB_Open(id, "card");
 					uib_s("title", UIB_ModeShort(id));
 					uib_s("a11y", UIB_ModeName(id));
@@ -527,7 +679,7 @@ void UIB_BuildCreate()
 		uib_s("subtitle", _("Tap to choose, double tap to play"));
 		UIB_Open("list", "list");
 			string msrc = cvar_string("_uib_debug_maps");      // stress tests: a synthetic source
-			uib_s("source", (msrc != "") ? msrc : strcat("maps:", mode));
+			uib_s("source", (msrc != "") ? msrc : UIB_MapRows(mode));
 			uib_s("display", "cards");
 			uib_s("rowHeight", "card");
 			// two full rows of tiles (picture and name) in view, more by scrolling sideways
@@ -668,22 +820,47 @@ void UIB_AddRecent(string map, string mode)
 
 void UIB_StartGame(string map, string mode)
 {
+	if (TouchData_MapDownloading(map))
+	{
+		// still coming in (docs/DATA_FETCH.md): fetch it first, never start another map instead
+		TouchData_Want(map);
+		uib_toast(sprintf(_("%s is still downloading. It is next; start it when it is here."), map), "info", "download", 5);
+		return;
+	}
 	bool lan = UIB_CreateLan();
 	Gametype gt = MapInfo_Type_FromString(mode, false, false);
 	if (!gt)
+	{
 		gt = MAPINFO_TYPE_DEATHMATCH;
-	MapInfo_FilterGametype(gt, 0, MapInfo_RequiredFlags(), MapInfo_ForbiddenFlags(), 0);
+		mode = "dm";
+	}
+	string m = map;
+	if (UIB_FilterMaps(gt) <= 0 || (m != "" && !UIB_FilteredHas(m)))
+	{
+		// a map (or a whole pack) added since MapInfo was built: look once more
+		UIB_MapInfoEnumerate();
+		UIB_FilterMaps(gt);
+	}
 	if (MapInfo_count <= 0)
 	{
-		uib_toast(_("No map you have supports this game mode"), "error", "error", 4);
+		uib_toast(sprintf(_("No map you have can start %s"), UIB_ModeName(mode)), "error", "error", 4);
+		UIB_RebuildAll();
 		return;
 	}
-	string m = "";
-	for (int i = 0; i < MapInfo_count; ++i)
-		if (MapInfo_BSPName_ByID(i) == map)
-			m = map;
-	if (m == "")
+	if (m == "")   // Quick play: any map of the mode
 		m = MapInfo_BSPName_ByID(floor(random() * MapInfo_count));
+	else if (!UIB_FilteredHas(m))
+	{
+		// never a different map than the one chosen: say why and start nothing
+		_MapInfo_FilterGametype(MAPINFO_TYPE_ALL, 0, 0, 0, 0);
+		string title = UIB_VM(strcat("map.title.", m));
+		if (UIB_FilteredHas(m))
+			uib_toast(sprintf(_("%s cannot be played in %s"), ((title != "") ? title : m), UIB_ModeName(mode)), "error", "error", 4);
+		else
+			uib_toast(sprintf(_("%s is not installed"), m), "error", "error", 4);
+		UIB_RebuildAll();
+		return;
+	}
 	int bots = bound(0, cvar("touch_lan_bots"), 32);
 	// a local game has the slots its bots need; only a LAN game has more
 	int slots = lan ? bound(2, max(cvar("touch_lan_maxplayers"), bots + 2), 64) : max(2, bots + 1);
@@ -1234,21 +1411,157 @@ void UIB_BuildLoading()
 	UIB_Open("status", "status");
 		uib_s("icon", state == "downloading" ? "download" : "server");
 		uib_s("title", (cvar_string("_uib_server_name") != "") ? sprintf(_("Joining %s"), cvar_string("_uib_server_name")) : _("Joining"));
-		uib_s("body", stage);
+		// one card: the step with its size and speed, one bar, one Cancel (a
+		// second "progress" node repeated the step, the bar and Cancel below it)
+		uib_s("body", (detail != "") ? strcat(stage, " · ", detail) : stage);
 		uib_b("live", 1);
 		if (state == "downloading") uib_f("progress", bound(0, progress, 1));
 		else uib_b("indeterminate", 1);
 		uib_j("primary", UIB_AS("loading.cancel", _("Cancel"), "close", "secondary"));
 	UIB_Close();
-	UIB_Open("progress", "progress");
-		uib_s("label", stage);
-		if (state == "downloading") uib_f("value", bound(0, progress, 1));
-		else uib_b("indeterminate", 1);
-		if (detail != "") uib_s("detail", detail);
+	UIB_Done();
+}
+
+// ---------------------------------------------------------------- setup: game data still arriving
+
+// packaging/start.sh and godnotic-fetchd (Ubuntu Touch, the Linux tarball)
+// download the game data while the engine runs on its boot assets, and tell it
+// through _touch_asset_fetch_active and touch/asset-progress.txt ("status",
+// "percent", "message" lines). Until it is in place this one screen owns the
+// menu: there is nothing to play yet. Same decision and actions as the classic
+// menu's download dialog (dialog_touch_asset_fetch.qc), which did not fit a
+// landscape phone and never showed over this menu.
+string uib_setup_status, uib_setup_msg;
+float uib_setup_pct;
+float uib_setup_done_t;   // the finished state stays up for a beat (real time)
+bool uib_setup_music;
+
+bool UIB_SetupWanted()
+{
+	return !uib_native() && TouchStartup_assetFetchDialog_shouldShow();
+}
+
+void UIB_SetupRead()
+{
+	string st = TOUCH_FETCH_DISCOVER, msg = "";
+	float pct = 0;
+	float fh = fopen(TOUCH_ASSET_PROGRESS_FILE, FILE_READ);
+	if (fh >= 0)
+	{
+		string a = fgets(fh), b = fgets(fh), c = fgets(fh);
+		fclose(fh);
+		if (a != "") { st = a; pct = bound(0, stof(b), 100); msg = c; }
+	}
+	strcpy(uib_setup_status, st);
+	strcpy(uib_setup_msg, msg);
+	uib_setup_pct = pct;
+}
+
+bool UIB_SetupDone()
+{
+	if (uib_setup_status == TOUCH_FETCH_DONE)
+		return true;
+	// a ready flag never ends a download the worker still reports as live
+	return TouchStartup_assetsReady() && uib_setup_status != TOUCH_FETCH_RUNNING && uib_setup_status != TOUCH_FETCH_DISCOVER
+		&& uib_setup_status != TOUCH_FETCH_PAUSED && uib_setup_status != TOUCH_FETCH_ERROR;
+}
+
+void UIB_BuildSetup()
+{
+	UIB_SetupRead();
+	bool err = (uib_setup_status == TOUCH_FETCH_ERROR), done = UIB_SetupDone();
+	bool bg = cvar("_touch_asset_fetch_background");
+	bool sweep = !done && !err && uib_setup_pct <= 0;
+	string title, body;
+	if (done)
+	{
+		title = _("Game data is ready");
+		body = _("Starting Godnotic…");
+	}
+	else if (err)
+	{
+		title = _("The download stopped");
+		body = (uib_setup_msg != "") ? uib_setup_msg : _("Check your connection and free space, then try again.");
+	}
+	else
+	{
+		title = _("Setting up your game");
+		if (bg)
+			body = _("Downloading in the background: you can close this window.");
+		else if (uib_setup_msg != "")
+			body = uib_setup_msg;
+		else
+			body = sweep ? _("Checking your game data…") : sprintf(_("Downloading game data… %d%%"), floor(uib_setup_pct));
+	}
+	if (!UIB_Screen("setup", _("Setting up")))
+		return;
+	uib_s("kind", "loading");
+	uib_s("presentation", "fullscreen");
+	uib_s("background", "asset:loading");
+	UIB_Open("status", "status");
+		uib_s("icon", err ? "warning" : (done ? "check" : "download"));
+		uib_s("title", title);
+		uib_s("body", body);
 		uib_b("live", 1);
-		uib_j("cancel", UIB_A("loading.cancel", _("Cancel"), "close"));
+		if (sweep) uib_b("indeterminate", 1);
+		else if (!err) uib_f("progress", done ? 1 : uib_setup_pct / 100);
+		if (err) uib_j("primary", UIB_AS("setup.retry", _("Try again"), "refresh", "primary"));
+		else if (!done) uib_j("primary", bg ? UIB_AS("setup.close", _("Close window"), "close", "secondary")
+			: UIB_AS("setup.background", _("Download in background"), "download", "secondary"));
 	UIB_Close();
 	UIB_Done();
+}
+
+void UIB_SetupAction(string a)
+{
+	if (a == "setup.retry")
+	{
+		if (!TouchStartup_requestRelaunch())
+			uib_toast(_("Close and reopen Godnotic to try the download again."), "warning", "warning", 6);
+	}
+	else if (a == "setup.background")
+	{
+		cvar_set("_touch_asset_fetch_background", "1");
+		if (!TouchStartup_requestBackgroundFetch())
+			uib_toast(_("Could not switch to background download. Keep the app open, or close and reopen to resume."), "warning", "warning", 6);
+		UIB_Build("setup");
+	}
+	else if (a == "setup.close")
+	{
+		// write the marker again so start.sh never takes this quit for a full stop
+		TouchStartup_requestBackgroundFetch();
+		localcmd("\nquit\n");
+	}
+}
+
+void UIB_SetupTick()
+{
+	// the menu theme once its track is in (the shell fetches it first)
+	if (!uib_setup_music && (fexists(TOUCH_MUSIC_READY_MARKER) || fexists(TOUCH_MENU_THEME_FILE)))
+	{
+		uib_setup_music = true;
+		cvar_set("menu_cdtrack", TOUCH_MENU_THEME_TRACK);
+		localcmd("\nfs_rescan; defer 0.4 \"cd loop rising-of-the-phoenix\"\n");
+	}
+	UIB_Build("setup");
+	if (!UIB_SetupDone())
+	{
+		uib_setup_done_t = 0;
+		return;
+	}
+	if (!uib_setup_done_t)
+		uib_setup_done_t = uib_gettime(1) + 1.2;
+	if (uib_gettime(1) < uib_setup_done_t)
+		return;
+	uib_setup_done_t = 0;
+	cvar_set("_touch_assets_ready", "1");
+	cvar_set("_touch_asset_fetch_active", "0");
+	// packs that arrived after the engine built its search path stay invisible:
+	// start.sh runs it again with everything mounted
+	if (TouchStartup_requestRelaunch())
+		return;
+	// no writable marker (an unpackaged run): rescan here and carry on
+	localcmd("\nfs_rescan\n");
 }
 
 void UIB_BuildCredits()
@@ -1337,14 +1650,17 @@ void UIB_Build(string id)
 		case "campaign": UIB_BuildCampaign(); return;
 		case "lan.host": UIB_BuildLanPopup(); return;
 		case "join": UIB_BuildJoin(); return;
+		case "uid2name": UIB_BuildUid2Name(); return;
 		case "mp": UIB_BuildServers(); return;
 		case "mp.password": UIB_BuildPassword(); return;
 		case "welcome": UIB_BuildWelcome(); return;
 		case "pause": UIB_BuildPause(); return;
 		case "loading": UIB_BuildLoading(); return;
+		case "setup": UIB_BuildSetup(); return;
 		case "credits": UIB_BuildCredits(); return;
 		case "dialog.quit": UIB_BuildQuit(); return;
 		case "dialog.joinfail": UIB_BuildJoinFail(); return;
+		case "data.hold": TouchData_BuildHold(); return; // Touch: a map or join held for its download
 	}
 	if (substring(id, 0, 8) == "settings" || substring(id, 0, 4) == "mods")
 		UIB_BuildSettings(id);
@@ -1361,6 +1677,8 @@ void UIB_Context()
 		ctx = "loading";
 	else if (st == "game" || (gamestatus & (GAME_CONNECTED | GAME_ISSERVER)))
 		ctx = "game";
+	else if (UIB_SetupWanted())
+		ctx = "setup";
 	if (ctx == uibn_context && uibn_stack != "")
 	{
 		if (ctx == "loading")
@@ -1379,7 +1697,8 @@ void UIB_Context()
 		UIB_CampaignLoad();
 		UIB_CampaignRows();
 	}
-	if (ctx == "loading") UIB_SetStack("loading", "");
+	if (ctx == "setup") UIB_SetStack("setup", "");
+	else if (ctx == "loading") UIB_SetStack("loading", "");
 	else if (ctx == "game") UIB_SetStack("pause", "");
 	else UIB_SetStack("home", TouchStartup_nameNeeded() ? "welcome" : "");
 	if (ctx == "menu" && cvar("_touch_lan_ended"))
@@ -1430,8 +1749,11 @@ void UIB_Tick()
 	UIB_LanPopupTick();
 	UIB_JoinFailTick();
 	UIB_JoinTick();
+	TouchData_UIBTick();
 	// time-varying screens
 	string top = UIB_TopScreen();
+	if (top == "sp")
+		UIB_MapRowsTick();
 	if ((top == "home" || top == "mp") && uib_gettime(1) > uib_next_tick)
 	{
 		uib_next_tick = uib_gettime(1) + 0.5;
@@ -1444,10 +1766,21 @@ void UIB_Tick()
 			refreshhostcache(false);
 		}
 	}
+	if (top == "setup" && uib_gettime(1) > uib_next_tick)
+	{
+		uib_next_tick = uib_gettime(1) + 0.5;
+		UIB_SetupTick();
+	}
 	if ((top == "pause" || top == "lan.host" || top == "mods.detail" || top == "settings.data") && uib_gettime(1) > uib_next_tick)
 	{
 		uib_next_tick = uib_gettime(1) + 1;
 		UIB_Build(top);
+	}
+	// Settings > Updates follows the updater: rebuilt when its status file changes
+	if (top == "settings" && UIB_VM("settings.section") == "updates" && uib_gettime(1) > uib_next_tick)
+	{
+		uib_next_tick = uib_gettime(1) + 1;
+		if (TouchAndySU_changed()) UIB_Build(top);
 	}
 }
 
@@ -1457,13 +1790,17 @@ void UIB_Action(string node, string a, string payload)
 {
 	if (substring(a, 0, 5) == "mode.")
 	{
-		cvar_set("touch_lan_gametype", substring(a, 5, -1));
+		UIB_SetMode(substring(a, 5, -1));
 		UIB_RebuildAll();
 		return;
 	}
 	if (UIB_SettingsAction(node, a, payload))
 		return;
 	if (UIB_JoinAction(a))
+		return;
+	if (TouchData_Action(a))
+		return;
+	if (UIB_Uid2NameAction(a)) // Touch: the player-statistics question
 		return;
 	switch (a)
 	{
@@ -1526,6 +1863,7 @@ void UIB_Action(string node, string a, string payload)
 		case "spectate": localcmd("\ntouch_action spectate confirm\n"); m_hide(); return;
 		case "disconnect": localcmd("\ndisconnect\n"); return;
 		// disconnect alone does not stop a join the server has not answered yet
+		case "setup.retry": case "setup.background": case "setup.close": UIB_SetupAction(a); return;
 		case "loading.cancel": localcmd("\ndisconnect\n_touch_cancel_join\n"); return;
 	}
 }
@@ -1546,6 +1884,7 @@ void UIB_RowEvent(string node, string row, string json)
 			if (isaction)
 			{
 				UIB_VMSet("map.sel", row);
+				TouchData_Want(row); // a map still downloading goes to the front of the queue
 				if (strstrofs(json, "map.preview", 0) >= 0) { UIB_Push("sp.map"); return; }
 				cvar_set("touch_lan_map", row);
 				UIB_RebuildAll();

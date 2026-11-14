@@ -1199,6 +1199,7 @@ void Con_MaskPrint(unsigned additionalmask, const char *msg)
 				// 3 is just so that a message can be sent to the chatbox without a sound.
 				if (*msg == 1 || *msg == 3)
 					mask = CON_MASK_CHAT;
+				mask = TouchUIB_ChatboxMask(*msg, mask); // Touch: the game's own lines stay out of the chat feed over play
 
 				line[index++] = STRING_COLOR_TAG;
 				line[index++] = '3';

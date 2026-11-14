@@ -95,8 +95,19 @@ same files so either can resume the other's partial download:
   `start.sh`.
 - HTTP is `ureq` with rustls and the platform's certificate store (feature `http-ureq`);
   Android passes its own `fetch::Http`.
-- Not yet: a manifest of several archives with priorities (a core pack first, maps in the
-  background); today one archive is planned.
+- **The split set** ([DATA_FETCH.md](DATA_FETCH.md)): when the server has
+  `godnotic-data-astc.json` (or `-dxt.json` where the GPU has no ASTC and the stock packs
+  were not chosen by hand), `fetch::manifest` fetches the `first_play` packs, writes
+  `.assets-ready` (Play works from here), then everything else by priority. Each pack is one
+  explicit byte range of the set's archive, in 8 MiB chunks with the same `.part.state`, checked
+  against size, CRC32 and SHA-256 before the rename; a map's own pack goes in after the packs
+  it needs. While a game runs, `<engine userdir>/data/data/touch/data-status.txt` tells it what
+  landed (the engine mounts it) and `data-request.txt` says which map the player waits for,
+  which then goes first. An install with the old layout whole is left alone until a new set is
+  published. A download that was not finished carries on when the app starts.
+  `datasets::fetch_all` is the one call; `cargo run -p godnotic-loader-core --features
+  http-ureq --example datafetch` is the same from a shell (`scripts/test-datafetch.sh`).
+  Without a manifest it is the single archive as above.
 
 ## Command line
 
@@ -128,7 +139,10 @@ the player's latest snapshot; base mismatches and dangling children ask for `syn
 windows (block requests, bounded cache, exact `items-changed` splices for in-place updates);
 the fixture player's windows (sort, filter) and value confirmations; join links and
 addresses; the session plan keeps the password out of argv/env and a real child reads it on
-fd 3; session results; the downloader against a local range server (plan, full run, resume
+fd 3; session results; the split-set downloader (`tests/fetch_manifest.rs`: manifest checks,
+first play then the rest with exact byte counts, a map pack last, stop and resume, a damaged
+pack, a server that ignores the range, a wanted map, old installs, a new set, no space); the
+single-archive downloader against a local range server (plan, full run, resume
 after stop and after a kill, archive change, old-build pack, CRC failure, 503 retry, 404 and
 slim-to-full fallback, no space, roles, the chunk-state format).
 

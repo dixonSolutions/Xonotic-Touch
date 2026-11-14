@@ -1,4 +1,5 @@
 id: bad_clhook
 title: Endless loop in a client hook (test)
 api: 3
+permissions: standard
 realm: client

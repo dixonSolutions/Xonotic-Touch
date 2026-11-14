@@ -162,6 +162,28 @@ class UiBridgeTest {
         assertEquals("%C3%A9", FeArgs.encode("é"))
     }
 
+    /** Xonotic's join dialog in a match is shown over the game, not on the pause page (Driver::over_game). */
+    @Test fun joinDialogOverTheMatch() {
+        val rec = Recorder()
+        val client = UibClient(rec) { }
+        client.receive(Json.parse("""{"uib":1,"t":"snapshot","rev":1,"nodes":[
+            {"id":"app","type":"app","props":{"stack":["pause"],"modal":["join"],"canBack":true,"context":"game"},"children":["pause","join"]},
+            {"id":"pause","type":"screen","props":{"title":"Paused","kind":"game"},"children":[]},
+            {"id":"join","type":"screen","props":{"title":"Join game","presentation":"dialog","dismissable":true},"children":["join/spectate"]},
+            {"id":"join/spectate","type":"button","props":{"label":"Spectate","action":{"id":"join.spectate"}},"children":[]}]}""").obj())
+        assertTrue(rec.ops.contains("dialog join"))
+        assertTrue(client.overGame)
+        client.receive(Json.parse("""{"uib":1,"t":"diff","base":1,"rev":2,"del":["join","join/spectate"],
+            "set":[{"id":"app","type":"app","props":{"stack":["pause"],"modal":[],"canBack":true,"context":"game"},"children":["pause"]}]}""").obj())
+        assertFalse(client.overGame)
+        val quit = UibClient(Recorder()) { }
+        quit.receive(Json.parse("""{"uib":1,"t":"snapshot","rev":1,"nodes":[
+            {"id":"app","type":"app","props":{"stack":["pause"],"modal":["dialog.quit"],"context":"game"},"children":["pause","dialog.quit"]},
+            {"id":"pause","type":"screen","props":{"title":"Paused","kind":"game"},"children":[]},
+            {"id":"dialog.quit","type":"screen","props":{"title":"Quit?","presentation":"dialog"},"children":[]}]}""").obj())
+        assertFalse(quit.overGame)
+    }
+
     @Test fun joinLinks() {
         assertEquals("192.168.1.5:26001", FrontendHost.parseJoin("godnotic://join/192.168.1.5:26001"))
         assertEquals("host.example:26000", FrontendHost.parseJoin("host.example"))

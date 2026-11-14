@@ -1,9 +1,11 @@
 #!/bin/bash
 # Vercel's build of the browser version, run by Vercel's Git integration on
 # every push to main (vercel.json). One build makes the whole site: engine,
-# QuakeC, page, and the game data: the pinned Godnotic data releases (stock
-# Xonotic pk3s, and the slim ASTC set), split per map and content-addressed
-# by scripts/stage-web-data.sh.
+# QuakeC, page, and the game data: the pinned Godnotic data releases,
+# content-addressed by scripts/stage-web-data.sh. Per profile, the split set
+# (godnotic-data-<profile>.json and its archive) when it is published, else
+# what there was before it: the stock Xonotic pk3s and the slim ASTC set,
+# split per map by the stager.
 #
 #   scripts/vercel-build.sh --ignore    Vercel's "ignored build step": exit 0
 #                                       (skip) for anything but main and
@@ -35,6 +37,22 @@ SLIM_SHA256="${XT_SLIM_DATA_SHA256:-4940b5a49c13a928d447b18c3cf430d0879dbbaf3bc2
 # "web" profile. Empty: the web profile is the stock pk3s as they are.
 WEB_URL="${XT_WEB_DATA_ARCHIVE:-}"
 WEB_SHA256="${XT_WEB_DATA_SHA256:-}"
+# The split set (docs/DATA_FETCH.md): godnotic-data-astc.json and
+# godnotic-data-dxt.json beside the apps' archive on the moving release,
+# each naming one stored zip on an immutable release ("archive": url, size,
+# sha256). A profile whose manifest is not there (HTTP 404) is built as
+# before, from the archives above. One that is there is used, checked
+# against its own size and sha256, and against the set pinned here: a set
+# that changes makes every visitor download it again, so the build fails
+# until the pin is moved on purpose (an empty pin takes whatever is there).
+# "unpublished": no split set is published yet, and none is taken until the
+# pins name the set ids of the published manifests (the "set" of
+# godnotic-data-astc.json and -dxt.json in the publishing run's artifacts).
+# Until then a published manifest stops the build and the previous deployment
+# stays up.
+SPLIT_BASE="${XT_SPLIT_DATA_BASE:-https://github.com/dixonSolutions/Godnotic-data/releases/download/data-slim}"
+SPLIT_SET_ASTC="${XT_SPLIT_SET_ASTC-unpublished}"
+SPLIT_SET_DXT="${XT_SPLIT_SET_DXT-unpublished}"
 
 # The QuakeC sources use #elifdef, which "cc -E" (GCC 11 on Amazon Linux
 # 2023) rejects; GCC 12+ takes it. Prints a directory to put first in PATH
@@ -156,10 +174,60 @@ fetch_set() { # URL SHA256 NAME -> the archive's path; the build fails without i
     fi
     echo "$work/$3.zip"
 }
-echo "Fetching the slim (ASTC) data…"
-slim="$(fetch_set "$SLIM_URL" "$SLIM_SHA256" astc)"
-stage_args+=(--astc "$slim")
-if [ -n "$WEB_URL" ]; then
+# The split set of one profile: fetches $work/split-<profile>.json and
+# $work/split-<profile>.zip. 0: there and right. 1: not published (the
+# caller builds that profile the old way). Anything wrong with a published
+# one stops the build.
+fetch_split() { # PROFILE PINNED_SET
+    local m="$work/split-$1.json" code got
+    code="$(curl -sL --retry 3 --retry-delay 5 -o "$m" -w '%{http_code}' "$SPLIT_BASE/godnotic-data-$1.json" || true)"
+    if [ "$code" = 404 ]; then
+        rm -f "$m"
+        return 1
+    fi
+    if [ "$code" != 200 ]; then
+        echo "vercel-build: $SPLIT_BASE/godnotic-data-$1.json: HTTP $code; not deploying without knowing whether the split set is published" >&2
+        exit 1
+    fi
+    # set, archive url, size, sha256: one per line (the stager checks the rest).
+    got="$("$EMSDK_PYTHON" -I - "$m" <<'PY'
+import json, re, sys
+m = json.load(open(sys.argv[1]))
+a = m.get('archive') or {}
+ok = (m.get('format') == 1 and isinstance(m.get('set'), str) and m['set'] and re.match(r'https?://', a.get('url') or '')
+      and isinstance(a.get('size'), int) and a['size'] > 0 and re.fullmatch(r'[0-9a-f]{64}', a.get('sha256') or ''))
+if not ok:
+    sys.exit('not a format 1 data manifest with an archive url, size and sha256')
+print(m['set'], a['url'], a['size'], a['sha256'], sep='\n')
+PY
+    )" || { echo "vercel-build: godnotic-data-$1.json is published but unusable" >&2; exit 1; }
+    local set url size sha
+    { read -r set; read -r url; read -r size; read -r sha; } <<<"$got"
+    if [ -n "$2" ] && [ "$set" != "$2" ]; then
+        echo "vercel-build: the published $1 split set is $set, the build is pinned to $2" >&2
+        echo "vercel-build: move the pin in scripts/vercel-build.sh on purpose if the data was meant to change" >&2
+        exit 1
+    fi
+    if ! curl -sfL --retry 3 --retry-delay 5 -o "$work/split-$1.zip" "$url"; then
+        echo "vercel-build: could not fetch $url (the $1 split set $set)" >&2
+        exit 1
+    fi
+    if [ "$(stat -c %s "$work/split-$1.zip")" != "$size" ] || ! echo "$sha  $work/split-$1.zip" | sha256sum -c --quiet - >/dev/null 2>&1; then
+        echo "vercel-build: $url is not the archive godnotic-data-$1.json lists (size $size, sha256 $sha)" >&2
+        exit 1
+    fi
+    echo "The $1 split set $set"
+}
+if fetch_split astc "$SPLIT_SET_ASTC"; then
+    stage_args+=(--astc "$work/split-astc.zip" --astc-manifest "$work/split-astc.json")
+else
+    echo "Fetching the slim (ASTC) data…"
+    slim="$(fetch_set "$SLIM_URL" "$SLIM_SHA256" astc)"
+    stage_args+=(--astc "$slim")
+fi
+if fetch_split dxt "$SPLIT_SET_DXT"; then
+    stage_args+=(--web "$work/split-dxt.zip" --web-manifest "$work/split-dxt.json")
+elif [ -n "$WEB_URL" ]; then
     echo "Fetching the web repack…"
     webset="$(fetch_set "$WEB_URL" "$WEB_SHA256" web)"
     stage_args+=(--web "$webset")

@@ -81,6 +81,14 @@
       if (!kind) continue;
       if (!packs.has(kind) || name > packs.get(kind).name) packs.set(kind, { kind, name, file, size: file.size });
     }
+    // The split layout (godnotic-<date>-*.pk3): the packs of this page's set
+    // that are whole; the ones the game needs to start must all be there.
+    const set = tools.setPacks;
+    if (set && (!packs.has('data') || !packs.has('maps'))) {
+      const whole = files.filter((f) => set.size.get(f.name.replace(/^.*[\\/]/, '')) === f.size)
+        .map((f) => ({ kind: 'set', name: f.name.replace(/^.*[\\/]/, ''), file: f, size: f.size }));
+      if (whole.length && set.first.every((n) => whole.some((p) => p.name === n))) return { packs: whole, config };
+    }
     if (!packs.has('data') || !packs.has('maps')) {
       const names = files.map((f) => f.name).slice(0, 4).join(', ');
       throw new Error('That is not the Godnotic game data: it needs xonotic-…-data.pk3 and xonotic-…-maps.pk3 (select all the files at once)' +
@@ -148,7 +156,7 @@
       if (file.size !== p.size) return null; // the browser cleared part of it
       files.push({ kind: p.kind, name: p.name, file, size: file.size });
     }
-    if (!files.some((x) => x.kind === 'data')) return null;
+    if (!files.some((x) => x.kind === 'data' || x.kind === 'set')) return null;
     return { name: 'the Godnotic app', files, kinds: new Set(files.map((x) => x.kind)), config: null, app: true };
   }
 

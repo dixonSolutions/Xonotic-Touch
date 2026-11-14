@@ -170,5 +170,27 @@ expect "$L" "a wrong password says so (event)" '^FE event \{"type":"password","k
 expect "$L" "the right password joins: in the game" "^FE app .*\"state\":\"ingame\".*\"local\":false.*\"map\":\"$MAP\",\"server\":\"127.0.0.1:$PORT\""
 refuse "$L" "the join password never appears in a snapshot" 'open sesame'
 
+# --- 4. mods keep running behind a native screen that covers the engine
+# (fe screen <name> 2: TouchFE_SkipDraw skips the frame, TouchLua_ClientTick
+# still loads mods and runs their timers and frame events)
+mkdir -p "$WORK/covered/mods/fe_tick"
+printf 'id: fe_tick\ntitle: covered-screen tick (test fixture)\napi: 3\nrealm: client\n' > "$WORK/covered/mods/fe_tick/mod.txt"
+cat > "$WORK/covered/mods/fe_tick/init.lua" << 'LUA'
+local frames, ticks = 0, 0
+xt.on("frame", function() frames = frames + 1 end)
+xt.every(1, function() ticks = ticks + 1; print("FE_TICK " .. ticks .. " frames=" .. frames) end)
+LUA
+echo fe_tick > "$WORK/covered/mods/enabled.txt"
+run_engine covered 40 "
+fe attach 1
+alias fe_poll \"fe beat; defer 1 fe_poll\"
+fe_poll
+fe screen mods 2
+defer 20 \"echo STEP covered-fe-state \$\$_fe_state; quit\"
+"
+L="$WORK/covered.log"
+expect "$L" "covered screen: the client mod loaded behind it" 'FE_TICK 1 '
+expect "$L" "covered screen: its timer keeps running (5 or more ticks)" 'FE_TICK ([5-9]|[1-9][0-9]) frames=[1-9]'
+
 [ "$fail" = 0 ] && echo "front-end bridge: all checks passed" || echo "front-end bridge: FAILED"
 exit "$fail"

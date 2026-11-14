@@ -5,4 +5,6 @@ author: Godnotic
 description: Short rounds with a score for each; tells the players' round_hud mod over a channel.
 api: 3
 realm: server
+permissions: standard
+reason.standard: runs rounds, talks to round_hud and shows a page to players
 setting.length: int 60 20 600 10 | Round length in seconds

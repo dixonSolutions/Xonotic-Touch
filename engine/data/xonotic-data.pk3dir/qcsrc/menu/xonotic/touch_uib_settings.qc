@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "touch_uib_screens.qh"
+#include "touch_uib_touch.qh" // Touch HUD: the join popup, Touch controls settings
 
 // Godnotic UI bridge: Settings. Twelve sections, each bound to the cvars players change;
 // "Advanced" opens the stock dialogs for the long tail. Mods is a top-level section:
@@ -251,6 +252,7 @@ void UIB_SecInput()
 void UIB_SecTouch()
 {
 	UIB_SubTabs("touch");
+	UIB_SecTouchControls();   // Touch controls: look, stick, buttons, layout (touch_uib_touchcontrols.qc)
 	if (UIB_SubTab("controls", _("Controls")))
 	{
 		UIB_Choice("preset", _("Preset"), "cvar:touch_preset", "cards", strcat("[", UIB_Opt("balanced", _("Balanced")), ",", UIB_Opt("casual", _("Casual")), ",",
@@ -379,13 +381,144 @@ void UIB_SecPrivacy()
 	UIB_Choice("name", _("Show my name in records"), "cvar:cl_allow_uid2name", "segmented", UIB_Opts2("0", _("Off"), "1", _("On")), "");
 }
 
+// A switch the player flipped shows their value until the updater's status agrees (it serves
+// requests once a second), or for 5 s at most: otherwise it would flick back for a moment.
+float UIB_UpdSwitch(string key, string label, string help)
+{
+	string have = TouchAndySU_extra(key);
+	if (have != "on" && have != "off")
+		return 0; // this host cannot change it: no switch
+	string want = UIB_VM(strcat("updates.", key, ".want"));
+	if (want != "" && (want == have || uib_gettime(1) > UIB_VMf(strcat("updates.", key, ".at")) + 5))
+	{
+		UIB_VMSet(strcat("updates.", key, ".want"), "");
+		want = "";
+	}
+	UIB_VMSet(strcat("updates.", key), (want != "" ? want : have) == "on" ? "1" : "0");
+	UIB_Switch(key, label, strcat("vm:updates.", key), help);
+	return 1;
+}
+
+string UIB_UpdChecked()
+{
+	string ago = TouchAndySU_extra("checked_min");
+	if (ago == "") return _("Not checked yet");
+	float m = stof(ago);
+	string when;
+	if (m < 1) when = _("just now");
+	else if (m < 60) when = sprintf(_("%d min ago"), m);
+	else if (m < 1440) when = sprintf(_("%d h ago"), floor(m / 60));
+	else when = sprintf(_("%d days ago"), floor(m / 1440));
+	string res = TouchAndySU_extra("checked_result");
+	switch (res)
+	{
+		case "uptodate": res = _("up to date"); break;
+		case "available": res = _("an update is available"); break;
+		case "staged": res = _("an update is ready"); break;
+		case "shell-update": res = _("needs a new app install"); break;
+		case "deferred": res = _("waiting for a connection"); break;
+		case "error": res = _("the check failed"); break;
+		default: res = "";
+	}
+	return (res == "") ? sprintf(_("Last checked %s"), when) : sprintf(_("Last checked %s: %s"), when, res);
+}
+
+// Android with AndySU: what delivers updates, the version, Check now, a staged release and
+// Apply now, the download's progress, and the three switches. Elsewhere (Linux, web, an APK
+// without an AndySU host) only the version and What is new: those rows never appear.
+void UIB_SecUpdatesAndySU()
+{
+	string state = TouchAndySU_state();
+	string installed = TouchAndySU_installed();
+	if (installed == "") installed = cvar_string("g_xonoticversion");
+	UIB_Text("andysu", _("Updates are delivered by AndySU, the updater built into Godnotic. Every update is signed, and if a new version does not start properly, AndySU goes back to the one that worked."), "caption");
+	UIB_Text("version", sprintf(_("Version %s"), installed), "title");
+	string channel = TouchAndySU_extra("channel"), abi = TouchAndySU_extra("abi");
+	if (channel != "" || abi != "")
+		UIB_Text("build", ((channel != "" && abi != "") ? sprintf(_("Channel %s · %s"), channel, abi)
+			: (channel != "" ? sprintf(_("Channel %s"), channel) : abi)), "caption");
+	if (state == "incompatible")
+	{
+		UIB_Text("old", _("This install's updater is too old to be controlled from here. Updates still arrive by themselves."), "note");
+		return;
+	}
+
+	string latest = TouchAndySU_latest();
+	if (state == "downloading")
+	{
+		float total = stof(TouchAndySU_extra("total")), done = stof(TouchAndySU_extra("done"));
+		float speed = stof(TouchAndySU_extra("speed"));
+		string eta = TouchAndySU_extra("eta");
+		UIB_Open("download", "progress");
+			uib_s("label", (latest != "") ? sprintf(_("Downloading version %s"), latest) : _("Downloading the update"));
+			if (total > 0) uib_f("value", bound(0, done / total, 1));
+			else uib_b("indeterminate", 1);
+			string detail = (total > 0) ? sprintf(_("%s of %s"), TouchAndySU_bytes(done), TouchAndySU_bytes(total)) : TouchAndySU_bytes(done);
+			if (speed > 0) detail = strcat(detail, " · ", sprintf(_("%s/s"), TouchAndySU_bytes(speed)));
+			if (eta != "" && stof(eta) >= 0) detail = strcat(detail, " · ", sprintf(_("%s left"), TouchAndySU_duration(stof(eta))));
+			uib_s("detail", detail);
+		UIB_Close();
+	}
+	// a release to act on: a section with what it is and one button (every renderer draws a
+	// button; a card's tap would be invisible on some)
+	string staged = TouchAndySU_extra("staged"); // also while a newer one downloads: it still applies
+	if (staged != "")
+	{
+		UIB_Section("staged", sprintf(_("Version %s is ready"), staged), false);
+			UIB_Text("about", _("Downloaded and checked. It applies the next time Godnotic starts, or now (the game may restart)."), "caption");
+			UIB_Button("apply", _("Apply now"), UIB_A("updates.apply", _("Apply now"), "check"), "primary");
+		UIB_Close();
+	}
+	else if (state == "available")
+	{
+		string hold = TouchAndySU_extra("hold");
+		string size = TouchAndySU_extra("size");
+		string why = (hold == "wifi") ? _("Waiting for Wi-Fi") : ((hold == "auto") ? _("Automatic updates are off") : _("Ready to download"));
+		UIB_Section("available", sprintf(_("Version %s is available"), latest), false);
+			UIB_Text("about", ((size != "") ? sprintf(_("%s · %s"), TouchAndySU_bytes(stof(size)), why) : why), "caption");
+			if (TouchAndySU_extra("net") == "metered")
+				UIB_Button("download", _("Download now"), UIB_AC("updates.download", _("Download now"), "download", "primary",
+					_("Download on mobile data?"), _("Download"), false), "primary");
+			else
+				UIB_Button("download", _("Download now"), UIB_A("updates.download", _("Download now"), "download"), "primary");
+		UIB_Close();
+	}
+	else if (state == "shell-update")
+	{
+		UIB_Section("shell", _("This update needs a new app install"), false);
+			UIB_Text("about", _("Android asks you to confirm it. Your settings and maps stay."), "caption");
+			UIB_Button("install", _("Install"), UIB_A("updates.apply", _("Install"), "download"), "primary");
+		UIB_Close();
+	}
+	if (state == "error" && TouchAndySU_message() != "")
+		UIB_Text("error", TouchAndySU_message(), "warning");
+
+	bool checking = state == "checking";
+	UIB_Open("check", "button");
+		uib_s("label", checking ? _("Checking…") : _("Check now"));
+		uib_j("action", UIB_A("updates.check", _("Check now"), "refresh"));
+		uib_s("style", "tonal");
+		if (checking || state == "downloading") uib_b("enabled", 0);
+	UIB_Close();
+	UIB_Text("checked", UIB_UpdChecked(), "caption");
+
+	UIB_UpdSwitch("auto", _("Automatic updates"), _("Download and apply updates by themselves"));
+	UIB_UpdSwitch("wifi", _("Update on Wi-Fi only"), _("Downloads wait for Wi-Fi or another unmetered network"));
+	UIB_UpdSwitch("live", _("Apply live"), _("Swap updates in while you play; off: at the next start"));
+}
+
 void UIB_SecUpdates()
 {
-	UIB_Text("version", sprintf(_("Version %s"), cvar_string("g_xonoticversion")), "title");
+	TouchAndySU_read();
+	if (TouchAndySU_active())
+		UIB_SecUpdatesAndySU();
+	else
+		UIB_Text("version", sprintf(_("Version %s"), cvar_string("g_xonoticversion")), "title");
 	string url = cvar_string("_touch_update_changelog_url");
 	if (substring(url, 0, 8) == "https://")
 		UIB_Button("changes", _("What is new"), UIB_ALink("updates.changes", _("What is new"), "info", url), "link");
-	UIB_Text("how", _("Updates arrive through your app store, Flatpak or the web page; the game data updates itself."), "caption");
+	if (!TouchAndySU_active())
+		UIB_Text("how", _("Updates arrive through your app store, Flatpak or the web page; the game data updates itself."), "caption");
 }
 
 void UIB_SecData()
@@ -685,6 +818,7 @@ bool UIB_SettingsAction(string node, string a, string payload)
 		UIB_Push(strcat("mods.page.", substring(a, 8, -1)));
 		return true;
 	}
+	if (UIB_TouchControlsAction(a)) return true;   // touch_uib_touchcontrols.qc
 	string sel = UIB_VM("mods.sel");
 	string p = (UIB_VM("mods.realm") == "server") ? "sv_lua_plugin_" : "lua_mod_";
 	switch (a)
@@ -702,6 +836,9 @@ bool UIB_SettingsAction(string node, string a, string payload)
 			uib_toast(_("Preset applied"), "success", "check", 2);
 			return true;
 		case "data.fetch": localcmd("\ntouch_assets_fetch\n"); return true;
+		case "updates.check": TouchAndySU_request("check"); return true;
+		case "updates.apply": TouchAndySU_request("apply"); return true;
+		case "updates.download": TouchAndySU_request("download"); return true;
 		case "mods.install.link": UIB_Modal("mods.link"); return true;
 		case "mods.install.url":
 		{
@@ -785,6 +922,19 @@ bool UIB_SettingsValue(string node, string value)
 			UIB_RebuildAll();
 			return true;
 		case "vm:mods.url": UIB_VMSet("mods.url", value); return true;
+		case "vm:updates.auto":
+		case "vm:updates.wifi":
+		case "vm:updates.live":
+		{
+			// auto-on, wifi-off, live-on...: the updater serves it within a second
+			string key = substring(bind, 11, -1);
+			bool on = value == "1" || value == "true";
+			UIB_VMSet(strcat("updates.", key, ".want"), on ? "on" : "off");
+			UIB_VMSet(strcat("updates.", key, ".at"), ftos(uib_gettime(1)));
+			TouchAndySU_request(strcat(key, on ? "-on" : "-off"));
+			UIB_RebuildAll();
+			return true;
+		}
 		case "vm:mods.perm.gamerules":
 		case "vm:mods.perm.internet":
 		case "vm:mods.perm.engine_full":

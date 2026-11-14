@@ -42,6 +42,7 @@ Everything works on the desktop too, without a sink, for headless tests
 #include "touch_frontend.h"
 #include "touch_hud.h"
 #include "touch_lan.h"
+#include "touch_lua.h"
 #include "touch_net.h"
 
 extern uint8_t serverlist_querystage; // netconn.c
@@ -1490,15 +1491,14 @@ static int fe_covered(void)
 
 qbool TouchFE_SkipDraw(void)
 {
-	extern void TLua_InitOnce(void);
-	extern void TLua_FrameStart(void);
 	if (fe_covered() < 2)
 		return false;
 	// The frame is not drawn, so CL_UpdateScreen's TouchLua_ClientFrame does
-	// not run either: its housekeeping still must (the Mods screen's
-	// _lua_detail, installs from a link, mod pages), its drawing must not.
-	TLua_InitOnce();
-	TLua_FrameStart();
+	// not run either: everything of it but the drawing still must (loading
+	// and unloading mods, timers, events, channels, the Mods screen's
+	// _lua_detail, installs from a link, server mods stopped with their
+	// server), so mods keep running behind a native screen.
+	TouchLua_ClientTick();
 	return true;
 }
 

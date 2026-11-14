@@ -396,6 +396,8 @@ fn sync_app_extras(app: &App) {
         app.ui.borrow_mut().as_mut().map(|u| u.dialogs.insert(id.clone(), d));
     }
     match busy {
+        // the loading screen is that card already: the banner would say it twice
+        Some(_) if context == "loading" => banner.set_revealed(false),
         Some(b) => {
             let label = b.str_of("label").unwrap_or_else(|| "Working…".into());
             let detail = b.str_of("detail").map(|d| format!(" · {d}")).unwrap_or_default();

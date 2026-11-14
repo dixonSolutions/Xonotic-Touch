@@ -5,3 +5,5 @@ author: Godnotic
 description: Counts every player's kills and deaths across maps and restarts; !stats shows yours.
 api: 3
 realm: server
+permissions: standard
+reason.standard: counts kills and deaths and keeps them in its own storage

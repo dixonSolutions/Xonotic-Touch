@@ -16,10 +16,6 @@ const vector TOUCH_ASSET_FETCH_COLOR_PROGRESS = '0 0.5 1';
 // a half-broken game.
 const float TOUCH_ASSET_FETCH_SCRIM_ALPHA = 1;
 const string TOUCH_ASSET_FETCH_LOGO = "/gfx/xonotic_logo";
-const string TOUCH_MUSIC_READY_MARKER = "touch/music-ready.txt";
-// Default menu_cdtrack (xonotic-common.cfg) — game-open theme, not in-match BGM.
-const string TOUCH_MENU_THEME_TRACK = "rising-of-the-phoenix";
-const string TOUCH_MENU_THEME_FILE = "sound/cdtracks/rising-of-the-phoenix.ogg";
 
 void TouchAssetFetch_finish(entity me)
 {

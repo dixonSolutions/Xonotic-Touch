@@ -533,7 +533,7 @@ static void chip_place(float *cx, float *cy, float *r)
 	float s = smin(), scale = max(0.01f, cv("touch_scale", 1.0f));
 	qbool flip = cv("touch_handedness", 0) != 0;
 	float mx = cv("touch_pause_x", 0.655f), chx_n = cv("touch_chat_x", 0.889f);
-	// as touch_hud.c widget_half: CHAT is never under 36 dp tall, the chip never under 44 dp across
+	// as touch_hud.c widget_half: CHAT is never under 36 dp tall, the chip never under 48 dp across
 	float dpu = TouchDp_Density(cv("vid_touchscreen_ydpi", 0), (float)min(vid.mode.width, vid.mode.height)) * (vid.mode.height > 0 ? ui_h() / (float)vid.mode.height : 1.0f);
 	float chy = max(s * cv("touch_chat_size", 0.060f) * scale * 0.5f, TOUCHDP_PILL_HEIGHT * 0.5f * dpu);
 	float chx = chy * max(1.0f, cv("touch_chat_aspect", 2.4f));

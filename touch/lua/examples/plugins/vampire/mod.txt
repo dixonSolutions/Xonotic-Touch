@@ -5,6 +5,7 @@ author: Godnotic
 description: Damage you deal heals you; damage to yourself is halved.
 api: 3
 realm: server
-permissions: gamerules
+permissions: standard, gamerules
+reason.standard: watches damage
 reason.gamerules: changes damage and players' health
 setting.share: float 0.5 0 1 0.05 | Share of damage that heals

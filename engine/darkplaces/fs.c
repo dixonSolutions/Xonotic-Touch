@@ -2143,8 +2143,10 @@ static int FS_ChooseUserDir(userdirmode_t userdirmode, char *userdir, size_t use
 #endif
 }
 
+#include "touch_fs_mount.h" // Touch: fs_mountpack, packs mounted while the game runs
 void FS_Init_Commands(void)
 {
+	TouchFS_Init_Commands(); // Touch: fs_mountpack, fs_opentrace
 	Cvar_RegisterVariable (&scr_screenshot_name);
 	Cvar_RegisterVariable (&fs_empty_files_in_pack_mark_deletions);
 	Cvar_RegisterVariable (&fs_unload_dlcache);
@@ -2152,6 +2154,7 @@ void FS_Init_Commands(void)
 
 	Cmd_AddCommand(CF_SHARED, "gamedir", FS_GameDir_f, "changes active gamedir list, can take multiple arguments which shouldn't include the base directory, the last gamedir is the \"primary\" and files will be saved there (example usage: gamedir ctf id1)");
 	Cmd_AddCommand(CF_SHARED, "fs_rescan", FS_Rescan_f, "rescans filesystem for new pack archives and any other changes");
+	TouchFS_WrapRescan(); // Touch: fs_rescan counts in fs_mountpack_count
 	Cmd_AddCommand(CF_SHARED, "path", FS_Path_f, "print searchpath (game directories and archives)");
 	Cmd_AddCommand(CF_SHARED, "dir", FS_Dir_f, "list files in searchpath matching an * filename pattern, one per line");
 	Cmd_AddCommand(CF_SHARED, "ls", FS_Ls_f, "list files in searchpath matching an * filename pattern, multiple per line");
@@ -2558,6 +2561,7 @@ static qfile_t *FS_OpenPackedFile (pack_t* pack, int pack_ind)
 	qfile_t* file;
 
 	pfile = &pack->files[pack_ind];
+	Touch_FS_Trace(pack, pfile); // Touch: fs_opentrace
 
 	// If we don't have the true offset, get it now
 	if (! (pfile->flags & PACKFILE_FLAG_TRUEOFFS))

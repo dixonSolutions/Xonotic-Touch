@@ -5,5 +5,7 @@ author: Godnotic
 description: A page of its own in the Mods menu (a list, a text field, buttons, a progress bar) and an entry in Settings.
 api: 3
 realm: client
+permissions: standard
+reason.standard: keeps your notes in its own storage and shows them on its page
 setting.title: text My notes | Page title
 setting.max: int 5 1 20 1 | Notes to keep
