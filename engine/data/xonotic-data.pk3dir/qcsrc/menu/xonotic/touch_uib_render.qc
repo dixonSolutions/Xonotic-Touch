@@ -3032,6 +3032,13 @@ bool TouchUIB_Draw(float alpha)
 		return true;   // a native renderer shows the menu: describe, do not draw
 	if (!cvar("menu_touch_uib"))
 		return false;
+	// m_draw publishes the menu's alpha as _menu_alpha only when it draws the
+	// stock menu itself, and the game's HUD fades out by it. After a stock
+	// dialog over the bridge menu (the game menu, the join dialog) closed,
+	// this renderer has the frames of the fade-out, the cvar stayed at 1 and
+	// the HUD (clock, scores, scoreboard, map vote) never came back.
+	if (cvar("_menu_alpha") != alpha)
+		cvar_set("_menu_alpha", ftos(alpha));
 	if (!uib_inited)
 		UIB_Init();
 	if (time > rb_tick_next)

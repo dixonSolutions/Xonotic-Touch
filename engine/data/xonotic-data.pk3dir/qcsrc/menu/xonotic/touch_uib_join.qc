@@ -3,11 +3,12 @@
 #include "dialog_touch_join.qh"
 
 // Godnotic UI bridge: the join popup. Xonotic's join dialog (auto-select, the
-// teams the server offers, spectate) as a description, so the native
-// renderers and the QuakeC one show it: id "join", a modal in the game
-// context. UIB_JoinOpen is what "menu_cmd directmenu TeamSelect" becomes when
-// a bridge renderer draws the menu (TouchGameMenu_Route); the engine sends
-// that for an observer when a match starts and from Join game / Change team.
+// teams the server offers, spectate) as a description, so a native renderer
+// shows it as its own dialog: id "join", a modal in the game context.
+// UIB_JoinOpen is what "menu_cmd directmenu TeamSelect" becomes when a native
+// renderer draws the menu (TouchGameMenu_Route); the engine sends that for an
+// observer when a match starts and from Join game / Change team. Without a
+// native renderer the dialog is dialog_touch_join.qc.
 // Each button's action is "join.<choice>" and runs "touch_join <choice>".
 
 bool uib_join_watching;   // opened for a player who was watching: closes once they play
@@ -57,7 +58,11 @@ void UIB_JoinClose()
 // True when a bridge renderer shows the menu and the popup is now up.
 bool UIB_JoinOpen()
 {
-	if (!UIB_Wanted())
+	// A native renderer shows it as its own dialog. The QuakeC renderer leaves
+	// it to the finger-sized stock dialog (dialog_touch_join.qc), which opens
+	// over the bridge menu like the game menu does: its popups sit on the
+	// full-screen pause page, and a join question belongs over the match.
+	if (!UIB_EngineHasBridge() || !uib_native())
 		return false;
 	if (!uib_inited)
 		UIB_Init();

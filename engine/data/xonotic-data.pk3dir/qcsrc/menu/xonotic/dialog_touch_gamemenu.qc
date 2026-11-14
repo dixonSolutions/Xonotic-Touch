@@ -42,8 +42,11 @@ string TouchGameMenu_Route(string itemname)
 	// m_goto would only remember the name. The popup needs none of it.)
 	if (itemname == "TeamSelect")
 	{
+		// The popup is the bridge's own: the stock menu shows its root, in
+		// whose place the bridge renderer draws (and which TouchUIB_Classic
+		// does not take for a stock dialog).
 		if (UIB_JoinOpen())
-			return "TouchJoinBridge";   // no dialog of that name: m_goto does nothing more
+			return "nexposee";
 		if (menuInitialized && TouchGameMenu_Wanted())
 			return "TouchJoin";
 	}
