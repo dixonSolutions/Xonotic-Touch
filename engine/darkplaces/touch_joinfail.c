@@ -27,6 +27,7 @@ touch_joinfail_logic.h.
 #include "touch_joinfail_logic.h"
 #include "touch_nativefe.h"
 #include "touch_datafetch.h"
+#include "touch_joinname.h"
 
 static cvar_t join_fail_serial = {CF_CLIENT | CF_READONLY, "_join_fail_serial", "0", "Godnotic: counts the joins that failed this session; the other _join_fail_* cvars describe the last one"};
 static cvar_t join_fail_kind = {CF_CLIENT | CF_READONLY, "_join_fail_kind", "", "Godnotic: why the last join failed: timeout, busy, refused, network, dropped, files, error"};
@@ -51,7 +52,7 @@ static struct
 	// a drop is reported a moment later, unless a reconnect took over
 	double pending_time;
 	int pending_kind;
-	char pending_text[200], pending_detail[256];
+	char pending_text[256], pending_detail[256];
 } jf;
 
 qbool TouchJoinFail_Joining(void)
@@ -83,8 +84,9 @@ static void report(int kind, const char *text, const char *detail)
 
 static void finish(const char *status)
 {
-	char text[200], detail[256];
-	int kind = TouchJoinFail_Classify(status, jf.challenges, jf.connected, jf.ipv6, jf.address, text, sizeof(text), detail, sizeof(detail));
+	char text[256], detail[256], label[200];
+	// the sentences name the server as the join screens do: "name (address)" (touch_joinname.c)
+	int kind = TouchJoinFail_Classify(status, jf.challenges, jf.connected, jf.ipv6, TouchJoinName_Label(jf.address, label, sizeof(label)), text, sizeof(text), detail, sizeof(detail));
 	jf.active = false;
 	if (!kind)
 		return;
@@ -109,6 +111,7 @@ void TouchJoinFail_Frame(void)
 	qbool trying;
 	if (cls.state == ca_dedicated)
 		return;
+	TouchJoinName_Frame(); // the joined server's name, for the sentences below too
 	trying = cls.connect_trying;
 
 	if (jf.pending_kind && host.realtime >= jf.pending_time)
@@ -202,5 +205,6 @@ void TouchJoinFail_Init(void)
 	Cvar_RegisterVariable(&join_fail_address);
 	Cvar_RegisterVariable(&touch_joinfail_dialog);
 	Cvar_RegisterVariable(&net_connect_backoff);
+	TouchJoinName_Init();
 	Cmd_AddCommand(CF_CLIENT, "join_retry", TouchJoinFail_Retry_f, "Godnotic: join the server of the last failed join again (_join_fail_address)");
 }

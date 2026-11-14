@@ -85,8 +85,9 @@ void TouchData_BuildHold()
 	uib_s("presentation", "dialog");
 	uib_b("dismissable", 1);
 	string then = join ? _("Then you join the game.") : _("Then the game starts.");
-	if (join && cvar_string("_uib_server_name") != "")
-		then = sprintf(_("Then you join %s."), cvar_string("_uib_server_name"));
+	string who = join ? UIB_ServerLabel(UIB_JoinAddress()) : "";
+	if (who != "")
+		then = sprintf(_("Then you join %s."), who);
 	string amount = TouchData_HoldAmount(map);
 	string s = cvar_string("touch_data_state");
 	if (s == "waiting" || s == "paused" || s == "error")

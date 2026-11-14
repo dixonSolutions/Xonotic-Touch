@@ -26,6 +26,9 @@ void UIB_Back();
 void UIB_RebuildAll();
 void UIB_Tick();
 string UIB_TopScreen();
+// how the join screens name a server: "<name> (<address>)", else the address (touch_joinname.c)
+string UIB_ServerLabel(string addr);
+string UIB_JoinAddress();   // the server being joined or played on; "" in a local game
 
 // settings (touch_uib_settings.qc)
 void UIB_BuildSettings(string id);

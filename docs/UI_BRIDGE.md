@@ -545,6 +545,16 @@ nothing outside a join or load, so a card that forgets to reset it does no harm.
 The QuakeC renderer does not set it: during a join the engine's loading screen covers the
 menu, so there the engine's line is the only presentation.
 
+**Naming the server.** Every screen of a join names the server the same way:
+`<name> (<address>)`, or the address alone while no name is known (a typed address, until
+the server answers). The engine keeps it (`touch_joinname.c`): the name from the server
+list when the server is in it, else the `hostname` of the server's own answer to a
+`getinfo`, colour codes out and cut to 32 characters with an ellipsis. It publishes
+`_touch_join_address`, `_touch_join_name` and `_touch_join_label`, and the front-end
+bridge's `connect` topic carries `name` and `label`. The loading card ("Joining
+<label>"), the Could not join sentences (`_join_fail_text`), the reconnect line, the
+password prompt and the pause page's card of an online game use it. A local game has none.
+
 ### 4.11 Settings: vertical tabs with horizontal sub-tabs
 
 Settings is one screen whose content is a `split` with `style: "vertical-tabs"`:

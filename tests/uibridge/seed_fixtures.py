@@ -456,7 +456,7 @@ def lan_popup(players=None, autoclose=True, locked=True):
 def loading_screen(progress=0.0, stage="Downloading map", detail="", cancel=True):
     return N("loading", "screen", [
         # one card: the step, its size and speed, one bar, one Cancel
-        N("loading/status", "status", icon="download", title="Joining Clan Wars #12", body=stage + (" · " + detail if detail else ""),
+        N("loading/status", "status", icon="download", title="Joining Clan Wars #12 (203.0.113.12:26000)", body=stage + (" · " + detail if detail else ""),
           progress=progress, primary=A("loading.cancel", "Cancel", "close", style="secondary"), live=True),
     ], title="Loading", kind="loading", presentation="fullscreen", background="pk3:maps/stormkeep")
 

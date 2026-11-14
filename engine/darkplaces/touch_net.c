@@ -45,6 +45,7 @@ the wire format and the measurements.
 #include "sv_demo.h"
 #include "touch_net.h"
 #include "touch_lan.h"
+#include "touch_joinname.h" // "name (address)" in the reconnect lines
 
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 #include <sys/select.h>
@@ -1024,7 +1025,7 @@ static void TN_LocalAddress(const lhnetaddress_t *peer, char *out, size_t size);
 
 void TouchNet_Disconnecting(qbool kicked, const char *reason)
 {
-	char addr[128], line[256];
+	char addr[128], line[256], label[200];
 	if (cls.state == ca_dedicated || !cls.netcon || sv.active || cls.demoplayback)
 		return;
 	if (!LHNETADDRESS_ToString(&cls.netcon->peeraddress, addr, sizeof(addr), true))
@@ -1066,7 +1067,7 @@ void TouchNet_Disconnecting(qbool kicked, const char *reason)
 				NetConn_SendUnreliableMessage(cls.netcon, &buf, cls.protocol, 10000, 0, false);
 		}
 		Con_Printf("%s: joining %s again\n", reason, addr);
-		dpsnprintf(line, sizeof(line), "Reconnecting to %s...", addr);
+		dpsnprintf(line, sizeof(line), "Reconnecting to %s...", TouchJoinName_Label(addr, label, sizeof(label)));
 		TN_SetState(line);
 		return;
 	}
@@ -1074,7 +1075,7 @@ void TouchNet_Disconnecting(qbool kicked, const char *reason)
 	tn_rc.tries = 0;
 	if (kicked && reason)
 	{
-		dpsnprintf(line, sizeof(line), "Disconnected by %s: %s", addr, reason);
+		dpsnprintf(line, sizeof(line), "Disconnected by %s: %s", TouchJoinName_Label(addr, label, sizeof(label)), reason);
 		TN_SetState(line);
 	}
 }
@@ -1156,7 +1157,7 @@ static void TN_StayConnected(void)
 {
 	double now = host.realtime, silence;
 	double gap = Sys_DirtyTime() - tn_rc.last_frame;
-	char ip[64], line[256];
+	char ip[64], line[256], label[200];
 	qbool remote = cls.state == ca_connected && cls.netcon && !sv.active && !cls.demoplayback;
 	// The frames stopped (the app was frozen). The window runs on the wall
 	// clock: a freeze usually lands inside a frame, whose host.realtime was
@@ -1257,7 +1258,7 @@ static void TN_StayConnected(void)
 	{
 		if (tn_rc.tries >= max(1, net_reconnect_tries.integer))
 		{
-			dpsnprintf(line, sizeof(line), "Could not reconnect to %s", tn_rc.addr);
+			dpsnprintf(line, sizeof(line), "Could not reconnect to %s", TouchJoinName_Label(tn_rc.addr, label, sizeof(label)));
 			Con_Printf("%s\n", line);
 			TN_SetState(line);
 			tn_rc.next = 0;
@@ -1265,7 +1266,7 @@ static void TN_StayConnected(void)
 			return;
 		}
 		tn_rc.tries++;
-		dpsnprintf(line, sizeof(line), "Reconnecting to %s (attempt %d of %d)...", tn_rc.addr, tn_rc.tries, max(1, net_reconnect_tries.integer));
+		dpsnprintf(line, sizeof(line), "Reconnecting to %s (attempt %d of %d)...", TouchJoinName_Label(tn_rc.addr, label, sizeof(label)), tn_rc.tries, max(1, net_reconnect_tries.integer));
 		TN_SetState(line);
 		dpsnprintf(line, sizeof(line), "connect \"%s\"\n", tn_rc.addr);
 		Cbuf_AddText(cmd_local, line);

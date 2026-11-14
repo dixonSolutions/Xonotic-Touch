@@ -44,6 +44,7 @@ Everything works on the desktop too, without a sink, for headless tests
 #include "touch_lan.h"
 #include "touch_lua.h"
 #include "touch_net.h"
+#include "touch_joinname.h"
 
 extern uint8_t serverlist_querystage; // netconn.c
 
@@ -418,7 +419,7 @@ static void watch_status(void)
 static void publish_connect(qbool force)
 {
 	jb_t b = {0};
-	char addr[128] = "";
+	char addr[128] = "", label[200];
 	int n = 0, i;
 	double bytes = 0, speed = 0, progress = 0;
 	Curl_downloadinfo_t *dl;
@@ -446,6 +447,9 @@ static void publish_connect(qbool force)
 	jb_kstr(&b, "stage", stage);
 	jb_kstr(&b, "status", cl_connect_status);
 	jb_kstr(&b, "address", addr);
+	// the server's name ("" until known) and how the join screens name it: "name (address)"
+	jb_kstr(&b, "name", TouchJoinName_For(addr));
+	jb_kstr(&b, "label", TouchJoinName_Label(addr, label, sizeof(label)));
 	jb_kint(&b, "signon", cls.signon);
 	jb_kint(&b, "signons", SIGNONS);
 	jb_kint(&b, "downloads", n);

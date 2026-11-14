@@ -44,6 +44,7 @@ foreground service while there is something to keep alive.
 #include "touch_lan.h"
 #include "touch_lan_logic.h"
 #include "touch_net.h"
+#include "touch_joinname.h"
 #include "touch_lua.h"
 
 static qbool away;
@@ -149,7 +150,7 @@ static void rebind_context(void)
 static void publish_netstate(void)
 {
 	static char last[256] = "-";
-	char state[256], addr[128] = "";
+	char state[256], addr[128] = "", label[200];
 	qfile_t *f;
 	qbool remote = !sv.active && !cls.demoplayback;
 	if (remote && cls.state == ca_connected && cls.netcon)
@@ -160,9 +161,9 @@ static void publish_netstate(void)
 	if (TouchNet_ReconnectState())
 		dpsnprintf(state, sizeof(state), "joining\n%s\n", TouchNet_ReconnectState());
 	else if (remote && (cls.connect_trying || (cls.state == ca_connected && cls.signon < SIGNONS)))
-		dpsnprintf(state, sizeof(state), "joining\nJoining %s%s\n", addr, Curl_Running() ? ", downloading" : "");
+		dpsnprintf(state, sizeof(state), "joining\nJoining %s%s\n", TouchJoinName_Label(addr, label, sizeof(label)), Curl_Running() ? ", downloading" : "");
 	else if (remote && cls.state == ca_connected)
-		dpsnprintf(state, sizeof(state), "connected\nConnected to %s%s%s\n", addr, cl.worldbasename[0] ? " - " : "", cl.worldbasename);
+		dpsnprintf(state, sizeof(state), "connected\nConnected to %s%s%s\n", TouchJoinName_Label(addr, label, sizeof(label)), cl.worldbasename[0] ? " - " : "", cl.worldbasename);
 	else if (sv.active && !cls.demoplayback && TouchLAN_KeepRunningInBackground(1, TouchLAN_HostingOnPurpose(), TouchLAN_OtherHumans(), 0))
 	{
 		// A LAN game hosted from the Host screen, or a local game another
