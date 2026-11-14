@@ -27,6 +27,7 @@ static void TouchFS_MountPack_f(cmd_state_t *cmd)
 	pack_t *pak;
 	int index;
 	size_t len;
+	qbool hadtracks;
 
 	if (Cmd_Argc(cmd) != 2)
 	{
@@ -41,7 +42,11 @@ static void TouchFS_MountPack_f(cmd_state_t *cmd)
 		return;
 	}
 
-	// the plain directory it is in, as FS_AddPack finds it
+	// the plain directory it is in, as FS_AddPack finds it. The file was
+	// renamed into place a moment ago: the cached directory listing
+	// (touch_loadfs.c) does not know it yet.
+	FS_DIRNAMES_CHANGED();
+	hadtracks = FS_FileExists("cdtracks.cfg") != NULL;
 	search = FS_FindFile(name, &index, NULL, true);
 	if (!search || search->pack)
 	{
@@ -55,7 +60,7 @@ static void TouchFS_MountPack_f(cmd_state_t *cmd)
 	{
 		if (search->pack && !strcasecmp(search->pack->filename, fullpath))
 		{
-			Con_Printf("fs_mountpack: %s is already mounted\n", name);
+			Con_DPrintf("fs_mountpack: %s is already mounted\n", name);
 			return;
 		}
 		last = search;
@@ -77,6 +82,31 @@ static void TouchFS_MountPack_f(cmd_state_t *cmd)
 		fs_searchpaths = search;
 	Cvar_SetValueQuick(&fs_mountpack_count, fs_mountpack_count.integer + 1);
 	Con_DPrintf("fs_mountpack: %s (%i files)\n", name, pak->numfiles);
+	// The music pack carries the track list, which xonotic-common.cfg execs
+	// once at start-up: without it the session has no "cd loop <n>" names.
+	if (!hadtracks && FS_FileExists("cdtracks.cfg"))
+		Cbuf_AddText(cmd, "\nset _cdtrack_first 1; alias _cdtrack_0 \"g_cdtracks_remaplist \\\"$g_cdtracks_remaplist $1\\\"\"; alias _cdtrack_1 \"g_cdtracks_remaplist \\\"$1\\\"; set _cdtrack_first 0\"; alias _cdtrack \"_cdtrack_$_cdtrack_first $2\"\nset g_cdtracks_remaplist \"\"\nexec cdtracks.cfg\nunset _cdtrack_first; unalias _cdtrack_0; unalias _cdtrack_1; unalias _cdtrack\nif_client cd remap $g_cdtracks_remaplist\n");
+}
+
+/// fs_rescan rebuilds the search path: what the menu lists may have changed
+/// too, so it counts as a mount. Wrapped in the command list, not edited.
+static xcommand_t touchfs_rescan_orig;
+
+static void TouchFS_Rescan_f(cmd_state_t *cmd)
+{
+	touchfs_rescan_orig(cmd);
+	Cvar_SetValueQuick(&fs_mountpack_count, fs_mountpack_count.integer + 1);
+}
+
+static void TouchFS_WrapRescan(void)
+{
+	cmd_function_t *f;
+	for (f = cmd_local->engine_functions; f; f = f->next)
+		if (!strcmp(f->name, "fs_rescan") && f->function != TouchFS_Rescan_f)
+		{
+			touchfs_rescan_orig = f->function;
+			f->function = TouchFS_Rescan_f;
+		}
 }
 
 static void TouchFS_Init_Commands(void)

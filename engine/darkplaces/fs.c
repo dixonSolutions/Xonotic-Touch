@@ -2154,6 +2154,7 @@ void FS_Init_Commands(void)
 
 	Cmd_AddCommand(CF_SHARED, "gamedir", FS_GameDir_f, "changes active gamedir list, can take multiple arguments which shouldn't include the base directory, the last gamedir is the \"primary\" and files will be saved there (example usage: gamedir ctf id1)");
 	Cmd_AddCommand(CF_SHARED, "fs_rescan", FS_Rescan_f, "rescans filesystem for new pack archives and any other changes");
+	TouchFS_WrapRescan(); // Touch: fs_rescan counts in fs_mountpack_count
 	Cmd_AddCommand(CF_SHARED, "path", FS_Path_f, "print searchpath (game directories and archives)");
 	Cmd_AddCommand(CF_SHARED, "dir", FS_Dir_f, "list files in searchpath matching an * filename pattern, one per line");
 	Cmd_AddCommand(CF_SHARED, "ls", FS_Ls_f, "list files in searchpath matching an * filename pattern, multiple per line");
