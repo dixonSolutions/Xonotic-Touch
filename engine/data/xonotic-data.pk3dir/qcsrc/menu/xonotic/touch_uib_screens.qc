@@ -1228,6 +1228,148 @@ void UIB_BuildLoading()
 	UIB_Done();
 }
 
+// ---------------------------------------------------------------- setup: game data still arriving
+
+// packaging/start.sh and godnotic-fetchd (Ubuntu Touch, the Linux tarball)
+// download the game data while the engine runs on its boot assets, and tell it
+// through _touch_asset_fetch_active and touch/asset-progress.txt ("status",
+// "percent", "message" lines). Until it is in place this one screen owns the
+// menu: there is nothing to play yet. Same decision and actions as the classic
+// menu's download dialog (dialog_touch_asset_fetch.qc), which did not fit a
+// landscape phone and never showed over this menu.
+string uib_setup_status, uib_setup_msg;
+float uib_setup_pct;
+float uib_setup_done_t;   // the finished state stays up for a beat (real time)
+bool uib_setup_music;
+
+bool UIB_SetupWanted()
+{
+	return !uib_native() && TouchStartup_assetFetchDialog_shouldShow();
+}
+
+void UIB_SetupRead()
+{
+	string st = TOUCH_FETCH_DISCOVER, msg = "";
+	float pct = 0;
+	float fh = fopen(TOUCH_ASSET_PROGRESS_FILE, FILE_READ);
+	if (fh >= 0)
+	{
+		string a = fgets(fh), b = fgets(fh), c = fgets(fh);
+		fclose(fh);
+		if (a != "") { st = a; pct = bound(0, stof(b), 100); msg = c; }
+	}
+	strcpy(uib_setup_status, st);
+	strcpy(uib_setup_msg, msg);
+	uib_setup_pct = pct;
+}
+
+bool UIB_SetupDone()
+{
+	if (uib_setup_status == TOUCH_FETCH_DONE)
+		return true;
+	// a ready flag never ends a download the worker still reports as live
+	return TouchStartup_assetsReady() && uib_setup_status != TOUCH_FETCH_RUNNING && uib_setup_status != TOUCH_FETCH_DISCOVER
+		&& uib_setup_status != TOUCH_FETCH_PAUSED && uib_setup_status != TOUCH_FETCH_ERROR;
+}
+
+void UIB_BuildSetup()
+{
+	UIB_SetupRead();
+	bool err = (uib_setup_status == TOUCH_FETCH_ERROR), done = UIB_SetupDone();
+	bool bg = cvar("_touch_asset_fetch_background");
+	bool sweep = !done && !err && uib_setup_pct <= 0;
+	string title, body;
+	if (done)
+	{
+		title = _("Game data is ready");
+		body = _("Starting Godnotic…");
+	}
+	else if (err)
+	{
+		title = _("The download stopped");
+		body = (uib_setup_msg != "") ? uib_setup_msg : _("Check your connection and free space, then try again.");
+	}
+	else
+	{
+		title = _("Setting up your game");
+		if (bg)
+			body = _("Downloading in the background: you can close this window.");
+		else if (uib_setup_msg != "")
+			body = uib_setup_msg;
+		else
+			body = sweep ? _("Checking your game data…") : sprintf(_("Downloading game data… %d%%"), floor(uib_setup_pct));
+	}
+	if (!UIB_Screen("setup", _("Setting up")))
+		return;
+	uib_s("kind", "loading");
+	uib_s("presentation", "fullscreen");
+	uib_s("background", "asset:loading");
+	UIB_Open("status", "status");
+		uib_s("icon", err ? "warning" : (done ? "check" : "download"));
+		uib_s("title", title);
+		uib_s("body", body);
+		uib_b("live", 1);
+		if (sweep) uib_b("indeterminate", 1);
+		else if (!err) uib_f("progress", done ? 1 : uib_setup_pct / 100);
+		if (err) uib_j("primary", UIB_AS("setup.retry", _("Try again"), "refresh", "primary"));
+		else if (!done) uib_j("primary", bg ? UIB_AS("setup.close", _("Close window"), "close", "secondary")
+			: UIB_AS("setup.background", _("Download in background"), "download", "secondary"));
+	UIB_Close();
+	UIB_Done();
+}
+
+void UIB_SetupAction(string a)
+{
+	if (a == "setup.retry")
+	{
+		if (!TouchStartup_requestRelaunch())
+			uib_toast(_("Close and reopen Godnotic to try the download again."), "warning", "warning", 6);
+	}
+	else if (a == "setup.background")
+	{
+		cvar_set("_touch_asset_fetch_background", "1");
+		if (!TouchStartup_requestBackgroundFetch())
+			uib_toast(_("Could not switch to background download. Keep the app open, or close and reopen to resume."), "warning", "warning", 6);
+		UIB_Build("setup");
+	}
+	else if (a == "setup.close")
+	{
+		// write the marker again so start.sh never takes this quit for a full stop
+		TouchStartup_requestBackgroundFetch();
+		localcmd("\nquit\n");
+	}
+}
+
+void UIB_SetupTick()
+{
+	// the menu theme once its track is in (the shell fetches it first)
+	if (!uib_setup_music && (fexists(TOUCH_MUSIC_READY_MARKER) || fexists(TOUCH_MENU_THEME_FILE)))
+	{
+		uib_setup_music = true;
+		cvar_set("menu_cdtrack", TOUCH_MENU_THEME_TRACK);
+		localcmd("\nfs_rescan; defer 0.4 \"cd loop rising-of-the-phoenix\"\n");
+	}
+	UIB_Build("setup");
+	if (!UIB_SetupDone())
+	{
+		uib_setup_done_t = 0;
+		return;
+	}
+	if (!uib_setup_done_t)
+		uib_setup_done_t = uib_gettime(1) + 1.2;
+	if (uib_gettime(1) < uib_setup_done_t)
+		return;
+	uib_setup_done_t = 0;
+	cvar_set("_touch_assets_ready", "1");
+	cvar_set("_touch_asset_fetch_active", "0");
+	// packs that arrived after the engine built its search path stay invisible:
+	// start.sh runs it again with everything mounted
+	if (TouchStartup_requestRelaunch())
+		return;
+	// no writable marker (an unpackaged run): rescan here and carry on
+	localcmd("\nfs_rescan\n");
+}
+
 void UIB_BuildCredits()
 {
 	if (!UIB_Screen("credits", _("Credits")))
@@ -1318,6 +1460,7 @@ void UIB_Build(string id)
 		case "welcome": UIB_BuildWelcome(); return;
 		case "pause": UIB_BuildPause(); return;
 		case "loading": UIB_BuildLoading(); return;
+		case "setup": UIB_BuildSetup(); return;
 		case "credits": UIB_BuildCredits(); return;
 		case "dialog.quit": UIB_BuildQuit(); return;
 		case "dialog.joinfail": UIB_BuildJoinFail(); return;
@@ -1337,6 +1480,8 @@ void UIB_Context()
 		ctx = "loading";
 	else if (st == "game" || (gamestatus & (GAME_CONNECTED | GAME_ISSERVER)))
 		ctx = "game";
+	else if (UIB_SetupWanted())
+		ctx = "setup";
 	if (ctx == uibn_context && uibn_stack != "")
 	{
 		if (ctx == "loading")
@@ -1355,7 +1500,8 @@ void UIB_Context()
 		UIB_CampaignLoad();
 		UIB_CampaignRows();
 	}
-	if (ctx == "loading") UIB_SetStack("loading", "");
+	if (ctx == "setup") UIB_SetStack("setup", "");
+	else if (ctx == "loading") UIB_SetStack("loading", "");
 	else if (ctx == "game") UIB_SetStack("pause", "");
 	else UIB_SetStack("home", TouchStartup_nameNeeded() ? "welcome" : "");
 	if (ctx == "menu" && cvar("_touch_lan_ended"))
@@ -1419,6 +1565,11 @@ void UIB_Tick()
 			uib_mp_next_refresh = uib_gettime(1) + 10;
 			refreshhostcache(false);
 		}
+	}
+	if (top == "setup" && uib_gettime(1) > uib_next_tick)
+	{
+		uib_next_tick = uib_gettime(1) + 0.5;
+		UIB_SetupTick();
 	}
 	if ((top == "pause" || top == "lan.host" || top == "mods.detail" || top == "settings.data") && uib_gettime(1) > uib_next_tick)
 	{
@@ -1502,6 +1653,7 @@ void UIB_Action(string node, string a, string payload)
 		case "spectate": localcmd("\ntouch_action spectate confirm\n"); m_hide(); return;
 		case "disconnect": localcmd("\ndisconnect\n"); return;
 		// disconnect alone does not stop a join the server has not answered yet
+		case "setup.retry": case "setup.background": case "setup.close": UIB_SetupAction(a); return;
 		case "loading.cancel": localcmd("\ndisconnect\n_touch_cancel_join\n"); return;
 	}
 }

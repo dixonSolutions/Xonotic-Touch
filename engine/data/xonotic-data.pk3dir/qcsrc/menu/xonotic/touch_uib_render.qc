@@ -2561,8 +2561,19 @@ void RB_StartEdit(entity e)
 {
 	strcpy(rb_edit_id, e.rb_id);
 	strcpy(rb_edit_text, e.rb_sel ? "" : e.rb_val);
-	if (cvar("vid_touchscreen") && cvar("vid_touchscreen_showkeyboard"))
+	// a touch-only device has no keys: ask for its screen keyboard, placed so
+	// it leaves this field in view (2: shown again even after Back put it away).
+	// It used to ask only when something else had already asked, so tapping
+	// the welcome's Name field on a phone brought up no keyboard at all.
+	if (cvar("vid_touchscreen"))
+	{
+		vector p = RB_ItemPos(e);
+		cvar_set("vid_touchscreen_textinput_x", ftos(p.x));
+		cvar_set("vid_touchscreen_textinput_y", ftos(p.y));
+		cvar_set("vid_touchscreen_textinput_w", ftos(e.rb_s.x));
+		cvar_set("vid_touchscreen_textinput_h", ftos(e.rb_s.y));
 		cvar_set("vid_touchscreen_showkeyboard", "2");
+	}
 }
 
 void RB_EndEdit(bool submit)
@@ -2576,6 +2587,7 @@ void RB_EndEdit(bool submit)
 		RB_SendValue(id, jv);
 	strcpy(rb_edit_id, "");
 	strcpy(rb_edit_text, "");
+	menu_touch_keyboard_hide();   // the screen keyboard goes with the field
 }
 
 // A tap on a row. In a list with selection single or multi one tap chooses the row (kind select)

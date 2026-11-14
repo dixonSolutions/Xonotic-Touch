@@ -19,6 +19,10 @@ const string TOUCH_FETCH_RUNNING = "running";
 const string TOUCH_FETCH_PAUSED = "paused";
 const string TOUCH_FETCH_DONE = "done";
 const string TOUCH_FETCH_ERROR = "error";
+const string TOUCH_MUSIC_READY_MARKER = "touch/music-ready.txt";
+// Default menu_cdtrack (xonotic-common.cfg) — game-open theme, not in-match BGM.
+const string TOUCH_MENU_THEME_TRACK = "rising-of-the-phoenix";
+const string TOUCH_MENU_THEME_FILE = "sound/cdtracks/rising-of-the-phoenix.ogg";
 
 bool TouchStartup_assetsReady();
 bool TouchStartup_assetFetchActive();
