@@ -59,10 +59,11 @@ run() { # basedir userdir seconds args...
 		+sv_cheats 1 +bot_number 4 +sv_public 0 +skill 4 "$@" >/dev/null 2>&1 || true
 }
 # Known and reported, not failures: no music yet (it follows first_play), the
-# rig has no gfx/touch (the packages stage it), a server that has the detail
-# pack names LOD meshes the client does not have yet, and one picture of the
-# default HUD skin that the data split left in extras.
-KNOWN='BGM track|gfx/touch|_lod[0-9]*\.iqm|gfx/hud/default/progressbar'
+# rig has no gfx/touch (the packages stage it), and a server that has the
+# detail pack names LOD meshes the client does not have yet (its precache list
+# carries them; the client's QuakeC uses a LOD only where fexists() finds it,
+# so the full model stands in).
+KNOWN='BGM track|gfx/touch|_lod[0-9]*\.iqm'
 missing() { grep -a -i -E 'not found|couldn.t load|could not load|failed to load|missing' "$1" | grep -a -v -E 'config\.cfg|autoexec|cdtracks|crypto|libcurl|d0_blind|\.so|server\.cfg|touch\.layout|font_size_snapping|userkey' | grep -a -v -E "$KNOWN" | sed -E 's/[0-9]+(\.[0-9]+)?//g' | sort -u || true; }
 known() { grep -a -i -E "$KNOWN" "$1" | sed -E 's/\^[0-9]//g' | sort | uniq -c | sed 's/^/     note: /' | head -20 || true; }
 status() { # userdir state [landed...]
@@ -92,16 +93,70 @@ missing "$L" > "$W/fp.txt"; known "$L"
 new="$(comm -23 "$W/fp.txt" "$W/base-$MAP1.txt")"
 [ -z "$new" ] && ok "first_play only: no missing-file line the whole set does not print ($(wc -l < "$W/fp.txt") lines, all in the baseline)" || { bad "first_play only: new missing-file lines:"; echo "$new" | head -20; }
 
+# --- 1b. sounds named .opus decode on the workers, as .ogg ones do ----------
+if command -v ffmpeg >/dev/null 2>&1 && [ "$(ffmpeg -hide_banner -encoders 2>/dev/null | grep -c libopus)" -gt 0 ]; then
+	mkbase "$W/snd" "${FIRST[@]}"
+	mkdir -p "$W/snd/data/zzzz-sndtest.pk3dir/sound/xttest"
+	for n in long:8 short:1; do
+		ffmpeg -v error -f lavfi -i "sine=frequency=440:duration=${n#*:}" -ar 48000 -ac 1 -c:a libopus -b:a 32k "$W/snd/data/zzzz-sndtest.pk3dir/sound/xttest/${n%:*}.opus"
+	done
+	run "$W/snd" "$W/snd-u" 60 +developer 1 +defer 3 "play xttest/long.wav; play xttest/short.wav" +defer 6 quit
+	L="$W/snd-u/data/qconsole.log"
+	if grep -a -q "sound/xttest/long.opus (Opus) decodes on a worker" "$L" && ! grep -a -q "short.opus (Opus) decodes on a worker" "$L"; then
+		ok "an 8 s sound named .opus decodes on a worker thread; a 1 s one is left for its first play"
+	else
+		bad "the .opus sound did not take the worker path: $(grep -a -i 'xttest\|snd_lazyload' "$L" | head -5)"
+	fi
+else
+	echo "skip .opus sounds on the workers: no ffmpeg with libopus"
+fi
+
 # --- 2. a second map lands while the engine runs ---------------------------
 mkbase "$W/late" "${FIRST[@]}"
 U="$W/late-u"; status "$U" fetching
 mapfile -t NEED2 < <(names "$MAP2")
-run "$W/late" "$U" $((SECS * 2 + 150)) +alias cl_hook_gamestart_all "defer $SECS quit" +defer 6 "map $MAP2" &
+# poll.cfg: commands the test hands the running engine (it execs the file twice a second)
+: > "$U/data/poll.cfg"
+run "$W/late" "$U" $((SECS * 2 + 150)) +alias cl_hook_gamestart_all "defer $SECS quit" +alias xt_poll "exec poll.cfg; defer 0.5 xt_poll" +defer 2 xt_poll +defer 6 "map $MAP2" &
 req="$U/data/data/touch/data-request.txt"
 for i in $(seq 1 240); do [ -s "$req" ] && break; sleep 0.5; done
 if [ "$(cut -d' ' -f1-2 "$req" 2>/dev/null)" = "want $MAP2" ]; then ok "map $MAP2 while it is still to come: request file says '$(cat "$req")'"; else bad "no request for $MAP2 (got: $(cat "$req" 2>/dev/null))"; fi
 sleep 2
 grep -a -q "Server spawned" "$U/data/qconsole.log" && bad "the match started before the map was there" || ok "the match did not start before the packs landed"
+poll() { # file to wait for, commands...
+	local f="$U/data/$1"; shift
+	printf '%s\n' "$@" > "$U/data/poll.cfg"
+	for i in $(seq 1 60); do [ -s "$f" ] && break; sleep 0.5; done
+	: > "$U/data/poll.cfg"
+	[ -s "$f" ]
+}
+# the menu (UI bridge): the held map's dialog, the map rows' state, Cancel
+poll hold1.json "uib_dump hold1.json" "uib_send {\"uib\":1,\"t\":\"window\",\"id\":91,\"source\":\"maps\",\"offset\":0,\"limit\":4,\"filter\":\"$MAP2\"}" "uib_send {\"uib\":1,\"t\":\"window\",\"id\":92,\"source\":\"maps\",\"offset\":0,\"limit\":4,\"filter\":\"$MAP1\"}" "screenshot hold1.png" || true
+python3 - "$U/data/hold1.json" "$U/data/qconsole.log" "$MAP2" "$MAP1" <<'PY' && ok "menu: the held map's dialog (progress, Cancel) and the map rows' state ($MAP2 downloading, $MAP1 ready)" || bad "menu: no hold dialog or no map row state"
+import json, re, sys
+snap = json.load(open(sys.argv[1])); log = open(sys.argv[2], errors="replace").read()
+nodes = {n["id"]: n for n in (snap.get("snapshot", snap)).get("nodes", [])}
+app = next((n for n in nodes.values() if n.get("type") == "app"), {})
+modal = app.get("props", {}).get("modal", [])
+st = nodes.get("data.hold/status", {}).get("props", {})
+ok = "data.hold" in modal and st.get("primary", {}).get("id") == "data.cancel" and sys.argv[3] in st.get("title", "")
+rows = {}
+for m in re.finditer(r'\{"key":"([^"]+)"[^{}]*"cells":\{([^{}]*)\}', log):
+    rows[m.group(1)] = m.group(2)
+ok = ok and '"state":"downloading"' in rows.get(sys.argv[3], "") and '"state":"ready"' in rows.get(sys.argv[4], "")
+if not ok:
+    print("     modal", modal, "status", st, "rows", {k: rows.get(k) for k in sys.argv[3:5]})
+sys.exit(0 if ok else 1)
+PY
+poll hold2.json "uib_event {\"ev\":\"action\",\"node\":\"data.hold/status\",\"action\":\"data.cancel\"}" "defer 1 \"uib_dump hold2.json\"" || true
+python3 - "$U/data/hold2.json" <<'PY' && ok "menu: Cancel drops the held map and closes its dialog" || bad "menu: Cancel left the dialog or the held map"
+import json, sys
+snap = json.load(open(sys.argv[1])); nodes = (snap.get("snapshot", snap)).get("nodes", [])
+app = next((n for n in nodes if n.get("type") == "app"), {})
+sys.exit(0 if "data.hold" not in app.get("props", {}).get("modal", []) else 1)
+PY
+grep -a -q "Server spawned" "$U/data/qconsole.log" && bad "the match started after Cancel" || true
+poll hold3.json "map $MAP2" "defer 1 \"uib_dump hold3.json\"" || true
 late=()
 for p in "${NEED2[@]}"; do [ -e "$W/late/data/$p" ] || { cp -l "$SPLIT/$p" "$W/late/data/$p.part" 2>/dev/null || cp "$SPLIT/$p" "$W/late/data/$p.part"; mv "$W/late/data/$p.part" "$W/late/data/$p"; late+=("$p"); status "$U" fetching "${late[@]}"; sleep 0.3; }; done
 wait
