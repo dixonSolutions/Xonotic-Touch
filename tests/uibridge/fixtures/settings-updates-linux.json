@@ -1,0 +1,479 @@
+{
+ "name": "settings-updates-linux",
+ "description": "Settings > updates on Linux: the version, how Flatpak delivers updates, Check now (asks the changelog).",
+ "generated": "engine",
+ "caps": {
+  "nodes": [],
+  "hints": [],
+  "width": 1280,
+  "height": 720,
+  "dpi": 96,
+  "widthClass": "expanded",
+  "heightClass": "medium",
+  "input": [
+   "mouse",
+   "keyboard"
+  ],
+  "locale": "en",
+  "reducedMotion": false,
+  "powerSave": false,
+  "thermal": "nominal",
+  "insets": {
+   "top": 0,
+   "right": 0,
+   "bottom": 0,
+   "left": 0
+  }
+ },
+ "snapshot": {
+  "uib": 1,
+  "t": "snapshot",
+  "id": 2,
+  "rev": 1,
+  "root": "app",
+  "nodes": [
+   {
+    "id": "app",
+    "type": "app",
+    "props": {
+     "title": "Godnotic",
+     "stack": [
+      "home",
+      "settings"
+     ],
+     "modal": [],
+     "canBack": true,
+     "context": "menu"
+    },
+    "children": [
+     "home",
+     "settings"
+    ]
+   },
+   {
+    "id": "home",
+    "type": "screen",
+    "props": {
+     "title": "Godnotic",
+     "kind": "home",
+     "background": "asset:background"
+    },
+    "children": [
+     "home/banner",
+     "home/tiles",
+     "home/nav"
+    ]
+   },
+   {
+    "id": "home/banner",
+    "type": "image",
+    "props": {
+     "ref": "asset:banner",
+     "role": "banner",
+     "emphasis": "high",
+     "aspect": "21:9",
+     "fit": "contain",
+     "alt": "Godnotic"
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles",
+    "type": "grid",
+    "props": {
+     "minItem": 150,
+     "maxColumns": 3
+    },
+    "children": [
+     "home/tiles/sp",
+     "home/tiles/campaign",
+     "home/tiles/mp"
+    ]
+   },
+   {
+    "id": "home/tiles/sp",
+    "type": "card",
+    "props": {
+     "title": "Singleplayer",
+     "subtitle": "Stormkeep · Deathmatch · 4 bots",
+     "icon": "singleplayer",
+     "image": "pk3:maps/stormkeep",
+     "aspect": "16:9",
+     "featured": true,
+     "primary": {
+      "id": "sp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/campaign",
+    "type": "card",
+    "props": {
+     "title": "Campaign",
+     "subtitle": "Level 1 of 31 · Deathmatch: Boil",
+     "image": "pk3:maps/boil",
+     "progress": 0,
+     "icon": "trophy",
+     "aspect": "16:9",
+     "featured": true,
+     "primary": {
+      "id": "campaign",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/mp",
+    "type": "card",
+    "props": {
+     "title": "Multiplayer",
+     "subtitle": "Join a server, or create a game",
+     "icon": "multiplayer",
+     "image": "pk3:maps/xoylent",
+     "aspect": "16:9",
+     "featured": true,
+     "live": true,
+     "primary": {
+      "id": "mp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/nav",
+    "type": "tabbar",
+    "props": {
+     "current": ""
+    },
+    "children": [
+     "home/nav/settings",
+     "home/nav/credits",
+     "home/nav/quit"
+    ]
+   },
+   {
+    "id": "home/nav/settings",
+    "type": "button",
+    "props": {
+     "label": "Settings",
+     "action": {
+      "id": "settings",
+      "label": "Settings",
+      "icon": "settings"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/nav/credits",
+    "type": "button",
+    "props": {
+     "label": "Credits",
+     "action": {
+      "id": "credits",
+      "label": "Credits",
+      "icon": "credits"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/nav/quit",
+    "type": "button",
+    "props": {
+     "label": "Quit",
+     "action": {
+      "id": "quit",
+      "label": "Quit",
+      "icon": "quit",
+      "style": "secondary",
+      "confirm": {
+       "title": "Quit Godnotic?",
+       "ok": "Quit",
+       "destructive": false
+      }
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings",
+    "type": "screen",
+    "props": {
+     "title": "Settings",
+     "kind": "page"
+    },
+    "children": [
+     "settings/split",
+     "settings/nav"
+    ]
+   },
+   {
+    "id": "settings/split",
+    "type": "split",
+    "props": {
+     "style": "vertical-tabs",
+     "bind": "vm:settings.section",
+     "value": "updates",
+     "detailOpen": true
+    },
+    "children": [
+     "settings/split/video",
+     "settings/split/audio",
+     "settings/split/game",
+     "settings/split/input",
+     "settings/split/touch",
+     "settings/split/esp",
+     "settings/split/player",
+     "settings/split/privacy",
+     "settings/split/updates",
+     "settings/split/data",
+     "settings/split/menu",
+     "settings/split/mods"
+    ]
+   },
+   {
+    "id": "settings/split/video",
+    "type": "pane",
+    "props": {
+     "key": "video",
+     "label": "Video",
+     "icon": "video",
+     "subtitle": "Resolution, effects, field of view"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/audio",
+    "type": "pane",
+    "props": {
+     "key": "audio",
+     "label": "Audio",
+     "icon": "audio",
+     "subtitle": "Volume, music, hit sounds"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/game",
+    "type": "pane",
+    "props": {
+     "key": "game",
+     "label": "Game",
+     "icon": "game",
+     "subtitle": "Crosshair, weapons, content"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/input",
+    "type": "pane",
+    "props": {
+     "key": "input",
+     "label": "Input",
+     "icon": "input",
+     "subtitle": "Mouse, keyboard and keys"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/touch",
+    "type": "pane",
+    "props": {
+     "key": "touch",
+     "label": "Controls",
+     "icon": "touch",
+     "subtitle": "Presets, HUD, aim assist, auto-shoot, tactics"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/esp",
+    "type": "pane",
+    "props": {
+     "key": "esp",
+     "label": "ESP",
+     "icon": "esp",
+     "subtitle": "Offline matches only"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/player",
+    "type": "pane",
+    "props": {
+     "key": "player",
+     "label": "Player",
+     "icon": "player",
+     "subtitle": "Name and colours"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/privacy",
+    "type": "pane",
+    "props": {
+     "key": "privacy",
+     "label": "Privacy",
+     "icon": "privacy",
+     "subtitle": "Statistics and identity"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/updates",
+    "type": "pane",
+    "props": {
+     "key": "updates",
+     "label": "Updates",
+     "icon": "update",
+     "subtitle": "What is new"
+    },
+    "children": [
+     "settings/split/updates/how",
+     "settings/split/updates/version",
+     "settings/split/updates/check",
+     "settings/split/updates/checked"
+    ]
+   },
+   {
+    "id": "settings/split/updates/how",
+    "type": "text",
+    "props": {
+     "body": "Godnotic updates through its Flatpak remote: GNOME Software, Discover or flatpak update install new versions.",
+     "style": "caption"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/updates/version",
+    "type": "text",
+    "props": {
+     "body": "Version 1.2.204",
+     "style": "title"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/updates/check",
+    "type": "button",
+    "props": {
+     "label": "Check now",
+     "action": {
+      "id": "updates.check",
+      "label": "Check now",
+      "icon": "refresh"
+     },
+     "style": "tonal"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/updates/checked",
+    "type": "text",
+    "props": {
+     "body": "Not checked yet",
+     "style": "caption"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/data",
+    "type": "pane",
+    "props": {
+     "key": "data",
+     "label": "Data",
+     "icon": "data",
+     "subtitle": "Game data and downloads"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/menu",
+    "type": "pane",
+    "props": {
+     "key": "menu",
+     "label": "Menu",
+     "icon": "menu",
+     "subtitle": "Size and layout"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/mods",
+    "type": "pane",
+    "props": {
+     "key": "mods",
+     "label": "Mods",
+     "icon": "mods",
+     "subtitle": "Client and server mods, pages from mods"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/nav",
+    "type": "tabbar",
+    "props": {
+     "current": "settings"
+    },
+    "children": [
+     "settings/nav/settings",
+     "settings/nav/credits",
+     "settings/nav/quit"
+    ]
+   },
+   {
+    "id": "settings/nav/settings",
+    "type": "button",
+    "props": {
+     "label": "Settings",
+     "action": {
+      "id": "settings",
+      "label": "Settings",
+      "icon": "settings"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings/nav/credits",
+    "type": "button",
+    "props": {
+     "label": "Credits",
+     "action": {
+      "id": "credits",
+      "label": "Credits",
+      "icon": "credits"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings/nav/quit",
+    "type": "button",
+    "props": {
+     "label": "Quit",
+     "action": {
+      "id": "quit",
+      "label": "Quit",
+      "icon": "quit",
+      "style": "secondary",
+      "confirm": {
+       "title": "Quit Godnotic?",
+       "ok": "Quit",
+       "destructive": false
+      }
+     }
+    },
+    "children": []
+   }
+  ]
+ }
+}

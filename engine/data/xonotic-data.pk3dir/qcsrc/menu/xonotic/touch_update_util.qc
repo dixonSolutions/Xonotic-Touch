@@ -17,6 +17,18 @@ bool touchUpdate_auto;
 bool touchUpdate_haveStatus;
 bool touchUpdate_cvarReady;
 
+// key=value lines after line 8 of update-status.txt, and the whole record to notice changes
+const int TOUCH_UPDATE_MAXEXTRA = 32;
+string touchUpdate_keys[TOUCH_UPDATE_MAXEXTRA];
+string touchUpdate_values[TOUCH_UPDATE_MAXEXTRA];
+int touchUpdate_nextra;
+string touchUpdate_raw;
+// Check now where nothing on the platform checks (Linux, the web): the changelog's newest release
+string touchUpdate_clCheck;
+float touchUpdate_clCheckedAt;
+float touchUpdate_clGen; // bumps when that check ends: the screen rebuilds
+bool touchUpdate_changelogPending;
+
 string touchAndySU_state;
 string touchAndySU_installed;
 string touchAndySU_latest;
@@ -59,9 +71,16 @@ void TouchUpdate_read()
 	TouchUpdate_ensureCvar();
 	TouchAndySU_read();
 
+	for (int i = 0; i < touchUpdate_nextra; ++i)
+	{
+		strfree(touchUpdate_keys[i]);
+		strfree(touchUpdate_values[i]);
+	}
+	touchUpdate_nextra = 0;
 	float fh = fopen(TOUCH_UPDATE_STATUS_FILE, FILE_READ);
 	if (fh < 0)
 	{
+		strcpy(touchUpdate_raw, "");
 		// No platform layer has published anything. Not an error: a bare engine
 		// launch with no launcher behind it looks exactly like this, and the
 		// dialog renders that as "unknown" rather than inventing a version.
@@ -83,7 +102,20 @@ void TouchUpdate_read()
 	string percent = fgets(fh);
 	string message = fgets(fh);
 	string autoPref = fgets(fh);
+	string raw = strcat(format, "\n", state, "\n", installed, "\n", latest, "\n");
+	raw = strcat(raw, behind, "\n", percent, "\n", message, "\n", autoPref);
+	for (string line; (line = fgets(fh)); )
+	{
+		raw = strcat(raw, "\n", line);
+		int eq = strstrofs(line, "=", 0);
+		if (eq <= 0 || touchUpdate_nextra >= TOUCH_UPDATE_MAXEXTRA)
+			continue;
+		touchUpdate_keys[touchUpdate_nextra] = strzone(substring(line, 0, eq));
+		touchUpdate_values[touchUpdate_nextra] = strzone(substring(line, eq + 1, -1));
+		++touchUpdate_nextra;
+	}
 	fclose(fh);
+	strcpy(touchUpdate_raw, raw);
 
 	// An unknown format means a newer platform layer than this menu understands.
 	// Stand down rather than guess at the line order — showing "unknown" is
@@ -218,13 +250,98 @@ string TouchAndySU_extra(string key)
 	return "";
 }
 
+float touchUpdate_seenGen;
+
 bool TouchAndySU_changed()
 {
-	string before = (touchAndySU_raw != string_null) ? strzone(touchAndySU_raw) : strzone("");
-	TouchAndySU_read();
-	bool changed = before != ((touchAndySU_raw != string_null) ? touchAndySU_raw : "");
+	string a = (touchAndySU_raw != string_null) ? touchAndySU_raw : "";
+	string u = (touchUpdate_raw != string_null) ? touchUpdate_raw : "";
+	string before = strzone(strcat(a, "\n--\n", u));
+	TouchUpdate_read(); // both files
+	a = (touchAndySU_raw != string_null) ? touchAndySU_raw : "";
+	u = (touchUpdate_raw != string_null) ? touchUpdate_raw : "";
+	bool changed = before != strcat(a, "\n--\n", u);
 	strunzone(before);
+	if (touchUpdate_seenGen != touchUpdate_clGen)
+	{
+		touchUpdate_seenGen = touchUpdate_clGen;
+		changed = true;
+	}
 	return changed;
+}
+
+string TouchUpdate_extra(string key)
+{
+	for (int i = 0; i < touchUpdate_nextra; ++i)
+		if (touchUpdate_keys[i] == key)
+			return touchUpdate_values[i];
+	return "";
+}
+
+bool TouchUpdate_appUpdater()
+{
+	// AppUpdater (UpdateBridge.java) says via=app. Before that line existed, Android was the
+	// only platform layer writing a status that is not "managed".
+	if (!touchUpdate_haveStatus || TouchUpdate_stateName() == TOUCH_UPDATE_MANAGED)
+		return false;
+	string via = TouchUpdate_extra("via");
+	return via == "" || via == "app";
+}
+
+string TouchUpdate_platform()
+{
+	return cvar_string("_godnotic_platform");
+}
+
+string TouchUpdate_versionNumber()
+{
+	string v = TouchUpdate_runningVersion();
+	if (v != "")
+		return v;
+#ifdef WATERMARK
+	// the web build's QuakeC carries its commit (web-1a2b3c4); a local build says what it is
+	string w = WATERMARK;
+	if (TouchUpdate_platform() == "web" && w != "" && w != "web")
+		return sprintf(_("%s (web)"), strreplace("web-", "", w));
+#endif
+	return _("development build");
+}
+
+void TouchUpdate_checkChangelog()
+{
+	if (touchUpdate_clCheck == "checking")
+		return;
+	strcpy(touchUpdate_clCheck, "checking");
+	++touchUpdate_clGen;
+	touchUpdate_changelogPending = false; // ask again, even if a fetch is outstanding
+	TouchUpdate_fetchChangelog(NULL);
+}
+
+string TouchUpdate_changelogCheck()
+{
+	return (touchUpdate_clCheck != string_null) ? touchUpdate_clCheck : "";
+}
+
+float TouchUpdate_changelogCheckedAt()
+{
+	return touchUpdate_clCheckedAt;
+}
+
+// The changelog's reply ends a Check now: up to date, a newer release, or no answer.
+void TouchUpdate_changelogChecked(bool ok)
+{
+	if (TouchUpdate_changelogCheck() != "checking")
+		return;
+	string result = "error";
+	if (ok)
+	{
+		string installed = TouchUpdate_installed();
+		string newest = TouchUpdate_changelogLatest();
+		result = (installed != "" && newest != "" && vercmp(newest, installed) > 0) ? "available" : "uptodate";
+	}
+	strcpy(touchUpdate_clCheck, result);
+	touchUpdate_clCheckedAt = uib_gettime(1);
+	++touchUpdate_clGen;
 }
 
 bool TouchAndySU_active()
@@ -305,7 +422,6 @@ bool TouchUpdate_busy()
 // What's new, as last fetched. Owned strings, like the status mirror above.
 string touchUpdate_changelog;
 string touchUpdate_changelogLatest;
-bool touchUpdate_changelogPending;
 
 .entity changelogBox;
 
@@ -334,6 +450,7 @@ void TouchUpdate_OnChangelog(entity fh, entity listener, int status)
 			if (listener && listener.changelogBox)
 				listener.changelogBox.setText(listener.changelogBox,
 					(text != "") ? text : _("No release notes yet."));
+			TouchUpdate_changelogChecked(true);
 			break;
 		}
 		default:
@@ -343,6 +460,7 @@ void TouchUpdate_OnChangelog(entity fh, entity listener, int status)
 			if (status >= 0)
 				break;
 			touchUpdate_changelogPending = false;
+			TouchUpdate_changelogChecked(false);
 			if (listener && listener.changelogBox && TouchUpdate_changelog() == "")
 				listener.changelogBox.setText(listener.changelogBox,
 					strcat(_("Could not load what's new. It is on GitHub too:"), "\n", TOUCH_UPDATE_RELEASES_URL));

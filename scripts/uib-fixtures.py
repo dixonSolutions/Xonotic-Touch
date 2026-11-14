@@ -73,9 +73,10 @@ class Engine:
         self.diffs = []
         self.sources = {}
 
-    def andysu_status(self, text):
-        """Write (or, with None, remove) the status AndySUBridge.java publishes on Android."""
-        p = os.path.join(self.ud, "data", "data", "touch", "andysu-update-status.txt")
+    def andysu_status(self, text, name="andysu-update-status.txt"):
+        """Write (or, with None, remove) the status AndySUBridge.java publishes on Android
+        (or, by name, update-status.txt: UpdateBridge.java on Android, start.sh on Linux)."""
+        p = os.path.join(self.ud, "data", "data", "touch", name)
         if text is None:
             if os.path.exists(p):
                 os.remove(p)
@@ -250,6 +251,21 @@ ANDYSU_STATUS = "\n".join([
     "channel=live-arm64", "abi=arm64-v8a", "size=40000000",
     "done=14000000", "total=40000000", "speed=2100000", "eta=13",
     "checked_min=0", "checked_result=available", ""])
+# Settings > Updates on Android without an AndySU host (the plain APK): AndySUBridge says
+# "unavailable", the app's own updater (UpdateBridge.java) found 1.2.205, the live APK.
+ANDYSU_NONE = "\n".join(["1", "unavailable", "", "", "0", "", "off", "off", ""])
+APP_STATUS = "\n".join([
+    "1", "available", "1.2.204", "1.2.205", "1", "0", "Version 1.2.205 is available", "on",
+    "via=app", "channel=stable", "abi=arm64-v8a", "wifi=on", "live=na", "net=unmetered",
+    "checked_min=3", "checked_result=available", "size=36020782", "asset=live", ""])
+APP_DESC = ("Settings > updates on Android without an AndySU host: the app's own updater (GitHub releases, "
+            "Android's installer): the version and channel, a found release with Download and install, Check now, "
+            "the last check, Automatic updates and Wi-Fi only, Apply live shown off with why.")
+# Settings > Updates on Linux (packaging/start.sh): Flatpak owns updates; no check is run here
+# (cl_curl_enabled 0), so the screen says it has not checked yet.
+LINUX_STATUS = "\n".join(["1", "managed", "1.2.204", "", "0", "0", "Installed and updated by your package manager.",
+                           "off", "via=flatpak", ""])
+LINUX_DESC = "Settings > updates on Linux: the version, how Flatpak delivers updates, Check now (asks the changelog)."
 ANDYSU_DESC = ("Settings > updates on an AndySU install (Android): what delivers updates, the version and channel, "
                "a staged release with Apply now, a newer one downloading, Check now, and the three switches. "
                "Elsewhere only the version and What is new.")
@@ -349,7 +365,18 @@ def run(args):
             e.ev(ev="value", node="settings/split", value=sec)
             out[f"settings-{sec}"] = fixture(e, f"settings-{sec}", ANDYSU_DESC if sec == "updates" else f"Settings > {sec}.")
             if sec == "updates":
+                # the other two ways the screen looks: Android without a host, then Linux
+                e.andysu_status(ANDYSU_NONE)
+                e.andysu_status(APP_STATUS, "update-status.txt")
+                e.ev(ev="value", node="settings/split", value="audio")
+                e.ev(ev="value", node="settings/split", value="updates")
+                out["settings-updates-app"] = fixture(e, "settings-updates-app", APP_DESC)
                 e.andysu_status(None)
+                e.andysu_status(LINUX_STATUS, "update-status.txt")
+                e.ev(ev="value", node="settings/split", value="audio")
+                e.ev(ev="value", node="settings/split", value="updates")
+                out["settings-updates-linux"] = fixture(e, "settings-updates-linux", LINUX_DESC)
+                e.andysu_status(None, "update-status.txt")
         # a mod page (registered at start through uib_modpage, the path the Lua API shares)
         e.ev(ev="value", node="settings/split/mods/tabs", value="pages")
         out["settings-mods-pages"] = fixture(e, "settings-mods-pages", "Settings > Mods > Pages from mods.")
