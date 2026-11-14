@@ -84,7 +84,7 @@ only the frame rate drops.
 
 | Topic | Sent | Content |
 |---|---|---|
-| `app` | on change, checked every frame (a few integers) | `proto`, `enabled`, `attached`, `owns_menu`, `advanced`, `state` (`menu`, `connecting`, `loading`, `ingame`, `paused`), `menu`, `console`, `local`, `paused`, `hosting`, `maxclients`, `map`, `server`, `demo`, `version`, `ui_bridge` (the engine describes screens through the UI bridge), `reconnect` (what the automatic reconnect of touch_net.c is doing, "Reconnecting to ... (attempt n of 5)"; empty when none runs), `reconnect_note` (why it gave up, `_net_reconnect_state`) |
+| `app` | on change, checked every frame (a few integers) | `proto`, `enabled`, `attached`, `owns_menu`, `advanced`, `state` (`menu`, `connecting`, `loading`, `ingame`, `paused`), `menu`, `console`, `local`, `paused`, `hosting`, `maxclients`, `map`, `server`, `demo`, `version`, `ui_bridge` (the engine describes screens through the UI bridge), `reconnect` (what the automatic reconnect of touch_net.c is doing, "Reconnecting to ... (attempt n of 5)"; empty when none runs), `reconnect_note` (why it gave up, `_net_reconnect_state`), `join_fail_serial`/`_kind`/`_text`/`_detail`/`_address` (the last failed join, touch_joinfail.c: the native UI shows its own Could not join dialog when the serial changes) |
 | `connect` | every frame of a join or a load (on change), once more when it ends | `stage` (`connecting`, `downloading`, `loading`, `signon`, `idle`), `status` (cl_connect_status), `address`, `signon`, `signons`, `downloads`, `file`, `download_progress`, `speed`, `load`, `load_progress`, `local` |
 | `cvars` | 4 Hz while a native screen shows, on change | the watched cvars (`fe watch`), `null` for one outside the schema |
 | `servers` | 4 Hz while subscribed, on change | `refreshing`, `lan_only`, `favorites`, `rows` (`a` address, `n` name, `m` map, `g`, `mod`, `p` ping, `h` humans, `b` bots, `x` max, `pr`, `q` qcstatus, `l` locked, `f` favourite, `lan`), `count` |
@@ -114,6 +114,7 @@ only the frame rate drops.
 | `password` | address, password, [remember 0/1] | the password prompt's Join: the password only goes into the private cvar touch_lan.c answers the challenge from |
 | `cancel` | | cancels a join (the loading screen's CANCEL path) and the automatic reconnect; during a map load `NativeBridge.frontendCancel()` is read between items |
 | `reconnect_cancel` | | `net_reconnect_cancel`: the reconnect bar's Cancel |
+| `join_retry` | | the Could not join dialog's Retry |
 | `portcheck` | port | `_touch_lan_portcheck` |
 | `host` | name, mode, map, bots, slots, port, assist, [password], [remember] | the Host screen's Start (dialog_touch_lan.qc), port check included (`host_failed` with `suggest`) |
 | `stophost`, `clear_host_password` | | |

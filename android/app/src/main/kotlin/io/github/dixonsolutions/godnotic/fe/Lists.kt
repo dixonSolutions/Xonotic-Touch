@@ -92,8 +92,31 @@ class VirtualList(
         }
         view.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) = ask()
+            override fun onScrollStateChanged(rv: RecyclerView, state: Int) {
+                if (state == RecyclerView.SCROLL_STATE_IDLE && !touching) onVisible?.invoke(shown(), null)
+            }
+        })
+        // a finger on the list: the engine holds its source still (docs/UI_BRIDGE.md, `visible`)
+        view.addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
+            override fun onInterceptTouchEvent(rv: RecyclerView, e: android.view.MotionEvent): Boolean {
+                when (e.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN -> if (!touching) { touching = true; onVisible?.invoke(shown(), true) }
+                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> if (touching) { touching = false; onVisible?.invoke(shown(), false) }
+                }
+                return false
+            }
         })
         if (!grid) view.addItemDecoration(StickySections())
+    }
+
+    private var touching = false
+    /** The rows on screen and whether a finger is on the list (null: unchanged). */
+    var onVisible: ((IntRange, Boolean?) -> Unit)? = null
+
+    private fun shown(): IntRange {
+        val lm = view.layoutManager as? LinearLayoutManager ?: return 0..0
+        val first = max(0, lm.findFirstVisibleItemPosition())
+        return first..max(first, lm.findLastVisibleItemPosition())
     }
 
     /** The window around what is on screen, asked for once (ListWindow keeps track). */

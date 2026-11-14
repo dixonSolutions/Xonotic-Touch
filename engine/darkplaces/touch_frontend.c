@@ -380,6 +380,15 @@ static void publish_app(void)
 		jb_kstr(&b, "reconnect", rc ? rc : "");
 		jb_kstr(&b, "reconnect_note", rc ? "" : Cvar_VariableString(&cvars_all, "_net_reconnect_state", ~0));
 	}
+	// the last join that failed (touch_joinfail.c, when built in): a native front end shows its own dialog
+	if (Cvar_FindVar(&cvars_all, "_join_fail_serial", ~0))
+	{
+		jb_kint(&b, "join_fail_serial", (int)Cvar_VariableValue(&cvars_all, "_join_fail_serial", ~0));
+		jb_kstr(&b, "join_fail_kind", Cvar_VariableString(&cvars_all, "_join_fail_kind", ~0));
+		jb_kstr(&b, "join_fail_text", Cvar_VariableString(&cvars_all, "_join_fail_text", ~0));
+		jb_kstr(&b, "join_fail_detail", Cvar_VariableString(&cvars_all, "_join_fail_detail", ~0));
+		jb_kstr(&b, "join_fail_address", Cvar_VariableString(&cvars_all, "_join_fail_address", ~0));
+	}
 	jb_raw(&b, "}");
 	fe_send(FE_APP, &b, false);
 }
@@ -1268,6 +1277,8 @@ static void TouchFE_Cmd_f(cmd_state_t *cmd)
 			Cbuf_AddText(cmd_local, "\nnet_reconnect_cancel\ndisconnect\n");
 		}
 	}
+	else if (!strcmp(verb, "join_retry"))
+		Cbuf_AddText(cmd_local, "\njoin_retry\n"); // the native Could not join dialog's Retry (touch_joinfail.c)
 	else if (!strcmp(verb, "reconnect_cancel"))
 		Cbuf_AddText(cmd_local, "\nnet_reconnect_cancel\n"); // stop the automatic reconnect (touch_net.c)
 	else if (!strcmp(verb, "portcheck"))

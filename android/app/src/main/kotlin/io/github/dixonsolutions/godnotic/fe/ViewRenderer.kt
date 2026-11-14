@@ -1273,7 +1273,8 @@ class ViewRenderer(
                     if (r.childCount != columns.size) rebuildRow(r, columns, rowH)
                     val cells = data?.get("cells").obj()
                     for ((i, c) in columns.withIndex()) bindCell(r.getChildAt(i) as TextView, c, cells, data == null)
-                    r.alpha = if (data?.bool("disabled") == true) 0.5f else 1f
+                    // `stale`: a saved server not answered yet this refresh (drawn dimmed)
+                    r.alpha = if (data?.bool("disabled") == true) 0.5f else if (cells.bool("stale") || data?.bool("stale") == true) 0.55f else 1f
                     val on = data != null && e.props["selected"].list().any { it.toString() == VirtualList.keyOf(data) }
                     r.isSelected = on
                     r.background = if (on) Theme.rounded(0xFF1D3A73.toInt(), dp(8f).toFloat(), max(1, dp(1.5f)), Theme.EMBER)
@@ -1305,6 +1306,7 @@ class ViewRenderer(
         }
         lists.getOrPut(e.source) { ArrayList() }.add(vl)
         e.list = vl
+        vl.onVisible = { r, touching -> events.visible(id, r.first, r.last - r.first + 1, touching) }
         var lastQuery = ""
         var lastSelected: List<Any?> = emptyList()
         e.bind = { x ->

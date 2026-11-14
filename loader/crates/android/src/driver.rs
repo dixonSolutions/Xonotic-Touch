@@ -82,7 +82,14 @@ impl Driver {
             .store
             .to_snapshot_nodes()
             .into_iter()
-            .find(|n| n.kind == "hero")
+            .find(|n| {
+                n.kind == "hero"
+                    || (n.kind == "card"
+                        && n.obj("primary")
+                            .and_then(|p| p.get("id"))
+                            .and_then(|v| v.as_str())
+                            == Some("sp"))
+            })
             .and_then(|n| n.str("image"))
             .unwrap_or_default();
         let reserved = self
@@ -126,6 +133,21 @@ impl Driver {
                     &str_of(body, "row"),
                     if kind.is_empty() { "activate" } else { &kind },
                 )
+            }
+            "visible" => {
+                let m = self.client.visible(
+                    &node,
+                    int_of(body, "offset").max(0) as usize,
+                    int_of(body, "limit").max(0) as usize,
+                );
+                // `touching` (a finger on the list): the core's Client does not know it yet
+                match (body.get("touching"), serde_json::from_str::<Value>(&m)) {
+                    (Some(t), Ok(Value::Object(mut o))) => {
+                        o.insert("touching".into(), t.clone());
+                        Value::Object(o).to_string()
+                    }
+                    _ => m,
+                }
             }
             _ => self
                 .client
@@ -496,5 +518,17 @@ mod tests {
         body.insert("kind".into(), json!("select"));
         let m = d.event("row", &body);
         assert!(m.contains("\"ev\":\"row\"") && m.contains("\"kind\":\"select\""));
+        let mut v = Map::new();
+        v.insert("node".into(), json!("mp/servers"));
+        v.insert("offset".into(), json!(10));
+        v.insert("limit".into(), json!(20));
+        v.insert("touching".into(), json!(true));
+        let m = d.event("visible", &v);
+        assert!(
+            m.contains("\"ev\":\"visible\"")
+                && m.contains("\"touching\":true")
+                && m.contains("\"offset\":10"),
+            "{m}"
+        );
     }
 }

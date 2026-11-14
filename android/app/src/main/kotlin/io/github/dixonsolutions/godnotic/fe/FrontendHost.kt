@@ -235,8 +235,49 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         reportPower("_android_idle_home", if (state == "menu" && root.visibility == View.VISIBLE) "1" else "0")
         showReconnect(a.str("reconnect"))
         if (state != "loading" && state != "connecting" && loadingStrip != null) onConnect(mapOf("stage" to "idle"))
+        onJoinFail(a)
         val note = a.str("reconnect_note")
         if (note != lastReconnectNote) { lastReconnectNote = note; if (note.isNotEmpty() && note.startsWith("Disconnected")) toast(note, "warning") }
+    }
+
+    private var joinFailKnown = false
+    private var joinFailSeen = -1
+
+    /**
+     * A join that failed (touch_joinfail.c publishes it; the app topic carries it):
+     * our own dialog, kind and reason, with Retry (`join_retry`) and Close. The
+     * engine's QuakeC dialog is off while we are attached (touch_joinfail_dialog 0).
+     */
+    private fun onJoinFail(a: Map<String, Any?>) {
+        if (!a.containsKey("join_fail_serial")) return
+        val serial = a.int("join_fail_serial")
+        if (!joinFailKnown) {
+            joinFailKnown = true
+            joinFailSeen = serial // failures from before we attached are not ours to show
+            NativeBridge.enqueue(FeArgs.command("set", "touch_joinfail_dialog", "0"))
+            return
+        }
+        if (serial == joinFailSeen) return
+        joinFailSeen = serial
+        if (a.str("join_fail_kind").isEmpty() && a.str("join_fail_text").isEmpty()) return
+        // a password prompt answers those itself
+        if (a.str("join_fail_kind") == "refused" && a.str("join_fail_text").contains("password", ignoreCase = true)) return
+        val title = when (a.str("join_fail_kind")) {
+            "timeout" -> "The server did not answer"
+            "busy" -> "The server is full"
+            "refused" -> "The server refused the join"
+            "network" -> "No network"
+            "dropped" -> "The connection dropped"
+            "files" -> "Missing game files"
+            else -> "Could not join"
+        }
+        val body = listOf(a.str("join_fail_text"), a.str("join_fail_detail"), a.str("join_fail_address"))
+            .filter { it.isNotEmpty() }.distinct().joinToString("\n")
+        main.postDelayed({
+            confirm(mapOf("title" to title, "body" to body, "ok" to "Retry", "cancel" to "Close")) {
+                NativeBridge.enqueue(FeArgs.command("join_retry"))
+            }
+        }, 300)
     }
 
     private var loadingStrip: android.widget.LinearLayout? = null
@@ -385,9 +426,10 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         if (!attached) return
         when (ev.str("type")) {
             "overflow" -> { NativeBridge.enqueue(FeArgs.command("get", "app")); client?.sync() }
-            "disconnected" -> toast("Disconnected: ${ev.str("reason")}", "error")
-            "rejected" -> toast("Refused: ${ev.str("reason")}", "error")
-            "failed" -> toast(ev.str("reason"), "error")
+            // with touch_joinfail.c the Could not join dialog says it (app.join_fail_*); a toast otherwise
+            "disconnected" -> if (!joinFailKnown) toast("Disconnected: ${ev.str("reason")}", "error")
+            "rejected" -> if (!joinFailKnown) toast("Refused: ${ev.str("reason")}", "error")
+            "failed" -> if (!joinFailKnown) toast(ev.str("reason"), "error")
             "password" -> {
                 val wrong = ev.str("kind") == "wrong"
                 val addr = ev.str("address")
@@ -536,6 +578,10 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     }
     override fun value(node: String, value: Any?) { client?.event("value", mapOf("node" to node, "value" to value)) }
     override fun submit(node: String, value: Any?) { client?.event("submit", mapOf("node" to node, "value" to value)) }
+    override fun visible(list: String, offset: Int, limit: Int, touching: Boolean?) {
+        if (testRows) return
+        client?.event("visible", linkedMapOf<String, Any?>("node" to list, "offset" to offset, "limit" to limit).apply { if (touching != null) put("touching", touching) })
+    }
     override fun row(list: String, key: String, kind: String) { client?.event("row", mapOf("node" to list, "row" to key, "kind" to kind)) }
     override fun window(list: String, source: String, offset: Int, limit: Int, sort: String, desc: Boolean, filter: String) {
         if (testRows) {
@@ -610,6 +656,8 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
 
     /** Plugged in (AC, USB, wireless): touch_warm then runs fully under battery saver. */
     private fun charging(): Boolean {
+        // tests: `<basedir>/fe-test-unplugged` measures touch_warm's battery-saver pass on a tablet on USB
+        if (baseDir != null && File(baseDir, "fe-test-unplugged").isFile) return false
         val bm = activity.getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager
         if (Build.VERSION.SDK_INT >= 23 && bm != null && bm.isCharging) return true
         val st = try { activity.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) } catch (e: Exception) { null }

@@ -108,7 +108,9 @@ class UibClient(private val renderer: UiRenderer, private val send: (String) -> 
     override val topKind: String get() = store.app?.props?.get("stack").list().lastOrNull()?.let { store.node(it.toString())?.str("kind") } ?: ""
     override val canBack: Boolean get() = store.app?.bool("canBack") ?: false
     override val modal: List<String> get() = store.app?.props?.get("modal").list().map { it.toString() }
-    override val hero: String get() = store.nodes.values.firstOrNull { it.type == "hero" }?.str("image") ?: ""
+    // the map Home's Play starts: the hero's picture, or the Singleplayer card's (Home since work/screens)
+    override val hero: String get() = (store.nodes.values.firstOrNull { it.type == "hero" }
+        ?: store.nodes.values.firstOrNull { it.type == "card" && it.props["primary"].obj().str("id") == "sp" })?.str("image") ?: ""
     override val reserved: List<Map<String, Any?>> get() = store.app?.props?.get("reserved").list().map { it.obj() }
     override fun receiveText(json: String) = receive(Json.parseOrNull(json).obj())
 
