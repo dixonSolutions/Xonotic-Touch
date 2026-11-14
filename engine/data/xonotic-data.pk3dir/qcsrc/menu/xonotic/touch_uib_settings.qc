@@ -107,6 +107,7 @@ void UIB_BuildSettingsRoot()
 			UIB_Close();
 		}
 	UIB_Close();
+	if (UIB_HomeBarHere()) UIB_HomeBar("settings");
 	UIB_Done();
 }
 
@@ -691,7 +692,7 @@ bool UIB_SettingsAction(string node, string a, string payload)
 	string p = (UIB_VM("mods.realm") == "server") ? "sv_lua_plugin_" : "lua_mod_";
 	switch (a)
 	{
-		case "settings": UIB_Push("settings"); return true;
+		case "settings": UIB_OpenTab("settings"); return true;
 		case "settings.advanced": m_goto("settings", false); return true;
 		case "classic.media": m_goto("media", false); return true;
 		case "classic.profile": m_goto("profile", false); return true;

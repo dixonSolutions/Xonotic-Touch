@@ -168,7 +168,7 @@ def main():
         session = h["session"] if h else ""
         c.settle()
         # a setting round trip: open Settings > Video > View, change the field of view
-        c.send({"t": "ev", "ev": "action", "node": "home", "action": "settings"})
+        c.send({"t": "ev", "ev": "action", "node": "home/nav/settings", "action": "settings"})
         c.settle()
         c.send({"t": "ev", "ev": "value", "node": "settings/split/video/tabs", "value": "view"})
         c.settle()

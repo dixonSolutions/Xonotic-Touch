@@ -368,10 +368,10 @@ pub fn node(app: &App, store: &Store, n: &Node) -> gtk::Widget {
             }
             let banner = n.str("role").as_deref() == Some("banner") || r == "asset:banner";
             if banner {
-                // Home's banner, at the top: as wide as the column, its height following its own
-                // shape (a picture is measured height-for-width), so it scales with the window.
+                // Home's banner, at the top: it takes the height the window has above the row of
+                // cards (never under the minimum), so it scales with the window.
                 p.set_height_request(BANNER_MIN_HEIGHT);
-                p.set_valign(gtk::Align::Start);
+                p.set_vexpand(true);
             } else {
                 p.set_height_request(220);
             }
@@ -834,8 +834,11 @@ fn card(app: &App, n: &Node) -> gtk::Button {
             // Map shots fill the card; artwork (mode icons) is shown whole.
             if r.starts_with("pk3:maps/") {
                 let featured = n.bool("featured").unwrap_or(false);
-                p.set_height_request(if featured { if app.narrow.get() { 150 } else { 230 } } else { aspect_height(n.str("aspect"), 240).clamp(80, 200) });
+                p.set_height_request(if featured { if app.narrow.get() { 90 } else { 110 } } else { aspect_height(n.str("aspect"), 240).clamp(80, 200) });
                 if featured {
+                    // Home's cards share the window's height with the banner above them: both expand
+                    // from a small minimum, so a short window (a phone on its side) needs no scrolling
+                    p.set_vexpand(true);
                     b.add_css_class("gn-featured");
                 }
             } else {
@@ -890,9 +893,9 @@ fn card(app: &App, n: &Node) -> gtk::Button {
     b
 }
 
-/// Home's three modes (`tabbar`): one strip of tabs joined edge to edge along the bottom, each
-/// with its faint map preview, icon, title and a line of state. The `current` tab (the screen
-/// that is open) is a darker shade with an ember line on top; tapping another opens it.
+/// Home's bar (`tabbar`: Settings, Credits, Quit): one strip of buttons joined edge to edge
+/// along the bottom, like tabs. The `current` one (its screen is open) is a darker shade with
+/// an ember line on top and does nothing when tapped; a pressed or focused one is darker too.
 fn tabbar(app: &App, store: &Store, n: &Node) -> gtk::Widget {
     let bar = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     bar.set_homogeneous(true);
@@ -902,57 +905,34 @@ fn tabbar(app: &App, store: &Store, n: &Node) -> gtk::Widget {
         if k.hidden() {
             continue;
         }
+        let a = k.obj("action").cloned().unwrap_or_default();
         let b = gtk::Button::new();
         b.add_css_class("gn-tab");
-        let is_current = k.bool("selected").unwrap_or(false) || (!current.is_empty() && k.id.ends_with(&format!("/{current}")));
+        b.set_size_request(-1, if app.narrow.get() { 48 } else { 56 });
+        let is_current = !current.is_empty() && k.id.ends_with(&format!("/{current}"));
         if is_current {
             b.add_css_class("gn-tab-current");
         }
-        let o = gtk::Overlay::new();
-        if let Some(r) = k.str("image") {
-            let p = picture(app, &r, 480, 120);
-            p.add_css_class("gn-tab-pic");
-            p.set_height_request(if app.narrow.get() { 48 } else { 60 });
-            o.set_child(Some(&p));
-        } else {
-            let filler = gtk::Box::new(gtk::Orientation::Vertical, 0);
-            filler.set_height_request(if app.narrow.get() { 48 } else { 60 });
-            o.set_child(Some(&filler));
-        }
-        let t = gtk::Box::new(gtk::Orientation::Vertical, 2);
-        t.set_valign(gtk::Align::Center);
-        t.set_halign(gtk::Align::Center);
         let head = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         head.set_halign(gtk::Align::Center);
-        if let Some(i) = k.str("icon").and_then(|i| icon(&i)) {
+        if let Some(i) = a.str_of("icon").and_then(|i| icon(&i)) {
             head.append(&gtk::Image::from_icon_name(i));
         }
-        let title = label(&k.title(), &["gn-tab-title"]);
+        let title = label(&k.str("label").unwrap_or_else(|| k.title()), &["gn-tab-title"]);
         title.set_wrap(false);
         title.set_ellipsize(gtk::pango::EllipsizeMode::End);
         head.append(&title);
-        t.append(&head);
-        if let Some(sub) = k.str("subtitle").filter(|_| !app.narrow.get()) {
-            let l = label(&sub, &["gn-tab-sub"]);
-            l.set_wrap(false);
-            l.set_xalign(0.5);
-            l.set_ellipsize(gtk::pango::EllipsizeMode::End);
-            t.append(&l);
-        }
-        o.add_overlay(&t);
-        b.set_child(Some(&o));
-        b.set_tooltip_text(k.str("subtitle").as_deref());
-        if let Some(p) = k.obj("primary").cloned() {
-            let w = Rc::downgrade(app);
-            let id = k.id.clone();
-            b.connect_clicked(move |_| {
-                if !is_current {
-                    if let Some(a) = w.upgrade() {
-                        invoke(&a, &id, &p);
-                    }
+        b.set_child(Some(&head));
+        let w = Rc::downgrade(app);
+        let id = k.id.clone();
+        b.connect_clicked(move |_| {
+            if !is_current {
+                if let Some(app) = w.upgrade() {
+                    // Quit carries a confirm: invoke asks first
+                    invoke(&app, &id, &a);
                 }
-            });
-        }
+            }
+        });
         register_activator(app, &k.id, &b);
         bar.append(&b);
     }
@@ -969,7 +949,8 @@ fn grid(app: &App, store: &Store, n: &Node) -> gtk::Widget {
     let min = n.f64("minItem").unwrap_or(160.0);
     let kids = store.children(&n.id);
     let featured = kids.first().is_some_and(|k| k.bool("featured").unwrap_or(false));
-    f.set_min_children_per_line(if app.narrow.get() { 1 } else if featured { kids.len().clamp(1, 4) as u32 } else { 2 });
+    // Home's cards: always one row, side by side at every width, never stacked
+    f.set_min_children_per_line(if featured { kids.len().clamp(1, 4) as u32 } else if app.narrow.get() { 1 } else { 2 });
     f.set_max_children_per_line(n.f64("maxColumns").map(|m| m as u32).unwrap_or(((1100.0 / (min + 12.0)) as u32).clamp(1, 6)));
     for k in store.children(&n.id) {
         if k.hidden() {

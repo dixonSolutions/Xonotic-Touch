@@ -29,23 +29,12 @@
     "type": "screen",
     "props": {
      "title": "Godnotic",
-     "kind": "home",
-     "actions": [
-      {
-       "id": "settings",
-       "label": "Settings",
-       "icon": "settings"
-      },
-      {
-       "id": "credits",
-       "label": "Credits",
-       "icon": "credits"
-      }
-     ]
+     "kind": "home"
     },
     "children": [
      "home/banner",
-     "home/tiles"
+     "home/tiles",
+     "home/nav"
     ]
    },
    {
@@ -63,9 +52,10 @@
    },
    {
     "id": "home/tiles",
-    "type": "tabbar",
+    "type": "grid",
     "props": {
-     "current": ""
+     "minItem": 150,
+     "maxColumns": 3
     },
     "children": [
      "home/tiles/sp",
@@ -81,6 +71,8 @@
      "subtitle": "A local game against bots (opens in the game)",
      "icon": "singleplayer",
      "image": "pk3:maps/stormkeep",
+     "aspect": "16:9",
+     "featured": true,
      "primary": {
       "id": "sp",
       "label": "Open"
@@ -96,6 +88,8 @@
      "subtitle": "Fight your way through the levels (opens in the game)",
      "icon": "trophy",
      "image": "pk3:maps/afterslime",
+     "aspect": "16:9",
+     "featured": true,
      "primary": {
       "id": "campaign",
       "label": "Open"
@@ -111,9 +105,67 @@
      "subtitle": "Join by address or link, browse servers, host a LAN game",
      "icon": "multiplayer",
      "image": "pk3:maps/xoylent",
+     "aspect": "16:9",
+     "featured": true,
      "primary": {
       "id": "mp",
       "label": "Open"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/nav",
+    "type": "tabbar",
+    "props": {
+     "current": ""
+    },
+    "children": [
+     "home/nav/settings",
+     "home/nav/credits",
+     "home/nav/quit"
+    ]
+   },
+   {
+    "id": "home/nav/settings",
+    "type": "button",
+    "props": {
+     "label": "Settings",
+     "action": {
+      "id": "settings",
+      "label": "Settings",
+      "icon": "settings"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/nav/credits",
+    "type": "button",
+    "props": {
+     "label": "Credits",
+     "action": {
+      "id": "credits",
+      "label": "Credits",
+      "icon": "credits"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/nav/quit",
+    "type": "button",
+    "props": {
+     "label": "Quit",
+     "action": {
+      "id": "quit",
+      "label": "Quit",
+      "icon": "quit",
+      "style": "secondary",
+      "confirm": {
+       "title": "Quit Godnotic?",
+       "ok": "Quit"
+      }
      }
     },
     "children": []

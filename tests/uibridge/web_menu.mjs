@@ -162,7 +162,7 @@ check(JSON.stringify(stack(n)) === '["home","mp"]' && n['mp/join/go'] && n['mp/j
 await key('Escape', 'Escape', 27);
 await sleep(1200);
 // a classic dialog over the menu, and back
-await command('uib_event {"ev":"action","node":"home","action":"settings"}');
+await command('uib_event {"ev":"action","node":"home/nav/settings","action":"settings"}');
 await sleep(1200);
 await command('uib_event {"ev":"value","node":"settings/split","value":"menu"}');
 await sleep(1200);
