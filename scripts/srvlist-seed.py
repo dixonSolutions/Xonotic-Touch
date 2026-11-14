@@ -132,7 +132,9 @@ def collect(wait_masters=2.5, wait_servers=2.5):
     for k in [k for k in listed if k not in answered]:
         ask(k)
     pump(time.time() + wait_servers)
-    print("masters asked %d, servers listed %d, answered %d, packets to servers %d" % (masters, len(listed), len(answered), sum(asked.values())), file=sys.stderr)
+    v6 = sum(1 for ip, _ in answered if ":" in ip)
+    print("masters asked %d, servers listed %d, answered %d (%d IPv4, %d IPv6), packets to servers %d"
+          % (masters, len(listed), len(answered), len(answered) - v6, v6, sum(asked.values())), file=sys.stderr)
     return answered, listed
 
 
