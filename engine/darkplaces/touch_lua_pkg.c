@@ -997,10 +997,14 @@ static void tlua_pkg_review(const char *stem)
 		tlua_pkg_fail("the name '%s' is reserved (it clashes with the engine's commands or settings)", m->name);
 		return;
 	}
-	if (manifest[0])
-		TLua_ParseManifest(m, manifest);
-	else
-		m->requested = TLUA_PERM_API1;
+	// a package must say what it is and what it needs: a mod.txt (a folder
+	// copied in by hand may run without one, at the standard tier only)
+	if (!manifest[0])
+	{
+		tlua_pkg_fail("no mod.txt: a package declares what it needs in mod.txt (at least \"api: 3\" and \"permissions: standard\"; docs/MODDING.md)");
+		return;
+	}
+	TLua_ParseManifest(m, manifest);
 	if (m->manifest_error)
 	{
 		tlua_pkg_fail("mod.txt: %s", m->manifest_why);

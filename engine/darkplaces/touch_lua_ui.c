@@ -372,11 +372,16 @@ static void tlua_uib_node(char *out, size_t size, const char *mod, int row)
 static void tlua_uib_key(const char *id, char *mod, size_t modsize, char *key, size_t keysize)
 {
 	const char *p = id, *dot;
+	size_t n;
 	qbool server = !strncmp(p, "server.", 7);
 	if (server)
 		p += 7;
 	dot = strchr(p, '.');
-	dp_strlcpy(mod, p, min(modsize, dot ? (size_t)(dot - p) + 1 : modsize));
+	n = dot ? (size_t)(dot - p) : strlen(p); // the part before the dot (dp_strlcpy warns when it cuts)
+	if (n >= modsize)
+		n = modsize - 1;
+	memcpy(mod, p, n);
+	mod[n] = 0;
 	dpsnprintf(key, keysize, "%s%s", server ? "server-" : "", dot ? dot + 1 : "page");
 }
 
