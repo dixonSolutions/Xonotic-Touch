@@ -70,7 +70,7 @@ string UIB_SecHelp(string k)
 		case "esp": return _("Offline matches only");
 		case "player": return _("Name and colours");
 		case "privacy": return _("Statistics and identity");
-		case "updates": return _("What is new");
+		case "updates": return _("Version, checks and downloads");
 		case "data": return _("Game data and downloads");
 		case "menu": return _("Size and layout");
 		case "mods": return _("Client and server mods, pages from mods");

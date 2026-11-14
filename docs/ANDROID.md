@@ -625,9 +625,9 @@ Auto-update is opt-out, so a player who never opens the screen still gets fixes.
 Turning it off does not stop the check — the screen still has to say how far
 behind you are — it stops the install happening without being asked for. Android
 confirms every package install either way, so even "automatic" is one tap rather
-than none. Flipping the checkbox publishes nothing: the preference is the only
-thing that changed, and a fresh record written around it could only guess at the
-state above it and would take a found release off the screen with it.
+than none. Flipping a switch rewrites the record with the state lines it already
+had (`UpdateBridge.refresh()`): only the preference and the details after line 8
+change, so a found release stays on the screen.
 
 A check that could not reach the feed is published as such, not as "up to date".
 `findUpdate()` answers "nothing newer" and "could not ask" with the same null,
@@ -645,7 +645,8 @@ rather than offered when they cannot work.
 
 ### Updates under AndySU
 
-On an AndySU host (every release APK) `AppUpdater` stands down and AndySU delivers the
+On an AndySU host (the `Godnotic-live-<version>-<abi>.apk` of each release; the plain
+`Godnotic-<version>-<abi>.apk` has none) `AppUpdater` stands down and AndySU delivers the
 updates: signed payloads that apply live or at the next start, and a rollback when a new
 build does not report healthy within the watchdog (`andysu.toml`: `watchdog_ms`). Settings →
 Updates then shows, in this order: one line saying so, the running version with its channel
@@ -653,8 +654,8 @@ and ABI, the download's progress bar (bytes, speed, time left), a staged release
 **Apply now**, a found release that waits (for Wi-Fi, or because automatic updates are off)
 with **Download now** (it asks first on a metered connection), **Check now** with when the
 last check ran and how it ended, and three switches: **Automatic updates**, **Update on Wi-Fi
-only** and **Apply live**. Linux, the web and an APK without an AndySU host never get these
-rows: the menu shows them only when `andysu-update-status.txt` says AndySU is active.
+only** and **Apply live**. The menu shows this screen only when `andysu-update-status.txt`
+says AndySU is active; every other install gets its own (next section).
 
 `AndySUBridge` serves the screen through the same kind of file pair as `UpdateBridge`
 (`andysu-update-status.txt`, `andysu-update-request.txt`; the format is in
@@ -680,6 +681,25 @@ was running when Wi-Fi went away. When the game leaves the screen the app no lon
 network and the host's periodic job runs on any network, so it leaves `check_only` behind,
 except while a release is staged: the host promotes a staged release at the next start only
 in `auto` mode. Wi-Fi only is on by default, like the game data download.
+
+### Settings → Updates on every other install
+
+The screen is never empty. `UIB_SecUpdates` (`touch_uib_settings.qc`) picks one of four:
+
+| Install | How it knows | What it shows |
+| --- | --- | --- |
+| Android with an AndySU host | `andysu-update-status.txt` state is not `unavailable` | the AndySU screen above |
+| Android without one: the plain release APK, store and local test builds | `update-status.txt` with `via=app` (`UpdateBridge`) | "Updates come from Godnotic's releases on GitHub", the version with channel (`stable`) and ABI, the release the check found with its size and **Download and install** (asks first on a metered connection; says when the found APK is the live one, which brings AndySU), the download's bar with bytes, speed and time left, a downloaded release with **Install now** (also after Android asks for the install permission), **Check now**, the last check and its result, **Automatic updates**, **Update on Wi-Fi only**, and **Apply live** shown off and disabled: "Needs AndySU, in the Godnotic-live APK" |
+| Linux (Flatpak, Click, a local install) | `update-status.txt` state `managed`, `via=flatpak/click/local` from `packaging/start.sh` | how updates arrive there, the version, and **Check now**, which asks the published `changelog.txt` for the newest release (once on opening, and on the button) and says "Version X is out" with where to get it |
+| The web | `_godnotic_platform web`, which `web/shell.js` passes | "reload the page", and the build (the QuakeC watermark: the commit) |
+
+Without a host the details after line 8 of `update-status.txt` (`touch_update_util.qh`) come
+from `AppUpdateState` (JVM tests in `scripts/test-android-updates.sh`) and `AppUpdater`'s
+preferences: Wi-Fi only (`wifi_only`, on by default: a download nobody pressed a button for
+waits for an unmetered connection; off, it goes on mobile data too, never offline), and the
+time and result of the last check (`checked_at`, `checked_result`). The update service
+rewrites the record every 30 s so "Last checked" and the network stay true. A download
+the player asked for (**Download and install**) goes on any connection.
 
 ### What survives an update
 
