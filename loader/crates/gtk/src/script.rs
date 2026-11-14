@@ -14,6 +14,7 @@
 //! dark | light        colour scheme
 //! snapshot <file.png> render the window
 //! count <file>        append the number of mapped top-level windows of this process
+//! labels <file>       write the text of every label on screen (mapped and drawn), one per line
 //! type <node> <text>  set an entry's text
 //! join <addr> [pw]    start a session joining a server (as a godnotic:// link would)
 //! play                start the game the classic way
@@ -182,6 +183,38 @@ fn step(w: std::rc::Weak<app::Shared>, mut lines: VecDeque<String>) {
         "snapshot" => {
             if let (Some(win), Some(p)) = (&win, args.first()) {
                 snapshot(win, p);
+            }
+        }
+        "labels" => {
+            // what a person sees: the text of the labels that are mapped and have room
+            // (inside the window: a label scrolled out of view does not count)
+            fn walk(w: &gtk::Widget, top: &gtk::Widget, out: &mut Vec<String>) {
+                if !w.is_mapped() || !w.is_child_visible() {
+                    return;
+                }
+                if let Some(l) = w.downcast_ref::<gtk::Label>() {
+                    let inside = l.compute_bounds(top).is_some_and(|b| {
+                        b.width() > 0.0 && b.height() > 0.0 && b.x() >= -1.0 && b.y() >= -1.0
+                            && b.x() + b.width() <= top.width() as f32 + 1.0 && b.y() + b.height() <= top.height() as f32 + 1.0
+                    });
+                    if inside && !l.text().is_empty() {
+                        out.push(l.text().to_string());
+                    }
+                }
+                let mut c = w.first_child();
+                while let Some(k) = c {
+                    walk(&k, top, out);
+                    c = k.next_sibling();
+                }
+            }
+            let mut out = Vec::new();
+            for t in gtk::Window::list_toplevels() {
+                if t.is_mapped() {
+                    walk(&t, &t, &mut out);
+                }
+            }
+            if let Some(p) = args.first() {
+                let _ = std::fs::write(p, out.join("\n") + "\n");
             }
         }
         "count" => {

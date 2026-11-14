@@ -451,11 +451,9 @@ def lan_popup(players=None, autoclose=True, locked=True):
 
 def loading_screen(progress=0.0, stage="Downloading map", detail="", cancel=True):
     return N("loading", "screen", [
-        N("loading/status", "status", icon="download", title="Joining Clan Wars #12", body=stage, progress=progress,
-          primary=A("loading.cancel", "Cancel", "close", style="secondary"),
-          live=True),
-        N("loading/progress", "progress", label=stage, value=progress, detail=detail, live=True,
-          cancel=A("loading.cancel", "Cancel", "close")),
+        # one card: the step, its size and speed, one bar, one Cancel
+        N("loading/status", "status", icon="download", title="Joining Clan Wars #12", body=stage + (" · " + detail if detail else ""),
+          progress=progress, primary=A("loading.cancel", "Cancel", "close", style="secondary"), live=True),
     ], title="Loading", kind="loading", presentation="fullscreen", background="pk3:maps/stormkeep")
 
 
@@ -612,7 +610,7 @@ def main():
         ls = loading_screen(p, "Downloading map" if p < 1 else "Loading map", det)
         a = app([ls], context="loading", busy={"label": "Joining Clan Wars #12", "progress": p,
                                                "cancel": A("loading.cancel", "Cancel", "close")})
-        steps.append({"delay": 0.5, "msg": diff(rev, [own(a, "app"), own(ls, "loading/status"), own(ls, "loading/progress")])})
+        steps.append({"delay": 0.5, "msg": diff(rev, [own(a, "app"), own(ls, "loading/status")])})
         rev += 1
     write("seq-download", fixture("seq-download", "Connecting and downloading a map: progress, size, speed, time left.", lb, steps=steps))
     # 3. a setting changing

@@ -861,7 +861,12 @@ fn card(app: &App, n: &Node) -> gtk::Button {
     t.add_css_class("gn-card-text");
     t.append(&label(&n.title(), &["gn-card-title"]));
     if let Some(s) = n.str("subtitle") {
-        t.append(&label(&s, &["dim-label"]));
+        // at most two lines, ending in an ellipsis: a card in a sideways strip has a
+        // fixed height, and a third line was cut through the middle of its letters
+        let l = label(&s, &["dim-label"]);
+        l.set_lines(2);
+        l.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        t.append(&l);
     }
     if let Some(c) = chips(n, "badges", "gn-badge") {
         t.append(&c);
@@ -1184,6 +1189,9 @@ fn tabs(app: &App, store: &Store, n: &Node) -> gtk::Widget {
 /// one column with the section pushed on narrow windows (AdwNavigationSplitView).
 fn split(app: &App, store: &Store, n: &Node) -> gtk::Widget {
     let kids = store.children(&n.id);
+    if n.str("style").as_deref() == Some("vertical-tabs") || kids.first().is_some_and(|k| k.kind == "pane") {
+        return vertical_tabs(app, store, n);
+    }
     let (Some(list), detail) = (kids.first(), kids.get(1)) else { return container(app, store, n, gtk::Orientation::Vertical).upcast() };
     let lb = gtk::ListBox::new();
     lb.add_css_class("navigation-sidebar");
@@ -1248,6 +1256,96 @@ fn split(app: &App, store: &Store, n: &Node) -> gtk::Widget {
     sv.upcast()
 }
 
+/// Settings (`split` with `style: vertical-tabs`, docs/UI_BRIDGE.md 4.11): its
+/// `pane` children are the sections, `value` the chosen one, which alone has
+/// content. The sidebar lists every section (label, icon, subtitle); choosing one
+/// sends `value` on the split and the engine fills that pane. On a narrow window
+/// one column: the list is the page until `detailOpen`. (The list-detail reading
+/// of these children showed one blank row and an empty page.)
+fn vertical_tabs(app: &App, store: &Store, n: &Node) -> gtk::Widget {
+    let panes: Vec<&Node> = store.children(&n.id).into_iter().filter(|p| !p.hidden()).collect();
+    let sel = n.str("value").filter(|v| panes.iter().any(|p| p.str("key").as_deref() == Some(v.as_str())))
+        .or_else(|| panes.first().and_then(|p| p.str("key")))
+        .unwrap_or_default();
+    let lb = gtk::ListBox::new();
+    lb.add_css_class("navigation-sidebar");
+    lb.set_selection_mode(gtk::SelectionMode::Single);
+    let mut keys = Vec::new();
+    let mut chosen = None;
+    for p in &panes {
+        let key = p.str("key").unwrap_or_else(|| p.id.clone());
+        let r = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        r.set_margin_top(8);
+        r.set_margin_bottom(8);
+        if let Some(ic) = p.str("icon").and_then(|i| icon(&i)) {
+            r.append(&gtk::Image::from_icon_name(ic));
+        }
+        let texts = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        texts.append(&label(&p.title(), &[]));
+        if let Some(sub) = p.str("subtitle").filter(|s| !s.is_empty()) {
+            let l = label(&sub, &["dim-label", "caption"]);
+            l.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            texts.append(&l);
+        }
+        r.append(&texts);
+        lb.append(&r);
+        if key == sel {
+            chosen = Some(keys.len());
+        }
+        keys.push(key);
+    }
+    if let Some(i) = chosen {
+        lb.select_row(lb.row_at_index(i as i32).as_ref());
+    }
+    let w = Rc::downgrade(app);
+    let id = n.id.clone();
+    lb.connect_row_activated(move |_, row| {
+        if let (Some(a), Some(k)) = (w.upgrade(), keys.get(row.index() as usize)) {
+            value(&a, &id, json!(k));
+        }
+    });
+    let side_sw = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).child(&lb).vexpand(true).build();
+    let sidebar = adw::NavigationPage::builder().title(n.str("title").unwrap_or_else(|| "Sections".into())).child(&side_sw).tag("sidebar").build();
+    let pane = panes.iter().find(|p| p.str("key").as_deref() == Some(sel.as_str())).copied();
+    let content_w: gtk::Widget = match pane {
+        Some(p) => {
+            let body: Vec<&Node> = store.children(&p.id).into_iter().filter(|k| !k.hidden()).collect();
+            if body.len() == 1 && body[0].kind == "tabs" {
+                tabs(app, store, body[0])
+            } else {
+                let col = gtk::Box::new(gtk::Orientation::Vertical, 18);
+                col.set_margin_top(12);
+                col.set_margin_bottom(24);
+                col.set_margin_start(16);
+                col.set_margin_end(16);
+                for k in body {
+                    col.append(&node(app, store, k));
+                }
+                let clamp = adw::Clamp::builder().maximum_size(900).child(&col).build();
+                gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).child(&clamp).vexpand(true).build().upcast()
+            }
+        }
+        None => adw::StatusPage::builder().title("Choose a section").build().upcast(),
+    };
+    let content = adw::NavigationPage::builder().title(pane.map(|p| p.title()).unwrap_or_default()).child(&content_w).tag("detail").build();
+    let sv = adw::NavigationSplitView::builder().sidebar(&sidebar).content(&content).min_sidebar_width(220.0).max_sidebar_width(300.0).build();
+    let narrow = app.narrow.get();
+    sv.set_collapsed(narrow);
+    sv.set_show_content(!narrow || n.bool("detailOpen").unwrap_or(false));
+    // one column: the split view's own back (its header arrow, a swipe) returns
+    // to the list, and the engine clears detailOpen with it
+    let w = Rc::downgrade(app);
+    sv.connect_show_content_notify(move |sv| {
+        if let Some(a) = w.upgrade() {
+            if sv.is_collapsed() && !sv.shows_content() {
+                crate::app::back(&a);
+            }
+        }
+    });
+    sv.set_vexpand(true);
+    sv.upcast()
+}
+
 /// A detail header: big picture, title, attributes, description, actions.
 /// A preview that follows its node (the chosen map changes while the picker stays put).
 fn preview(app: &App, n: &Node) -> gtk::Widget {
@@ -1267,14 +1365,17 @@ fn preview(app: &App, n: &Node) -> gtk::Widget {
 fn preview_content(app: &App, n: &Node) -> gtk::Widget {
     let v = gtk::Box::new(gtk::Orientation::Vertical, 12);
     // `density: compact` (the chosen map above the picker): the picture beside the text.
-    let compact = n.str("density").as_deref() == Some("compact") && !app.narrow.get();
+    // a short wide window (a phone on its side) also puts the picture beside the
+    // text, so the title, the facts and Play stay in view
+    let win_h = app.ui.borrow().as_ref().map(|u| if u.win.height() > 0 { u.win.height() } else { u.win.default_height() }).filter(|h| *h > 0).unwrap_or(800);
+    let compact = (n.str("density").as_deref() == Some("compact") || win_h < 600) && !app.narrow.get();
     let outer = gtk::Box::new(gtk::Orientation::Horizontal, 18);
     if let Some(r) = n.str("image") {
         let p = picture(app, &r, 1280, 720);
         if compact {
             p.set_size_request(320, 180);
         } else {
-            p.set_height_request(aspect_height(n.str("aspect"), 640).clamp(160, 380));
+            p.set_height_request(aspect_height(n.str("aspect"), 640).clamp(120, (win_h * 2 / 5).clamp(120, 380)));
         }
         p.add_css_class("gn-preview-pic");
         let f = gtk::Frame::new(None);

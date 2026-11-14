@@ -44,8 +44,7 @@
      "background": "pk3:maps/stormkeep"
     },
     "children": [
-     "loading/status",
-     "loading/progress"
+     "loading/status"
     ]
    },
    {
@@ -63,22 +62,6 @@
       "style": "secondary"
      },
      "live": true
-    },
-    "children": []
-   },
-   {
-    "id": "loading/progress",
-    "type": "progress",
-    "props": {
-     "label": "Connecting",
-     "value": 0.0,
-     "detail": "",
-     "live": true,
-     "cancel": {
-      "id": "loading.cancel",
-      "label": "Cancel",
-      "icon": "close"
-     }
     },
     "children": []
    }
@@ -125,7 +108,7 @@
       "props": {
        "icon": "download",
        "title": "Joining Clan Wars #12",
-       "body": "Downloading map",
+       "body": "Downloading map · 2.0 MB of 40 MB · 3.2 MB/s · 11 s left",
        "progress": 0.05,
        "primary": {
         "id": "loading.cancel",
@@ -134,22 +117,6 @@
         "style": "secondary"
        },
        "live": true
-      },
-      "children": []
-     },
-     {
-      "id": "loading/progress",
-      "type": "progress",
-      "props": {
-       "label": "Downloading map",
-       "value": 0.05,
-       "detail": "2.0 MB of 40 MB · 3.2 MB/s · 11 s left",
-       "live": true,
-       "cancel": {
-        "id": "loading.cancel",
-        "label": "Cancel",
-        "icon": "close"
-       }
       },
       "children": []
      }
@@ -197,7 +164,7 @@
       "props": {
        "icon": "download",
        "title": "Joining Clan Wars #12",
-       "body": "Downloading map",
+       "body": "Downloading map · 8.0 MB of 40 MB · 3.2 MB/s · 10 s left",
        "progress": 0.2,
        "primary": {
         "id": "loading.cancel",
@@ -206,22 +173,6 @@
         "style": "secondary"
        },
        "live": true
-      },
-      "children": []
-     },
-     {
-      "id": "loading/progress",
-      "type": "progress",
-      "props": {
-       "label": "Downloading map",
-       "value": 0.2,
-       "detail": "8.0 MB of 40 MB · 3.2 MB/s · 10 s left",
-       "live": true,
-       "cancel": {
-        "id": "loading.cancel",
-        "label": "Cancel",
-        "icon": "close"
-       }
       },
       "children": []
      }
@@ -269,7 +220,7 @@
       "props": {
        "icon": "download",
        "title": "Joining Clan Wars #12",
-       "body": "Downloading map",
+       "body": "Downloading map · 18.0 MB of 40 MB · 3.2 MB/s · 6 s left",
        "progress": 0.45,
        "primary": {
         "id": "loading.cancel",
@@ -278,22 +229,6 @@
         "style": "secondary"
        },
        "live": true
-      },
-      "children": []
-     },
-     {
-      "id": "loading/progress",
-      "type": "progress",
-      "props": {
-       "label": "Downloading map",
-       "value": 0.45,
-       "detail": "18.0 MB of 40 MB · 3.2 MB/s · 6 s left",
-       "live": true,
-       "cancel": {
-        "id": "loading.cancel",
-        "label": "Cancel",
-        "icon": "close"
-       }
       },
       "children": []
      }
@@ -341,7 +276,7 @@
       "props": {
        "icon": "download",
        "title": "Joining Clan Wars #12",
-       "body": "Downloading map",
+       "body": "Downloading map · 28.0 MB of 40 MB · 3.2 MB/s · 3 s left",
        "progress": 0.7,
        "primary": {
         "id": "loading.cancel",
@@ -350,22 +285,6 @@
         "style": "secondary"
        },
        "live": true
-      },
-      "children": []
-     },
-     {
-      "id": "loading/progress",
-      "type": "progress",
-      "props": {
-       "label": "Downloading map",
-       "value": 0.7,
-       "detail": "28.0 MB of 40 MB · 3.2 MB/s · 3 s left",
-       "live": true,
-       "cancel": {
-        "id": "loading.cancel",
-        "label": "Cancel",
-        "icon": "close"
-       }
       },
       "children": []
      }
@@ -413,7 +332,7 @@
       "props": {
        "icon": "download",
        "title": "Joining Clan Wars #12",
-       "body": "Downloading map",
+       "body": "Downloading map · 38.0 MB of 40 MB · 3.2 MB/s · 0 s left",
        "progress": 0.95,
        "primary": {
         "id": "loading.cancel",
@@ -422,22 +341,6 @@
         "style": "secondary"
        },
        "live": true
-      },
-      "children": []
-     },
-     {
-      "id": "loading/progress",
-      "type": "progress",
-      "props": {
-       "label": "Downloading map",
-       "value": 0.95,
-       "detail": "38.0 MB of 40 MB · 3.2 MB/s · 0 s left",
-       "live": true,
-       "cancel": {
-        "id": "loading.cancel",
-        "label": "Cancel",
-        "icon": "close"
-       }
       },
       "children": []
      }
@@ -485,7 +388,7 @@
       "props": {
        "icon": "download",
        "title": "Joining Clan Wars #12",
-       "body": "Loading map",
+       "body": "Loading map · 40.0 MB of 40 MB · 3.2 MB/s · 0 s left",
        "progress": 1.0,
        "primary": {
         "id": "loading.cancel",
@@ -494,22 +397,6 @@
         "style": "secondary"
        },
        "live": true
-      },
-      "children": []
-     },
-     {
-      "id": "loading/progress",
-      "type": "progress",
-      "props": {
-       "label": "Loading map",
-       "value": 1.0,
-       "detail": "40.0 MB of 40 MB · 3.2 MB/s · 0 s left",
-       "live": true,
-       "cancel": {
-        "id": "loading.cancel",
-        "label": "Cancel",
-        "icon": "close"
-       }
       },
       "children": []
      }

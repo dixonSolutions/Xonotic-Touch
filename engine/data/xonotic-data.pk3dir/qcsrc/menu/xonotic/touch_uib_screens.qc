@@ -1213,19 +1213,13 @@ void UIB_BuildLoading()
 	UIB_Open("status", "status");
 		uib_s("icon", state == "downloading" ? "download" : "server");
 		uib_s("title", (cvar_string("_uib_server_name") != "") ? sprintf(_("Joining %s"), cvar_string("_uib_server_name")) : _("Joining"));
-		uib_s("body", stage);
+		// one card: the step with its size and speed, one bar, one Cancel (a
+		// second "progress" node repeated the step, the bar and Cancel below it)
+		uib_s("body", (detail != "") ? strcat(stage, " · ", detail) : stage);
 		uib_b("live", 1);
 		if (state == "downloading") uib_f("progress", bound(0, progress, 1));
 		else uib_b("indeterminate", 1);
 		uib_j("primary", UIB_AS("loading.cancel", _("Cancel"), "close", "secondary"));
-	UIB_Close();
-	UIB_Open("progress", "progress");
-		uib_s("label", stage);
-		if (state == "downloading") uib_f("value", bound(0, progress, 1));
-		else uib_b("indeterminate", 1);
-		if (detail != "") uib_s("detail", detail);
-		uib_b("live", 1);
-		uib_j("cancel", UIB_A("loading.cancel", _("Cancel"), "close"));
 	UIB_Close();
 	UIB_Done();
 }
