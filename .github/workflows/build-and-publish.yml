@@ -336,11 +336,17 @@ jobs:
             echo
             echo "### Android (.apk)"
             echo
-            echo "Sideload — arm64-v8a for anything from the last decade, armeabi-v7a for older phones:"
+            echo "Recommended — the live APKs update themselves in the game through AndySU (signed updates, applied live, rolled back if a new version does not start):"
+            echo
+            echo "- \`Godnotic-live-${VERSION}-arm64.apk\` (anything from the last decade)"
+            echo "- \`Godnotic-live-${VERSION}-arm32.apk\` (older phones)"
+            echo "- \`Godnotic-live-${VERSION}-x64.apk\` (Chromebooks, Waydroid, emulators)"
+            echo
+            echo "Plain APKs (no AndySU; the game offers each new version as an APK to install):"
             echo
             echo "- \`Godnotic-${VERSION}-arm64-v8a.apk\`"
             echo "- \`Godnotic-${VERSION}-armeabi-v7a.apk\`"
-            echo "- \`Godnotic-${VERSION}-x86_64.apk\` (Chromebooks, Waydroid, emulators)"
+            echo "- \`Godnotic-${VERSION}-x86_64.apk\`"
             echo
             echo "First launch downloads about 1 GB of maps, textures and music."
             echo
