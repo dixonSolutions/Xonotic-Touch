@@ -45,9 +45,14 @@ WEB_SHA256="${XT_WEB_DATA_SHA256:-}"
 # against its own size and sha256, and against the set pinned here: a set
 # that changes makes every visitor download it again, so the build fails
 # until the pin is moved on purpose (an empty pin takes whatever is there).
+# "unpublished": no split set is published yet, and none is taken until the
+# pins name the set ids of the published manifests (the "set" of
+# godnotic-data-astc.json and -dxt.json in the publishing run's artifacts).
+# Until then a published manifest stops the build and the previous deployment
+# stays up.
 SPLIT_BASE="${XT_SPLIT_DATA_BASE:-https://github.com/dixonSolutions/Godnotic-data/releases/download/data-slim}"
-SPLIT_SET_ASTC="${XT_SPLIT_SET_ASTC-20261107-4c53098165d2}"
-SPLIT_SET_DXT="${XT_SPLIT_SET_DXT-20261107-a7da008572ac}"
+SPLIT_SET_ASTC="${XT_SPLIT_SET_ASTC-unpublished}"
+SPLIT_SET_DXT="${XT_SPLIT_SET_DXT-unpublished}"
 
 # The QuakeC sources use #elifdef, which "cc -E" (GCC 11 on Amazon Linux
 # 2023) rejects; GCC 12+ takes it. Prints a directory to put first in PATH

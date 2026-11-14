@@ -1104,7 +1104,7 @@ const sizeOf = (host, names) => host.files.filter((f) => names.includes(f.name))
 const lastStatus = (p) => p.dataStatus[p.dataStatus.length - 1] || '';
 const complete = (p) => until(() => / state complete /.test(lastStatus(p)), 'the whole set');
 const mountpacks = (p) => p.commands.filter((c) => c.startsWith('fs_mountpack ')).map((c) => c.slice(13));
-const STATUS = /^touch_data_status state (fetching|paused|waiting|error|complete|legacy) done_kb \d+ total_kb \d+( want [A-Za-z0-9_.+-]+ want_done_kb \d+ want_total_kb \d+)?( message "[^"]*")?$/;
+const STATUS = /^touch_data_status state (fetching|paused|waiting|error|complete|legacy)( set [A-Za-z0-9_.+-]+)? done_kb \d+ total_kb \d+( want [A-Za-z0-9_.+-]+ want_done_kb \d+ want_total_kb \d+)?( message "[^"]*")?$/;
 
 await test('split set: the game starts after the first-play packs; the rest follows while it runs, announced with fs_mountpack', async () => {
   const prof = profile();
@@ -1126,7 +1126,7 @@ await test('split set: the game starts after the first-play packs; the rest foll
   assert.ok(!p.commands.some((c) => c.startsWith('fs_rescan')), 'never fs_rescan');
   for (const n of FIRST.concat(REST)) assert.ok(p.mounted.has('/game/data/' + n), n + ' mounted');
   const total = Math.round(host.files.reduce((n, f) => n + f.size, 0) / 1024);
-  assert.equal(lastStatus(p), `touch_data_status state complete done_kb ${total} total_kb ${total}`);
+  assert.equal(lastStatus(p), `touch_data_status state complete set test-0 done_kb ${total} total_kb ${total}`, 'the set id goes with it');
   await until(() => p.page.state.pruned, 'prune, once the set is whole');
   // A reload: everything mounted before the engine starts, nothing asked.
   host.log.length = 0;

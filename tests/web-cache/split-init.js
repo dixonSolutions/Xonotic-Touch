@@ -57,7 +57,7 @@
         reads: E().reads, lazyErrors: (xt.lazyStats() || {}).errors || 0,
         statuses: st.length, perSecond, last: (st[st.length - 1] || [0, ''])[1],
         wants: uniq(st.map((s) => (/ want (\S+) /.exec(s[1]) || [])[1]).filter(Boolean)),
-        badStatus: st.map((s) => s[1]).filter((l) => !/^touch_data_status state (fetching|paused|waiting|error|complete|legacy) done_kb \d+ total_kb \d+( want \S+ want_done_kb \d+ want_total_kb \d+)?( message "[^"]*")?$/.test(l)),
+        badStatus: st.map((s) => s[1]).filter((l) => !/^touch_data_status state (fetching|paused|waiting|error|complete|legacy)( set [A-Za-z0-9_.+-]+)? done_kb \d+ total_kb \d+( want \S+ want_done_kb \d+ want_total_kb \d+)?( message "[^"]*")?$/.test(l)),
         card: !$('xt-map').hidden,
       };
     },

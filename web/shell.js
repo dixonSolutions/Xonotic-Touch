@@ -1075,6 +1075,7 @@
   const prog = {
     on: false, // the game starts on part of the data; the rest follows
     set: false, // ...of a split set: packs announced with fs_mountpack
+    setId: '', // that set's id, for the engine's touch_data_set
     first: new Set(), // names of the packs a start waits for, besides the core group
     needs: new Map(), // map -> its packs besides the core group, its own pack last
     have: new Set(), // names of the files whole in storage
@@ -1116,6 +1117,7 @@
     const byName = new Map(files.map((f) => [f.name, f]));
     // (With a Godnotic folder holding packs, only what it lacks is left.)
     prog.set = prog.on = files.some((f) => f.kind);
+    prog.setId = String(profile.split.set || '').replace(/[^A-Za-z0-9_.+-]/g, '_');
     prog.first = new Set(profile.split.firstPlay);
     for (const [map, names] of Object.entries(profile.split.maps)) {
       const list = names.map((n) => byName.get(n)).filter(Boolean);
@@ -1245,7 +1247,9 @@
     let done = 0;
     let total = 0;
     for (const [h, size] of prog.sizes) { total += size; done += Math.min(size, prog.got.get(h) || 0); }
-    let line = `touch_data_status state ${bg.state} done_kb ${kb(done)} total_kb ${kb(total)}`;
+    let line = `touch_data_status state ${bg.state}`;
+    if (prog.setId) line += ` set ${prog.setId}`; // the split set's id (docs/DATA_FETCH.md)
+    line += ` done_kb ${kb(done)} total_kb ${kb(total)}`;
     const w = prog.want;
     if (w) {
       let d = 0;
