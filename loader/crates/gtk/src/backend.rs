@@ -281,9 +281,13 @@ fn image_resolver() -> Box<godnotic_core::bridge::fixture::ImageResolver> {
 }
 
 /// Where fixture mode looks for pk3s: GODNOTIC_DATA_DIRS (colon-separated), else the usual data folders.
+/// Set but empty counts as unset: loader/scripts/shot.sh used to pass it empty, which read nothing.
 fn data_dirs() -> Vec<PathBuf> {
     if let Ok(v) = std::env::var("GODNOTIC_DATA_DIRS") {
-        return v.split(':').filter(|s| !s.is_empty()).map(PathBuf::from).collect();
+        let dirs: Vec<PathBuf> = v.split(':').filter(|s| !s.is_empty()).map(PathBuf::from).collect();
+        if !dirs.is_empty() {
+            return dirs;
+        }
     }
     let env: HashMap<String, String> = std::env::vars().collect();
     let p = godnotic_core::paths::GamePaths::resolve(&env, None, &|f| std::path::Path::new(f).exists(), "");

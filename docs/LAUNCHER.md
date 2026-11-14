@@ -142,7 +142,11 @@ loader/scripts/drive.sh loader/tests/navigate.script <outdir>   # Home > Servers
 ```
 
 `GODNOTIC_DATA_DIRS` points fixture mode at folders of pk3s (or unpacked `maps/*.jpg`) so the
-fixture player answers `pk3:` image refs with real map previews.
+fixture player answers `pk3:` image refs with real map previews. `shot.sh` and `drive.sh`
+(through `loader/scripts/data-dirs.sh`) use it when set; otherwise they hand the app the
+folders it keeps its game data in and an installed Xonotic Flatpak's stock pk3s, and let the
+sandbox read them. `scripts/test-gtk-layout.sh` checks that map pictures arrive, Home fits a
+400 px wide window and the map picker fits a phone on its side.
 
 `loader/tests/session.script` (with a stand-in `GODNOTIC_START` that runs a built engine
 offscreen, and a dedicated server with `sv_touch_lan_password`) joins from the GUI with no
