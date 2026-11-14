@@ -9,7 +9,8 @@ node "$ROOT/tests/web-cache/cache.test.mjs"
 bash "$ROOT/scripts/test-web-cache-repro.sh"
 
 engines=""
-chrome="${CHROME:-$(ls -d "$HOME"/.cache/ms-playwright/chromium-*/chrome-linux64/chrome 2>/dev/null | sort -V | tail -1)}"
+# (No match makes ls fail, and with pipefail the assignment: "|| true".)
+chrome="${CHROME:-$(ls -d "$HOME"/.cache/ms-playwright/chromium-*/chrome-linux64/chrome 2>/dev/null | sort -V | tail -1 || true)}"
 [ -z "$chrome" ] || [ ! -x "$chrome" ] || engines="chromium"
 if [ -n "${FIREFOX:-}" ] || { command -v flatpak >/dev/null 2>&1 && flatpak info org.mozilla.firefox >/dev/null 2>&1; }; then
     engines="${engines:+$engines,}firefox"

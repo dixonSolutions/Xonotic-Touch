@@ -87,6 +87,7 @@ let id = 0;
 const scan = flag('scan');
 const SUSPECT = /not found|couldn't|could not|can't|cannot|missing|failed|unknown command|error|unable/i;
 const problems = [];
+const engineStatus = []; // what the engine's own "touch_data_status" printed (mid-download, at the end)
 const pending = new Map();
 const requests = [];
 const byId = new Map();
@@ -108,7 +109,8 @@ ws.onmessage = (ev) => {
     if (byId.has(m.params.requestId)) dataBytes += m.params.dataLength;
   } else if (m.method === 'Runtime.consoleAPICalled' && scan) {
     const text = m.params.args.map((a) => a.value === undefined ? a.description || '' : String(a.value)).join(' ').replace(/\x1b\[[0-9;]*m|\^[0-9]|\^x[0-9a-f]{3}/gi, '');
-    if (SUSPECT.test(text) && !problems.includes(text) && problems.length < 80) problems.push(text);
+    if (/^touch_data_state "/.test(text)) engineStatus.push(text);
+    else if (SUSPECT.test(text) && !problems.includes(text) && problems.length < 80) problems.push(text);
   }
 };
 // A page busy with a long task (the engine loading a map) answers late:
@@ -259,6 +261,7 @@ const frames = async (ms) => (await evaluate(`(() => new Promise((r) => { let n 
 const dataState = () => evaluate('window.xt && xt.bg ? { state: xt.bg.state, have: xt.prog.have.size, of: xt.prog.counted.length, mounted: xt.mounts.size, sent: xt.bg.sent } : null');
 if (done) { out.bytesAtMenu = dataBytes; out.dataAtMenu = await dataState(); }
 if (done && map1) await playMap(map1, 'map1');
+if (done && scan) await evaluate(`xt.command('touch_data_status')`);
 // --bg-frames SEC: in the match, the frames over SEC seconds with the
 // background download running, then with it paused ("web_maps pause").
 const bgFrames = Number(opt('bg-frames', '0'));
@@ -285,13 +288,13 @@ if (done && flag('wait-complete') && !out.error) {
   out.dataAtEnd = st;
   out.framesAfter = await frames(3000);
   // The music's track list, run again when its pack landed.
-  await evaluate(`xt.command('echo XTREMAP $g_cdtracks_remaplist')`);
+  await evaluate(`xt.command('touch_data_status; echo XTREMAP $g_cdtracks_remaplist')`);
   await sleep(500);
   out.remap = await evaluate(`(xt.log().filter((l) => l.includes('XTREMAP')).pop() || '')`);
   if (!st || st.state !== 'complete') out.error = 'the background download did not complete: ' + JSON.stringify(st);
   else if (opt('map3')) await playMap(opt('map3'), 'map3');
 }
-if (scan) out.problems = problems;
+if (scan) { out.problems = problems; out.engineStatus = engineStatus; }
 out.peak = peak;
 // --settle SEC: keep playing, then sample again (the page gives read-ahead
 // memory back about 15 s after a load).
