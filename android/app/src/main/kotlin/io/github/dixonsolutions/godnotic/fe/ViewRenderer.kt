@@ -492,7 +492,12 @@ class ViewRenderer(
             return Entry(id, "grid", hs, row, props)
         }
         val g = FlowGrid(ctx, dp(props.num("minItem", 160.0).toFloat()), gap)
-        return Entry(id, "grid", g, g, props)
+        val e = Entry(id, "grid", g, g, props)
+        // Home's cards: always side by side in one row, whatever the width (the
+        // owner's rule); they shrink, and the description joins two when three
+        // do not fit (`compact`)
+        e.bind = { x -> val one = screenKind(x) == "home"; if (g.singleRow != one) { g.singleRow = one; g.requestLayout() } }
+        return e
     }
 
     private fun tabs(id: String, props: Map<String, Any?>): Entry {
@@ -1542,6 +1547,8 @@ class CarouselRow(ctx: Context, private val item: Int, private val gap: Int) : V
  * (or, with [wrap], at their own widths like words in a line).
  */
 class FlowGrid(ctx: Context, private val minChild: Int, private val gap: Int, private val wrap: Boolean = false) : ViewGroup(ctx) {
+    /** Every child in one row (Home's cards), however narrow. */
+    var singleRow = false
     override fun onMeasure(wSpec: Int, hSpec: Int) {
         val width = MeasureSpec.getSize(wSpec)
         if (wrap) {
@@ -1557,7 +1564,8 @@ class FlowGrid(ctx: Context, private val minChild: Int, private val gap: Int, pr
             setMeasuredDimension(width, y + line)
             return
         }
-        val cols = max(1, (width + gap) / (max(1, minChild) + gap))
+        val visible = (0 until childCount).count { getChildAt(it).visibility != GONE }
+        val cols = if (singleRow) max(1, visible) else max(1, (width + gap) / (max(1, minChild) + gap))
         val cw = (width - gap * (cols - 1)) / cols
         var y = 0; var rowH = 0; var col = 0
         for (i in 0 until childCount) {
@@ -1586,9 +1594,9 @@ class FlowGrid(ctx: Context, private val minChild: Int, private val gap: Int, pr
             }
             return
         }
-        val cols = max(1, (width + gap) / (max(1, minChild) + gap))
-        val cw = (width - gap * (cols - 1)) / cols
         val visible = (0 until childCount).map { getChildAt(it) }.filter { it.visibility != GONE }
+        val cols = if (singleRow) max(1, visible.size) else max(1, (width + gap) / (max(1, minChild) + gap))
+        val cw = (width - gap * (cols - 1)) / cols
         var y = 0
         var i = 0
         while (i < visible.size) {
