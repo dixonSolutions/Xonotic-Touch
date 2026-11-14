@@ -243,8 +243,14 @@ MODPAGE = ('uib_modpage radar main {"title":"Radar","nodes":[{"id":"general","ty
            '"type":"switch","props":{"label":"Show teammates","bind":"mod:radar.teammates","value":true},"children":[]}]}\n')
 
 
+# The fixtures must not depend on which public servers answer today: no master is asked
+# and nothing is shown from a saved list (docs/NETWORK.md, "The server list").
+NO_NETWORK = "".join('%s ""\n' % m for m in ("sv_master1", "sv_master2", "sv_master3", "sv_master4",
+                                               "sv_masterextra1", "sv_masterextra2", "sv_masterextra3")) + "net_slist_saved 0\n"
+
+
 def run(args):
-    e = Engine(args, precfg=MODPAGE)
+    e = Engine(args, precfg=NO_NETWORK + MODPAGE)
     out = {}
     report = {}
     try:
