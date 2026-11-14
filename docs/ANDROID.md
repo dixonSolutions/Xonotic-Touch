@@ -13,7 +13,7 @@ is darkplaces compiled with the NDK.
 | ABIs | `arm64-v8a`, `armeabi-v7a`, `x86_64` |
 | min / target SDK | 21 / 35 |
 | Renderer | GLES2 (`USE_GLES2`, already set for `__ANDROID__` in `sys.h`) |
-| APK payload | Slim data only; maps, textures and music download on first launch |
+| APK payload | Slim data only; the first map's data downloads on first launch, the other maps and the music behind the running game |
 
 ## Why it works at all
 
@@ -171,6 +171,12 @@ end a match, a join or a download:
   loading screen while the join runs, or to the game once it is done.
 * **First-launch data download**: carries on; when it finishes while away, a
   notification says the game is ready and the next return starts it.
+* **The rest of the data** (the other maps, the music; see "What the app does
+  on first launch"): carries on under `DataService`, a `dataSync` foreground
+  service with a silent notification ("Getting the rest of the maps: 180 of
+  300 MB"), up only while packs are being fetched. Android 15 allows that
+  service type six hours a day; after its `onTimeout` the download goes on
+  only while the game is open.
 * **Local game** (a bot match from Create or Singleplayer, whatever its
   number of player slots): paused while away (the engine waits for the
   return, using no CPU) and running again on return.
@@ -218,7 +224,7 @@ The merged manifest (`aapt2 dump permissions`) declares exactly:
 | `INTERNET` | first-launch data download, servers, map downloads, update check |
 | `ACCESS_NETWORK_STATE` | the mobile-data setting |
 | `POST_NOTIFICATIONS` | download and staying-connected notifications (Android 13+) |
-| `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`, `FOREGROUND_SERVICE_SPECIAL_USE` | `KeepAliveService`: the data download, and a server connection kept while in the background |
+| `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`, `FOREGROUND_SERVICE_SPECIAL_USE` | `KeepAliveService`: the first data download, and a server connection kept while in the background. `DataService` (`dataSync`): the rest of the data set |
 | `WAKE_LOCK` | the CPU keeps running with the screen off while connected, joining, downloading or hosting a LAN game |
 | `CHANGE_WIFI_MULTICAST_STATE` | `LanLocks`: while hosting a LAN game, lets the Wi-Fi driver pass other players' broadcast search through ([LAN.md](LAN.md)) |
 | `REQUEST_INSTALL_PACKAGES` | the self-updater hands its APK to `PackageInstaller` |
@@ -245,7 +251,8 @@ android/
   app/src/main/cpp/CMakeLists.txt   darkplaces -> libmain.so
   app/src/main/java/…/BootActivity      unpacks + downloads game data
   app/src/main/java/…/GameData          the unpack, and what the download needs
-  app/src/main/java/…/PackFetch         pk3s out of the remote zip by HTTP Range
+  app/src/main/java/…/PackFetch         pk3s out of the remote zip by HTTP Range (no manifest: the single archive)
+  app/src/main/java/…/Data*             the split set: manifest, install state, pack fetch, session, DataService
   app/src/main/java/…/XonoticActivity   SDLActivity subclass, passes -basedir
 scripts/android-deps.sh           SDL2, ogg, vorbis, freetype, jpeg, png, curl+mbedTLS per ABI
 scripts/android-stage-assets.sh   QuakeC + slim data -> the APK's assets
@@ -349,35 +356,73 @@ during `FS_Init` and would not see anything Java staged afterwards.
 1. Unpack `assets/xonotic-slim-data.zip` — game logic, configs, and the menu skin
    the download screen itself needs. Re-runs after an app update so new progs
    never sit beside old ones.
-2. Ask, then fetch the pk3s. `PackFetch` reads `Xonotic-latest.zip`'s central
-   directory from the autobuild server with HTTP Range requests (the archive
-   is never stored), and the setup step shows what the download costs, how
-   much space is free (it refuses to start without room for it, and says how
-   much to free). The music pack is part of the game data and always fetched. Each pk3 under
-   `Xonotic/data/` then comes from its own byte range straight into its final
-   file: data, maps, nexcompat, xoncompat and the two fonts, about 1.05 GB,
-   plus 106 MB with music. The big pk3s are stored in the zip, so they are cut
-   into 8 MB chunks that 8 connections fetch at once, each writing at its own
-   offset; the small deflated fonts are inflated as one stream. A pk3 is
-   written as `<name>.part`, checked against the CRC32 in the central
-   directory and renamed into place. Peak storage is the pk3s themselves; the
-   download-then-unzip it replaced needed the 1.2 GB archive on top.
-3. Start `XonoticActivity`.
+2. Ask, then fetch the packs the first match needs. The data set is split
+   ([DATA_FETCH.md](DATA_FETCH.md), [PHONE_ASSETS.md](PHONE_ASSETS.md) "Split
+   set"): `godnotic-data-astc.json` beside the pinned archive (`-dxt.json` for
+   a GPU without ASTC) lists the packs, their byte ranges in the release
+   archive and `first_play`, the core and the first map, about 75 MB of
+   373 MB. The setup step shows what `first_play` costs, how much follows
+   later and how much space is free (it refuses to start without room, and
+   says how much to free). Each pack comes from its own range of the archive
+   into `<install_as>.part` (`DataFetch`): 8 MiB chunks over 8 connections,
+   each writing at its own offset, small packs several at a time. A whole
+   part is checked against the manifest's size, CRC32 and SHA-256 and renamed
+   into place; one that fails is deleted and fetched again, three times. The
+   boot screen's bar counts `first_play` only.
+3. Start `XonoticActivity`. `DataService` then fetches everything else by the
+   manifest's `priority` (the music first, then the other maps, detail,
+   extras) with 4 connections, without asking. Each pack that lands is
+   mounted in the running game (`fs_mountpack`, and the `landed` lines of
+   `touch/data-status.txt`, which the engine reads once a second). A map the
+   player picks, or a server runs, before its packs are in goes to the front:
+   the engine writes `touch/data-request.txt` and the service reads it twice
+   a second. A map's own pack is renamed last, so a map whose `.bsp` exists is
+   playable.
+
+**No manifest.** When none is published for the GPU's profile, or it is not
+one this build accepts (404, bad JSON, another `format`), the app does what
+it did before the split: `PackFetch` reads the pinned archive's central
+directory and fetches every pk3 under `Xonotic/data/`, music included, about
+390 MB (a GPU without ASTC: the full stock archive, about 1.05 GB), and the
+game starts when all of it is in. A manifest that was accepted once is kept
+as `data/.godnotic-data.json` and stays in use when a later fetch fails.
 
 **Resuming.** How far each chunk got is saved beside its part
 (`<name>.part.state`, once a second and on every stop), so Cancel, a dropped
 connection (each chunk retries with a back-off for about two minutes), Quit or
-a killed process all carry on from the bytes on disk. `data/.packs-setup` pins
-the archive's ETag and size and lists the packs the setup finished: when the
-autobuild publishes a new build, the parts and those packs are discarded and
-the setup starts over rather than mixing two builds, and every range request
-carries `If-Range`, so a build that changes mid-download is caught at once.
-The parts an older release staged in `files/download` are deleted.
+a killed process all carry on from the bytes on disk. `data/.godnotic-set`
+records which packs were verified, so a start hashes nothing; a file of the
+right size without a line there (a kill between the rename and the save) is
+hashed once and kept or deleted. The background part resumes at every start of
+the game. For the single archive `data/.packs-setup` pins its ETag and size
+as before. The parts an older release staged in `files/download` are deleted.
 
-**Music.** There is no music choice: an install without the music pack (from
-before it was always part of the data) gets the setup step for just that pack
-at the next start, with **Not now** to play first; the old "Download music"
-launcher shortcut is removed.
+**An install from before the split** (`xonotic-<date>-data.pk3`, `-maps`,
+`-music`) that is complete downloads nothing: the first manifest it sees is
+recorded as the set it stands for (`legacy <set>` in `.godnotic-set`). When a
+later data release publishes another set, the new packs are fetched behind
+the game and the old ones are deleted only once every new pack is in. An old
+install without the music pack is not complete: the split set's `first_play`
+is fetched at the next start (the setup step asks), and the old packs are
+deleted once it is in. There is no "Download music" step any more with a
+manifest; the music is one of the packs that follow.
+
+**A new set.** When the manifest's `set` changes, packs whose name, size and
+CRC32 are the same stay; changed ones are fetched and renamed over the old
+file; packs the new set does not list are deleted once its `first_play` is
+installed.
+
+**Mobile data.** The background part follows what was said at the first
+download: after **Use mobile data** it uses any connection, otherwise only an
+unmetered one. On a metered network without that yes it waits (`state
+waiting` in the status file) and carries on by itself on Wi-Fi while the game
+is open; no notification is shown while it waits.
+
+**AndySU hosts.** A host APK from before `DataService` does not declare it,
+and a payload update cannot change the host's manifest. There the background
+part runs on a plain thread and only while the game activity lives (it
+resumes at the next start); nothing else differs. Without `libnativeui.so`
+packs are mounted through the status file alone.
 
 **Asking once.** Download (or Use mobile data) is remembered in the
 `boot-download` preferences until the data is in: a Quit, a kill or a lost
@@ -567,7 +612,8 @@ Android keeps the app's storage as-is, and:
 * saved configs and keybinds live in `<basedir>/userdata`, which the update
   path never touches;
 * downloaded maps, textures and music are `.pk3` files in `<basedir>/data` and
-  are not re-fetched;
+  are not re-fetched (a complete install from before the split set stays as
+  it is; see "An install from before the split");
 * the bundled slim payload is re-extracted on a version change — it overwrites
   its own files and deletes nothing else.
 
@@ -729,14 +775,18 @@ GPUs without S3TC, and a much smaller download.
 https://github.com/dixonSolutions/Godnotic-data/releases/download/data-slim/Godnotic-data.zip
 ```
 
-Its entries are `Xonotic/data/<official pack name>.pk3` -- the phone pack under
-the name it installs as -- so `PackFetch` (the same range reader the autobuild
-zip uses) installs them unchanged and `assetsMissing()` still finds
-`-data.pk3` and `-maps.pk3`. No manifest parsing is needed at runtime; the
-release carries `phone-manifest.json` for size/sha inspection only.
+The split set's manifest is looked for in the same directory
+(`godnotic-data-astc.json`, or `godnotic-data-dxt.json` when `GpuProbe` finds
+no `GL_KHR_texture_compression_astc_ldr`); its `archive.url` names the
+immutable release the packs come from. `DataManifest` accepts it only when
+every field the contract lists holds ([DATA_FETCH.md](DATA_FETCH.md)), and
+the game can start when every `first_play` pack is installed or a complete
+old-layout install is there (`GameData.assetsMissing()`).
 
-A GPU without `GL_KHR_texture_compression_astc_ldr` is the one case the set
-does not serve: the engine then falls back to the DDS textures, which these
-packs do not carry. The boot screen falls back to the autobuild archive when
-the pinned one cannot be planned (HTTP error, no range support).
-
+Without an accepted manifest the pinned archive itself is the download, as
+before: its entries are `Xonotic/data/<official pack name>.pk3`, `PackFetch`
+installs them under those names, and the game can start when `-data.pk3` and
+`-maps.pk3` are there. A GPU without ASTC and without a `dxt` manifest gets
+the full stock archive (Godnotic-data's pinned `data-20261107` release), which carries
+the DDS textures; so does any device when the pinned archive cannot be
+planned (HTTP error, no range support).
