@@ -13,6 +13,9 @@ the touch HUD reads them.
 
 #include "quakedef.h"
 #include "touch_display.h"
+#ifdef __EMSCRIPTEN__
+#include <emscripten/html5.h>
+#endif
 // OBJ_COMMON also goes into the dedicated server, which is built without SDL.
 #if defined(__has_include)
 # if __has_include(<SDL.h>)
@@ -42,6 +45,19 @@ void TouchDisplay_Update(int displayindex)
 		dpi = ddpi > 0 ? ddpi : vdpi;
 		if (dpi < 50 || dpi > 1200)
 			dpi = 0;
+	}
+#endif
+#ifdef __EMSCRIPTEN__
+	{
+		// In a browser SDL reports 96 x devicePixelRatio (CSS: 96 is 1x), but
+		// the menu's dp is 160 to the inch and its pixels are the canvas's,
+		// which the page may render at another scale than the CSS size. One
+		// dp is one CSS pixel: the density is canvas pixels per CSS pixel.
+		double cssw = 0, cssh = 0;
+		if (emscripten_get_element_css_size("#canvas", &cssw, &cssh) == EMSCRIPTEN_RESULT_SUCCESS && cssw >= 1 && vid.mode.width > 0)
+			dpi = 160.0f * (float)vid.mode.width / (float)cssw;
+		else if (dpi > 0)
+			dpi = dpi * 160.0f / 96.0f;
 	}
 #endif
 	Cvar_SetValueQuick(&vid_touch_dpi, dpi);

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "touch_uib_screens.qh"
+#include "touch_startup_util.qh"
 #include <common/mapinfo.qh>
 #include <common/campaign_common.qh>
 #include <common/campaign_file.qh>
@@ -45,6 +46,18 @@ string UIB_ModeName(string id)
 		case "inv": return _("Invasion");
 	}
 	return strtoupper(id);
+}
+
+// A name that fits a card without breaking a word.
+string UIB_ModeShort(string id)
+{
+	switch (id)
+	{
+		case "tdm": return _("Team DM");
+		case "ctf": return _("CTF");
+		case "lms": return _("Last Man");
+	}
+	return UIB_ModeName(id);
 }
 
 string UIB_ModeHelp(string id)
@@ -96,6 +109,7 @@ void UIB_Nav()
 {
 	int n = tokenize_console(uibn_stack);
 	bool canback = n > 1 || uibn_modal != "" || uibn_context == "game";
+	if (uibn_modal == "welcome") canback = false; // a name first (UIB_BuildWelcome)
 	uib_nav(uibn_stack, uibn_modal, canback, uibn_context);
 }
 
@@ -160,6 +174,8 @@ void UIB_Back()
 		UIB_RebuildAll();
 		return;
 	}
+	if (uibn_modal == "welcome")
+		return;
 	if (uibn_modal != "")
 		UIB_DropLast(true);
 	else if (tokenize_console(uibn_stack) > 1)
@@ -456,8 +472,9 @@ void UIB_BuildCreate()
 			{
 				string id = UIB_ModeId(i);
 				UIB_Open(id, "card");
-					uib_s("title", UIB_ModeName(id));
-					uib_s("subtitle", UIB_ModeHelp(id));
+					uib_s("title", UIB_ModeShort(id));
+					uib_s("a11y", UIB_ModeName(id));
+					uib_s("subtitle", (UIB_ModeShort(id) != UIB_ModeName(id)) ? strcat(UIB_ModeName(id), ": ", UIB_ModeHelp(id)) : UIB_ModeHelp(id));
 					uib_s("image", strcat("pk3:gfx/menu/luma/gametype_", id));
 					uib_s("aspect", "1:1");
 					if (id == mode) uib_b("selected", 1);
@@ -644,6 +661,11 @@ void UIB_StartGame(string map, string mode)
 		}
 	}
 	localcmd("\ndisconnect; wait; g_campaign 0\n");
+	// a local game drops its player straight in; a hosted one lets people watch
+	localcmd(lan ? "sv_spectate 1\n" : "sv_spectate 0\n");
+	// ... and a game started here needs no "Welcome, Join or Spectate?" dialog
+	// (the client QuakeC asks for it only while the menu says it has one)
+	cvar_set("_menu_welcome_dialog_available", "0");
 	localcmd(sprintf("maxplayers %d\n", slots));
 	localcmd(sprintf("bot_number %d\n", bots));
 	string w = UIB_VM("create.weapons");
@@ -825,6 +847,63 @@ void UIB_BuildPassword()
 	UIB_Done();
 }
 
+// ---------------------------------------------------------------- welcome
+
+// What the welcome would save as the name: the typed text without the
+// characters a name cannot carry, "" while there is nothing usable.
+string UIB_WelcomeName()
+{
+	string n = strreplace("\"", "", strreplace("\\", "", strreplace("$", "", strreplace(";", "", UIB_VM("welcome.name")))));
+	n = strreplace("\n", "", strreplace("\r", "", n));
+	string plain = strtolower(strreplace(" ", "", strdecolorize(n)));
+	if (plain == "" || plain == "player" || plain == "unnamedplayer")
+		return "";
+	return substring(n, 0, 32);
+}
+
+// First start: the name other players see, before anything else. It cannot be
+// dismissed; Settings > Player changes it later (TouchStartup_nameNeeded).
+void UIB_BuildWelcome()
+{
+	if (!UIB_Screen("welcome", _("Welcome to Godnotic")))
+		return;
+	uib_s("presentation", "dialog");
+	uib_b("dismissable", 0);
+	// off until there is a name to save
+	string done = sprintf("{\"id\":\"welcome.done\",\"label\":%s,\"icon\":\"check\",\"style\":\"primary\",\"enabled\":%s}",
+		uib_q(_("Continue")), (UIB_WelcomeName() == "") ? "false" : "true");
+	uib_j("primary", done);
+	UIB_Text("text", _("Pick the name other players see. You can change it later in Settings > Player."), "");
+	UIB_Open("form", "form");
+		uib_j("submit", done);
+		UIB_Open("name", "field");
+			uib_s("label", _("Name"));
+			uib_s("bind", "vm:welcome.name");
+			uib_s("kind", "name");
+			uib_s("placeholder", _("Your name"));
+			uib_f("maxLength", 32);
+			// no submit of its own: renderers then send each change, and Continue turns on as you type
+		UIB_Close();
+	UIB_Close();
+	UIB_Done();
+}
+
+void UIB_WelcomeDone()
+{
+	string n = UIB_WelcomeName();
+	if (n == "")
+	{
+		uib_toast(_("Type a name first"), "info", "info", 3);
+		return;
+	}
+	cvar_set("_cl_name", n);
+	localcmd(sprintf("\nname \"%s\"\nseta touch_profile_done 1\nsaveconfig\n", n));
+	UIB_VMSet("welcome.name", "");
+	if (uibn_modal == "welcome")
+		strcpy(uibn_modal, "");
+	UIB_RebuildAll();
+}
+
 void UIB_Join(string addr)
 {
 	if (substring(addr, 0, 16) == "godnotic://join/")
@@ -917,15 +996,34 @@ void UIB_BuildPause()
 		UIB_Close();
 	}
 	UIB_Open("match", "card");
-		uib_s("title", _("Match"));
-		uib_s("subtitle", (gamestatus & GAME_ISSERVER) ? _("Your game") : cvar_string("_uib_server_name"));
+		if (gamestatus & GAME_ISSERVER)
+		{
+			// this device's game: its map and mode, with the map's picture
+			string pm = cvar_string("touch_lan_map");
+			string pmode = cvar_string("touch_lan_gametype");
+			if (cvar("g_campaign") && campaign_entries > 0)
+			{
+				pm = campaign_mapname[uib_camp_index];
+				pmode = campaign_gametype[uib_camp_index];
+			}
+			uib_s("title", UIB_MapTitle(pm));
+			uib_s("subtitle", sprintf(_("%s · %s"), UIB_ModeName(pmode), hosting ? _("your LAN game") : _("your local game")));
+			uib_s("image", strcat("pk3:maps/", pm));
+		}
+		else
+		{
+			uib_s("title", (cvar_string("_uib_server_name") != "") ? cvar_string("_uib_server_name") : _("Match"));
+			uib_s("subtitle", _("Online game"));
+		}
 		uib_s("aspect", "21:9");
 	UIB_Close();
 	UIB_Open("actions", "grid");
 		uib_f("minItem", 200);
 		UIB_Button("resume", _("Resume"), UIB_AS("resume", _("Resume"), "resume", "primary"), "primary");
 		UIB_Button("settings", _("Settings"), UIB_A("settings", _("Settings"), "settings"), "secondary");
-		UIB_Button("spectate", _("Spectate"), UIB_A("spectate", _("Spectate"), "esp"), "secondary");
+		// a local game has its player in it (sv_spectate 0): nothing to watch from outside
+		if (hosting || !(gamestatus & GAME_ISSERVER))
+			UIB_Button("spectate", _("Spectate"), UIB_A("spectate", _("Spectate"), "esp"), "secondary");
 		UIB_Open("disconnect", "button");
 			// the host leaving ends a LAN game for everyone in it
 			uib_s("label", hosting ? _("End the game") : _("Leave match"));
@@ -1148,6 +1246,7 @@ void UIB_Build(string id)
 		case "lan.host": UIB_BuildLanPopup(); return;
 		case "mp": UIB_BuildServers(); return;
 		case "mp.password": UIB_BuildPassword(); return;
+		case "welcome": UIB_BuildWelcome(); return;
 		case "pause": UIB_BuildPause(); return;
 		case "loading": UIB_BuildLoading(); return;
 		case "credits": UIB_BuildCredits(); return;
@@ -1181,13 +1280,14 @@ void UIB_Context()
 		uib_lanpopup_wait = time + 3;
 	if (ctx == "menu")
 	{
+		cvar_set("_menu_welcome_dialog_available", "1");   // a server joined next gets its welcome dialog
 		// back from a match: the campaign may have moved on
 		UIB_CampaignLoad();
 		UIB_CampaignRows();
 	}
 	if (ctx == "loading") UIB_SetStack("loading", "");
 	else if (ctx == "game") UIB_SetStack("pause", "");
-	else UIB_SetStack("home", "");
+	else UIB_SetStack("home", TouchStartup_nameNeeded() ? "welcome" : "");
 	if (ctx == "menu" && cvar("_touch_lan_ended"))
 	{
 		// the host of the LAN game we were in left or quit (touch_lan.c)
@@ -1305,6 +1405,7 @@ void UIB_Action(string node, string a, string payload)
 				UIB_Join(target);
 			return;
 		}
+		case "welcome.done": UIB_WelcomeDone(); return;
 		case "password.join":
 		{
 			string addr = UIB_VM("mp.joining");
@@ -1318,7 +1419,7 @@ void UIB_Action(string node, string a, string payload)
 		case "disconnect": localcmd("\ndisconnect\n"); return;
 		// disconnect alone does not stop a join the server has not answered yet
 		case "loading.cancel": localcmd("\ndisconnect\n_touch_cancel_join\n"); return;
-		case "credits.full": m_goto("Credits", true); return;
+		case "credits.full": m_goto("Credits", false); return;
 	}
 }
 
@@ -1441,6 +1542,7 @@ float UIB_Event(string ev, string node, string arg, string json)
 			UIB_ValueEvent(node, arg, json);
 			if (node == "mp/join/address" && arg != "") UIB_Join(arg);
 			if (node == "mp.password/form/pw") UIB_Action(node, "password.join", "");
+			if (node == "welcome/form/name") UIB_Action(node, "welcome.done", "");
 			return 1;
 		case "row": UIB_RowEvent(node, arg, json); return 1;
 		case "dismiss":

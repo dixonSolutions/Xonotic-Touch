@@ -35,6 +35,31 @@ nade or turn.
 #define TOUCHSPEC_OUT       3   // out of the round, following a player
 #define TOUCHSPEC_OUT_FREE  4   // out of the round, free-flying
 
+// The state from what the client knows of itself: its scoreboard frags (the
+// server marks a spectator -666 and a player out of the round -616, -669
+// since 0.8.6), whose eyes the view is in, and the health stat.
+//
+// It fails toward playing. With the view our own, a spectator is free-flying
+// and its health is the spectator marker too (negative) on every server
+// checked (0.8.2 to git, instagib and other mods); health above zero there
+// means we are alive in the game, whatever the scoreboard says. A player
+// shown spectator controls cannot play; a spectator shown play controls still
+// has MENU.
+static inline int TouchSpec_StateFrom(int frags, int me, int viewentity, int maxclients, int health)
+{
+	int out;
+	if (frags == -669)
+		frags = -616;
+	if (frags != -666 && frags != -616)
+		return TOUCHSPEC_NONE;
+	out = frags == -616;
+	if (viewentity != me && viewentity >= 1 && viewentity <= maxclients)
+		return out ? TOUCHSPEC_OUT : TOUCHSPEC_FOLLOWING;
+	if (health > 0)
+		return TOUCHSPEC_NONE;
+	return out ? TOUCHSPEC_OUT_FREE : TOUCHSPEC_OBSERVING;
+}
+
 // The spectator bar's parts, left to right.
 #define TOUCHSPEC_BAR_PREV  0
 #define TOUCHSPEC_BAR_MAIN  1

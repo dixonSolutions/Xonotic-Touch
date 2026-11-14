@@ -1,5 +1,6 @@
 #include "touch_startup_util.qh"
 #include "touch_menu_layout.qh"
+#include "touch_uib_api.qh"
 
 /** The launcher checks `.assets-ready` before exec and passes the answer in.
  *
@@ -49,13 +50,33 @@ bool TouchStartup_assetFetchDialog_shouldShow()
 	return fexists(TOUCH_ASSET_PROGRESS_FILE);
 }
 
+/** A player who has not picked a name yet: the welcome asks for one.
+ *
+ * Nobody plays as the engine's default ("player"): that is the name every
+ * new install shares. Once per install (touch_profile_done, set when the
+ * welcome is saved); an install that already has a name of its own never
+ * sees it. The language follows the system's (LanguageList_applySystemLanguage).
+ */
+bool TouchStartup_nameNeeded()
+{
+	if (cvar("touch_profile_done"))
+		return false;
+	string n = strtolower(strdecolorize(cvar_string("_cl_name")));
+	n = strreplace(" ", "", n);
+	return n == "" || n == "player" || n == "unnamedplayer"
+		|| n == strtolower(strdecolorize(cvar_defstring("_cl_name")));
+}
+
+/** The stock menu's welcome (dialog_firstrun.qc), where the stock menu is what
+ * the player sees: the web and Ubuntu Touch. The native interfaces (Android,
+ * Linux) and the bridge renderer show the bridge's welcome dialog instead
+ * (UIB_BuildWelcome in touch_uib_screens.qc).
+ */
 bool TouchStartup_userProfileNeeded()
 {
-	// Godnotic opens on the main menu: no welcome / profile popup. The name and
-	// the language are in Settings (User, Mobile > Privacy, Multiplayer >
-	// Profile); a player who never picks a name plays as the engine default,
-	// and the language follows the system's (LanguageList_applySystemLanguage).
-	return false;
+	if (cvar("menu_touch_uib") || (UIB_EngineHasBridge() && uib_native()))
+		return false;
+	return TouchStartup_nameNeeded();
 }
 
 /** Statistics and identity on an install nobody asked, without a popup.

@@ -46,6 +46,8 @@ Owner rules that the descriptions follow and renderers must not undo:
   card reopens it. The host leaving ends the game for everyone.
 - The map picker shows two full rows of tiles (picture and name) and scrolls sideways.
   One tap chooses a map, the Play button or a double tap starts it.
+- On first start (no name chosen yet) a `welcome` dialog over Home asks for the player's
+  name; its Continue is off until there is one, and it cannot be dismissed.
 - Mods is a top-level section of Settings.
 - The user-visible word is "Mods", never "plugins".
 - Data lists (the server list) are dense; action controls are large (48 dp minimum target).
@@ -380,7 +382,7 @@ Nothing else in a description can open a URL or a file.
 
 | Source | Rows | Notes |
 | --- | --- | --- |
-| `servers` | every server the engine knows: Internet, LAN, VPN | cells: `name`, `map`, `mode`, `players`, `max`, `bots`, `ping`, `lock`, `fav`, `address`, `net` (`internet`, `lan`, `vpn`), `version` |
+| `servers` | every server the engine knows: Internet, LAN, VPN | cells: `name`, `map`, `mode`, `players`, `max`, `bots`, `ping`, `lock`, `fav`, `address`, `net` (`internet`, `lan`, `vpn`), `version`, `stale` (bool: shown from the saved list, not answered yet this refresh; draw it dimmed). No row `image`: the list is text |
 | `servers.lan` | LAN and VPN rows only | as above (the Servers screen keeps source `servers` and its LAN checkbox filters it engine-side) |
 | `servers.fav` | favourites | as above |
 | `maps` | installed maps | `name`, `title`, `author`, `modes` (space-separated mode ids), `players` (recommended, string), `size` (`small`, `medium`, `large`); row `image` is the preview ref |
@@ -391,6 +393,33 @@ Nothing else in a description can open a URL or a file.
 | `campaign` | the campaign's levels up to the first locked one; keys are level indices | `n`, `title`, `map`, `mode`, `modeName`, `state` (`done`, `next`, `locked`), `locked` (bool); row `image` is the level's map picture |
 
 Row `key`s are stable for a row across revisions (a server's address, a map's name).
+
+**The server list is live** (docs/NETWORK.md, "The server list"). When the Servers screen
+opens, the rows of the last session are there in the first window, `stale: true`, and each
+turns `stale: false` in place as its server answers; new servers are inserted where the sort
+puts them and silent ones are removed. Every such change bumps the source's `rev` (a
+`source` notice at most 4 times a second), so a renderer just re-reads its window. While a
+finger is on the list the engine holds the source still (no rev, no reorder) and catches up
+on release: the QuakeC renderer needs nothing for that (the engine sees its fingers); a
+native renderer adds `"touching": true` to the list's `visible` event when a touch or a
+drag begins on the list and `"touching": false` when it ends (a fling after the release is
+not a touch). A renderer that keeps its scroll position by row `key` across a `rows` reply
+never moves a row under a finger.
+
+The Multiplayer card's subtitle binds to the engine value `cvar:_slist_summary`
+("212 servers · 37 players"; empty until something is known). It is filled from the saved
+list in the first frame of the session and live from the first refresh on. Its parts:
+`_slist_servers`, `_slist_players` (humans), `_slist_refreshing` (a refresh is running: a
+spinner), `_slist_saved` (1 while the numbers still include rows that have not answered:
+show them dimmed or with "last seen"). All read-only. `refreshhostcache(false)` every 10 s
+or more while the screen is shown keeps it live at a gentle rate; the engine throttles it.
+
+A failed join is published the same way for every renderer: `_join_fail_serial` counts up,
+`_join_fail_kind` (`timeout`, `busy`, `refused`, `network`, `dropped`, `files`, `error`),
+`_join_fail_text`, `_join_fail_detail` and `_join_fail_address` describe it, and the
+command `join_retry` joins that address again. A renderer shows a dialog with the two
+sentences, Retry and Close when the serial changes (the QuakeC touch menu already does,
+`dialog_touch_joinfail.qc`; set `touch_joinfail_dialog 0` when the renderer shows its own).
 
 ### 4.9 Bindings
 
@@ -633,7 +662,7 @@ All events are messages `{"uib":1, "t":"ev", "id":n, "ev":"<kind>", ...}`.
 | `shown` / `hidden` | `node` (screen id) | the screen became visible / was covered or left; the engine pauses work for hidden screens (server pings, previews) |
 | `back` | — | system back, Escape, swipe back |
 | `dismiss` | `node` (sheet, dialog or toast) | closed by tapping outside, swiping down, or a toast timing out |
-| `visible` | `node` (the list), `offset`, `limit` | the visible window of a list (lets the engine prioritise pings for those rows) |
+| `visible` | `node` (the list), `offset`, `limit`, optional `touching` (bool) | the visible window of a list (lets the engine prioritise pings for those rows); `touching` says a finger is on the list: its `servers` source holds still until `touching: false` |
 
 ### 6.1 Choosing and activating a row
 
@@ -840,6 +869,7 @@ Console commands (tests, debugging):
 | `uib_stats` | node count, rev, snapshot size, clients |
 | `uib_modpage <mod> <page> <json>` / `- ` | register or remove a mod page (as the Lua API does) |
 | `uib_testrows <source> <n> servers\|maps [seed]` | synthetic rows for stress tests |
+| `uib_input key <name>` / `text <s>` / `tap <id>` / `doubletap <id>` / `drag <id> <dx> <dy>` / `tapxy <fx> <fy>` | tests of the QuakeC renderer: scripted input through `Key_Event` and a test pointer, the way a key, a mouse and a finger go. `<id>` is a node id, or `<list id>#<row index>` for a row; the renderer reports where it is (`_uib_r_find` / `_uib_r_found`) |
 
 ## 10a. Writing a client
 
@@ -880,7 +910,7 @@ For the Rust core (and anyone else):
 | --- | --- |
 | `touch_uib_api.qh` | the builtins #1180..#1222 (`uib_begin`, `uib_node`, `uib_s`/`uib_f`/`uib_b`/`uib_j`/`uib_push`, `uib_nav`, `uib_window` ...). Guard: `UIB_EngineHasBridge()` (cvar `uib_version`) |
 | `touch_uib_build.qc` | builder helpers: `UIB_Screen`, `UIB_Open`/`UIB_Close`, `UIB_A` (actions), `UIB_Switch`, `UIB_Slider`, `UIB_Choice` ...; view-model values (`vm:` binds) kept in `_uib_*` cvars |
-| `touch_uib_screens.qc` | Home (banner, three cards), Singleplayer / Create (screen `sp`; LAN, slots, Port, Password only when opened from Multiplayer), Campaign, map details, Multiplayer (`mp`), password dialog, the host's LAN popup (`lan.host`), pause (hosting card), loading, Credits, quit dialog; navigation; `UIB_Event`, the menu's answer to every renderer event |
+| `touch_uib_screens.qc` | Home (banner, three cards), Singleplayer / Create (screen `sp`; LAN, slots, Port, Password only when opened from Multiplayer), Campaign, map details, Multiplayer (`mp`), password dialog, the first-start welcome (`welcome`: the player's name, not dismissable, back does nothing), the host's LAN popup (`lan.host`), pause (hosting card), loading, Credits, quit dialog; navigation; `UIB_Event`, the menu's answer to every renderer event |
 | `touch_uib_settings.qc` | Settings (split, vertical tabs, horizontal sub-tabs) and Mods (lists, detail with permissions, install from link) |
 | `touch_uib_render.qc` | the QuakeC renderer (web, and the fallback everywhere) |
 
@@ -890,8 +920,21 @@ changes one value sends a diff of one node. Rebuilding a 253-node screen with on
 changed value costs about 1.8 ms in the store (test build with sanitizers) and sends a
 163-byte diff.
 
-Cvars: `menu_touch_uib` (0/1, archived): draw the menu from the descriptions with the
-QuakeC renderer. `uib_debug` (1 logs messages, 2 their text). `_uib_r_debug` (renderer
+Cvars: `menu_touch_uib` (archived, **default 1**): wherever no native renderer shows the
+menu (the web build, Ubuntu Touch, a desktop without the app, every fallback), the QuakeC
+renderer draws the described screens. `0` is the classic touch menu everywhere: the escape
+hatch, also the switch Settings > Menu > New menu.
+
+**Classic dialogs.** The bridge renderer draws in place of the classic menu's root, so the
+old launcher never shows. What the bridge has no screen for is opened as a classic dialog
+over it and closes back to it: Settings > Menu > Classic menu lists Advanced settings,
+Demos / screenshots / music and Player model; Credits has the full credits. The rule
+(`RB_ClassicUp`): a dialog opened through `m_goto` (one hook line there calls
+`TouchUIB_Classic`; this is also every `menu_cmd directmenu <name>` from the engine or the
+game), anything the classic menu puts up by itself out of a match (first run, the data
+download, a password prompt), and on a desktop a window zoomed out of the Nexposee
+overview, is drawn and given input by the classic menu; when the classic root is back or
+the menu hides, the bridge renderer draws again. `uib_debug` (1 logs messages, 2 their text). `_uib_r_debug` (renderer
 state in `_uib_r_state`; 2 prints it twice a second; 3 every frame with its cost).
 Test hooks: `_uib_debug_open <screen>` opens a modal, `_uib_debug_toast <text>` shows a
 toast, `_uib_debug_servers` / `_uib_debug_maps` point the Servers list / map picker at
@@ -916,6 +959,15 @@ a synthetic source made by `uib_testrows <source> <n> servers|maps`.
   index and shifts the scroll when rows are inserted above it. Images: at most one new
   picture per frame and none while a fling is fast; small boxes draw a cached
   thumbnail (`uib_thumb`, PNG in `<gamedir>/uib-cache/`).
+- **Keyboard and gamepad**: Left/Right stay in a row (a strip of cards, a row of
+  buttons), Up/Down go to the nearest control of another row, Tab walks everything;
+  the first arrow lands on the page's first control. A list takes the focus and has a
+  row cursor: the arrows move it (and choose the row where the list has a selection),
+  Enter / Space / A activates the cursor's row, Escape / Backspace / B is back. The
+  d-pad and the stick-as-keys do what the arrows do.
+- **Short pages** (a phone on its side, under 330 dp between header and action bar): a
+  section that is one strip of cards (the game modes) is drawn as one row of chips
+  without its header, so both rows of the map picker are in view at scroll 0.
 - **Input**: a press is a tap until it moves `TOUCH_SHEET_SLOP_DP`; a vertical drag
   scrolls the region under it (never activates), a sideways drag on a slider moves it,
   on a carousel or tab strip scrolls it; release flings with friction; a press while a
@@ -1030,6 +1082,15 @@ private network namespace where the system allows one; no master servers or LAN 
 any case, so the server list is empty) and one folded diff per event in the `seq-*`
 fixtures, since how many frames the engine took to describe a screen is timing, not
 content. Three runs in a row give identical files.
+
+`tests/uibridge/input_test.py` runs a headless engine with the default configuration and
+drives the QuakeC renderer with `uib_input` (17 checks: the bridge menu is the default
+menu, a tap opens a screen, a drag over the map picker chooses nothing, one tap chooses a
+map, Escape, typing an address and Enter, arrow keys into the map picker, a classic
+dialog and back, a double tap starts the match, Pause, Leave); it passes at 1280x720
+(mouse), 1920x1200 and 2340x1080 (touch). `tests/uibridge/web_menu.mjs` does the same in
+the web build in headless Chrome over CDP with real mouse or touch events (10 checks, at
+1280x720 and a 851x393 phone viewport).
 
 `scripts/test-uibridge.sh` checks the schema is current, validates every fixture, runs
 the store's property test (random rebuilds; applying all diffs to the first snapshot

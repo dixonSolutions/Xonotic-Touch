@@ -22,13 +22,20 @@ On the first main-menu frame, dialogs open **in order**; each step is skipped wh
 | 2 | Touch controls (no dialog) | `vid_touchscreen` and `touch_setup_done` is `0`: applied silently, see below |
 | 3 | Language | Once per install: the menu restarts in the system's language |
 | 4 | Privacy defaults (no dialog) | Once per install, see below |
+| 5 | Welcome: the player's name | Until a name is saved (`TouchStartup_nameNeeded`, `touch_profile_done`) |
 | — | Terms of Service | Never (`TouchStartup_skipTermsOfService`) |
-| — | Profile setup (`FirstRun`) | Never (`TouchStartup_userProfileNeeded` returns false) |
 
-After the asset download the game opens on the main menu: there is no terms popup and
-no welcome/profile popup. The player name is in Settings → Mobile → Privacy (and
-Multiplayer → Profile), the language in Settings → User; an unnamed player plays under
-the engine default.
+After the asset download the game opens on Home with the **welcome** dialog over it:
+the name other players see, with **Continue** off until there is one. Nobody plays
+under the engine's shared default ("player"). It cannot be dismissed; saving it sets
+`_cl_name` and `touch_profile_done 1` and writes `config.cfg`, so it shows once per
+install. An install that already has a name of its own never sees it. Settings →
+Player changes the name later, Settings → User the language.
+
+The welcome is a UI bridge dialog (`UIB_BuildWelcome` in `touch_uib_screens.qc`), so
+the Android and Linux interfaces and the web's QuakeC renderer all draw it. With the
+new menu turned off (`menu_touch_uib 0`) the stock menu's own welcome
+(`dialog_firstrun.qc`, `TouchStartup_userProfileNeeded`) asks instead.
 
 Nobody has accepted Xonotic's terms, so `TouchStartup_applyPrivacyDefaults()`
 (`touch_startup_util.qc`), once per install (`touch_privacy_defaults_done`), sets

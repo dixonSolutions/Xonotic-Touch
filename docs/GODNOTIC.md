@@ -143,7 +143,7 @@ a fuzz harness for the channel parser, native executable mods (out of scope).
 
 ## Privacy
 
-No first-run dialogs. A fresh install shares nothing with XonStat (the three
+One first-run dialog: the player's name (docs/SETUP.md). A fresh install shares nothing with XonStat (the three
 identity and statistics settings start off; an install that had opted in keeps its
 choice); Settings > Mobile > Privacy has the switches and the terms. The game still
 fetches Xonotic's `checkupdate.txt` at each start, which also supplies the banned

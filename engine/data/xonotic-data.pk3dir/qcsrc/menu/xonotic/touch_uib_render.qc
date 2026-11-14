@@ -2,6 +2,7 @@
 #include "touch_uib_render.qh"
 #include "touch_menu_scale.qh"
 #include "touch_menu_sheet.qh"
+#include "../item/nexposee.qh"
 
 // ======================================================================== palette
 
@@ -67,6 +68,9 @@ int hs_n;
 
 // virtual lists
 const int RB_LISTS = 6;
+float rb_short;             // a very short page (a phone on its side): strips become chips
+float lc_band[RB_LISTS];    // the name band under a tile's picture
+float lc_cur[RB_LISTS];     // keyboard / gamepad: the row the cursor is on
 float lc_rows[RB_LISTS];    // > 0: a card list of this many rows that scrolls sideways
 float lc_vieww[RB_LISTS];   // ... and the width it is seen through
 string lc_id[RB_LISTS];
@@ -360,7 +364,16 @@ int RB_ListFor(string id)
 
 // ======================================================================== layout
 
+// Gamepad keys the QuakeC keycode list does not name (engine keys.h): the d-pad,
+// the stick as keys, A and B.
+const float RB_K_PAD_UP = 816, RB_K_PAD_DOWN = 817, RB_K_PAD_LEFT = 818, RB_K_PAD_RIGHT = 819;
+const float RB_K_PAD_A = 826, RB_K_PAD_B = 827;
+const float RB_K_STICK_UP = 840, RB_K_STICK_DOWN = 841, RB_K_STICK_LEFT = 842, RB_K_STICK_RIGHT = 843;
+
 float RB_LayoutNode(string id, float x, float y, float w, float region);
+vector rb_cell_o, rb_cell_s;
+void RB_ListCell(entity e, float r);
+int RB_NextFocus(int from, float dir);
 
 float RB_LayoutChildren(string id, float x, float y, float w, float region, float gap)
 {
@@ -413,6 +426,7 @@ void RB_SetAction(entity e, string node, string prop)
 	if (e.rb_icon == "") strcpy(e.rb_icon, uib_get(node, strcat(prop, ".icon")));
 	string st = uib_get(node, strcat(prop, ".style"));
 	if (st != "") e.rb_style = RB_StyleOf(st);
+	if (uib_get(node, strcat(prop, ".enabled")) == "0") e.rb_dis = 1; // an action can be off (welcome: no name yet)
 	strcpy(e.rb_val, prop);
 	e.rb_focus = 1;
 }
@@ -506,16 +520,33 @@ float RB_LayoutGrid(string id, float x, float y, float w, float region)
 		bool compact = rg_s[0].y < D(540);
 		if (compact) { cw = min(cw, D(116)); ih = cw * 0.5; }
 		float h = 0;
+		float xx = x;
 		for (int i = 0; i < n; ++i)
 		{
-			float hh = RB_LayoutCard(uib_child(id, i), x + i * (cw + gap), y, cw, region, ih);
+			string cc = uib_child(id, i);
+			if (rb_short)
+			{
+				// chips: the name only, one row
+				drawfont = FONT_USER + 3;
+				cw = RB_TextW(uib_get(cc, "title"), D(16)) + D(34);
+				drawfont = FONT_USER;
+			}
+			float hh = RB_LayoutCard(cc, xx, y, cw, region, ih);
 			if (rb_n)
 			{
 				entity ce = rb_item[rb_n - 1];
 				ce.rb_hs = hs;
 				if (compact) { strcpy(ce.rb_t2, ""); ce.rb_s_y = ih + D(38); hh = ih + D(38); }
+				if (rb_short) { strcpy(ce.rb_img, ""); strcpy(ce.rb_icon, ""); ce.rb_size = 0; ce.rb_s_y = D(40); hh = D(40); }
 			}
 			h = max(h, hh);
+			xx += cw + gap;
+		}
+		if (rb_short)
+		{
+			hs_max[hs] = max(0, xx - gap - x - w);
+			hs_scroll[hs] = bound(0, hs_scroll[hs], hs_max[hs]);
+			return h;
 		}
 		hs_max[hs] = max(0, n * (cw + gap) - gap - w);
 		hs_scroll[hs] = bound(0, hs_scroll[hs], hs_max[hs]);
@@ -773,11 +804,14 @@ float RB_LayoutList(string id, float x, float y, float w, float region)
 		// list's top when that is enough, else from the whole view (the section
 		// header stays stuck above it while the page scrolls the list into view).
 		int rows = bound(1, stof(uib_get(id, "rows")), 4);
-		float gap = D(10), band = D(30), bar = D(10);
-		float th = (rg_s[0].y - y - D(8) - bar - gap * (rows - 1)) / rows;
-		if (th < D(84))
+		float gap = D(10), bar = D(10);
+		float band = D(30);
+		if (rb_short) band = D(24);
+		lc_band[k] = band;
+		float th = (rg_s[0].y - y - D(4) - bar - gap * (rows - 1)) / rows;
+		if (th < D(rb_short ? 58 : 84))
 			th = (rg_s[0].y - D(56) - D(8) - bar - gap * (rows - 1)) / rows;
-		th = bound(D(64), th, D(176));
+		th = bound(D(56), th, D(176));
 		float cw = (uib_get(id, "aspectItem") == "4:3") ? (th - band) * 4 / 3 : (th - band) * 16 / 9;
 		int hs = RB_HsFor(id);
 		float cols = ceil(max(1, count) / rows);
@@ -792,7 +826,7 @@ float RB_LayoutList(string id, float x, float y, float w, float region)
 		hs_max[hs] = max(0, totalw - w);
 		hs_scroll[hs] = bound(0, hs_scroll[hs], hs_max[hs]);
 		e = RB_Item("cards", id, region, eX * x + eY * y, eX * max(w, totalw) + eY * h);
-		if (e) { e.rb_list = k; e.rb_hs = hs; }
+		if (e) { e.rb_list = k; e.rb_hs = hs; e.rb_focus = (count > 0); }
 		return h;
 	}
 	if (uib_get(id, "display") == "cards")
@@ -809,7 +843,7 @@ float RB_LayoutList(string id, float x, float y, float w, float region)
 		lc_rowh[k] = ch + gap;
 		float h = (count > 0) ? ceil(count / cols) * (ch + gap) - gap : D(120);
 		e = RB_Item("cards", id, region, eX * x + eY * y, eX * w + eY * h);
-		if (e) e.rb_list = k;
+		if (e) { e.rb_list = k; e.rb_focus = (count > 0); }
 		return h;
 	}
 	float rowh = D((uib_get(id, "rowHeight") == "compact") ? 40 : 52);
@@ -818,7 +852,7 @@ float RB_LayoutList(string id, float x, float y, float w, float region)
 	float head = (uib_get(id, "display") == "table") ? D(34) : 0;
 	float h = head + ((count > 0) ? count * rowh : D(140));
 	e = RB_Item("table", id, region, eX * x + eY * y, eX * w + eY * h);
-	if (e) { e.rb_list = k; e.rb_size = head; }
+	if (e) { e.rb_list = k; e.rb_size = head; e.rb_focus = (count > 0); }
 	return h;
 }
 
@@ -869,17 +903,21 @@ float RB_LayoutNode(string id, float x, float y, float w, float region)
 			float y0 = y;
 			string title = uib_get(id, "title");
 			entity hd = NULL;
+			// a phone on its side: a section that is one strip of cards (the game
+			// modes) is just that strip, as chips, so what follows keeps its room
+			if (rb_short && uib_count(id) == 1 && uib_type(uib_child(id, 0)) == "grid" && uib_get(uib_child(id, 0), "scroll") == "horizontal")
+				title = "";
 			if (title != "")
 			{
 				hd = RB_Item("sechead", id, region, eX * x + eY * y, eX * w + eY * D(40));
 				if (hd)
 				{
 					strcpy(hd.rb_t1, title);
-					strcpy(hd.rb_t2, uib_get(id, "subtitle"));
+					strcpy(hd.rb_t2, rb_short ? "" : uib_get(id, "subtitle"));
 					hd.rb_sel = uib_get(id, "sticky") == "1";
 				}
-				y += D(40);
-				if (uib_get(id, "subtitle") != "") y += D(8);
+				y += rb_short ? D(34) : D(40);
+				if (!rb_short && uib_get(id, "subtitle") != "") y += D(8);
 			}
 			y += RB_LayoutChildren(id, x, y, w, region, D(10));
 			if (uib_get(id, "footer") != "")
@@ -1203,6 +1241,7 @@ void RB_Layout()
 	float pad = D(rb_touch ? 20 : 28);
 	float hdr = D(58);
 	rb_narrow = W < D(600);
+	rb_short = (H - hdr - D(66)) < D(330);
 	uib_narrow = rb_narrow;
 	for (int r = 0; r < RB_REGIONS; ++r) { rg_o[r] = '0 0 0'; rg_s[r] = '0 0 0'; rg_content[r] = 0; rg_max[r] = 0; }
 	string sc = rb_top;
@@ -1338,7 +1377,7 @@ void RB_Layout()
 	}
 	rg_o[0] = eY * top;
 	rg_s[0] = eX * W + eY * (bottom - top);
-	float y = D(14);
+	float y = rb_short ? D(8) : D(14);
 	if (split != "")
 	{
 		y = RB_LayoutSplit(split, top, bottom, cx, cw);
@@ -1779,7 +1818,7 @@ void RB_DrawCardsSideways(entity e, vector p, string sel)
 {
 	int k = e.rb_list;
 	int rows = lc_rows[k];
-	float ch = lc_cardh[k], cw = lc_cardw[k], gap = D(10), band = D(30);
+	float ch = lc_cardh[k], cw = lc_cardw[k], gap = D(10), band = lc_band[k];
 	float W = rb_scr.x;
 	float c0 = max(0, floor((0 - p.x) / (cw + gap))), c1 = ceil((W - p.x) / (cw + gap));
 	float first = c0 * rows, last = min(lc_total[k], (c1 + 1) * rows);
@@ -1810,7 +1849,7 @@ void RB_DrawCardsSideways(entity e, vector p, string sel)
 		string title = RB_Cell(row, lc_cols[k], "title");
 		if (title == "") title = RB_Cell(row, lc_cols[k], "name");
 		drawfont = FONT_USER + 3;
-		RB_TextFit(co + eX * D(10) + eY * (ch - band + D(7)), title, D(14), cw - D(20) - (issel ? D(24) : 0), (issel ? RB_EMBER : RB_TEXT), rb_a);
+		RB_TextFit(co + eX * D(10) + eY * (ch - band + (rb_short ? D(5) : D(7))), title, (rb_short ? D(12) : D(14)), cw - D(20) - (issel ? D(24) : 0), (issel ? RB_EMBER : RB_TEXT), rb_a);
 		drawfont = FONT_USER;
 		if (issel)
 		{
@@ -1981,7 +2020,7 @@ void RB_DrawItem(entity e, int idx)
 				RB_Card(bo, eX * bw + eY * D(22), D(11), '0.3 0.2 0.05', a, RB_WARN, 0.6 * a);
 				RB_Text(bo + eX * D(8) + eY * D(5), bt, D(12), RB_WARN, a);
 			}
-			if (e.rb_sel)
+			if (e.rb_sel && s.y > D(60))   // a chip is marked by its outline alone
 			{
 				RB_RRect(p + eX * (s.x - D(36)) + eY * D(10), eX * D(26) + eY * D(26), D(13), RB_EMBER, a);
 				RB_TextCenter(p + eX * (s.x - D(36)) + eY * D(10), eX * D(26) + eY * D(26), "✓", D(16), RB_INK, a);
@@ -2182,6 +2221,12 @@ void RB_DrawItem(entity e, int idx)
 			RB_TextFit(p + eY * D(40), e.rb_t2, D(12), s.x, RB_MUTED, a);
 			break;
 		}
+	}
+	if (idx == rb_focusi && e.rb_list >= 0 && lc_total[e.rb_list] > 0)
+	{
+		// the keyboard cursor on a row of the focused list
+		RB_ListCell(e, bound(0, lc_cur[e.rb_list], lc_total[e.rb_list] - 1));
+		RB_Card(p + rb_cell_o - '2 2 0', rb_cell_s + '4 4 0', D(12), RB_BLUE, 0, RB_TEXT, 0.95 * a);
 	}
 	if (idx == rb_focusi && e.rb_kind != "table" && e.rb_kind != "cards")
 	{
@@ -2502,6 +2547,7 @@ void RB_TableTap(entity e, vector p, vector m)
 	float r = floor((m.y - p.y - head) / lc_rowh[kk]);
 	string row = RB_Row(kk, r);
 	if (row == "") return;
+	lc_cur[kk] = r;
 	tokenizebyseparator(row, "\t");
 	RB_SendRowTap(e.rb_id, argv(0));
 }
@@ -2517,7 +2563,7 @@ void RB_Activate(int idx, vector m)
 	{
 		case "back": RB_Send("{\"ev\":\"back\"}"); return;
 		case "button": case "card": case "hero":
-			if (e.rb_val != "") RB_Invoke(e.rb_id, e.rb_val);
+			if (e.rb_val != "" && !e.rb_dis) RB_Invoke(e.rb_id, e.rb_val);
 			return;
 		case "switch": case "check":
 			RB_SendValue(e.rb_id, e.rb_sel ? "false" : "true");
@@ -2583,6 +2629,7 @@ void RB_Activate(int idx, vector m)
 				if (hr < 0 || hr >= lc_rows[kk] || m.x - p.x - hc * (lc_cardw[kk] + D(10)) > lc_cardw[kk] || m.y - p.y - hr * lc_rowh[kk] > lc_cardh[kk]) return;
 				string hrow = RB_Row(kk, hc * lc_rows[kk] + hr);
 				if (hrow == "") return;
+				lc_cur[kk] = hc * lc_rows[kk] + hr;
 				tokenizebyseparator(hrow, "\t");
 				RB_SendRowTap(e.rb_id, argv(0));
 				return;
@@ -2766,6 +2813,125 @@ void RB_Physics(float dt)
 		}
 }
 
+// The rect of row r of a list item, relative to the item (as the draw code lays it out).
+void RB_ListCell(entity e, float r)
+{
+	int k = e.rb_list;
+	if (lc_rows[k] > 0)
+	{
+		rb_cell_o = eX * floor(r / lc_rows[k]) * (lc_cardw[k] + D(10)) + eY * (r % lc_rows[k]) * lc_rowh[k];
+		rb_cell_s = eX * lc_cardw[k] + eY * lc_cardh[k];
+	}
+	else if (e.rb_kind == "cards")
+	{
+		rb_cell_o = eX * (r % lc_percol[k]) * (lc_cardw[k] + D(12)) + eY * floor(r / lc_percol[k]) * lc_rowh[k];
+		rb_cell_s = eX * lc_cardw[k] + eY * lc_cardh[k];
+	}
+	else
+	{
+		rb_cell_o = eY * (e.rb_size + r * lc_rowh[k]);
+		rb_cell_s = eX * e.rb_s.x + eY * lc_rowh[k];
+	}
+}
+
+// Arrow keys between controls: Left and Right stay in the row (a strip of
+// cards, a row of buttons), Up and Down go to the nearest control of another
+// row, so a strip of ten cards is one step, not ten. Tab walks everything.
+int RB_FocusStep(int from, float key)
+{
+	if (from < 0 || from >= rb_n)
+		return RB_NextFocus(-1, (key == K_UPARROW || key == K_LEFTARROW) ? -1 : 1);
+	entity c = rb_item[from];
+	float dir = (key == K_UPARROW || key == K_LEFTARROW) ? -1 : 1;
+	bool across = (key == K_LEFTARROW || key == K_RIGHTARROW);
+	for (int i = from + dir; i >= 0 && i < rb_n; i += dir)
+	{
+		entity e = rb_item[i];
+		if (!e.rb_focus || (rb_modal != "" && e.rb_region != 6))
+			continue;
+		bool samerow = (e.rb_region == c.rb_region && fabs(e.rb_o.y - c.rb_o.y) < D(8));
+		if (across)
+			return samerow ? i : from;
+		if (!samerow)
+			return i;
+	}
+	return from;
+}
+
+// Keyboard and gamepad in a focused list: the arrows move a cursor over the rows
+// (and choose the row, where the list tells choosing from activating); at the
+// list's edge the focus moves on. True when the key was the list's.
+bool RB_ListKey(entity e, float key)
+{
+	int k = e.rb_list;
+	float n = lc_total[k];
+	if (n <= 0) return false;
+	float cur = bound(0, lc_cur[k], n - 1);
+	float across = 1, down = 1;   // what one step sideways / down is, in rows
+	if (lc_rows[k] > 0) { across = lc_rows[k]; down = 1; }
+	else if (e.rb_kind == "cards") { across = 1; down = lc_percol[k]; }
+	else across = 0;
+	switch (key)
+	{
+		case K_RIGHTARROW: if (!across) return false; cur += across; break;
+		case K_LEFTARROW: if (!across) return false; cur -= across; break;
+		case K_DOWNARROW:
+			if (lc_rows[k] > 0 && (cur % lc_rows[k]) == lc_rows[k] - 1) return false;
+			cur += down;
+			break;
+		case K_UPARROW:
+			if (lc_rows[k] > 0 && (cur % lc_rows[k]) == 0) return false;
+			cur -= down;
+			break;
+		default: return false;
+	}
+	if (cur < 0 || cur >= n) return false;   // off the list: the focus moves on
+	lc_cur[k] = cur;
+	// bring the row into view
+	RB_ListCell(e, cur);
+	if (e.rb_hs >= 0)
+	{
+		float vx = rb_cell_o.x - hs_scroll[e.rb_hs];
+		if (vx < 0) hs_scroll[e.rb_hs] = rb_cell_o.x;
+		else if (vx + rb_cell_s.x > lc_vieww[k]) hs_scroll[e.rb_hs] = rb_cell_o.x + rb_cell_s.x - lc_vieww[k];
+		hs_scroll[e.rb_hs] = bound(0, hs_scroll[e.rb_hs], hs_max[e.rb_hs]);
+	}
+	int r = e.rb_region;
+	float vy = e.rb_o.y + rb_cell_o.y - rg_scroll[r];
+	if (vy < D(40)) rg_scroll[r] = e.rb_o.y + rb_cell_o.y - D(48);
+	else if (vy + rb_cell_s.y > rg_s[r].y) rg_scroll[r] = e.rb_o.y + rb_cell_o.y + rb_cell_s.y - rg_s[r].y + D(8);
+	rg_scroll[r] = bound(0, rg_scroll[r], rg_max[r]);
+	// moving the cursor chooses the row
+	string selmode = uib_get(e.rb_id, "selection");
+	if (selmode == "single" || selmode == "multi")
+	{
+		RB_ListFetch(k, max(0, cur - 20), 60);
+		string row = RB_Row(k, cur);
+		if (row != "")
+		{
+			tokenizebyseparator(row, "\t");
+			RB_Send(sprintf("{\"ev\":\"row\",\"node\":%s,\"row\":%s,\"kind\":\"select\"}", uib_qv(e.rb_id), uib_qv(argv(0))));
+		}
+	}
+	return true;
+}
+
+// Enter / A on a focused list: the cursor's row is activated (play the map, join the server).
+void RB_ListEnter(entity e)
+{
+	int k = e.rb_list;
+	float cur = bound(0, lc_cur[k], max(0, lc_total[k] - 1));
+	RB_ListFetch(k, max(0, cur - 20), 60);
+	string row = RB_Row(k, cur);
+	if (row == "") return;
+	tokenizebyseparator(row, "\t");
+	string key = argv(0);
+	string selmode = uib_get(e.rb_id, "selection");
+	// the menu takes an activate on a row that is not the chosen one as choosing it
+	RB_Send(sprintf("{\"ev\":\"row\",\"node\":%s,\"row\":%s,\"kind\":\"%s\"}", uib_qv(e.rb_id), uib_qv(key),
+		((selmode == "single" || selmode == "multi") && uib_get(e.rb_id, "selected.0") != key) ? "select" : "activate"));
+}
+
 void RB_EnsureVisible(int i)
 {
 	if (i < 0) return;
@@ -2794,6 +2960,71 @@ string RB_DebugState()
 	return strcat(a, b, c);
 }
 
+// A stock dialog over the bridge menu. The bridge renderer draws in place of the
+// stock menu's root; whatever else the stock menu opens is the stock menu's to
+// draw and to take input for: a dialog the bridge has no screen for (Advanced
+// settings, Media, the full credits; opened through m_goto, where menu.qc calls
+// TouchUIB_Classic), and anything the stock menu puts up by itself out of a
+// match (the first-run dialog, the data download, a password prompt from the
+// engine). When that dialog closes and the stock root is back, or the menu
+// hides, the bridge menu is back, so the old launcher never shows.
+float rb_classic;        // 1: a stock dialog is up
+float rb_classic_seen;   // ... and the stock menu has shown it
+float rb_classic_t;
+
+void TouchUIB_Classic(string itemname)
+{
+	if (itemname == "" || itemname == "nexposee")
+		return;
+	if (!UIB_EngineHasBridge() || !cvar("menu_touch_uib") || uib_native())
+		return;
+	rb_classic = 1;
+	rb_classic_seen = 0;
+	rb_classic_t = time;
+}
+
+bool RB_ClassicUp()
+{
+	bool root = !main || !main.focusedChild || main.focusedChild == main.mainNexposee;
+	// the desktop root is the Nexposee overview: a window zoomed out of it
+	// (state 1, 2 or 3; 0 and -1 are the overview) is a dialog like any other
+	if (root && main && main.mainNexposee && main.mainNexposee.animationState > 0)
+		root = false;
+	bool ingame = (gamestatus & (GAME_CONNECTED | GAME_ISSERVER)) != 0;
+	if (!rb_classic)
+	{
+		// out of a match the stock menu opened something by itself
+		if (root || ingame || !Menu_Active)
+			return false;
+		rb_classic = 1;
+		rb_classic_seen = 1;
+		rb_classic_t = time;
+		return true;
+	}
+	if (!root)
+		rb_classic_seen = 1;
+	// over: the stock root is back, the menu hid, or the dialog never came up
+	if ((root && (rb_classic_seen || time - rb_classic_t > 1)) || (!Menu_Active && rb_classic_seen))
+	{
+		rb_classic = 0;
+		if (!ingame && Menu_Active && main && main.mainNexposee && main.focusedChild != main.mainNexposee)
+			m_activate_window(main.mainNexposee);
+		return false;
+	}
+	return true;
+}
+
+// tests: uib_input puts the pointer in _uib_r_pointer ("fx fy", fractions of the window)
+bool RB_TestPointer()
+{
+	string tp = cvar_string("_uib_r_pointer");
+	if (tp == "")
+		return false;
+	tokenize_console(tp);
+	rb_mouse = eX * stof(argv(0)) * rb_scr.x + eY * stof(argv(1)) * rb_scr.y;
+	return true;
+}
+
 bool TouchUIB_Draw(float alpha)
 {
 	if (!UIB_EngineHasBridge())
@@ -2809,6 +3040,8 @@ bool TouchUIB_Draw(float alpha)
 		rb_tick_next = time + 0.1;
 		UIB_Tick();
 	}
+	if (RB_ClassicUp())
+		return false;   // the stock menu draws its dialog
 	if (alpha <= 0)
 		return true;
 	float rb_t_start = uib_gettime(2);  // GETTIME_REALTIME: real time now, not the frame start
@@ -2853,7 +3086,14 @@ bool TouchUIB_Draw(float alpha)
 	RB_Physics(dt);
 	rb_trans = min(1, rb_trans + dt / 0.18);
 	vector m = getmousepos();
-	if (!cvar("menu_mouse_absolute"))
+	vector mprev = rb_mouse;
+	bool testptr = RB_TestPointer();   // tests (uib_input): the pointer is where the test put it
+	if (testptr)
+	{
+		m = rb_mouse;
+		rb_mouse = mprev;
+	}
+	else if (!cvar("menu_mouse_absolute"))
 		m = rb_mouse + m;
 	m.x = bound(0, m.x, rb_scr.x);
 	m.y = bound(0, m.y, rb_scr.y);
@@ -2905,6 +3145,45 @@ bool TouchUIB_Draw(float alpha)
 		RB_RRect(rb_mouse - eX * D(3) - eY * D(3), eX * D(6) + eY * D(6), D(3), RB_BG, alpha);
 	}
 	drawresetcliparea();
+	string findid = cvar_string("_uib_r_find");
+	if (findid != "")
+	{
+		// tests (uib_input): where the item of a node is on screen; a row of a
+		// list is asked for as <list id>#<row index>
+		string found = "";
+		int hash = strstrofs(findid, "#", 0);
+		string fid = (hash >= 0) ? substring(findid, 0, hash) : findid;
+		float frow = (hash >= 0) ? stof(substring(findid, hash + 1, -1)) : -1;
+		for (int i = 0; i < rb_n && found == ""; ++i)
+		{
+			entity fe = rb_item[i];
+			if (fe.rb_id != fid) continue;
+			if (!fe.rb_focus && fe.rb_list < 0) continue;   // only what can be pressed
+			vector fp = RB_ItemPos(fe);
+			vector fs = fe.rb_s;
+			if (frow >= 0 && fe.rb_list >= 0)
+			{
+				int fk = fe.rb_list;
+				if (lc_rows[fk] > 0)
+				{
+					fp = fp + eX * floor(frow / lc_rows[fk]) * (lc_cardw[fk] + D(10)) + eY * (frow % lc_rows[fk]) * lc_rowh[fk];
+					fs = eX * lc_cardw[fk] + eY * lc_cardh[fk];
+				}
+				else if (fe.rb_kind == "cards")
+				{
+					fp = fp + eX * (frow % lc_percol[fk]) * (lc_cardw[fk] + D(12)) + eY * floor(frow / lc_percol[fk]) * lc_rowh[fk];
+					fs = eX * lc_cardw[fk] + eY * lc_cardh[fk];
+				}
+				else
+				{
+					fp = fp + eY * (fe.rb_size + frow * lc_rowh[fk]);
+					fs = eX * fs.x + eY * lc_rowh[fk];
+				}
+			}
+			found = sprintf("%f %f %f %f", fp.x / rb_scr.x, fp.y / rb_scr.y, fs.x / rb_scr.x, fs.y / rb_scr.y);
+		}
+		if (cvar_string("_uib_r_found") != found) cvar_set("_uib_r_found", found);
+	}
 	if (cvar("_uib_r_debug"))
 	{
 		float c = uib_gettime(2) - rb_t_start;
@@ -2924,6 +3203,10 @@ bool TouchUIB_Draw(float alpha)
 
 int RB_NextFocus(int from, float dir)
 {
+	if (from < 0 && dir > 0 && rb_modal == "")
+		for (int j = 0; j < rb_n; ++j)
+			if (rb_item[j].rb_focus && rb_item[j].rb_region == 0)
+				return j;
 	int i = from;
 	for (int k = 0; k < rb_n; ++k)
 	{
@@ -2938,7 +3221,7 @@ int RB_NextFocus(int from, float dir)
 
 bool TouchUIB_KeyDown(float key, float ascii)
 {
-	if (!UIB_EngineHasBridge() || !cvar("menu_touch_uib") || uib_native())
+	if (!UIB_EngineHasBridge() || !cvar("menu_touch_uib") || uib_native() || rb_classic)
 		return false;
 	if (rb_keycap_id != "")
 	{
@@ -2949,7 +3232,8 @@ bool TouchUIB_KeyDown(float key, float ascii)
 	}
 	if (key == K_MOUSE1 || key == K_MOUSE2)
 	{
-		if (cvar("menu_mouse_absolute")) rb_mouse = getmousepos();
+		if (RB_TestPointer()) { }
+		else if (cvar("menu_mouse_absolute")) rb_mouse = getmousepos();
 		RB_Press(rb_mouse);
 		return true;
 	}
@@ -2992,22 +3276,31 @@ bool TouchUIB_KeyDown(float key, float ascii)
 	}
 	switch (key)
 	{
-		case K_ESCAPE: case K_BACKSPACE: case K_JOY2:
+		case K_ESCAPE: case K_BACKSPACE: case K_JOY2: case RB_K_PAD_B:
 			RB_Send("{\"ev\":\"back\"}");
 			return true;
-		case K_DOWNARROW: case K_TAB: case K_RIGHTARROW:
-			rb_focusi = RB_NextFocus(rb_focusi, 1);
+		case K_DOWNARROW: case K_TAB: case K_RIGHTARROW: case RB_K_PAD_DOWN: case RB_K_PAD_RIGHT: case RB_K_STICK_DOWN: case RB_K_STICK_RIGHT:
+			if (key == RB_K_PAD_DOWN || key == RB_K_STICK_DOWN) key = K_DOWNARROW;
+			if (key == RB_K_PAD_RIGHT || key == RB_K_STICK_RIGHT) key = K_RIGHTARROW;
+			if (rb_focusi >= 0 && rb_focusi < rb_n && rb_item[rb_focusi].rb_list >= 0 && RB_ListKey(rb_item[rb_focusi], key))
+				return true;
+			rb_focusi = (key == K_TAB) ? RB_NextFocus(rb_focusi, 1) : RB_FocusStep(rb_focusi, key);
 			RB_EnsureVisible(rb_focusi);
 			return true;
-		case K_UPARROW: case K_LEFTARROW:
-			rb_focusi = RB_NextFocus(rb_focusi, -1);
+		case K_UPARROW: case K_LEFTARROW: case RB_K_PAD_UP: case RB_K_PAD_LEFT: case RB_K_STICK_UP: case RB_K_STICK_LEFT:
+			if (key == RB_K_PAD_UP || key == RB_K_STICK_UP) key = K_UPARROW;
+			if (key == RB_K_PAD_LEFT || key == RB_K_STICK_LEFT) key = K_LEFTARROW;
+			if (rb_focusi >= 0 && rb_focusi < rb_n && rb_item[rb_focusi].rb_list >= 0 && RB_ListKey(rb_item[rb_focusi], key))
+				return true;
+			rb_focusi = RB_FocusStep(rb_focusi, key);
 			RB_EnsureVisible(rb_focusi);
 			return true;
-		case K_ENTER: case K_KP_ENTER: case K_JOY1: case K_SPACE:
+		case K_ENTER: case K_KP_ENTER: case K_JOY1: case K_SPACE: case RB_K_PAD_A:
 			if (rb_focusi >= 0 && rb_focusi < rb_n)
 			{
 				entity e = rb_item[rb_focusi];
-				RB_Activate(rb_focusi, RB_ItemPos(e) + e.rb_s * 0.5);
+				if (e.rb_list >= 0) RB_ListEnter(e);
+				else RB_Activate(rb_focusi, RB_ItemPos(e) + e.rb_s * 0.5);
 			}
 			return true;
 		case K_PGDN: rg_scroll[0] = min(rg_max[0], rg_scroll[0] + rg_s[0].y * 0.9); return true;
@@ -3018,11 +3311,12 @@ bool TouchUIB_KeyDown(float key, float ascii)
 
 bool TouchUIB_KeyUp(float key, float ascii)
 {
-	if (!UIB_EngineHasBridge() || !cvar("menu_touch_uib") || uib_native())
+	if (!UIB_EngineHasBridge() || !cvar("menu_touch_uib") || uib_native() || rb_classic)
 		return false;
 	if (key == K_MOUSE1 || key == K_MOUSE2)
 	{
-		if (cvar("menu_mouse_absolute")) rb_mouse = getmousepos();
+		if (RB_TestPointer()) { }
+		else if (cvar("menu_mouse_absolute")) rb_mouse = getmousepos();
 		if (rb_pressed && rb_mouse != rb_last_move) RB_Drag(rb_mouse);
 		RB_Release(rb_mouse);
 	}

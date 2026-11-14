@@ -275,6 +275,191 @@ hour), which the 10-minute away limit bounds.
 7. Join a server that downloads a pack (the desktop with `sv_curl_defaulturl` and a 30 MB pack under a 2 MB/s cap), press Home during the download: the notification keeps showing progress; come back after it finished: in the game.
 8. Kill the server while the tablet is in the background: on return "Disconnected by ...: Server disconnected" (no endless retries).
 
+## The server list
+
+Opening Multiplayer used to mean waiting. The stock list asks the masters,
+waits until every one has sent its end-of-list (or `net_slist_timeout`, 4 s,
+when one is silent), then asks 128 servers a second and at most two a frame,
+and asks every server three times whether it answered or not; a row appears
+when its server answers. `net_slist_fast 1` (the default; `touch_srvlist.c`)
+keeps the protocol packet for packet (`getserversExt` to the masters,
+`getstatus` with the timestamp challenge to the servers) and changes when
+things are sent and what is shown meanwhile:
+
+- **The saved list.** Every server that answered is kept with what its row
+  shows (`touch_serverlist_info.txt` in the user directory: address, name,
+  map, mode, players, ping, when it last answered, and how many sessions in a
+  row it stayed silent). Opening the list puts those rows up in the same
+  frame, before any packet is answered, marked stale until their server
+  answers (`stale` in the bridge's row; the QuakeC list simply shows them). A
+  saved server that stays silent is taken out when its tries are used up and
+  is not shown from the saved list again until it has answered once; after
+  three such sessions, or a week unseen, it is forgotten.
+- **No waiting for masters.** A server is asked in the frame a master names
+  it. The saved servers and the favourites are asked at once, before the
+  masters have answered.
+- **A budget on the clock, not the frame.** `net_slist_fast_rate` queries a
+  second (1500), `net_slist_fast_burst` at most in one frame (48): about 550
+  servers are asked within 0.4 s at any frame rate.
+- **Asking again only where it helps.** A silent server is asked again 1.1 s
+  later (a DarkPlaces server ignores a second `getstatus` from one address
+  for 1 s), up to `net_slist_maxtries` (3) times if it was up last time,
+  twice if a master lists it and nothing else is known, once if it already
+  failed. After the last ask it has `net_slist_maxping` (420 ms) plus 0.1 s.
+- **The menu's periodic refresh** (the QuakeC list asks again every 10 s
+  while it is open) runs at 120 queries a second, the stock pace, and leaves
+  a server that answered in the last 20 s alone. Opening the list, a reset
+  and the first refresh in a minute run at full rate.
+- **Rows that stay put.** While a finger is on the menu the list does not
+  reorder (`net_slist_hold 1`): the QuakeC list is paused the way its own
+  Pause box does it and let go a quarter second after the finger lifts; the
+  bridge's `servers` sources keep their rows and rev until then. A native
+  renderer says so itself: `"touching": true|false` in its `visible` event
+  (docs/UI_BRIDGE.md). Between those moments a row is inserted where its
+  sort key puts it and an answer updates the row in place.
+- **"N servers · M players".** `_slist_summary` (and `_slist_servers`,
+  `_slist_players`, `_slist_refreshing`, `_slist_saved`) for the Multiplayer
+  card: from the saved list at the first frame of the session, live from then
+  on.
+
+### Being a good citizen
+
+| what | number |
+|---|---|
+| to a master | what the stock client sends: one `getserversExt` per refresh and socket; the menu's 10 s timer is upstream's |
+| to one server | one `getstatus` (about 45 bytes; the answer is 300-1400) per refresh; a second only after 1.1 s without an answer; at most 3 per refresh, 2 for an unknown address, 1 for one that failed before (stock: always 3) |
+| to one IP address | at least 50 ms between two queries, whatever the ports (hosts that run several servers) |
+| overall | 1500 queries a second at most, 48 in one frame; 120 a second for the periodic refresh; a server that answered is not asked again within 20 s by the periodic refresh |
+| while joining | nothing: the list stops asking from the first `getchallenge` to the last signon, so nothing counts against the join at a rate-limiting host |
+| after a reset | the time each address was last asked survives a list reset: two refreshes in a second do not ask anyone twice within the server's 1 s |
+| amplification | none: answers go to the address that asked, and the client answers nothing |
+
+A full refresh of today's list (about 560 addresses, 240 alive) sends about
+890 packets cold and 560-620 with the saved list; the stock client sends
+three per address, about 1700.
+
+### Measured
+
+`net_slist_stats` prints the last refresh, fast or stock; `net_slist_open`
+does what opening the list does. Times are seconds from the refresh:
+`first_row` the first row on screen, `t50` / `t95` when half / 95 % of the
+servers that answered had answered, `settled` when every server had answered
+or been given up.
+
+Real masters and servers, 2026-11-14, a desktop in Australia on home
+broadband (median server ping about 270 ms), offscreen client pinned to 8
+cores while the machine ran other work (load 15-20), medians of 5 sessions
+each (range in brackets), one refresh per session (`net_slist_open` 8 s after
+the start; the first refresh that settles is taken):
+
+| | sessions | rows in the first frame | first row | t50 | t95 | settled | servers listed | queries sent |
+|---|---|---|---|---|---|---|---|---|
+| stock (`net_slist_fast 0`) | 5 | 0 | 0.80 in the one session where no LAN game answered first (0.00 otherwise: a test server on this machine answers the LAN broadcast) | 1.91 (1.62-2.71) | 4.80 (2.91-6.39) | 8.27 (7.53-9.27) | 236 | about 1700 (3 per address) |
+| fast, nothing saved | 5 | 0 | 0.12 (0.05-0.14) | 0.47 (0.44-0.51) | 0.95 (0.91-1.60) | 3.36 (3.26-3.52) | 238 | 889 |
+| fast, the next session | 5 | 238 | 0.00 | 0.50 (0.43-1.51) | 0.99 (0.91-1.73) | 3.08 (2.12-3.18) | 238 | 582 |
+
+Half of the servers are in after half a second instead of two, 95 % after one
+second instead of five, and from the second session on the whole list is on
+screen in the first frame. A higher rate was tried and is not the default:
+at 2500 a second and 96 a frame, five sessions listed fewer servers (216 and
+172 against 238) and `t50` went up to 1.5 s in the saved-list case, because
+answers were lost (240 answers of up to 1.4 kB inside a tenth of a second)
+and had to be asked for again a second later.
+
+The floor for `t50` from here is the median ping, about 0.27 s, plus the
+master's answer when nothing is saved (0.12 s). A stock refresh in this
+series did not hit the 4 s master wait (every master answered); when one is
+silent, stock adds up to 4 s before the first server is asked.
+
+**Insanotic** (`~/Projects/insanotic`, `darkplaces/netconn.c`; compared by
+reading it: there is no runnable build of it on this machine) removed the
+wait after the masters (`net_slist_querywait 0`) and asks up to
+`net_slist_queriesperframe` (100) servers every frame (`net_slist_burst 1`),
+so on a first open it sends everything within a few frames (faster than
+this list's 0.4 s by design, at the burst size that lost answers here), and
+is frame-rate bound. It has no saved list (its first row is a master round trip
+plus the nearest server's ping; here it is the first frame), waits
+`net_slist_timeout` (4 s) before asking a silent server again and asks three
+times, so it settles after about 12 s where this settles in about 3; it asks
+every server at the full burst on every refresh, has no spacing per host and
+keeps asking during a join.
+
+### In the tests
+
+`scripts/test-srvlist.sh`: the rules (`tests/srvlist/srvlist_logic_test.c`)
+and the engine against a fake master and 160 fake servers on loopback with
+latency and 3 % loss (`tests/srvlist/fakenet.py`, `test_srvlist.py`). It
+asserts the time to the first row (0.6 s), to half (1.0 s) and 95 % (2.5 s)
+of the answers and to settled (6 s) on a fresh install; every live server
+listed; the saved rows up in the frame the list opens in the next session,
+before any answer, stale in the bridge's source and counted in the summary;
+20 servers gone and 10 new: removed, listed, and not shown from the saved
+list again; no server asked twice within a second over three refreshes in a
+row, hosts with several ports spaced; the stock scheduler still works with
+`net_slist_fast 0`.
+
+## When a join fails
+
+Reproducing a reported "connection failed" against real public servers
+(12 servers, IPv4 and IPv6, game versions 802 to 806, stock 0.8.5 / 0.8.6,
+git and modded, one client per host at a time): every server answered the
+challenge and accepted the connect, with and without the `rwin` offer. What
+did fail or look like failing:
+
+- **Two clients behind one public address.** A DarkPlaces server ignores
+  every `connect` from an IP address (any port) for
+  `net_connectfloodblockingtimeout` (5 s) after a connect from that address,
+  and each ignored connect renews the block. The stock client asks again
+  every second, so it never gets in: ten challenges answered, no accept,
+  "Connect: failed, no reply". Seen with two test clients joining one server
+  at once (10 of 10 connects ignored, on two hosts) and reproduced on
+  loopback (`scripts/test-joinfail.sh`). It applies to a second device at
+  home, to players behind one carrier-grade NAT address, and to a join from a
+  new port right after an abandoned one.
+  Now (`net_connect_backoff 1`): after three challenges answered with a
+  connect and no accept, the client stays silent for 5.6 s, once, and asks
+  again; the block has ended and the join goes through, about 9 s after it
+  began.
+- **Long joins that look dead.** A 0.8.5 / 0.8.6 server without a pack URL
+  sends its 3.3 MB CSQC over the stock UDP download: 45-60 s at 130-270 ms
+  ping. Servers with their own packs need them over HTTP first: 36 MB for the
+  busiest Deathmatch server that day, 135 MB for one modded CTF server. The
+  loading screen shows the download; nothing fails, but it is minutes on
+  mobile data. Not changed here.
+- **No reason and no way back.** A failed join only wrote to the console and
+  the loading screen went away.
+
+Now `touch_joinfail.c` watches a join from the first `getchallenge` to the
+last signon and, when it ends short of the game, says why:
+
+| `_join_fail_kind` | when | `_join_fail_text` / `_join_fail_detail` |
+|---|---|---|
+| `timeout` | ten requests, no answer at all | No answer from ADDRESS / The server is offline or restarting, or this network cannot reach it. Waited 10 seconds. |
+| `busy` | challenges answered, connects ignored (after the back-off too) | ADDRESS answered but did not let you in / It is busy, or it limits joins from your network (someone on the same connection just joined). Try again in a few seconds. |
+| `refused` | the server's `reject` | ADDRESS refused the join / The server says: TEXT (full, banned, wrong version: its own words) |
+| `network` | no socket for the address family | No network connection for ADDRESS / for an IPv6 address: this device has no IPv6 connection right now |
+| `dropped` | disconnected during the signon | ADDRESS closed the connection while joining / The server says: TEXT |
+| `files` | the map could not be loaded after its download failed | Missing files: could not get the map NAME / The download from the server did not finish... |
+| `error` | another `Host_Error` during the signon | The join stopped with an error / TEXT |
+
+For every front end: `_join_fail_serial` counts up with each failed join and
+`_join_fail_kind`, `_join_fail_text`, `_join_fail_detail`,
+`_join_fail_address` describe the last one; `join_retry` connects to that
+address again. `cl_connect_status` keeps the prefixes the native front ends
+key on ("Connect: failed", "Connect: rejected, ") and now ends in the reason
+("Connect: failed, no answer from ADDRESS", "Connect: failed, ADDRESS
+answered but did not accept the join"); "Connect: the server is busy, asking
+again in a few seconds..." is shown during the back-off. The touch menu
+opens a **Could not join** dialog with the two sentences, **Retry** and
+**Close** (`dialog_touch_joinfail.qc`, opened like the password prompt with
+`menu_cmd directmenu TouchJoinFailed KIND ADDRESS`); a front end that shows
+its own sets `touch_joinfail_dialog 0`. The password prompt keeps wrong and
+missing passwords; the player's own cancel is not a failure; a drop that
+`net_reconnect` answers by joining again is not reported.
+
+Not verified: the tablet itself (the report came from the released Android
+build; these runs were a desktop build of the same network code).
+
 ## Cvars and commands
 
 | name | default | |
@@ -294,6 +479,15 @@ hour), which the 10-minute away limit bounds.
 | `_net_reconnect_state`, `net_reconnect_cancel` | | what the reconnect does or why it gave up; stop it |
 | `net_away_spectate` | 20 | seconds in the background in a match before going to the spectators |
 | `net_away_limit` | 600 | seconds connected in the background before a clean disconnect |
+| `net_slist_fast` | 1 | the fast server list; 0 = the stock DarkPlaces scheduler |
+| `net_slist_fast_rate`, `net_slist_fast_burst` | 1500, 48 | server queries a second at most, and in one frame, for a list that was opened or reset |
+| `net_slist_saved` | 1 | keep the list between sessions and show it at once |
+| `net_slist_hold` | 1 | no reordering while a finger is on the menu |
+| `net_slist_stats`, `net_slist_stats_print`, `net_slist_open` | | timings of the last refresh; print them when a refresh settles; refresh as opening the list does |
+| `_slist_summary`, `_slist_servers`, `_slist_players`, `_slist_refreshing`, `_slist_saved` | | "N servers · M players" and its parts; a refresh is running; the numbers still include saved rows that have not answered |
+| `net_connect_backoff` | 1 | wait out a server's connect flood block once instead of renewing it every second |
+| `_join_fail_serial`, `_join_fail_kind`, `_join_fail_text`, `_join_fail_detail`, `_join_fail_address`, `join_retry` | | the last failed join, for every front end; join it again |
+| `touch_joinfail_dialog` | 1 | open the menu's Could not join dialog (a native front end that shows its own sets 0) |
 
 Both features are on by default: the loss, reordering and duplication tests
 below are clean, and a stock peer never sees either.
@@ -461,6 +655,14 @@ Logic lives in `touch_net.c`; upstream files carry single `// Touch:` lines:
 | `cl_screen.c` | include; `SCR_DrawCurlDownload`: `TouchNet_CurlText` |
 | `sv_send.c` | include; `SV_SendClientDatagram`: `TouchNet_ClampDatagram` |
 | `makefile.inc` | `touch_net.o` in `OBJ_COMMON`; `OBJ_SV+= touch_null.o` |
+
+The server list (`touch_srvlist.c`) adds to `netconn.c`: its include;
+`ServerList_QueryList`: `TouchSrvList_Refresh(resetcache)` at the end;
+`NetConn_QueryQueueFrame`: `if (TouchSrvList_QueryFrame()) return;`;
+`..._ServerList_ProcessReply`: `TouchSrvList_Replied(n)`; and three one-line
+accessors to static helpers (`TouchSrvList_ViewInsert`, `_ViewRemove`,
+`_AddServer`). The join failure watch (`touch_joinfail.c`) has no hook of
+its own: `touch_lan.c` calls it from `TouchLAN_Frame` and `TouchLAN_Init`.
 
 `touch_null.c` gives the dedicated server build (`make sv-release`) the
 client-only symbols Touch code refers to, and `touch_loadtime.c` no longer

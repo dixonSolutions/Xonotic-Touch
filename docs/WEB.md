@@ -29,7 +29,7 @@ page.
 | Storage | The origin private file system (OPFS) of the browser: it survives reloads, closing the tab, restarting the browser and new releases of the page. The page never asks for persistent storage by itself, so by default the browser may clear it when the device runs short of space; what is gone is downloaded again at the next start, only that, without a question |
 | Storage popover | The ⋮ button beside the main action (Download, Pause/Cancel, Reload), placed under or beside it (or `web_storage` in the console, in the middle of the screen over the game): how much game data is here, the switch "Keep on this device" (persistent storage, with the browser's real answer), render resolution, fullscreen; Install app, Verify data, Use an existing Godnotic folder (desktop Chromium), Import settings, Clear data; where the data is kept, the site's quota, the GPU and the last problem as small print. There is no header bar: the page is the banner, at one fixed place on the theme's background in every state, with what there is to do under it |
 | Already have the app | On Android in Chrome, a first visit says when the Godnotic app is installed and offers "Use the game data from the Godnotic app" (the app's packs from the system file picker, copied once) and "Open the Godnotic app" instead of the download; other browsers on Android and Linux get the same two as secondary buttons. See "An existing install" |
-| Saved | `config.cfg`, touch layouts and everything else the game writes, kept in IndexedDB |
+| Saved | Everything the game writes, kept in IndexedDB: `config.cfg` and the player's name, touch layouts, Lua mods and their files, which mods are on and what they may do, what mods save, screenshots. Any change reaches IndexedDB within about a second (`web/userdata.js`), so a reload right after installing a mod keeps it |
 | Display | Fills the window; fullscreen at the first tap or key (Storage popover), or the game's own fullscreen setting |
 | Mouse | Click to capture (pointer lock, raw motion where the browser offers it); Esc opens the menu |
 | Touch | Detected from the browser's pointer type; same controls and profiles as on Android |
@@ -1193,3 +1193,12 @@ for one visit.
 
 "Build and publish" deploys Pages without `web/`, so the shell is missing
 for the few minutes between the two workflows.
+
+## Menu size in the browser
+
+One dp of the menu is one CSS pixel. SDL in a browser reports 96 x devicePixelRatio as the
+display's dpi, and the page may render its canvas at another scale than its CSS size, so
+`touch_display.c` sets `vid_touch_dpi` to 160 x canvas pixels per CSS pixel instead (kept
+current once a second, since the page sizes the canvas after the window is made). Before
+this the menu was about 0.6x on a desktop (96 dpi read as low density) and 1.3x on a
+phone. `tests/uibridge/web_menu.mjs` prints the inputs.

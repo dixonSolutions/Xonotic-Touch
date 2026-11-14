@@ -1,0 +1,27 @@
+#pragma once
+
+// "Could not join": the engine opens it (menu_cmd directmenu TouchJoinFailed
+// <kind> <address>, engine/darkplaces/touch_joinfail.c) when a join ends short
+// of the game. The sentences are the engine's (_join_fail_text,
+// _join_fail_detail), so every front end says the same thing; this dialog
+// adds Retry and Close.
+
+#include "rootdialog.qh"
+
+CLASS(GodnoticJoinFailedDialog, XonoticRootDialog)
+	METHOD(GodnoticJoinFailedDialog, fill, void(entity));
+	METHOD(GodnoticJoinFailedDialog, readInputArgs, void(entity, int));
+	ATTRIB(GodnoticJoinFailedDialog, title, string, _("Could not join"));
+	ATTRIB(GodnoticJoinFailedDialog, color, vector, SKINCOLOR_DIALOG_MULTIPLAYER);
+	ATTRIB(GodnoticJoinFailedDialog, intendedWidth, float, 0.86);
+	ATTRIB(GodnoticJoinFailedDialog, rows, float, 6.2);
+	ATTRIB(GodnoticJoinFailedDialog, columns, float, 4);
+	ATTRIB(GodnoticJoinFailedDialog, name, string, "TouchJoinFailed");
+	ATTRIB(GodnoticJoinFailedDialog, joinAddress, string);
+	ATTRIB(GodnoticJoinFailedDialog, joinText, entity);
+	ATTRIB(GodnoticJoinFailedDialog, joinDetail1, entity);
+	ATTRIB(GodnoticJoinFailedDialog, joinDetail2, entity);
+ENDCLASS(GodnoticJoinFailedDialog)
+
+// dialog_touch_lan.qc TouchLan_ConfigureDialogs: add the dialog.
+void TouchJoinFailed_Configure(entity mainwindow);
