@@ -3478,6 +3478,7 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 						// keep their stuff intact
 						if (developer_extra.integer)
 							Con_Printf("Datagram_ParseConnectionless: sending \"accept\" to %s.\n", addressstring2);
+						if (!TouchNet_ServerRejoin(client->netconnection, mysocket, peeraddress, string)) // Touch: the connection starts over, as the client's does
 						NetConn_WriteString(mysocket, "\377\377\377\377accept", peeraddress);
 						if(crypto && crypto->authenticated)
 							Crypto_FinishInstance(&client->netconnection->crypto, crypto);

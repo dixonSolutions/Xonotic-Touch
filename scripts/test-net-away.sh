@@ -53,11 +53,15 @@ insv() { nsenter -t "$NSPID" -n "$@"; }
 start() {
 	local name=$1 ccfg=$2 sargs=$3
 	mkdir -p "$WORK/$name/cl/data" "$WORK/$name/sv/data"
-	printf '%b\n' "$ccfg" > "$WORK/$name/cl/data/away.cfg"
+	# poll.cfg runs every half second: the test writes commands into it
+	printf '%b\nalias _ap "exec poll.cfg; defer 0.5 _ap"\n_ap\n' "$ccfg" > "$WORK/$name/cl/data/away.cfg"
+	: > "$WORK/$name/cl/data/poll.cfg"
+	printf 'alias _sp "exec next.cfg; defer 0.5 _sp"\n_sp\n' > "$WORK/$name/sv/data/svpoll.cfg"
+	: > "$WORK/$name/sv/data/next.cfg"
 	printf 'seta touch_profile_done 1\nseta _cl_name "Bench"\n' > "$WORK/$name/cl/data/autoexec.cfg"
 	# shellcheck disable=SC2086
 	insv "$SERVER" -dedicated -xonotic -basedir "$BASEDIR" -userdir "$WORK/$name/sv" +set port 26000 +set sv_public 0 \
-		+set bot_number 2 +set minplayers 0 $sargs +map "$MAP" > "$WORK/$name/server.log" 2>&1 & SVPID=$!
+		+set bot_number 2 +set minplayers 0 $sargs +map "$MAP" +exec svpoll.cfg > "$WORK/$name/server.log" 2>&1 & SVPID=$!
 	for _ in $(seq 1 300); do grep -q "Server spawned" "$WORK/$name/server.log" 2> /dev/null && break; sleep 0.1; done
 	"$ENGINE" -xonotic -basedir "$BASEDIR" -userdir "$WORK/$name/cl" +vid_fullscreen 0 +vid_width 480 +vid_height 300 \
 		+set _touch_assets_ready 1 +exec away.cfg > "$WORK/$name/client.log" 2>&1 & CLPID=$!
@@ -74,6 +78,41 @@ wait_for() { # file pattern seconds
 	return 1
 }
 count() { grep -c "$2" "$1" 2> /dev/null || true; }
+# a command for the running client (idempotent ones: it runs every 0.5 s until cleared)
+say() { echo "$2" > "$WORK/$1/cl/data/poll.cfg"; sleep 1.2; : > "$WORK/$1/cl/data/poll.cfg"; }
+svpid() { pgrep -f -- "-userdir $WORK/$1/sv" | head -1; }
+# the server log after the client's last (re)join
+since_join() { awk '/^Bench connected/{buf=""} {buf=buf $0 "\n"} END{printf "%s", buf}' "$WORK/$1/server.log"; }
+wait_since() { # name pattern seconds: in the server log after the last join
+	local i
+	for i in $(seq 1 $(($3 * 2))); do since_join "$1" | grep -q "$2" && return 0; sleep 0.5; done
+	return 1
+}
+# stop the client (or the server) past the server's timeout, then wait until
+# the client has joined again by itself and is in the game
+freeze_and_rejoin() { # name client|server seconds
+	local name=$1 who=$2 secs=$3 pid
+	pid=$CLPID; [ "$who" = server ] && pid=$(svpid "$name")
+	kill -STOP "$pid"; sleep "$secs"; kill -CONT "$pid"
+	for _ in $(seq 1 120); do [ "$(count "$WORK/$name/server.log" "^Bench connected")" -ge 2 ] && break; sleep 0.5; done
+	# back in the slot it had (a server keeps a player who comes back from
+	# the same address in the game, so there may be no "is now playing")
+	[ "$(count "$WORK/$name/server.log" "^Bench connected")" -ge 2 ] || return 1
+	say "$name" "togglemenu 0; cmd join"
+	sleep 4
+}
+# away after the rejoin: spectator, then the clean disconnect that frees the slot
+check_away() { # name label
+	local name=$1 label=$2
+	if wait_since "$name" "Bench.*is now.*spectating" 25; then ok "$name: $label: spectator after net_away_spectate"; else bad "$name: $label: not moved to the spectators"; fi
+	if wait_for "$WORK/$name/server.log" 'Client "Bench" dropped (Disconnect by user)' 60 && grep -q "Left .* after .* in the background" "$WORK/$name/client.log"; then
+		ok "$name: $label: left at net_away_limit, the server freed the slot, the client says why ($(grep -o 'Left .* background' "$WORK/$name/client.log" | head -1))"
+	else
+		bad "$name: $label: no clean disconnect at net_away_limit ($(grep 'Bench" dropped' "$WORK/$name/server.log" | tr '\n' ' '))"
+	fi
+}
+AWAYCFG='set net_away_spectate 5\nset net_away_limit 30'
+playing() { wait_for "$WORK/$1/server.log" "Bench.*is now playing" 60 || { bad "$1: the client never got into the game"; return 1; }; }
 # join the game a few times over: on a loaded machine the signon may not be
 # through by the first one (a join while playing does nothing)
 JOIN='connect 10.88.0.2:26000\ndefer 10 "togglemenu 0; cmd join"\ndefer 20 "togglemenu 0; cmd join"\ndefer 28 "cmd join"'
@@ -153,11 +192,52 @@ EOF
 			finish; kill $HP 2> /dev/null
 			cmp -s "$WORK/www/zzawaypack.pk3" "$WORK/download/cl/data/dlcache/zzawaypack.pk3" && grep -q "Download of .*: OK" "$WORK/download/client.log" \
 				&& ok "download: stopped 10 s midway, completed, identical" || bad "download: $(grep -a 'Download of' "$WORK/download/client.log" | head -1)" ;;
+		reconnect-away) # frozen past the server's timeout, joined again by itself, then away
+			start reconnect-away "$JOIN\n$AWAYCFG\ndefer 240 quit" ""
+			playing reconnect-away || { finish; return; }
+			freeze_and_rejoin reconnect-away client 40 && ok "reconnect-away: rejoined by itself after a 40 s freeze" || bad "reconnect-away: did not get back into the game"
+			say reconnect-away "touch_away 1"
+			check_away reconnect-away "away after the reconnect"
+			finish ;;
+		svfreeze-away) # the server froze 36 s, the client timed out and joined again, then away
+			start svfreeze-away "$JOIN\n$AWAYCFG\ndefer 240 quit" ""
+			playing svfreeze-away || { finish; return; }
+			freeze_and_rejoin svfreeze-away server 36 && ok "svfreeze-away: rejoined by itself after the server froze 36 s" || bad "svfreeze-away: did not get back into the game"
+			say svfreeze-away "touch_away 1"
+			check_away svfreeze-away "away after the reconnect"
+			finish ;;
+		away-freeze) # away first, then frozen past the timeout: joined again while away
+			start away-freeze "$JOIN\nset net_away_spectate 5\nset net_away_limit 75\ndefer 240 quit" ""
+			playing away-freeze || { finish; return; }
+			say away-freeze "touch_away 1"
+			wait_since away-freeze "Bench.*is now.*spectating" 25 && ok "away-freeze: spectator" || bad "away-freeze: not a spectator before the freeze"
+			kill -STOP "$CLPID"; sleep 40; kill -CONT "$CLPID"
+			for _ in $(seq 1 120); do [ "$(count "$WORK/away-freeze/server.log" "^Bench connected")" -ge 2 ] && break; sleep 0.5; done
+			check_away away-freeze "reconnected while away"
+			finish ;;
+		mapchange-away) # away across a map change
+			start mapchange-away "$JOIN\nset net_away_spectate 5\nset net_away_limit 45\ndefer 240 quit" ""
+			playing mapchange-away || { finish; return; }
+			say mapchange-away "touch_away 1"
+			wait_since mapchange-away "Bench.*is now.*spectating" 25 && ok "mapchange-away: spectator" || bad "mapchange-away: not a spectator"
+			echo "changelevel $MAP" > "$WORK/mapchange-away/sv/data/next.cfg"; sleep 0.8; : > "$WORK/mapchange-away/sv/data/next.cfg"
+			for _ in $(seq 1 60); do [ "$(count "$WORK/mapchange-away/server.log" "^Bench connected")" -ge 2 ] && break; sleep 0.5; done
+			check_away mapchange-away "after a map change"
+			finish ;;
+		manual-away) # away, then the player's own reconnect (connect again)
+			start manual-away "$JOIN\nset net_away_spectate 5\nset net_away_limit 40\ndefer 240 quit" ""
+			playing manual-away || { finish; return; }
+			say manual-away "touch_away 1"
+			wait_since manual-away "Bench.*is now.*spectating" 25 || bad "manual-away: not a spectator"
+			echo "connect 10.88.0.2:26000" > "$WORK/manual-away/cl/data/poll.cfg"; sleep 0.8; : > "$WORK/manual-away/cl/data/poll.cfg"
+			for _ in $(seq 1 60); do [ "$(count "$WORK/manual-away/server.log" "^Bench connected")" -ge 2 ] && break; sleep 0.5; done
+			check_away manual-away "after a manual reconnect"
+			finish ;;
 		*) bad "unknown case $1" ;;
 	esac
 }
 
-[ $# -gt 0 ] || set -- freeze5 freeze-signon away newaddress timeout download freeze60 loss-freeze60
+[ $# -gt 0 ] || set -- freeze5 freeze-signon away newaddress timeout download freeze60 loss-freeze60 reconnect-away svfreeze-away away-freeze mapchange-away manual-away
 for c in "$@"; do run "$c"; done
 [ $fail = 0 ] && echo "all away tests passed" || echo "some away tests FAILED"
 exit $fail

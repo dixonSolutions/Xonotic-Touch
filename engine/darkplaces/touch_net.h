@@ -30,6 +30,10 @@ void TouchNet_Established(struct netconn_s *conn);
 // false = send the stock "accept"
 qbool TouchNet_ServerAccept(struct netconn_s *conn, struct lhnetsocket_s *mysocket, struct lhnetaddress_s *peeraddress, const char *connectstring);
 
+// server: a client that was in the game connects again from the same
+// address: its connection starts over (true = the accept was sent here)
+qbool TouchNet_ServerRejoin(struct netconn_s *conn, struct lhnetsocket_s *mysocket, struct lhnetaddress_s *peeraddress, const char *connectstring);
+
 // reliable channel (netconn.c)
 // NetConn_SendUnreliableMessage: queue conn->message and keep the window
 // full; -1 when the queue overflowed (conn->message.overflowed is set)
