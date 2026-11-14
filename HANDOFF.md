@@ -76,7 +76,14 @@ slower network (masters ~0.1 s away); compare rows of one series only.
 - Builds: SDL (`make sdl-release`), `make sv-release`, `scripts/build-web.sh
   --engine-only` (XT_WEB_DEPS from the integration clone): all rc=0, no
   warnings from touch_srvlist.
-- CI: Tests and Android on the pushed branches (see the agent's report).
+- CI on eec0bd9 (the last code commit), all success: `work/srvlist2` Tests
+  43560427247, Android 43560427288; `ci/srvlist2` Tests 43560429680, Android
+  43560429684, Server list seed 43560429816. The seed check ran on a GitHub
+  runner: UDP to the masters and servers works there (3 IPv4 masters, 553
+  listed, 169 IPv4 servers answered, no IPv6 on the runner, the seed's 75
+  IPv6 servers kept).
+- The other suites were run once against 2b34622 and again against the final
+  engine (joinfail, lan-logic, lan, lan-private, uibridge, uibridge --engine).
 
 ## Not done / not verified
 
@@ -84,8 +91,10 @@ slower network (masters ~0.1 s away); compare rows of one series only.
   buffer limits (`rmem_max`); only this desktop on Wi-Fi in Australia.
 - Insanotic was not run (no build here): its row is a model of its scheduler
   in this engine (the docs say exactly what is and is not modelled).
-- The seed workflow's PR path (scheduled run, `gh pr create` permission) has
-  not run: GitHub only offers a workflow by hand once it is on `main`.
+- The seed workflow's write-and-PR path (monthly or by hand) has not run:
+  GitHub only schedules or dispatches a workflow once it is on `main`, and
+  `gh pr create` needs "Allow GitHub Actions to create pull requests" (if it
+  is off the job still pushes the `bot/srvlist-seed-<date>` branch).
 - The first row cannot be steered toward near servers on a first open: the
   seed carries no location.
 
