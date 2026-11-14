@@ -4,6 +4,8 @@
 #include "dialog_touch_lan.qh"
 #include "leavematchbutton.qh"
 #include "touch_menu_scale.qh"
+#include "dialog_touch_join.qh"
+#include "touch_uib_touch.qh"
 
 void GodnoticGameMenuDialog_configureDialog(entity me)
 {
@@ -27,6 +29,24 @@ string TouchGameMenu_Route(string itemname)
 {
 	if (itemname == "GameMenu" && TouchGameMenu_Wanted())
 		return "TouchGameMenu";
+	// The Welcome dialog a newer server's game code opens on connect has
+	// Join! and Spectate itself: the engine's own join dialog is then not
+	// owed for this match (touch_hudmode.c).
+	if (itemname == "Welcome" && (gamestatus & (GAME_ISSERVER | GAME_CONNECTED)))
+		localcmd("\ntouch_join_answered\n");
+	// Xonotic's join dialog (team_selection_show, the engine's
+	// touch_join_dialog): the bridge's popup where a bridge renderer draws
+	// the menu, else the finger-sized dialog on a touchscreen.
+	// (Before menuInitialized too: with a native front end owning the menu
+	// from the start the menu VM never draws, so it never initialises, and
+	// m_goto would only remember the name. The popup needs none of it.)
+	if (itemname == "TeamSelect")
+	{
+		if (UIB_JoinOpen())
+			return "TouchJoinBridge";   // no dialog of that name: m_goto does nothing more
+		if (menuInitialized && TouchGameMenu_Wanted())
+			return "TouchJoin";
+	}
 	return itemname;
 }
 
@@ -76,7 +96,7 @@ void TouchGameMenu_Spectate(entity btn, entity me)
 		return;
 	}
 	btn.touch_spec_armed = 0;
-	btn.setText(btn, _("Move to spectators"));
+	btn.setText(btn, _("Spectate"));
 	localcmd("\ntouch_action spectate confirm\n");
 }
 
@@ -95,9 +115,9 @@ void GodnoticGameMenuDialog_fill(entity me)
 		// Join and Move to spectators follow the engine's action list
 		// (touch_hudmode.c, _touch_act_*: 0 hidden, 1 enabled, 2 waiting,
 		// 3 asks first), the same list the native pause menus show.
-		me.TD(me, 1.5, 1, e = makeGodnoticCommandButton(_("Join"), '0 0 0', "touch_action join", COMMANDBUTTON_CLOSE));
+		me.TD(me, 1.5, 1, e = makeGodnoticCommandButton(_("Join game"), '0 0 0', "touch_action join", 0));
 			setDependent(e, "_touch_act_join", 1, 1);
-		me.TD(me, 1.5, 1, e = makeGodnoticButton(_("Move to spectators"), '0 0 0'));
+		me.TD(me, 1.5, 1, e = makeGodnoticButton(_("Spectate"), '0 0 0'));
 			e.onClick = TouchGameMenu_Spectate;
 			e.onClickEntity = e;
 			setDependent(e, "_touch_act_spectate", 1, 3);
@@ -107,7 +127,7 @@ void GodnoticGameMenuDialog_fill(entity me)
 		me.TD(me, 1.5, 1, e = TouchGameMenu_SubButton(_("Mobile settings"), "touchsettings"));
 	me.TR(me);
 	me.TR(me);
-		me.TD(me, 1.5, 1, e = makeGodnoticCommandButton(_("Change team"), '0 0 0', "touch_action team", COMMANDBUTTON_CLOSE));
+		me.TD(me, 1.5, 1, e = makeGodnoticCommandButton(_("Change team"), '0 0 0', "touch_action team", 0));
 			setDependent(e, "_touch_act_team", 1, 1);
 		me.TD(me, 1.5, 1, e = TouchGameMenu_SubButton(_("Servers"), "servers"));
 	me.TR(me);

@@ -3,7 +3,8 @@ Checks the in-match HUD modes (engine/darkplaces/touch_hudmode.h): the mode
 and join state derived from the client state, table-driven over every state;
 the controls each mode has, in particular that the end-of-match scoreboard
 and the next-map vote get MENU and nothing else; the MENU sheet's action
-list; and the join swipe recogniser over recorded touch traces.
+list; and the join dialog: when it opens by itself, when a game hosted
+here joins straight away, and what each of its rows sends.
 
 Run through scripts/test-touch-hudmode.sh.
 */
@@ -108,7 +109,7 @@ static void check_controls(void)
 			| TOUCHCTL_TOSPEC | TOUCHCTL_RESPAWN), "spectating: no play controls");
 		CHECK_INT(TOUCHCTL_SPECBAR | TOUCHCTL_MENU | TOUCHCTL_SCORE, c & (TOUCHCTL_SPECBAR | TOUCHCTL_MENU | TOUCHCTL_SCORE), "spectating: bar, MENU, SCORE");
 		CHECK_INT(TouchMode_FreeFly(mode) ? TOUCHCTL_MOVE | TOUCHCTL_FLY : 0, c & (TOUCHCTL_MOVE | TOUCHCTL_FLY), "stick and rocker only free-flying");
-		CHECK_INT(TouchMode_IsSpectating(mode) ? TOUCHCTL_JOIN : 0, c & TOUCHCTL_JOIN, "join handle only for a real spectator");
+		CHECK_INT(0, c & TOUCHCTL_JOIN, "no join control on the HUD: joining is the join dialog");
 	}
 	CHECK_INT(TOUCHCTL_TOSPEC, TouchMode_Controls(TOUCHMODE_PLAYING, 0) & TOUCHCTL_TOSPEC, "playing: move to spectators can be placed");
 	CHECK_INT(0, TouchMode_Controls(TOUCHMODE_PLAYING, 0) & (TOUCHCTL_JOIN | TOUCHCTL_SPECBAR | TOUCHCTL_FLY | TOUCHCTL_READY), "playing: no spectator controls, no READY outside warmup");
@@ -171,89 +172,97 @@ static void check_actions(void)
 	{
 		touchmode_t m = { TOUCHMODE_PLAYING, 0, TOUCHJOIN_NONE };
 		CHECK_STR("spec", TouchAct_Command(&m, TOUCHACT_SPECTATE), "spectate runs the stock spec");
-		CHECK_STR("join", TouchAct_Command(&m, TOUCHACT_JOIN), "join without teams");
+		CHECK_STR("touch_join_dialog", TouchAct_Command(&m, TOUCHACT_JOIN), "join without teams: the join dialog");
 		m.flags = TOUCHMODE_F_TEAMS;
-		CHECK_STR("menu_showteamselect", TouchAct_Command(&m, TOUCHACT_JOIN), "join in a team game: team selection");
-		CHECK_STR("Move to spectators", TouchAct_Label(TOUCHACT_SPECTATE), "label");
+		CHECK_STR("touch_join_dialog", TouchAct_Command(&m, TOUCHACT_JOIN), "join in a team game: the join dialog");
+		CHECK_STR("touch_join_dialog", TouchAct_Command(&m, TOUCHACT_TEAM), "change team: the join dialog");
+		CHECK_STR("Spectate", TouchAct_Label(TOUCHACT_SPECTATE), "label");
+		CHECK_STR("Join game", TouchAct_Label(TOUCHACT_JOIN), "label");
 	}
 }
 
 // ---------------------------------------------------------------------------
-// The join swipe, over traces on a 2400 x 1080 phone: (x, y, t) samples,
-// the first the finger's landing, the last its release.
+// The join dialog: owed once per match to a player who starts it as an
+// observer. A frame every 50 ms.
 // ---------------------------------------------------------------------------
-#define W 2400.0f
-#define H 1080.0f
-typedef struct { float x, y; double t; } sample_t;
-typedef struct
+static int run_dialog(touchjoindlg_t *d, int mode, int flags, int local, int campaign, int free_screen, int enabled, double from, double to, int *joins)
 {
-	const char *what;
-	int in_zone;
-	int expected;
-	int n;
-	sample_t s[12];
-} trace_t;
+	int opens = 0;
+	double t;
+	for (t = from; t < to; t += 0.05)
+	{
+		int r = TouchJoinDlg_Frame(d, mode, flags, local, campaign, free_screen, enabled, t);
+		if (r == TOUCHJOINDLG_OPEN)
+			opens++;
+		if (r == TOUCHJOINDLG_JOIN && joins)
+			(*joins)++;
+	}
+	return opens;
+}
 
-static const trace_t traces[] = {
-	{ "a quick swipe up from the handle", 1, TOUCHSWIPE_ACCEPT, 5,
-		{{1200, 1040, 0}, {1202, 1000, 0.04}, {1204, 950, 0.08}, {1205, 900, 0.12}, {1206, 860, 0.16}} },
-	{ "a long, slower but deliberate swipe", 1, TOUCHSWIPE_ACCEPT, 5,
-		{{1180, 1050, 0}, {1185, 1000, 0.15}, {1190, 940, 0.30}, {1192, 880, 0.45}, {1195, 820, 0.60}} },
-	{ "released before the threshold (cancel)", 1, TOUCHSWIPE_SHORT, 4,
-		{{1200, 1040, 0}, {1200, 1010, 0.05}, {1201, 980, 0.10}, {1201, 960, 0.15}} },
-	{ "dragged up then back down (cancel)", 1, TOUCHSWIPE_SHORT, 5,
-		{{1200, 1040, 0}, {1200, 950, 0.1}, {1200, 880, 0.2}, {1200, 960, 0.3}, {1200, 1000, 0.4}} },
-	{ "far enough but too slow", 1, TOUCHSWIPE_SLOW, 5,
-		{{1200, 1040, 0}, {1200, 1000, 0.5}, {1200, 960, 1.0}, {1200, 920, 1.5}, {1200, 880, 2.0}} },
-	{ "diagonal", 1, TOUCHSWIPE_SLANTED, 5,
-		{{1200, 1040, 0}, {1230, 1000, 0.04}, {1260, 960, 0.08}, {1290, 920, 0.12}, {1320, 870, 0.16}} },
-	{ "sideways: a look, handed over", 1, TOUCHSWIPE_LOOK, 4,
-		{{1200, 1040, 0}, {1240, 1038, 0.03}, {1300, 1035, 0.06}, {1400, 1030, 0.1}} },
-	{ "downwards: a look", 1, TOUCHSWIPE_LOOK, 3,
-		{{1200, 1000, 0}, {1200, 1030, 0.03}, {1200, 1060, 0.06}} },
-	{ "looking around, then up (sideways first)", 1, TOUCHSWIPE_LOOK, 5,
-		{{1200, 1040, 0}, {1260, 1040, 0.05}, {1300, 980, 0.1}, {1310, 900, 0.15}, {1320, 820, 0.2}} },
-	{ "starting outside the zone (look area)", 0, -1, 4,
-		{{1200, 700, 0}, {1200, 650, 0.04}, {1200, 560, 0.08}, {1200, 480, 0.12}} },
-	{ "starting beside the zone (stick side)", 0, -1, 3,
-		{{700, 1040, 0}, {700, 900, 0.05}, {700, 800, 0.1}} },
-	{ "a tap on the handle", 1, TOUCHSWIPE_SHORT, 2,
-		{{1200, 1040, 0}, {1201, 1041, 0.08}} },
-};
-
-static void check_swipes(void)
+static void check_join_dialog(void)
 {
-	size_t i;
-	for (i = 0; i < sizeof(traces) / sizeof(traces[0]); i++)
-	{
-		const trace_t *tr = &traces[i];
-		touchswipe_t sw;
-		int k, st = TOUCHSWIPE_TRACKING;
-		char what[128];
-		snprintf(what, sizeof(what), "%s: in the start zone", tr->what);
-		CHECK_INT(tr->in_zone, TouchSwipe_InZone(tr->s[0].x, tr->s[0].y, W, H), what);
-		if (!tr->in_zone)
-			continue;
-		TouchSwipe_Begin(&sw, tr->s[0].x, tr->s[0].y, tr->s[0].t);
-		for (k = 1; k < tr->n - 1 && st == TOUCHSWIPE_TRACKING; k++)
-			st = TouchSwipe_Move(&sw, tr->s[k].x, tr->s[k].y, tr->s[k].t, H);
-		if (st == TOUCHSWIPE_TRACKING)
-			st = TouchSwipe_End(&sw, tr->s[tr->n - 1].x, tr->s[tr->n - 1].y, tr->s[tr->n - 1].t, H);
-		snprintf(what, sizeof(what), "%s: %s", tr->what, TouchSwipe_Name(tr->expected));
-		CHECK_STR(TouchSwipe_Name(tr->expected), TouchSwipe_Name(st), what);
-	}
-	// progress follows the finger: 0 at the start, 1 at the threshold
-	{
-		touchswipe_t sw;
-		TouchSwipe_Begin(&sw, 1200, 1040, 0);
-		TouchSwipe_Move(&sw, 1200, 1040 - H * TOUCHSWIPE_DIST * 0.5f, 0.05, H);
-		CHECK_INT(50, (int)(TouchSwipe_Progress(&sw, H) * 100 + 0.5f), "half way");
-		TouchSwipe_Move(&sw, 1200, 1040 - H * TOUCHSWIPE_DIST, 0.1, H);
-		CHECK_INT(100, (int)(TouchSwipe_Progress(&sw, H) * 100 + 0.5f), "at the threshold");
-	}
-	// dp
-	CHECK_INT(250, (int)(TouchDp_Density(400, 1080) * 100 + 0.5f), "400 dpi: 2.5 px per dp");
-	CHECK_INT(100, (int)(TouchDp_Density(0, 720) * 100 + 0.5f), "no dpi, small screen: 1");
+	touchjoindlg_t d;
+	int joins;
+	// a public server, Deathmatch: connecting, then an observer
+	memset(&d, 0, sizeof(d));
+	run_dialog(&d, TOUCHMODE_OFF, 0, 0, 0, 1, 1, 0, 1, NULL);
+	CHECK_INT(0, run_dialog(&d, TOUCHMODE_DEAD, 0, 0, 0, 1, 1, 1, 1.3, NULL), "before the first scoreboard (reads as dead): nothing");
+	CHECK_INT(0, run_dialog(&d, TOUCHMODE_OBSERVING, 0, 0, 0, 1, 1, 1.3, 1.9, NULL), "an observer for half a second: not yet");
+	CHECK_INT(1, run_dialog(&d, TOUCHMODE_OBSERVING, 0, 0, 0, 1, 1, 1.9, 30, NULL), "an observer at match start: the dialog, once");
+	// Spectate chosen: stays away for the rest of the match
+	TouchJoinDlg_Answered(&d);
+	CHECK_INT(0, run_dialog(&d, TOUCHMODE_FOLLOWING, 0, 0, 0, 1, 1, 30, 90, NULL), "after Spectate: never again in this match");
+	// the next match owes it again
+	run_dialog(&d, TOUCHMODE_INTERMISSION, 0, 0, 0, 1, 1, 90, 95, NULL);
+	run_dialog(&d, TOUCHMODE_MAPVOTE, 0, 0, 0, 1, 1, 95, 100, NULL);
+	CHECK_INT(1, run_dialog(&d, TOUCHMODE_OBSERVING, TOUCHMODE_F_TEAMS, 0, 0, 1, 1, 100, 110, NULL), "the next match, a team game: the dialog again");
+	// in the game, then to the spectators by choice: no dialog
+	memset(&d, 0, sizeof(d));
+	run_dialog(&d, TOUCHMODE_OFF, 0, 0, 0, 1, 1, 0, 1, NULL);
+	run_dialog(&d, TOUCHMODE_PLAYING, 0, 0, 0, 1, 1, 1, 5, NULL);
+	CHECK_INT(0, run_dialog(&d, TOUCHMODE_OBSERVING, 0, 0, 0, 1, 1, 5, 30, NULL), "spectating after playing is the player's choice: no dialog");
+	// the menu is up: it waits, then opens
+	memset(&d, 0, sizeof(d));
+	run_dialog(&d, TOUCHMODE_OFF, 0, 0, 0, 1, 1, 0, 1, NULL);
+	CHECK_INT(0, run_dialog(&d, TOUCHMODE_OBSERVING, 0, 0, 0, 0, 1, 1, 10, NULL), "the menu has the screen: waits");
+	CHECK_INT(1, run_dialog(&d, TOUCHMODE_OBSERVING, 0, 0, 0, 1, 1, 10, 12, NULL), "the menu closed: opens");
+	// switched off (touch_join_dialog_auto 0, or a desk without a touchscreen)
+	memset(&d, 0, sizeof(d));
+	run_dialog(&d, TOUCHMODE_OFF, 0, 0, 0, 1, 0, 0, 1, NULL);
+	CHECK_INT(0, run_dialog(&d, TOUCHMODE_OBSERVING, 0, 0, 0, 1, 0, 1, 20, NULL), "not enabled here: never by itself");
+	// a game hosted here, no teams: straight in, no dialog
+	memset(&d, 0, sizeof(d));
+	joins = 0;
+	run_dialog(&d, TOUCHMODE_OFF, 0, 1, 0, 1, 1, 0, 1, NULL);
+	CHECK_INT(0, run_dialog(&d, TOUCHMODE_OBSERVING, 0, 1, 0, 1, 1, 1, 3.4, &joins), "hosted here, no teams: no dialog");
+	CHECK_INT(2, joins, "hosted here: join asked, again after 1.5 s while still an observer");
+	run_dialog(&d, TOUCHMODE_PLAYING, 0, 1, 0, 1, 1, 3.4, 5, &joins);
+	CHECK_INT(2, joins, "in the game: no more joins");
+	// ... that the server never takes: the dialog in the end
+	memset(&d, 0, sizeof(d));
+	joins = 0;
+	run_dialog(&d, TOUCHMODE_OFF, 0, 1, 0, 1, 1, 0, 1, NULL);
+	CHECK_INT(1, run_dialog(&d, TOUCHMODE_OBSERVING, 0, 1, 0, 1, 1, 1, 30, &joins), "hosted here, joins never taken: the dialog after the tries");
+	CHECK_INT(TOUCHJOINDLG_TRIES, joins, "all the tries first");
+	// hosted here, a team game: the dialog (a team has to be picked)
+	memset(&d, 0, sizeof(d));
+	joins = 0;
+	run_dialog(&d, TOUCHMODE_OFF, 0, 1, 0, 1, 1, 0, 1, NULL);
+	CHECK_INT(1, run_dialog(&d, TOUCHMODE_OBSERVING, TOUCHMODE_F_TEAMS, 1, 0, 1, 1, 1, 10, &joins), "hosted here, a team game: the dialog");
+	CHECK_INT(0, joins, "and no blind join");
+	// the campaign joins by itself
+	memset(&d, 0, sizeof(d));
+	joins = 0;
+	run_dialog(&d, TOUCHMODE_OFF, 0, 1, 1, 1, 1, 0, 1, NULL);
+	CHECK_INT(0, run_dialog(&d, TOUCHMODE_OBSERVING, 0, 1, 1, 1, 1, 1, 10, &joins) + joins, "campaign: nothing from here");
+	// what the rows send: the stock dialog's commands
+	CHECK_STR("cmd join", TouchJoinDlg_Command("auto", 0), "Join, no teams");
+	CHECK_STR("cmd selectteam auto; cmd join", TouchJoinDlg_Command("auto", 1), "auto-select");
+	CHECK_STR("cmd selectteam red; cmd join red", TouchJoinDlg_Command("red", 1), "red");
+	CHECK_STR("cmd selectteam pink; cmd join pink", TouchJoinDlg_Command("pink", 1), "pink");
+	CHECK_STR("cmd spectate", TouchJoinDlg_Command("spectate", 1), "spectate");
+	CHECK_STR("", TouchJoinDlg_Command("quit", 1), "anything else: nothing");
 }
 
 int main(void)
@@ -261,7 +270,7 @@ int main(void)
 	check_modes();
 	check_controls();
 	check_actions();
-	check_swipes();
+	check_join_dialog();
 	if (failures)
 	{
 		printf("%d check(s) failed\n", failures);

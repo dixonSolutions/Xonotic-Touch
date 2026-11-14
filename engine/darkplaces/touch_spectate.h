@@ -15,10 +15,10 @@ The server's spectator code (ObserverOrSpectatorThink, server/client.qc in
                          +jump              join
   out of the round (Clan Arena and the like, frags -616, -669 since 0.8.6):
   following or free-flying as above, but the join waits for the next round.
-Jump is the join request in every state, and joining is a swipe up from the
-handle at the bottom middle (touch_hudmode.h), never a button: so no
-spectator control sends +jump, and the flying controls use +moveup /
-+movedown, never +jump / +crouch.
+Jump is the join request in every state, and joining is Xonotic's join
+dialog (touch_hudmode.h TouchJoinDlg_*), never a button or a gesture on the
+HUD: so no spectator control sends +jump, and the flying controls use
++moveup / +movedown, never +jump / +crouch.
 
 A spectator's controls are stripped to what a spectator uses: the move stick
 and the fly rocker (UP / DOWN) while free-flying, and one compact bar,
@@ -138,14 +138,14 @@ static inline int TouchSpec_StickShown(int state)
 }
 
 // ---------------------------------------------------------------------------
-// After the join swipe (or a click on its handle): +jump goes out for a
-// moment. A join the server does not take (joining locked, teams full,
-// spectate-only) leaves the player spectating; the handle then says so for
-// a while instead of failing silently.
+// After a join from the join dialog ("cmd join"): a join the server does not
+// take (joining locked, teams full, spectate-only) leaves the player
+// spectating; the HUD then says so once instead of failing silently, and
+// _touch_hud_join reads "locked" for a while.
 // ---------------------------------------------------------------------------
-#define TOUCHSPEC_JOIN_PRESS  0.25  // how long +jump is held for the join
+#define TOUCHSPEC_JOIN_PRESS  0.25  // (the old +jump join: how long it was held)
 #define TOUCHSPEC_JOIN_WAIT   3.0   // a join not taken by then was refused
-#define TOUCHSPEC_JOIN_LOCKED 15.0  // how long the handle then shows LOCKED
+#define TOUCHSPEC_JOIN_LOCKED 15.0  // how long _touch_hud_join then reads locked
 
 typedef struct touchspec_join_s
 {

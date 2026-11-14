@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "touch_uib_screens.qh"
+#include "touch_uib_touch.qh" // Touch HUD: the join popup, Touch controls settings
 #include <common/mapinfo.qh>
 #include <common/campaign_common.qh>
 #include <common/campaign_file.qh>
@@ -164,6 +165,8 @@ bool uib_narrow;  // the QuakeC renderer's own layout is one column
 
 void UIB_Back()
 {
+	if (UIB_JoinBack())
+		return;
 	if (uibn_modal == "" && UIB_TopScreen() == "settings" && UIB_VMf("settings.open")
 		&& (uib_caps("widthClass") == "compact" || uib_narrow))
 	{
@@ -960,9 +963,16 @@ void UIB_BuildPause()
 		uib_f("minItem", 200);
 		UIB_Button("resume", _("Resume"), UIB_AS("resume", _("Resume"), "resume", "primary"), "primary");
 		UIB_Button("settings", _("Settings"), UIB_A("settings", _("Settings"), "settings"), "secondary");
+		// the engine's action list (_touch_act_*): Join game while watching, Spectate while playing
+		if (cvar("_touch_act_join"))
+			UIB_Button("join", _("Join game"), UIB_A("join.open", _("Join game"), "play"), "secondary");
+		if (cvar("_touch_act_team"))
+			UIB_Button("team", _("Change team"), UIB_A("join.open", _("Change team"), "team"), "secondary");
 		// a local game has its player in it (sv_spectate 0): nothing to watch from outside
-		if (hosting || !(gamestatus & GAME_ISSERVER))
-			UIB_Button("spectate", _("Spectate"), UIB_A("spectate", _("Spectate"), "esp"), "secondary");
+		if (cvar("_touch_act_spectate") && (hosting || !(gamestatus & GAME_ISSERVER)))
+			UIB_Button("spectate", _("Spectate"), ((cvar("_touch_act_spectate") == 3)
+				? UIB_AC("spectate", _("Spectate"), "esp", "secondary", _("Spectate? You give up this round or what you carry."), _("Spectate"), false)
+				: UIB_A("spectate", _("Spectate"), "esp")), "secondary");
 		UIB_Open("disconnect", "button");
 			// the host leaving ends a LAN game for everyone in it
 			uib_s("label", hosting ? _("End the game") : _("Leave match"));
@@ -1183,6 +1193,7 @@ void UIB_Build(string id)
 		case "sp.map": UIB_BuildMapPreview(); return;
 		case "campaign": UIB_BuildCampaign(); return;
 		case "lan.host": UIB_BuildLanPopup(); return;
+		case "join": UIB_BuildJoin(); return;
 		case "mp": UIB_BuildServers(); return;
 		case "mp.password": UIB_BuildPassword(); return;
 		case "pause": UIB_BuildPause(); return;
@@ -1272,6 +1283,7 @@ void UIB_Tick()
 		uib_toast(dbg, "success", "check", 4);
 	}
 	UIB_LanPopupTick();
+	UIB_JoinTick();
 	// time-varying screens
 	string top = UIB_TopScreen();
 	if (top == "home" && time > uib_next_tick)
@@ -1298,6 +1310,8 @@ void UIB_Action(string node, string a, string payload)
 		return;
 	}
 	if (UIB_SettingsAction(node, a, payload))
+		return;
+	if (UIB_JoinAction(a))
 		return;
 	switch (a)
 	{
@@ -1352,7 +1366,7 @@ void UIB_Action(string node, string a, string payload)
 			return;
 		}
 		case "resume": m_hide(); return;
-		case "spectate": localcmd("\nspec\n"); m_hide(); return;
+		case "spectate": localcmd("\ntouch_action spectate confirm\n"); m_hide(); return;
 		case "disconnect": localcmd("\ndisconnect\n"); return;
 		// disconnect alone does not stop a join the server has not answered yet
 		case "loading.cancel": localcmd("\ndisconnect\n_touch_cancel_join\n"); return;
