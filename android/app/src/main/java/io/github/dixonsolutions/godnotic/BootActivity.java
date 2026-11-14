@@ -139,7 +139,11 @@ public class BootActivity extends Activity {
             // has a task of its own): back to it as it was. No update install and
             // no data preparation under a running engine, which would end the
             // player's match or join.
-            startActivity(new Intent(this, XonoticActivity.class).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION));
+            Intent back = new Intent(this, XonoticActivity.class).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
+            if (getIntent() != null && getIntent().getData() != null) {
+                back.setData(getIntent().getData()); // a godnotic://join link: onNewIntent joins
+            }
+            startActivity(back);
             overridePendingTransition(0, 0);
             finish();
             return;

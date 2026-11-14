@@ -52,6 +52,11 @@ android {
             // libSDL2.so and libpng16.so are built by scripts/android-deps.sh and
             // staged per ABI; SDL's Java glue is copied out of the same tarball.
             jniLibs.srcDirs = ['src/main/jniLibs']
+            // The Rust loader core (loader/crates/android, fe/RustCore.kt), when a build
+            // supplies it: <dir>/<abi>/libgodnotic_android.so. Without it the app uses
+            // the Kotlin reader of the UI bridge, as before.
+            def rustLibs = System.getenv('GODNOTIC_RUST_JNILIBS')
+            if (rustLibs) jniLibs.srcDirs += [rustLibs]
             // strings.xml as an asset: see HostRes. Under AndySU the assets
             // update with the code and resources.arsc does not.
             assets.srcDirs += ["$buildDir/generated/xt-strings"]

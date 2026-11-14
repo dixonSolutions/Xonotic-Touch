@@ -2659,6 +2659,8 @@ static void tlua_detail_add(char *buf, size_t size, const char *key, const char 
 	dp_strlcat(buf, "\n", size);
 }
 
+static qbool tlua_fromurl(tlua_mod_t *m);
+
 // _lua_detail: the mod _lua_select names, for the Mods dialog's detail view.
 // key<TAB>value lines; perm, setting and command lines have more fields.
 static void tlua_publish_detail(void)
@@ -2699,6 +2701,8 @@ static void tlua_publish_detail(void)
 	tlua_detail_add(buf, sizeof(buf), "error", m->error);
 	tlua_detail_add(buf, sizeof(buf), "enabled", m->enabled ? "1" : "0");
 	tlua_detail_add(buf, sizeof(buf), "memory", m->L ? va(line, sizeof(line), "%i KB", (int)(m->mem >> 10)) : "");
+	// installed from a link: engine_full needs a second confirmation (tlua_permission_f)
+	tlua_detail_add(buf, sizeof(buf), "fromlink", tlua_fromurl(m) ? "1" : "0");
 	for (i = 0; tlua_permissions[i].name; i++)
 	{
 		unsigned bit = tlua_permissions[i].bit;

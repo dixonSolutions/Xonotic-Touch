@@ -89,6 +89,44 @@ public final class KeepAliveService extends Service {
         }
     }
 
+    static boolean isRunning() {
+        return running != null;
+    }
+
+    private static final int NOTICE_READY = 4;
+    private static final String CHANNEL_READY = "ready";
+
+    /** "Ready to play": a join finished while the game was in the background. */
+    static void readyToPlay(Context context, String text) {
+        NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (Build.VERSION.SDK_INT >= 26) {
+            manager.createNotificationChannel(new NotificationChannel(CHANNEL_READY,
+                    HostRes.string(context, "ready_channel"), NotificationManager.IMPORTANCE_DEFAULT));
+        }
+        Notification.Builder builder = Build.VERSION.SDK_INT >= 26
+                ? new Notification.Builder(context, CHANNEL_READY)
+                : new Notification.Builder(context);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT
+                | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
+        Intent open = new Intent(context, XonoticActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            manager.notify(NOTICE_READY, builder
+                    .setSmallIcon(android.R.drawable.stat_notify_sync)
+                    .setContentTitle(HostRes.string(context, "ready_title"))
+                    .setContentText(text != null && !text.isEmpty() ? text : HostRes.string(context, "ready_text"))
+                    .setAutoCancel(true)
+                    .setContentIntent(PendingIntent.getActivity(context, 4, open, flags))
+                    .build());
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Could not post the ready notification", e);
+        }
+    }
+
+    static void clearReady(Context context) {
+        NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        manager.cancel(NOTICE_READY);
+    }
+
     static void stop(Context context) {
         if (running == null) {
             return;
@@ -179,10 +217,21 @@ public final class KeepAliveService extends Service {
                 : new Intent(context, XonoticActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         int flags = PendingIntent.FLAG_UPDATE_CURRENT
                 | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
+        String first = text != null ? text : "";
+        String second = "";
+        int nl = first.indexOf('\n');
+        if (nl >= 0) {
+            second = first.substring(nl + 1);
+            first = first.substring(0, nl);
+        }
+        if (!second.isEmpty()) {
+            // the download's line: size, speed and time left under the state
+            builder.setStyle(new Notification.BigTextStyle().bigText(first + "\n" + second)).setSubText(second);
+        }
         return builder
                 .setSmallIcon(download ? android.R.drawable.stat_sys_download : android.R.drawable.stat_notify_sync)
                 .setContentTitle(HostRes.string(context, download ? "keepalive_download_title" : "keepalive_connection_title"))
-                .setContentText(text != null ? text : "")
+                .setContentText(first)
                 .setOngoing(true)
                 .setContentIntent(PendingIntent.getActivity(context, download ? 1 : 3, open, flags))
                 .build();
