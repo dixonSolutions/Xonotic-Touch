@@ -10,6 +10,12 @@ in [LUA_API.md](LUA_API.md), the game's hooks in [LUA_HOOKS.md](LUA_HOOKS.md); s
 Build every example into an installable zip with `scripts/build-example-mods.sh`
 (`build/mods/<name>.zip`, `build/plugins/<name>.zip`).
 
+Every example's `mod.txt` declares exactly the tiers its code uses, with a reason for
+each (`permissions: standard` and `reason.standard: ...` for most of them), and
+`scripts/test-mods.sh` fails an example that calls a tier it does not declare. Copy that
+habit: the player reads your reasons before your mod first runs, and nothing you leave
+out can be granted later. `panel_clock` also shows a package icon (`icon: icon.png`).
+
 ## A HUD panel with a settings page
 
 [`examples/mods/panel_clock`](../touch/lua/examples/mods/panel_clock)
@@ -187,7 +193,7 @@ xt.on("unload", function() xt.data.save("stats", stats) end)
 [`examples/plugins/leaderboard_http`](../touch/lua/examples/plugins/leaderboard_http) (Internet tier)
 
 ```
-permissions: internet
+permissions: standard, internet
 reason.internet: sends the scores to the leaderboard site
 http: leaderboard.example.org
 ```
@@ -199,7 +205,7 @@ xt.on("matchend", function()
 end)
 ```
 
-The install review shows that the mod asks for **Internet** and names the host; nothing
+The install review shows that the mod declares **Internet**, with its reason, and names the host; nothing
 is sent until the player turns that tier on, and only to the hosts listed. Plain `http://`
 works only to this machine (for testing). The web build sends it with the browser's
 `fetch()`, so there the host must also allow requests from web pages (CORS); a refused

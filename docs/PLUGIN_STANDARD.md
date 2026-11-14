@@ -76,8 +76,9 @@ setting.numbers: bool 1 | Show the numbers
 | `api` | yes (from API 1) | the API level the mod is written for (section 3). No `api:` line = a **legacy** mod |
 | `realm` | no | `client`, `server` or `both`. A `server` package is refused by `lua_mod_install` and a `client` one by `sv_lua_mod_install`; `both` may be installed with either |
 | `main` | no | the entry point; only `init.lua` exists in this standard (reserved for later) |
-| `permissions` | no | the scopes it asks for, comma or space separated (section 5) |
-| `reason.<scope>` | should | one line telling the user why it needs that scope; shown at install and in the manager |
+| `permissions` | API 3: yes | every tier (or API 1/2 scope) it may ever use, comma or space separated (sections 5 and 13); nothing undeclared can be granted or called |
+| `reason.<scope>` | should | one line telling the user why it needs that tier or scope; shown at install, on the turn-on screen and in the manager |
+| `icon` | no | a `.png` or `.tga` file in the package (at most 256 KB, 256x256) shown in the Mods lists; without it no picture is shown |
 | `setting.<name>` | no | a user setting (below), up to 8 |
 | `update` | no | an `https://` URL `lua_mod_update` uses when the mod was not installed from a URL |
 
@@ -364,7 +365,8 @@ section 5 with four tiers; the details and every function are in
   map onto tiers; `reason.<tier>` or `reason.<scope>` (the first given for a tier is
   shown). New keys: `http: host, host` (where `xt.http` may go), `setting.<name>.desc`,
   `setting.<name>.group`, and the setting types `int`, `float`, `color` (six hex digits)
-  and `key` (a key name). A folder with only `init.lua` runs at the standard tier.
+  and `key` (a key name). A folder with only `init.lua` runs at the standard tier and
+  can never be granted more (section 13).
 * **Grants.** Stored as before (`luastate/<realm>/grants/<id>.txt`, `v1 <hex>`): the bits
   above keep their API 1/2 positions, so existing grant files mean the same thing
   (`hooks_write` granted = `gamerules` on). `lua_mod_permission <id> grant <tier>|all`;
@@ -385,3 +387,48 @@ section 5 with four tiers; the details and every function are in
   events, plus a per-mod budget per frame (`lua_frame_ms`: calls past it are skipped for
   that frame). Handles to engine objects are checked on every use; no API returns a
   pointer. While a mod's code runs, no hook or event is delivered to any mod.
+
+## 13. Declared permissions
+
+What a mod may do is what its manifest **declares** and the player **granted**; the
+engine checks both on every call (`tlua_has`: declared ∩ granted ⊇ needed), so a grant
+file edited by hand cannot reach past the manifest and a revoke applies to the next call.
+
+| Declared | Granted | Effect |
+|---|---|---|
+| `standard` (implied for every mod) | (always) | allowed |
+| a tier | yes | allowed |
+| a tier | no, or not decided yet | refused: *the <tier> tier is not turned on for this mod* |
+| not declared | yes (written by hand) | refused: *needs the <tier> tier (add "permissions: <tier>" to mod.txt)* |
+| not declared | asked for | the grant is refused: *does not declare the <tier> tier* |
+| no `mod.txt` | anything | standard only, listed as *declares nothing*; a grant is refused |
+
+* **Packages.** `lua_mod_install` refuses a package without `mod.txt`. An API 3
+  manifest without a `permissions:` line declares the standard tier only.
+* **Shown before it runs.** The install review lists each declared tier in plain words
+  with the mod's `reason.<tier>`. Turning a mod on is one screen:
+  `lua_mod_enable <id> with <tier>[,<tier>...]|all|none [confirm]` grants the chosen
+  declared tiers and turns it on (a standard-only mod: one tap, nothing to choose).
+* **Not decided yet.** Each mod has a *seen* mask, `luastate/<realm>/seen/<id>.txt`
+  (`<hex>`; without the file, what is granted counts as seen). A declared optional tier
+  not in it is *not decided yet*: off, and named by `lua_mod_enable`, the Mods page,
+  `lua_mod_info` and the 5th field of `_cl_lua_permissions`. Any grant, revoke, decline
+  or `lua_mod_enable ... with` marks every declared tier seen. So an update that declares
+  more keeps the old grants and asks about the new tiers only;
+  `lua_mod_permission <id> decline <tier>` settles one as off.
+* **Controlled.** `lua_mod_permission <id> grant|revoke|decline <tier>|all [confirm]`,
+  declared tiers only; `all` never includes `engine_full`; `engine_full` keeps its
+  warning and, for a mod installed from a link, the confirm step. Nothing here can come
+  from a server.
+* **What it used.** Since it last started: calls per optional tier, the hosts `xt.http`
+  contacted and the number of `xt.engine.cmd` calls, in `lua_mod_info` and in the
+  `_lua_detail` keys `used`, `hosts` and `engine_commands`.
+* **Status for the UI.** `_cl_lua_mods` / `_sv_lua_plugins`:
+  `name<TAB>state<TAB>title<TAB>error<TAB>description<TAB>icon`, `icon` being
+  `mod:<id>/<file>` or empty. `_cl_lua_permissions`:
+  `name<TAB>mode<TAB>declared<TAB>granted<TAB>not decided yet` (mode `v1`, `legacy`,
+  `invalid` or `none`). `_lua_detail` (the selected mod) adds `declares` (tiers, or
+  `nothing`), `unseen`, `icon`, `used`, `hosts`, `engine_commands`.
+* **Icons.** A `mod:<id>/<file>` image ref is read by the engine from that mod's folder
+  (client mods first, then server mods), `.png` or `.tga`, at most 256 KB and 256x256,
+  through the same confined file read as the mod's code; anything else gives no image.

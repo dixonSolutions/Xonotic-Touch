@@ -97,6 +97,11 @@ def gen_md():
     for name, how, what in T.TIERS:
         out.append(f"| `{name}` | {how} | {what} |")
     out.append("")
+    out.append("A mod can use a tier only when its `mod.txt` **declares** it (`permissions:`; `standard` is implied) **and** "
+               "the player **granted** it: declared ∩ granted, checked on every call, so a revoke fails the next call and "
+               "nothing undeclared can be granted. A folder without `mod.txt` gets the standard tier only. See "
+               "[MODDING.md](MODDING.md), *Permissions: declare, explain, get granted*.")
+    out.append("")
     titles = {"both": "Both realms", "client": "Client mods", "server": "Server mods"}
     for realm in ("both", "client", "server"):
         out.append(f"## {titles[realm]}")

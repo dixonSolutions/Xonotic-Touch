@@ -13,13 +13,15 @@ title: Hello
 version: 1.0
 author: You
 description: Says hello on the HUD and adds a greet command.
-api: 2
+api: 3
 realm: client
-permissions: events, display, commands
-reason.events: draws on every HUD frame
-reason.display: draws one line of text
-reason.commands: adds the lua_hello_greet command
+permissions: standard
+reason.standard: draws one line on the HUD and adds the lua_hello_greet command
 ```
+
+`permissions:` is what the mod may ever use, and `reason.<tier>` is what the player reads
+before turning it on (see *Permissions: declare, explain, get granted* below). Drawing,
+events and its own commands are the standard tier, so this mod asks for nothing more.
 
 `hello/init.lua`:
 
@@ -48,8 +50,9 @@ too while you develop) and then `lua_install_confirm`. Either way you see what i
 for before anything is written.
 
 **Turn it on.** A new mod starts off with nothing granted. Flip its switch in the Mods
-manager: it shows what the mod asks for and why, and grants what you select. From the
-console: `lua_mod_permission hello grant all`, then `lua_mod_enable hello`.
+manager: it shows what the mod declares and why, and grants what you select (a mod that
+declares only the standard tier gets one line and one tap). From the console:
+`lua_mod_enable hello`.
 
 **See its output.** `print` goes to the console as `[hello] hello loaded`, and into the
 mod's log: the manager's **Output** page, or `lua_mod_log hello`. Errors land in the same
@@ -136,11 +139,15 @@ and `sv_lua_plugin_*` before; those old names still work):
 | `lua_mod_uninstall <name> [keepdata]` | `sv_lua_mod_uninstall ...` | remove folder, grants and source record |
 | `lua` / `lua_help` | `sv_lua_hooks [all]` | every manager command with one line of help / the hooks, subscribers and their cost |
 
+`lua_mod_enable <name> with <tiers>|all|none` turns a mod on and settles the tiers it
+declares in one step (the turn-on screen); `lua_mod_permission <name>` lists what it
+declares, what is on, and what is not decided yet.
+
 `cl_lua_enable` / `sv_lua_enable` are the master switches. `enabled.txt` stays next to
 the mod folders (the launcher reads and writes it too); the engine replaces it through a
 temporary file and a rename, never through a symlink. `_cl_lua_mods` (read-only)
-holds one line per client mod, `name<TAB>state<TAB>title<TAB>error<TAB>description`,
-which the Mods tab (`qcsrc/menu/xonotic/dialog_touch_mods.qc`) reads.
+holds one line per client mod, `name<TAB>state<TAB>title<TAB>error<TAB>description<TAB>icon`
+(`icon` is `mod:<name>/<file>` when the package names one, empty otherwise), which the Mods tab (`qcsrc/menu/xonotic/dialog_touch_mods.qc`) reads.
 
 A mod that raises an error or hits a limit is **stopped** and shows `error` with the
 message; the game goes on. Fix it and `lua_mod_reload <name>`.
@@ -167,16 +174,74 @@ The engine marks such text in `CL_VM_Parse_StuffCmd` (the `csprogs.c` hook above
 server can still bind keys or define aliases (the engine allows that); pressing such a
 key later runs as if you typed it.
 
-An optional `mod.txt` gives the manager a title:
+A `mod.txt` gives the manager a title and says what the mod needs:
 
 ```
 title: HUD clock
 version: 1.0
 author: You
 description: One line about it.
+api: 3
+permissions: standard
 ```
 
-## Permission scopes (API 1)
+## Permissions: declare, explain, get granted
+
+Three rules, the same on every platform (the web build installs through the same engine
+code, so it follows them too):
+
+1. **Declared.** A mod lists in `mod.txt` every tier it may ever use:
+   `permissions: standard, internet` (and for `internet` the hosts: `http: api.example.org`).
+   What it can do is what it **declares and** the player **granted**, checked on every
+   call. A call to a tier the mod does not declare is refused even if a grant file says
+   otherwise, and a grant for a tier it does not declare is refused with a message. A
+   folder with only an `init.lua` (no `mod.txt`) declares nothing: it runs at the
+   standard tier, is listed as *declares nothing: standard only*, and can never be granted
+   more. Installing from a `.zip` or a link needs a `mod.txt`.
+2. **Shown.** For each tier a mod declares it gives a reason in its own words,
+   `reason.<tier>: what it does with it`. The player sees these, with the tier in plain
+   words, before the mod first runs: on the install review, and on the turn-on screen
+   (a standard-only mod gets one line and one tap), and at any time on the mod's page or
+   with `lua_mod_permission <mod>`. When an update declares more, what was granted stays
+   granted and the player is asked about the new tiers only (until then they are *not
+   decided yet* and off). `engine_full` always shows its warning and needs a confirm step
+   for a mod installed from a link.
+3. **Controlled.** The mod's page has a switch for each declared tier, and nothing else.
+   A switch takes effect at once: a revoked tier fails the mod's next call, no restart.
+   The page and `lua_mod_info` show what the mod actually used since it started: calls
+   per tier, the hosts it contacted, the console commands it ran with `engine_full`. A
+   server's text (stufftext, a demo) can grant nothing.
+
+| Declared | Granted | Effect |
+|---|---|---|
+| `standard` (always implied) | always | allowed |
+| a tier | yes | allowed |
+| a tier | no, or not decided yet | `permission denied: the <tier> tier is not turned on` |
+| not declared | yes (a grant file written by hand) | `permission denied: needs the <tier> tier` |
+| not declared | asked for | refused: *does not declare the <tier> tier* |
+| no `mod.txt` at all | anything | standard only; nothing more can be granted |
+
+From the console:
+
+```
+lua_mod_permission hello                         what it declares, what is on, what is new
+lua_mod_enable hello with internet               turn on and grant (with none: grant nothing)
+lua_mod_permission hello grant internet          a switch on
+lua_mod_permission hello revoke internet         a switch off (the next call fails)
+lua_mod_permission hello decline engine_full     a new tier after an update: seen, left off
+```
+
+`_cl_lua_permissions` (read-only) has one line per client mod:
+`name<TAB>mode<TAB>declared<TAB>granted<TAB>not decided yet`, where mode is `v1`, `legacy`,
+`invalid` or `none` (no `mod.txt`) and the last three are comma-separated tier lists.
+Which tiers were decided is kept in `<userdir>/luastate/mods/seen/<name>.txt`, next to
+the grants and as far from mods as they are.
+
+**An icon.** A package may name a picture of itself: `icon: icon.png` (`.png` or `.tga`, a
+file in the package, at most 256 KB and 256x256). The Mods lists show it; a mod without
+one shows no picture at all, not a placeholder.
+
+## Permission scopes (API 1 and 2, still read)
 
 A new mod can opt into scoped permissions in `mod.txt`:
 
@@ -235,12 +300,9 @@ outside the folders mod packages unpack into and out of every path a mod can wri
 changes fail closed if they cannot be saved. Grants cannot be changed while a server may
 be sending commands (above). Grant files are user data and cannot be supplied by a mod
 package; the old `mods/.permissions/` folder is not read.
-The read-only `_cl_lua_permissions` cvar exposes newline-separated client rows:
-`name<TAB>mode<TAB>requested<TAB>granted`. Mode is `v1`, `legacy`, or `invalid`;
-the last two fields are comma-separated scope names, and granted is the effective
-intersection with requested.
+The read-only `_cl_lua_permissions` cvar is described above (tiers, not scopes).
 
-A mod with no `api` declaration (written before scopes existed) is a **legacy** mod. It
+A `mod.txt` with no `api:` line (written before scopes existed) is a **legacy** mod. It
 requests every scope, and until the user grants more it has the HUD set: `events`,
 `commands`, `cvar_read`, `display`, `input`, `players`, `state`. Everything that changes
 something outside the mod's own view — `cvar_write`, `exec`, `storage`, `messages` —
@@ -261,7 +323,9 @@ xt.command("greet", function(who) print("hi " .. (who or "there")) end, "say hi"
 ```
 
 Then `lua_mod_enable hello`; the command is `lua_hello_greet`. (Without a `mod.txt`
-this is a legacy mod, which may draw, listen to events and add commands.) Working examples are in
+it declares nothing, so it runs at the standard tier, which may draw, listen to events
+and add commands, and it can never be granted more. Installing it from a zip needs a
+`mod.txt`.) Working examples are in
 [`touch/lua/examples`](../touch/lua/examples): `hud_clock` (HUD panel, own cvar,
 `require`), `settings_panel` (a settings page with `xt.ui`, `xt.save`), `chat_keys`
 (key event), and the server mods `welcome` (connect, death, chat filter, `cmd stats`) and
@@ -517,7 +581,8 @@ scopes above with four **tiers** a player understands at a glance:
 | `internet` | a switch | HTTPS to the hosts the manifest lists (`http: host, host`) |
 | `engine_full` | a switch with a warning | any console command, any setting except passwords and keys; never by "grant all"; a mod installed from a link needs a second confirmation |
 
-A folder with only an `init.lua` runs at the standard tier. API 1/2 scope names in a
+A folder with only an `init.lua` runs at the standard tier and can never be granted more
+(see *Permissions: declare, explain, get granted*). API 1/2 scope names in a
 manifest still work: they map onto these tiers (`hooks_write` is `gamerules`, every
 other scope is `standard`), and grants already stored keep their meaning.
 
