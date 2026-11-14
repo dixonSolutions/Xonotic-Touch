@@ -480,6 +480,102 @@ void UIB_MapInfo(string map)
 	UIB_VMSet(strcat("map.title.", map), uib_map_title);
 }
 
+// ---------------------------------------------------------------- maps a match can start on
+
+// The map picker, the mode cards and Play all read MapInfo, the list a match is
+// started from, so the picker offers exactly the maps Play can start (implied
+// modes such as Duel on DM maps, flags such as hidden, included). The stock menu
+// builds MapInfo in preMenuInit(), called from m_draw; a native front end hides
+// the menu and m_draw never runs, so MapInfo stayed empty there and every Play
+// said that no map supports the mode. The bridge builds it itself.
+bool uib_mapinfo_ready;
+float uib_mapinfo_gen;
+void UIB_MapInfoEnumerate()
+{
+	MapInfo_Cache_Create();
+	MapInfo_Enumerate();
+	uib_mapinfo_ready = true;
+	++uib_mapinfo_gen;
+}
+
+// MapInfo's maps for a mode, as Play uses them: MapInfo_count, MapInfo_BSPName_ByID
+float UIB_FilterMaps(Gametype gt)
+{
+	if (!uib_mapinfo_ready)
+		UIB_MapInfoEnumerate();
+	MapInfo_FilterGametype(gt, 0, MapInfo_RequiredFlags(), MapInfo_ForbiddenFlags(), 0);
+	return MapInfo_count;
+}
+
+bool UIB_FilteredHas(string map)
+{
+	for (int i = 0; i < MapInfo_count; ++i)
+		if (MapInfo_BSPName_ByID(i) == map)
+			return true;
+	return false;
+}
+
+float uib_modemaps[UIB_NMODES];
+float uib_modemaps_gen;
+// how many maps Play can start in a mode (0 for a mode MapInfo does not know)
+float UIB_ModeMaps(string id)
+{
+	if (!uib_mapinfo_ready || uib_modemaps_gen != uib_mapinfo_gen)
+	{
+		for (int i = 0; i < UIB_NMODES; ++i)
+		{
+			Gametype gt = MapInfo_Type_FromString(UIB_ModeId(i), false, false);
+			uib_modemaps[i] = gt ? UIB_FilterMaps(gt) : 0;
+		}
+		uib_modemaps_gen = uib_mapinfo_gen;
+	}
+	for (int i = 0; i < UIB_NMODES; ++i)
+		if (UIB_ModeId(i) == id)
+			return uib_modemaps[i];
+	return 0;
+}
+
+string UIB_MapField(string s, string unset) { return (s == unset) ? "" : s; }
+
+// The picker's rows: source "maps.<mode>", MapInfo's list for the mode (the
+// engine's "maps" source lists every installed map, for the map details).
+string uib_maprows_key;
+string UIB_MapRows(string mode)
+{
+	string src = strcat("maps.", mode);
+	if (uib_mapinfo_ready && strcat(src, " ", ftos(uib_mapinfo_gen)) == uib_maprows_key)
+		return src;
+	Gametype gt = MapInfo_Type_FromString(mode, false, false);
+	float n = gt ? UIB_FilterMaps(gt) : 0;
+	uib_rows_begin(src);
+	for (int i = 0; i < n; ++i)
+	{
+		string name = MapInfo_BSPName_ByID(i);
+		if (!MapInfo_Get_ByID(i))
+			continue;
+		string title = UIB_MapField(MapInfo_Map_title, "<TITLE>");
+		string modes = "";
+		FOREACH(Gametypes, MapInfo_Map_supportedGametypes & it.gametype_flags, modes = strcat(modes, ((modes == "") ? "" : " "), it.mdl));
+		uib_row(name, sprintf("{\"name\":%s,\"title\":%s,\"author\":%s,\"description\":%s,\"modes\":%s}", uib_qv(name),
+			uib_qv((title != "") ? title : name), uib_qv(UIB_MapField(MapInfo_Map_author, "<AUTHOR>")),
+			uib_qv(UIB_MapField(MapInfo_Map_description, "<DESCRIPTION>")), uib_qv(modes)), strcat("pk3:maps/", name));
+	}
+	uib_rows_end();
+	// after the filter: a first filter enumerates, which bumps the generation
+	strcpy(uib_maprows_key, strcat(src, " ", ftos(uib_mapinfo_gen)));
+	return src;
+}
+
+// A new mode keeps the chosen map when the mode has it, else takes its first map,
+// so Play never stands on a map the mode cannot start.
+void UIB_SetMode(string mode)
+{
+	cvar_set("touch_lan_gametype", mode);
+	Gametype gt = MapInfo_Type_FromString(mode, false, false);
+	if (gt && UIB_FilterMaps(gt) > 0 && !UIB_FilteredHas(cvar_string("touch_lan_map")))
+		cvar_set("touch_lan_map", MapInfo_BSPName_ByID(0));
+}
+
 // Create is one screen (id "sp") used two ways. From Home's Singleplayer card it
 // makes a local game: mode, map, bots; nothing about the network, and nobody
 // else can find or join it. From Multiplayer's Create it also offers player
@@ -513,6 +609,8 @@ void UIB_BuildCreate()
 			for (int i = 0; i < UIB_NMODES; ++i)
 			{
 				string id = UIB_ModeId(i);
+				if (UIB_ModeMaps(id) <= 0 && id != mode)
+					continue;   // no map you have can start it: not offered
 				UIB_Open(id, "card");
 					uib_s("title", UIB_ModeShort(id));
 					uib_s("a11y", UIB_ModeName(id));
@@ -530,7 +628,7 @@ void UIB_BuildCreate()
 		uib_s("subtitle", _("Tap to choose, double tap to play"));
 		UIB_Open("list", "list");
 			string msrc = cvar_string("_uib_debug_maps");      // stress tests: a synthetic source
-			uib_s("source", (msrc != "") ? msrc : strcat("maps:", mode));
+			uib_s("source", (msrc != "") ? msrc : UIB_MapRows(mode));
 			uib_s("display", "cards");
 			uib_s("rowHeight", "card");
 			// two full rows of tiles (picture and name) in view, more by scrolling sideways
@@ -681,19 +779,37 @@ void UIB_StartGame(string map, string mode)
 	bool lan = UIB_CreateLan();
 	Gametype gt = MapInfo_Type_FromString(mode, false, false);
 	if (!gt)
+	{
 		gt = MAPINFO_TYPE_DEATHMATCH;
-	MapInfo_FilterGametype(gt, 0, MapInfo_RequiredFlags(), MapInfo_ForbiddenFlags(), 0);
+		mode = "dm";
+	}
+	string m = map;
+	if (UIB_FilterMaps(gt) <= 0 || (m != "" && !UIB_FilteredHas(m)))
+	{
+		// a map (or a whole pack) added since MapInfo was built: look once more
+		UIB_MapInfoEnumerate();
+		UIB_FilterMaps(gt);
+	}
 	if (MapInfo_count <= 0)
 	{
-		uib_toast(_("No map you have supports this game mode"), "error", "error", 4);
+		uib_toast(sprintf(_("No map you have can start %s"), UIB_ModeName(mode)), "error", "error", 4);
+		UIB_RebuildAll();
 		return;
 	}
-	string m = "";
-	for (int i = 0; i < MapInfo_count; ++i)
-		if (MapInfo_BSPName_ByID(i) == map)
-			m = map;
-	if (m == "")
+	if (m == "")   // Quick play: any map of the mode
 		m = MapInfo_BSPName_ByID(floor(random() * MapInfo_count));
+	else if (!UIB_FilteredHas(m))
+	{
+		// never a different map than the one chosen: say why and start nothing
+		_MapInfo_FilterGametype(MAPINFO_TYPE_ALL, 0, 0, 0, 0);
+		string title = UIB_VM(strcat("map.title.", m));
+		if (UIB_FilteredHas(m))
+			uib_toast(sprintf(_("%s cannot be played in %s"), ((title != "") ? title : m), UIB_ModeName(mode)), "error", "error", 4);
+		else
+			uib_toast(sprintf(_("%s is not installed"), m), "error", "error", 4);
+		UIB_RebuildAll();
+		return;
+	}
 	int bots = bound(0, cvar("touch_lan_bots"), 32);
 	// a local game has the slots its bots need; only a LAN game has more
 	int slots = lan ? bound(2, max(cvar("touch_lan_maxplayers"), bots + 2), 64) : max(2, bots + 1);
@@ -1621,7 +1737,7 @@ void UIB_Action(string node, string a, string payload)
 {
 	if (substring(a, 0, 5) == "mode.")
 	{
-		cvar_set("touch_lan_gametype", substring(a, 5, -1));
+		UIB_SetMode(substring(a, 5, -1));
 		UIB_RebuildAll();
 		return;
 	}
