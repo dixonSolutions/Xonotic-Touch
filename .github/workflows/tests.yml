@@ -214,7 +214,7 @@ jobs:
         run: bash scripts/test-join-world.sh
       - name: A failed join says why (classification, wording, connect back-off)
         run: bash scripts/test-joinfail.sh
-      - name: Faster joins (a stock server's CSQC over HTTP: first-fragment peek, checksums, catalog)
+      - name: Faster joins (a stock server's CSQC over HTTP - first-fragment peek, checksums, catalog)
         run: bash scripts/test-joinfast.sh
       - name: Server list rules (saved list format, query budget, tries)
         run: bash scripts/test-srvlist.sh
