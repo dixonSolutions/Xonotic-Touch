@@ -6,9 +6,11 @@
 // The stock list waits for the masters (up to net_slist_timeout, 4 s, when
 // one is silent), then asks 128 servers a second, every server three times,
 // and shows nothing until answers come. This one shows the last known list in
-// the first frame, asks each server the moment a master names it, at a rate
-// tied to the clock and not to the frame rate, asks the silent ones again
-// instead of everyone, and measures itself (net_slist_stats).
+// the first frame, asks the servers it expects to answer (saved, or on a new
+// install the seed the build carries) at once and first, each other server
+// the moment a master names it, at a rate tied to the clock and not to the
+// frame rate, asks the silent ones again instead of everyone, and measures
+// itself (net_slist_stats).
 //
 // Hooks in netconn.c (each one line, marked // Touch:):
 //   ServerList_QueryList        TouchSrvList_Refresh(resetcache)

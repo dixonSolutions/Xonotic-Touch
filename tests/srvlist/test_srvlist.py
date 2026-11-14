@@ -16,6 +16,13 @@ scripts/test-srvlist.sh.
             are not shown from the saved list again.
   4 stock   net_slist_fast 0, for comparison (printed, and the stock
             scheduler must still work).
+  5 seed    a fresh user directory with a seed (net_slist_seed naming a
+            file of addresses) and a master that answers only after 0.6 s:
+            the seeded servers are asked at once and answer before the
+            master does; then the next session, with a saved list, takes no
+            seed.
+  6 model   net_slist_fast 2, the model of Insanotic's scheduler, still runs
+            and settles (printed).
 
 Every session refreshes three times (the menu's own refresh at start, a list
 opened at 8 s and again at 14 s), so the politeness counters also cover
@@ -51,19 +58,19 @@ def check(cond, msg, detail=""):
 def servers_a():
     out = []
     for i in range(160):
-        shared = i >= 94 and i < 100          # six live servers on one address
+        shared = i >= 76 and i < 100          # 24 live servers on one address
         s = {"ip": "127.77.9.9" if shared else "127.77.%d.%d" % (i // 200 + 1, i % 200 + 1),
-             "port": 26000 + (i - 94 if shared else 0), "alive": i < 100,
+             "port": 26000 + (i - 76 if shared else 0), "alive": i < 100,
              "latency_ms": 15 + (i * 37) % 236, "humans": 3 if i % 10 == 0 else 0, "bots": 2 if i % 7 == 0 else 0,
              "max": 16, "map": "stormkeep", "name": "Fake %d" % i}
         out.append(s)
     return out
 
 
-def write_state(servers):
+def write_state(servers, master_delay=0):
     tmp = STATE + ".tmp"
     with open(tmp, "w") as f:
-        json.dump({"servers": servers, "hold_answers": 0}, f)
+        json.dump({"servers": servers, "hold_answers": 0, "master_delay": master_delay}, f)
     os.replace(tmp, STATE)
     time.sleep(0.4)   # fakenet rereads it within 50 ms
 
@@ -75,7 +82,7 @@ def report():
         return json.load(f)
 
 
-def run_engine(userdir, fast, name):
+def run_engine(userdir, fast, name, seed="0", quit_at=None):
     """One session: the app's own refresh at start (if it makes one), a list opened at 8 s and again at
     14 s, where the saved rows, the summary and the bridge's source are read in the same frame, and
     all three once more at the end. Returns (stats lines, summaries, bridge windows, log)."""
@@ -95,7 +102,9 @@ def run_engine(userdir, fast, name):
                 'echo SUMMARY end "$_slist_summary" servers=$_slist_servers players=$_slist_players saved=$_slist_saved refreshing=$_slist_refreshing\n'
                 + windows(8))
     with open(os.path.join(userdir, "data", "sl.cfg"), "w") as f:
-        if fast:
+        if quit_at:
+            f.write('defer 8 "net_slist_open"\ndefer %d "exec sl_end.cfg"\ndefer %d quit\n' % (quit_at - 1, quit_at))
+        elif fast:
             f.write('defer 8 "net_slist_open"\ndefer 14 "exec sl_open.cfg"\ndefer 22 "exec sl_end.cfg"\ndefer 23 quit\n')
         else:
             f.write('defer 8 "net_slist_open"\ndefer 30 "exec sl_end.cfg"\ndefer 31 quit\n')
@@ -106,8 +115,8 @@ def run_engine(userdir, fast, name):
     log = os.path.join(a.work, name + ".log")
     cmd = [a.engine, "-xonotic", "-basedir", a.basedir, "-userdir", userdir, "+vid_fullscreen", "0", "+vid_width", "640", "+vid_height", "360",
            "+set", "_touch_assets_ready", "1"]
-    cmd += ["+set", "net_slist_fast", "1" if fast else "0", "+set", "net_slist_stats_print", "1", "+set", "net_slist_lan_repeats", "0",
-            "+set", "net_slist_favorites", "", "+exec", "sl.cfg"]
+    cmd += ["+set", "net_slist_fast", str(int(fast)), "+set", "net_slist_stats_print", "1", "+set", "net_slist_lan_repeats", "0",
+            "+set", "net_slist_favorites", "", "+set", "net_slist_seed", seed, "+exec", "sl.cfg"]
     with open(log, "wb") as f:
         subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT, env=env, timeout=120)
     text = open(log, errors="replace").read()
@@ -178,7 +187,7 @@ try:
         o = opening[-1]       # the list opened again in the same session
         check(int(o["rows_at_open"]) >= alive - 1 and f(o, "first_answer") == 0, "same session: opening the list again shows the rows at once", "%s rows" % o["rows_at_open"])
     check(r["dropped_flood"] == 0, "cold: no server was asked twice within a second, over three refreshes", "min gap %s s %s" % (r["min_gap_same_server"], r.get("flood_examples")))
-    check(r["min_gap_same_host"] is None or r["min_gap_same_host"] >= 0.045, "cold: ports of one host are asked at least 45 ms apart", "%s s" % r["min_gap_same_host"])
+    check(r["max_host_burst"] <= 16 + 10 + 1, "cold: one host with 24 ports gets at most 16 queries at once, then 100 a second", "%s within 100 ms" % r["max_host_burst"])
     budget = (alive + 2 * (len(A) - alive) + 25) + 2 * (len(A) + 25)
     check(r["queries"] <= budget, "cold: live servers one ask, unknown silent ones two, known silent ones one", "%d queries over three refreshes, at most %d" % (r["queries"], budget))
     check(r["first_query"] is not None and r["first_query"] < 0.3, "cold: servers are asked as soon as the master answers", "%s s after the master was asked" % r["first_query"])
@@ -254,6 +263,42 @@ try:
         s = done[0]
         print("     " + s["line"])
         check("stock" in s["line"] and int(s["answers"]) >= alive - 3, "stock: net_slist_fast 0 is the stock scheduler and still lists the servers", "%s answers" % s["answers"])
+
+    # ---- 5 the seed: a fresh install, a slow master
+    seeded = [x for x in A if x["alive"]][:60] + [x for x in A if not x["alive"]][:5]
+    ud5 = os.path.join(a.work, "user-seed")
+    shutil.rmtree(ud5, ignore_errors=True)
+    os.makedirs(os.path.join(ud5, "data"), exist_ok=True)
+    with open(os.path.join(ud5, "data", "seed.txt"), "w") as fh:
+        fh.write("# test seed\n" + "".join("%s:%d\n" % (x["ip"], x["port"]) for x in seeded))
+    write_state(A, master_delay=0.6)
+    stats, sums, rows, log = run_engine(ud5, True, "5-seed", seed="seed.txt", quit_at=16)
+    r = report()
+    done = [s for s in stats if not s["running"]]
+    if not done:
+        bad("seed: no refresh settled (log: %s)" % log)
+    else:
+        s = done[0]
+        print("     " + s["line"])
+        check(int(s.get("seeded", 0)) == len(seeded), "seed: every seeded address is taken", "seeded %s of %d" % (s.get("seeded"), len(seeded)))
+        check(f(s, "first_row") < 0.5, "seed: the first row is up before the master has answered (0.6 s)", "%.3f s" % f(s, "first_row"))
+        check(int(s["answers"]) >= alive - 1, "seed: and every live server is listed, seeded or not", "%s of %d" % (s["answers"], alive))
+    check(r["dropped_flood"] == 0, "seed: no server was asked twice within a second", str(r.get("flood_examples")))
+    stats, sums, rows, log = run_engine(ud5, True, "5-seed-next", seed="seed.txt", quit_at=16)
+    done = [s for s in stats if not s["running"]]
+    check(bool(done) and int(done[0].get("seeded", -1)) == 0 and int(done[0]["rows_at_open"]) >= alive - 1,
+          "seed: the next session has the saved list and takes no seed", done[0]["line"] if done else log)
+
+    # ---- 6 the model of Insanotic's scheduler (docs/NETWORK.md, "Measured")
+    write_state(A)
+    stats, sums, rows, log = run_engine(os.path.join(a.work, "user-model"), 2, "6-model", quit_at=24)
+    done = [s for s in stats if not s["running"]]
+    if not done:
+        bad("model: net_slist_fast 2 never settled (log: %s)" % log)
+    else:
+        print("     " + done[0]["line"])
+        check("insanotic-model" in done[0]["line"] and int(done[0]["answers"]) >= alive - 3 and int(done[0]["rows_at_open"]) == 0,
+              "model: net_slist_fast 2 runs Insanotic's scheduler (nothing saved) and lists the servers", "%s answers" % done[0]["answers"])
 finally:
     net.terminate()
     try:

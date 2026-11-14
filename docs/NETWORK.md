@@ -356,11 +356,38 @@ things are sent and what is shown meanwhile:
   is not shown from the saved list again until it has answered once; after
   three such sessions, or a week unseen, it is forgotten.
 - **No waiting for masters.** A server is asked in the frame a master names
-  it. The saved servers and the favourites are asked at once, before the
-  masters have answered.
-- **A budget on the clock, not the frame.** `net_slist_fast_rate` queries a
-  second (1500), `net_slist_fast_burst` at most in one frame (48): about 550
-  servers are asked within 0.4 s at any frame rate.
+  it. The saved servers and the favourites are asked at once, in the frame
+  the list opens, before the masters have answered.
+- **The seed, for the first open.** With nothing saved yet (a new install,
+  or `net_slist_saved 0`) the public servers the build carries
+  (`engine/darkplaces/touch_srvlist_seed.h`, about 240 addresses) take the
+  saved list's place: asked at once and first, in the frame the list opens,
+  before the masters have answered, twice at most like any address a master
+  lists. They are not shown until they answer (their names, maps and pings
+  would be days old and measured from somewhere else). Nothing says which
+  of them is near, so they go to as many places as possible first: one
+  address of every network (IPv4 /16, IPv6 /48) before a second of any. Nothing is seeded
+  when no master is set (tests, LAN-only) or once a saved list exists.
+  `net_slist_seed 0` turns it off; a file name instead of 1 uses that list
+  (tests). See "The seed" below for how it is kept current.
+- **The first wave first and fast.** The servers expected to answer (saved
+  and seeded) go first; the addresses only a master knows go after them.
+  The frame the list opens sends 48, then `net_slist_fast_rate` (4000 a
+  second) takes over, `net_slist_fast_burst` (320) at most in one frame so
+  that a slow frame still sends its share: a first wave of some 240 is out
+  within 50 ms at any frame rate. The short first burst is for the radio:
+  Wi-Fi is half duplex, and while a station sends a long burst it hears
+  little (a server 10 ms away, asked first in a burst of 220 from the
+  desktop below, answered after 42 ms; first of 49, after 15 ms). One IP
+  address gets at most 16 at once and then 100 a second (hosts that run
+  many servers); a send buffer that fills (`EWOULDBLOCK`) ends the frame's
+  sends instead of losing them. The
+  client's sockets ask for a 2 MB receive buffer and a 1 MB send buffer, so
+  the answers of servers at one distance, which arrive within a few
+  milliseconds of each other, are not dropped when a frame is slow. The
+  kernel caps both at `net.core.rmem_max` / `wmem_max` (4 MB on the Fedora
+  desktop these numbers come from; a kernel left at its 208 kB default keeps
+  the default buffer; not checked on Android).
 - **Asking again only where it helps.** A silent server is asked again 1.1 s
   later (a DarkPlaces server ignores a second `getstatus` from one address
   for 1 s), up to `net_slist_maxtries` (3) times if it was up last time,
@@ -382,21 +409,49 @@ things are sent and what is shown meanwhile:
   card: from the saved list at the first frame of the session, live from then
   on.
 
+### The seed
+
+`engine/darkplaces/touch_srvlist_seed.h` lists the public servers that
+answered when it was written (addresses only, in the engine's own address
+format, sorted so that a new one shows as a small diff). It is compiled in,
+so every build of every platform carries it with no file to package.
+`scripts/srvlist-seed.py` writes it: it asks the masters Xonotic asks once,
+every listed server one `getinfo` (the silent ones a second), keeps those
+that answer as Xonotic protocol 3, and rewrites the header only when more
+than a tenth of the servers came or went (`--churn`), refusing to write
+fewer than 100 (`--min`: a runner with no UDP leaves it alone). From a host
+with no IPv6 (GitHub's runners) it keeps the last seed's IPv6 servers that
+the masters still list.
+
+CI keeps it current: `.github/workflows/srvlist-seed.yml` runs the script
+on the first of every month (and by hand), and when the header changed it
+pushes `bot/srvlist-seed-<date>` and opens a pull request. The header is
+part of the darkplaces component, so that pull request is merged like any
+engine change (`scripts/component-push.sh darkplaces`). A push to a
+`ci/srvlist*` branch that touches the script runs it with `--check` only,
+which shows that the masters and servers answer a runner.
+
+A stale seed costs little: public servers keep their addresses for months,
+a seeded server that has gone is asked twice and given up like any address
+a master lists, a new server is asked as soon as a master names it, and the
+seed is only used until the first refresh has been saved.
+
 ### Being a good citizen
 
 | what | number |
 |---|---|
 | to a master | what the stock client sends: one `getserversExt` per refresh and socket; the menu's 10 s timer is upstream's |
 | to one server | one `getstatus` (about 45 bytes; the answer is 300-1400) per refresh; a second only after 1.1 s without an answer; at most 3 per refresh, 2 for an unknown address, 1 for one that failed before (stock: always 3) |
-| to one IP address | at least 50 ms between two queries, whatever the ports (hosts that run several servers) |
-| overall | 1500 queries a second at most, 48 in one frame; 120 a second for the periodic refresh; a server that answered is not asked again within 20 s by the periodic refresh |
+| to one IP address | at most 16 queries at once, whatever the ports, then 100 a second (hosts that run several servers; the busiest public host runs 14 on each of IPv4 and IPv6 and answers all 14 asked at once) |
+| overall | 4000 queries a second at most, 48 in the frame the list opens, 320 in any one frame (a first wave of some 240, about 12 kB, within 50 ms); 120 a second for the periodic refresh; a server that answered is not asked again within 20 s by the periodic refresh |
 | while joining | nothing: the list stops asking from the first `getchallenge` to the last signon, so nothing counts against the join at a rate-limiting host |
 | after a reset | the time each address was last asked survives a list reset: two refreshes in a second do not ask anyone twice within the server's 1 s |
 | amplification | none: answers go to the address that asked, and the client answers nothing |
 
-A full refresh of today's list (about 560 addresses, 240 alive) sends about
-890 packets cold and 560-620 with the saved list; the stock client sends
-three per address, about 1700.
+A full refresh of today's list (about 540 addresses, 240 alive) sends about
+850 packets cold, seeded or not, and 560-620 with the saved list; the stock
+client sends three per address, about 1650. The seed changes when packets
+go, not how many.
 
 ### Measured
 
@@ -406,43 +461,74 @@ does what opening the list does. Times are seconds from the refresh:
 servers that answered had answered, `settled` when every server had answered
 or been given up.
 
-Real masters and servers, 2026-11-14, a desktop in Australia on home
-broadband (median server ping about 270 ms), offscreen client pinned to 8
-cores while the machine ran other work (load 15-20), medians of 5 sessions
-each (range in brackets), one refresh per session (`net_slist_open` 8 s after
-the start; the first refresh that settles is taken):
+**The seed and the first wave, against Insanotic** (2026-11-14 afternoon).
+Real masters and servers, the same desktop in Australia on Wi-Fi (the
+nearest master answers in 5 ms, the nearest server in about 10 ms, the
+median server about 0.34 s away), offscreen client pinned to 6 cores
+(`taskset -c 0-5`) at about 250 frames a second, load 5-20. Every session
+starts from an empty user directory except the warm rows (one priming
+session, then five on the same directory); the cold rows ran interleaved,
+one of each in turn, so that they shared the network's moods. Medians of 5
+(range in brackets), measured with `tests/srvlist/bench_live.py`:
 
 | | sessions | rows in the first frame | first row | t50 | t95 | settled | servers listed | queries sent |
 |---|---|---|---|---|---|---|---|---|
-| stock (`net_slist_fast 0`) | 5 | 0 | 0.80 in the one session where no LAN game answered first (0.00 otherwise: a test server on this machine answers the LAN broadcast) | 1.91 (1.62-2.71) | 4.80 (2.91-6.39) | 8.27 (7.53-9.27) | 236 | about 1700 (3 per address) |
-| fast, nothing saved | 5 | 0 | 0.12 (0.05-0.14) | 0.47 (0.44-0.51) | 0.95 (0.91-1.60) | 3.36 (3.26-3.52) | 238 | 889 |
-| fast, the next session | 5 | 238 | 0.00 | 0.50 (0.43-1.51) | 0.99 (0.91-1.73) | 3.08 (2.12-3.18) | 238 | 582 |
+| stock (`net_slist_fast 0`), first open | 5 | 0 | 0.49 (0.45-0.63) | 2.15 (1.92-2.36) | 3.47 (3.42-3.58) | 13.02 (12.76-13.19) | 239 | about 1650 (3 per address) |
+| Insanotic's scheduler (`net_slist_fast 2`), first open | 5 | 0 | 0.07 (0.04-0.09) | 0.34 (0.34-0.35) | 0.48 (0.43-0.50) | 12.28 (12.28-12.29) | 238 | 1146 |
+| before (f617cab), first open | 5 | 0 | 0.04 (0.02-0.06) | 0.38 (0.36-0.38) | 0.84 (0.84-0.85) | 3.12 (2.93-3.13) | 238 | 841 |
+| **now, first open** | 5 | 0 | **0.05 (0.04-0.05)** | **0.33 (0.33-0.33)** | **0.39 (0.38-0.39)** | **1.89 (1.89-1.90)** | 236 | 857 |
+| before (f617cab), later opens | 5 | 235 | 0.00 | 0.33 (0.33-0.34) | 0.79 (0.79-0.82) | 2.84 (2.75-3.11) | 236 | 562 |
+| **now, later opens** | 5 | 237 | **0.00** | **0.33 (0.32-0.34)** | **0.38 (0.38-0.40)** | **2.55 (1.89-2.75)** | 237 | 557 |
 
-Half of the servers are in after half a second instead of two, 95 % after one
-second instead of five, and from the second session on the whole list is on
-screen in the first frame. A higher rate was tried and is not the default:
-at 2500 a second and 96 a frame, five sessions listed fewer servers (216 and
-172 against 238) and `t50` went up to 1.5 s in the saved-list case, because
-answers were lost (240 answers of up to 1.4 kB inside a tenth of a second)
-and had to be asked for again a second later.
+On a first open this list now has half of the servers 0.02 s and 95 % of them
+0.09 s before Insanotic's scheduler does, settles 10 s sooner and shows the
+first row about 0.02 s sooner (its range overlaps Insanotic's in one session
+of five). Against the list before, half are in 0.05 s and 95 % 0.45 s
+sooner and the list settles 1.2 s sooner; the first row is 0.01 s later
+(both within the same 0.02-0.06 s spread): the old list sent nothing until
+the master (5 ms away) answered, then its first 48 queries in the master's
+order, and here that order happened to start near the nearest servers; the
+seed has no idea where the player is. Later opens keep the whole list in the
+first frame and get the same t95 gain.
 
-The floor for `t50` from here is the median ping, about 0.27 s, plus the
-master's answer when nothing is saved (0.12 s). A stock refresh in this
-series did not hit the 4 s master wait (every master answered); when one is
-silent, stock adds up to 4 s before the first server is asked.
+Where the time went before: the 50 ms between two queries to one host (the
+busiest host runs 14 servers on each of IPv4 and IPv6, so its last port was
+asked 0.7 s in, and the 256-slot table that kept those times put unrelated
+hosts in one slot), 1500 queries a second over 540 addresses of which 300
+are dead, and the master's round trip. Insanotic sends 100 queries a frame
+in the master's order: everything is out within a few frames, but the live
+servers are spread over the dead ones and the radio is busy with the burst.
+`t50` here is about the median ping (0.33-0.34 s): the list cannot get much
+faster from this place.
 
-**Insanotic** (`~/Projects/insanotic`, `darkplaces/netconn.c`; compared by
-reading it: there is no runnable build of it on this machine) removed the
-wait after the masters (`net_slist_querywait 0`) and asks up to
-`net_slist_queriesperframe` (100) servers every frame (`net_slist_burst 1`),
-so on a first open it sends everything within a few frames (faster than
-this list's 0.4 s by design, at the burst size that lost answers here), and
-is frame-rate bound. It has no saved list (its first row is a master round trip
-plus the nearest server's ping; here it is the first frame), waits
-`net_slist_timeout` (4 s) before asking a silent server again and asks three
-times, so it settles after about 12 s where this settles in about 3; it asks
-every server at the full burst on every refresh, has no spacing per host and
-keeps asking during a join.
+What the Insanotic row is and is not. Insanotic cannot be built or run here
+(there is only its code, `~/Projects/insanotic`). `net_slist_fast 2` runs
+its scheduler, `NetConn_QueryQueueFrame` from its `darkplaces/netconn.c`
+with its defaults (`net_slist_burst 1`: up to `net_slist_queriesperframe`
+100 queries every frame; `net_slist_querywait 0`: from the first master
+answer; `net_slist_timeout` 4 s between tries; `net_slist_maxtries` 3; in
+the order the masters listed the servers; nothing saved, no seed, no
+spacing), inside this engine, so that both are timed by the same code on the
+same clock, network and frame rate. Insanotic asks the same masters
+(`xonotic-common.cfg`) for the same game. Not modelled: its menu's own
+frame rate (a lower one would only slow it: it is frame-bound, this list is
+not), its sockets (default buffers, like the model's), and that it sends
+each query on every socket (the wrong family fails at once in `LHNET_Write`).
+It is a model of its scheduling, not a run of Insanotic.
+
+**Earlier figures** (the same morning, home broadband, median ping about
+0.27 s, load 15-20; the list before this change): stock 0.80 / 1.91 / 4.80 /
+8.27 s, first open 0.12 / 0.47 / 0.95 / 3.36 s, later opens 0.00 / 0.50 /
+0.99 / 3.08 s (first row / t50 / t95 / settled). The masters answered in
+about 0.1 s then and in 5 ms in the afternoon series, which is why both
+"before" rows moved; compare rows of one series, not across them. A higher
+rate (2500 a second, 96 a frame) lost answers in that morning series (t50
+1.5 s in one saved-list session); in the afternoon series one session of
+the old list (1500 a second) lost a third of its first answers the same way
+(t50 1.51 s), while about 40 sessions of this one (cold and warm, the
+first wave of 240 sent within 50 ms or in a single frame) lost none, and
+the engine's own sockets dropped nothing (`/proc/net/udp`, which
+`bench_live.py` prints as `engine_socket_drops`).
 
 ### In the tests
 
@@ -455,8 +541,14 @@ listed; the saved rows up in the frame the list opens in the next session,
 before any answer, stale in the bridge's source and counted in the summary;
 20 servers gone and 10 new: removed, listed, and not shown from the saved
 list again; no server asked twice within a second over three refreshes in a
-row, hosts with several ports spaced; the stock scheduler still works with
-`net_slist_fast 0`.
+row; a host with 24 ports gets at most 16 queries at once and then 100 a
+second; the stock scheduler still works with `net_slist_fast 0`; a seed (a
+file of 65 addresses) is asked at once, so with a master that answers only
+after 0.6 s the first row is up in 0.02 s and every live server is still
+listed, and the next session, with a saved list, takes no seed; the model of
+Insanotic's scheduler (`net_slist_fast 2`) runs and settles.
+`tests/srvlist/bench_live.py` is not a test: it times sessions against the
+real masters (see "Measured").
 
 ## When a join fails
 
