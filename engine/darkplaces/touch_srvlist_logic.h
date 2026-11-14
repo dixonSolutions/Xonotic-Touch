@@ -28,7 +28,9 @@ shared by touch_srvlist.c and tests/srvlist/srvlist_logic_test.c.
 // Numbers (docs/NETWORK.md has the reasons)
 // ---------------------------------------------------------------------------
 #define TOUCHSL_RATE_DEFAULT      4000    // getstatus packets a second at most, first open and Refresh
-#define TOUCHSL_BURST_DEFAULT     320     // and at most this many in one go: the whole first wave in one frame
+#define TOUCHSL_BURST_DEFAULT     320     // and at most this many in one go (a slow frame still sends a second's share)
+#define TOUCHSL_FIRST_BURST       48      // the frame the list opens sends this many: a radio busy with a long
+                                          // burst carries no answers meanwhile (Wi-Fi is half duplex)
 #define TOUCHSL_RATE_BACKGROUND   120     // the menu's 10 s refresh timer: no faster than the stock list
 #define TOUCHSL_BURST_BACKGROUND  8
 #define TOUCHSL_HOST_RATE         100     // queries a second to one IP address (hosts with many ports)
@@ -232,6 +234,52 @@ static inline double TouchSL_FinalWait(double maxping_ms)
 	if (maxping_ms < 50) maxping_ms = 50;
 	if (maxping_ms > 2000) maxping_ms = 2000;
 	return maxping_ms / 1000.0 + 0.1;
+}
+
+// ---------------------------------------------------------------------------
+// The order of the seed's first wave. A network (an IPv4 /16, an IPv6 /48)
+// is one place, often one host with many ports; with nothing known about
+// where the player is, the first packets go to as many places as possible:
+// the first address of every network, then the second of every network, and
+// so on, each round in the seed's own order. order[] gets the indices.
+// ---------------------------------------------------------------------------
+static inline unsigned TouchSL_NetKey(const char *cname)
+{
+	unsigned h = 2166136261u;
+	int sep = 0;
+	const char *p = cname;
+	char stop = (*p == '[') ? ':' : '.';
+	int want = (*p == '[') ? 3 : 2;
+	for (; *p && *p != ']'; p++)
+	{
+		if (*p == stop && ++sep == want)
+			break;
+		if (*p == ':' && stop == '.')
+			break; // the port of an IPv4 address with fewer dots
+		h = (h ^ (unsigned char)*p) * 16777619u;
+	}
+	return h;
+}
+
+static void TouchSL_SpreadOrder(const char *const *addr, int n, int *order)
+{
+	int i, j, round, k = 0;
+	int rank[TOUCHSL_SEED_MAX];
+	if (n > TOUCHSL_SEED_MAX)
+		n = TOUCHSL_SEED_MAX;
+	// rank: how many earlier addresses share this one's network
+	for (i = 0; i < n; i++)
+	{
+		unsigned key = TouchSL_NetKey(addr[i]);
+		rank[i] = 0;
+		for (j = 0; j < i; j++)
+			if (TouchSL_NetKey(addr[j]) == key)
+				rank[i]++;
+	}
+	for (round = 0; k < n; round++)
+		for (i = 0; i < n; i++)
+			if (rank[i] == round)
+				order[k++] = i;
 }
 
 // ---------------------------------------------------------------------------

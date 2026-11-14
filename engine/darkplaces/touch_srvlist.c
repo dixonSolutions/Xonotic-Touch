@@ -454,7 +454,10 @@ static qbool masters_set(void)
 
 static void seed(void)
 {
-	int i;
+	static const char *addr[TOUCHSL_SEED_MAX];
+	static int order[TOUCHSL_SEED_MAX];
+	int i, n = 0;
+	char *buf = NULL;
 	sl.seeded = 0;
 	if (!net_slist_seed.string[0] || !strcmp(net_slist_seed.string, "0") || TouchLAN_LanOnly() || !masters_set())
 		return;
@@ -463,24 +466,32 @@ static void seed(void)
 		return; // the saved list knows better
 	if (!strcmp(net_slist_seed.string, "1"))
 	{
-		for (i = 0; touchsl_seed[i]; i++)
-			seed_add(touchsl_seed[i]);
+		for (n = 0; touchsl_seed[n] && n < TOUCHSL_SEED_MAX; n++)
+			addr[n] = touchsl_seed[n];
 	}
 	else
 	{
 		// a list of our own (tests): one address a line
-		char *buf = (char *)FS_LoadFile(net_slist_seed.string, tempmempool, true, NULL), *line, *next;
+		char *line, *next;
+		buf = (char *)FS_LoadFile(net_slist_seed.string, tempmempool, true, NULL);
 		if (!buf)
 			return;
-		for (line = buf; *line; line = next)
+		for (line = buf; *line && n < TOUCHSL_SEED_MAX; line = next)
 		{
 			next = strchr(line, '\n');
-			next = next ? next + 1 : line + strlen(line);
-			if (*line != '#' && *line != '\n')
-				seed_add(line);
+			if (next)
+				*next++ = 0;
+			else
+				next = line + strlen(line);
+			if (*line && *line != '#')
+				addr[n++] = line;
 		}
-		Mem_Free(buf);
 	}
+	TouchSL_SpreadOrder(addr, n, order);
+	for (i = 0; i < n; i++)
+		seed_add(addr[order[i]]);
+	if (buf)
+		Mem_Free(buf);
 }
 
 // The first wave's answers come back within a few milliseconds of each other
@@ -640,7 +651,9 @@ void TouchSrvList_Refresh(qbool resetcache)
 	sl.t0 = now;
 	sl.sent = sl.answers = sl.removed = sl.frames = 0;
 	sl.t_first_row = sl.t_first_answer = sl.t50 = sl.t95 = sl.t_settled = 0;
-	memset(&sl.bucket, 0, sizeof(sl.bucket));
+	// the first frame sends TOUCHSL_FIRST_BURST, the rest follows on the clock
+	sl.bucket.last = now;
+	sl.bucket.tokens = TOUCHSL_FIRST_BURST;
 	for (i = 0; i < nside; i++)
 	{
 		side[i].tries = 0;
