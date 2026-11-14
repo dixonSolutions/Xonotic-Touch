@@ -1438,8 +1438,12 @@ void RB_Layout()
 		if (t2) strcpy(t2.rb_t1, uib_get(rb_modal, "title"));
 		float my = D(60);
 		int mn = uib_count(rb_modal);
+		int lastfirst = rb_n;
+		float lasty = my;
 		for (int i = 0; i < mn; ++i)
 		{
+			lastfirst = rb_n;
+			lasty = my;
 			float h = RB_LayoutNode(uib_child(rb_modal, i), D(20), my, mw - D(40), 6);
 			if (h > 0) my += h + D(12);
 		}
@@ -1447,6 +1451,14 @@ void RB_Layout()
 		{
 			// the dialog's one button (a form's submit already is one)
 			float pbw = RB_ButtonW(uib_get(rb_modal, "primary.label"), uib_get(rb_modal, "primary.icon")) + D(24);
+			string lastc = mn ? uib_child(rb_modal, mn - 1) : "";
+			if (lastc != "" && uib_type(lastc) == "row" && uib_get(lastc, "align") == "end" && uib_get(lastc, "label") == "")
+			{
+				// a closing row of buttons (Close): the primary joins it at the end
+				for (int j = lastfirst; j < rb_n; ++j)
+					rb_item[j].rb_o_x -= pbw + D(8);
+				my = lasty;
+			}
 			entity pb = RB_Item("button", rb_modal, 6, eX * (mw - D(20) - pbw) + eY * my, eX * pbw + eY * D(48));
 			if (pb) { RB_SetAction(pb, rb_modal, "primary"); pb.rb_style = 1; }
 			my += D(48) + D(12);
@@ -1489,7 +1501,7 @@ void RB_ListFetch(int k, float first, float want)
 	int nc = stof(uib_get(id, "columns.#"));
 	for (int i = 0; i < nc; ++i)
 		cols = strcat(cols, uib_get(id, sprintf("columns.%d.key", i)), " ");
-	cols = strcat(cols, "max bots lock title author name");
+	cols = strcat(cols, "max bots lock title author name stale");
 	strcpy(lc_cols[k], cols);
 	float start = max(0, first - 24);
 	int got = uib_window(lc_src[k], start, 120, sort, desc, filter);
@@ -1684,6 +1696,7 @@ void RB_DrawButton(entity e, vector p, bool hot, bool pressed)
 	drawfont = FONT_USER;
 }
 
+float rt_stale;   // the row being drawn has not answered yet this session
 void RB_DrawTable(entity e, vector p)
 {
 	int k = e.rb_list;
@@ -1744,6 +1757,7 @@ void RB_DrawTable(entity e, vector p)
 		if (rb_hover >= 0 && rb_item[rb_hover] == e && rb_mouse.y >= ro.y && rb_mouse.y < ro.y + rowh)
 			RB_Fill(ro, eX * W + eY * rowh, RB_BLUE, 0.14 * rb_a);
 		string row = RB_Row(k, r);
+		rt_stale = (row != "" && RB_Cell(row, lc_cols[k], "stale") == "1");
 		if (row != "" && rt_sel != "")
 		{
 			// the chosen row: ember wash and a bar at its left edge
@@ -1785,7 +1799,7 @@ void RB_DrawTable(entity e, vector p)
 			else if (rt_ct[i] == "map") col = RB_MUTED;
 			if (uib_get(id, sprintf("columns.%d.align", i)) == "end")
 				co.x = rt_xs[i] + rt_ws[i] - D(10) - min(RB_TextW(v, D(14)), rt_ws[i] - D(10));
-			RB_TextFit(co, v, D(14), rt_ws[i] - D(10), col, rb_a);
+			RB_TextFit(co, v, D(14), rt_ws[i] - D(10), col, rb_a * (rt_stale ? 0.45 : 1));   // a row saved from last time, not yet answered: dimmed
 		}
 	}
 	if (firstkey != "") strcpy(lc_anchor[k], firstkey);
@@ -3031,7 +3045,11 @@ bool TouchUIB_Draw(float alpha)
 	if (uib_native())
 		return true;   // a native renderer shows the menu: describe, do not draw
 	if (!cvar("menu_touch_uib"))
+	{
+		// the classic menu shows its own "Could not join" again
+		if (uib_inited && !cvar("touch_joinfail_dialog")) cvar_set("touch_joinfail_dialog", "1");
 		return false;
+	}
 	if (!uib_inited)
 		UIB_Init();
 	if (time > rb_tick_next)

@@ -244,32 +244,19 @@ void UIB_CampaignRows()
 	uib_rows_end();
 }
 
-// "N servers · M players" from the server list the engine already holds; ""
-// while it holds none (nothing is asked of the network for Home).
-float uib_mp_rev = -1;
+// "N servers · M players": the engine's own figure (_slist_summary, docs/NETWORK.md),
+// filled from the saved list in the first frame and live from the first refresh on.
+// _slist_refreshing says a refresh is running. True when either changed.
 string uib_mp_summary;
+float uib_mp_refreshing = -1;
 bool UIB_ServerSummary()
 {
-	float rev = uib_srcrev("servers.all");
-	if (rev == uib_mp_rev)
-		return false;
-	uib_mp_rev = rev;
-	int total = 0, players = 0;
-	for (int off = 0; off < 600; off += 200)
-	{
-		int n = uib_window("servers.all", off, 200, "", 0, "");
-		total = uib_wtotal();
-		for (int i = 0; i < n; ++i)
-			players += max(0, stof(uib_wcell(i, "players")) - stof(uib_wcell(i, "bots")));
-		if (off + n >= total || n <= 0)
-			break;
-	}
-	string out = "";
-	if (total > 0)
-		out = sprintf(_("%d servers · %d players"), total, players);
-	if (out == uib_mp_summary)
+	string out = cvar_string("_slist_summary");
+	float r = cvar("_slist_refreshing");
+	if (out == uib_mp_summary && r == uib_mp_refreshing)
 		return false;
 	strcpy(uib_mp_summary, out);
+	uib_mp_refreshing = r;
 	return true;
 }
 
@@ -734,7 +721,11 @@ void UIB_BuildServers()
 	if (!UIB_Screen("mp", _("Multiplayer")))
 		return;
 	uib_s("kind", "page");
-	if (uib_mp_summary != "") uib_s("subtitle", uib_mp_summary);
+	UIB_ServerSummary();
+	if (uib_mp_summary != "")
+		uib_s("subtitle", cvar("_slist_refreshing") ? sprintf(_("%s · refreshing…"), uib_mp_summary) : uib_mp_summary);
+	else if (cvar("_slist_refreshing"))
+		uib_s("subtitle", _("Looking for servers…"));
 	uib_j("header", "{\"collapsible\":true}");
 	UIB_Open("bar", "toolbar");
 		UIB_Open("search", "field");
@@ -1159,6 +1150,48 @@ void UIB_BuildCredits()
 	UIB_Done();
 }
 
+void UIB_BuildJoinFail()
+{
+	if (!UIB_Screen("dialog.joinfail", _("Could not join")))
+		return;
+	uib_s("presentation", "dialog");
+	uib_b("dismissable", 1);
+	uib_j("primary", UIB_AS("joinfail.retry", _("Retry"), "refresh", "primary"));
+	UIB_Open("text", "text");
+		uib_s("body", cvar_string("_join_fail_text"));
+		uib_s("style", "title");
+		uib_s("icon", "warning");
+	UIB_Close();
+	if (cvar_string("_join_fail_detail") != "")
+		UIB_Text("detail", cvar_string("_join_fail_detail"), "");
+	UIB_Open("buttons", "row");
+		uib_s("align", "end");
+		UIB_Button("close", _("Close"), "{\"id\":\"dialog.cancel\",\"label\":\"\",\"kind\":\"back\"}", "secondary");
+	UIB_Close();
+	UIB_Done();
+}
+
+float uib_jf_serial = -1;
+// A join failed (the serial counts up): the dialog, over whatever the menu shows.
+void UIB_JoinFailTick()
+{
+	// this menu shows the reason itself; the classic dialog stays shut
+	if (cvar("touch_joinfail_dialog"))
+		cvar_set("touch_joinfail_dialog", "0");
+	float serial = cvar("_join_fail_serial");
+	if (uib_jf_serial < 0)
+		uib_jf_serial = serial;
+	if (serial == uib_jf_serial)
+		return;
+	uib_jf_serial = serial;
+	if (strstrofs(strcat(" ", uibn_modal, " "), " dialog.joinfail ", 0) >= 0)
+		UIB_Build("dialog.joinfail");
+	else
+		UIB_Modal("dialog.joinfail");
+	if (!Menu_Active)
+		m_display();
+}
+
 void UIB_BuildQuit()
 {
 	if (!UIB_Screen("dialog.quit", _("Quit Godnotic?")))
@@ -1189,6 +1222,7 @@ void UIB_Build(string id)
 		case "loading": UIB_BuildLoading(); return;
 		case "credits": UIB_BuildCredits(); return;
 		case "dialog.quit": UIB_BuildQuit(); return;
+		case "dialog.joinfail": UIB_BuildJoinFail(); return;
 	}
 	if (substring(id, 0, 8) == "settings" || substring(id, 0, 4) == "mods")
 		UIB_BuildSettings(id);
@@ -1252,7 +1286,7 @@ void UIB_Init()
 	UIB_Context();
 }
 
-float uib_next_tick;
+float uib_next_tick, uib_mp_next_refresh;
 void UIB_Tick()
 {
 	if (!uib_inited)
@@ -1272,13 +1306,20 @@ void UIB_Tick()
 		uib_toast(dbg, "success", "check", 4);
 	}
 	UIB_LanPopupTick();
+	UIB_JoinFailTick();
 	// time-varying screens
 	string top = UIB_TopScreen();
-	if (top == "home" && time > uib_next_tick)
+	if ((top == "home" || top == "mp") && time > uib_next_tick)
 	{
-		uib_next_tick = time + 1;
+		uib_next_tick = time + 0.5;
 		if (UIB_ServerSummary())
 			UIB_Build(top);
+		// while Multiplayer shows: a refresh every 10 s keeps the list live (the engine throttles it)
+		if (top == "mp" && time > uib_mp_next_refresh)
+		{
+			uib_mp_next_refresh = time + 10;
+			refreshhostcache(false);
+		}
 	}
 	if ((top == "pause" || top == "lan.host" || top == "mods.detail" || top == "settings.data") && time > uib_next_tick)
 	{
@@ -1314,11 +1355,15 @@ void UIB_Action(string node, string a, string payload)
 		case "host.close": UIB_LanPopupClose(true); return;
 		case "host.copy": case "host.copylink": case "host.share": return;   // the renderer copied or shared the text
 		case "create": UIB_VMSet("create.from", "mp"); UIB_Push("sp"); return;
-		case "mp": UIB_VMSet("mp.server", ""); UIB_Push("mp"); UIB_Refresh(); return;
+		case "mp": UIB_VMSet("mp.server", ""); UIB_Push("mp"); UIB_Refresh(); uib_mp_next_refresh = time + 10; return;
 		case "credits": UIB_Push("credits"); return;
 		case "quit": localcmd("\nquit\n"); return;   // the renderer already confirmed
 		case "quit.confirm": localcmd("\nquit\n"); return;
 		case "dialog.cancel": UIB_Back(); return;
+		case "joinfail.retry":
+			if (UIB_TopScreen() == "dialog.joinfail") UIB_Back();
+			localcmd("\njoin_retry\n");
+			return;
 		case "play":
 		{
 			string map = cvar_string("touch_lan_map");
