@@ -26,3 +26,11 @@ libc = "0.2"
 [[test]]
 name = "fetch"
 required-features = ["http-ureq"]
+
+[[test]]
+name = "fetch_manifest"
+required-features = ["http-ureq"]
+
+[[example]]
+name = "datafetch"
+required-features = ["http-ureq"]

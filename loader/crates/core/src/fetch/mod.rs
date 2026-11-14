@@ -23,6 +23,8 @@ pub mod crc32;
 pub mod datasets;
 #[cfg(feature = "http-ureq")]
 pub mod http_ureq;
+pub mod manifest;
+pub mod sha256;
 
 use std::collections::BTreeMap;
 use std::fs;
