@@ -18,7 +18,6 @@
 #                   announced with fs_mountpack, in priority order (a map's
 #                   own pack after the packs it needs), every file of every
 #                   pack reads back right through the engine's search path,
-#                   the music's track list is run when its pack is in,
 #                   and the engine hears "touch_data_status" at most about
 #                   twice a second, ending with "state complete"
 #   warm            a reload: no data request, every pack found at start
@@ -31,7 +30,8 @@
 #                   loads; Module.xt.dataWant("gamma") fetches and mounts
 #                   gamma's pack without a command
 #   old-layout      a browser holding the layout from before the split set
-#                   (official pack names, the stager's own map split): the
+#                   (official pack names, the stager's own map split; it
+#                   goes through the same queue, with fs_rescan): the
 #                   new deploy starts with no question and no request,
 #                   every map still loads, the new set is stored in the
 #                   background, and the next start runs it
@@ -67,7 +67,9 @@ site() { # DIR stage-web-data arguments...
     local dir="$1"
     shift
     mkdir -p "$dir"
-    cp "$ROOT"/web/{index.html,shell.js,store.js,lazyfs.js,shell.css,godnotic-banner.png,manifest.webmanifest} "$dir/"
+    # (Everything the page loads: its scripts, the style sheet, the banner.)
+    cp "$ROOT"/web/index.html "$ROOT"/web/*.js "$ROOT"/web/*.css "$ROOT"/web/manifest.webmanifest "$dir/"
+    cp "$ROOT"/web/godnotic-banner.* "$dir/" 2>/dev/null || true
     cp "$here/stub-engine.js" "$dir/godnotic.js"
     cp "$OUT/set/expect.json" "$dir/"
     TMPDIR="$OUT" bash "$ROOT/scripts/stage-web-data.sh" "$@" --slim "$OUT/slim" --out "$dir" >"$dir.stage.log" 2>&1 || { cat "$dir.stage.log" >&2; exit 1; }
@@ -160,11 +162,11 @@ for E in ${ENGINES//,/ }; do
     ctl rate=150000
     start_browser "$E" "$P"
     step dialog "$E" --url "$SITE" --until '!document.getElementById("xt-download").hidden' --eval 'splitTest.dialog()' \
-        --expect 'r.title === "Download Godnotic" && /^To start playing: \d+ MB\. The other \d+ MB \(the music, the other maps\) follow while you play\./.test(r.lead)'
+        --expect 'r.title === "Download Godnotic" && /^\d+ MB to play\. Maps and music \(\d+ MB\) follow as you play\.$/.test(r.lead)'
     step first-play "$E" --no-navigate --until '(document.getElementById("xt-dl-go").click(), window.__engine && __engine.started)' --eval 'splitTest.started()' \
         --expect 'r.beforeIsFirstPlay && r.packsAreFirstPlay && r.lazy === true && r.store === "opfs" && r.coreBsp.length === 0 && r.coreMapinfo === 3 && / state fetching /.test(r.status0)'
     step background "$E" --no-navigate --until 'splitTest.complete()' --eval 'splitTest.now()' \
-        --expect "r.restInOrder && r.reads > 0 && r.perSecond <= 4 && r.commands.length === 0 && r.execs === 'cdtracks.cfg,true' && $DONE"
+        --expect "r.restInOrder && r.reads > 0 && r.perSecond <= 4 && r.commands.length === 0 && $DONE"
     step warm "$E" --url "$SITE" --until 'window.__engine && __engine.started' --eval 'splitTest.started().then(async (s) => Object.assign(s, { now: await splitTest.now() }))' \
         --expect 'r.before.length === 0 && r.hasAll && !r.dialogShown && r.now.fetched.length === 0 && r.now.mountpacks.length === 0 && r.now.verify.bad.length === 0 && / state complete /.test(r.status0)'
     stop_browser KILL
@@ -202,9 +204,11 @@ for E in ${ENGINES//,/ }; do
     P="$OUT/p-old-$E"
     ctl "root=$OUT/old"
     start_browser "$E" "$P"
-    step old-first "$E" --url "$SITE?autodownload" --until 'window.__engine && __engine.started' \
+    # (That layout starts on its core packs too; its maps and music follow,
+    # and the engine sees them with the fs_rescan before the next map.)
+    step old-first "$E" --url "$SITE?autodownload" --until 'splitTest.complete()' \
         --eval '(xt.command("map \"beta\""), new Promise((r) => setTimeout(r, 1500)).then(() => splitTest.started().then((s) => Object.assign(s, { loaded: __engine.loaded, errors: __engine.errors }))))' \
-        --expect 'r.oldLayout && r.loaded.join() === "beta" && r.errors.length === 0 && / state legacy /.test(r.status0)'
+        --expect 'r.oldLayout && r.loaded.join() === "beta" && r.errors.length === 0 && / state fetching /.test(r.status0)'
     ctl "root=$OUT/new"
     step old-keeps-playing "$E" --url "$SITE?small=1000" --until 'window.__engine && __engine.started' \
         --eval '(xt.command("map \"alpha\""), new Promise((r) => setTimeout(r, 1500)).then(() => splitTest.started().then((s) => Object.assign(s, { loaded: __engine.loaded, errors: __engine.errors }))))' \

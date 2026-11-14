@@ -12,7 +12,7 @@
 // pack first; --expect-fetch fails the run when it needed none). Each
 // step's time, data bytes and peak heap go in the JSON. A map change on
 // demand, from a fresh profile:
-//   tests/web-cache/e2e.sh /tmp/p 'http://localhost:8080/?autoplay&allmaps=0' first \
+//   tests/web-cache/e2e.sh /tmp/p 'http://localhost:8080/?autoplay&background=0' first \
 //       --map stormkeep --map2 dance --expect-fetch
 //
 // Opens URL in a Chrome profile kept in DIR (so a second run is a reload with

@@ -23,15 +23,29 @@ renderers showing the same snapshot will look different and must both be correct
 
 Owner rules that the descriptions follow and renderers must not undo:
 
-- Home holds a hero Play card, Singleplayer, Multiplayer, Settings, Credits and Quit. Nothing else.
-- Multiplayer is one Servers screen: a search field, one row of checkboxes (LAN, Empty,
-  Full, Laggy) and Refresh, the dense list, an address field and Join. LAN is just one of
-  those checkboxes. There is no Internet | LAN | Host switch, no filters sheet and no
-  hosting screen.
-- Hosting is part of Create: a LAN checkbox; when ticked, Port and an optional Password
-  (with its own toggle; open lock when no password applies, closed lock when one is set)
-  appear inline. While hosting, the pause menu shows one compact card with the labelled
-  join addresses and the lock state.
+- Home is the banner, large, and exactly three large cards, each with a picture from the
+  game's own data: **Singleplayer** (the last map played), **Campaign** (the next level),
+  **Multiplayer** (with "N servers · M players" once the list is known). Settings, Credits
+  and Quit are the screen's `actions` (small, in the header), never cards. Nothing else.
+- Singleplayer is a local game: mode, map, bots. Nothing on it is about the network, and
+  the engine opens no network socket for it (docs/LAN.md). Campaign is its own screen.
+- Multiplayer is one screen: a search field, one row of checkboxes (LAN, Empty, Full,
+  Laggy) and Refresh, the dense text list, and one bar with an address field, Create and
+  **one Join**. A tap chooses a server; Join (off until a server is chosen or an address
+  typed) or a double tap joins it. No buttons on rows, no page behind a row, no player
+  list, no pictures in the list. LAN is just one of the checkboxes. There is no
+  Internet | LAN | Host switch, no filters sheet and no hosting screen.
+- One obvious primary action per screen: where a screen has `primary` (Play, Join, Close)
+  nothing else on it repeats that action.
+- Hosting is part of Create (reached from Multiplayer): a LAN checkbox; when ticked,
+  Player slots, Port and an optional Password (with its own toggle; open lock when no
+  password applies, closed lock when one is set) appear inline. Unticked, Create starts
+  the same local game as Singleplayer. When a hosted game starts the host gets a popup
+  (`lan.host`) with the addresses to read out or copy, the lock, who is in, and a
+  "Close when someone joins" switch (also in Settings > Game); the pause menu's hosting
+  card reopens it. The host leaving ends the game for everyone.
+- The map picker shows two full rows of tiles (picture and name) and scrolls sideways.
+  One tap chooses a map, the Play button or a double tap starts it.
 - Mods is a top-level section of Settings.
 - The user-visible word is "Mods", never "plugins".
 - Data lists (the server list) are dense; action controls are large (48 dp minimum target).
@@ -218,6 +232,7 @@ image/window requests, so a reconnect is cheap.
 | `modal` | id[] | sheets and dialogs over the stack, bottom to top |
 | `busy` | object | absent when not busy. `{label, detail, progress (0..1), indeterminate (bool), cancel (action)}`: a global blocking state (connecting, loading) |
 | `canBack` | bool | whether the `back` event does something (hardware back, Escape, swipe) |
+| `reserved` | `{id, x, y, w, h}`[] | rects, in dp of the engine's window, that the engine itself draws over the UI (section 4.12). Absent when there are none |
 | `title` | string | application title |
 | `context` | `"menu"` / `"game"` / `"loading"` | menu at start, pause menu over a running match, a loading screen |
 
@@ -268,9 +283,11 @@ A badge is `{text, icon, tone}`, a chip `{icon, text}`; `tone` is one of `neutra
 | `sort`, `desc` | string, bool | current sort column and direction |
 | `filter` | string | current search text (also sent in `window`) |
 | `searchable` | bool | show a search field |
-| `selection` | `none`, `single`, `multi` | |
+| `selection` | `none`, `single`, `multi` | `single` / `multi`: the list tells choosing from activating (section 6.1) |
 | `selected` | string[] | selected row keys |
-| `rowPrimary` | action | what tapping a row does (event `row`, kind `activate`) |
+| `rowSelect` | action | the name of choosing a row (label, icon) in a list whose `selection` is `single` or `multi`: there one tap or click chooses the row (event `row`, kind `select`) and `rowPrimary` needs a double tap, a double click or Enter (section 6.1) |
+| `rowPrimary` | action | what activating a row does (event `row`, kind `activate`): a tap when `selection` is `none` or absent, a double tap when it is `single` or `multi` |
+| `rows`, `scroll` | int 1..4, `vertical` / `horizontal` | `display: cards` with `scroll: horizontal`: the cards run in exactly `rows` rows and scroll sideways. The renderer sizes the tiles so that all `rows` rows (picture at `aspectItem`, one line of name) are in view between the sticky header and the action bar, never a cut-off row, with the scroll bar inside the list |
 | `rowActions` | action[] | per-row actions (swipe, context menu, trailing buttons) |
 | `state` | `ready`, `loading`, `error` | |
 | `empty` | `{title, text, icon, action}` | shown when `total` is 0 and `state` is ready |
@@ -298,7 +315,10 @@ renderers ignore them unless they know them.
 
 **`text`** — `body`, `style` (`body`, `caption`, `title`, `mono`, `note`, `warning`),
 `selectable`.
-**`image`** — `ref`, `aspect`, `fit` (`cover`, `contain`), `alt`.
+**`image`** — `ref`, `aspect`, `fit` (`cover`, `contain`), `alt`, `role` (`picture` default, `banner`).
+`role: "banner"` with `emphasis: "high"` is the Home banner: a renderer gives it about a
+quarter to a third of the window's height (never a thin strip), whole (`contain`), and may
+leave out the screen's title beside it.
 **`divider`** — nothing.
 **`status`** — a whole-page state: `icon`, `title`, `body`, `progress` (0..1),
 `indeterminate`, `primary`, `actions`, `tone` (empty pages, errors, "connecting", "nothing here yet").
@@ -363,12 +383,12 @@ Nothing else in a description can open a URL or a file.
 | `servers` | every server the engine knows: Internet, LAN, VPN | cells: `name`, `map`, `mode`, `players`, `max`, `bots`, `ping`, `lock`, `fav`, `address`, `net` (`internet`, `lan`, `vpn`), `version` |
 | `servers.lan` | LAN and VPN rows only | as above (the Servers screen keeps source `servers` and its LAN checkbox filters it engine-side) |
 | `servers.fav` | favourites | as above |
-| `players:<address>` | players on one server (from its status reply) | `name`, `score`, `ping`, `team` |
 | `maps` | installed maps | `name`, `title`, `author`, `modes` (space-separated mode ids), `players` (recommended, string), `size` (`small`, `medium`, `large`); row `image` is the preview ref |
 | `maps:<mode>` | maps that support a game type | as above |
 | `modes` | game types | `id`, `name`, `help`, `team` (bool); row `image` is the mode artwork |
 | `mods.client`, `mods.server` | installed mods | `id`, `name`, `version`, `enabled`, `state` (`ok`, `error`, `stopped`), `tier` (permission tier as the engine reports it) |
 | `recent` | recent matches | `map`, `mode`, `when`, `result`, `address` (empty for local) |
+| `campaign` | the campaign's levels up to the first locked one; keys are level indices | `n`, `title`, `map`, `mode`, `modeName`, `state` (`done`, `next`, `locked`), `locked` (bool); row `image` is the level's map picture |
 
 Row `key`s are stable for a row across revisions (a server's address, a map's name).
 
@@ -445,6 +465,32 @@ half a screen), recycling row and card widgets.
 | sticky section headers | item decoration or sticky-header layout manager | `GtkListHeaderFactory` sections | own |
 | header, toolbar, tab strip | `CoordinatorLayout` + `AppBarLayout` (collapsing) | `AdwToolbarView` top bars (`AdwHeaderBar`, `AdwViewSwitcher`) | own |
 | action bar | bottom bar in the `CoordinatorLayout` | `AdwToolbarView` bottom bar | own |
+
+### 4.12 Reserved areas: the engine's console button
+
+The engine draws one control of its own on top of everything in its window: the console
+button (`touch_shellbtn.c`), top right in menus, inside the safe area. Nothing else may
+sit under it. Its rect is published instead of being guessed:
+
+- `app.reserved`: `[{"id": "console", "x", "y", "w", "h"}]` in dp of the engine's window,
+  updated when the button moves, absent while it is not drawn and in back-end mode
+  (`-uibridge`, where the engine's window is hidden behind the app's own);
+- the cvar `_touch_shell_rect`: the same rect as fractions of the window, `"x y w h"`,
+  empty while hidden, for the menu VM and CSQC.
+
+The contract: **a renderer that draws inside the engine's window, or over it while the
+engine's surface shows through or takes touches, keeps every interactive control and every
+title out of each reserved rect plus 8 dp**. In practice the header lays its actions out
+from the rect's left edge instead of the window's right edge, shortens the title to what is
+left, turns labelled actions into icons before letting them collide, and a dialog that
+would reach under the button starts below it. A renderer with its own window (GTK) ignores
+`reserved`; the Kotlin renderer honours it whenever the engine's button is visible with
+its views (if its views cover the engine's surface completely, the button is not on
+screen and there is nothing to keep clear of). No renderer positions anything by a
+constant that stands for "where the console button probably is".
+
+In a match the button is placed by the engine beside MENU, away from CHAT and the score
+list (`touch_shellbtn.c`); the HUD reads `_touch_shell_rect` for the same reason.
 
 ### 4.11 Settings: vertical tabs with horizontal sub-tabs
 
@@ -583,11 +629,40 @@ All events are messages `{"uib":1, "t":"ev", "id":n, "ev":"<kind>", ...}`.
 | `action` | `node`, `action` (action id), optional `payload` (object) | an action was invoked: a button, a card's primary, a toolbar action, a confirmed confirm |
 | `value` | `node`, `value` | a control's value changed (switch, slider on release or throttled to 10 Hz while dragging, choice, colour, keybind, field on each edit if the field has no `submit`) |
 | `submit` | `node`, `value` | a field was submitted (Enter, Done, the field's `submit` action) |
-| `row` | `node` (the list), `row` (row key), `kind` (`activate`, `select`, `action`), `action` (for kind action) | a list row was tapped, selected, or had a row action invoked |
+| `row` | `node` (the list), `row` (row key), `kind` (`activate`, `select`, `action`), `action` (for kind action) | a list row was chosen, activated, or had a row action invoked (section 6.1) |
 | `shown` / `hidden` | `node` (screen id) | the screen became visible / was covered or left; the engine pauses work for hidden screens (server pings, previews) |
 | `back` | — | system back, Escape, swipe back |
 | `dismiss` | `node` (sheet, dialog or toast) | closed by tapping outside, swiping down, or a toast timing out |
 | `visible` | `node` (the list), `offset`, `limit` | the visible window of a list (lets the engine prioritise pings for those rows) |
+
+### 6.1 Choosing and activating a row
+
+Two kinds of list, told apart by `selection` (the same rule in all three renderers):
+
+| List | One tap / click | Double tap / double click, Enter on the chosen row | Scrolling |
+| --- | --- | --- | --- |
+| `selection` absent or `none` (settings lists, recent matches) | `row`, kind `activate` | the same | never sends anything |
+| `selection: single` or `multi` (the map picker `sp/maps/list`, the campaign levels, the server list `mp/servers`) | `row`, kind `select`: the row is chosen and shown chosen (ring, tint) | `row`, kind `activate`: play the map, join the server | never sends anything |
+
+Rules for a list with `selection: single` (or `multi`); `rowSelect` and `rowPrimary` name the two actions:
+
+1. A tap sends `select` at once (no waiting to see whether a second tap follows) and the
+   renderer shows the row chosen optimistically. The engine answers with the list's
+   `selected` (and whatever else follows from the choice, e.g. the Join button's
+   `enabled`). The chosen row is `selected[0]`; a renderer keeps its list widget and its
+   scroll position when only `selected` changes.
+2. A second tap on the **same row** within the platform's double-tap time (400 ms where
+   the platform gives none) sends `activate`. So a double tap sends `select`, then
+   `activate`. A third tap starts over. A tap on another row, or a slow second tap, only
+   chooses.
+3. Keyboard and gamepad: moving the focus chooses (`select`); Enter / A on the chosen row
+   sends `activate`.
+4. The screen's primary button (Play, Join) acts on the chosen row; it is the other way to
+   activate, and the only button that does.
+5. A drag never chooses or activates, and a press that stops a fling does neither (4.10).
+6. Safety net in the menu VM: an `activate` for a row that is not the chosen one is taken
+   as `select`. A renderer that only knows "tap = activate" therefore never starts a match
+   or joins a server with one tap; its second tap on the row does.
 
 ## 7. Capability handshake
 
@@ -805,7 +880,7 @@ For the Rust core (and anyone else):
 | --- | --- |
 | `touch_uib_api.qh` | the builtins #1180..#1222 (`uib_begin`, `uib_node`, `uib_s`/`uib_f`/`uib_b`/`uib_j`/`uib_push`, `uib_nav`, `uib_window` ...). Guard: `UIB_EngineHasBridge()` (cvar `uib_version`) |
 | `touch_uib_build.qc` | builder helpers: `UIB_Screen`, `UIB_Open`/`UIB_Close`, `UIB_A` (actions), `UIB_Switch`, `UIB_Slider`, `UIB_Choice` ...; view-model values (`vm:` binds) kept in `_uib_*` cvars |
-| `touch_uib_screens.qc` | Home, Create (with LAN, Port, Password), map preview, Servers, server detail, password dialog, pause (hosting card), loading, Credits, quit dialog; navigation; `UIB_Event`, the menu's answer to every renderer event |
+| `touch_uib_screens.qc` | Home (banner, three cards), Singleplayer / Create (screen `sp`; LAN, slots, Port, Password only when opened from Multiplayer), Campaign, map details, Multiplayer (`mp`), password dialog, the host's LAN popup (`lan.host`), pause (hosting card), loading, Credits, quit dialog; navigation; `UIB_Event`, the menu's answer to every renderer event |
 | `touch_uib_settings.qc` | Settings (split, vertical tabs, horizontal sub-tabs) and Mods (lists, detail with permissions, install from link) |
 | `touch_uib_render.qc` | the QuakeC renderer (web, and the fallback everywhere) |
 
@@ -831,8 +906,9 @@ a synthetic source made by `uib_testrows <source> <n> servers|maps`.
 - **Layout** runs only when the store's rev, the screen or the window size changed;
   each frame draws the items in view. Grids reflow from `minItem`; tables drop
   columns by `priority` on narrow widths; Settings becomes one column below 600 dp.
-- **Sticky**: header (back, title, actions; kept clear of the engine's console
-  button), toolbar, action bar, the detail pane's sub-tab strip, table column headers,
+- **Sticky**: header (back, title, actions; laid out left of the engine's console
+  button from its published rect, section 4.12; actions become icons when they do not
+  fit), toolbar, action bar, the detail pane's sub-tab strip, table column headers,
   section headers with `sticky`.
 - **Virtual lists**: a table or card grid asks `uib_window` for the rows near the view
   (120 at a time, re-asked only when the range, the query or the source rev changes),
@@ -846,8 +922,16 @@ a synthetic source made by `uib_testrows <source> <n> servers|maps`.
   fling is fast only stops it. Mouse wheel, PgUp/PgDn, arrows/Tab move a focus ring,
   Enter/Space activate, Escape is back. Text fields take keys (and ask for the screen
   keyboard on touch); private fields show bullets.
-- Links, copy/share and file actions show the text in a dialog (the menu VM cannot
-  open a browser, the clipboard or a file picker).
+- Home: the banner takes the page's spare height (up to 340 dp), the three cards sit in
+  one row whenever 150 dp each fits and are as tall as the page allows, so Home does not
+  scroll on a tablet or a phone on its side. A card list with `rows` draws that many rows
+  of tiles scrolling sideways, sized from the height of the view; on a short page the
+  mode strip above it is compact (art and name). Lists with `selection: single`: a tap chooses,
+  a second tap within 0.4 s activates.
+- Copy puts the text on the system clipboard through the cvar `_uib_clipboard` where the
+  build can (`_uib_clipboard_ok`; desktop SDL builds) and says so in a toast. Links, share
+  and file actions, and copy elsewhere, show the text in a dialog (the menu VM cannot open
+  a browser or a file picker).
 
 Not reused from the touch menu: its gesture layer (`touch_menu_sheet.qh`) and virtual
 grid (`touch_menu_vgrid.qh`) are bound to the stock menu item tree (they scroll menu
@@ -930,11 +1014,22 @@ Mods > Pages from mods and open as `mods.page.<mod>.<page>`. For testing without
 
 `"generated": "engine"` fixtures are written by `scripts/uib-fixtures.py`, which drives a
 headless engine over the stream transport as a renderer and walks the screens (Home,
-Singleplayer and its LAN form, map preview, Servers with and without LAN, every Settings
+Singleplayer, choosing a map, map details, Campaign, Multiplayer with and without LAN,
+Create with and without LAN, every Settings
 section, Mods pages, a mod page, Credits, a navigation and a setting sequence).
 `"generated": "seed"` fixtures are hand-made (`tests/uibridge/seed_fixtures.py`) for
-what needs a live server or a match: server detail, the password prompt, pause (also
-while hosting), a download in progress, a dialog, a toast, the server list filling in.
+what needs a live server or a match: the password prompt, pause (also while hosting),
+the host's LAN popup (`lan-popup`, and `seq-lan-popup`: a player joins and it closes),
+`seq-host-ended` (a client back at Home after its host left), `seq-server-select` (a tap
+chooses a server and Join comes on), `home-live`, a download in progress, a dialog, a
+toast, the server list filling in.
+
+The engine run is the same on every machine: a new user directory, a fixed environment
+(no home configuration, `LANG=C`, `TZ=UTC`), no package `xonotic.cfg`, no network (a
+private network namespace where the system allows one; no master servers or LAN search in
+any case, so the server list is empty) and one folded diff per event in the `seq-*`
+fixtures, since how many frames the engine took to describe a screen is timing, not
+content. Three runs in a row give identical files.
 
 `scripts/test-uibridge.sh` checks the schema is current, validates every fixture, runs
 the store's property test (random rebuilds; applying all diffs to the first snapshot

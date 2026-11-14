@@ -26,6 +26,9 @@ static qbool mouse_held;     // a real mouse pressed on it
 static qbool synth_held;     // SDL's made-up click for a finger on it
 static qbool drawn;
 static float bx, by, bs;     // last drawn rect, virtual (con) units
+static float bdensity = 1;   // px per dp it was sized with
+static cvar_t touch_shell_rect = {CF_CLIENT | CF_READONLY, "_touch_shell_rect", "",
+	"the console button's rect as fractions of the window, \"x y w h\", empty while it is not drawn; menus and HUDs keep their own controls clear of it"};
 
 static void ensure_cvars(void)
 {
@@ -36,6 +39,7 @@ static void ensure_cvars(void)
 	Cvar_RegisterVariable(&touch_shell_button_size);
 	Cvar_RegisterVariable(&touch_shell_safe_insets);
 	Cvar_RegisterVariable(&touch_shell_chat_sheet);
+	Cvar_RegisterVariable(&touch_shell_rect);
 }
 
 // At engine start, before any config or platform "set" can create these names.
@@ -147,6 +151,7 @@ static void place(void)
 		density = shortside >= 900 ? shortside / 420.0f : 1.0f;
 		density = bound(1.0f, density, 4.0f);
 	}
+	bdensity = density;
 	bs = bound(32.0f, touch_shell_button_size.value, 96.0f) * density * px2con;
 	margin = 8.0f * density * px2con;
 	bx = W - in_r * px2con - margin - bs;
@@ -204,6 +209,29 @@ static void place(void)
 	}
 }
 
+static void publish_rect(void)
+{
+	char text[96];
+	float W = vid_conwidth.value, H = vid_conheight.value;
+	text[0] = 0;
+	if (drawn && W > 0 && H > 0)
+		dpsnprintf(text, sizeof(text), "%.4f %.4f %.4f %.4f", bx / W, by / H, bs / W, bs / H);
+	if (strcmp(touch_shell_rect.string, text))
+		Cvar_SetQuick(&touch_shell_rect, text);
+}
+
+qbool TouchShell_Rect(float *x, float *y, float *w, float *h, float *density)
+{
+	float con2px = vid_conwidth.value > 0 ? (float)vid.mode.width / vid_conwidth.value : 1.0f;
+	if (!drawn)
+		return false;
+	*x = bx * con2px;
+	*y = by * con2px;
+	*w = *h = bs * con2px;
+	*density = bdensity;
+	return true;
+}
+
 void TouchShell_Draw(void)
 {
 	float cx, cy, r, a, ink, stroke, pressed;
@@ -213,10 +241,12 @@ void TouchShell_Draw(void)
 	{
 		held_id = 0;
 		mouse_held = false;
+		publish_rect();
 		return;
 	}
 	place();
 	drawn = true;
+	publish_rect();
 	open = console_open();
 	pressed = (held_id || mouse_held) ? 1.0f : 0.0f;
 	a = bound(0.3f, cv("touch_opacity", 0.90f), 1.0f);

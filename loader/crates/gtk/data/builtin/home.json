@@ -29,11 +29,22 @@
     "type": "screen",
     "props": {
      "title": "Godnotic",
-     "kind": "home"
+     "kind": "home",
+     "actions": [
+      {
+       "id": "settings",
+       "label": "Settings",
+       "icon": "settings"
+      },
+      {
+       "id": "credits",
+       "label": "Credits",
+       "icon": "credits"
+      }
+     ]
     },
     "children": [
      "home/banner",
-     "home/hero",
      "home/tiles"
     ]
    },
@@ -44,24 +55,9 @@
      "ref": "asset:banner",
      "aspect": "21:9",
      "fit": "contain",
-     "alt": "Godnotic"
-    },
-    "children": []
-   },
-   {
-    "id": "home/hero",
-    "type": "hero",
-    "props": {
-     "title": "Play",
-     "subtitle": "Start Godnotic: bots, a match or the server list",
-     "image": "pk3:maps/stormkeep",
-     "aspect": "16:9",
-     "primary": {
-      "id": "play",
-      "label": "Play",
-      "icon": "play",
-      "style": "primary"
-     }
+     "alt": "Godnotic",
+     "role": "banner",
+     "emphasis": "high"
     },
     "children": []
    },
@@ -69,13 +65,13 @@
     "id": "home/tiles",
     "type": "grid",
     "props": {
-     "minItem": 200
+     "minItem": 240,
+     "maxColumns": 3
     },
     "children": [
      "home/tiles/sp",
-     "home/tiles/mp",
-     "home/tiles/settings",
-     "home/tiles/credits"
+     "home/tiles/campaign",
+     "home/tiles/mp"
     ]
    },
    {
@@ -83,10 +79,30 @@
     "type": "card",
     "props": {
      "title": "Singleplayer",
-     "subtitle": "Bots and the campaign (opens in the game)",
+     "subtitle": "A local game against bots (opens in the game)",
      "icon": "singleplayer",
+     "image": "pk3:maps/stormkeep",
+     "aspect": "16:9",
+     "featured": true,
      "primary": {
       "id": "sp",
+      "label": "Open"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/campaign",
+    "type": "card",
+    "props": {
+     "title": "Campaign",
+     "subtitle": "Fight your way through the levels (opens in the game)",
+     "icon": "trophy",
+     "image": "pk3:maps/afterslime",
+     "aspect": "16:9",
+     "featured": true,
+     "primary": {
+      "id": "campaign",
       "label": "Open"
      }
     },
@@ -99,36 +115,11 @@
      "title": "Multiplayer",
      "subtitle": "Join by address or link, browse servers, host a LAN game",
      "icon": "multiplayer",
+     "image": "pk3:maps/xoylent",
+     "aspect": "16:9",
+     "featured": true,
      "primary": {
       "id": "mp",
-      "label": "Open"
-     }
-    },
-    "children": []
-   },
-   {
-    "id": "home/tiles/settings",
-    "type": "card",
-    "props": {
-     "title": "Settings",
-     "subtitle": "Video, controls, Mods (opens in the game)",
-     "icon": "settings",
-     "primary": {
-      "id": "settings",
-      "label": "Open"
-     }
-    },
-    "children": []
-   },
-   {
-    "id": "home/tiles/credits",
-    "type": "card",
-    "props": {
-     "title": "Credits",
-     "subtitle": "Components and licences",
-     "icon": "credits",
-     "primary": {
-      "id": "credits",
       "label": "Open"
      }
     },

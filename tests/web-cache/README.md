@@ -15,8 +15,7 @@ start the real engine, so `stub-engine.js` stands in for `godnotic.js`. It
 gives the page the file system calls it makes (a lazy file's `read()` is
 `web/lazyfs.js`'s own, so the synchronous reads from OPFS are real), keeps
 a search path like the engine's (packs found at start in name order, the
-last name first; `fs_mountpack` adds at the end and, like the engine, does
-not see a file younger than its once-a-second directory listing), and
+last name first; `fs_mountpack` adds at the end), and
 runs `map` through `Module.xt.needMap` before loading the map's `.bsp` and
 every file that lists. `split-init.js` holds what the steps evaluate (and
 a WebGL context for headless Firefox, which has none). The real engine on

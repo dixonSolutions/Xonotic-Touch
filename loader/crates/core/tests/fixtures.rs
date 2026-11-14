@@ -131,3 +131,175 @@ fn server_rows_window_sort_and_filter_through_the_player() {
     assert_eq!(ch, vec![Change::Set(vec!["mp/bar/filters/lan".into()])]);
     assert_eq!(s.node("mp/bar/filters/lan").unwrap().bool("value"), Some(true));
 }
+
+fn snap(name: &str) -> Store {
+    let (_, f) = all().into_iter().find(|(n, _)| n == name).unwrap_or_else(|| panic!("no fixture {name}"));
+    let mut s = Store::new();
+    s.apply(&f.snapshot);
+    s
+}
+
+#[test]
+fn home_is_the_banner_and_exactly_three_cards() {
+    for name in ["home.json", "home-live.json"] {
+        let s = snap(name);
+        let kids = s.children("home");
+        assert_eq!(kids.iter().map(|k| k.kind.as_str()).collect::<Vec<_>>(), ["image", "grid"], "{name}: Home holds the banner and one grid");
+        let banner = kids[0];
+        assert_eq!(banner.str("role").as_deref(), Some("banner"), "{name}");
+        assert_eq!(banner.str("emphasis").as_deref(), Some("high"), "{name}: the banner is asked to be large");
+        let cards = s.children(&kids[1].id);
+        assert_eq!(cards.iter().map(|c| c.title()).collect::<Vec<_>>(), ["Singleplayer", "Campaign", "Multiplayer"], "{name}");
+        for c in &cards {
+            assert_eq!(c.kind, "card");
+            assert_eq!(c.bool("featured"), Some(true), "{name}: {} is a large card", c.id);
+            assert!(c.str("image").is_some_and(|i| i.starts_with("pk3:maps/")), "{name}: {} shows a picture from the game", c.id);
+            assert!(c.obj("primary").is_some());
+        }
+        // Settings, Credits and Quit are small header actions, never cards.
+        let home = s.node("home").unwrap();
+        let actions: Vec<String> = home.arr("actions").iter().filter_map(|a| a["id"].as_str().map(str::to_string)).collect();
+        assert_eq!(actions, ["settings", "credits", "quit"], "{name}");
+    }
+    assert!(snap("home-live.json").node("home/tiles/mp").unwrap().str("subtitle").unwrap().contains("servers"));
+}
+
+#[test]
+fn the_map_list_tells_choosing_from_playing() {
+    let s = snap("singleplayer.json");
+    let list = s.node("sp/maps/list").unwrap();
+    assert_eq!(list.str("selection").as_deref(), Some("single"));
+    let (sel, play) = (list.obj("rowSelect").unwrap(), list.obj("rowPrimary").unwrap());
+    assert_eq!(sel["id"], "map.select");
+    assert_eq!(play["id"], "map.play");
+    // Two full rows of map tiles in view, more by scrolling sideways.
+    assert_eq!(list.str("display").as_deref(), Some("cards"));
+    assert_eq!(list.f64("rows"), Some(2.0));
+    assert_eq!(list.str("scroll").as_deref(), Some("horizontal"));
+    // One Play: the screen's own, in the sticky bar.
+    assert_eq!(s.node("sp").unwrap().obj("primary").unwrap()["id"], "play");
+    let plays = s.to_snapshot_nodes().iter().filter(|n| n.id.starts_with("sp") && (n.kind == "button" || n.kind == "preview") && n.obj("primary").or(n.obj("action")).is_some_and(|a| a["id"] == "play")).count();
+    assert_eq!(plays, 0, "no second Play on the page");
+
+    // One click chooses, a second one in time plays, a slow or different one only chooses.
+    let mut c = godnotic_core::bridge::Clicks::default();
+    let t = std::time::Instant::now();
+    let ms = std::time::Duration::from_millis;
+    assert_eq!(c.click("sp/maps/list", "xoylent", t), "select");
+    assert_eq!(c.click("sp/maps/list", "xoylent", t + ms(250)), "activate");
+    assert_eq!(c.click("sp/maps/list", "xoylent", t + ms(400)), "select", "a third click starts over");
+    assert_eq!(c.click("sp/maps/list", "stormkeep", t + ms(500)), "select", "another row");
+    assert_eq!(c.click("sp/maps/list", "stormkeep", t + ms(1500)), "select", "too slow for a double click");
+    assert_eq!(c.click("campaign/levels/list", "stormkeep", t + ms(1600)), "select", "another list");
+
+    // The select event on the wire, and what the engine answers (seq-map-select).
+    let mut client = Client::new();
+    let ev = obj(&client.row("sp/maps/list", "xoylent", "select"));
+    assert_eq!((ev["ev"].as_str(), ev["kind"].as_str(), ev["row"].as_str()), (Some("row"), Some("select"), Some("xoylent")));
+    let (_, f) = all().into_iter().find(|(n, _)| n == "seq-map-select.json").unwrap();
+    let mut p = Player::new(f);
+    let mut st = Store::new();
+    for m in p.handle(&obj(&client.hello("t", "0", json!({})))) {
+        st.apply(&m);
+    }
+    assert_eq!(st.node("sp/maps/list").unwrap().arr("selected"), [json!("stormkeep")]);
+    let (_, m) = p.next_step().unwrap();
+    st.apply(&m);
+    assert_eq!(st.node("sp/maps/list").unwrap().arr("selected"), [json!("xoylent")]);
+    assert_eq!(st.stack(), ["home", "sp"], "choosing a map starts nothing and opens nothing");
+}
+
+#[test]
+fn singleplayer_is_local_and_create_has_the_lan_checkbox() {
+    let sp = snap("singleplayer.json");
+    assert!(sp.node("sp/match/form/lan").is_none(), "Singleplayer has nothing about the network");
+    assert!(sp.node("sp/match/form/port").is_none());
+    let create = snap("create.json");
+    let lan = create.node("sp/match/form/lan").unwrap();
+    assert_eq!(lan.bool("value"), Some(false), "LAN is off until the player ticks it");
+    assert!(create.node("sp/match/form/port").unwrap().hidden());
+    let hosted = snap("singleplayer-create-lan.json");
+    assert_eq!(hosted.node("sp/match/form/lan").unwrap().bool("value"), Some(true));
+    assert!(!hosted.node("sp/match/form/port").unwrap().hidden());
+    let pw = hosted.node("sp/match/form/password").unwrap();
+    assert_eq!(pw.bool("hasValue"), Some(true));
+    assert!(pw.str("value").is_none(), "the password itself is never described");
+}
+
+#[test]
+fn the_lan_popup_gives_addresses_to_copy_and_closes_when_someone_joins() {
+    let s = snap("lan-popup.json");
+    assert_eq!(s.modal(), ["lan.host"]);
+    assert_eq!(s.context(), "game");
+    let a0 = s.node("lan.host/addresses/a0/copy").unwrap().obj("action").unwrap().clone();
+    assert_eq!((a0["kind"].as_str(), a0["text"].as_str()), (Some("copy"), Some("192.168.1.23:26000")));
+    assert!(s.node("lan.host/addresses/link/text").unwrap().str("body").unwrap().starts_with("godnotic://join/"));
+    assert_eq!(s.node("lan.host/autoclose").unwrap().str("bind").as_deref(), Some("cvar:touch_lan_popup_autoclose"));
+    // The host is already in the game: the popup has Copy and Close, and no Join.
+    assert_eq!(s.node("lan.host").unwrap().obj("primary").unwrap()["id"], "host.close");
+    assert!(s.to_snapshot_nodes().iter().filter(|n| n.id.starts_with("lan.host")).all(|n| n.title() != "Join" && n.title() != "Join game"));
+    assert_eq!(s.node("pause/host").unwrap().obj("primary").unwrap()["id"], "host.popup", "the pause card reopens it");
+    // The same switch is in Settings > Game.
+    assert_eq!(snap("settings-game.json").node("settings/split/game/lan/lanpopup").unwrap().str("bind").as_deref(), Some("cvar:touch_lan_popup_autoclose"));
+    // A player joins: the popup leaves and a toast says so.
+    let (_, f) = all().into_iter().find(|(n, _)| n == "seq-lan-popup.json").unwrap();
+    let mut p = Player::new(f);
+    let mut c = Client::new();
+    let mut st = Store::new();
+    for m in p.handle(&obj(&c.hello("t", "0", json!({})))) {
+        st.apply(&m);
+    }
+    while let Some((_, m)) = p.next_step() {
+        st.apply(&m);
+    }
+    assert!(st.modal().is_empty());
+    assert!(st.node("lan.host").is_none());
+    assert_eq!(st.toasts().len(), 1);
+    // The other side: the host left, the client is at Home and told why.
+    let (_, f) = all().into_iter().find(|(n, _)| n == "seq-host-ended.json").unwrap();
+    let mut p = Player::new(f);
+    let mut st = Store::new();
+    for m in p.handle(&obj(&c.hello("t", "0", json!({})))) {
+        st.apply(&m);
+    }
+    while let Some((_, m)) = p.next_step() {
+        st.apply(&m);
+    }
+    assert_eq!((st.context().as_str(), st.stack()), ("menu", vec!["home".to_string()]));
+    assert_eq!(st.toasts()[0].str("text").as_deref(), Some("The host ended the game"));
+}
+
+#[test]
+fn multiplayer_has_one_join_and_no_page_behind_a_server() {
+    for name in ["servers.json", "servers-lan.json", "seq-server-list.json", "seq-server-select.json"] {
+        let s = snap(name);
+        let list = s.node("mp/servers").unwrap();
+        assert_eq!(list.str("selection").as_deref(), Some("single"), "{name}");
+        assert_eq!(list.obj("rowSelect").unwrap()["id"], "server.select", "{name}: a tap chooses");
+        assert_eq!(list.obj("rowPrimary").unwrap()["id"], "server.join", "{name}: a double tap joins");
+        assert!(list.arr("rowActions").is_empty(), "{name}: no buttons on the rows");
+        assert!(list.arr("columns").iter().all(|c| c["type"] != "image"), "{name}: rows are text");
+        // Exactly one Join on the screen, in the action bar, beside the address field and Create.
+        let bar: Vec<String> = s.children("mp/join").iter().map(|n| n.id.clone()).collect();
+        assert_eq!(bar, ["mp/join/address", "mp/join/create", "mp/join/go"], "{name}");
+        let joins = s.to_snapshot_nodes().iter().filter(|n| n.kind == "button" && n.title() == "Join").count();
+        assert_eq!(joins, 1, "{name}: one Join button");
+        assert!(s.node("mp.server").is_none(), "{name}: no server page");
+    }
+    assert!(!dir().join("server-detail.json").exists(), "the server page fixture is gone");
+    // Nothing chosen, nothing typed: Join is off. A tap chooses a server and turns it on.
+    let (_, f) = all().into_iter().find(|(n, _)| n == "seq-server-select.json").unwrap();
+    let mut p = Player::new(f);
+    let mut c = Client::new();
+    let mut st = Store::new();
+    for m in p.handle(&obj(&c.hello("t", "0", json!({})))) {
+        st.apply(&m);
+    }
+    assert!(!st.node("mp/join/go").unwrap().enabled());
+    assert!(st.node("mp/servers").unwrap().arr("selected").is_empty());
+    let (_, m) = p.next_step().unwrap();
+    st.apply(&m);
+    assert!(st.node("mp/join/go").unwrap().enabled());
+    assert_eq!(st.node("mp/servers").unwrap().arr("selected").len(), 1);
+    assert_eq!(st.stack(), ["home", "mp"], "choosing a server opens nothing");
+}

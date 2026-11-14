@@ -1,0 +1,147 @@
+{
+ "name": "home-live",
+ "description": "Home with the server list known: the Multiplayer card says how many servers and players.",
+ "generated": "seed",
+ "snapshot": {
+  "uib": 1,
+  "t": "snapshot",
+  "id": 2,
+  "rev": 1,
+  "root": "app",
+  "nodes": [
+   {
+    "id": "app",
+    "type": "app",
+    "props": {
+     "title": "Godnotic",
+     "stack": [
+      "home"
+     ],
+     "modal": [],
+     "canBack": false,
+     "context": "menu"
+    },
+    "children": [
+     "home"
+    ]
+   },
+   {
+    "id": "home",
+    "type": "screen",
+    "props": {
+     "title": "Godnotic",
+     "kind": "home",
+     "background": "asset:background",
+     "actions": [
+      {
+       "id": "settings",
+       "label": "Settings",
+       "icon": "settings"
+      },
+      {
+       "id": "credits",
+       "label": "Credits",
+       "icon": "credits"
+      },
+      {
+       "id": "quit",
+       "label": "Quit",
+       "icon": "quit",
+       "style": "secondary",
+       "confirm": {
+        "title": "Quit Godnotic?",
+        "ok": "Quit"
+       }
+      }
+     ]
+    },
+    "children": [
+     "home/banner",
+     "home/tiles"
+    ]
+   },
+   {
+    "id": "home/banner",
+    "type": "image",
+    "props": {
+     "ref": "asset:banner",
+     "role": "banner",
+     "emphasis": "high",
+     "aspect": "21:9",
+     "fit": "contain",
+     "alt": "Godnotic"
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles",
+    "type": "grid",
+    "props": {
+     "minItem": 240,
+     "maxColumns": 3
+    },
+    "children": [
+     "home/tiles/sp",
+     "home/tiles/campaign",
+     "home/tiles/mp"
+    ]
+   },
+   {
+    "id": "home/tiles/sp",
+    "type": "card",
+    "props": {
+     "title": "Singleplayer",
+     "subtitle": "Stormkeep · Deathmatch · 4 bots",
+     "icon": "singleplayer",
+     "image": "pk3:maps/stormkeep",
+     "aspect": "16:9",
+     "featured": true,
+     "primary": {
+      "id": "sp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/campaign",
+    "type": "card",
+    "props": {
+     "title": "Campaign",
+     "subtitle": "Level 3 of 31 · Capture the Flag: Implosion",
+     "icon": "trophy",
+     "image": "pk3:maps/implosion",
+     "aspect": "16:9",
+     "featured": true,
+     "progress": 0.06451612903225806,
+     "primary": {
+      "id": "campaign",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/mp",
+    "type": "card",
+    "props": {
+     "title": "Multiplayer",
+     "subtitle": "214 servers · 87 players",
+     "icon": "multiplayer",
+     "image": "pk3:maps/xoylent",
+     "aspect": "16:9",
+     "featured": true,
+     "live": true,
+     "primary": {
+      "id": "mp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   }
+  ]
+ }
+}

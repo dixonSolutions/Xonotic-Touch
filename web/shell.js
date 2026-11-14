@@ -5,7 +5,9 @@
 //
 //   data        downloads the game data once, in hash-checked 32 MiB chunks,
 //               into the origin private file system (store.js), which the
-//               engine reads in place (lazyfs.js); or reads the stock packs
+//               engine reads in place (lazyfs.js): what the game needs to
+//               start first, the other maps and the music while it is
+//               played; or reads the stock packs
 //               from a Godnotic folder the player picked; or hands over to
 //               the installed app
 //   saves       mirrors the userdir (config.cfg, layouts) to IndexedDB
@@ -44,8 +46,8 @@
     keys() { try { return Object.keys(localStorage).filter((k) => k.startsWith('xt.')).map((k) => k.slice(3)); } catch (e) { return []; } },
   };
 
-  // Keys of pages before this one (there is one download with everything,
-  // the music included, and nothing to choose).
+  // Keys of pages before this one (nothing to choose: the game starts as
+  // soon as it can, and the rest follows by itself).
   store.del('music');
   store.del('allmaps');
 
@@ -123,7 +125,7 @@
     state.problem = text;
     store.set('problem', JSON.stringify({ text, t: Date.now() }));
     const el = $('xt-st-error');
-    if (el) el.textContent = text;
+    if (el) { el.textContent = text; el.hidden = false; }
   }
   // missing: is any game data still to download? (A breadcrumb left in the
   // download phase says nothing once the download is complete.)
@@ -468,7 +470,13 @@
 
   // A no-cache pointer file (profiles.json, stock.json, manifest.json).
   // Offline, the last one seen will do.
-  async function pointer(base, name) {
+  const pointers = new Map();
+  function pointer(base, name) {
+    const key = new URL(name, base).href;
+    if (!pointers.has(key)) pointers.set(key, fetchPointer(base, name));
+    return pointers.get(key);
+  }
+  async function fetchPointer(base, name) {
     const url = new URL(name, base);
     const remember = 'pointer-json:' + url.href;
     try {
@@ -488,8 +496,20 @@
   }
 
   // Manifests are immutable: from storage when seen before, else fetched
-  // and checked against the hash in their name.
-  async function getManifest(base, path) {
+  // and checked against the hash in their name. Asked for once per page:
+  // main() asks for the ones a start may need together, before it knows
+  // which profile it is.
+  const manifests = new Map();
+  function getManifest(base, path) {
+    const key = new URL(path, base).href;
+    if (!manifests.has(key)) {
+      const p = fetchManifest(base, path);
+      p.catch(() => manifests.delete(key));
+      manifests.set(key, p);
+    }
+    return manifests.get(key);
+  }
+  async function fetchManifest(base, path) {
     const id = manifestId(path);
     if (!id) throw new Error(`Bad manifest name: ${path}`);
     const kept = await data.loadManifest(id);
@@ -615,6 +635,10 @@
   const fmtTime = (s) => s > 5400 ? `${Math.round(s / 3600)} h` : s > 90 ? `${Math.round(s / 60)} min` : `${Math.max(1, Math.round(s))} s`;
   const hosted = (list) => list.filter((c) => c.file.hosted !== false);
 
+  // Chunks fetched at a time: a connection is rarely the limit, one stream
+  // of it often is. Each holds a 32 MiB buffer, so phones get fewer.
+  const DOWNLOADS = (navigator.deviceMemory && navigator.deviceMemory <= 4) || touchOnly ? 3 : 6;
+
   // Download the given chunks with the progress panel: percent, "x / y MB ·
   // speed · time left", Pause / Resume and Cancel. Pause and Cancel keep
   // what has arrived (whole chunks, and 4 MiB pieces of the rest). Resolves
@@ -706,7 +730,7 @@
               await data.download(todo, {
                 urlFor: blobUrl,
                 signal: controller.signal,
-                concurrency: PARALLEL,
+                concurrency: DOWNLOADS,
                 onBytes: (c, n) => {
                   got.set(c.h, n);
                   noteBytes(c, n);
@@ -919,7 +943,7 @@
       if (maps.pending && maps.pending.name !== name) continue;
       maps.pending = null;
       maps.warmed = line;
-      if (prog.on && state.lazy) {
+      if (prog.set && state.lazy) {
         // Packs that came after the engine started go to the end of its
         // search path, the map's own pack last; then the command again.
         for (const g of need) announce(g);
@@ -990,6 +1014,21 @@
     Module.ccall('xt_web_command', null, ['string'], [`fs_rescan\n${line || ''}`]);
   }
 
+  // ---------------------------------------------- the rest, while playing
+  //
+  // The first download is what the game needs to start: the core packs and
+  // the first map. The rest (the other maps, the textures no map was traced
+  // to, the music) comes one chunk at a time once the game runs, and steps
+  // aside for a map the player asks for. With lazy reads, what arrives is
+  // mounted at once. Not on a connection that asks to save data
+  // (?background=0 for a visit): there a map downloads when played.
+  const wantLater = () => params.get('background') !== '0' && !(navigator.connection && navigator.connection.saveData);
+  // (The queue itself is "progressive download", below.)
+  function startBackground() {
+    if (!state.started || !state.engineUp) return;
+    if (bg.files.length || bg.want) bgRun();
+  }
+
   // The engine's console command "web_maps" (sys_wasm.c): what is stored.
   async function backgroundStatus() {
     const files = (state.files || []).filter((f) => f.hosted !== false);
@@ -1020,14 +1059,22 @@
   // other pack the map needs is in, so ".bsp there" means "playable". The
   // engine hears the progress as "touch_data_status ...".
   //
+  // Data that is not a split set (the maps pk3 split by the stager, whose
+  // core pack has a stand-in .bsp per map) goes the same way where reads in
+  // place are likely: the core group and the default map's pack first, then
+  // the music, the extra pack and the maps, smallest first. A stand-in
+  // would hide a pack added at the end of the search path, so those are
+  // only mounted, and the engine sees them at its next "fs_rescan" (the
+  // next map change).
+  //
   // Where the packs are copied into memory (no reads in place), or kept in
   // memory (nothing can be stored), only the music follows by itself; a
   // map's packs come when the map is asked for.
-  const PARALLEL = Math.max(1, Math.min(6, Number(params.get('parallel')) || 2));
   // (While playing: one. On a 20 Mbit/s line two or three fetched no faster.)
   const BG_PARALLEL = Math.max(1, Math.min(6, Number(params.get('bgparallel')) || 1));
   const prog = {
-    on: false, // this start runs a split set
+    on: false, // the game starts on part of the data; the rest follows
+    set: false, // ...of a split set: packs announced with fs_mountpack
     first: new Set(), // names of the packs a start waits for, besides the core group
     needs: new Map(), // map -> its packs besides the core group, its own pack last
     have: new Set(), // names of the files whole in storage
@@ -1053,14 +1100,29 @@
   const kb = (n) => Math.round(n / 1024);
 
   function progSetup(profile, files, older) {
-    if (!profile.split || older) return;
+    if (older) return;
+    if (!profile.split) {
+      // (Without lazy reads nothing can be added to a running game: there,
+      // and with the background off, the first download is everything.)
+      const lazyLikely = params.get('lazy') !== '0' && typeof XTLazyFS !== 'undefined';
+      prog.on = wantLater() && lazyLikely && files.some((f) => f.group === 'map');
+      for (const f of files) {
+        if (f.group !== 'map' || !f.map) continue;
+        prog.needs.set(normMap(f.map), [f]);
+        if (f.map === profile.defaultMap) prog.first.add(f.name);
+      }
+      return;
+    }
     const byName = new Map(files.map((f) => [f.name, f]));
-    // (With a Godnotic folder holding the packs, only what it lacks is left.)
-    prog.on = files.some((f) => f.kind);
+    // (With a Godnotic folder holding packs, only what it lacks is left.)
+    prog.set = prog.on = files.some((f) => f.kind);
     prog.first = new Set(profile.split.firstPlay);
     for (const [map, names] of Object.entries(profile.split.maps)) {
-      const list = names.map((n) => byName.get(n));
-      if (list.length && list.every(Boolean)) prog.needs.set(normMap(map), list);
+      const list = names.map((n) => byName.get(n)).filter(Boolean);
+      if (!list.length) continue;
+      prog.needs.set(normMap(map), list);
+      // (Its own pack is in the folder: the last pack it still needs stands for it.)
+      if (!maps.byName.has(normMap(map))) maps.byName.set(normMap(map), list[list.length - 1]);
     }
   }
 
@@ -1096,20 +1158,6 @@
     return { ids, files: profile.files.filter((f) => !f.stock).concat(old) };
   }
 
-  // The first-visit page of a split set: the size is what the game needs to
-  // start. Returns the bytes that follow in the background.
-  async function progLead() {
-    const rest = sum(hosted(await data.missing(state.files.filter((f) => !isFirst(f)))));
-    state.dlRest = rest;
-    const lead = $('xt-dl-size').parentNode;
-    if (rest && lead && lead.firstChild && lead.lastChild && lead.firstChild !== lead.lastChild &&
-      lead.firstChild.nodeType === 3 && lead.lastChild.nodeType === 3) {
-      lead.firstChild.textContent = 'To start playing: ';
-      lead.lastChild.textContent = `. The other ${mb(rest)} (the music, the other maps) follow while you play. It stays in this browser for the next visit.`;
-    }
-    return data.kind === 'memory' ? 0 : rest;
-  }
-
   // After the mount: what is left for the background. True when anything is.
   async function progPlan(profile, files, older) {
     if (!older && !prog.on) return false;
@@ -1117,11 +1165,13 @@
     const order = (f) => (f.priority === undefined ? -1 : f.priority);
     bg.storeOnly = !!older;
     prog.counted = (older ? profile.files : files).filter((f) => f.hosted !== false);
-    let list = prog.counted.slice().sort((a, b) => order(a) - order(b));
-    const all = !!older || params.get('allmaps') === '1' || (params.get('allmaps') !== '0' && state.lazy && data.kind !== 'memory');
+    // (Not a split set: the music, the extra pack, the maps, smallest first.)
+    const rank = { music: 0, extra: 1, map: 2 };
+    let list = prog.counted.slice().sort((a, b) => (older || prog.set ? order(a) - order(b) : (rank[a.group] || 0) - (rank[b.group] || 0) || a.size - b.size));
+    const all = !!older || (state.lazy && data.kind !== 'memory' && (wantLater() || params.get('background') === '1'));
     if (!all) {
       bg.onDemand = true;
-      list = list.filter((f) => f.group === 'music');
+      list = prog.set && wantLater() ? list.filter((f) => f.group === 'music') : [];
     }
     const missing = new Set((await data.missing(prog.counted)).map((c) => c.h));
     for (const f of prog.counted) {
@@ -1141,26 +1191,12 @@
   }
 
   // Tell the running engine about a pack mounted after it started, in the
-  // order asked. The engine looks a file up through a listing of its data
-  // directory that it reads again at most once a second (fs.c,
-  // FS_DirMayHave): a file younger than that is "not found", so the command
-  // waits until the file is a little over a second old. (Zero once
-  // fs_mountpack drops that listing itself.)
-  const ANNOUNCE_AFTER_MS = 1100;
-  // The music pack brings the track list, cdtracks.cfg, which the start-up
-  // configs ran while it was not there yet ("cd loop <number>", as the maps
-  // ask for their music, needs it): run it again the way they do
-  // (xonotic-common.cfg, xonotic-client.cfg).
-  const CDTRACKS = [
-    'set _cdtrack_first "1"',
-    'alias _cdtrack_0 "g_cdtracks_remaplist \\"$g_cdtracks_remaplist $1\\""',
-    'alias _cdtrack_1 "g_cdtracks_remaplist \\"$1\\"; set _cdtrack_first 0"',
-    'alias _cdtrack "_cdtrack_$_cdtrack_first $2"',
-    'set g_cdtracks_remaplist ""',
-    'exec cdtracks.cfg',
-    'unset _cdtrack_first', 'unalias _cdtrack_0', 'unalias _cdtrack_1', 'unalias _cdtrack',
-    'cd remap $g_cdtracks_remaplist',
-  ].join('\n');
+  // order asked. (ANNOUNCE_AFTER_MS: how old the file has to be first. The
+  // engine looks files up through a listing of its data directory that it
+  // reads again at most once a second; fs_mountpack drops that listing
+  // itself, so no wait is needed. An engine that did not would answer
+  // "could not find" for a file under 1100 ms old.)
+  const ANNOUNCE_AFTER_MS = 0;
   const mountedAt = new Map(); // engine path -> when the file appeared
   const announcing = new Set();
   let announced = Promise.resolve();
@@ -1175,7 +1211,6 @@
       if (!mounts.has(path)) return;
       enginePaths.add(path);
       if (/\.pk3$/i.test(f.name)) command('fs_mountpack ' + f.name);
-      if (f.kind === 'music') command(CDTRACKS);
     });
     return announced;
   }
@@ -1186,6 +1221,11 @@
     if (!prog.on || !state.lazy || bg.storeOnly) return;
     for (const f of prog.counted) {
       if (!prog.have.has(f.name) || announcedOrSoon(f)) continue;
+      if (!prog.set) {
+        // Stand-ins in the core: seen at the engine's next fs_rescan.
+        if (!mounts.has(pathOf(f))) { await mount(f); state.rescanPending = true; }
+        continue;
+      }
       if (f.map && prog.needs.has(f.map) && !prog.needs.get(f.map).every((g) => g === f || announcedOrSoon(g))) continue;
       await mount(f);
       // The pk3's directory, which the engine reads when it mounts the pack:
@@ -1253,7 +1293,7 @@
    */
   function dataWant(raw) {
     const name = normMap(raw);
-    const need = prog.on ? prog.needs.get(name) : null;
+    const need = prog.set ? prog.needs.get(name) : null;
     if (!need || !state.engineUp) return 0;
     bg.want = name;
     (async () => {
@@ -1366,6 +1406,7 @@
         bgSay('fetching');
         try {
           await bgFetch(f, bg.controller.signal);
+          bg.fetched = true;
         } catch (e) {
           if (e && e.name === 'AbortError') continue; // paused, held, or another map is wanted
           if (await bgFailed(f, e)) continue;
@@ -1396,6 +1437,8 @@
       await announced;
       const whole = prog.counted.every((f) => prog.have.has(f.name));
       if (!stopped) bgSay(whole ? 'complete' : bg.skip.size ? 'error' : 'paused');
+      if (whole) maps.bgDone = true;
+      if (whole && bg.fetched && !bg.storeOnly && state.started) toast('Every map and the music are downloaded.');
       if (whole && bg.whenDone) {
         const done = bg.whenDone;
         bg.whenDone = null;
@@ -1418,7 +1461,7 @@
     // "legacy": a set that was downloaded whole before the game started.
     bg.state = !prog.counted.length ? 'legacy' : whole ? 'complete' : bg.files.length ? 'fetching' : 'paused';
     statusSoon(true);
-    if (bg.files.length) bgRun();
+    // (The rest starts with startBackground, once the menu is up.)
   }
 
   function mountUserdir() {
@@ -1444,7 +1487,7 @@
   // app, the app names this site), and hand over to the app, which has the
   // game data and the settings. Elsewhere there is no way to know, so the
   // first visit offers the hand-over as a plain link.
-  const APP_PACKAGE = 'io.github.dixonsolutions.xonotictouch';
+  const APP_PACKAGE = 'io.github.dixonsolutions.godnotic';
   const isAndroid = /Android/i.test(ua);
   const isChromium = !!navigator.userAgentData || /Chrom(e|ium)\//.test(ua);
   const isLinux = !isAndroid && /Linux|X11/i.test(navigator.platform || ua);
@@ -1476,7 +1519,7 @@
   // IndexedDB and the browser asks, or remembers, the permission on later
   // visits. The stock packs in it (data, maps, music, fonts) are read in
   // place, read only; this build's own files still come from the site.
-  const FOLDER_HINT = 'The Flatpak keeps it in ~/.var/app/io.github.dixonSolutions.XonoticTouch/data/xonotic-touch/data (type the path with Ctrl+L: the folder is hidden).';
+  const FOLDER_HINT = 'The Flatpak keeps it in ~/.var/app/io.github.dixonSolutions.Godnotic/data/godnotic/data (type the path with Ctrl+L: the folder is hidden).';
   /** "data", "maps", "music", "xoncompat", "font-unifont"…: which stock pack a file name is, '' for others. */
   function packKind(name, whole) {
     let m = /^xonotic-[^-]+-(data|maps|music|xoncompat)(-[0-9a-z_.]+)?\.pk3$/i.exec(name);
@@ -1484,7 +1527,22 @@
     m = /^(font-[a-z0-9]+)-[^-]+\.pk3$/i.exec(name);
     return m ? m[1].toLowerCase() : '';
   }
-  /** The shallowest directory under root (depth 4) with a data and a maps pk3. */
+  /**
+   * The packs of this profile's split set, for a folder (or the app's
+   * packs) that holds that layout: every name with its size, and the ones
+   * the game needs to start. null when the profile is not a split set.
+   */
+  function setPacksOf(profile) {
+    if (!profile || !profile.split) return null;
+    const packs = profile.files.filter((f) => f.kind);
+    const firstPlay = new Set(profile.split.firstPlay);
+    return { size: new Map(packs.map((f) => [f.name, f.size])), first: packs.filter((f) => f.group === 'core' || firstPlay.has(f.name)).map((f) => f.name) };
+  }
+  /**
+   * The shallowest directory under root (depth 4) with a data and a maps pk3,
+   * or with the split set's packs the game needs to start ("set": name ->
+   * handle of every pack of the set found there).
+   */
   async function folderScan(root) {
     let level = [root];
     let seen = 0;
@@ -1492,16 +1550,19 @@
       const next = [];
       for (const dir of level) {
         const pk3 = new Map();
+        const set = new Map();
         let config = null;
         for await (const [name, h] of dir.entries()) {
           if (++seen > 20000) return null;
           if (h.kind === 'file') {
+            if (state.setPacks && state.setPacks.size.has(name)) set.set(name, h);
             const kind = packKind(name, true);
             if (kind && (!pk3.has(kind) || name > pk3.get(kind).name)) pk3.set(kind, { name, handle: h });
             if (name === 'config.cfg') config = h;
           } else if (!/\.pk3dir$/i.test(name) && name !== 'dlcache') next.push(h);
         }
         if (pk3.has('data') && pk3.has('maps')) return { dir, pk3, config };
+        if (state.setPacks && state.setPacks.first.every((n) => set.has(n))) return { dir, pk3: new Map(), set, config };
       }
       level = next;
     }
@@ -1533,6 +1594,15 @@
     const found = await folderScan(root);
     if (!found) throw new Error(`No Godnotic game data in “${root.name}”: it needs xonotic-…-data.pk3 and xonotic-…-maps.pk3. ${FOLDER_HINT}`);
     const files = [];
+    // The split layout: the packs that are whole (the manifest's size); the
+    // game needs the first-play ones, the rest is downloaded.
+    for (const [name, handle] of found.set || []) {
+      const file = await handle.getFile();
+      if (file.size === state.setPacks.size.get(name)) files.push({ kind: 'set', name, file, size: file.size });
+    }
+    if (found.set && !state.setPacks.first.every((n) => files.some((x) => x.name === n))) {
+      throw new Error(`The packs in “${root.name}” are not all complete yet (still downloading in the app?)`);
+    }
     for (const [kind, { name, handle }] of found.pk3) {
       const file = await handle.getFile();
       const dir = await zipDirectory(file);
@@ -1542,7 +1612,7 @@
       }
       files.push({ kind, name, file, size: file.size });
     }
-    const big = files.find((x) => x.kind === 'data');
+    const big = files.find((x) => x.kind === 'data') || files[0];
     if (typeof XTLazyFS === 'undefined' || !(await XTLazyFS.probe(big.file))) throw new Error('This browser cannot read game files in place from a folder');
     return { name: root.name, files, kinds: new Set(files.map((x) => x.kind)), config: found.config };
   }
@@ -1562,6 +1632,14 @@
   }
   /** The folder chosen earlier: opened, or {pending} while the browser wants to be asked again, or null. */
   async function folderAtStart(gpu) {
+    // The packs of an installed Godnotic app, copied in earlier (appdata.js).
+    if (store.get('appdata', '') === '1' && typeof XTAppData !== 'undefined') {
+      const a = await XTAppData.open().catch(() => null);
+      const big = a && a.files.find((x) => x.kind === 'data');
+      if (big && typeof XTLazyFS !== 'undefined' && await XTLazyFS.probe(big.file)) return a;
+      store.del('appdata');
+      problem('The game data copied from the Godnotic app is no longer whole in this browser (it clears storage when space runs short). Pick it again, or download it.');
+    }
     if (store.get('folder', '') !== '1' || typeof indexedDB === 'undefined') return null;
     let h = null;
     try { h = await folderKv('readonly', (s) => s.get('root')); } catch (e) { return null; }
@@ -1576,6 +1654,56 @@
       return null;
     }
   }
+  // "Use the game data from the Godnotic app": the folder picker where the
+  // browser has one off Android (read in place, nothing copied), else the
+  // file picker, where the app's packs are listed (appdata.js); those are
+  // checked, copied into the browser's files and used from the next start.
+  const appDataOk = () => typeof XTAppData !== 'undefined' && XTAppData.supported();
+  function appDataHint() {
+    if (isAndroid) return 'In the picker, open its menu (☰), choose Godnotic, then select every file.';
+    if (/Ubuntu/i.test(ua) && touchOnly) return 'On Ubuntu Touch the picker does not list the app yet: open the app instead.';
+    if (isLinux) return FOLDER_HINT.replace(' (type the path with Ctrl+L: the folder is hidden).', '. It is hidden: press Ctrl+L in the picker and type the path, then ' + (window.showDirectoryPicker ? 'choose that folder.' : 'select every file.'));
+    return '';
+  }
+  async function useAppData() {
+    const out = $('xt-download').hidden ? $('xt-verify-text') : $('xt-app-data-hint');
+    if (window.showDirectoryPicker && !isAndroid) return $('xt-folder').onclick();
+    const files = await XTAppData.pick({ android: isAndroid });
+    if (!files.length) return;
+    let got;
+    try {
+      got = await XTAppData.check(files, { packKind, zipDirectory, hasBytes, gpu: state.gpu, setPacks: state.setPacks });
+      const big = got.packs.find((p) => p.kind === 'data');
+      if (typeof XTLazyFS === 'undefined' || !(await XTLazyFS.probe(big.file))) throw new Error('This browser cannot read game files in place');
+    } catch (e) {
+      out.hidden = false;
+      out.textContent = String(e && e.message || e).replace(/([^.…])$/, '$1.');
+      return;
+    }
+    const size = got.packs.reduce((n, p) => n + p.size, 0);
+    const noRoom = await freeSpaceLine(size);
+    if (noRoom) { out.hidden = false; out.textContent = noRoom; return; }
+    popover(false);
+    show('xt-status');
+    $('xt-status-text').textContent = 'Copying the game data from the Godnotic app…';
+    try {
+      await XTAppData.save(got.packs, (n, total, name) => { $('xt-status-detail').textContent = `${name} · ${mbPair(n, total)}`; });
+    } catch (e) {
+      await XTAppData.remove();
+      return fail('Copying the game data failed: ' + (e && e.message || e) + '. What was copied has been removed; reload to try again.');
+    }
+    if (got.config) {
+      const text = await got.config.text().catch(() => '');
+      const fresh = !store.keys().some((k) => k.startsWith('started'));
+      if (looksLikeConfig(text) && (fresh || confirm('Also use the settings (config.cfg) you picked? They replace the settings of the game in this browser.'))) store.set('import-config', text);
+    }
+    // Drop a folder chosen before: one source of stock packs at a time.
+    try { await folderKv('readwrite', (s) => s.delete('root')); } catch (e) { /* none */ }
+    store.del('folder');
+    store.set('appdata', 1);
+    location.reload();
+  }
+
   function mountFolder() {
     if (!state.lazy) throw new Error('This browser cannot read game files in place from a folder. Stop using the folder in the menu.');
     for (const x of state.folder.files) {
@@ -1678,17 +1806,19 @@
     const kept = await persisted();
     let where = (BACKEND_LABEL[data.kind] || data.kind) + (data.why && data.why.length && data.kind !== 'opfs' ? ` (${data.why.join('; ')})` : '');
     const fold = state.folder;
-    if (fold) where = `Folder “${fold.name}” (read only, ${mb(fold.files.reduce((n, x) => n + x.size, 0))}) · ${where}`;
+    if (fold) where = `${fold.app ? 'Copied from the Godnotic app' : `Folder “${fold.name}”`} (${fold.app ? '' : 'read only, '}${mb(fold.files.reduce((n, x) => n + x.size, 0))}) · ${where}`;
     $('xt-st-backend').textContent = where;
-    $('xt-folder').hidden = !window.showDirectoryPicker || !!fold || !!state.folderPending;
+    $('xt-folder').hidden = !(window.showDirectoryPicker || appDataOk()) || !!fold || !!state.folderPending;
     $('xt-folder-stop').hidden = !fold && !state.folderPending;
+    $('xt-folder-stop').textContent = fold && fold.app ? 'Stop using the app’s game data' : 'Stop using the folder';
     $('xt-st-quota').textContent = est && est.quota ? `${mb(est.usage || 0)} used of ${mb(est.quota)}` : 'not reported';
     const sw = $('xt-opt-persist');
     $('xt-opt-persist-row').hidden = data.kind === 'memory' || !(navigator.storage && navigator.storage.persist);
     if (!sw.disabled) sw.checked = kept;
-    if (!state.persistAnswer) $('xt-persist-text').textContent = kept ? 'The browser keeps the game data until you delete it.' : 'Off: the data stays between visits, but the browser may clear it when the device runs short of space.';
+    if (!state.persistAnswer) $('xt-persist-text').textContent = kept ? 'The browser keeps the game data until you delete it.' : 'The game data stays between visits, but the browser may clear it when the device runs short of space unless it is kept on this device.';
     const last = state.problem || (() => { try { return JSON.parse(store.get('problem', '') || 'null').text; } catch (e) { return ''; } })();
-    $('xt-st-error').textContent = last || data.be.lastError || 'None';
+    $('xt-st-error').textContent = last || data.be.lastError || '';
+    $('xt-st-error').hidden = !(last || data.be.lastError);
     let why = '';
     if (!kept && data.kind !== 'memory') {
       if (isSafari) why = 'Safari deletes it after 7 days without a visit unless the page is on the Home Screen.';
@@ -1700,16 +1830,16 @@
     $('xt-st-stored').textContent = `${mb(used)} of ${mb(total)}` + (state.profile ? ` · ${state.profile === 'astc' ? 'ASTC set' : state.profile === 'full' ? 'full set' : 'standard set'}` : '');
   }
 
+  // '' when the download fits (or the browser does not say), else why not.
   async function freeSpaceLine(need) {
     let est = null;
     try { est = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null; } catch (e) { /* none */ }
-    const el = $('xt-dl-space');
-    if (!est || !est.quota) { el.textContent = ''; return true; }
+    if (!est || !est.quota) return '';
     const free = est.quota - (est.usage || 0);
-    const fits = free > need * 1.05;
-    el.textContent = fits ? `${mb(free)} free for this site.` : '';
-    if (!fits) problem(`Not enough space: this needs ${mb(need)} and the browser offers ${mb(free)} for this site. Free some disk space${navigator.storage && navigator.storage.persist ? ', or turn on "Keep game data on this device" in the menu (some browsers then allow more)' : ''}.`);
-    return fits;
+    if (free > need * 1.05) return '';
+    const text = `Not enough space: this needs ${mb(need)} and the browser offers ${mb(free)} for this site. Free some disk space${navigator.storage && navigator.storage.persist ? ', or turn on "Keep on this device" in the ⋮ menu (some browsers then allow more)' : ''}.`;
+    problem(text);
+    return text;
   }
 
   // ------------------------------------------------------- the engine
@@ -1781,6 +1911,7 @@
     if (inFullscreen()) setFullscreen(false);
     $('xt-overlay').classList.remove('xt-gone');
     status('The game has quit.');
+    $('xt-status').classList.add('xt-done');
     $('xt-again').hidden = false;
     $('xt-again').focus();
   }
@@ -1861,6 +1992,8 @@
     setInterval(autosave, 250);
     requestAnimationFrame(() => mark('first-frame'));
     setTimeout(() => { if (state.started) crumb('running'); }, 5000);
+    // Once the menu is up and its own loading is over.
+    setTimeout(startBackground, 10000);
   }
 
   // ---------------------------------------------------------- startup
@@ -1899,6 +2032,15 @@
     let profile;
     try {
       let list = await listProfiles();
+      // The manifests this start may need, asked for together (stored ones
+      // cost no request): the profile used before, else the ones a first
+      // visit chooses between.
+      {
+        const saved = store.get('profile', '');
+        const names = saved && list.profiles[saved] ? [saved]
+          : Object.keys(list.profiles).filter((n) => n === list.default || (list.profiles[n].gpu === 'astc' && gpu.astc));
+        for (const n of names) getManifest(dataBase, list.profiles[n].manifest).catch(() => {});
+      }
       list = await shellProfiles(list);
       state.profiles = list;
       const name = await chooseProfile(list, gpu);
@@ -1906,6 +2048,7 @@
     } catch (e) { return fail(e.message || String(e)); }
     // A Godnotic folder the player picked (Storage popover): its stock packs
     // are read in place, and only the rest is kept in the browser.
+    state.setPacks = setPacksOf(profile);
     const fold = await folderAtStart(gpu);
     if (fold && fold.files) state.folder = fold;
     else if (fold && fold.pending) state.folderPending = fold;
@@ -1914,8 +2057,10 @@
     const older = await olderSet(profile);
     const runFiles = older ? older.files : profile.files;
     // (A split set's packs are what the folder's data and maps pk3 hold.)
+    // (A folder with the split layout holds some of the packs by name.)
     const folderKind = (f) => (f.kind ? (f.group === 'music' ? 'music' : 'data') : packKind(f.name));
-    const files = state.folder ? runFiles.filter((f) => !(f.stock && state.folder.kinds.has(folderKind(f)))) : runFiles;
+    const inFolder = (f) => (state.folder.kinds.has('set') ? state.folder.files.some((x) => x.name === f.name) : state.folder.kinds.has(folderKind(f)));
+    const files = state.folder ? runFiles.filter((f) => !(f.stock && inFolder(f))) : runFiles;
     state.files = files;
     state.profile = profile.name;
     progSetup(profile, files, older);
@@ -1930,15 +2075,17 @@
     const refIds = older ? profile.ids.concat(older.ids) : profile.ids;
     data.ref(location.pathname, refIds).catch(() => {});
 
-    // One download with everything in it (every map, the music): nothing
-    // to choose. Files the host no longer serves (the full set's maps pk3)
-    // only count when they are here.
+    // The download before the game starts: what it needs to run and the
+    // first map. The other maps and the music follow while it is played
+    // (startBackground), unless that is off: then they are part of this
+    // one. Files the host no longer serves (the full set's maps pk3) only
+    // count when they are here.
     const startedKey = profile.name === 'web' ? 'started' : 'started-' + profile.name;
     const idsKey = 'ids-' + profile.name;
     const hadStart = store.get(startedKey, '') === '1' || (profile.name === 'full' && store.get('started', '') === '1');
-    // (A split set: what the game needs to start; the rest follows in the
-    // background, while it runs.)
-    const selected = () => files.filter((f) => f.hosted !== false && (!prog.on || isFirst(f)));
+    // (progSetup decided which files those are: isFirst.)
+    const split = prog.on;
+    const selected = () => files.filter((f) => f.hosted !== false && (!split || isFirst(f)));
 
     let missing = await data.missing(selected());
     let adopted = 0;
@@ -2010,25 +2157,32 @@
           const stored = await data.storedBytes(selected());
           const need = sum(missing) - partial;
           $('xt-dl-size').textContent = mb(need);
+          const later = split ? sum(hosted(await data.missing(files.filter((f) => !isFirst(f))))) : 0;
+          state.dlRest = later;
+          $('xt-dl-what').textContent = later ? `to play. Maps and music (${mb(later)}) follow as you play.` : 'to play, once. It stays in this browser.';
           $('xt-dl-title').textContent = hadStart || adopted || stored ? 'Finish downloading Godnotic' : 'Download Godnotic';
           const already = stored + partial;
           $('xt-dl-resumed').hidden = already < 1e6;
           $('xt-dl-resumed').textContent = `${mb(already)} is already here; it carries on from there.`;
-          $('xt-dl-reason').hidden = !reason;
-          $('xt-dl-reason').textContent = reason;
+          const noRoom = await freeSpaceLine(need + later);
+          $('xt-dl-reason').hidden = !(noRoom || reason);
+          $('xt-dl-reason').textContent = noRoom || reason;
           $('xt-dl-go').textContent = already >= 1e6 ? 'Continue' : 'Download';
-          await freeSpaceLine(need + (prog.on ? await progLead() : 0));
-          // Where the browser may not keep it, say so before the download.
-          $('xt-dl-keep').hidden = data.kind === 'memory' || await persisted();
           // The installed app, or a folder waiting for its permission.
           const app = hadStart ? null : await nativeApp();
+          const appData = !!app && appDataOk() && !state.folderPending;
           $('xt-app').hidden = !app && !state.folderPending;
+          $('xt-app-data').hidden = !appData;
+          $('xt-app-data').classList.toggle('adw-suggested', !!(app && app.known));
+          $('xt-app-data').onclick = () => useAppData().catch((e) => toast(e.message || String(e), 8000));
+          $('xt-app-data-hint').hidden = !appData || !appDataHint();
+          $('xt-app-data-hint').textContent = appDataHint();
           $('xt-app-text').hidden = !(app && app.known);
           $('xt-app-open').hidden = !app;
           if (app) {
             $('xt-app-open').href = app.href;
             $('xt-app-open').textContent = app.known ? 'Open the Godnotic app' : 'Have the Godnotic app? Open it';
-            $('xt-app-open').classList.toggle('adw-suggested', app.known);
+            $('xt-app-open').classList.toggle('adw-suggested', app.known && !appData);
             $('xt-app-open').classList.toggle('adw-flat', !app.known);
             $('xt-dl-go').classList.toggle('adw-suggested', !app.known);
             state.app = app;
@@ -2146,6 +2300,7 @@
   };
   $('xt-opt-persist').onchange = (e) => { setPersist(e.target).catch(() => {}); };
   $('xt-folder').onclick = async () => {
+    if (!window.showDirectoryPicker || isAndroid) return useAppData().catch((e) => toast(e.message || String(e), 8000));
     const out = $('xt-verify-text');
     let h;
     try {
@@ -2172,6 +2327,8 @@
   };
   $('xt-folder-stop').onclick = async () => {
     try { await folderKv('readwrite', (s) => s.delete('root')); } catch (e) { /* gone */ }
+    if (typeof XTAppData !== 'undefined') await XTAppData.remove();
+    store.del('appdata');
     store.del('folder');
     location.reload();
   };
@@ -2202,36 +2359,66 @@
       await root.removeEntry(XTStore.NAME, { recursive: true });
     } catch (e) { /* no OPFS */ }
     await caches.delete(XTStore.NAME).catch(() => {});
+    if (typeof XTAppData !== 'undefined') await XTAppData.remove();
+    store.del('appdata');
     location.reload();
   };
 
-  // Storage and settings: a popover from the header bar's menu button, or
-  // over the game from the console (web_storage). Closes on Escape and on
-  // a click or tap outside it.
-  function popover(open) {
+  // Storage and settings: a popover beside the ⋮ button that opened it, or
+  // in the middle of the screen over the game (web_storage in the console).
+  // Closes on Escape and on a click or tap outside it.
+  const MENUS = ['xt-menu', 'xt-menu-progress', 'xt-menu-ready', 'xt-menu-error'];
+  function placePopover(el, btn) {
+    const b = btn && btn.getBoundingClientRect ? btn.getBoundingClientRect() : null;
+    if (!b || !b.width || !el.getBoundingClientRect) { el.style.left = el.style.top = el.style.transform = ''; return; }
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const vw = document.documentElement.clientWidth;
+    const vh = window.innerHeight;
+    const gap = 8;
+    const clampX = (x) => Math.min(Math.max(gap, x), Math.max(gap, vw - gap - w));
+    const clampY = (y) => Math.min(Math.max(gap, y), Math.max(gap, vh - gap - h));
+    // Under the button when it fits; else beside it (a wide screen), so the
+    // page stays readable; else over it; else wherever it fits.
+    let left = clampX(b.left + b.width / 2 - w / 2);
+    let top = b.bottom + gap;
+    if (top + h > vh - gap) {
+      if (b.right + gap + w <= vw - gap) { left = b.right + gap; top = clampY(b.top + b.height / 2 - h / 2); }
+      else if (b.left - gap - w >= gap) { left = b.left - gap - w; top = clampY(b.top + b.height / 2 - h / 2); }
+      else top = clampY(b.top - gap - h);
+    }
+    el.style.left = left + 'px';
+    el.style.top = top + 'px';
+    el.style.transform = 'none';
+  }
+  let popoverBy = null;
+  function popover(open, btn) {
     const el = $('xt-more');
-    if (open === undefined) open = el.hidden;
+    if (open === undefined) open = el.hidden || (btn && btn !== popoverBy);
     el.hidden = !open;
-    $('xt-menu').setAttribute('aria-expanded', open ? 'true' : 'false');
+    popoverBy = open ? btn || null : null;
+    for (const id of MENUS) $(id).setAttribute('aria-expanded', open && $(id) === btn ? 'true' : 'false');
     if (open) {
       // Over the game, the mouse has to be free to use it.
       if (document.pointerLockElement) document.exitPointerLock();
-      if (data) showStorage().catch(() => {});
-      el.focus && el.setAttribute('tabindex', '-1');
-      el.focus && el.focus({ preventScroll: true });
+      placePopover(el, btn);
+      // Its rows fill in (and change its height) a moment later.
+      if (data) showStorage().catch(() => {}).then(() => { if (!el.hidden) placePopover(el, popoverBy); });
+      el.focus({ preventScroll: true });
     }
   }
-  $('xt-menu').onclick = (e) => { e.stopPropagation(); popover(); };
+  for (const id of MENUS) $(id).onclick = (e) => { e.stopPropagation(); popover(undefined, $(id)); };
+  window.addEventListener('resize', () => { if (!$('xt-more').hidden) placePopover($('xt-more'), popoverBy); });
   document.addEventListener('pointerdown', (e) => {
     const el = $('xt-more');
-    if (!el.hidden && !el.contains(e.target) && e.target !== $('xt-menu')) popover(false);
+    if (!el.hidden && !el.contains(e.target) && !(e.target.closest && e.target.closest('.xt-more-btn'))) popover(false);
   }, true);
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !$('xt-more').hidden) { e.stopPropagation(); e.preventDefault(); popover(false); }
+    if (e.key === 'Escape' && !$('xt-more').hidden) { e.stopPropagation(); e.preventDefault(); const by = popoverBy; popover(false); if (by) by.focus(); }
   }, true);
   $('xt-opt-fullscreen').onchange = (e) => store.set('fullscreen', e.target.checked ? 1 : 0);
   // The last problem from an earlier visit, until something replaces it.
-  try { const p0 = JSON.parse(store.get('problem', '') || 'null'); if (p0) $('xt-st-error').textContent = `${p0.text} (${new Date(p0.t).toLocaleString()})`; } catch (e) { /* none */ }
+  try { const p0 = JSON.parse(store.get('problem', '') || 'null'); if (p0) { $('xt-st-error').textContent = `${p0.text} (${new Date(p0.t).toLocaleString()})`; $('xt-st-error').hidden = false; } } catch (e) { /* none */ }
 
   // For the dev console and automated tests: xt.command('map stormkeep')
   window.xt = {

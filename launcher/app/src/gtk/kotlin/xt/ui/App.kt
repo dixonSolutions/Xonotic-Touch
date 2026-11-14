@@ -7,7 +7,7 @@ import gtk.*
 import kotlinx.cinterop.*
 import xt.core.*
 
-const val APP_ID = "io.github.dixonSolutions.XonoticTouch"
+const val APP_ID = "io.github.dixonSolutions.Godnotic"
 
 /** What every page shares: settings, paths, the window, and scan results. */
 class Ctx(val env: Map<String, String>, val configPath: String, val cfg: LauncherConfig) {

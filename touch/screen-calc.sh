@@ -213,16 +213,16 @@ xonotic_calc_dpi() {
     local hmm="${XONOTIC_PHYS_MM_H:-}"
 
     if [ -n "$wmm" ] && [ -n "$hmm" ]; then
-        XONOTIC_TOUCH_XDPI=$(awk "BEGIN { printf \"%.0f\", $w / ($wmm / 25.4) }")
-        XONOTIC_TOUCH_YDPI=$(awk "BEGIN { printf \"%.0f\", $h / ($hmm / 25.4) }")
+        GODNOTIC_XDPI=$(awk "BEGIN { printf \"%.0f\", $w / ($wmm / 25.4) }")
+        GODNOTIC_YDPI=$(awk "BEGIN { printf \"%.0f\", $h / ($hmm / 25.4) }")
     else
         # Density is no longer multiplied into widget size; keep a mild default
         # so engine touch paths that still read it stay sane.
-        XONOTIC_TOUCH_XDPI="${XONOTIC_TOUCH_XDPI:-160}"
-        XONOTIC_TOUCH_YDPI="${XONOTIC_TOUCH_YDPI:-160}"
+        GODNOTIC_XDPI="${GODNOTIC_XDPI:-160}"
+        GODNOTIC_YDPI="${GODNOTIC_YDPI:-160}"
     fi
 
-    XONOTIC_TOUCH_DENSITY=$(awk "BEGIN { d=($XONOTIC_TOUCH_XDPI + $XONOTIC_TOUCH_YDPI) / 320; if (d < 1) d=1; if (d > 1.5) d=1.5; printf \"%.2f\", d }")
+    GODNOTIC_DENSITY=$(awk "BEGIN { d=($GODNOTIC_XDPI + $GODNOTIC_YDPI) / 320; if (d < 1) d=1; if (d > 1.5) d=1.5; printf \"%.2f\", d }")
 }
 
 xonotic_write_layout_file() {
@@ -245,9 +245,9 @@ vid_width ${XONOTIC_VID_WIDTH}
 vid_height ${XONOTIC_VID_HEIGHT}
 vid_conwidthauto 1
 vid_conheight ${XONOTIC_VID_HEIGHT}
-vid_touchscreen_xdpi ${XONOTIC_TOUCH_XDPI}
-vid_touchscreen_ydpi ${XONOTIC_TOUCH_YDPI}
-vid_touchscreen_density ${XONOTIC_TOUCH_DENSITY}
+vid_touchscreen_xdpi ${GODNOTIC_XDPI}
+vid_touchscreen_ydpi ${GODNOTIC_YDPI}
+vid_touchscreen_density ${GODNOTIC_DENSITY}
 EOF
 }
 
@@ -261,5 +261,5 @@ xonotic_screen_calc() {
     xonotic_calc_dpi "$XONOTIC_VID_WIDTH" "$XONOTIC_VID_HEIGHT"
     xonotic_write_layout_file "$layout_file"
 
-    xonotic_screen_log "vid ${XONOTIC_VID_WIDTH}x${XONOTIC_VID_HEIGHT} dpi ${XONOTIC_TOUCH_XDPI}x${XONOTIC_TOUCH_YDPI} density ${XONOTIC_TOUCH_DENSITY} orient ${XONOTIC_ORIENTATION}"
+    xonotic_screen_log "vid ${XONOTIC_VID_WIDTH}x${XONOTIC_VID_HEIGHT} dpi ${GODNOTIC_XDPI}x${GODNOTIC_YDPI} density ${GODNOTIC_DENSITY} orient ${XONOTIC_ORIENTATION}"
 }

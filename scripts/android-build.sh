@@ -120,9 +120,9 @@ KEYSTORE="${ANDROID_KEYSTORE:-}"
 STOREPASS="${ANDROID_KEYSTORE_PASSWORD:-}"
 ALIAS="${ANDROID_KEY_ALIAS:-}"
 if [ -z "$KEYSTORE" ]; then
-    KEYSTORE="$CACHE_DIR/throwaway.keystore"
-    STOREPASS="${STOREPASS:-xonotictouch}"
-    ALIAS="${ALIAS:-xonotictouch}"
+    KEYSTORE="$CACHE_DIR/godnotic-throwaway.keystore"
+    STOREPASS="${STOREPASS:-godnotic}"
+    ALIAS="${ALIAS:-godnotic}"
     if [ ! -f "$KEYSTORE" ]; then
         log "No ANDROID_KEYSTORE set — generating a throwaway signing key"
         echo "   Installs from different builds will NOT upgrade in place." >&2

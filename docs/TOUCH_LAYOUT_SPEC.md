@@ -496,7 +496,7 @@ working (you can drag the handle while moving); the drag finger emits no keys.
    `packaging/start.sh` and `scripts/lib/xonotic-shlib.sh` must emit
    `exec touch.layout.cfg` (engine-resolved, last line of `touch/startup.cfg`, after the profiles)
    and keep the absolute `${HOME}/.xonotic/touch.layout.cfg` line only as a legacy fallback.
-   `XONOTIC_TOUCH_LAYOUT` default changes to `${HOME}/.xonotic/data/touch.layout.cfg`.
+   `GODNOTIC_LAYOUT` default changes to `${HOME}/.xonotic/data/touch.layout.cfg`.
 4. Because `registercvar` does not set `CF_ARCHIVE`, the `seta` lines in the layout file are the
    authoritative persistence path. Load order guarantee: profiles first, layout file last, so a
    player's dragged console position survives a profile re-exec.

@@ -402,8 +402,8 @@ void Andysu_InputDevices(int touch, int keyboard, int mouse)
 	__atomic_store_n(&vid_android_state, v, __ATOMIC_RELEASE);
 }
 #else
-JNIEXPORT void JNICALL Java_io_github_dixonsolutions_xonotictouch_XonoticActivity_nativeInputDevices(JNIEnv *env, jclass cls, jboolean touch, jboolean keyboard, jboolean mouse);
-JNIEXPORT void JNICALL Java_io_github_dixonsolutions_xonotictouch_XonoticActivity_nativeInputDevices(JNIEnv *env, jclass cls, jboolean touch, jboolean keyboard, jboolean mouse)
+JNIEXPORT void JNICALL Java_io_github_dixonsolutions_godnotic_XonoticActivity_nativeInputDevices(JNIEnv *env, jclass cls, jboolean touch, jboolean keyboard, jboolean mouse);
+JNIEXPORT void JNICALL Java_io_github_dixonsolutions_godnotic_XonoticActivity_nativeInputDevices(JNIEnv *env, jclass cls, jboolean touch, jboolean keyboard, jboolean mouse)
 {
 	int v = VID_ANDROID_VALID | (touch ? VID_ANDROID_TOUCH : 0) | (keyboard ? VID_ANDROID_KEYBOARD : 0) | (mouse ? VID_ANDROID_MOUSE : 0);
 	(void)env;

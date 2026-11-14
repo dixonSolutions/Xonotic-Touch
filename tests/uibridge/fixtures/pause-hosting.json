@@ -66,11 +66,9 @@
       }
      ],
      "primary": {
-      "id": "host.share",
-      "label": "Share",
-      "icon": "share",
-      "kind": "share",
-      "text": "godnotic://join/192.168.1.23:26000"
+      "id": "host.popup",
+      "label": "Addresses",
+      "icon": "host"
      },
      "actions": [
       {
@@ -79,6 +77,13 @@
        "icon": "copy",
        "kind": "copy",
        "text": "192.168.1.23:26000"
+      },
+      {
+       "id": "host.share",
+       "label": "Share",
+       "icon": "share",
+       "kind": "share",
+       "text": "godnotic://join/192.168.1.23:26000"
       }
      ]
     },
@@ -181,15 +186,15 @@
     "id": "pause/actions/disconnect",
     "type": "button",
     "props": {
-     "label": "Leave match",
+     "label": "End the game",
      "action": {
       "id": "disconnect",
-      "label": "Leave match",
+      "label": "End the game",
       "icon": "disconnect",
       "style": "destructive",
       "confirm": {
-       "title": "Leave the match?",
-       "ok": "Leave",
+       "title": "End the game for everyone?",
+       "ok": "End",
        "destructive": true
       }
      },

@@ -22,10 +22,31 @@ imported, tested, merged and released by `component-sync.yml` (see AGENTS.md). T
 workflow's schedule has not been seen to fire on its own; a run started by hand works.
 Upstream Xonotic is merged only by hand (`upstream-watch.yml`, docs/UPSTREAM_SYNC.md).
 
-Android, Flatpak and OpenStore package identifiers, data directory names, live-update
-asset names and browser storage keys still carry the project's earlier name. They are
-compatibility contracts: changing one makes a different application and strands
-installed users. Everything a player sees says Godnotic.
+`dixonSolutions/dixonSolutions.github.io` is the fourth repository: no game source, only
+the Pages site that keeps the update addresses of installs made before the rename
+pointing at the current ones.
+
+Package identifiers, data directory names, environment variables and release asset
+names all say Godnotic: Flatpak `io.github.dixonSolutions.Godnotic`, Android
+`io.github.dixonsolutions.godnotic`, click `godnotic.dixonsolutions`. What that meant for
+installs made under the earlier identifiers:
+
+- **Flatpak** moves by itself: the old ref carries an end-of-life rebase
+  (`scripts/publish-flatpak-remote.sh`), so `flatpak update` switches the app and
+  Flatpak carries its data folder across; the first start renames the pack folder
+  inside it (`packaging/start.sh`, `GamePaths::adopt_old_name`). Nothing is downloaded
+  again. The rebase was tried on a throwaway repository, not yet seen on a real install.
+- **Native Linux** installs have `~/.local/share` and `~/.config` folders renamed the
+  same way.
+- **Android** cannot move: a new application id is a new application to Android, with
+  its own storage. An old install stops being updated and the new APK installs beside
+  it, downloading its data again.
+- **Ubuntu Touch** is the same, and the new id needs its own OpenStore listing.
+
+`scripts/test-old-name.sh` fails the tests when the earlier name comes back. Short
+internal prefixes (`xt-` in the web shell's element ids and storage keys, `xt.` in the
+Kotlin launcher) are not the name and stay: renaming the storage keys would make every
+browser download its data again.
 
 ## Front ends
 

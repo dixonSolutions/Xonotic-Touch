@@ -20,7 +20,7 @@
   const E = () => window.__engine;
   window.splitTest = {
     expect: async () => (await fetch('expect.json', { cache: 'no-store' })).json(),
-    dialog: () => ({ title: $('xt-dl-title').textContent, size: $('xt-dl-size').textContent, lead: $('xt-dl-size').parentNode.textContent.trim() }),
+    dialog: () => ({ title: $('xt-dl-title').textContent, size: $('xt-dl-size').textContent, lead: $('xt-dl-size').parentNode.textContent.trim().replace(/\s+/g, ' ') }),
     // The moment the engine started: what had been fetched, what it found.
     async started() {
       const x = await splitTest.expect();
@@ -53,7 +53,7 @@
       return {
         mountpacks: E().mountpacks, restInOrder: E().mountpacks.join() === x.rest.join(), rest: x.rest,
         fetched: names(blobs()), fetchedBeforeStart: names(E().startRequests),
-        verify, allFiles: Object.keys(x.entries).length, errors: E().errors, loaded: E().loaded, commands: E().commands, execs: E().execs.join(),
+        verify, allFiles: Object.keys(x.entries).length, errors: E().errors, loaded: E().loaded, commands: E().commands,
         reads: E().reads, lazyErrors: (xt.lazyStats() || {}).errors || 0,
         statuses: st.length, perSecond, last: (st[st.length - 1] || [0, ''])[1],
         wants: uniq(st.map((s) => (/ want (\S+) /.exec(s[1]) || [])[1]).filter(Boolean)),

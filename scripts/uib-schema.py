@@ -69,6 +69,7 @@ DEFS["option"] = obj({"value": S, "label": S, "icon": ICON, "image": IMG, "help"
 DEFS["attr"] = obj({"label": S, "value": S, "icon": ICON}, ["label", "value"])
 DEFS["mark"] = obj({"value": N, "label": S}, ["value"])
 DEFS["pageState"] = obj({"title": S, "text": S, "icon": ICON, "action": ref("action")})
+DEFS["reserved"] = obj({"id": ID, "x": I, "y": I, "w": I, "h": I}, ["id", "x", "y", "w", "h"])
 DEFS["busy"] = obj({"label": S, "detail": S, "progress": FRAC, "indeterminate": B, "cancel": ref("action")})
 
 COMMON = {
@@ -87,7 +88,8 @@ FORMAT = enum("int", "float1", "float2", "percent", "ms", "dp", "db", "x", "deg"
 
 TYPES = {
     "app": {"stack": {"type": "array", "items": ID}, "modal": {"type": "array", "items": ID},
-            "busy": ref("busy"), "canBack": B, "context": enum("menu", "game", "loading")},
+            "busy": ref("busy"), "canBack": B, "context": enum("menu", "game", "loading"),
+            "reserved": {"type": "array", "items": ref("reserved"), "maxItems": 8}},
     "screen": {"presentation": enum("page", "sheet", "dialog", "fullscreen"),
                "kind": enum("home", "page", "detail", "game", "loading", "status"),
                "primary": ref("action"), "background": IMG, "dismissable": B,
@@ -113,6 +115,8 @@ TYPES = {
              "sort": S, "desc": B, "filter": S, "searchable": B,
              "selection": enum("none", "single", "multi"),
              "selected": {"type": "array", "items": S, "maxItems": 256},
+             "rowSelect": ref("action"),
+             "rows": {"type": "integer", "minimum": 1, "maximum": 4}, "scroll": enum("vertical", "horizontal"),
              "rowPrimary": ref("action"), "rowActions": {"type": "array", "items": ref("action"), "maxItems": 8},
              "state": enum("ready", "loading", "error"), "empty": ref("pageState"), "error": ref("pageState"),
              "count": I, "display": enum("table", "rows", "cards"),
@@ -123,7 +127,7 @@ TYPES = {
                 "badges": {"type": "array", "items": ref("badge"), "maxItems": 8}, "primary": ref("action")},
     "text": {"body": {"type": "string", "maxLength": 8192},
              "style": enum("body", "caption", "title", "mono", "note", "warning"), "selectable": B},
-    "image": {"ref": IMG, "fit": enum("cover", "contain"), "alt": S},
+    "image": {"ref": IMG, "fit": enum("cover", "contain"), "alt": S, "role": enum("picture", "banner")},
     "divider": {},
     "status": {"body": S, "progress": FRAC, "indeterminate": B, "primary": ref("action")},
     "progress": {"value": FRAC, "indeterminate": B, "detail": S, "cancel": ref("action")},

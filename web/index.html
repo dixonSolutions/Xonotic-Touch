@@ -35,121 +35,113 @@
   <p>Turn your device sideways to play.</p>
 </div>
 
-<!-- The shell: an Adwaita-style window (header bar, clamp, boxed lists,
-     status pages). A returning visitor never sees more than the splash. -->
+<!-- The launcher: one centred column (banner, then the one thing to do) in
+     the style of a libadwaita status page. No header bar: storage and
+     settings are a popover from the ⋮ button beside the main action. A
+     returning visitor never sees more than the banner. -->
 <div id="xt-overlay" class="xt-splash">
-  <header class="adw-headerbar">
-    <span class="adw-headerbar-title">Godnotic</span>
-    <button class="adw-btn adw-flat adw-icon" id="xt-menu" type="button" aria-label="Storage and settings" aria-expanded="false" aria-controls="xt-more">
-      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M2 3.5h12v1.5H2zm0 3.75h12v1.5H2zM2 11h12v1.5H2z"/></svg>
-    </button>
-  </header>
-
   <main class="adw-clamp">
-    <h1 class="xt-hero"><img src="godnotic-banner.png" alt="Godnotic" width="2172" height="724" decoding="async"></h1>
+    <h1 class="xt-hero"><img src="godnotic-banner.webp" alt="Godnotic" width="960" height="332" decoding="async" fetchpriority="high"></h1>
 
     <!-- Status: only shown when something takes long enough to notice. -->
     <section id="xt-status" class="adw-status" aria-live="polite" hidden>
       <div class="adw-spinner" aria-hidden="true"></div>
-      <p class="adw-title-2" id="xt-status-text">Starting…</p>
-      <p class="adw-body dim" id="xt-status-detail"></p>
+      <p class="adw-body dim" id="xt-status-text">Starting…</p>
+      <p class="adw-caption dim" id="xt-status-detail"></p>
       <div class="adw-buttons"><button class="adw-btn adw-pill adw-suggested" id="xt-again" type="button" onclick="location.reload()" hidden>Play again</button></div>
     </section>
 
     <section id="xt-download" class="adw-status" aria-labelledby="xt-dl-title" hidden>
       <p class="adw-title-1" id="xt-dl-title">Download Godnotic</p>
-      <p class="adw-body dim">Every map, texture, sound and the music: <strong id="xt-dl-size">—</strong>, once. It stays in this browser for the next visit.</p>
+      <p class="adw-body dim"><strong id="xt-dl-size">—</strong> <span id="xt-dl-what">to play.</span></p>
+      <p class="adw-body adw-warning" id="xt-dl-reason" hidden></p>
+      <p class="adw-body dim" id="xt-dl-resumed" hidden></p>
+      <div class="adw-buttons">
+        <button class="adw-btn adw-pill adw-suggested" id="xt-dl-go" type="button">Download</button>
+        <button class="adw-btn adw-circular xt-more-btn" id="xt-menu" type="button" aria-label="Storage and settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="xt-more"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 1.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm0 5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm0 5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"/></svg></button>
+      </div>
       <div id="xt-app" hidden>
-        <p class="adw-body" id="xt-app-text" hidden>Godnotic is installed on this device, with the game data and your settings: no download needed.</p>
+        <p class="adw-caption dim" id="xt-app-text" hidden>Godnotic is installed on this device, with the game data and your settings: no download needed.</p>
         <div class="adw-buttons">
+          <button class="adw-btn adw-pill" id="xt-app-data" type="button" hidden>Use the game data from the Godnotic app</button>
           <a class="adw-btn adw-pill" id="xt-app-open" href="godnotic://open" hidden>Open the Godnotic app</a>
           <button class="adw-btn adw-pill adw-suggested" id="xt-folder-use" type="button" hidden>Use the Godnotic folder</button>
         </div>
+        <p class="adw-caption dim" id="xt-app-data-hint" hidden></p>
       </div>
-      <p class="adw-body adw-warning" id="xt-dl-reason" hidden></p>
-      <p class="adw-body dim" id="xt-dl-resumed" hidden></p>
-      <div class="adw-buttons"><button class="adw-btn adw-pill adw-suggested" id="xt-dl-go" type="button">Download</button></div>
-      <p class="adw-caption dim" id="xt-dl-space"></p>
-      <p class="adw-caption dim" id="xt-dl-keep" hidden>The browser keeps it between visits unless it is set to delete site data when it closes, or it runs short of space and clears it. “Keep game data on this device” in the menu asks it not to.</p>
     </section>
 
     <section id="xt-progress" class="adw-status" hidden>
       <p class="adw-title-2" id="xt-progress-label">Downloading…</p>
-      <p class="adw-numeric" id="xt-percent" aria-hidden="true">0%</p>
       <div class="adw-progress" role="progressbar" aria-labelledby="xt-progress-label" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="xt-bar"><div id="xt-bar-fill"></div></div>
-      <p class="adw-body dim" id="xt-progress-detail">&nbsp;</p>
+      <p class="adw-body dim adw-tabular"><span id="xt-percent" aria-hidden="true">0%</span> · <span id="xt-progress-detail">&nbsp;</span></p>
       <p class="xt-sr" id="xt-progress-live" aria-live="polite"></p>
       <div class="adw-buttons">
         <button class="adw-btn adw-pill" id="xt-dl-pause" type="button">Pause</button>
         <button class="adw-btn adw-pill" id="xt-dl-cancel" type="button">Cancel</button>
+        <button class="adw-btn adw-circular xt-more-btn" id="xt-menu-progress" type="button" aria-label="Storage and settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="xt-more"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 1.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm0 5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm0 5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"/></svg></button>
       </div>
     </section>
 
     <section id="xt-ready" class="adw-status" hidden>
-      <div class="adw-buttons"><button class="adw-btn adw-pill adw-suggested xt-play" id="xt-play" type="button">Play</button></div>
-      <p class="adw-caption dim" id="xt-ready-hint"></p>
+      <div class="adw-buttons">
+        <button class="adw-btn adw-pill adw-suggested xt-play" id="xt-play" type="button">Play</button>
+        <button class="adw-btn adw-circular xt-more-btn" id="xt-menu-ready" type="button" aria-label="Storage and settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="xt-more"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 1.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm0 5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm0 5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"/></svg></button>
+      </div>
     </section>
 
     <section id="xt-error" class="adw-status" role="alert" hidden>
-      <div class="adw-status-icon adw-error-icon" aria-hidden="true">!</div>
-      <p class="adw-title-1">Something went wrong</p>
+      <p class="adw-title-2">Something went wrong</p>
       <p class="adw-body xt-err" id="xt-error-text"></p>
-      <div class="adw-buttons"><button class="adw-btn adw-pill adw-suggested" type="button" onclick="location.reload()">Reload</button></div>
+      <div class="adw-buttons">
+        <button class="adw-btn adw-pill adw-suggested" type="button" onclick="location.reload()">Reload</button>
+        <button class="adw-btn adw-circular xt-more-btn" id="xt-menu-error" type="button" aria-label="Storage and settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="xt-more"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 1.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm0 5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm0 5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z"/></svg></button>
+      </div>
     </section>
-
   </main>
-  <footer class="xt-foot adw-caption dim">Free software, GPLv2+. Game data © the Xonotic team. WebAssembly and WebGL 2.</footer>
+  <footer class="xt-foot adw-caption dim">Free software, GPLv2+. Game data © the Xonotic team.</footer>
 </div>
 
-<!-- Storage and settings: a libadwaita popover from the header bar's menu
- button (and, over the game, from the console: web_storage). -->
-<div id="xt-more" class="adw-popover" role="dialog" aria-label="Storage and settings" hidden>
-  <section class="adw-group" aria-labelledby="xt-storage-h">
-    <h2 class="adw-group-title" id="xt-storage-h">Storage</h2>
-    <ul class="adw-boxed-list" id="xt-storage">
-      <li class="adw-row"><span class="adw-row-title">Stored in</span><span class="adw-row-value" id="xt-st-backend">—</span></li>
-      <li class="adw-row"><span class="adw-row-title">Game data</span><span class="adw-row-value" id="xt-st-stored">—</span></li>
-      <li class="adw-row"><span class="adw-row-title">Space</span><span class="adw-row-value" id="xt-st-quota">—</span></li>
-      <li class="adw-row" id="xt-opt-persist-row">
-        <label class="adw-row-title" for="xt-opt-persist">Keep game data on this device</label>
-        <input class="adw-switch" type="checkbox" role="switch" id="xt-opt-persist" aria-describedby="xt-persist-text">
-      </li>
-      <li class="adw-row adw-row-wrap"><span class="adw-row-title">Last problem</span><span class="adw-row-value" id="xt-st-error">None</span></li>
-    </ul>
-    <p class="adw-caption dim" id="xt-persist-text" aria-live="polite"></p>
-    <p class="adw-caption dim" id="xt-storage-text"></p>
-    <div class="adw-buttons adw-buttons-start">
-      <button class="adw-btn" id="xt-install" type="button" hidden>Install app</button>
-      <button class="adw-btn" id="xt-verify" type="button">Verify data</button>
-      <button class="adw-btn adw-destructive" id="xt-clear" type="button">Clear data</button>
-      <button class="adw-btn" id="xt-folder" type="button" hidden>Use an existing Godnotic folder</button>
-      <button class="adw-btn" id="xt-folder-stop" type="button" hidden>Stop using the folder</button>
-      <button class="adw-btn" id="xt-import" type="button">Import settings</button>
-      <input id="xt-import-file" type="file" accept=".cfg,text/plain" hidden>
-    </div>
-    <p class="adw-caption dim" id="xt-verify-text" aria-live="polite"></p>
-  </section>
-  <section class="adw-group" aria-labelledby="xt-display-h">
-    <h2 class="adw-group-title" id="xt-display-h">Display</h2>
-    <ul class="adw-boxed-list">
-      <li class="adw-row">
-        <label class="adw-row-title" for="xt-opt-scale">Render resolution</label>
-        <select class="adw-dropdown" id="xt-opt-scale">
-          <option value="auto">Automatic</option>
-          <option value="0.5">Low</option>
-          <option value="0.75">Medium</option>
-          <option value="1">Standard</option>
-          <option value="1.5">High</option>
-          <option value="3">Every screen pixel</option>
-        </select>
-      </li>
-      <li class="adw-row" id="xt-opt-fullscreen-row">
-        <label class="adw-row-title" for="xt-opt-fullscreen">Fullscreen</label>
-        <input class="adw-switch" type="checkbox" role="switch" id="xt-opt-fullscreen" checked>
-      </li>
-    </ul>
-    <p class="adw-caption dim" id="xt-diag"></p>
-  </section>
+<!-- Storage and settings: a popover from the ⋮ button (and, over the game,
+     from the console: web_storage). -->
+<div id="xt-more" class="adw-popover" role="dialog" aria-label="Storage and settings" tabindex="-1" hidden>
+  <ul class="adw-boxed-list" id="xt-storage">
+    <li class="adw-row"><span class="adw-row-title">Game data</span><span class="adw-row-value" id="xt-st-stored">—</span></li>
+    <li class="adw-row" id="xt-opt-persist-row">
+      <label class="adw-row-title" for="xt-opt-persist">Keep on this device</label>
+      <input class="adw-switch" type="checkbox" role="switch" id="xt-opt-persist" aria-describedby="xt-persist-text">
+    </li>
+    <li class="adw-row">
+      <label class="adw-row-title" for="xt-opt-scale">Resolution</label>
+      <select class="adw-dropdown" id="xt-opt-scale">
+        <option value="auto">Automatic</option>
+        <option value="0.5">Low</option>
+        <option value="0.75">Medium</option>
+        <option value="1">Standard</option>
+        <option value="1.5">High</option>
+        <option value="3">Every screen pixel</option>
+      </select>
+    </li>
+    <li class="adw-row" id="xt-opt-fullscreen-row">
+      <label class="adw-row-title" for="xt-opt-fullscreen">Fullscreen</label>
+      <input class="adw-switch" type="checkbox" role="switch" id="xt-opt-fullscreen" checked>
+    </li>
+  </ul>
+  <p class="adw-caption dim" id="xt-persist-text" aria-live="polite"></p>
+  <p class="adw-caption dim" id="xt-storage-text"></p>
+  <p class="adw-caption adw-warning" id="xt-st-error" hidden></p>
+  <div class="adw-menu">
+    <button class="adw-btn adw-flat" id="xt-install" type="button" hidden>Install app</button>
+    <button class="adw-btn adw-flat" id="xt-verify" type="button">Verify data</button>
+    <button class="adw-btn adw-flat" id="xt-folder" type="button" hidden>Use an installed Godnotic’s game data</button>
+    <button class="adw-btn adw-flat" id="xt-folder-stop" type="button" hidden>Stop using the folder</button>
+    <button class="adw-btn adw-flat" id="xt-import" type="button">Import settings</button>
+    <button class="adw-btn adw-flat adw-destructive" id="xt-clear" type="button">Clear data</button>
+    <input id="xt-import-file" type="file" accept=".cfg,text/plain" hidden>
+  </div>
+  <p class="adw-caption dim" id="xt-verify-text" aria-live="polite"></p>
+  <p class="adw-caption dim"><span id="xt-st-backend"></span> · <span id="xt-st-quota"></span></p>
+  <p class="adw-caption dim" id="xt-diag"></p>
 </div>
 
 <div id="xt-toast" class="adw-toast" role="status" hidden></div>
@@ -166,6 +158,8 @@
 
 <script src="store.js"></script>
 <script src="lazyfs.js"></script>
+<script src="appdata.js"></script>
 <script src="shell.js"></script>
+<script src="mods.js"></script>
 </body>
 </html>

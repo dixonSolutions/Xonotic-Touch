@@ -71,7 +71,7 @@ XONOTIC_MENU_THEME_URL="${XONOTIC_MENU_THEME_URL:-https://gitlab.com/xonotic/xon
 
 xonotic_menu_theme_path() {
     local data_dir="$1"
-    echo "$data_dir/xonotic-touch-theme.pk3dir/sound/cdtracks/${XONOTIC_MENU_THEME_TRACK}.ogg"
+    echo "$data_dir/godnotic-theme.pk3dir/sound/cdtracks/${XONOTIC_MENU_THEME_TRACK}.ogg"
 }
 
 # True when the open-menu theme ogg is on disk (tiny boot pk3dir or full music pack).

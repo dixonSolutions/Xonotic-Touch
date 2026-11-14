@@ -64,6 +64,8 @@ pub struct Shared {
     pub images: RefCell<Images>,
     pub backend: RefCell<Backend>,
     pub narrow: Cell<bool>,
+    /// Clicks on lists that tell choosing from playing (one click chooses, two play).
+    pub clicks: RefCell<godnotic_core::bridge::Clicks>,
     pub reduced_motion: Cell<bool>,
     pub pump_queued: Cell<bool>,
     pub first_snapshot_ms: Cell<Option<f64>>,
@@ -101,6 +103,7 @@ impl Shared {
             images: RefCell::new(Images::default()),
             backend: RefCell::new(backend),
             narrow: Cell::new(false),
+            clicks: RefCell::new(Default::default()),
             reduced_motion: Cell::new(false),
             pump_queued: Cell::new(false),
             first_snapshot_ms: Cell::new(None),
@@ -440,7 +443,7 @@ pub fn fill_page(app: &App, page: &adw::NavigationPage, id: &str) {
 }
 
 /// Rebuilds a screen whose structure changed, keeping its scroll position.
-fn refresh_screen(app: &App, id: &str) {
+pub fn refresh_screen(app: &App, id: &str) {
     let page = app.ui.borrow().as_ref().and_then(|u| u.pages.get(id).cloned());
     let Some(page) = page else { return };
     let scroll = page.child().and_then(|c| find_scrolled(&c)).map(|s| s.vadjustment().value());
@@ -466,7 +469,7 @@ fn find_scrolled(w: &gtk::Widget) -> Option<gtk::ScrolledWindow> {
 
 /// The window, with the native skeleton shown at once (banner and placeholders) until the first snapshot.
 pub fn build_window(app: &App, gapp: &adw::Application, size: Option<(i32, i32)>) -> adw::ApplicationWindow {
-    let win = adw::ApplicationWindow::builder().application(gapp).title("Godnotic").icon_name("io.github.dixonSolutions.XonoticTouch").build();
+    let win = adw::ApplicationWindow::builder().application(gapp).title("Godnotic").icon_name("io.github.dixonSolutions.Godnotic").build();
     let (w, h) = size.unwrap_or((1100, 760));
     win.set_default_size(w, h);
     win.set_size_request(360, 480);
@@ -609,6 +612,14 @@ pub fn invoke(app: &App, node: &str, action: &Map<String, Value>) {
 pub fn row_activated(app: &App, list_node: &str, source: &str, pos: usize) {
     let key = app.core.borrow().store.sources.get(source).and_then(|w| w.row(pos)).and_then(|r| r.str_of("key"));
     if let Some(k) = key {
+        // A list with `selection: single`: the first click chooses the row (row/select); a second
+        // click on the same row within the double-click time plays it (row/activate).
+        let selects = app.core.borrow().store.node(list_node).is_some_and(crate::widgets::selects_rows);
+        if selects && app.clicks.borrow_mut().click(list_node, &k, std::time::Instant::now()) == "select" {
+            let m = app.core.borrow_mut().client.row(list_node, &k, "select");
+            send(app, m);
+            return;
+        }
         let m = app.core.borrow_mut().client.row(list_node, &k, "activate");
         send(app, m);
         let primary = app.core.borrow().store.node(list_node).and_then(|n| n.obj("rowPrimary").and_then(|p| p.str_of("id")));

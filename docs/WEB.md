@@ -19,7 +19,7 @@ page.
 
 | | |
 |---|---|
-| First visit | One button and the size of what the game needs to start: with the split set (see "Progressive download") 88 MB on GPUs with ASTC (phones, tablets, Apple, Intel) and 243 MB elsewhere, which is the menu and the first map; percent, speed, time left, Pause/Resume and Cancel. The game starts by itself when that is in; the music, the other maps and the rest (298 MB, 616 MB) follow while it runs, a map that is picked first. Until the split set is published: everything in one download, 405 MB with ASTC, 1.07 GB elsewhere |
+| First visit | One button, one size: what the game needs to start, six chunks at a time (three on phones); percent, speed, time left, Pause/Resume and Cancel. With the split set (see "Progressive download") that is 88 MB on GPUs with ASTC (phones, tablets, Apple, Intel) and 243 MB elsewhere: the menu and the first map. Until it is published, the core packs and the first map of today's sets: 159 MB with ASTC, about 444 MB elsewhere. The game starts by itself when that is in, and the music, the other maps and the rest (298 MB, 616 MB with the split set) follow one chunk at a time while it runs, mounted as they arrive. A map asked for before its packs are here downloads first, with its own progress card. On a connection that asks to save data, or with `?background=0`, nothing follows by itself: a map downloads when it is played (today's sets: the first download is everything, as it is without lazy reads) |
 | Later visits | Straight from a splash into the game: no download screen, no Play button, no data requests |
 | Why it downloads | Whenever the page has to download again it says why in one line (cleared by the browser, closed by the browser mid-download, not enough space, private window, an update) |
 | Memory | Game data is read from the browser's storage as the engine needs it, not copied into memory: about 30 MB of JS heap at the menu instead of 1.08 GB |
@@ -27,8 +27,8 @@ page.
 | Updates | A new release fetches only the files that changed; under 50 MB (new game code is about 3 MB) it does so without asking |
 | Interrupted downloads | Carry on where they stopped, after Cancel, a reload, a lost connection or the browser killing the page |
 | Storage | The origin private file system (OPFS) of the browser: it survives reloads, closing the tab, restarting the browser and new releases of the page. The page never asks for persistent storage by itself, so by default the browser may clear it when the device runs short of space; what is gone is downloaded again at the next start, only that, without a question |
-| Storage popover | The header bar's menu button (or `web_storage` in the console, over the game): where the data is kept, how much, the site's quota, the switch "Keep game data on this device" (persistent storage, with the browser's real answer), the last problem; Verify data, Clear data, Install app, Use an existing Godnotic folder (desktop Chromium), Import settings; render resolution and fullscreen |
-| Already have the app | On Android in Chrome, a first visit says when the Godnotic app is installed and offers "Open the Godnotic app" instead of the download; other browsers on Android and Linux get the same hand-over as a plain link. See "An existing install" |
+| Storage popover | The ⋮ button beside the main action (Download, Pause/Cancel, Reload), placed under or beside it (or `web_storage` in the console, in the middle of the screen over the game): how much game data is here, the switch "Keep on this device" (persistent storage, with the browser's real answer), render resolution, fullscreen; Install app, Verify data, Use an existing Godnotic folder (desktop Chromium), Import settings, Clear data; where the data is kept, the site's quota, the GPU and the last problem as small print. There is no header bar: the page is the banner, at one fixed place on the theme's background in every state, with what there is to do under it |
+| Already have the app | On Android in Chrome, a first visit says when the Godnotic app is installed and offers "Use the game data from the Godnotic app" (the app's packs from the system file picker, copied once) and "Open the Godnotic app" instead of the download; other browsers on Android and Linux get the same two as secondary buttons. See "An existing install" |
 | Saved | `config.cfg`, touch layouts and everything else the game writes, kept in IndexedDB |
 | Display | Fills the window; fullscreen at the first tap or key (Storage popover), or the game's own fullscreen setting |
 | Mouse | Click to capture (pointer lock, raw motion where the browser offers it); Esc opens the menu |
@@ -36,6 +36,7 @@ page.
 | Sound | Web Audio at the device's rate; pauses with the tab |
 | Phones | Landscape lock in fullscreen, screen kept on while playing, on-screen keyboard for chat and console |
 | Install | "Add to Home Screen" or "Install app" gives a fullscreen, landscape app (web manifest) |
+| Lua mods | Client mods, and server mods in the games the page hosts, as on Linux and Android. Installed with **Pick file** in Settings → Mobile → Mods → Install, by dropping a `.zip` on the page, or from a link (the host must allow web pages: CORS). Kept with the settings in IndexedDB. `xt.http` works, to hosts that allow web pages. See "Lua mods" |
 
 Needs a browser with WebAssembly and WebGL 2: current Chrome, Edge, Firefox or
 Safari (16.4+). Desktop GPUs get hardware-compressed textures (S3TC); phones
@@ -202,12 +203,10 @@ the same packs as the apps, as content-addressed chunks from its own host.
   so "the `.bsp` is there" means "playable"; a warm start holds a stored
   own pack back the same way while a pack it needs is missing. The page
   reads the pack's directory ahead (the last 2 MiB) so the engine's read of
-  it costs no frame, and sends the command once the file is a little over
-  a second old: the engine sees new files in its data directory through a
-  listing it reads again at most once a second (`FS_DirMayHave`), and
-  `fs_mountpack` on a younger file answers "could not find". With the music
-  pack the page also runs `cdtracks.cfg` again, the way the start-up configs
-  do (the pack brings it, and maps ask for their music by its numbers).
+  it costs no frame. (`fs_mountpack` drops the engine's once-a-second
+  listing of its data directory itself, so a file that just appeared is
+  found; and the engine runs the music pack's `cdtracks.cfg` when that pack
+  is mounted.)
 - **A map that is not in yet.** `sys_wasm.c` wraps `map` and `changelevel`
   at start-up, through the command list (the menu, the console, map
   rotation, votes and QuakeC's changelevel builtin all go through those
@@ -229,8 +228,9 @@ the same packs as the apps, as content-addressed chunks from its own host.
   `state complete` at the end, `paused` after `web_maps pause`, `waiting`
   or `error` (with `message "..."`) when the connection or the browser's
   quota stops it (a failed pack is tried again after 30 s, or when the
-  browser comes back online). A set that was downloaded whole before the
-  start (the fallback below) reports `legacy`.
+  browser comes back online). Data that was downloaded whole before the
+  start (not a split set, without lazy reads or with the background off)
+  reports `legacy`.
 - **No stand-ins.** The core has every map's real `.mapinfo` and level
   shot and no `.bsp`; the menu lists maps from the `.mapinfo` files. The
   stager refuses a split set with a `.bsp` anywhere but in its map's own
@@ -241,11 +241,17 @@ the same packs as the apps, as content-addressed chunks from its own host.
   only the music follows by itself; a map's packs are fetched when the map
   is played, copied in, the last map's dropped, and the engine told with
   `fs_rescan` as before (`fs_mountpack` cannot let go of a pack). The
-  engine hears `paused` while nothing is being fetched. `?allmaps=1` or
-  `?allmaps=0` forces the one behaviour or the other.
-- **A Godnotic folder in use** (below) holds the stock packs whole: the
-  split set's packs are not fetched then, only this fork's files and the
-  music where the folder has none.
+  engine hears `paused` while nothing is being fetched. The same on a
+  connection that asks to save data and with `?background=0`, without the
+  music; `?background=1` fetches everything in memory too.
+- **A Godnotic folder in use** (below), or the app's packs copied in
+  (`web/appdata.js`). With the stock packs whole (`xonotic-…-data.pk3`,
+  `-maps.pk3`): the split set's packs are not fetched, only this fork's
+  files and the music where the folder has none. With the split layout
+  (`godnotic-<date>-*.pk3`, as an install keeps it now): usable when every
+  first-play pack of this page's manifest is there by name and size; the
+  packs that are there whole are read from it, the rest is downloaded like
+  any other.
 
 A manifest of a split set (format 5) carries `set`, `firstPlay`, `maps` (per
 map the packs it needs besides the core group, its own pack last) and, per
@@ -262,16 +268,19 @@ pinned to 8 cores of a busy host (load 6-10); medians of 3 runs:
 | First-play files stored (88.2 MB requested before the engine starts) | 38.0 s |
 | The menu | 39.1 s (39.0-39.4; a fourth run 45.8 s). The single download before: 176 s |
 | A bot match on stormkeep playable (`map stormkeep` sent at the menu) | 44.2 s after navigation; 107.8 MB received by then, 19.6 MB of it the music arriving behind the game |
-| `map boil` right after, its five packs (8.3 MB) not in yet: fetched first, mounted, the map playable | 6.0 s (5.6-6.1), 1.1 s of it the wait before `fs_mountpack` |
+| `map boil` right after, its five packs (8.3 MB) not in yet: fetched first, mounted, the map playable | 6.0 s (5.6-6.1), 1.1 s of it a wait before `fs_mountpack` that the engine no longer needs |
 | Everything stored and mounted | 167 s after navigation (166-171) |
 | A match on xoylent then, from packs mounted while the game ran | 1.7 s; no "not found" or "couldn't" line from the engine on either late map |
 | Frames in the stormkeep match over 10 s, background running / paused (one run each) | 599 / 600 with one chunk at a time (longest gap 49 ms / 24 ms); 593 / 601 with two (99 ms, two gaps over 50 ms); 598 with three (58 ms) |
 | First-play files stored, by chunks fetched at once (3 runs each) | one: 39.2 s; two: 38.0 s; three: 38.1 s |
 
-So two at a time before the start (one costs a second on the many small
-files, three gains nothing), and one at a time while playing: the line is
-the limit either way (142 MB were in at the same moment with one, two and
-three), and one left the frames alone.
+(These runs fetched two chunks at a time before the start, started the
+background with the engine and waited 1.1 s before each `fs_mountpack`; the
+page now fetches six before the start, three on phones, starts the
+background 10 s after the engine and does not wait. Not measured again.)
+One at a time while playing: the line is the limit either way (142 MB were
+in at the same moment with one, two and three), and one left the frames
+alone.
 
 #### A new data set, for a browser that holds an older one
 
@@ -323,15 +332,20 @@ texture's `_norm`/`_gloss`/`_glow`/`_pants`/`_shirt`/`_reflect` companions;
 whatever the data pk3's QuakeC, configs, shaders and models name stays in
 the core. Entries are copied byte for byte into zips with fixed timestamps.
 
-Everything is downloaded before the game starts, as one download. That
-core pack has, for each map, the level shot, the .mapinfo and an empty
-`maps/<map>.bsp`; the map pack sorts after it, so its real .bsp wins (all
-of these are mounted before the engine starts, or with `fs_rescan`, never
-with `fs_mountpack`). The per-map packs matter for memory there: where
-the page cannot read in place it copies everything but the map packs, and
-the one map being played. A pack that went missing (removed by the
-browser, an interrupted update) is fetched when its map is played, with
-the same card. The script stays for this path only: taking the stand-ins
+It goes through the same queue as a split set: the core group and the
+default map's pack before the start, then the music, the extra pack and
+the maps, smallest first, while the game runs; a map that is asked for
+first. What differs: that core pack has, for each map, the level shot, the
+.mapinfo and an empty `maps/<map>.bsp`, and the map pack sorts after it, so
+its real .bsp wins. A pack added with `fs_mountpack` goes to the end of the
+search path and would lose to the stand-in, so what arrives is only mounted
+and the engine sees it at its next `fs_rescan`, which the page runs with
+the next `map` command. Without lazy reads, on a connection that asks to
+save data and with `?background=0`, the first download is everything; the
+per-map packs matter for memory there: the page copies everything but the
+map packs, and the one map being played. A pack that went missing (removed
+by the browser, an interrupted update) is fetched when its map is played,
+with the same card. The script stays for this path only: taking the stand-ins
 out of it would change the core pack's bytes, and with them a download
 for every visitor of today's sets, for a layout that is on its way out.
 
@@ -589,7 +603,7 @@ What the store does, against what was asked of it:
 - **Warm start** checks that each chunk exists with the right size (about
   20 ms for the 40 chunks); it does not hash. "Verify data" (Settings and
   storage) hashes everything and drops what is damaged.
-- **Downloads** run two chunks at a time (`?parallel=N`); Pause, Cancel, a
+- **Downloads** before the start run six chunks at a time, three on phones; Pause, Cancel, a
   reload or a lost connection keep every finished chunk and the pieces of
   the rest. A chunk's stored copy is not looked at while it is being
   written (the entry exists, empty, until the write ends): the download
@@ -724,7 +738,7 @@ against the documents linked here on 2026-11-14:
 | Route | Possible? | What was done |
 |---|---|---|
 | The page finds the install's files by itself | **No.** A page cannot list or read the device's files, or another app's storage. The only way to files outside its own storage is `showDirectoryPicker()`, which "requires transient user activation" (a click) and always shows the browser's folder picker ([MDN](https://developer.mozilla.org/en-US/docs/Web/API/Window/showDirectoryPicker)). It exists in Chrome and Edge 86+ on desktop and Chrome for Android 132+, not in Firefox or Safari ([compat data](https://github.com/mdn/browser-compat-data/blob/main/api/Window.json)) | nothing to do |
-| Reading the Android app's data folder with the picker | **No.** The app keeps its packs in its private storage, which Android gives to no other app, and the system picker that Chrome for Android opens does not show app-private directories. (No Chrome or Android document says this in one sentence; it follows from Android's app sandbox, and is not tested on a device here.) | nothing to do |
+| Reading the Android app's data folder with the picker | **Not the folder, but the files, yes.** The app keeps its packs under `Android/data/<package>`, which the system picker cannot open since Android 11. An app can add itself to that picker with a document provider: exported, protected by `MANAGE_DOCUMENTS`, with the `android.content.action.DOCUMENTS_PROVIDER` intent filter ([Android docs](https://developer.android.com/guide/topics/providers/create-document-provider)). Every Android browser's `<input type=file>` opens that picker | done: `GameDataProvider` lists the packs and `config.cfg` read only as "Godnotic"; the page copies the picked packs into its own storage (below) |
 | The browser tells the page the app is installed | **Chrome on Android only**: `navigator.getInstalledRelatedApps()` (Chrome for Android 80+), when the web manifest lists the app in `related_applications` and the app names the site in an `asset_statements` entry of its manifest ([Chrome docs](https://developer.chrome.com/docs/capabilities/get-installed-related-apps)). Nothing there requires the app to come from Google Play, but sideloaded installs are not verified here | done: web side (`manifest.webmanifest`, `shell.js`), app side (`AndroidManifest.xml`, `res/values/asset_statements.xml`) |
 | Handing over to the app (no pick, no download) | **Yes, with one tap.** A link to a URL the app handles opens it. Chrome for Android takes `intent://…#Intent;scheme=…;package=…;S.browser_fallback_url=…;end` from a tap, not from a typed URL or a script without a gesture ([Chrome docs](https://developer.chrome.com/docs/android/intents)); other browsers and Linux take the custom scheme, `godnotic://open` | done: the first-visit page offers "Open the Godnotic app" (see below); the app declares the `godnotic` scheme; the Flatpak's desktop file already registered `x-scheme-handler/godnotic` |
 | Links to the web game open the app (Android App Links) | **Yes, on one host.** The app's intent filter with `autoVerify` plus `/.well-known/assetlinks.json` at the root of the host, naming the package and its signing certificate, served as JSON without redirects ([Android docs](https://developer.android.com/training/app-links/configure-assetlinks)). That works for `godnotic.vercel.app`; it cannot for the GitHub Pages copy, whose host root (`dixonsolutions.github.io/.well-known/`) belongs to another repository. A verified link opens the app from other apps and from links tapped on other sites; a URL typed into the browser stays in the browser | done: `web/.well-known/assetlinks.json` (copied by `scripts/build-web.sh`), the intent filter for `https://godnotic.vercel.app/` |
@@ -735,8 +749,8 @@ against the documents linked here on 2026-11-14:
 carry: SHA-256 `DB:CE:85:DC:DE:04:16:1C:E5:77:08:6B:B2:2E:03:82:AC:20:3B:D2:0E:47:45:84:C1:2D:DC:06:B0:31:5A:5B`
 (subject `CN=dixonSolutions, OU=Android, O=dixonSolutions, C=US`), read from
 the APK signing block of `Godnotic-1.2.189-arm64-v8a.apk`, `-x86_64.apk`,
-`XonoticTouch-live-1.2.189-arm64.apk` and `Godnotic-1.2.175-arm64-v8a.apk`
-(all the same; package `io.github.dixonsolutions.xonotictouch`). It is the
+the live build of 1.2.189 for arm64 and `Godnotic-1.2.175-arm64-v8a.apk`
+(all the same). It is the
 keystore in the repository secret `ANDROID_KEYSTORE_BASE64`; a build signed
 with the throwaway key (`scripts/android-build.sh` without a keystore) is
 not covered. A new keystore means a new fingerprint in that file.
@@ -797,10 +811,11 @@ manifest):
 
 | Install | Packs | Settings | Pickable in Chromium? |
 |---|---|---|---|
-| Flatpak | `~/.var/app/io.github.dixonSolutions.XonoticTouch/data/xonotic-touch/data/` | `~/.xonotic/data/config.cfg` | Yes: `~/.var` is not on Chromium's block list. It is hidden, so the path has to be typed (Ctrl+L in the GTK picker) |
-| Local package (no Flatpak) | `~/.local/share/xonotic-touch/data/` | `~/.xonotic/data/config.cfg` | **No**: Chromium refuses `~/.local/share` and everything below it, like `~/.config`, `~/.ssh` and the home folder itself ([source](https://github.com/chromium/chromium/blob/main/chrome/browser/file_system_access/chrome_file_system_access_permission_context.cc), `kBlockPaths`). A copy or a symlinked folder elsewhere works |
+| Flatpak | `~/.var/app/io.github.dixonSolutions.Godnotic/data/godnotic/data/` | `~/.xonotic/data/config.cfg` | Yes: `~/.var` is not on Chromium's block list. It is hidden, so the path has to be typed (Ctrl+L in the GTK picker) |
+| Local package (no Flatpak) | `~/.local/share/godnotic/data/` | `~/.xonotic/data/config.cfg` | **No**: Chromium refuses `~/.local/share` and everything below it, like `~/.config`, `~/.ssh` and the home folder itself ([source](https://github.com/chromium/chromium/blob/main/chrome/browser/file_system_access/chrome_file_system_access_permission_context.cc), `kBlockPaths`). A copy or a symlinked folder elsewhere works |
 | Stock Xonotic | its `data/` folder (`~/.var/app/org.xonotic.Xonotic/…`, `/usr/share/xonotic/data`, an unpacked zip) | `~/.xonotic/data/config.cfg` | as its location allows; `/usr/share` works |
-| Ubuntu Touch, Android | app-confined storage | | no picker reaches it |
+| Android | app-confined storage | | Not as a folder; the packs are files in the system picker under "Godnotic" (`GameDataProvider`), picked with `<input type=file>` in any browser (below) |
+| Ubuntu Touch | app-confined storage | | No: Morph's picker is the Content Hub, which lists apps that are content sources; the click package is not one yet (it needs `content_exchange_source` and an export handler) |
 
 The settings live in another tree than the Flatpak's packs, and the home
 folder itself cannot be picked, so one pick cannot cover both: "Import
@@ -814,6 +829,40 @@ answers `showDirectoryPicker()` with a directory handle it fills itself
 permission prompts and "Allow on every visit" are checked by hand only.
 A pack that the app replaces while the page is open fails its reads
 (`EIO` to the engine) until a reload.
+
+### The app's packs in the file picker (every browser)
+
+"Use the game data from the Godnotic app", on the download page wherever
+the hand-over to the app is offered (Android, Linux), the main button when
+Chrome reports the app installed; also "Use an installed Godnotic's game
+data" in the ⋮ popover. Desktop Chromium off Android goes to the folder
+picker above (read in place, nothing copied). Elsewhere it opens the
+browser's file picker (`web/appdata.js`), with one line on where the
+packs are: on Android, the picker's menu, then "Godnotic", then every
+file; on Linux, the Flatpak path to type with Ctrl+L.
+
+- The picked files are checked as a folder's are (a data and a maps pack,
+  the newest of each kind, whole zips, ASTC only where the GPU has it); a
+  wrong pick says what is missing and nothing is copied.
+- They are copied into the browser's own files (OPFS directory
+  `xt-appdata`, outside the chunk store, so a prune never touches them),
+  then an index; a copy cut short has no index and is never used. 1.06 GB
+  copied in about 4 s on this machine's SSD (headless Chrome, 2026-11-14);
+  nothing comes from the network but this build's own files.
+- From then on they are used exactly like a picked folder, with no picker,
+  no permission and no app: a return visit starts with no data requests.
+  A `config.cfg` picked with them becomes the browser game's settings (asked
+  first when it has some).
+- "Stop using the app's game data" in the popover and "Clear data" delete
+  the copy. If the browser clears part of it, the page says so and offers
+  the pick or the download again.
+
+The provider shows only whole packs (`*.pk3`; a download in progress is
+`*.pk3.part`) and the player's `config.cfg`; it opens them read only and
+lists nothing else. Not tested on a device yet: the picker's menu, the
+provider's entry in it and how Chrome for Android streams a 300 MB pick.
+The headless test drives the real `<input type=file>` through
+`Page.setInterceptFileChooserDialog`.
 
 ### The app serving its packs on loopback: evaluated, not done
 
@@ -842,27 +891,60 @@ packs, and the page could fetch them without any pick.
 The hand-over to the app gives the player the installed game with no
 download at all, which is what this route would be for.
 
+## Lua mods
+
+Mods run in the web build as everywhere else: the same Lua runtime, the same
+permission tiers and review, in `/xt-user/mods/` (and `plugins/` for server
+mods), which the page keeps in IndexedDB with the rest of the userdir.
+
+Two things a browser does differently:
+
+- **No file paths.** The Mods tab's *Pick file* asks the page through the
+  same two files Android's `ModImport` answers (`touch/mod-import-request.txt`
+  and `-status.txt`, see `dialog_touch_mods.qh`). `web/mods.js` opens the
+  browser's file picker, copies the `.zip` (at most 8 MB, unopened) to
+  `/xt-user/luastate/incoming/`, and the menu hands it to `lua_mod_install`.
+  A `.zip` dropped on the page goes the same way. The press in the menu is the
+  user activation the picker needs; the page answers within a frame.
+- **No libcurl.** Link installs and `xt.http` download with `fetch()`
+  (`engine/darkplaces/touch_webfetch.h`): https only, redirects included; no
+  cookies, credentials or referrer; the same size limits. The browser adds
+  CORS: a host has to allow requests from other sites. `raw.githubusercontent.com`
+  and most web APIs do; GitHub's release download links do not, and fail with
+  a message that says so and points to *Pick file*. `xt.game.has("http")` is
+  true.
+
+Tests: `scripts/test-web-mods.sh` (the page's half, in node; CI) and
+`tests/web-mods/browser.sh` (the built page in headless Chromium: a link with
+and without CORS, Pick file through the real file chooser, a dropped zip,
+`xt.http` GET and POST).
+
 ## The shell
 
 What shows before and around the canvas (web/index.html, shell.css,
 shell.js) looks and behaves like a libadwaita app, the Linux Godnotic app's
 toolkit: Adwaita's named colours as CSS custom properties (light and dark
 from `prefers-color-scheme`, the system accent through `AccentColor` where
-the browser has it), a header bar with the menu button, a clamp, status
-pages for the download, progress and errors, pill and suggested-action
-buttons, the Adwaita progress bar, toasts, a popover with boxed lists and a
-switch, visible focus rings, 44 px targets on touch screens, and no motion
-under `prefers-reduced-motion`. Plain HTML and CSS, no framework. The
-banner is the hero, on its own black card.
+the browser has it), one centred column in the manner of a status page,
+pill and suggested-action buttons, a round ⋮ button beside the main action
+that opens a popover (boxed list, switches, menu items), the Adwaita
+progress bar, toasts, visible focus rings, 44 px targets on touch screens,
+and no motion under `prefers-reduced-motion`. Plain HTML and CSS, no
+framework. No header bar. The banner (a transparent WebP, 47 KB) sits
+straight on the window background of the system theme, and keeps one place
+on the page (its middle at about a third of the screen height) in every
+state: splash, "Starting…", the download question, the progress, errors.
+Only what is under it changes.
 
-- **Returning visitors** see the banner on black and then the game: the
+- **Returning visitors** see the banner and then the game: the
   start-up steps show their status page only after 0.6 s, and the game
   starts without a Play button (fullscreen and sound begin at the first tap
   or key, which browsers require).
-- **First visit**: one status page, one size, one Download button; the free
-  space the browser offers under it; then the progress page (Pause,
-  Cancel); then the game.
-- **Storage popover** (menu button; `web_storage` in the console over the
+- **First visit**: one status page, one size (what the start needs, and
+  what follows while playing), one Download button with the ⋮ beside it;
+  a warning instead when the browser offers too little space; then the
+  progress page (Pause, Cancel, ⋮); then the game.
+- **Storage popover** (the ⋮ button; `web_storage` in the console over the
   game, which frees the mouse): Stored in (OPFS, cache storage, or memory
   only with the reason, and the folder when one is used), Game data
   (stored of total, which set), Space (`estimate()`), the switch Keep game
@@ -936,11 +1018,11 @@ Debugging:
   `?manifest=m/<id>.json`, `?data=URL` and `?stock=URL` pick other data.
 - `?profile=web|astc|full` picks the data set; `?lazy=0` copies the data
   into memory instead of reading it in place (the fallback path);
-  `?allmaps=0|1` turns the download while playing off (only what is asked
-  for, and the music) or on for a visit; `?parallel=N` and `?bgparallel=N`
-  set how many chunks are fetched at once before the start and while
-  playing; `?older=0` does not keep an older data set running; `?small=BYTES`
-  moves the 50 MB line of a "small" update (tests).
+  `?background=0` turns the download while playing off for a visit (a split
+  set: only what is asked for; other data: the first download is
+  everything); `?bgparallel=N` sets how many chunks are fetched at once
+  while playing; `?older=0` does not keep an older data set running;
+  `?small=BYTES` moves the 50 MB line of a "small" update (tests).
 - `xt.lazyStats()` in the devtools console: synchronous reads, their time,
   read-ahead, cache size; `xt.backgroundStatus()`, `xt.maps`, `xt.prog`
   (what is stored, what each map needs), `xt.bg` (the download while
@@ -969,8 +1051,7 @@ the script goes on with `tests/web-cache/split.sh`: the page's own
 against a local server with a made-up split set of 1.6 MB
 (`make-split-set.py`) and a stand-in engine (`stub-engine.js`: a small
 file system on which the reads in place are the real ones, the engine's
-search path, `fs_mountpack` with the engine's once-a-second view of its
-directory, `map` asking the page first). It checks what was requested
+search path, `fs_mountpack`, `map` asking the page first). It checks what was requested
 before the engine started, the packs announced while it ran and that every
 file in them reads back right, the browser killed mid-download, a map
 that is not in yet, and a browser holding the older layout.

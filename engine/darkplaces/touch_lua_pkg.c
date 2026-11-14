@@ -35,7 +35,9 @@ Everything in a package is untrusted:
 
 Downloads go through the engine's libcurl (Curl_Begin_ToMemory, driven by
 Curl_Frame each frame: the game keeps running), HTTPS only, redirects included
-(a hook in libcurl.c restricts the protocols for these transfers only).
+(a hook in libcurl.c restricts the protocols for these transfers only). The
+web build has no libcurl and uses the browser's fetch() with the same rules
+(touch_webfetch.h); there the host has to allow requests from web pages.
 lua_install_insecure_localhost 1 also allows plain http:// to 127.0.0.1 for
 the test suite. A sha256 in the URL fragment (#sha256=...) or as the second
 argument is checked before the review.
@@ -47,6 +49,8 @@ from a server this engine does not host may be in the command buffer
 
 #include "quakedef.h"
 #include "libcurl.h"
+#define TOUCH_WEBFETCH_IMPL // the one definition of the web build's downloads
+#include "touch_webfetch.h"
 #include "touch_lua.h"
 #include "touch_lua_int.h"
 
@@ -1109,6 +1113,11 @@ static void tlua_dl_cb(int status, size_t length, unsigned char *buffer, void *c
 		else if (status > 0)
 			tlua_pkg_fail("the server answered HTTP %d", status);
 		else
+#ifdef __EMSCRIPTEN__
+		if (status != CURLCBSTATUS_ABORTED && length <= TLUA_PKG_MAXSIZE && TouchWeb_LastError()[0])
+			tlua_pkg_fail("the download failed: %s. Download the .zip and use Pick file instead", TouchWeb_LastError());
+		else
+#endif
 			tlua_pkg_fail("the download failed (%s)", status == CURLCBSTATUS_ABORTED ? "cancelled" : length > TLUA_PKG_MAXSIZE ? "over 8 MB" : "network, TLS or a redirect away from https");
 		return;
 	}
@@ -1138,7 +1147,11 @@ static qbool tlua_isloopbackhttp(const char *url)
 static void tlua_pkg_cancel_download(void)
 {
 	if (tlua_pkg.state == TLUA_PKG_DOWNLOADING)
+#ifdef __EMSCRIPTEN__
+		TouchWeb_Cancel_ToMemory(tlua_dl_cb, &tlua_dltoken);
+#else
 		Curl_Cancel_ToMemory(tlua_dl_cb, &tlua_dltoken);
+#endif
 	if (tlua_dlbuf)
 	{
 		Mem_Free(tlua_dlbuf);
@@ -1197,7 +1210,11 @@ static void tlua_pkg_begin(tlua_realm_t *r, const char *arg, const char *pinarg)
 			tlua_pkg_fail("the URL has spaces, quotes or other characters a URL does not need");
 			return;
 		}
+#ifdef __EMSCRIPTEN__
+		if (!TouchWeb_Available())
+#else
 		if (!Curl_Available())
+#endif
 		{
 			tlua_pkg_fail("downloads are not available in this build (no libcurl): download the .zip and install it from the file");
 			return;
@@ -1205,7 +1222,11 @@ static void tlua_pkg_begin(tlua_realm_t *r, const char *arg, const char *pinarg)
 		tlua_dlbuf = (unsigned char *)Mem_Alloc(tempmempool, TLUA_PKG_MAXSIZE);
 		p->state = TLUA_PKG_DOWNLOADING;
 		dpsnprintf(p->message, sizeof(p->message), "downloading %s", src);
+#ifdef __EMSCRIPTEN__
+		if (!TouchWeb_Begin_ToMemory_POST(src, NULL, NULL, 0, tlua_dlbuf, TLUA_PKG_MAXSIZE, tlua_dl_localhttp, tlua_dl_cb, &tlua_dltoken))
+#else
 		if (!Curl_Begin_ToMemory(src, 0, tlua_dlbuf, TLUA_PKG_MAXSIZE, tlua_dl_cb, &tlua_dltoken))
+#endif
 		{
 			tlua_pkg_fail("the download could not start (curl_enabled 0, or already downloading it)");
 			return;
@@ -1756,6 +1777,7 @@ void TLua_Pkg_Frame(void)
 	static unsigned lastframe;
 	static double lastpub;
 	static qbool asked;
+	TouchWeb_Frame(); // the web build's downloads (packages and xt.http)
 	if (lastframe == host.framecount)
 		return;
 	lastframe = host.framecount;

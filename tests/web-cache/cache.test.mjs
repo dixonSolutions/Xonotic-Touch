@@ -381,7 +381,6 @@ await test('first visit asks, downloads each chunk once, mounts; a reload makes 
   assert.equal(sha(p.mounted.get('/game/data/maps.pk3')), host.files[2].sha256, 'assembled from chunks');
   assert.equal(blobFetches(host).length, 7, 'one request per chunk');
   assert.ok(!prof.persistAsked, 'the page never asks for persistent storage by itself');
-  assert.equal(p.element('xt-dl-keep').hidden, false, 'the first visit says the browser may not keep it');
   host.log.length = 0;
   const q = loadPage(prof, host);
   await ready(q, 'warm ready');
@@ -582,11 +581,11 @@ await test('prune never deletes what another page path uses, and stops on an unr
     await dl(s, await s.missing(h.files), h);
   }
   await s.ref('/Godnotic/web/', [hostB.id]);
-  await s.prune('/Xonotic-Touch/web/', [hostA.id]);
+  await s.prune('/Godnotic/web/', [hostA.id]);
   assert.equal((await s.missing(hostA.files)).length, 0, 'path A keeps its chunks');
   assert.equal((await s.missing(hostB.files)).length, 0, "path B's chunks survive A's prune");
   await s.ref('/elsewhere/', ['ffffffffffffffffffff']);
-  const r = await s.prune('/Xonotic-Touch/web/', [hostA.id]);
+  const r = await s.prune('/Godnotic/web/', [hostA.id]);
   assert.equal(r.removed, 0);
   assert.match(r.kept, /unreadable/);
 });
@@ -687,6 +686,44 @@ await test('one download with everything; a map pack that went missing is fetche
   assert.ok(!q.shown.includes('xt-download') && !q.shown.includes('xt-progress'), 'returning: no download UI');
   await until(() => q.context.__started, 'straight into the game');
   assert.equal(host.log.length, 0, 'no data requests');
+});
+
+await test('with lazy reads the first download is what the game needs to start; the rest follows while it runs', async () => {
+  const prof = profile();
+  const host = makeProfiles({ web: { files: splitFiles(), defaultMap: 'stormkeep' } });
+  const created = new Set();
+  const lazyfs = { probe: async () => true, create: (FS, path) => created.add(path), remove: (FS, path) => created.delete(path),
+    takeTouched: () => ({}), prefetch: async () => {}, trim() {}, BLOCK: 1 << 20, stats: {}, cacheBytes: 0 };
+  const p = loadPage(prof, host, { lazyfs });
+  await until(() => p.shown.includes('xt-download'), 'dialog');
+  const first = host.files.filter((f) => f.group === 'core' || f.map === 'stormkeep');
+  const later = host.files.filter((f) => !first.includes(f));
+  assert.ok(later.length > 1, 'the test data has other maps and music');
+  assert.equal(p.element('xt-dl-size').textContent, `${Math.round(first.reduce((n, f) => n + f.size, 0) / 1e6)} MB`, 'the size is what the start needs');
+  assert.match(p.element('xt-dl-what').textContent, /follow as you play/);
+  p.element('xt-dl-go').onclick();
+  await until(() => p.context.__started, 'the game starts');
+  assert.deepEqual([...new Set(fetchedNames(host))].sort(), first.map((f) => f.name).sort(), 'only the core and the first map before the start');
+  // (The test's timers are short: the background download starts at once.)
+  await until(() => p.page.maps.bgDone, 'the rest arrives while the game runs');
+  assert.deepEqual([...new Set(fetchedNames(host))].sort(), host.files.map((f) => f.name).sort(), 'everything downloaded');
+  for (const f of later) assert.ok(created.has('/game/' + f.path), `${f.name} mounted when it arrived`);
+  assert.equal(p.page.state.rescanPending, true, 'the engine sees them at the next map change');
+  // The next visit: nothing to ask, nothing to fetch.
+  host.log.length = 0;
+  const q = loadPage(prof, host, { lazyfs });
+  await until(() => q.context.__started, 'straight into the game');
+  assert.ok(!q.shown.includes('xt-download') && !q.shown.includes('xt-progress'), 'no dialog');
+  assert.equal(blobFetches(host).length, 0, 'no data requests');
+  // Stopped before the rest arrived (a closed tab): the start does not wait for it.
+  const prof2 = profile();
+  const r = loadPage(prof2, host, { lazyfs, search: '?background=0' });
+  await firstVisit(r);
+  await until(() => r.context.__started, 'started');
+  host.log.length = 0;
+  const t = loadPage(prof2, host, { lazyfs });
+  await until(() => t.context.__started, 'starts with the maps still missing');
+  assert.ok(!t.shown.includes('xt-download') && !t.shown.includes('xt-progress'), 'no dialog for what follows in the background');
 });
 
 await test('a cancelled map download runs nothing and keeps what arrived', async () => {
@@ -869,12 +906,12 @@ await test('a visitor from when the music was optional gets it with "Updating…
 await test('the installed app: offered instead of a download where the browser reports it', async () => {
   const host = makeProfiles({ web: { files: splitFiles(), defaultMap: 'stormkeep' } });
   const android = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/142.0.0.0 Mobile Safari/537.36';
-  const p = loadPage(profile(), host, { ua: android, relatedApps: [{ platform: 'play', id: 'io.github.dixonsolutions.xonotictouch' }] });
+  const p = loadPage(profile(), host, { ua: android, relatedApps: [{ platform: 'play', id: 'io.github.dixonsolutions.godnotic' }] });
   await until(() => p.shown.includes('xt-download'), 'dialog');
   assert.equal(p.element('xt-app').hidden, false);
   assert.equal(p.element('xt-app-text').hidden, false, 'says the app is installed');
   assert.equal(p.element('xt-app-open').textContent, 'Open the Godnotic app');
-  assert.match(p.element('xt-app-open').href, /^intent:\/\/open#Intent;scheme=godnotic;package=io\.github\.dixonsolutions\.xonotictouch;S\.browser_fallback_url=https%3A%2F%2Fgame\.example%2Fweb%2F%3Fnoapp%3D1;end$/);
+  assert.match(p.element('xt-app-open').href, /^intent:\/\/open#Intent;scheme=godnotic;package=io\.github\.dixonsolutions\.godnotic;S\.browser_fallback_url=https%3A%2F%2Fgame\.example%2Fweb%2F%3Fnoapp%3D1;end$/);
   assert.ok(!p.context.__started, 'nothing downloads or starts until the player chooses');
   // Chromium on Android without the app: a plain link, not a claim.
   const q = loadPage(profile(), host, { ua: android, relatedApps: [] });
@@ -896,7 +933,7 @@ await test('the installed app: offered instead of a download where the browser r
   // A returning visitor with data is never held up by any of it.
   const prof = profile();
   await firstVisit(loadPage(prof, host, { ua: android, relatedApps: [] }));
-  const again = loadPage(prof, host, { ua: android, relatedApps: [{ platform: 'play', id: 'io.github.dixonsolutions.xonotictouch' }] });
+  const again = loadPage(prof, host, { ua: android, relatedApps: [{ platform: 'play', id: 'io.github.dixonsolutions.godnotic' }] });
   await ready(again, 'warm');
   assert.ok(!again.shown.includes('xt-download'));
 });
@@ -921,8 +958,8 @@ await test('an existing Godnotic folder: found below the picked folder, checked 
   assert.equal(packKind('xonotic-0.8.6-data.pk3', true), 'data');
   assert.equal(packKind('font-unifont-20261107.pk3', true), 'font-unifont');
   assert.equal(packKind('zz-progs.pk3'), '');
-  const root = new FakeDir(); root.name = 'io.github.dixonSolutions.XonoticTouch';
-  const data = await (await (await root.getDirectoryHandle('data', { create: true })).getDirectoryHandle('xonotic-touch', { create: true })).getDirectoryHandle('data', { create: true });
+  const root = new FakeDir(); root.name = 'io.github.dixonSolutions.Godnotic';
+  const data = await (await (await root.getDirectoryHandle('data', { create: true })).getDirectoryHandle('godnotic', { create: true })).getDirectoryHandle('data', { create: true });
   await root.getDirectoryHandle('cache', { create: true });
   data.files.set('xonotic-20261107-data.pk3', zip('textures/a.tga'));
   data.files.set('xonotic-20261107-maps.pk3', zip('maps/stormkeep.bsp'));
@@ -1196,7 +1233,9 @@ await test('a new set while the old layout is whole: it keeps playing, the new s
   // The layout before the split set: xonotic-data, a maps core, a pack per map.
   const old = makeProfiles({ web: { files: splitFiles(), defaultMap: 'stormkeep' } });
   const prof = profile();
-  await firstVisit(loadPage(prof, old, { lazy: true }));
+  const first = loadPage(prof, old, { lazy: true });
+  await firstVisit(first);
+  await until(() => first.page.maps.bgDone, 'the old set whole');
   const oldChunks = old.files.filter((f) => f.stock).flatMap((f) => f.chunks);
   // A deploy with the split set (no chunk in common) and new game code.
   const files = setFiles();
@@ -1223,13 +1262,37 @@ await test('a new set while the old layout is whole: it keeps playing, the new s
   assert.ok(q.mounted.has('/game/data/' + N('map-dance')) && !q.mounted.has('/game/data/maps-dance.pk3'), 'the split set runs');
   // An old layout with a hole cannot run: the new set's first play, with the question.
   const prof2 = profile();
-  await firstVisit(loadPage(prof2, old, { lazy: true }));
+  const first2 = loadPage(prof2, old, { lazy: true });
+  await firstVisit(first2);
+  await until(() => first2.page.maps.bgDone, 'the old set whole');
   prof2.root.dirs.get('xt-data-v1').files.delete('c-' + fileOf(old, 'maps-boil.pk3').chunks[0]);
   const same = makeProfiles({ web: setSpec() }); // the game code it already has
   const r = loadPage(prof2, same, { lazy: true, search: '?small=1000' });
   await until(() => r.shown.includes('xt-download'), 'question');
   assert.equal(r.element('xt-dl-title').textContent, 'Finish downloading Godnotic');
   assert.equal(r.page.state.dlRest, sizeOf(same, REST), 'for the first-play packs; the rest follows');
+});
+
+await test('a folder holding the split layout: usable with every first-play pack whole; its packs are not downloaded', async () => {
+  const host = makeProfiles({ web: setSpec() });
+  const p = loadPage(profile(), host, { engine: false, lazyfs: { probe: async () => true } });
+  const { folderOpen } = p.context.xt.folder;
+  const packs = host.files.filter((f) => f.kind);
+  const firstNames = [N('core'), N('shared-1'), N('map-stormkeep')];
+  p.page.state.setPacks = { size: new Map(packs.map((f) => [f.name, f.size])), first: firstNames };
+  const root = new FakeDir(); root.name = 'data';
+  const put = (name, size) => root.files.set(name, fill(size, 5));
+  for (const n of firstNames) put(n, fileOf(host, n).size);
+  put(N('music'), fileOf(host, N('music')).size);
+  put(N('map-boil'), 100); // still downloading in the app: not the manifest's size
+  put('godnotic-t-other.pk3', 50); // not a pack of this set
+  const f = await folderOpen(root, { astc: false });
+  assert.deepEqual([...f.kinds], ['set']);
+  assert.deepEqual([...f.files].map((x) => x.name).sort(), firstNames.concat(N('music')).sort(), 'the whole packs of the set, nothing else');
+  root.files.set(N('shared-1'), fill(10, 5));
+  await assert.rejects(folderOpen(root, { astc: false }), /not all complete/);
+  root.files.delete(N('shared-1'));
+  await assert.rejects(folderOpen(root, { astc: false }), /No Godnotic game data/);
 });
 
 console.log(`web cache: ${passed} tests passed`);

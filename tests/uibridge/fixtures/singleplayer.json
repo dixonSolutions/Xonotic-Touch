@@ -1,6 +1,6 @@
 {
  "name": "singleplayer",
- "description": "Singleplayer (Create): mode cards, map picker over maps:<mode>, match options with LAN, recent.",
+ "description": "Singleplayer: a local game. Mode cards, the map picker over maps:<mode> (two rows of tiles scrolling sideways; tap chooses, double tap plays), match options, recent.",
  "generated": "engine",
  "caps": {
   "nodes": [],
@@ -29,7 +29,7 @@
   "uib": 1,
   "t": "snapshot",
   "id": 2,
-  "rev": 2,
+  "rev": 1,
   "root": "app",
   "nodes": [
    {
@@ -59,6 +59,16 @@
      "background": "asset:background",
      "actions": [
       {
+       "id": "settings",
+       "label": "Settings",
+       "icon": "settings"
+      },
+      {
+       "id": "credits",
+       "label": "Credits",
+       "icon": "credits"
+      },
+      {
        "id": "quit",
        "label": "Quit",
        "icon": "quit",
@@ -73,7 +83,6 @@
     },
     "children": [
      "home/banner",
-     "home/hero",
      "home/tiles"
     ]
    },
@@ -82,6 +91,8 @@
     "type": "image",
     "props": {
      "ref": "asset:banner",
+     "role": "banner",
+     "emphasis": "high",
      "aspect": "21:9",
      "fit": "contain",
      "alt": "Godnotic"
@@ -89,55 +100,16 @@
     "children": []
    },
    {
-    "id": "home/hero",
-    "type": "hero",
-    "props": {
-     "title": "Play",
-     "subtitle": "Continue: Stormkeep · Deathmatch · 4 bots",
-     "image": "pk3:maps/stormkeep",
-     "aspect": "16:9",
-     "featured": true,
-     "meta": [
-      {
-       "icon": "map",
-       "text": "Stormkeep"
-      },
-      {
-       "icon": "mode",
-       "text": "Deathmatch"
-      },
-      {
-       "icon": "bot",
-       "text": "4 bots"
-      }
-     ],
-     "primary": {
-      "id": "play",
-      "label": "Play",
-      "icon": "play",
-      "style": "primary"
-     },
-     "actions": [
-      {
-       "id": "sp",
-       "label": "Choose…",
-       "icon": "map"
-      }
-     ]
-    },
-    "children": []
-   },
-   {
     "id": "home/tiles",
     "type": "grid",
     "props": {
-     "minItem": 200
+     "minItem": 240,
+     "maxColumns": 3
     },
     "children": [
      "home/tiles/sp",
-     "home/tiles/mp",
-     "home/tiles/settings",
-     "home/tiles/credits"
+     "home/tiles/campaign",
+     "home/tiles/mp"
     ]
    },
    {
@@ -145,12 +117,32 @@
     "type": "card",
     "props": {
      "title": "Singleplayer",
-     "subtitle": "Bots, your rules",
+     "subtitle": "Stormkeep · Deathmatch · 4 bots",
      "icon": "singleplayer",
-     "image": "pk3:gfx/menu/luma/gametype_dm",
+     "image": "pk3:maps/stormkeep",
      "aspect": "16:9",
+     "featured": true,
      "primary": {
       "id": "sp",
+      "label": "Open",
+      "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/tiles/campaign",
+    "type": "card",
+    "props": {
+     "title": "Campaign",
+     "subtitle": "Level 1 of 31 · Deathmatch: Boil",
+     "image": "pk3:maps/boil",
+     "progress": 0,
+     "icon": "trophy",
+     "aspect": "16:9",
+     "featured": true,
+     "primary": {
+      "id": "campaign",
       "label": "Open",
       "icon": "chevron"
      }
@@ -162,42 +154,14 @@
     "type": "card",
     "props": {
      "title": "Multiplayer",
-     "subtitle": "Find a game or join by address",
+     "subtitle": "Join a server, or create a game",
      "icon": "multiplayer",
-     "image": "pk3:gfx/menu/luma/gametype_ctf",
+     "image": "pk3:maps/xoylent",
      "aspect": "16:9",
+     "featured": true,
+     "live": true,
      "primary": {
       "id": "mp",
-      "label": "Open",
-      "icon": "chevron"
-     }
-    },
-    "children": []
-   },
-   {
-    "id": "home/tiles/settings",
-    "type": "card",
-    "props": {
-     "title": "Settings",
-     "subtitle": "Video, controls, Mods",
-     "icon": "settings",
-     "primary": {
-      "id": "settings",
-      "label": "Open",
-      "icon": "chevron"
-     }
-    },
-    "children": []
-   },
-   {
-    "id": "home/tiles/credits",
-    "type": "card",
-    "props": {
-     "title": "Credits",
-     "subtitle": "The people behind Xonotic and Godnotic",
-     "icon": "credits",
-     "primary": {
-      "id": "credits",
       "label": "Open",
       "icon": "chevron"
      }
@@ -210,6 +174,7 @@
     "props": {
      "title": "Singleplayer",
      "kind": "page",
+     "subtitle": "Local game: only you and the bots",
      "header": {
       "collapsible": true
      },
@@ -414,7 +379,7 @@
     "props": {
      "title": "Map",
      "sticky": true,
-     "subtitle": "Tap a map to see it"
+     "subtitle": "Tap to choose, double tap to play"
     },
     "children": [
      "sp/maps/list"
@@ -427,7 +392,9 @@
      "source": "maps:dm",
      "display": "cards",
      "rowHeight": "card",
-     "minItem": 220,
+     "rows": 2,
+     "scroll": "horizontal",
+     "minItem": 160,
      "aspectItem": "16:9",
      "state": "ready",
      "selection": "single",
@@ -452,16 +419,22 @@
        "sortable": false
       }
      ],
+     "rowSelect": {
+      "id": "map.select",
+      "label": "Choose",
+      "icon": "check"
+     },
      "rowPrimary": {
-      "id": "map.preview",
-      "label": "Preview",
-      "icon": "info"
+      "id": "map.play",
+      "label": "Play",
+      "icon": "play",
+      "style": "primary"
      },
      "rowActions": [
       {
-       "id": "map.choose",
-       "label": "Use this map",
-       "icon": "check"
+       "id": "map.preview",
+       "label": "Details",
+       "icon": "info"
       }
      ],
      "empty": {
@@ -492,12 +465,7 @@
      "sp/match/form/bots",
      "sp/match/form/skill",
      "sp/match/form/time",
-     "sp/match/form/weapons",
-     "sp/match/form/slots",
-     "sp/match/form/lan",
-     "sp/match/form/port",
-     "sp/match/form/pwon",
-     "sp/match/form/password"
+     "sp/match/form/weapons"
     ]
    },
    {
@@ -602,76 +570,6 @@
       }
      ],
      "value": ""
-    },
-    "children": []
-   },
-   {
-    "id": "sp/match/form/slots",
-    "type": "stepper",
-    "props": {
-     "label": "Player slots",
-     "bind": "cvar:touch_lan_maxplayers",
-     "min": 2,
-     "max": 32,
-     "step": 1,
-     "format": "int",
-     "value": 8
-    },
-    "children": []
-   },
-   {
-    "id": "sp/match/form/lan",
-    "type": "switch",
-    "props": {
-     "label": "LAN",
-     "style": "checkbox",
-     "icon": "lan",
-     "bind": "vm:create.lan",
-     "value": false,
-     "help": "Host on your network (Wi-Fi or VPN) so others can join"
-    },
-    "children": []
-   },
-   {
-    "id": "sp/match/form/port",
-    "type": "stepper",
-    "props": {
-     "label": "Port",
-     "bind": "cvar:touch_lan_host_port",
-     "min": 1024,
-     "max": 65535,
-     "step": 1,
-     "format": "int",
-     "help": "26000 is free",
-     "hidden": true,
-     "value": 26000
-    },
-    "children": []
-   },
-   {
-    "id": "sp/match/form/pwon",
-    "type": "switch",
-    "props": {
-     "label": "Password",
-     "bind": "vm:create.pwon",
-     "value": false,
-     "icon": "unlock",
-     "help": "Anyone on your network can join",
-     "hidden": true
-    },
-    "children": []
-   },
-   {
-    "id": "sp/match/form/password",
-    "type": "field",
-    "props": {
-     "label": "Password",
-     "bind": "vm:create.password",
-     "kind": "password",
-     "private": true,
-     "hasValue": false,
-     "maxLength": 64,
-     "hidden": true
     },
     "children": []
    },

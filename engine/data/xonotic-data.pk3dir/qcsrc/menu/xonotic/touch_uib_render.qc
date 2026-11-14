@@ -67,6 +67,8 @@ int hs_n;
 
 // virtual lists
 const int RB_LISTS = 6;
+float lc_rows[RB_LISTS];    // > 0: a card list of this many rows that scrolls sideways
+float lc_vieww[RB_LISTS];   // ... and the width it is seen through
 string lc_id[RB_LISTS];
 string lc_src[RB_LISTS];
 string lc_q[RB_LISTS];
@@ -106,6 +108,12 @@ float rb_local_val;        // a slider's value while dragged
 string rb_edit_id;         // the field being typed in
 string rb_edit_text;
 string rb_keycap_id;       // keybind waiting for a key
+// what the engine draws over the menu (the console button): kept clear of controls
+vector rb_res_o, rb_res_s;
+// the last row tapped in a list that tells choosing from playing (rowSelect)
+string rb_tap_row, rb_tap_list;
+float rb_tap_t;
+const float RB_DOUBLETAP = 0.4;   // seconds between the two taps of a double tap
 // local overlays: confirm, picker, info
 string rb_ov_kind;         // "", "confirm", "picker", "info"
 string rb_ov_title, rb_ov_body, rb_ov_ok, rb_ov_node, rb_ov_json, rb_ov_opts;
@@ -493,11 +501,20 @@ float RB_LayoutGrid(string id, float x, float y, float w, float region)
 		float cw = minw;
 		float ih = RB_AspectH(uib_get(first, "aspect"), cw);
 		if (uib_get(first, "aspect") == "1:1") ih = cw * 0.62;
+		// a short page (a tablet or phone on its side): a compact strip, art and
+		// name only, so what follows it (the map rows) fits in view
+		bool compact = rg_s[0].y < D(540);
+		if (compact) { cw = min(cw, D(116)); ih = cw * 0.5; }
 		float h = 0;
 		for (int i = 0; i < n; ++i)
 		{
 			float hh = RB_LayoutCard(uib_child(id, i), x + i * (cw + gap), y, cw, region, ih);
-			if (rb_n) rb_item[rb_n - 1].rb_hs = hs;
+			if (rb_n)
+			{
+				entity ce = rb_item[rb_n - 1];
+				ce.rb_hs = hs;
+				if (compact) { strcpy(ce.rb_t2, ""); ce.rb_s_y = ih + D(38); hh = ih + D(38); }
+			}
 			h = max(h, hh);
 		}
 		hs_max[hs] = max(0, n * (cw + gap) - gap - w);
@@ -506,8 +523,13 @@ float RB_LayoutGrid(string id, float x, float y, float w, float region)
 	}
 	int cols = max(1, floor((w + gap) / (minw + gap)));
 	if (stof(uib_get(id, "maxColumns")) > 0) cols = min(cols, stof(uib_get(id, "maxColumns")));
+	bool featured = n && uib_get(first, "featured") == "1";
+	// the big cards of Home: side by side whenever three fit at 150 dp each
+	if (featured && n <= 4 && w >= n * D(150) + (n - 1) * gap) cols = n;
 	float cw = (w - (cols - 1) * gap) / cols;
 	float rowy = y, rowh = 0;
+	// ... and as tall as the page allows, so Home needs no scrolling
+	float fit = rg_s[0].y - y - D(30) - D(62);
 	int rowfirst = rb_n;
 	// one image height for the whole grid, so images and icons line up
 	bool anyimg = false;
@@ -517,6 +539,8 @@ float RB_LayoutGrid(string id, float x, float y, float w, float region)
 	{
 		string c = uib_child(id, i);
 		float ih = anyimg ? RB_AspectH(uib_get(c, "aspect"), cw) * 0.62 : 0;
+		if (featured && anyimg)
+			ih = (cols == n) ? bound(D(84), fit, RB_AspectH(uib_get(c, "aspect"), cw)) : min(RB_AspectH(uib_get(c, "aspect"), cw), D(150));
 		if (i % cols == 0) rowfirst = rb_n;
 		float hh = RB_LayoutCard(c, x + (i % cols) * (cw + gap), rowy, cw, region, ih);
 		rowh = max(rowh, hh);
@@ -741,6 +765,36 @@ float RB_LayoutList(string id, float x, float y, float w, float region)
 	strcpy(lc_src[k], uib_get(id, "source"));
 	lc_total[k] = count;
 	entity e;
+	lc_rows[k] = 0;
+	if (uib_get(id, "display") == "cards" && stof(uib_get(id, "rows")) > 0 && uib_get(id, "scroll") == "horizontal")
+	{
+		// `rows: N`, scrolling sideways: N full rows of tiles (picture and name)
+		// always fit the view. The tile height comes from the room below the
+		// list's top when that is enough, else from the whole view (the section
+		// header stays stuck above it while the page scrolls the list into view).
+		int rows = bound(1, stof(uib_get(id, "rows")), 4);
+		float gap = D(10), band = D(30), bar = D(10);
+		float th = (rg_s[0].y - y - D(8) - bar - gap * (rows - 1)) / rows;
+		if (th < D(84))
+			th = (rg_s[0].y - D(56) - D(8) - bar - gap * (rows - 1)) / rows;
+		th = bound(D(64), th, D(176));
+		float cw = (uib_get(id, "aspectItem") == "4:3") ? (th - band) * 4 / 3 : (th - band) * 16 / 9;
+		int hs = RB_HsFor(id);
+		float cols = ceil(max(1, count) / rows);
+		float totalw = cols * (cw + gap) - gap;
+		float h = rows * th + gap * (rows - 1) + bar;
+		lc_rows[k] = rows;
+		lc_percol[k] = rows;
+		lc_cardw[k] = cw;
+		lc_cardh[k] = th;
+		lc_rowh[k] = th + gap;
+		lc_vieww[k] = w;
+		hs_max[hs] = max(0, totalw - w);
+		hs_scroll[hs] = bound(0, hs_scroll[hs], hs_max[hs]);
+		e = RB_Item("cards", id, region, eX * x + eY * y, eX * max(w, totalw) + eY * h);
+		if (e) { e.rb_list = k; e.rb_hs = hs; }
+		return h;
+	}
 	if (uib_get(id, "display") == "cards")
 	{
 		float mi = stof(uib_get(id, "minItem"));
@@ -849,6 +903,40 @@ float RB_LayoutNode(string id, float x, float y, float w, float region)
 		case "row":
 		{
 			int n = uib_count(id);
+			if (uib_get(id, "label") != "")
+			{
+				// a labelled row: label, then the content, then its buttons at the end;
+				// on a narrow row the buttons go on a line of their own
+				float bwsum = 0;
+				for (int i = 0; i < n; ++i)
+					if (uib_type(uib_child(id, i)) == "button")
+						bwsum += RB_ButtonW(uib_get(uib_child(id, i), "label"), uib_get(uib_child(id, i), "action.icon")) + D(8);
+				float labw = min(D(96), w * 0.3);
+				bool two = (w - labw - bwsum) < D(170);
+				float tw = two ? w - labw : w - labw - bwsum;
+				e = RB_Item("rowlabel", id, region, eX * x + eY * y, eX * labw + eY * D(48));
+				if (e) { strcpy(e.rb_t1, uib_get(id, "label")); strcpy(e.rb_icon, uib_get(id, "icon")); }
+				float th = 0, bx = two ? x + w - bwsum + D(8) : x + labw + tw + D(8);
+				for (int i = 0; i < n; ++i)
+				{
+					string c = uib_child(id, i);
+					if (uib_type(c) == "button")
+					{
+						float bw = RB_ButtonW(uib_get(c, "label"), uib_get(c, "action.icon"));
+						RB_LayoutButtonAt(c, "action", bx, y + (two ? D(48) : 0), bw, region, RB_StyleOf(uib_get(c, "style")));
+						bx += bw + D(8);
+					}
+					else if (uib_type(c) == "text")
+					{
+						entity ln = RB_Item("line", c, region, eX * (x + labw) + eY * y, eX * (tw - D(8)) + eY * D(48));
+						if (ln) { strcpy(ln.rb_t1, uib_get(c, "body")); ln.rb_size = D(16); ln.rb_col = RB_TEXT; ln.rb_style = 1; }
+						th = D(48);
+					}
+					else
+						th = max(th, RB_LayoutNode(c, x + labw, y, tw, region));
+				}
+				return max(D(48), th) + (two ? D(52) : 0);
+			}
 			float xx = x, yy = y, lineh = 0;
 			int firstitem = rb_n;
 			for (int i = 0; i < n; ++i)
@@ -887,14 +975,23 @@ float RB_LayoutNode(string id, float x, float y, float w, float region)
 		case "hero": return RB_LayoutHero(id, x, y, w, region);
 		case "list": return RB_LayoutList(id, x, y, w, region);
 		case "tabs": return RB_LayoutTabs(id, x, y, w, region, -1);
-		case "text": return RB_LayoutText(id, uib_get(id, "body"), uib_get(id, "style"), x, y, w, region);
+		case "text":
+		{
+			string body = uib_get(id, "body");
+			string g = RB_Glyph(uib_get(id, "icon"));
+			if (g != "") body = strcat(g, "  ", body);
+			return RB_LayoutText(id, body, uib_get(id, "style"), x, y, w, region);
+		}
 		case "divider":
 			RB_Item("divider", id, region, eX * x + eY * (y + D(6)), eX * w + eY * 1);
 			return D(12);
 		case "image":
 		{
 			float ih = RB_AspectH(uib_get(id, "aspect"), w);
-			if (uib_get(id, "fit") == "contain") ih = min(ih, D(120));
+			if (uib_get(id, "role") == "banner")
+				// the Home banner: about a quarter of the page, never a thin strip
+				ih = min(ih, bound(D(84), rg_s[0].y * 0.3, D(260)));
+			else if (uib_get(id, "fit") == "contain") ih = min(ih, D(120));
 			e = RB_Item("image", id, region, eX * x + eY * y, eX * w + eY * ih);
 			if (e) { strcpy(e.rb_img, uib_get(id, "ref")); e.rb_sel = uib_get(id, "fit") == "contain"; }
 			return ih;
@@ -902,16 +999,29 @@ float RB_LayoutNode(string id, float x, float y, float w, float region)
 		case "button":
 		{
 			float bw = min(w, max(D(160), RB_ButtonW(uib_get(id, "label"), uib_get(id, "action.icon"))));
-			if (uib_get(id, "style") == "link") bw = min(w, RB_ButtonW(uib_get(id, "label"), ""));
+			if (uib_get(id, "style") == "link") bw = min(w, RB_ButtonW(uib_get(id, "label"), uib_get(id, "action.icon")));
 			return RB_LayoutButtonAt(id, "action", x, y, bw, region, RB_StyleOf(uib_get(id, "style")));
 		}
 		case "preview":
 		{
 			float y0 = y;
 			string img = uib_get(id, "image");
-			if (img != "")
+			float imgbottom = 0;
+			bool compact = uib_get(id, "density") == "compact";
+			if (img != "" && compact && w >= D(460))
 			{
-				float ih = min(RB_AspectH(uib_get(id, "aspect"), w), rg_s[0].y * 0.55);
+				// the chosen map or level: its picture on the left, text and Play beside it
+				float iw = min(w * 0.4, D(340));
+				float ih = RB_AspectH(uib_get(id, "aspect"), iw);
+				e = RB_Item("image", id, region, eX * x + eY * y, eX * iw + eY * ih);
+				if (e) strcpy(e.rb_img, img);
+				imgbottom = y + ih;
+				x += iw + D(18);
+				w -= iw + D(18);
+			}
+			else if (img != "")
+			{
+				float ih = min(RB_AspectH(uib_get(id, "aspect"), w), rg_s[0].y * (compact ? 0.32 : 0.55));
 				e = RB_Item("image", id, region, eX * x + eY * y, eX * w + eY * ih);
 				if (e) strcpy(e.rb_img, img);
 				y += ih + D(14);
@@ -945,8 +1055,8 @@ float RB_LayoutNode(string id, float x, float y, float w, float region)
 				y += D(36);
 			}
 			if (uib_get(id, "body") != "")
-				y += D(10) + RB_LayoutText(id, uib_get(id, "body"), "body", x, y + D(10), w, region);
-			return y - y0;
+				y += D(10) + RB_LayoutText(id, uib_get(id, "body"), (compact ? "caption" : "body"), x, y + D(10), w, region);
+			return max(y, imgbottom) - y0;
 		}
 		case "status":
 		{
@@ -1106,16 +1216,38 @@ void RB_Layout()
 		entity bk = RB_Item("back", sc, 1, eX * D(8) + eY * D(5), eX * D(48) + eY * D(48));
 		if (bk) bk.rb_focus = 1;
 	}
-	entity tt = RB_Item("title", sc, 1, eX * D(canback ? 66 : 24), eX * (W * 0.55) + eY * hdr);
-	if (tt) strcpy(tt.rb_t1, uib_get(sc, "title"));
+	// the engine's console button (its rect is published by touch_shellbtn.c in
+	// _touch_shell_rect, fractions of the window): the header's actions end left of it
+	rb_res_o = rb_res_s = '0 0 0';
+	if (tokenize_console(cvar_string("_touch_shell_rect")) >= 4)
+	{
+		rb_res_o = eX * stof(argv(0)) * W + eY * stof(argv(1)) * H;
+		rb_res_s = eX * stof(argv(2)) * W + eY * stof(argv(3)) * H;
+	}
+	float hright = W - D(12);
+	if (rb_res_s.x > 0 && rb_res_o.y < hdr && rb_res_o.x + rb_res_s.x > W * 0.5)
+		hright = rb_res_o.x - D(8);
 	int na = stof(uib_get(sc, "actions.#"));
-	float ax = W - D(12) - D(rb_touch ? 84 : 56);  // the engine's console button sits in the top right corner
+	float aw = 0;
+	for (int i = 0; i < na; ++i)
+		aw += RB_ButtonW(uib_get(sc, sprintf("actions.%d.label", i)), uib_get(sc, sprintf("actions.%d.icon", i))) + D(8);
+	bool home = uib_get(sc, "kind") == "home";
+	float tx0 = D(canback ? 66 : 24);
+	// no room for title and labelled actions: the actions become icons
+	bool iconsonly = aw > (hright - tx0) * (home ? 1 : 0.5);
+	if (iconsonly) aw = na * D(56);
+	if (!home)
+	{
+		entity tt = RB_Item("title", sc, 1, eX * tx0, eX * max(D(60), hright - aw - tx0 - D(8)) + eY * hdr);
+		if (tt) strcpy(tt.rb_t1, uib_get(sc, "title"));
+	}
+	float ax = hright;
 	for (int i = na - 1; i >= 0; --i)
 	{
-		float bw = RB_ButtonW(uib_get(sc, sprintf("actions.%d.label", i)), uib_get(sc, sprintf("actions.%d.icon", i)));
+		float bw = iconsonly ? D(48) : RB_ButtonW(uib_get(sc, sprintf("actions.%d.label", i)), uib_get(sc, sprintf("actions.%d.icon", i)));
 		ax -= bw;
 		entity b = RB_Item("button", sc, 1, eX * ax + eY * D(5), eX * bw + eY * D(48));
-		if (b) { b.rb_style = 2; RB_SetAction(b, sc, strcat("actions.", ftos(i))); }
+		if (b) { b.rb_style = 2; RB_SetAction(b, sc, strcat("actions.", ftos(i))); if (iconsonly) { strcpy(b.rb_t2, b.rb_t1); strcpy(b.rb_t1, ""); } }
 		ax -= D(8);
 	}
 	float top = hdr;
@@ -1236,6 +1368,28 @@ void RB_Layout()
 		}
 	}
 	rg_content[0] = y + D(28);
+	if (uib_get(sc, "kind") == "home" && split == "" && rg_content[0] < rg_s[0].y)
+	{
+		// Home with room to spare: most of it goes to the banner, the rest
+		// above it, so the page sits centred with a large banner
+		float slack = rg_s[0].y - rg_content[0];
+		float grow = 0, before = 0;
+		for (int i = 0; i < rb_n; ++i)
+		{
+			entity it = rb_item[i];
+			if (it.rb_region != 0) continue;
+			if (it.rb_kind == "image" && uib_get(it.rb_id, "role") == "banner" && !grow)
+			{
+				grow = min(slack * 0.7, max(0, min(D(340), it.rb_s.x * 9 / 21) - it.rb_s.y));
+				before = (slack - grow) * 0.4;
+				it.rb_o_y += before;
+				it.rb_s_y += grow;
+				continue;
+			}
+			it.rb_o_y += before + grow;
+		}
+		rg_content[0] += before + grow;
+	}
 	rg_max[0] = max(0, rg_content[0] - rg_s[0].y);
 	rg_max[4] = max(0, rg_content[4] - rg_s[4].y);
 	// the top modal (dialog or sheet)
@@ -1251,10 +1405,25 @@ void RB_Layout()
 			float h = RB_LayoutNode(uib_child(rb_modal, i), D(20), my, mw - D(40), 6);
 			if (h > 0) my += h + D(12);
 		}
+		if (uib_has(rb_modal, "primary") && !uib_has(strcat(rb_modal, "/form"), "submit"))
+		{
+			// the dialog's one button (a form's submit already is one)
+			float pbw = RB_ButtonW(uib_get(rb_modal, "primary.label"), uib_get(rb_modal, "primary.icon")) + D(24);
+			entity pb = RB_Item("button", rb_modal, 6, eX * (mw - D(20) - pbw) + eY * my, eX * pbw + eY * D(48));
+			if (pb) { RB_SetAction(pb, rb_modal, "primary"); pb.rb_style = 1; }
+			my += D(48) + D(12);
+		}
 		my += D(10);
 		float mh = min(my, H - D(48));
 		bool sheet = uib_get(rb_modal, "presentation") == "sheet";
 		rg_o[6] = eX * (W - mw) / 2 + eY * (sheet ? H - mh - D(8) : (H - mh) / 2);
+		if (rb_res_s.x > 0 && rg_o[6].x + mw > rb_res_o.x && rg_o[6].y < rb_res_o.y + rb_res_s.y + D(8))
+		{
+			// the dialog would reach under the console button: start below it
+			float newtop = rb_res_o.y + rb_res_s.y + D(8);
+			mh = min(mh, H - newtop - D(8));
+			rg_o[6].y = sheet ? H - mh - D(8) : newtop + max(0, (H - newtop - mh) / 2 - D(4));
+		}
 		rg_s[6] = eX * mw + eY * mh;
 		rg_content[6] = my;
 		rg_max[6] = max(0, my - mh);
@@ -1528,6 +1697,7 @@ void RB_DrawTable(entity e, vector p)
 		drawfont = FONT_USER;
 		RB_TextCenter(eo + eY * D(32), eX * W + eY * D(20), uib_get(id, "empty.text"), D(13), RB_MUTED, rb_a);
 	}
+	string rt_sel = uib_get(id, "selected.0");
 	string firstkey = "";
 	for (float r = first; r < last; ++r)
 	{
@@ -1536,6 +1706,16 @@ void RB_DrawTable(entity e, vector p)
 		if (rb_hover >= 0 && rb_item[rb_hover] == e && rb_mouse.y >= ro.y && rb_mouse.y < ro.y + rowh)
 			RB_Fill(ro, eX * W + eY * rowh, RB_BLUE, 0.14 * rb_a);
 		string row = RB_Row(k, r);
+		if (row != "" && rt_sel != "")
+		{
+			// the chosen row: ember wash and a bar at its left edge
+			tokenizebyseparator(row, "\t");
+			if (argv(0) == rt_sel)
+			{
+				RB_Fill(ro, eX * W + eY * rowh, RB_EMBER, 0.22 * rb_a);
+				RB_Fill(ro, eX * D(4) + eY * rowh, RB_EMBER, rb_a);
+			}
+		}
 		if (row == "")
 		{
 			RB_Shimmer(ro + eX * D(12) + eY * rowh * 0.3, eX * (W * 0.5) + eY * rowh * 0.4, rb_a);
@@ -1592,11 +1772,74 @@ void RB_DrawTable(entity e, vector p)
 	}
 }
 
+// A card list of N rows that scrolls sideways (the map picker): tiles are laid
+// column by column, only the columns in view are fetched and drawn, and a thin
+// scroll bar sits inside the list under the tiles.
+void RB_DrawCardsSideways(entity e, vector p, string sel)
+{
+	int k = e.rb_list;
+	int rows = lc_rows[k];
+	float ch = lc_cardh[k], cw = lc_cardw[k], gap = D(10), band = D(30);
+	float W = rb_scr.x;
+	float c0 = max(0, floor((0 - p.x) / (cw + gap))), c1 = ceil((W - p.x) / (cw + gap));
+	float first = c0 * rows, last = min(lc_total[k], (c1 + 1) * rows);
+	RB_ListFetch(k, first, last - first + 1);
+	if (lc_total[k] <= 0)
+	{
+		RB_TextCenter(eX * (p.x + hs_scroll[e.rb_hs]) + eY * (p.y + D(30)), eX * lc_vieww[k] + eY * D(26), uib_get(e.rb_id, "empty.title"), D(16), RB_MUTED, rb_a);
+		return;
+	}
+	for (float i = first; i < last; ++i)
+	{
+		vector co = p + eX * floor(i / rows) * (cw + gap) + eY * (i % rows) * (ch + gap);
+		if (co.x > W || co.x + cw < 0) continue;
+		string row = RB_Row(k, i);
+		tokenizebyseparator(row, "\t");
+		string key = argv(0), img = argv(1);
+		bool issel = key != "" && key == sel;
+		bool hot = !rb_touch && rb_hover >= 0 && rb_item[rb_hover] == e && rb_mouse.x >= co.x && rb_mouse.x < co.x + cw && rb_mouse.y >= co.y && rb_mouse.y < co.y + ch;
+		RB_Card(co, eX * cw + eY * ch, D(12), (hot ? RB_CARD_HI : RB_CARD), rb_a, (issel ? RB_EMBER : RB_BLUE), (issel ? 1 : 0.3) * rb_a);
+		vector io = co + eX * D(3) + eY * D(3);
+		vector is = eX * (cw - D(6)) + eY * (ch - band - D(3));
+		if (row == "")
+		{
+			RB_Shimmer(io, is, rb_a);
+			continue;
+		}
+		RB_Image(img, io, is, rb_a, false);
+		string title = RB_Cell(row, lc_cols[k], "title");
+		if (title == "") title = RB_Cell(row, lc_cols[k], "name");
+		drawfont = FONT_USER + 3;
+		RB_TextFit(co + eX * D(10) + eY * (ch - band + D(7)), title, D(14), cw - D(20) - (issel ? D(24) : 0), (issel ? RB_EMBER : RB_TEXT), rb_a);
+		drawfont = FONT_USER;
+		if (issel)
+		{
+			RB_RRect(co + eX * (cw - D(28)) + eY * (ch - band + D(4)), eX * D(22) + eY * D(22), D(11), RB_EMBER, rb_a);
+			RB_TextCenter(co + eX * (cw - D(28)) + eY * (ch - band + D(4)), eX * D(22) + eY * D(22), "✓", D(14), RB_INK, rb_a);
+		}
+	}
+	// the scroll bar, inside the list
+	float hs = e.rb_hs;
+	if (hs >= 0 && hs_max[hs] > 0)
+	{
+		float vw = lc_vieww[k];
+		vector bo = eX * (p.x + hs_scroll[hs]) + eY * (p.y + e.rb_s.y - D(6));
+		RB_RRect(bo, eX * vw + eY * D(4), D(2), RB_SURFACE, 0.9 * rb_a);
+		float tw = max(D(40), vw * vw / (vw + hs_max[hs]));
+		RB_RRect(bo + eX * (vw - tw) * (hs_scroll[hs] / hs_max[hs]), eX * tw + eY * D(4), D(2), RB_BLUE, 0.85 * rb_a);
+	}
+}
+
 void RB_DrawCards(entity e, vector p)
 {
 	int k = e.rb_list;
 	if (k < 0) return;
 	string id = e.rb_id;
+	if (lc_rows[k] > 0)
+	{
+		RB_DrawCardsSideways(e, p, uib_get(id, "selected.0"));
+		return;
+	}
 	int cols = lc_percol[k];
 	float ch = lc_cardh[k], cw = lc_cardw[k], rowh = lc_rowh[k], gap = D(12);
 	float top = rg_o[e.rb_region].y, bot = top + rg_s[e.rb_region].y;
@@ -1634,7 +1877,14 @@ void RB_DrawCards(entity e, vector p)
 		drawfont = FONT_USER + 3;
 		RB_TextFit(co + eX * D(12) + eY * (ih + D(8)), title, D(15), cw - D(24), RB_TEXT, rb_a);
 		drawfont = FONT_USER;
-		RB_TextFit(co + eX * D(12) + eY * (ih + D(29)), RB_Cell(row, lc_cols[k], "author"), D(12), cw - D(24), RB_MUTED, rb_a);
+		string line2 = RB_Cell(row, lc_cols[k], "author");
+		if (line2 == "") line2 = RB_Cell(row, lc_cols[k], "modeName");
+		string state = RB_Cell(row, lc_cols[k], "state");
+		if (state == "locked") line2 = strcat(_("Locked"), " · ", line2);
+		else if (state == "done") line2 = strcat("✓ ", line2);
+		RB_TextFit(co + eX * D(12) + eY * (ih + D(29)), line2, D(12), cw - D(24), RB_MUTED, rb_a);
+		if (state == "locked")
+			RB_RRect(co, eX * cw + eY * ch, D(14), RB_BG, 0.55 * rb_a);
 		if (issel)
 		{
 			RB_RRect(co + eX * (cw - D(36)) + eY * D(10), eX * D(26) + eY * D(26), D(13), RB_EMBER, rb_a);
@@ -1685,6 +1935,9 @@ void RB_DrawItem(entity e, int idx)
 			if (e.rb_t2 != "") RB_TextFit(p + eY * D(30), e.rb_t2, D(12), s.x, RB_MUTED, a);
 			break;
 		case "divider": RB_Fill(p, s, RB_BLUE, 0.2 * a); break;
+		case "rowlabel":
+			RB_TextFit(p + eY * (s.y - D(13)) / 2, strcat(RB_Glyph(e.rb_icon), "  ", e.rb_t1), D(13), s.x - D(6), RB_MUTED, a);
+			break;
 		case "button": RB_DrawButton(e, p, hot, pressed); break;
 		case "card":
 		{
@@ -2159,6 +2412,14 @@ void RB_Invoke(string node, string prop)
 		RB_OpenOverlay("info", _("Open this in your browser"), uib_get(node, strcat(prop, ".url")), "", 0, "", "");
 		return;
 	}
+	if (kind == "copy" && cvar("_uib_clipboard_ok"))
+	{
+		// the engine puts it on the system clipboard (touch_uib_stream.c)
+		cvar_set("_uib_clipboard", uib_get(node, strcat(prop, ".text")));
+		uib_toast(sprintf(_("Copied %s"), uib_get(node, strcat(prop, ".text"))), "success", "copy", 3);
+		RB_SendAction(node, id);
+		return;
+	}
 	if (kind == "copy" || kind == "share")
 	{
 		RB_OpenOverlay("info", uib_get(node, strcat(prop, ".label")), uib_get(node, strcat(prop, ".text")), "", 0, "", "");
@@ -2199,6 +2460,25 @@ void RB_EndEdit(bool submit)
 	strcpy(rb_edit_text, "");
 }
 
+// A tap on a row. In a list with selection single or multi one tap chooses the row (kind select)
+// and a second tap on it within RB_DOUBLETAP plays or joins it (kind activate);
+// in any other list a tap activates.
+void RB_SendRowTap(string list, string key)
+{
+	string kind = "activate";
+	string selmode = uib_get(list, "selection");
+	if (selmode == "single" || selmode == "multi")
+	{
+		float now = uib_gettime(1);
+		bool dbl = (key == rb_tap_row && list == rb_tap_list && now - rb_tap_t <= RB_DOUBLETAP);
+		strcpy(rb_tap_row, dbl ? "" : key);
+		strcpy(rb_tap_list, list);
+		rb_tap_t = now;
+		kind = dbl ? "activate" : "select";
+	}
+	RB_Send(sprintf("{\"ev\":\"row\",\"node\":%s,\"row\":%s,\"kind\":\"%s\"}", uib_qv(list), uib_qv(key), kind));
+}
+
 void RB_TableTap(entity e, vector p, vector m)
 {
 	int kk = e.rb_list;
@@ -2223,7 +2503,7 @@ void RB_TableTap(entity e, vector p, vector m)
 	string row = RB_Row(kk, r);
 	if (row == "") return;
 	tokenizebyseparator(row, "\t");
-	RB_Send(sprintf("{\"ev\":\"row\",\"node\":%s,\"row\":%s,\"kind\":\"activate\"}", uib_qv(e.rb_id), uib_qv(argv(0))));
+	RB_SendRowTap(e.rb_id, argv(0));
 }
 
 void RB_Activate(int idx, vector m)
@@ -2295,12 +2575,25 @@ void RB_Activate(int idx, vector m)
 		case "cards":
 		{
 			int kk = e.rb_list;
+			if (lc_rows[kk] > 0)
+			{
+				// rows that scroll sideways: column first
+				float hc = floor((m.x - p.x) / (lc_cardw[kk] + D(10)));
+				float hr = floor((m.y - p.y) / lc_rowh[kk]);
+				if (hr < 0 || hr >= lc_rows[kk] || m.x - p.x - hc * (lc_cardw[kk] + D(10)) > lc_cardw[kk] || m.y - p.y - hr * lc_rowh[kk] > lc_cardh[kk]) return;
+				string hrow = RB_Row(kk, hc * lc_rows[kk] + hr);
+				if (hrow == "") return;
+				tokenizebyseparator(hrow, "\t");
+				RB_SendRowTap(e.rb_id, argv(0));
+				return;
+			}
 			float col = floor((m.x - p.x) / (lc_cardw[kk] + D(12)));
 			float r = floor((m.y - p.y) / lc_rowh[kk]);
+			if (col < 0 || col >= lc_percol[kk] || m.x - p.x - col * (lc_cardw[kk] + D(12)) > lc_cardw[kk]) return;   // the gap between cards
 			string row = RB_Row(kk, r * lc_percol[kk] + col);
 			if (row == "") return;
 			tokenizebyseparator(row, "\t");
-			RB_Send(sprintf("{\"ev\":\"row\",\"node\":%s,\"row\":%s,\"kind\":\"activate\"}", uib_qv(e.rb_id), uib_qv(argv(0))));
+			RB_SendRowTap(e.rb_id, argv(0));
 			return;
 		}
 	}

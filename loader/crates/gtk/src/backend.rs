@@ -71,6 +71,8 @@ impl Backend {
 fn route(action: &str) -> Option<&'static str> {
     Some(match action {
         "sp" | "map.choose" => "singleplayer.json",
+        "campaign" => "campaign.json",
+        "host.popup" => "lan-popup.json",
         "mp" => "servers.json",
         "settings" => "settings.json",
         "credits" => "credits.json",
@@ -78,9 +80,8 @@ fn route(action: &str) -> Option<&'static str> {
         "settings.video" => "settings-video.json",
         "settings.mods" => "settings-mods.json",
         "modpage.radar.main" | "mod.open" => "mod-page.json",
-        "server.open" => "server-detail.json",
         "map.preview" => "map-preview.json",
-        "server.join" | "join.address" => "password-dialog.json",
+        "server.join" | "join" | "join.address" => "password-dialog.json",
         _ => return None,
     })
 }
@@ -128,7 +129,7 @@ fn builtin_route(app: &App, action: &str) {
     match action {
         "mp" => switch_fixture(app, "mp.json", true),
         "credits" => switch_fixture(app, "credits.json", true),
-        "play" | "sp" => crate::session_ui::start(app, Action::Play),
+        "play" | "sp" | "campaign" => crate::session_ui::start(app, Action::Play),
         "settings" => crate::session_ui::start(app, menu("settings")),
         "menu.servers" => crate::session_ui::start(app, menu("servers")),
         "menu.host" => crate::session_ui::start(app, menu("TouchLanHost")),

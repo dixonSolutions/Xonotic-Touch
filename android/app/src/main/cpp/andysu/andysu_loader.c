@@ -169,7 +169,7 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
     g_vm = vm;
     JNIEnv *env;
     if ((*vm)->GetEnv(vm, (void **)&env, JNI_VERSION_1_6) != JNI_OK) return JNI_VERSION_1_6;
-    jclass c = (*env)->FindClass(env, "io/github/dixonsolutions/xonotictouch/EngineSwap");
+    jclass c = (*env)->FindClass(env, "io/github/dixonsolutions/godnotic/EngineSwap");
     if (!c) { (*env)->ExceptionClear(env); return JNI_VERSION_1_6; }
     g_swap_cls = (*env)->NewGlobalRef(env, c);
     g_on_event = (*env)->GetStaticMethodID(env, c, "onEngineEvent", "(ILjava/lang/String;)V");
@@ -252,8 +252,8 @@ static const andysu_loader_api g_api = {
     api_mark_healthy, emit_json, api_abort_start,
 };
 
-/* JNI: io.github.dixonsolutions.xonotictouch.XonoticActivity.nativeInputDevices (static native). */
-JNIEXPORT void JNICALL Java_io_github_dixonsolutions_xonotictouch_XonoticActivity_nativeInputDevices(
+/* JNI: io.github.dixonsolutions.godnotic.XonoticActivity.nativeInputDevices (static native). */
+JNIEXPORT void JNICALL Java_io_github_dixonsolutions_godnotic_XonoticActivity_nativeInputDevices(
     JNIEnv *env, jclass cls, jboolean touch, jboolean keyboard, jboolean mouse) {
     (void)env;
     (void)cls;
@@ -388,7 +388,7 @@ static int request_swap(const char *src, int fail_init, char *err, size_t errcap
 }
 
 /* JNI: EngineSwap.nativeRequestSwap(String enginePath): null = accepted, else the reason it was not. */
-JNIEXPORT jstring JNICALL Java_io_github_dixonsolutions_xonotictouch_EngineSwap_nativeRequestSwap(JNIEnv *env, jclass cls,
+JNIEXPORT jstring JNICALL Java_io_github_dixonsolutions_godnotic_EngineSwap_nativeRequestSwap(JNIEnv *env, jclass cls,
                                                                                                      jstring src) {
     (void)cls;
     char err[256] = "";

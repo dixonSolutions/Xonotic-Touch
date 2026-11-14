@@ -977,6 +977,15 @@ void TouchNet_Disconnecting(qbool kicked, const char *reason)
 	if (!LHNETADDRESS_ToString(&cls.netcon->peeraddress, addr, sizeof(addr), true))
 		return;
 	tn_rc.spectated = false;
+	if (kicked && TouchLAN_HostEnded())
+	{
+		// the host of a LAN game left or quit: nothing to join again
+		tn_rc.next = 0;
+		tn_rc.tries = 0;
+		Con_Printf("The host ended the game\n");
+		TN_SetState("The host ended the game");
+		return;
+	}
 	// lost: timed out, silent, or dropped while this process was frozen (a
 	// server that timed us out says only "Server disconnected", which then
 	// arrives in the first frame after the freeze)

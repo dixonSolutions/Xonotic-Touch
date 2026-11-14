@@ -41,7 +41,7 @@ clickable build --arch arm64
 |--------|------|
 | **Commit in this repo** | Default — edit under `engine/`, `git add`, push (run `prepare-engine-for-git.sh` once if nested `.git` dirs remain) |
 
-Large textures/models/sound are **not** in git and **not** in release packages. They download on first launch to `~/.local/share/xonotic-touch/`. For engine work without packaging, prefetch with `./scripts/fetch-sources.sh assets`.
+Large textures/models/sound are **not** in git and **not** in release packages. They download on first launch to `~/.local/share/godnotic/`. For engine work without packaging, prefetch with `./scripts/fetch-sources.sh assets`.
 
 ## Pulling upstream, keeping Touch changes
 
@@ -85,7 +85,7 @@ busybox applets. Verify with `./scripts/test-confined-launch.sh`
 Edit **`touch/profiles/*.cfg`** for preset bundles (no compile). Full cvar schema and CSQC checklist: [CONTROLS.md](CONTROLS.md).
 
 ```bash
-XONOTIC_TOUCH_PROFILE=casual XONOTIC_TOUCH_PERF_PROFILE=battery ./scripts/test-screen-calc.sh
+GODNOTIC_PROFILE=casual GODNOTIC_PERF_PROFILE=battery ./scripts/test-screen-calc.sh
 # Profile env vars apply when packaging/start.sh runs on device; validate cfg syntax locally:
 grep -E '^touch_' touch/profiles/standard.cfg
 ```

@@ -201,8 +201,9 @@ end)
 
 The install review shows that the mod asks for **Internet** and names the host; nothing
 is sent until the player turns that tier on, and only to the hosts listed. Plain `http://`
-works only to this machine (for testing); the web build has no HTTP
-(`xt.game.has("http")`).
+works only to this machine (for testing). The web build sends it with the browser's
+`fetch()`, so there the host must also allow requests from web pages (CORS); a refused
+request answers -1.
 
 ## A menu page and a Settings entry
 

@@ -98,6 +98,10 @@ fn action_button(app: &App, node: &str, a: &Map<String, Value>, primary: bool) -
     b
 }
 
+/// The Home banner (`image` with `role: "banner"`): large, about a quarter of a normal window.
+const BANNER_HEIGHT: i32 = 240;
+const BANNER_HEIGHT_NARROW: i32 = 150;
+
 /// The native skeleton shown before the engine's first snapshot: the banner and placeholder cards.
 pub fn skeleton() -> adw::NavigationPage {
     let tv = adw::ToolbarView::new();
@@ -109,19 +113,14 @@ pub fn skeleton() -> adw::NavigationPage {
     b.set_margin_end(16);
     let banner = gtk::Picture::for_paintable(&gtk::gdk::Texture::from_bytes(&glib::Bytes::from_static(include_bytes!("../data/banner-800.png"))).expect("banner"));
     banner.set_content_fit(gtk::ContentFit::Contain);
-    banner.set_height_request(150);
+    banner.set_height_request(BANNER_HEIGHT);
     banner.add_css_class("gn-banner");
     b.append(&banner);
-    let hero = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    hero.set_height_request(240);
-    hero.add_css_class("card");
-    hero.add_css_class("gn-placeholder");
-    b.append(&hero);
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     row.set_homogeneous(true);
-    for _ in 0..4 {
+    for _ in 0..3 {
         let c = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        c.set_height_request(150);
+        c.set_height_request(300);
         c.add_css_class("card");
         c.add_css_class("gn-placeholder");
         row.append(&c);
@@ -355,7 +354,8 @@ pub fn node(app: &App, store: &Store, n: &Node) -> gtk::Widget {
             if n.str("fit").as_deref() == Some("contain") {
                 p.set_content_fit(gtk::ContentFit::Contain);
             }
-            p.set_height_request(if r == "asset:banner" { 150 } else { 220 });
+            let banner = n.str("role").as_deref() == Some("banner") || r == "asset:banner";
+            p.set_height_request(if banner { if app.narrow.get() { BANNER_HEIGHT_NARROW } else { BANNER_HEIGHT } } else { 220 });
             p.set_alternative_text(n.str("alt").as_deref());
             p.add_css_class("gn-banner");
             p.upcast()
@@ -378,6 +378,13 @@ pub fn node(app: &App, store: &Store, n: &Node) -> gtk::Widget {
             register_activator(app, &n.id, &b);
             b.set_halign(gtk::Align::Start);
             b.set_size_request(-1, 48);
+            b.set_sensitive(n.enabled());
+            let bw = b.downgrade();
+            register_updater(app, &n.id, Rc::new(move |n: &Node| {
+                if let Some(b) = bw.upgrade() {
+                    b.set_sensitive(n.enabled());
+                }
+            }));
             b.upcast()
         }
         "switch" if n.str("style").as_deref() == Some("checkbox") => checkbox(app, n),
@@ -807,7 +814,11 @@ fn card(app: &App, n: &Node) -> gtk::Button {
             let p = picture(app, &r, 480, 270);
             // Map shots fill the card; artwork (mode icons) is shown whole.
             if r.starts_with("pk3:maps/") {
-                p.set_height_request(aspect_height(n.str("aspect"), 240).clamp(80, 200));
+                let featured = n.bool("featured").unwrap_or(false);
+                p.set_height_request(if featured { if app.narrow.get() { 150 } else { 230 } } else { aspect_height(n.str("aspect"), 240).clamp(80, 200) });
+                if featured {
+                    b.add_css_class("gn-featured");
+                }
             } else {
                 p.set_content_fit(gtk::ContentFit::Contain);
                 p.set_height_request(88);
@@ -868,18 +879,21 @@ fn grid(app: &App, store: &Store, n: &Node) -> gtk::Widget {
     f.set_column_spacing(12);
     f.set_row_spacing(12);
     let min = n.f64("minItem").unwrap_or(160.0);
-    f.set_min_children_per_line(if app.narrow.get() { 1 } else { 2 });
+    let kids = store.children(&n.id);
+    let featured = kids.first().is_some_and(|k| k.bool("featured").unwrap_or(false));
+    f.set_min_children_per_line(if app.narrow.get() { 1 } else if featured { kids.len().clamp(1, 4) as u32 } else { 2 });
     f.set_max_children_per_line(n.f64("maxColumns").map(|m| m as u32).unwrap_or(((1100.0 / (min + 12.0)) as u32).clamp(1, 6)));
     for k in store.children(&n.id) {
         if k.hidden() {
             continue;
         }
         let w = node(app, store, k);
-        w.set_size_request(if app.narrow.get() { 0 } else { min as i32 }, -1);
+        w.set_size_request(if app.narrow.get() || featured { 0 } else { min as i32 }, -1);
         f.append(&w);
     }
     if n.str("scroll").as_deref() == Some("horizontal") {
         f.set_min_children_per_line(store.children(&n.id).len() as u32);
+        f.set_max_children_per_line(store.children(&n.id).len() as u32);
         let s = gtk::ScrolledWindow::builder().vscrollbar_policy(gtk::PolicyType::Never).child(&f).build();
         return s.upcast();
     }
@@ -888,6 +902,9 @@ fn grid(app: &App, store: &Store, n: &Node) -> gtk::Widget {
 
 /// Small items side by side; `wrap` rows (the filter checkboxes) wrap on narrow widths.
 fn row(app: &App, store: &Store, n: &Node) -> gtk::Widget {
+    if n.str("label").is_some() {
+        return labelled_row(app, store, n);
+    }
     let b = adw::WrapBox::new();
     b.set_child_spacing(12);
     b.set_line_spacing(6);
@@ -917,8 +934,54 @@ fn row(app: &App, store: &Store, n: &Node) -> gtk::Widget {
     b.upcast()
 }
 
+/// A `row` with a `label` (an address in the LAN popup): label, the content, its buttons at the end.
+fn labelled_row(app: &App, store: &Store, n: &Node) -> gtk::Widget {
+    let r = adw::ActionRow::builder().title(glib::markup_escape_text(&n.title())).build();
+    r.add_css_class("property");
+    if let Some(i) = n.str("icon").and_then(|i| icon(&i)) {
+        r.add_prefix(&gtk::Image::from_icon_name(i));
+    }
+    for k in store.children(&n.id) {
+        if k.hidden() {
+            continue;
+        }
+        match k.kind.as_str() {
+            "text" => {
+                r.set_subtitle(&glib::markup_escape_text(&k.str("body").unwrap_or_default()));
+                r.set_subtitle_selectable(k.bool("selectable").unwrap_or(false));
+            }
+            "button" => {
+                let mut a = k.obj("action").cloned().unwrap_or_default();
+                a.entry("label").or_insert(json!(k.title()));
+                let bt = action_button(app, &k.id, &a, false);
+                register_activator(app, &k.id, &bt);
+                bt.add_css_class("flat");
+                bt.set_valign(gtk::Align::Center);
+                r.add_suffix(&bt);
+            }
+            _ => r.add_suffix(&node(app, store, k)),
+        }
+    }
+    let g = adw::PreferencesGroup::new();
+    g.add(&r);
+    g.upcast()
+}
+
 fn text(n: &Node) -> gtk::Widget {
     let body = n.str("body").unwrap_or_else(|| n.title());
+    if let Some(i) = n.str("icon").and_then(|i| icon(&i)) {
+        let b = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        b.append(&gtk::Image::from_icon_name(i));
+        let l = label(&body, &[]);
+        l.set_max_width_chars(48);
+        match n.str("style").as_deref() {
+            Some("caption") | Some("note") => l.add_css_class("dim-label"),
+            Some("warning") => l.add_css_class("warning"),
+            _ => {}
+        }
+        b.append(&l);
+        return b.upcast();
+    }
     let l = label(&body, &[]);
     match n.str("style").as_deref() {
         Some("title") => l.add_css_class("title-2"),
@@ -1098,17 +1161,44 @@ fn split(app: &App, store: &Store, n: &Node) -> gtk::Widget {
 }
 
 /// A detail header: big picture, title, attributes, description, actions.
+/// A preview that follows its node (the chosen map changes while the picker stays put).
 fn preview(app: &App, n: &Node) -> gtk::Widget {
+    let holder = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    holder.append(&preview_content(app, n));
+    let (w, h) = (Rc::downgrade(app), holder.downgrade());
+    register_updater(app, &n.id, Rc::new(move |n: &Node| {
+        let (Some(app), Some(h)) = (w.upgrade(), h.upgrade()) else { return };
+        while let Some(c) = h.first_child() {
+            h.remove(&c);
+        }
+        h.append(&preview_content(&app, n));
+    }));
+    holder.upcast()
+}
+
+fn preview_content(app: &App, n: &Node) -> gtk::Widget {
     let v = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    // `density: compact` (the chosen map above the picker): the picture beside the text.
+    let compact = n.str("density").as_deref() == Some("compact") && !app.narrow.get();
+    let outer = gtk::Box::new(gtk::Orientation::Horizontal, 18);
     if let Some(r) = n.str("image") {
         let p = picture(app, &r, 1280, 720);
-        p.set_height_request(aspect_height(n.str("aspect"), 640).clamp(160, 380));
+        if compact {
+            p.set_size_request(320, 180);
+        } else {
+            p.set_height_request(aspect_height(n.str("aspect"), 640).clamp(160, 380));
+        }
         p.add_css_class("gn-preview-pic");
         let f = gtk::Frame::new(None);
         f.set_child(Some(&p));
         f.set_overflow(gtk::Overflow::Hidden);
         f.add_css_class("gn-preview-pic");
-        v.append(&f);
+        if compact {
+            f.set_valign(gtk::Align::Start);
+            outer.append(&f);
+        } else {
+            v.append(&f);
+        }
     }
     v.append(&label(&n.title(), &["gn-preview-title"]));
     if let Some(s) = n.str("subtitle") {
@@ -1150,6 +1240,11 @@ fn preview(app: &App, n: &Node) -> gtk::Widget {
         }
     }
     v.append(&buttons);
+    if compact {
+        v.set_hexpand(true);
+        outer.append(&v);
+        return outer.upcast();
+    }
     v.upcast()
 }
 
@@ -1184,8 +1279,25 @@ fn list(app: &App, store: &Store, n: &Node) -> gtk::Widget {
     want_rows(app, &lv);
     let display = n.str("display").unwrap_or_else(|| "table".into());
     let view: gtk::Widget = if display == "cards" { card_grid(app, n, &lv) } else { table(app, n, &lv) };
-    let sw = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).kinetic_scrolling(true).child(&view).vexpand(true).build();
-    sw.set_min_content_height(if display == "cards" { 420 } else { 260 });
+    let sideways = (display == "cards").then(|| sideways_rows(n)).flatten();
+    let sw = match sideways {
+        // N rows, scrolling sideways, the scroll bar inside the list
+        Some(rows) => {
+            let sw = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Automatic).vscrollbar_policy(gtk::PolicyType::Never)
+                .kinetic_scrolling(true).overlay_scrolling(false).child(&view).build();
+            let h = rows as i32 * (sideways_tile_height(app, rows) + 26) + 26;
+            sw.set_min_content_height(h);
+            sw.set_height_request(h);
+            sw.set_propagate_natural_height(true);
+            sw.add_css_class("gn-sideways");
+            sw
+        }
+        None => {
+            let sw = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).kinetic_scrolling(true).child(&view).vexpand(true).build();
+            sw.set_min_content_height(if display == "cards" { 420 } else { 260 });
+            sw
+        }
+    };
     // Empty state, once the engine has answered with no rows.
     let answered_empty = store.sources.get(&source).is_some_and(|w| w.total() == 0 && w.version > 0);
     if answered_empty && n.str("state").as_deref() == Some("ready") {
@@ -1225,8 +1337,58 @@ fn row_cells(app: &App, source: &str, pos: usize) -> Option<Map<String, Value>> 
 
 fn table(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
     let model = lv.borrow().model.clone();
-    let cv = gtk::ColumnView::new(Some(gtk::NoSelection::new(Some(model))));
+    // A list with `selection: single` (the server list): a click chooses the row and shows it chosen,
+    // a second click in time joins (app::row_activated tells the two apart). Others activate.
+    let selects = selects_rows(n);
+    let cv = if selects {
+        let sel = gtk::SingleSelection::new(Some(model));
+        sel.set_autoselect(false);
+        sel.set_can_unselect(true);
+        sel.set_selected(gtk::INVALID_LIST_POSITION);
+        gtk::ColumnView::new(Some(sel))
+    } else {
+        gtk::ColumnView::new(Some(gtk::NoSelection::new(Some(model))))
+    };
     cv.set_single_click_activate(true);
+    if selects {
+        // The engine's answer to a choice changes only `selected`: the view already shows it,
+        // so the screen (and the list's scroll position) stays as it is. Anything else that
+        // changes on the list rebuilds the screen as before.
+        let rest = |n: &Node| {
+            let mut p = n.props.clone();
+            p.remove("selected");
+            Value::Object(p).to_string()
+        };
+        let before = RefCell::new(rest(n));
+        let (w, screen_id) = (Rc::downgrade(app), n.id.split('/').next().unwrap_or_default().to_string());
+        let (cvw, src) = (cv.downgrade(), lv.borrow().source.clone());
+        register_updater(app, &n.id, Rc::new(move |n: &Node| {
+            let now = rest(n);
+            if *before.borrow() == now {
+                // only the choice changed: show the engine's chosen row as chosen
+                let (Some(a), Some(cv)) = (w.upgrade(), cvw.upgrade()) else { return };
+                let Some(sel) = cv.model().and_downcast::<gtk::SingleSelection>() else { return };
+                let key = n.arr("selected").first().and_then(|v| v.as_str()).map(str::to_string);
+                let pos = key.and_then(|k| {
+                    let core = a.core.borrow();
+                    let win = core.store.sources.get(&src)?;
+                    (0..win.total().min(5000)).find(|i| win.row(*i).and_then(|r| r.str_of("key")).as_deref() == Some(&k))
+                });
+                let want = pos.map(|p| p as u32).unwrap_or(gtk::INVALID_LIST_POSITION);
+                if sel.selected() != want {
+                    sel.set_selected(want);
+                }
+                return;
+            }
+            *before.borrow_mut() = now;
+            let (w, id) = (w.clone(), screen_id.clone());
+            glib::idle_add_local_once(move || {
+                if let Some(a) = w.upgrade() {
+                    app::refresh_screen(&a, &id);
+                }
+            });
+        }));
+    }
     cv.set_show_row_separators(false);
     cv.set_reorderable(false);
     if n.str("density").as_deref() == Some("compact") || n.str("rowHeight").as_deref() == Some("compact") || n.str("display").as_deref() != Some("rows") {
@@ -1378,17 +1540,37 @@ fn table(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
 }
 
 /// `display: cards` (the map picker): a GtkGridView of preview cards; pictures load only for bound cards.
+/// A list whose `selection` is `single` or `multi` tells choosing from activating (6.1).
+pub fn selects_rows(n: &Node) -> bool {
+    matches!(n.str("selection").as_deref(), Some("single") | Some("multi"))
+}
+
+/// `rows: N` with `scroll: horizontal` on a card list (the map picker): N full rows of
+/// tiles in view, more by scrolling sideways.
+fn sideways_rows(n: &Node) -> Option<u32> {
+    (n.str("scroll").as_deref() == Some("horizontal")).then(|| n.f64("rows")).flatten().map(|r| (r as u32).clamp(1, 4))
+}
+
+/// The height of one tile of a sideways list: N rows fill the room the window has under the
+/// header, the mode strip and the section title, and above the action bar.
+fn sideways_tile_height(app: &App, rows: u32) -> i32 {
+    let win_h = app.ui.borrow().as_ref().map(|u| u.win.height()).filter(|h| *h > 0).unwrap_or(760);
+    let room = win_h - if app.narrow.get() { 190 } else { 440 };
+    (room / rows as i32 - 26).clamp(96, 170)
+}
+
 fn card_grid(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
     let model = lv.borrow().model.clone();
     let f = gtk::SignalListItemFactory::new();
-    f.connect_setup(|_, item| {
+    let tile = sideways_rows(n).map(|r| sideways_tile_height(app, r));
+    f.connect_setup(move |_, item| {
         let item = item.downcast_ref::<gtk::ListItem>().expect("list item");
         let v = gtk::Box::new(gtk::Orientation::Vertical, 0);
         v.add_css_class("card");
         v.add_css_class("gn-card");
         let p = gtk::Picture::new();
         p.set_content_fit(gtk::ContentFit::Cover);
-        p.set_height_request(120);
+        p.set_height_request(tile.map(|t| t - 34).unwrap_or(120));
         p.set_can_shrink(true);
         p.add_css_class("gn-card-pic");
         v.append(&p);
@@ -1406,10 +1588,18 @@ fn card_grid(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
         t.append(&title);
         t.append(&sub);
         v.append(&t);
-        v.set_size_request(180, -1);
+        match tile {
+            // a tile: the picture at 16:9 and one line for the name
+            Some(th) => {
+                sub.set_visible(false);
+                t.add_css_class("gn-tile-text");
+                v.set_size_request((th - 34) * 16 / 9, th);
+            }
+            None => v.set_size_request(180, -1),
+        }
         item.set_child(Some(&v));
     });
-    let (w, src, lv2) = (Rc::downgrade(app), lv.borrow().source.clone(), lv.clone());
+    let (w, src, lv2, list_id_b) = (Rc::downgrade(app), lv.borrow().source.clone(), lv.clone(), n.id.clone());
     f.connect_bind(move |_, item| {
         let item = item.downcast_ref::<gtk::ListItem>().expect("list item");
         let (Some(app), Some(obj), Some(v)) = (w.upgrade(), item.item(), item.child()) else { return };
@@ -1421,6 +1611,11 @@ fn card_grid(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
         let title = t.first_child().and_downcast::<gtk::Label>();
         let sub = title.as_ref().and_then(|l| l.next_sibling()).and_downcast::<gtk::Label>();
         let cells = row.as_ref().and_then(|r| r.get("cells")).and_then(Value::as_object);
+        let key = row.as_ref().and_then(|r| r.str_of("key")).unwrap_or_default();
+        let chosen = !key.is_empty() && app.core.borrow().store.node(&list_id_b).is_some_and(|n| n.arr("selected").iter().any(|v| v.as_str() == Some(&key)));
+        v.set_widget_name(&key);
+        if chosen { v.add_css_class("gn-selected") } else { v.remove_css_class("gn-selected") }
+        if cells.and_then(|c| c.get("locked")).and_then(Value::as_bool).unwrap_or(false) { v.add_css_class("gn-dim") } else { v.remove_css_class("gn-dim") }
         if let Some(l) = title {
             l.set_text(&cells.map(|c| cell_text(c.get("title").or(c.get("name")))).unwrap_or_default());
         }
@@ -1428,6 +1623,11 @@ fn card_grid(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
             l.set_text(&cells.map(|c| {
                 let modes = cell_text(c.get("modes")).split_whitespace().map(|m| m.to_uppercase()).collect::<Vec<_>>().join(" ");
                 let players = cell_text(c.get("players"));
+                if let Some(mode) = c.get("modeName") {
+                    // a campaign level: its mode and whether it is won, next or locked
+                    let state = match cell_text(c.get("state")).as_str() { "done" => "✓ ", "locked" => "Locked · ", _ => "" };
+                    return format!("{state}{}", cell_text(Some(mode)));
+                }
                 if players.is_empty() { modes } else { format!("{modes} · {players} players") }
             }).unwrap_or_default());
         }
@@ -1450,10 +1650,20 @@ fn card_grid(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
             p.set_paintable(gtk::gdk::Paintable::NONE);
         }
     });
+    // A list with `selection: single` tells choosing from playing: one click or tap chooses the card
+    // (event row/select), a second one on it within the double-click time plays it
+    // (row/activate); app::row_activated keeps the time, so it survives the screen updating
+    // between the two. Scrolling does neither. Without it a click activates.
     let gv = gtk::GridView::new(Some(gtk::NoSelection::new(Some(model))), Some(f));
     gv.set_single_click_activate(true);
     gv.set_min_columns(if app.narrow.get() { 1 } else { 2 });
     gv.set_max_columns(n.f64("maxColumns").map(|m| m as u32).unwrap_or(6));
+    if let Some(rows) = sideways_rows(n) {
+        // `rows: N`, scrolling sideways: the grid runs left to right in N rows.
+        gv.set_orientation(gtk::Orientation::Horizontal);
+        gv.set_min_columns(rows);
+        gv.set_max_columns(rows);
+    }
     let (w, list_id, src) = (Rc::downgrade(app), n.id.clone(), lv.borrow().source.clone());
     gv.connect_activate(move |_, pos| {
         if let Some(a) = w.upgrade() {
@@ -1461,6 +1671,19 @@ fn card_grid(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
         }
     });
     register_activator(app, &n.id, &gv);
+    // A new choice (`selected` changed) moves the ring; the grid and its scroll stay.
+    let gvw = gv.downgrade();
+    register_updater(app, &n.id, Rc::new(move |n: &Node| {
+        let Some(gv) = gvw.upgrade() else { return };
+        let chosen: Vec<String> = n.arr("selected").iter().filter_map(|v| v.as_str().map(str::to_string)).collect();
+        let mut c = gv.first_child();
+        while let Some(cell) = c {
+            if let Some(card) = cell.first_child() {
+                if chosen.iter().any(|k| *k == card.widget_name()) { card.add_css_class("gn-selected") } else { card.remove_css_class("gn-selected") }
+            }
+            c = cell.next_sibling();
+        }
+    }));
     gv.upcast()
 }
 
@@ -1476,7 +1699,9 @@ pub fn dialog(app: &App, id: &str) -> adw::Dialog {
             app.quiet.set(false);
             d.set_child(Some(&content));
             d.set_content_width(520);
-            d.set_content_height(if s.str("presentation").as_deref() == Some("dialog") { 360 } else { 480 });
+            // as tall as its content asks: about a row per child, within the window
+            let rows = core.store.children(id).iter().map(|k| 1 + core.store.children(&k.id).len()).sum::<usize>() as i32;
+            d.set_content_height(if s.str("presentation").as_deref() == Some("dialog") { (190 + rows * 58).clamp(300, 640) } else { 480 });
             d.set_can_close(s.bool("dismissable").unwrap_or(true));
         }
     }

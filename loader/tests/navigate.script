@@ -12,12 +12,11 @@ snapshot OUT/nav-03-servers-lan-ticked.png
 scroll mp/servers 30
 wait 500
 snapshot OUT/nav-04-servers-scrolled.png
+# one click chooses a server (the one Join comes on); nothing opens
 row mp/servers 2
 wait 1200
-snapshot OUT/nav-05-server-detail.png
+snapshot OUT/nav-05-server-chosen.png
 count OUT/toplevels.txt
-back
-wait 1000
 click mp/join/create:create
 wait 1200
 snapshot OUT/nav-06-create-lan.png
@@ -26,7 +25,7 @@ wait 900
 back
 wait 900
 snapshot OUT/nav-07-back-home.png
-click home/tiles/settings
+click home:settings
 wait 1200
 click settings/sections/mods
 wait 1200

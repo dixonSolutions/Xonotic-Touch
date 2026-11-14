@@ -11,10 +11,7 @@
 //                  engine does (a later name wins), and reads each pack's
 //                  directory
 //   xt_web_command fs_mountpack NAME (adds the pack at the END of the search
-//                  path, lowest priority: touch_fs_mount.h; the file is
-//                  looked up through a listing of the data directory read
-//                  again at most once a second, like fs.c's FS_DirMayHave,
-//                  so a file that just appeared is "not found"), fs_rescan,
+//                  path, lowest priority: touch_fs_mount.h), fs_rescan,
 //                  map / changelevel (asks Module.xt.needMap first, as
 //                  sys_wasm.c does; then loads maps/<map>.bsp and every file
 //                  it lists), touch_data_status (kept, with the time)
@@ -116,16 +113,6 @@
   }
   /** The pack a file comes from: the first in the search path that has it. */
   const packOf = (name) => { const s = E.path.find((x) => x.entries.has(name)); return s ? s.name : null; };
-  // The engine's view of its data directory (fs.c, FS_DirMayHave): a
-  // listing it reads again when it is over a second old. The game looks
-  // files up all the time; here a timer does.
-  const listing = { at: -1e9, names: new Set() };
-  const dirHas = (name) => {
-    const now = performance.now();
-    if (now - listing.at > 1000) { listing.at = now; listing.names = new Set(dataPacks()); }
-    return listing.names.has(name);
-  };
-  setInterval(() => dirHas(''), 300);
   const dataPacks = () => [...nodes.keys()].filter((p) => /^\/game\/data\/[^/]+\.pk3$/i.test(p)).map((p) => p.slice(11)).sort();
 
   function scan() {
@@ -159,7 +146,7 @@
     else if (m[1] === 'fs_mountpack') {
       E.mountpacks.push(arg);
       const path = '/game/data/' + arg;
-      if (!dirHas(arg) || !nodes.has(path)) E.errors.push(`fs_mountpack: could not find "${arg}"`);
+      if (!nodes.has(path)) E.errors.push(`fs_mountpack: could not find "${arg}"`);
       else if (E.path.some((x) => x.name === arg)) E.errors.push(`fs_mountpack: ${arg} is already mounted`);
       else {
         try { E.path.push({ name: arg, entries: zipEntries(path) }); } catch (e) { E.errors.push(`fs_mountpack: ${arg}: ${e.message}`); }

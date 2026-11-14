@@ -40,6 +40,17 @@ uncommitted work. Before committing, `git fetch origin` and look at `git status 
 - Base every edit on `origin/main`'s version of the file. A copy from the shared checkout
   (or from memory) silently reverts whatever landed since.
 
+## One name
+
+The project is Godnotic everywhere: Flatpak `io.github.dixonSolutions.Godnotic`, Android
+package and source folders `io.github.dixonsolutions.godnotic`, click
+`godnotic.dixonsolutions`, data and config folders `godnotic`, environment variables
+`GODNOTIC_*`. A branch started before the rename must take these names when it merges:
+move new files out of the old package folder and fix their `package` line.
+`scripts/test-old-name.sh` (in the tests workflow) fails on the earlier name; the only
+lines allowed to say it are the ones that carry old installs over, marked `OLD_NAME` or
+`OLD_FLATPAK_APP_ID`.
+
 ## The engine and the game code are components
 
 `engine/darkplaces` is the copy of [dixonSolutions/Godnotic-darkplaces](https://github.com/dixonSolutions/Godnotic-darkplaces)
@@ -51,6 +62,9 @@ the commit pinned in `components.json`. CI fails a `main` whose copy differs fro
   either directory, run `scripts/component-push.sh darkplaces|data|all "<message>"`: it
   commits that directory to the component repository, pushes, and writes the pin. Commit
   `components.json` in the same commit as the change.
+- It refuses when the component repository's `main` has moved past your pin (another
+  agent pushed meanwhile): exporting would undo their work. Merge it in as the message
+  says and run it again; never reach for `COMPONENT_PUSH_OVER` to get past it.
 - A commit made directly in a component repository is built inside this one by that
   repository's workflow, then imported, merged and released by
   `.github/workflows/component-sync.yml` (half-hourly, or at once with a

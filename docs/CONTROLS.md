@@ -393,7 +393,7 @@ flowchart TB
 Override preset at launch (testers):
 
 ```bash
-XONOTIC_TOUCH_PROFILE=casual bin/start.sh
+GODNOTIC_PROFILE=casual bin/start.sh
 ```
 
 Stack a performance profile after a layout preset (Settings → Mobile → Dynamics has
@@ -409,7 +409,7 @@ The launchers apply the default performance profile **once**, on the first
 start: balanced on Android, thermal on Flatpak and Ubuntu Touch. The archived
 `touch_perf_version` records that it ran. After that the values are the
 player's, so a change in Settings → Effects sticks across restarts.
-`XONOTIC_TOUCH_PERF_PROFILE`, set by hand on Linux, still applies on every
+`GODNOTIC_PERF_PROFILE`, set by hand on Linux, still applies on every
 start.
 
 ---
@@ -437,7 +437,7 @@ locks it there; **Ctrl+Alt+2** locks what is showing, or unlocks. A lock beats
 every mode and ends on unlock, on picking a mode in Settings → Mobile → Controls, or on
 restart. Console: `vid_touchscreen_toggle`, `vid_touchscreen_lock [0|1]`.
 
-Launcher override: `XONOTIC_TOUCH_MODE=auto|always|off`. Desktop test windows default to `always` because they have no touch hardware.
+Launcher override: `GODNOTIC_MODE=auto|always|off`. Desktop test windows default to `always` because they have no touch hardware.
 
 ### Layout (geometry)
 
@@ -2005,7 +2005,7 @@ countdown) is lifted after 0.4 s, and a finger lifted during any pause is let go
 Profile load (after `fetch-sources.sh` + local run):
 
 ```bash
-XONOTIC_TOUCH_PROFILE=casual ./packaging/start.sh
+GODNOTIC_PROFILE=casual ./packaging/start.sh
 ```
 
 Validate cfg syntax:

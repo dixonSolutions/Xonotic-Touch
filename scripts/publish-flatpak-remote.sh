@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 FLATPAK_REMOTE_URL="${FLATPAK_REMOTE_URL:-https://dixonSolutions.github.io/Godnotic/flatpak}"
-FLATPAK_APP_ID="${FLATPAK_APP_ID:-io.github.dixonSolutions.XonoticTouch}"
+FLATPAK_APP_ID="${FLATPAK_APP_ID:-io.github.dixonSolutions.Godnotic}"
 REPO_DIR="${REPO_DIR:-$ROOT/combined-repo}"
 SITE_DIR="${SITE_DIR:-$ROOT/site/flatpak}"
 X86_BUNDLE="${X86_BUNDLE:-}"
@@ -87,6 +87,22 @@ flatpak build-import-bundle "$REPO_DIR" "$X86_BUNDLE"
 printf 'Importing %s\n' "$A64_BUNDLE"
 flatpak build-import-bundle "$REPO_DIR" "$A64_BUNDLE"
 
+# An install made under the app ID from before the rename follows it to this
+# one: an end-of-life rebase on the old ref makes `flatpak update` switch the
+# app over, and Flatpak carries ~/.var/app/<old id> across with it.
+OLD_FLATPAK_APP_ID="${OLD_FLATPAK_APP_ID:-io.github.dixonSolutions.XonoticTouch}"
+for arch in x86_64 aarch64; do
+    old_ref="app/${OLD_FLATPAK_APP_ID}/${arch}/master"
+    if [ "$OLD_FLATPAK_APP_ID" != "$FLATPAK_APP_ID" ] \
+        && ostree rev-parse --repo="$REPO_DIR" "$old_ref" >/dev/null 2>&1 \
+        && ! ostree show --repo="$REPO_DIR" --print-metadata-key=ostree.endoflife-rebase "$old_ref" >/dev/null 2>&1; then
+        printf 'Rebasing %s onto %s\n' "$old_ref" "$FLATPAK_APP_ID"
+        flatpak build-commit-from --no-update-summary \
+            --end-of-life-rebase="${OLD_FLATPAK_APP_ID}=${FLATPAK_APP_ID}" \
+            --src-ref="$old_ref" "$REPO_DIR" "$old_ref"
+    fi
+done
+
 UPDATE_ARGS=(--generate-static-deltas)
 if [ -n "${PRUNE_DEPTH}" ] && [ "${PRUNE_DEPTH}" != "0" ]; then
     UPDATE_ARGS+=(--prune --prune-depth="$PRUNE_DEPTH")
@@ -112,11 +128,11 @@ cat > "$SITE_DIR/index.html" <<EOF
 <pre>
 flatpak remote-add --user --if-not-exists godnotic \\
   ${FLATPAK_REMOTE_URL}
-flatpak install --user godnotic io.github.dixonSolutions.XonoticTouch
-flatpak update --user io.github.dixonSolutions.XonoticTouch
+flatpak install --user godnotic io.github.dixonSolutions.Godnotic
+flatpak update --user io.github.dixonSolutions.Godnotic
 
 # Inspect / roll back to an older commit:
-flatpak remote-info --log godnotic io.github.dixonSolutions.XonoticTouch
+flatpak remote-info --log godnotic io.github.dixonSolutions.Godnotic
 </pre>
 </body>
 </html>
