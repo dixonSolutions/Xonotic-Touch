@@ -1,6 +1,6 @@
 # Godnotic: Technical Architecture
 
-Native C + QuakeC touch port for Android, Ubuntu Touch, and any Linux touch device via Flatpak. **Slim Flatpak, Ubuntu Touch click, and Android APK packages** ship compiled logic and touch configs; large game assets download on first launch into the platform writable data dir (Flatpak: app data under `xonotic-touch/`; Click: `~/.local/share/xonotictouch.dixonsolutions/`; Android: see [ANDROID.md](ANDROID.md); native: `~/.local/share/xonotic-touch/`).
+Native C + QuakeC touch port for Android, Ubuntu Touch, and any Linux touch device via Flatpak. **Slim Flatpak, Ubuntu Touch click, and Android APK packages** ship compiled logic and touch configs; large game assets download on first launch into the platform writable data dir (Flatpak: app data under `godnotic/`; Click: `~/.local/share/godnotic.dixonsolutions/`; Android: see [ANDROID.md](ANDROID.md); native: `~/.local/share/godnotic/`).
 
 ## 1. Roles
 
@@ -22,7 +22,7 @@ Native C + QuakeC touch port for Android, Ubuntu Touch, and any Linux touch devi
 | Click confinement rules | [UBUNTU_TOUCH_LAUNCH.md](UBUNTU_TOUCH_LAUNCH.md) — bundled busybox, POSIX launch path |
 | Runtime assets | `scripts/fetch-assets-runtime.sh`, `scripts/lib/asset-fetch.sh` |
 | First-run UX | In-game wizard chain + download progress — [SETUP.md](SETUP.md) |
-| Flatpak | `flatpak/io.github.dixonSolutions.XonoticTouch.yml` |
+| Flatpak | `flatpak/io.github.dixonSolutions.Godnotic.yml` |
 | Click | `click/`, `clickable.yaml`, `scripts/build-click.sh` |
 
 ## 3. Repository layout
@@ -62,8 +62,8 @@ Engine-visible handshake files live under `data/touch/` with plain names (`asset
 
 | Format | ID | Architectures | CI |
 |--------|-----|---------------|-----|
-| Flatpak | `io.github.dixonSolutions.XonoticTouch` | `x86_64`, `aarch64` | Yes — every `main` push |
-| Click | `xonotictouch.dixonsolutions` | `arm64`, `armhf` | Yes — every `main` push |
+| Flatpak | `io.github.dixonSolutions.Godnotic` | `x86_64`, `aarch64` | Yes — every `main` push |
+| Click | `godnotic.dixonsolutions` | `arm64`, `armhf` | Yes — every `main` push |
 
 Public Flatpak remote: GitHub Pages OSTree repo with retained commit history. Click + offline Flatpak bundles attach to each versioned GitHub Release (see [RELEASES.md](RELEASES.md)).
 

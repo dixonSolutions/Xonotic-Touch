@@ -134,7 +134,7 @@ void TouchAssetFetch_drawScrim(entity me)
 /** Start the game-open theme once the track (or music-ready marker) is present.
  *
  * The shell fetches rising-of-the-phoenix.ogg early (~7 MB) into
- * xonotic-touch-theme.pk3dir so BGM is not blocked on the full music zip.
+ * godnotic-theme.pk3dir so BGM is not blocked on the full music zip.
  */
 void TouchAssetFetch_tryMusic(entity me)
 {

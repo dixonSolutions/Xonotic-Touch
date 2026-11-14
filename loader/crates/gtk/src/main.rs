@@ -20,7 +20,7 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-const APP_ID: &str = "io.github.dixonSolutions.XonoticTouch";
+const APP_ID: &str = "io.github.dixonSolutions.Godnotic";
 
 const HELP: &str = "Usage: godnotic-loader [OPTION]... [godnotic://join/HOST:PORT]
   --fixture=NAME|PATH   render a UI-bridge fixture (tests/uibridge/fixtures) instead of the engine
@@ -116,6 +116,7 @@ fn main() -> glib::ExitCode {
     let t0 = std::time::Instant::now();
     // WM_CLASS on X11 follows the program name: the app id, as the desktop file's StartupWMClass says.
     glib::set_prgname(Some(APP_ID));
+    godnotic_core::paths::GamePaths::adopt_old_name(&std::env::vars().collect());
     let o = parse_args();
     let test_run = o.snapshot.is_some() || o.script.is_some() || std::env::var_os("GODNOTIC_EXIT_AFTER_FRAME").is_some() || std::env::var_os("GODNOTIC_NON_UNIQUE").is_some();
     let flags = if test_run { gio::ApplicationFlags::NON_UNIQUE } else { gio::ApplicationFlags::HANDLES_OPEN };

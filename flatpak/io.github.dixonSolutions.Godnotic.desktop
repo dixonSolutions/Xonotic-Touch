@@ -1,0 +1,14 @@
+[Desktop Entry]
+Name=Godnotic
+Exec=godnotic-loader %u
+Icon=io.github.dixonSolutions.Godnotic
+Terminal=false
+Type=Application
+Categories=Game;ActionGame;
+StartupWMClass=io.github.dixonSolutions.Godnotic
+MimeType=x-scheme-handler/godnotic;
+Actions=play;
+
+[Desktop Action play]
+Name=Play directly
+Exec=start.sh

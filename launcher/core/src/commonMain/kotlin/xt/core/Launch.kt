@@ -16,12 +16,12 @@ object Launch {
      */
     fun game(cfg: LauncherConfig, startScript: String): LaunchPlan {
         val env = linkedMapOf<String, String>()
-        cfg[Keys.TOUCH_PROFILE]?.takeIf { it.isNotEmpty() }?.let { env["XONOTIC_TOUCH_PROFILE"] = it }
+        cfg[Keys.TOUCH_PROFILE]?.takeIf { it.isNotEmpty() }?.let { env["GODNOTIC_PROFILE"] = it }
         // Set only when chosen: start.sh then applies it on every start, while
         // left unset the game applies its default once and leaves menu changes.
-        cfg[Keys.PERF_PROFILE]?.takeIf { it.isNotEmpty() }?.let { env["XONOTIC_TOUCH_PERF_PROFILE"] = it }
-        cfg[Keys.TOUCH_MODE]?.takeIf { it.isNotEmpty() }?.let { env["XONOTIC_TOUCH_MODE"] = it }
-        cfg[Keys.USER_BASE]?.takeIf { it.isNotBlank() }?.let { env["XONOTIC_TOUCH_USER_BASE"] = it.trim() }
+        cfg[Keys.PERF_PROFILE]?.takeIf { it.isNotEmpty() }?.let { env["GODNOTIC_PERF_PROFILE"] = it }
+        cfg[Keys.TOUCH_MODE]?.takeIf { it.isNotEmpty() }?.let { env["GODNOTIC_MODE"] = it }
+        cfg[Keys.USER_BASE]?.takeIf { it.isNotBlank() }?.let { env["GODNOTIC_USER_BASE"] = it.trim() }
 
         val args = mutableListOf<String>()
         when (cfg[Keys.WINDOW_MODE]) {

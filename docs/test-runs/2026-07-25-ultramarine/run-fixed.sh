@@ -3,18 +3,18 @@ set -e
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/1000}"
 export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/1000/bus}"
-export XONOTIC_TOUCH_PERF_PROFILE="${XONOTIC_TOUCH_PERF_PROFILE:-thermal}"
-export XONOTIC_TOUCH_PROFILE="${XONOTIC_TOUCH_PROFILE:-standard}"
+export GODNOTIC_PERF_PROFILE="${GODNOTIC_PERF_PROFILE:-thermal}"
+export GODNOTIC_PROFILE="${GODNOTIC_PROFILE:-standard}"
 export XONOTIC_RENDER_MAX_EDGE="${XONOTIC_RENDER_MAX_EDGE:-960}"
 
 powerprofilesctl set power-saver 2>/dev/null || true
 
-USER_BASE="$HOME/.local/share/xonotic-touch"
+USER_BASE="$HOME/.local/share/godnotic"
 USER_DATA="$USER_BASE/data"
 LAYOUT_CFG="$USER_DATA/screen.layout.cfg"
 mkdir -p "$USER_DATA/touch/profiles" "$HOME/.xonotic/data"
 
-. "$HOME/xonotic-touch-test/screen-calc.sh"
+. "$HOME/godnotic-test/screen-calc.sh"
 xonotic_screen_calc "$LAYOUT_CFG"
 
 {
@@ -22,8 +22,8 @@ xonotic_screen_calc "$LAYOUT_CFG"
   echo "prvm_traceqc 0"
   echo "prvm_statementprofiling 0"
   echo "prvm_timeprofiling 0"
-  echo "exec touch/profiles/${XONOTIC_TOUCH_PROFILE}.cfg"
-  echo "exec touch/profiles/${XONOTIC_TOUCH_PERF_PROFILE}.cfg"
+  echo "exec touch/profiles/${GODNOTIC_PROFILE}.cfg"
+  echo "exec touch/profiles/${GODNOTIC_PERF_PROFILE}.cfg"
   if [ -f "$HOME/.xonotic/data/touch.layout.cfg" ] || [ -f "$USER_DATA/touch.layout.cfg" ]; then
     echo "exec touch.layout.cfg"
   fi
@@ -40,18 +40,18 @@ echo "xonotic-glass: ${XONOTIC_VID_WIDTH}x${XONOTIC_VID_HEIGHT} fps_max=30 glass
 
 cd "$USER_BASE"
 
-HOST_BIN="${XONOTIC_TOUCH_HOST_BIN:-$HOME/xonotic-touch-test/xonotic-host}"
+HOST_BIN="${GODNOTIC_HOST_BIN:-$HOME/godnotic-test/xonotic-host}"
 if [ -x "$HOST_BIN" ]; then
   echo "xonotic-glass: using host engine $HOST_BIN" >&2
   set -- "$HOST_BIN"
 else
   echo "xonotic-glass: using flatpak engine" >&2
-  set -- flatpak run --command=/app/bin/xonotic io.github.dixonSolutions.XonoticTouch
+  set -- flatpak run --command=/app/bin/xonotic io.github.dixonSolutions.Godnotic
 fi
 
 exec "$@" \
   -xonotic \
-  -customgamename "Xonotic Touch" \
+  -customgamename "Godnotic" \
   +exec xonotic.cfg \
   +exec screen.layout.cfg \
   +exec config.cfg \
@@ -66,9 +66,9 @@ exec "$@" \
   +vid_height "${XONOTIC_VID_HEIGHT}" \
   +vid_conwidth "${XONOTIC_VID_WIDTH}" \
   +vid_conheight "${XONOTIC_VID_HEIGHT}" \
-  +vid_touchscreen_xdpi "${XONOTIC_TOUCH_XDPI}" \
-  +vid_touchscreen_ydpi "${XONOTIC_TOUCH_YDPI}" \
-  +vid_touchscreen_density "${XONOTIC_TOUCH_DENSITY}" \
+  +vid_touchscreen_xdpi "${GODNOTIC_XDPI}" \
+  +vid_touchscreen_ydpi "${GODNOTIC_YDPI}" \
+  +vid_touchscreen_density "${GODNOTIC_DENSITY}" \
   +cl_movement 1 \
   +con_closeontoggle 1 \
   +scr_screenshot_jpeg 0 \

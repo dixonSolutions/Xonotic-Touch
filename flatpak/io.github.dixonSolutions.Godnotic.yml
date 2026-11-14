@@ -1,0 +1,99 @@
+app-id: io.github.dixonSolutions.Godnotic
+# GNOME 48 for GTK 4 and libadwaita (the launcher). It is built on
+# freedesktop 24.08, so the engine keeps the same compiler and libraries.
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+# The app (loader/); "Play directly" in the desktop file still runs start.sh.
+command: godnotic-loader
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  # The keyboard hot-plug watcher reads the SW_TABLET_MODE switch from
+  # /dev/input (a folded-back Type Cover stays listed in /proc otherwise).
+  - --device=input
+  # Game packs must live in real Flatpak $XDG_DATA_HOME (.../data/godnotic)
+  # so "Delete app data" / uninstall --delete-data clears them. Do NOT grant
+  # --filesystem=xdg-data/godnotic — that bind-mounts the host
+  # ~/.local/share/godnotic over $XDG_DATA_HOME/godnotic (same inode),
+  # which is why wipes looked like no-ops.
+  - --filesystem=home/.xonotic:create
+  - --filesystem=home/.var/app/org.xonotic.Xonotic:ro
+  - --filesystem=/usr/share/games/xonotic:ro
+  - --filesystem=/usr/share/xonotic:ro
+  # “Download finished” notifications, and flatpak-spawn so the background asset
+  # fetchd runs on the host and outlives a `flatpak kill` of the UI instance.
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.Flatpak
+
+build-options:
+  env:
+    XONOTIC_PACKAGE_BUILD: '1'
+  build-args:
+    - --share=network
+
+modules:
+  - name: libxmp
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_INSTALL_LIBDIR=lib
+      - -DBUILD_SHARED=ON
+    sources:
+      - type: archive
+        url: https://github.com/libxmp/libxmp/archive/libxmp-4.6.2.tar.gz
+        sha256: 88c8c68a5e38966c8735b20e63c552ed014ec75dde711dc7549a3eff4e4555cd
+        x-checker-data:
+          type: anitya
+          project-id: 19777
+          stable-only: true
+          url-template: https://github.com/libxmp/libxmp/archive/libxmp-${version}.tar.gz
+
+  # The app (loader/, Rust + GTK 4/libadwaita): built outside this manifest by
+  # loader/build.sh inside the GNOME SDK (in CI, the Loader workflow on x86_64
+  # and aarch64 runners) and dropped in here, so the manifest stays offline.
+  # xt-launcher stays as a name for scripts and old desktop shortcuts.
+  - name: loader
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 godnotic-loader /app/bin/godnotic-loader
+      - ln -sf godnotic-loader /app/bin/xt-launcher
+    sources:
+      - type: file
+        path: ../loader/dist/godnotic-loader-x86_64
+        dest-filename: godnotic-loader
+        only-arches: [x86_64]
+      - type: file
+        path: ../loader/dist/godnotic-loader-aarch64
+        dest-filename: godnotic-loader
+        only-arches: [aarch64]
+
+  - name: godnotic
+    buildsystem: simple
+    build-commands:
+      - bash scripts/fetch-sources.sh code
+      - bash scripts/build.sh
+      - bash scripts/stage-flatpak.sh
+    sources:
+      - type: dir
+        path: ..
+        # Local build products would ride into the sandbox and, with the
+        # copy flattening mtimes, could pass for up to date there.
+        skip:
+          - .git
+          - .flatpak-builder
+          - build
+          - build-flatpak
+          - build-flatpak-prebuilt
+          - build-click
+          - engine/darkplaces/build-obj
+          - engine/darkplaces/darkplaces-sdl
+          - engine/darkplaces/darkplaces-dedicated
+          - engine/gmqcc/gmqcc
+          - engine/data/xonotic-data.pk3dir/qcsrc/.tmp
+          - launcher
+          - loader

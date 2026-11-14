@@ -45,7 +45,7 @@ bool Touch_Shape_Ready(void)
 }
 
 // The engine draws circles, capsules and rounded rectangles as geometry
-// (drawroundedbox, XONOTIC_TOUCH_DRAWROUNDEDBOX): edges antialiased at any
+// (drawroundedbox, GODNOTIC_DRAWROUNDEDBOX): edges antialiased at any
 // size, and a border the same width all the way round and on every control.
 // The masks stay for soft shapes (shadow, glow) and as the fallback.
 bool touch_vector_probed;
@@ -56,7 +56,7 @@ bool Touch_Shape_Vector(void)
 	if (!touch_vector_probed)
 	{
 		touch_vector_probed = true;
-		touch_vector_ready = boolean(checkextension("XONOTIC_TOUCH_DRAWROUNDEDBOX"));
+		touch_vector_ready = boolean(checkextension("GODNOTIC_DRAWROUNDEDBOX"));
 	}
 	return touch_vector_ready;
 }

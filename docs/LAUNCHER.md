@@ -54,7 +54,7 @@ applied; widget callbacks only queue messages, which a pump sends after the borr
 ## Starting the game and coming back
 
 Until the engine's UI-bridge backend mode exists (`-uibridge`, branch `work/uibridge`), the
-app starts the game through `packaging/start.sh` (or `XONOTIC_TOUCH_START`):
+app starts the game through `packaging/start.sh` (or `GODNOTIC_START`):
 
 - **Play** starts it as always (its own menu).
 - A **`godnotic://join/<host>:<port>`** link (the desktop file registers
@@ -144,7 +144,7 @@ loader/scripts/drive.sh loader/tests/navigate.script <outdir>   # Home > Servers
 `GODNOTIC_DATA_DIRS` points fixture mode at folders of pk3s (or unpacked `maps/*.jpg`) so the
 fixture player answers `pk3:` image refs with real map previews.
 
-`loader/tests/session.script` (with a stand-in `XONOTIC_TOUCH_START` that runs a built engine
+`loader/tests/session.script` (with a stand-in `GODNOTIC_START` that runs a built engine
 offscreen, and a dedicated server with `sv_touch_lan_password`) joins from the GUI with no
 password, a wrong one and the right one, and checks that the window hides and returns.
 

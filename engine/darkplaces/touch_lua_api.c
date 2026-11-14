@@ -18,6 +18,7 @@ one slow mod cannot starve the others or the game.
 
 #include "quakedef.h"
 #include "libcurl.h"
+#include "touch_webfetch.h"
 #include "touch_lua.h"
 #include "touch_lua_int.h"
 #define TLUA_API_DEFINE_TABLE
@@ -732,7 +733,7 @@ qbool (*TouchLua_VibrateHook)(int ms); // set by the platform when it can vibrat
 static qbool tlua_has_http(void)
 {
 #if defined(__EMSCRIPTEN__)
-	return false;
+	return TouchWeb_Available(); // the browser's fetch(): the host must allow web pages (CORS)
 #else
 	return Curl_Available();
 #endif
@@ -1137,7 +1138,11 @@ static int tlua_http_start(lua_State *L, const char *url, const char *body, size
 	}
 	h->ref = TLua_Ref(L, fnidx);
 	tlua_http_local = local;
+#ifdef __EMSCRIPTEN__
+	if (!TouchWeb_Begin_ToMemory_POST(url, body ? type : NULL, body ? h->post : NULL, body ? bodylen : 0, h->buf, TLUA_HTTP_BODY, local, tlua_http_cb, h))
+#else
 	if (!Curl_Begin_ToMemory_POST(url, NULL, 0, body ? type : NULL, h->post, body ? bodylen : 0, h->buf, TLUA_HTTP_BODY, tlua_http_cb, h))
+#endif
 	{
 		tlua_http_local = false;
 		TLua_Unref(m, h->ref);
@@ -1211,7 +1216,11 @@ static void tlua_http_frame(void)
 			if (host.realtime - h->started > 15)
 			{
 				// libcurl owns the buffer until it is done: stop waiting, keep it
+#ifdef __EMSCRIPTEN__
+				TouchWeb_Cancel_ToMemory(tlua_http_cb, h);
+#else
 				Curl_Cancel_ToMemory(tlua_http_cb, h);
+#endif
 				h->done = true;
 				h->status = -3;
 				h->length = 0;
@@ -1241,7 +1250,11 @@ static void tlua_http_modstopped(tlua_mod_t *m)
 		if (!h->used || h->realm != m->realm || strcmp(h->mod, m->name))
 			continue;
 		if (!h->done)
+#ifdef __EMSCRIPTEN__
+			TouchWeb_Cancel_ToMemory(tlua_http_cb, h);
+#else
 			Curl_Cancel_ToMemory(tlua_http_cb, h);
+#endif
 		tlua_http_free(h);
 	}
 }

@@ -275,9 +275,16 @@ them with a setting.
 
 * **URLs**: `https://` only, redirects included (a redirect to `http://` fails);
   through the engine's libcurl, a transfer at a time, the game keeps running
-  (`lua_install_status`, the Mods tab shows progress). Not on the web build (no
-  libcurl there): download the zip and install the file.
+  (`lua_install_status`, the Mods tab shows progress). The web build has no libcurl
+  and downloads with the browser's `fetch()` under the same rules (no cookies, no
+  referrer; `touch_webfetch.h`). There the host must also allow requests from web
+  pages (CORS): `raw.githubusercontent.com` does, GitHub's release download links
+  do not. A refused link says so and points to *Pick file*.
 * **Files**: an absolute path, or a path relative to the user folder.
+* **Web**: *Pick file* in the Mods tab opens the browser's file picker, and a `.zip`
+  dropped on the page goes the same way (`web/mods.js`, the same file handshake as
+  Android's): the page copies the zip, at most 8 MB, to `<userdir>/luastate/incoming/`
+  and the engine checks it and shows the review. Nothing is enabled or granted.
 * **Android**: *Pick file* in the Mods tab opens the system picker; the app copies
   the zip to `<userdir>/luastate/incoming/` and the engine installs it from there
   with the same checks and the same review.

@@ -5,7 +5,9 @@
 //
 //   data        downloads the game data once, in hash-checked 32 MiB chunks,
 //               into the origin private file system (store.js), which the
-//               engine reads in place (lazyfs.js); or reads the stock packs
+//               engine reads in place (lazyfs.js): what the game needs to
+//               start first, the other maps and the music while it is
+//               played; or reads the stock packs
 //               from a Godnotic folder the player picked; or hands over to
 //               the installed app
 //   saves       mirrors the userdir (config.cfg, layouts) to IndexedDB
@@ -44,8 +46,8 @@
     keys() { try { return Object.keys(localStorage).filter((k) => k.startsWith('xt.')).map((k) => k.slice(3)); } catch (e) { return []; } },
   };
 
-  // Keys of pages before this one (there is one download with everything,
-  // the music included, and nothing to choose).
+  // Keys of pages before this one (nothing to choose: the game starts as
+  // soon as it can, and the rest follows by itself).
   store.del('music');
   store.del('allmaps');
 
@@ -123,7 +125,7 @@
     state.problem = text;
     store.set('problem', JSON.stringify({ text, t: Date.now() }));
     const el = $('xt-st-error');
-    if (el) el.textContent = text;
+    if (el) { el.textContent = text; el.hidden = false; }
   }
   // missing: is any game data still to download? (A breadcrumb left in the
   // download phase says nothing once the download is complete.)
@@ -468,7 +470,13 @@
 
   // A no-cache pointer file (profiles.json, stock.json, manifest.json).
   // Offline, the last one seen will do.
-  async function pointer(base, name) {
+  const pointers = new Map();
+  function pointer(base, name) {
+    const key = new URL(name, base).href;
+    if (!pointers.has(key)) pointers.set(key, fetchPointer(base, name));
+    return pointers.get(key);
+  }
+  async function fetchPointer(base, name) {
     const url = new URL(name, base);
     const remember = 'pointer-json:' + url.href;
     try {
@@ -488,8 +496,20 @@
   }
 
   // Manifests are immutable: from storage when seen before, else fetched
-  // and checked against the hash in their name.
-  async function getManifest(base, path) {
+  // and checked against the hash in their name. Asked for once per page:
+  // main() asks for the ones a start may need together, before it knows
+  // which profile it is.
+  const manifests = new Map();
+  function getManifest(base, path) {
+    const key = new URL(path, base).href;
+    if (!manifests.has(key)) {
+      const p = fetchManifest(base, path);
+      p.catch(() => manifests.delete(key));
+      manifests.set(key, p);
+    }
+    return manifests.get(key);
+  }
+  async function fetchManifest(base, path) {
     const id = manifestId(path);
     if (!id) throw new Error(`Bad manifest name: ${path}`);
     const kept = await data.loadManifest(id);
@@ -611,6 +631,10 @@
   const fmtTime = (s) => s > 5400 ? `${Math.round(s / 3600)} h` : s > 90 ? `${Math.round(s / 60)} min` : `${Math.max(1, Math.round(s))} s`;
   const hosted = (list) => list.filter((c) => c.file.hosted !== false);
 
+  // Chunks fetched at a time: a connection is rarely the limit, one stream
+  // of it often is. Each holds a 32 MiB buffer, so phones get fewer.
+  const DOWNLOADS = (navigator.deviceMemory && navigator.deviceMemory <= 4) || touchOnly ? 3 : 6;
+
   // Download the given chunks with the progress panel: percent, "x / y MB ·
   // speed · time left", Pause / Resume and Cancel. Pause and Cancel keep
   // what has arrived (whole chunks, and 4 MiB pieces of the rest). Resolves
@@ -702,6 +726,7 @@
               await data.download(todo, {
                 urlFor: blobUrl,
                 signal: controller.signal,
+                concurrency: DOWNLOADS,
                 onBytes: (c, n) => {
                   got.set(c.h, n);
                   paint();
@@ -872,6 +897,7 @@
       if (missing.length) {
         $('xt-map-title').textContent = `Downloading ${name}`;
         if (document.pointerLockElement) document.exitPointerLock();
+        if (maps.bgController) maps.bgController.abort(); // this map first
         try {
           await runDownload(missing, `Downloading the map ${name}…`, MAP_UI);
         } catch (e) {
@@ -955,6 +981,64 @@
     Module.ccall('xt_web_command', null, ['string'], [`fs_rescan\n${line || ''}`]);
   }
 
+  // ---------------------------------------------- the rest, while playing
+  //
+  // The first download is what the game needs to start: the core packs and
+  // the first map. The rest (the other maps, the textures no map was traced
+  // to, the music) comes one chunk at a time once the game runs, and steps
+  // aside for a map the player asks for. With lazy reads, what arrives is
+  // mounted at once and the engine sees it at the next map change. Not on a
+  // connection that asks to save data: there a map downloads when played.
+  const isLater = (f) => f.group === 'map' || f.group === 'extra' || f.group === 'music';
+  const laterFiles = () => (state.files || []).filter((f) => f.hosted !== false && isLater(f));
+  const wantLater = () => params.get('background') !== '0' && !(navigator.connection && navigator.connection.saveData);
+  function startBackground() {
+    // (Without lazy reads the first download was everything.)
+    if (!state.started || !state.lazy || maps.bgOn || maps.bgDone || !wantLater()) return;
+    maps.bgOn = true;
+    backgroundLoop().catch((e) => {
+      // A dropped connection, a full disk: what arrived is kept, and a map
+      // still downloads when it is played. Try the rest again in a while.
+      console.warn('Background download stopped: ' + (e && (e.stack || e.message) || e));
+      maps.bgOn = false;
+      setTimeout(startBackground, 60000);
+    });
+  }
+  async function backgroundLoop() {
+    // The music first (the menu plays it), then the maps, smallest first.
+    const order = { music: 0, extra: 1, map: 2 };
+    const files = laterFiles().sort((a, b) => order[a.group] - order[b.group] || a.size - b.size);
+    let fetched = false;
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      while (maps.pending || state.downloading) {
+        if (!state.started) return;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      if (!state.started) return;
+      const missing = hosted(await data.missing([f]));
+      if (missing.length) {
+        fetched = true;
+        maps.bgController = new AbortController();
+        try {
+          await data.download(missing, { urlFor: blobUrl, signal: maps.bgController.signal, onBytes() {}, concurrency: 1 });
+        } catch (e) {
+          if (e && e.name === 'AbortError') { i--; continue; } // a map was asked for: this file again after it
+          throw e;
+        } finally {
+          maps.bgController = null;
+        }
+      }
+      if (state.lazy && !mounts.has(pathOf(f))) {
+        await mount(f);
+        state.rescanPending = true;
+      }
+    }
+    maps.bgOn = false;
+    maps.bgDone = true;
+    if (fetched && state.started) toast('Every map and the music are downloaded.');
+  }
+
   // The engine's console command "web_maps" (sys_wasm.c): what is stored.
   async function backgroundStatus() {
     const files = (state.files || []).filter((f) => f.hosted !== false);
@@ -992,7 +1076,7 @@
   // app, the app names this site), and hand over to the app, which has the
   // game data and the settings. Elsewhere there is no way to know, so the
   // first visit offers the hand-over as a plain link.
-  const APP_PACKAGE = 'io.github.dixonsolutions.xonotictouch';
+  const APP_PACKAGE = 'io.github.dixonsolutions.godnotic';
   const isAndroid = /Android/i.test(ua);
   const isChromium = !!navigator.userAgentData || /Chrom(e|ium)\//.test(ua);
   const isLinux = !isAndroid && /Linux|X11/i.test(navigator.platform || ua);
@@ -1024,7 +1108,7 @@
   // IndexedDB and the browser asks, or remembers, the permission on later
   // visits. The stock packs in it (data, maps, music, fonts) are read in
   // place, read only; this build's own files still come from the site.
-  const FOLDER_HINT = 'The Flatpak keeps it in ~/.var/app/io.github.dixonSolutions.XonoticTouch/data/xonotic-touch/data (type the path with Ctrl+L: the folder is hidden).';
+  const FOLDER_HINT = 'The Flatpak keeps it in ~/.var/app/io.github.dixonSolutions.Godnotic/data/godnotic/data (type the path with Ctrl+L: the folder is hidden).';
   /** "data", "maps", "music", "xoncompat", "font-unifont"…: which stock pack a file name is, '' for others. */
   function packKind(name, whole) {
     let m = /^xonotic-[^-]+-(data|maps|music|xoncompat)(-[0-9a-z_.]+)?\.pk3$/i.exec(name);
@@ -1234,9 +1318,10 @@
     const sw = $('xt-opt-persist');
     $('xt-opt-persist-row').hidden = data.kind === 'memory' || !(navigator.storage && navigator.storage.persist);
     if (!sw.disabled) sw.checked = kept;
-    if (!state.persistAnswer) $('xt-persist-text').textContent = kept ? 'The browser keeps the game data until you delete it.' : 'Off: the data stays between visits, but the browser may clear it when the device runs short of space.';
+    if (!state.persistAnswer) $('xt-persist-text').textContent = kept ? 'The browser keeps the game data until you delete it.' : 'The game data stays between visits, but the browser may clear it when the device runs short of space unless it is kept on this device.';
     const last = state.problem || (() => { try { return JSON.parse(store.get('problem', '') || 'null').text; } catch (e) { return ''; } })();
-    $('xt-st-error').textContent = last || data.be.lastError || 'None';
+    $('xt-st-error').textContent = last || data.be.lastError || '';
+    $('xt-st-error').hidden = !(last || data.be.lastError);
     let why = '';
     if (!kept && data.kind !== 'memory') {
       if (isSafari) why = 'Safari deletes it after 7 days without a visit unless the page is on the Home Screen.';
@@ -1248,16 +1333,16 @@
     $('xt-st-stored').textContent = `${mb(used)} of ${mb(total)}` + (state.profile ? ` · ${state.profile === 'astc' ? 'ASTC set' : state.profile === 'full' ? 'full set' : 'standard set'}` : '');
   }
 
+  // '' when the download fits (or the browser does not say), else why not.
   async function freeSpaceLine(need) {
     let est = null;
     try { est = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null; } catch (e) { /* none */ }
-    const el = $('xt-dl-space');
-    if (!est || !est.quota) { el.textContent = ''; return true; }
+    if (!est || !est.quota) return '';
     const free = est.quota - (est.usage || 0);
-    const fits = free > need * 1.05;
-    el.textContent = fits ? `${mb(free)} free for this site.` : '';
-    if (!fits) problem(`Not enough space: this needs ${mb(need)} and the browser offers ${mb(free)} for this site. Free some disk space${navigator.storage && navigator.storage.persist ? ', or turn on "Keep game data on this device" in the menu (some browsers then allow more)' : ''}.`);
-    return fits;
+    if (free > need * 1.05) return '';
+    const text = `Not enough space: this needs ${mb(need)} and the browser offers ${mb(free)} for this site. Free some disk space${navigator.storage && navigator.storage.persist ? ', or turn on "Keep on this device" in the ⋮ menu (some browsers then allow more)' : ''}.`;
+    problem(text);
+    return text;
   }
 
   // ------------------------------------------------------- the engine
@@ -1329,6 +1414,7 @@
     if (inFullscreen()) setFullscreen(false);
     $('xt-overlay').classList.remove('xt-gone');
     status('The game has quit.');
+    $('xt-status').classList.add('xt-done');
     $('xt-again').hidden = false;
     $('xt-again').focus();
   }
@@ -1408,6 +1494,8 @@
     setInterval(autosave, 250);
     requestAnimationFrame(() => mark('first-frame'));
     setTimeout(() => { if (state.started) crumb('running'); }, 5000);
+    // Once the menu is up and its own loading is over.
+    setTimeout(startBackground, 10000);
   }
 
   // ---------------------------------------------------------- startup
@@ -1446,6 +1534,15 @@
     let profile;
     try {
       let list = await listProfiles();
+      // The manifests this start may need, asked for together (stored ones
+      // cost no request): the profile used before, else the ones a first
+      // visit chooses between.
+      {
+        const saved = store.get('profile', '');
+        const names = saved && list.profiles[saved] ? [saved]
+          : Object.keys(list.profiles).filter((n) => n === list.default || (list.profiles[n].gpu === 'astc' && gpu.astc));
+        for (const n of names) getManifest(dataBase, list.profiles[n].manifest).catch(() => {});
+      }
       list = await shellProfiles(list);
       state.profiles = list;
       const name = await chooseProfile(list, gpu);
@@ -1469,13 +1566,19 @@
     // prune (an older release) keeps what a recorded manifest lists.
     data.ref(location.pathname, profile.ids).catch(() => {});
 
-    // One download with everything in it (every map, the music): nothing
-    // to choose. Files the host no longer serves (the full set's maps pk3)
-    // only count when they are here.
+    // The download before the game starts: what it needs to run and the
+    // first map. The other maps and the music follow while it is played
+    // (startBackground), unless that is off: then they are part of this
+    // one. Files the host no longer serves (the full set's maps pk3) only
+    // count when they are here.
     const startedKey = profile.name === 'web' ? 'started' : 'started-' + profile.name;
     const idsKey = 'ids-' + profile.name;
     const hadStart = store.get(startedKey, '') === '1' || (profile.name === 'full' && store.get('started', '') === '1');
-    const selected = () => files.filter((f) => f.hosted !== false);
+    const firstMap = files.find((f) => f.group === 'map' && f.map && f.map === profile.defaultMap);
+    const lazyLikely = params.get('lazy') !== '0' && typeof XTLazyFS !== 'undefined';
+    // (Without lazy reads nothing can be added to a running game.)
+    const split = wantLater() && lazyLikely && files.some((f) => f.group === 'map');
+    const selected = () => files.filter((f) => f.hosted !== false && (!split || !isLater(f) || f === firstMap));
 
     let missing = await data.missing(selected());
     let adopted = 0;
@@ -1547,16 +1650,16 @@
           const stored = await data.storedBytes(selected());
           const need = sum(missing) - partial;
           $('xt-dl-size').textContent = mb(need);
+          const later = split ? sum(hosted(await data.missing(laterFiles().filter((f) => f !== firstMap)))) : 0;
+          $('xt-dl-what').textContent = later ? `to play. Maps and music (${mb(later)}) follow as you play.` : 'to play, once. It stays in this browser.';
           $('xt-dl-title').textContent = hadStart || adopted || stored ? 'Finish downloading Godnotic' : 'Download Godnotic';
           const already = stored + partial;
           $('xt-dl-resumed').hidden = already < 1e6;
           $('xt-dl-resumed').textContent = `${mb(already)} is already here; it carries on from there.`;
-          $('xt-dl-reason').hidden = !reason;
-          $('xt-dl-reason').textContent = reason;
+          const noRoom = await freeSpaceLine(need + later);
+          $('xt-dl-reason').hidden = !(noRoom || reason);
+          $('xt-dl-reason').textContent = noRoom || reason;
           $('xt-dl-go').textContent = already >= 1e6 ? 'Continue' : 'Download';
-          await freeSpaceLine(need);
-          // Where the browser may not keep it, say so before the download.
-          $('xt-dl-keep').hidden = data.kind === 'memory' || await persisted();
           // The installed app, or a folder waiting for its permission.
           const app = hadStart ? null : await nativeApp();
           $('xt-app').hidden = !app && !state.folderPending;
@@ -1737,33 +1840,61 @@
     location.reload();
   };
 
-  // Storage and settings: a popover from the header bar's menu button, or
-  // over the game from the console (web_storage). Closes on Escape and on
-  // a click or tap outside it.
-  function popover(open) {
+  // Storage and settings: a popover beside the ⋮ button that opened it, or
+  // in the middle of the screen over the game (web_storage in the console).
+  // Closes on Escape and on a click or tap outside it.
+  const MENUS = ['xt-menu', 'xt-menu-progress', 'xt-menu-ready', 'xt-menu-error'];
+  function placePopover(el, btn) {
+    const b = btn && btn.getBoundingClientRect ? btn.getBoundingClientRect() : null;
+    if (!b || !b.width || !el.getBoundingClientRect) { el.style.left = el.style.top = el.style.transform = ''; return; }
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const vw = document.documentElement.clientWidth;
+    const vh = window.innerHeight;
+    const gap = 8;
+    const clampX = (x) => Math.min(Math.max(gap, x), Math.max(gap, vw - gap - w));
+    const clampY = (y) => Math.min(Math.max(gap, y), Math.max(gap, vh - gap - h));
+    // Under the button when it fits; else beside it (a wide screen), so the
+    // page stays readable; else over it; else wherever it fits.
+    let left = clampX(b.left + b.width / 2 - w / 2);
+    let top = b.bottom + gap;
+    if (top + h > vh - gap) {
+      if (b.right + gap + w <= vw - gap) { left = b.right + gap; top = clampY(b.top + b.height / 2 - h / 2); }
+      else if (b.left - gap - w >= gap) { left = b.left - gap - w; top = clampY(b.top + b.height / 2 - h / 2); }
+      else top = clampY(b.top - gap - h);
+    }
+    el.style.left = left + 'px';
+    el.style.top = top + 'px';
+    el.style.transform = 'none';
+  }
+  let popoverBy = null;
+  function popover(open, btn) {
     const el = $('xt-more');
-    if (open === undefined) open = el.hidden;
+    if (open === undefined) open = el.hidden || (btn && btn !== popoverBy);
     el.hidden = !open;
-    $('xt-menu').setAttribute('aria-expanded', open ? 'true' : 'false');
+    popoverBy = open ? btn || null : null;
+    for (const id of MENUS) $(id).setAttribute('aria-expanded', open && $(id) === btn ? 'true' : 'false');
     if (open) {
       // Over the game, the mouse has to be free to use it.
       if (document.pointerLockElement) document.exitPointerLock();
-      if (data) showStorage().catch(() => {});
-      el.focus && el.setAttribute('tabindex', '-1');
-      el.focus && el.focus({ preventScroll: true });
+      placePopover(el, btn);
+      // Its rows fill in (and change its height) a moment later.
+      if (data) showStorage().catch(() => {}).then(() => { if (!el.hidden) placePopover(el, popoverBy); });
+      el.focus({ preventScroll: true });
     }
   }
-  $('xt-menu').onclick = (e) => { e.stopPropagation(); popover(); };
+  for (const id of MENUS) $(id).onclick = (e) => { e.stopPropagation(); popover(undefined, $(id)); };
+  window.addEventListener('resize', () => { if (!$('xt-more').hidden) placePopover($('xt-more'), popoverBy); });
   document.addEventListener('pointerdown', (e) => {
     const el = $('xt-more');
-    if (!el.hidden && !el.contains(e.target) && e.target !== $('xt-menu')) popover(false);
+    if (!el.hidden && !el.contains(e.target) && !(e.target.closest && e.target.closest('.xt-more-btn'))) popover(false);
   }, true);
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !$('xt-more').hidden) { e.stopPropagation(); e.preventDefault(); popover(false); }
+    if (e.key === 'Escape' && !$('xt-more').hidden) { e.stopPropagation(); e.preventDefault(); const by = popoverBy; popover(false); if (by) by.focus(); }
   }, true);
   $('xt-opt-fullscreen').onchange = (e) => store.set('fullscreen', e.target.checked ? 1 : 0);
   // The last problem from an earlier visit, until something replaces it.
-  try { const p0 = JSON.parse(store.get('problem', '') || 'null'); if (p0) $('xt-st-error').textContent = `${p0.text} (${new Date(p0.t).toLocaleString()})`; } catch (e) { /* none */ }
+  try { const p0 = JSON.parse(store.get('problem', '') || 'null'); if (p0) { $('xt-st-error').textContent = `${p0.text} (${new Date(p0.t).toLocaleString()})`; $('xt-st-error').hidden = false; } } catch (e) { /* none */ }
 
   // For the dev console and automated tests: xt.command('map stormkeep')
   window.xt = {

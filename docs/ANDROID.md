@@ -7,7 +7,7 @@ is darkplaces compiled with the NDK.
 
 | | |
 |---|---|
-| Package id | `io.github.dixonsolutions.xonotictouch` |
+| Package id | `io.github.dixonsolutions.godnotic` |
 | App name | Godnotic |
 | Launcher icon | Adaptive `mipmap/icon` (eagle foreground in the 66 dp safe zone, dark background, monochrome layer for themed icons) plus a legacy `icon.png` on the same dark plate, all from `scripts/gen-branding.py` (`branding/android/`) |
 | ABIs | `arm64-v8a`, `armeabi-v7a`, `x86_64` |
@@ -681,7 +681,7 @@ for comments. `-developer` routes the engine's console to logcat (tagged
 `<basedir>/userdata/data/qconsole.log`, which `adb shell cat` can read whole:
 
 ```bash
-adb shell "echo '-xonotic -condebug' > /storage/emulated/0/Android/data/io.github.dixonsolutions.xonotictouch/files/xonotic.args"
+adb shell "echo '-xonotic -condebug' > /storage/emulated/0/Android/data/io.github.dixonsolutions.godnotic/files/xonotic.args"
 ```
 
 ## Known gaps
@@ -711,7 +711,7 @@ whose signature changed, and uninstalling to get around it takes the player's
 data with it.
 
 ```bash
-keytool -genkeypair -v -keystore release.keystore -alias xonotictouch \
+keytool -genkeypair -v -keystore release.keystore -alias godnotic \
   -keyalg RSA -keysize 2048 -validity 10000
 ```
 

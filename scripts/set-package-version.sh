@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 VERSION="${1:?usage: set-package-version.sh <version>}"
 DATE="${PACKAGE_DATE:-$(date -u +%Y-%m-%d)}"
-METAINFO="$ROOT/flatpak/io.github.dixonSolutions.XonoticTouch.metainfo.xml"
+METAINFO="$ROOT/flatpak/io.github.dixonSolutions.Godnotic.metainfo.xml"
 
 test -f "$METAINFO"
 
