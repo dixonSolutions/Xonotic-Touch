@@ -61,15 +61,15 @@ feed and the chat feed each get a band that touches neither.
 
 | Zone | Input | Engine / QC binding |
 |------|-------|---------------------|
-| Left stick | Analog move; floats to the touch-down point | `+forward`, `+back`, `+moveleft`, `+moveright` |
-| Right ~68% | Drag = look | Mouse delta → yaw/pitch (`sensitivity`, `m_pitch`, `m_yaw`) |
+| Left stick | Analog move at the thumb's angle; its centre floats to where the thumb lands and follows it past the rim — see [Feel](#feel-aim--movement) | the frame's move (`touch_move`, added by the engine as the keys' would be); `+forward` ... with `touch_stick_analog 0` |
+| Right ~68% | Drag = look, in degrees per dp of travel with acceleration for quick swipes | the view angles, from `touch_sens_base` (never the mouse's `sensitivity`) |
 | Look zone | Short tap = fire | `+attack` for one frame |
-| Fire | Hold; sliding off keeps firing and steers | `+attack` (+ look delta) |
+| Fire | Hold; a thumb that drags off it turns the view while it keeps firing | `+attack` (+ look) |
 | **ALT** | Hold. Only there while the weapon in hand has a secondary fire it can fire; fades out when it runs dry | `+attack2` — see [Secondary fire](#secondary-fire-alt) |
 | **HOOK** | Hold to hook, let go to release; drag to steer like FIRE. Only there while a hook is to hand | offhand hook (`+hook`) or the Hook weapon — see [Grappling hook](#grappling-hook-hook-button-and-fall-rescue-engine) |
-| **HOP** | Jumps while held; never latches by itself | `+jump` |
+| **HOP** | Jumps while held, again at every landing (that is the bunny-hop); a thumb that drags off it turns the view while it stays held | `+jump` |
 | **KEEP** | Checkbox up and left of DUCK: tap to keep jumping with no finger down (HOP shows the latch), tap again to stop. Drops on death, in menus and with a keyboard | `+jump` held |
-| DUCK | Tap or hold | `+crouch` |
+| DUCK | Tap or hold; drag off it to turn | `+crouch` |
 | **TURN** (by the move stick) | Tap: the view turns round by `touch_turn_angle` (180°) in `touch_turn_time` (0.12 s), always to the right, pitch kept; adds to a look drag in progress | `touch_turn` (engine, `touch_turn.c`) |
 | Weapon strip (right edge) | Tap a weapon to switch to it; drag the grip under the strip to resize it — see [Weapon strip](#weapon-strip) | `impulse N` of the row |
 | WEP | Off by default (the strip switches); `touch_weapon_visible 1` brings the button back | cycle, wheel or 3-slot (`touch_weapon_mode`) |
@@ -180,8 +180,9 @@ game menu keeps its **Spectate** button.
 
 One pill style and one circle style for every control. Primary actions (FIRE,
 the stick) 56 - 64 dp, secondary (the bar, the rocker, ALT, DUCK) 44 - 48 dp,
-pills drawn at least 36 dp tall with a target of 44 dp or more; no touch
-target is under 44 dp whatever `touch_scale` says (`TOUCHDP_*` in
+pills drawn at least 36 dp tall with a target of 48 dp or more; no touch
+target is under 48 dp whatever `touch_scale` says, and the move stick is never
+under 128 dp across (`TOUCHDP_*` in
 `touch_hudmode.h`). The dp comes from the reported dpi, or a guess from the
 screen's shorter side; on a desk with no touchscreen a dp is a pixel. The top
 bar (MENU, SCORE, CHAT) fades to 55 % after `touch_chrome_idle` (6) seconds
@@ -534,23 +535,48 @@ harmlessly.
 
 ### Feel (aim & movement)
 
+The reasons for each default are in [TOUCH_CONTROLS_REVIEW.md](TOUCH_CONTROLS_REVIEW.md).
+The maths is `engine/darkplaces/touch_feel.h`, mirrored for the port's CSQC in
+`qcsrc/client/touch_feel.qh` and `touch_look.qc`.
+
+**Look.** `degrees = dp of finger travel x 0.16 x touch_sens_base x gain`. A dp
+is 1/160 inch (from `vid_touchscreen_ydpi`, or a guess from the screen's short
+side), so the same swipe in centimetres turns the same angle on a phone and a
+tablet: 36 degrees per cm at the default, slow. `gain` is 1 below
+`touch_look_accel_lo` dp/s of finger speed and rises smoothly to
+`1 + touch_look_accel` at `touch_look_accel_hi`: a slow drag is exact, a quick
+swipe turns up to 1.8 times as far. The turn is paid out through a low-pass
+whose cutoff rises with finger speed, and whatever is still owed when the finger
+lifts is paid at once, so no swipe loses travel.
+
 | Cvar | Type | Range | Standard | Maps to / notes |
 |------|------|-------|----------|-----------------|
-| `touch_sens_base` | float | 0.1–50 | `2.8` | Touch look speed. Separate from the mouse's `sensitivity` (Settings → Input, also 0.1–50); presets never set the mouse cvars |
-| `touch_sens_y_mult` | float | 0.5–1.5 | `1.0` | Vertical look multiplier vs horizontal |
+| `touch_sens_base` | float | 0.1–50 | `3.6` | Look (swipe) sensitivity. 2.8, the old default, is the old speed on a 283 dpi 1920 px tablet. Separate from the mouse's `sensitivity`; presets never set the mouse cvars |
+| `touch_sens_y_mult` | float | 0.4–1.5 | `0.85` | Vertical look compared with horizontal |
+| `touch_look_accel` | float | 0–2 | `0.8` | Extra gain for a fast swipe; 0 = none (a swipe turns the same whatever its speed). Settings offers 0, 0.8 and 1.4 |
+| `touch_look_accel_lo` | float | dp/s | `150` | Finger speed below which the gain is 1 (about 2.4 cm/s) |
+| `touch_look_accel_hi` | float | dp/s | `900` | Finger speed from which the gain is full (about 14 cm/s) |
 | `touch_invert_y` | int | 0/1 | `0` | Flip pitch |
-| `touch_look_smoothing` | int | 0–2 | `1` | Fallback averaging when the 1€ filter is off |
-| `touch_look_filter` | int | 0/1 | `1` | 1€ adaptive filter: smooths slow aim, stays lag-free on flicks |
-| `touch_look_fcmin` | float | 0.5–5 | `3.0` | 1€ minimum cutoff (Hz) — lower = smoother at rest, higher = less lag on a slow drag (3.0: at most 16 ms behind on a gentle speed-up, jitter as at 1.5) |
-| `touch_look_beta` | float | 0–0.2 | `0.03` | 1€ speed coefficient — higher = less lag when fast |
-| `touch_look_deadzone_px` | int | 0–20 | `4` | Ignore micro-jitter on glass |
-| `touch_look_max_deg_per_s` | float | | `900` | Clamp against contact-jump spikes, at `touch_sens_base` 2.8; rises in proportion above that, so it never limits sensitivity |
-| `touch_look_escape_carry` | float | 0–1 | `0.5` | Momentum kept when a drag leaves the look zone |
-| `touch_stick_deadzone` | float | 0–0.35 | `0.18` | Analog move drift prevention |
-| `touch_stick_range` | float | 0.5–1.0 | `1.0` | Max deflection → max speed |
-| `touch_gyro_enabled` | int | 0/1 | `0` | SDL sensor → yaw/pitch (optional) |
+| `touch_look_filter` | int | 0–2 | `1` | 0 no smoothing, 1 cutoff rising with finger speed, 2 fixed cutoff (`touch_look_fcmin`) |
+| `touch_look_fcmin` | float | 0.5–20 | `4.0` | Cutoff at rest, Hz — lower = smoother, laggier |
+| `touch_look_beta` | float | 0–0.5 | `0.05` | Cutoff added per dp/s of finger speed (300 dp/s: 19 Hz) |
+| `touch_look_deadzone_px` | int | 0–20 | `4` | Travel that tells a drag from a tap (it is counted once the drag starts) |
+| `touch_look_max_deg_per_s` | float | | `900` | Clamp against contact-jump spikes at `touch_sens_base` 2.8 with no acceleration; rises with both, so it never limits a setting. What it holds back stays owed |
+| `touch_stick_float` | int | 0/1 | `1` | The stick's centre lands under the thumb anywhere in the move zone; 0 = it stays where it is drawn |
+| `touch_stick_follow` | int | 0/1 | `1` | The centre follows a thumb that drags past the rim, so pulling back reverses at once |
+| `touch_stick_analog` | int | 0/1 | `1` | Move at the thumb's angle, speed by deflection; 0 = the four movement keys, eight ways |
+| `touch_stick_deadzone` | float | 0–0.35 | `0.12` | Deflection (of the radius) that does nothing |
+| `touch_stick_run` | float | 0.2–1 | `0.6` | Deflection from which the speed is full; between the dead zone and this it rises linearly |
+| `touch_stick_range` | float | 0.5–1.5 | `1.0` | Scales the radius the deflection is measured against |
+| `touch_gyro_enabled` | int | 0/1 | `0` | Reserved: no sensor is read yet |
 | `touch_gyro_sens` | float | | `0.5` | |
-| `touch_gyro_ads_only` | int | 0/1 | `1` | Gyro only while `+zoom` held |
+| `touch_gyro_ads_only` | int | 0/1 | `1` | |
+
+Full stick deflection gives exactly what the movement keys give
+(`cl_forwardspeed`, `cl_backspeed`, `cl_sidespeed`), so top speed, air control
+and bunny-hopping are the keyboard's; the stick adds the angles in between,
+which is what strafe-jumping steers with. The port's CSQC hands its stick to the
+engine with `touch_move <x> <y>` (it checks `_touch_move_analog` first).
 
 **DPI-normalized sensitivity** — legacy path only, with `touch_look_owns_view 0`, where touch drags reach the engine as pointer motion. With the default `1`, CSQC turns the view from `touch_sens_base` itself and never writes `sensitivity`, `m_pitch` or `m_yaw`:
 
@@ -576,12 +602,14 @@ Engine movement (already in `touch/xonotic.cfg`):
 | Cvar | Type | Values | Default | Notes |
 |------|------|--------|---------|-------|
 | `touch_fire_mode` | int | 0=hold, 1=toggle | `0` | Hold for arena FPS |
-| `touch_fire_drag_look` | int | 0/1 | `1` | Sliding off FIRE keeps firing and steers — one thumb aims and shoots |
+| `touch_fire_drag_look` | int | 0/1 | `1` | A thumb that drags off FIRE (HOOK, NADE) turns the view while the button stays held — one thumb aims and shoots. It adds to any other finger that is looking |
+| `touch_button_drag_look` | int | 0/1 | `1` | The same for ALT, HOP, DUCK and ZOOM: hop or duck and steer with one thumb |
+| `touch_haptics` | int | 0/1 | `1` | A short vibration (`touch_haptics_ms`, 8) when a button takes a finger. Only where the platform lets the engine vibrate (`_touch_haptics_available`; no platform does yet) |
 | `touch_topbar_auto` | int | 0/1 | `1` | The engine lays out the top bar — see [The top bar](#the-top-bar) |
 | `touch_join_dialog_auto` | int | 0–2 | `1` | The join dialog opens by itself for an observer at match start — see [Joining](#joining-xonotics-join-dialog) |
 | `touch_local_autojoin` | int | 0/1 | `1` | A game hosted on this device with no team to pick joins straight away |
 | `touch_fire_slide_release` | int | 0/1 | `0` | Legacy: treat sliding off FIRE as release |
-| `touch_hop_mode` | int | 0=plain, 1=hold HOP to latch, 2=auto-hop while moving, 3=plain HOP + KEEP switch | `3` | Bunny-hop is a *held* key in Xonotic; the latch frees the thumb. Layouts on 1 move to 3 once (`touch_hop_version`) |
+| `touch_hop_mode` | int | 0=plain, 1=hold HOP to latch, 2=auto-hop while moving, 3=plain HOP + KEEP switch | `3` | Bunny-hop is a *held* key in Xonotic: holding HOP jumps again at every landing in every mode, and the thumb holding it can steer (`touch_button_drag_look`). KEEP frees the thumb altogether. Layouts on 1 move to 3 once (`touch_hop_version`) |
 | `touch_hoplock_x` / `_y` / `_size` / `_visible` | float | KEEP switch placement (mode 3) | `0.675` / `0.760` / `0.052` / `1` | Off the thumb's path to HOP, FIRE, DUCK, ALT and the strip, at least its own width clear of their grab margins |
 | `touch_look_tap_fire` | int | 0/1 | `1` | Short tap in the look zone fires |
 | `touch_look_tap_ms` | int | | `200` | Longest tap still counted as a shot |
@@ -1821,6 +1849,35 @@ Pause sub-tabs: Preset · Look · Move · Buttons · Layout · Advanced (export/
 
 ---
 
+### Touch controls settings
+
+Settings > Mobile > **Touch** in the stock menu (`dialog_touch_controls.qc`), and
+Settings > Controls > **Touch controls** where a UI bridge renderer draws the menu
+(`touch_uib_touchcontrols.qc`: bridge rows bound to the cvars, so the native
+renderers get them without code). The same rows in both:
+
+| Row | Cvar | Range in the UI |
+|-----|------|-----------------|
+| Swipe sensitivity | `touch_sens_base` | 1–8 |
+| Up and down, compared with sideways | `touch_sens_y_mult` | 0.4–1.4 |
+| Faster for quick swipes (acceleration) | `touch_look_accel` | Off 0 / On 0.8 / Strong 1.4 |
+| Invert up and down | `touch_invert_y` | |
+| Move stick size | `touch_move_size` | 0.2–0.45 |
+| Stick appears under your thumb | `touch_stick_float` | |
+| Dead zone | `touch_stick_deadzone` | 0–0.35 |
+| Move at any angle | `touch_stick_analog` | |
+| Button size | `touch_scale` | 0.7–1.4 |
+| Opacity | `touch_opacity` | 0.3–1 |
+| Aim while firing (fire and drag) | `touch_fire_drag_look` | |
+| Aim from HOP, DUCK and ALT too | `touch_button_drag_look` | |
+| HOP | `touch_hop_mode` | Hold + KEEP switch 3 / Hold 0 / Jumps while you move 2 (bridge; the stock menu has it on Controls) |
+| Aim assist | `cl_touch_aimassist` | matches on this device, and servers that allow it |
+| Vibrate on button presses | `touch_haptics` | shown only when `_touch_haptics_available` |
+| Preset | `touch_preset` | Standard, Casual, Competitive, Minimal |
+| Left-handed | `touch_handedness` | |
+| Edit layout | `touch_customize 1` | in a match |
+| Reset to defaults | `exec touch_defaults.cfg; exec touch/profiles/standard.cfg; exec touch/profiles/helpers.cfg; touch_topbar_auto 1` | asks first in the bridge menu |
+
 ## Session flow (menus)
 
 Main menu is stock Xonotic (Singleplayer / Multiplayer / Media / Settings / …). Touch-specific UI stays under Settings → Mobile (Controls, HUD, Aim, Auto-shoot, Dynamics).
@@ -2021,7 +2078,7 @@ Build flow: clone repo (integrated `engine/`) → `fetch-sources.sh code` (if ne
 
 | Action | Touch mapping | Setting |
 |--------|---------------|---------|
-| Bunny-hop | Tap KEEP to latch; tap it again to stop | `touch_hop_mode` |
+| Bunny-hop | Hold HOP (it jumps again at every landing) and steer by dragging the same thumb; or tap KEEP to latch | `touch_hop_mode`, `touch_button_drag_look` |
 | Dash | Double-tap move dir (button available but hidden) | `touch_dodge_mode`, `touch_dodge_visible` |
 | Weapon switch | HUD strip; wheel / 3-slot / cycle button optional | `touch_weapon_mode`, `touch_weapon_visible` |
 | Zoom | Hold near fire | `touch_zoom_mode` |
