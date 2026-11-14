@@ -3,7 +3,8 @@
 // data, the engine starts with its default configuration, and the menu that
 // comes up must be the described one (Home with three cards), drawn by the
 // QuakeC renderer. Then real pointer and key events go through the browser:
-// a click on a card, a click on a map tile, Escape, the classic dialog.
+// the welcome's name field (with the engine's keys on a phone), a click on
+// a card, a click on a map tile, Escape, the classic dialog.
 //
 //   tests/web-cache/e2e.sh-style Chrome on --port N, then
 //   node tests/uibridge/web_menu.mjs --port N --url http://127.0.0.1:8080/ --out DIR [--width 1280 --height 720] [--touch]
@@ -52,14 +53,28 @@ const shot = async (name) => {
 // the engine's console log as the page keeps it, and a console command
 const logLines = async () => (await evaluate('window.xt && xt.log ? xt.log() : []')) || [];
 const command = (line) => evaluate(`xt.command(${JSON.stringify(line)})`);
+// What the engine printed after a command. The page keeps only the last 200
+// lines (xt.log), so a count taken before the command stops moving once the
+// tail is full and every line after it looked missing: the checks after the
+// first Escape failed whenever the engine had printed enough by then. A marker
+// echoed just before the command finds its place in the tail instead.
+let markN = 0;
+const run = async (line) => { const m = `XTMARK${++markN}`; await command(`echo ${m}`); await command(line); return m; };
+const after = (lines, m) => { for (let i = lines.length - 1; i >= 0; i--) if (lines[i].includes(m)) return lines.slice(i + 1); return []; };
+const ask = async (line, match, tries = 20) => {
+  const m = await run(line);
+  for (let i = 0; i < tries; i++) {
+    await sleep(150);
+    const l = after(await logLines(), m).find(match);
+    if (l) return l;
+  }
+  return '';
+};
 // the description, read back through the engine: uib_dump prints the snapshot
 const snapshot = async () => {
-  const before = (await logLines()).length;
-  await command('uib_dump');
-  for (let i = 0; i < 40; i++) {
-    await sleep(150);
-    const l = (await logLines()).slice(before).find((x) => x.includes('"t":"snapshot"'));
-    if (l) { try { const j = JSON.parse(l.slice(l.indexOf('{'))); return Object.fromEntries(j.nodes.map((n) => [n.id, n])); } catch (e) { /* cut line */ } }
+  for (let k = 0; k < 2; k++) {
+    const l = await ask('uib_dump', (x) => x.includes('"t":"snapshot"'), 40);
+    try { const j = JSON.parse(l.slice(l.indexOf('{'))); return Object.fromEntries(j.nodes.map((n) => [n.id, n])); } catch (e) { /* cut line: again */ }
   }
   return {};
 };
@@ -86,11 +101,7 @@ const rectOf = async (node) => {
   let r = null;
   for (let i = 0; i < 20 && !r; i++) {
     await sleep(150);
-    const before = (await logLines()).length;
-    await command('echo FOUND $_uib_r_found');
-    await sleep(150);
-    const l = (await logLines()).slice(before).find((x) => x.includes('FOUND '));
-    const m = l && /FOUND ([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+)/.exec(l);
+    const m = /FOUND ([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+)/.exec(await ask('echo FOUND $_uib_r_found', (x) => x.includes('FOUND '), 3));
     if (m) r = m.slice(1).map(Number);
   }
   await command('set _uib_r_find ""');
@@ -122,12 +133,48 @@ check(menu, `the engine's menu program started (${Math.round((Date.now() - t0) /
 await sleep(6000);
 await shot('web-01-home');
 let n = await snapshot();
-const uibDefault = (await (async () => { const b = (await logLines()).length; await command('echo UIBCVAR $menu_touch_uib'); await sleep(400); return (await logLines()).slice(b).find((x) => x.includes('UIBCVAR')) || ''; })());
-{ const b = (await logLines()).length; await command('echo SCALE dpi=$vid_touch_dpi w=$vid_width h=$vid_height cw=$vid_conwidth ch=$vid_conheight sbar=$scr_sbarscale touch=$vid_touchscreen det=$vid_touchscreen_detected insets=[$_touch_safe_insets] dpr=' ); await sleep(400);
-  console.log('     ' + ((await logLines()).slice(b).find((x) => x.includes('SCALE')) || 'no scale line').trim() + (await evaluate('window.devicePixelRatio')) + ' css=' + (await evaluate('innerWidth + "x" + innerHeight'))); }
+const uibDefault = await ask('echo UIBCVAR $menu_touch_uib', (x) => x.includes('UIBCVAR'));
+console.log('     ' + ((await ask('echo SCALE dpi=$vid_touch_dpi w=$vid_width h=$vid_height cw=$vid_conwidth ch=$vid_conheight sbar=$scr_sbarscale touch=$vid_touchscreen det=$vid_touchscreen_detected insets=[$_touch_safe_insets] dpr=',
+  (x) => x.includes('SCALE'))) || 'no scale line').trim() + (await evaluate('window.devicePixelRatio')) + ' css=' + (await evaluate('innerWidth + "x" + innerHeight')));
 check(/UIBCVAR 1/.test(uibDefault), 'menu_touch_uib is 1 without anyone setting it (' + uibDefault.trim() + ')');
 check(JSON.stringify(stack(n)) === '["home"]' && n['home/tiles/sp'] && n['home/tiles/campaign'] && n['home/tiles/mp'] && !n['home/hero'],
   'the menu that comes up is Home with the three cards');
+// a new player first picks a name: the welcome over Home, through real input
+check(JSON.stringify(n.app && n.app.props.modal) === '["welcome"]', 'a new player gets the welcome over Home');
+const wp = await rectOf('welcome/form/name');
+check(!!wp, 'the QuakeC renderer drew the Name field');
+if (wp) await click(wp.x, wp.y);
+await sleep(1200);
+// A phone (a coarse pointer and no fine one) has no keys: a tap on the field
+// brings up the engine's own keys (touch_ui.c), and the field moves above them.
+// They type through the same key events as uib_input. Headless Chrome emulating
+// a phone may still report the host's mouse as a fine pointer; the engine then
+// treats it as a laptop with a touchscreen and takes key events from the page.
+const touchOnly = touch && await evaluate("matchMedia('(any-pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches");
+if (touch && !touchOnly) console.log('note the emulated phone reports a fine pointer too: no screen keys, typing through key events');
+if (touchOnly) {
+  await sleep(600);
+  const kt = Number(((await ask('echo KEYSTOP $_touch_menu_keys_top', (x) => x.includes('KEYSTOP'))).split('KEYSTOP ')[1] || '0').trim());
+  const fr = await rectOf('welcome/form/name');
+  await shot('web-01a-welcome-keys');
+  check(kt > 0 && fr && fr.y / H < kt, `a tap on the Name field brings up the screen keys, with the field above them (keys from ${kt}, field at ${fr && (fr.y / H).toFixed(2)})`);
+  await command('uib_input text Webby');
+} else {
+  for (const ch of 'Webby') {
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: ch, text: ch, unmodifiedText: ch, code: 'Key' + ch.toUpperCase(), windowsVirtualKeyCode: ch.toUpperCase().charCodeAt(0) });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: ch, code: 'Key' + ch.toUpperCase(), windowsVirtualKeyCode: ch.toUpperCase().charCodeAt(0) });
+  }
+}
+await sleep(800);
+await shot('web-01b-welcome-typed');
+n = await snapshot();
+check(n.welcome && n.welcome.props.primary && n.welcome.props.primary.enabled === true, 'typing a name turns Continue on');
+if (touchOnly) await command('uib_input key ENTER'); else await key('Enter', 'Enter', 13);
+await sleep(1500);
+n = await snapshot();
+const named = await ask('echo NAMEIS $_cl_name', (x) => x.includes('NAMEIS'));
+check(JSON.stringify(n.app && n.app.props.modal) === '[]' && /NAMEIS Webby/.test(named), 'Enter saves the name and closes the welcome (' + named.trim() + ')');
+if (touchOnly) check(Number(((await ask('echo KEYSTOP $_touch_menu_keys_top', (x) => x.includes('KEYSTOP'))).split('KEYSTOP ')[1] || '1').trim()) === 0, 'the screen keys go away with the field');
 let p = await rectOf('home/tiles/sp');
 check(!!p, 'the QuakeC renderer drew the Singleplayer card' + (p ? ` at ${Math.round(p.x)},${Math.round(p.y)}` : ''));
 if (p) await click(p.x, p.y);
