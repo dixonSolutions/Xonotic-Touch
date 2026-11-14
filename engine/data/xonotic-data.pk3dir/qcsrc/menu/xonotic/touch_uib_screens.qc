@@ -47,6 +47,18 @@ string UIB_ModeName(string id)
 	return strtoupper(id);
 }
 
+// A name that fits a card without breaking a word.
+string UIB_ModeShort(string id)
+{
+	switch (id)
+	{
+		case "tdm": return _("Team DM");
+		case "ctf": return _("CTF");
+		case "lms": return _("Last Man");
+	}
+	return UIB_ModeName(id);
+}
+
 string UIB_ModeHelp(string id)
 {
 	switch (id)
@@ -456,8 +468,9 @@ void UIB_BuildCreate()
 			{
 				string id = UIB_ModeId(i);
 				UIB_Open(id, "card");
-					uib_s("title", UIB_ModeName(id));
-					uib_s("subtitle", UIB_ModeHelp(id));
+					uib_s("title", UIB_ModeShort(id));
+					uib_s("a11y", UIB_ModeName(id));
+					uib_s("subtitle", (UIB_ModeShort(id) != UIB_ModeName(id)) ? strcat(UIB_ModeName(id), ": ", UIB_ModeHelp(id)) : UIB_ModeHelp(id));
 					uib_s("image", strcat("pk3:gfx/menu/luma/gametype_", id));
 					uib_s("aspect", "1:1");
 					if (id == mode) uib_b("selected", 1);
@@ -644,6 +657,11 @@ void UIB_StartGame(string map, string mode)
 		}
 	}
 	localcmd("\ndisconnect; wait; g_campaign 0\n");
+	// a local game drops its player straight in; a hosted one lets people watch
+	localcmd(lan ? "sv_spectate 1\n" : "sv_spectate 0\n");
+	// ... and a game started here needs no "Welcome, Join or Spectate?" dialog
+	// (the client QuakeC asks for it only while the menu says it has one)
+	cvar_set("_menu_welcome_dialog_available", "0");
 	localcmd(sprintf("maxplayers %d\n", slots));
 	localcmd(sprintf("bot_number %d\n", bots));
 	string w = UIB_VM("create.weapons");
@@ -917,15 +935,34 @@ void UIB_BuildPause()
 		UIB_Close();
 	}
 	UIB_Open("match", "card");
-		uib_s("title", _("Match"));
-		uib_s("subtitle", (gamestatus & GAME_ISSERVER) ? _("Your game") : cvar_string("_uib_server_name"));
+		if (gamestatus & GAME_ISSERVER)
+		{
+			// this device's game: its map and mode, with the map's picture
+			string pm = cvar_string("touch_lan_map");
+			string pmode = cvar_string("touch_lan_gametype");
+			if (cvar("g_campaign") && campaign_entries > 0)
+			{
+				pm = campaign_mapname[uib_camp_index];
+				pmode = campaign_gametype[uib_camp_index];
+			}
+			uib_s("title", UIB_MapTitle(pm));
+			uib_s("subtitle", sprintf(_("%s · %s"), UIB_ModeName(pmode), hosting ? _("your LAN game") : _("your local game")));
+			uib_s("image", strcat("pk3:maps/", pm));
+		}
+		else
+		{
+			uib_s("title", (cvar_string("_uib_server_name") != "") ? cvar_string("_uib_server_name") : _("Match"));
+			uib_s("subtitle", _("Online game"));
+		}
 		uib_s("aspect", "21:9");
 	UIB_Close();
 	UIB_Open("actions", "grid");
 		uib_f("minItem", 200);
 		UIB_Button("resume", _("Resume"), UIB_AS("resume", _("Resume"), "resume", "primary"), "primary");
 		UIB_Button("settings", _("Settings"), UIB_A("settings", _("Settings"), "settings"), "secondary");
-		UIB_Button("spectate", _("Spectate"), UIB_A("spectate", _("Spectate"), "esp"), "secondary");
+		// a local game has its player in it (sv_spectate 0): nothing to watch from outside
+		if (hosting || !(gamestatus & GAME_ISSERVER))
+			UIB_Button("spectate", _("Spectate"), UIB_A("spectate", _("Spectate"), "esp"), "secondary");
 		UIB_Open("disconnect", "button");
 			// the host leaving ends a LAN game for everyone in it
 			uib_s("label", hosting ? _("End the game") : _("Leave match"));
@@ -1181,6 +1218,7 @@ void UIB_Context()
 		uib_lanpopup_wait = time + 3;
 	if (ctx == "menu")
 	{
+		cvar_set("_menu_welcome_dialog_available", "1");   // a server joined next gets its welcome dialog
 		// back from a match: the campaign may have moved on
 		UIB_CampaignLoad();
 		UIB_CampaignRows();
