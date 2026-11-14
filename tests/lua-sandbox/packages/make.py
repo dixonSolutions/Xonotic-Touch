@@ -91,6 +91,7 @@ write("evil-big.zip", base + [("big.lua", b"-" * (1024 * 1024 + 10))])
 write("evil-total.zip", base + [(f"part{i}.lua", b"-" * (1000 * 1024)) for i in range(9)])
 write("evil-many.zip", base + [(f"f{i}.txt", "x") for i in range(300)])
 write("evil-noinit.zip", [("a/init.lua", INIT), ("b/init.lua", INIT)])
+write("evil-nomanifest.zip", [("nomani/init.lua", INIT)])
 write("evil-badid.zip", [("mod.txt", "id: ../x\napi: 2\n"), ("init.lua", INIT)])
 write("evil-api.zip", [("mod.txt", "id: evilapi\napi: 9\n"), ("init.lua", INIT)])
 with open(os.path.join(out, "evil-notzip.zip"), "wb") as f:

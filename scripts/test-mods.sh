@@ -50,6 +50,17 @@ else
 fi
 python3 "$ROOT/scripts/check-mod-docs.py" manifests "$ROOT/touch/lua/examples" "$ROOT/tests/lua-mods" > "$WORK/manifests.txt" 2>&1
 check "every example's mod.txt is valid ($(tail -1 "$WORK/manifests.txt"))" $?
+# the checker must fail an example that uses a tier it does not declare
+mkdir -p "$WORK/undeclared/plugins" "$WORK/undeclared/mods"
+cp -r "$ROOT/touch/lua/examples/plugins/item_placer" "$ROOT/touch/lua/examples/plugins/leaderboard_http" "$WORK/undeclared/plugins/"
+cp -r "$ROOT/touch/lua/examples/mods/panel_clock" "$WORK/undeclared/mods/"
+sed -i 's/^permissions: .*/permissions: standard/' "$WORK/undeclared/plugins/"*/mod.txt
+sed -i '/^permissions:/d' "$WORK/undeclared/mods/panel_clock/mod.txt"
+python3 "$ROOT/scripts/check-mod-docs.py" manifests "$WORK/undeclared" > "$WORK/undeclared.txt" 2>&1
+[ $? != 0 ] && grep -q "item_placer.*xt.ents.spawn (the gamerules tier) without declaring" "$WORK/undeclared.txt" \
+	&& grep -q "leaderboard_http.*xt.http. (the internet tier) without declaring" "$WORK/undeclared.txt" \
+	&& grep -q "panel_clock.*api 3 manifest without permissions:" "$WORK/undeclared.txt"
+check "the manifest check fails an example that uses an undeclared tier, or declares nothing" $?
 python3 "$ROOT/scripts/check-mod-docs.py" links "$ROOT/docs/MOD_COOKBOOK.md" "$ROOT/touch/lua/examples" > "$WORK/links.txt" 2>&1
 check "every cookbook recipe links an example that exists, every example has a README" $?
 "$ROOT/scripts/build-example-mods.sh" "$WORK/a" > "$WORK/build1.txt" 2>&1 && "$ROOT/scripts/build-example-mods.sh" "$WORK/b" > /dev/null 2>&1
@@ -122,6 +133,7 @@ HTTP_PID=$!
 	for m in vampire chat_vote item_placer bot_control; do echo "defer $t \"sv_lua_plugin_permission $m grant gamerules\""; done
 	echo "defer $t \"lua_mods\""
 	echo "defer $t \"sv_lua_plugins\""
+	echo "defer $t \"lua_mod_info panel_clock; lua_mod_info hit_feedback; _cl_lua_mods\""
 	echo "defer $t \"set lua_touch_weapon_nextx 600; set lua_touch_weapon_nexty 300; set lua_quiet_center_words Prepare; set sv_lua_leaderboard_http_url http://127.0.0.1:$HPORT/scores\""
 	echo "defer $t \"set sv_cheats 1; set maxplayers 8; set bot_number 3; set skill 6; set g_warmup 0; set slowmo 2; set g_chat_flood_spl 0; set g_chat_flood_lmax 0; set sv_clientcommand_antispam_time -1; set sv_clientcommand_antispam_count 10000\""
 	t=$(echo "$t + 0.5" | bc)
@@ -197,6 +209,10 @@ if [ -z "${ONLY:-}" ] || [ "${ONLY:-}" = install ]; then
 	has "$LOG1" "panel_clock: reset pressed"; check "panel_clock: a page button runs its callback" $?
 	has "$LOG1" '"id":"panel_clock.settings".*"setting":"lua_panel_clock_size"'; check "panel_clock: manifest settings become a settings page (JSON)" $?
 	has "$LOG1" "_lua_hud_panels.*\"id\":\"clock\""; check "panel_clock: its panel is listed in _lua_hud_panels" $?
+	has "$LOG1" "icon: icon.png \(64x64\)"; check "panel_clock: its icon is read through the mod-image path (64x64)" $?
+	has "$LOG1" "^  icon: none"; check "hit_feedback: no icon, none shown (no placeholder)" $?
+	grep -a "^panel_clock	" "$LOG1" | grep -aq "	mod:panel_clock/icon.png"; check "panel_clock: the icon is in its _cl_lua_mods row" $?
+	! grep -a "^hit_feedback	" "$LOG1" | grep -aq "mod:"; check "hit_feedback: no icon field in its _cl_lua_mods row" $?
 	has "$LOG1" "touch_weapon: button pressed"; check "touch_weapon: a touch button press reaches the mod" $?
 	has "$LOG1" "touch_weapon: long press"; check "touch_weapon: hold runs every frame" $?
 	has "$LOG1" "touch_weapon: button released"; check "touch_weapon: release" $?
