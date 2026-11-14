@@ -292,11 +292,35 @@ qbool TouchNet_ServerRejoin(netconn_t *conn, lhnetsocket_t *mysocket, lhnetaddre
 	conn->outgoing_unreliable_sequence = 0;
 	conn->sendMessageLength = 0;
 	conn->receiveMessageLength = 0;
+	conn->packetsReceived = 0; // TouchNet_ServerDuplicate: nothing on this connection yet
 	SZ_Clear(&conn->message);
 	conn->message.overflowed = false;
 	if (touch_net_trace.integer)
 		Con_Printf("NETTRACE sv %.3f rejoin %s\n", Sys_DirtyTime() * 1000.0, conn->address);
 	return TouchNet_ServerAccept(conn, mysocket, peeraddress, connectstring);
+}
+
+// A client still in its signon connects again from the same address. Stock
+// DarkPlaces answers with a duplicate accept and keeps the connection: right
+// when the first accept was lost (the client has no connection yet, so it
+// has sent nothing on this one), wrong when the client started over (it
+// timed out or joined again during the loading screen, and its disconnect
+// did not arrive): the same stale sequences as a rejoin (TouchNet_ServerRejoin),
+// so the join hangs until the server times it out. A client that has sent
+// anything on this connection has started over: the connection starts over
+// and the signon begins again with a new serverinfo.
+qbool TouchNet_ServerDuplicate(client_t *client, lhnetsocket_t *mysocket, lhnetaddress_t *peeraddress, const char *connectstring)
+{
+	netconn_t *conn = client->netconnection;
+	qbool sent;
+	if (!conn || !conn->packetsReceived)
+		return TouchNet_ServerAccept(conn, mysocket, peeraddress, connectstring); // the same window again
+	Con_Printf("%s joined again during its signon: starting its connection over\n", conn->address);
+	sent = TouchNet_ServerRejoin(conn, mysocket, peeraddress, connectstring);
+	if (!sent)
+		NetConn_WriteString(mysocket, "\377\377\377\377accept", peeraddress);
+	SV_SendServerinfo(client);
+	return true;
 }
 
 /*
@@ -1051,6 +1075,25 @@ void TouchNet_Disconnecting(qbool kicked, const char *reason)
 		dpsnprintf(line, sizeof(line), "Disconnected by %s: %s", addr, reason);
 		TN_SetState(line);
 	}
+}
+
+// connect (or a join from the menu) to the server this client is connected
+// to, in the game or still joining. Stock DarkPlaces keeps the connection
+// until the new one is accepted and only then sends its disconnect: the
+// server sees the connect first (and takes it for a rejoin of the slot),
+// then the old connection's disconnect, and drops the player who just
+// joined again; the new connection hangs until it times out. Leaving first
+// sends the disconnect ahead of the connect, so the server frees the slot
+// and the connect gets a fresh one.
+void TouchNet_ConnectAgain(const char *address)
+{
+	lhnetaddress_t to;
+	if (cls.state != ca_connected || !cls.netcon || sv.active || cls.demoplayback || !address)
+		return;
+	if (!LHNETADDRESS_FromString(&to, address, 26000) || LHNETADDRESS_Compare(&to, &cls.netcon->peeraddress))
+		return;
+	Con_DPrintf("Joining %s again: leaving it first\n", address);
+	CL_Disconnect();
 }
 
 static void TouchNet_ReconnectCancel_f(cmd_state_t *cmd)

@@ -2,11 +2,13 @@
 # How long a join takes when the server leaves the first N connect requests
 # unanswered (tests/net/drop_connects.py), with the failed-join back-off
 # (net_connect_backoff, touch_joinfail.c) on and off. The back-off waits out
-# a stock server's 5 s connect flood block after three challenges answered
-# with a connect and no accept; it must not make the common case, one or two
-# lost connects, slower than stock DarkPlaces' one-second retries.
+# a stock server's 5 s connect flood block after four challenges answered
+# with a connect and no accept; it must not make lost connects (up to three
+# in a row) slower than stock DarkPlaces' one-second retries, and it must
+# get through the flood block ("flood": a second device behind the same
+# address joined just before), which stock never does.
 #
-#   BASEDIR=<basedir> scripts/test-net-connect.sh [N...]     (default 0 1 2 3)
+#   BASEDIR=<basedir> scripts/test-net-connect.sh [N...]     (default 0 1 2 3 4 flood)
 # ENGINE (default build/bin/xonotic), LIBS.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -22,7 +24,7 @@ export SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/godnotic-connect.XXXXXX")"
 trap 'jobs -p | xargs -r kill 2> /dev/null; rm -rf "$WORK"' EXIT
 fail=0
-[ $# -gt 0 ] || set -- 0 1 2 3
+[ $# -gt 0 ] || set -- 0 1 2 3 4 flood
 
 join_time() { # drops backoff -> seconds from the first getchallenge to the accept, or "none"
 	local n=$1 b=$2 u="$WORK/u-$1-$2"
@@ -44,11 +46,13 @@ for n in "$@"; do
 	a=$(join_time "$n" 0)
 	b=$(join_time "$n" 1)
 	printf '| %s | %s s | %s s |\n' "$n" "$a" "$b"
-	# with 0-2 drops the back-off must not add anything (a second's jitter allowed)
-	if [ "$n" -le 2 ] && [ "$a" != none ] && [ "$b" != none ] && awk -v a="$a" -v b="$b" 'BEGIN{exit !(b > a + 1.0)}'; then
+	# up to 3 drops the back-off must not add anything (half a second's jitter allowed)
+	if [ "$n" != flood ] && [ "$n" -le 3 ] && [ "$a" != none ] && [ "$b" != none ] && awk -v a="$a" -v b="$b" 'BEGIN{exit !(b > a + 0.5)}'; then
 		echo "FAIL $n dropped: the back-off made the join slower ($b s against $a s)"; fail=1
 	fi
 	[ "$b" = none ] && { echo "FAIL $n dropped: never accepted with the back-off"; fail=1; }
+	# the flood block: stock never gets in, the back-off does
+	[ "$n" = flood ] && [ "$a" != none ] && echo "note flood: the stock timing got in too ($a s): the fake block did not hold"
 done
 [ $fail = 0 ] && echo "connect timing: ok" || echo "connect timing: FAILED"
 exit $fail

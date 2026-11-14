@@ -14,6 +14,7 @@
 struct netconn_s;
 struct lhnetsocket_s;
 struct lhnetaddress_s;
+struct client_s;
 
 void TouchNet_Init(void);
 
@@ -33,6 +34,14 @@ qbool TouchNet_ServerAccept(struct netconn_s *conn, struct lhnetsocket_s *mysock
 // server: a client that was in the game connects again from the same
 // address: its connection starts over (true = the accept was sent here)
 qbool TouchNet_ServerRejoin(struct netconn_s *conn, struct lhnetsocket_s *mysocket, struct lhnetaddress_s *peeraddress, const char *connectstring);
+
+// client: connect to the server we are connected to: leave it first (cl_main.c)
+void TouchNet_ConnectAgain(const char *address);
+
+// server: a client still in its signon connects again from the same
+// address: the same window again if the accept was lost, a fresh connection
+// and signon if it started over (true = the accept was sent here)
+qbool TouchNet_ServerDuplicate(struct client_s *client, struct lhnetsocket_s *mysocket, struct lhnetaddress_s *peeraddress, const char *connectstring);
 
 // reliable channel (netconn.c)
 // NetConn_SendUnreliableMessage: queue conn->message and keep the window

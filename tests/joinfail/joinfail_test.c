@@ -44,7 +44,8 @@ int main(void)
 	CHECK(!strcmp(TouchJoinFail_KindName(TOUCHJOINFAIL_BUSY), "busy") && !strcmp(TouchJoinFail_KindName(TOUCHJOINFAIL_FILES), "files"), "kind names");
 	// the back-off: once, after three ignored connects, and longer than the server's 5 s block
 	CHECK(!TouchJoin_ShouldBackOff(2, 0), "two ignored connects: keep asking");
-	CHECK(TouchJoin_ShouldBackOff(3, 0), "three: back off");
+	CHECK(!TouchJoin_ShouldBackOff(3, 0), "three: keep asking, as fast as stock");
+	CHECK(TouchJoin_ShouldBackOff(4, 0), "four: back off");
 	CHECK(!TouchJoin_ShouldBackOff(9, 1), "only once per join");
 	CHECK(TOUCHJOIN_BACKOFF_SECONDS > 5.0, "the pause outlasts net_connectfloodblockingtimeout");
 

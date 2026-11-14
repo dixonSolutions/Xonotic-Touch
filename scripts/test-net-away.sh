@@ -16,9 +16,23 @@
 #   loss-freeze60         freeze60 with 2% loss
 #   download              an HTTP pack download (2 MB/s cap) stopped for 10 s
 #                         midway: it completes and the file is intact
+#   reconnect-away        frozen past the server's timeout, joined again by
+#                         itself, then away: spectator, then a clean leave
+#   svfreeze-away         the same after the *server* froze 36 s (the client
+#                         rejoins a slot the server still holds)
+#   away-freeze           away first, then frozen past the timeout
+#   mapchange-away        away across a map change
+#   manual-away           away, then the player's own connect again
+#   connect-again         connect to the same server while in the game (the
+#                         menu's join on the server you are on): back in the
+#                         game within seconds, no hang until a timeout
+#   restart-signon        the client starts its connection over during the
+#                         signon and its disconnect is lost: the server starts
+#                         that connection over too and the join completes
 #
 #   BASEDIR=<Godnotic basedir> scripts/test-net-away.sh [CASE...]
-# ENGINE, SERVER (default build/bin/xonotic, engine/darkplaces/darkplaces-dedicated), LIBS, OUT.
+# ENGINE, SERVER (default build/bin/xonotic, engine/darkplaces/darkplaces-dedicated), LIBS, OUT;
+# NET_TRACE=1|2 logs the packets of a join (2: all) on both sides (touch_net_trace).
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENGINE="${ENGINE:-$ROOT/build/bin/xonotic}"
@@ -61,10 +75,10 @@ start() {
 	printf 'seta touch_profile_done 1\nseta _cl_name "Bench"\n' > "$WORK/$name/cl/data/autoexec.cfg"
 	# shellcheck disable=SC2086
 	insv "$SERVER" -dedicated -xonotic -basedir "$BASEDIR" -userdir "$WORK/$name/sv" +set port 26000 +set sv_public 0 \
-		+set bot_number 2 +set minplayers 0 $sargs +map "$MAP" +exec svpoll.cfg > "$WORK/$name/server.log" 2>&1 & SVPID=$!
+		+set bot_number 2 +set minplayers 0 ${NET_TRACE:++set touch_net_trace $NET_TRACE} $sargs +map "$MAP" +exec svpoll.cfg > "$WORK/$name/server.log" 2>&1 & SVPID=$!
 	for _ in $(seq 1 300); do grep -q "Server spawned" "$WORK/$name/server.log" 2> /dev/null && break; sleep 0.1; done
 	"$ENGINE" -xonotic -basedir "$BASEDIR" -userdir "$WORK/$name/cl" +vid_fullscreen 0 +vid_width 480 +vid_height 300 \
-		+set _touch_assets_ready 1 +exec away.cfg > "$WORK/$name/client.log" 2>&1 & CLPID=$!
+		+set _touch_assets_ready 1 ${NET_TRACE:++set touch_net_trace $NET_TRACE} +exec away.cfg > "$WORK/$name/client.log" 2>&1 & CLPID=$!
 }
 finish() { # the client quits by itself; the server goes with it
 	wait "$CLPID" 2> /dev/null
@@ -233,11 +247,46 @@ EOF
 			for _ in $(seq 1 60); do [ "$(count "$WORK/manual-away/server.log" "^Bench connected")" -ge 2 ] && break; sleep 0.5; done
 			check_away manual-away "after a manual reconnect"
 			finish ;;
+		connect-again) # the player joins the server they are on again
+			start connect-again "$JOIN\ndefer 120 quit" ""
+			playing connect-again || { finish; return; }
+			sleep 2
+			t0=$(date +%s.%N)
+			echo "connect 10.88.0.2:26000" > "$WORK/connect-again/cl/data/poll.cfg"; sleep 0.6; : > "$WORK/connect-again/cl/data/poll.cfg"
+			for _ in $(seq 1 60); do [ "$(count "$WORK/connect-again/server.log" "^Bench connected")" -ge 2 ] && break; sleep 0.25; done
+			t1=$(date +%s.%N)
+			sleep 3
+			kill "$CLPID" 2> /dev/null
+			finish
+			if [ "$(count "$WORK/connect-again/server.log" "^Bench connected")" -ge 2 ] && awk -v a="$t0" -v b="$t1" 'BEGIN{exit !(b - a < 10)}'; then
+				ok "connect-again: back in the game $(awk -v a="$t0" -v b="$t1" 'BEGIN{printf "%.1f", b - a}') s after the connect"
+			else
+				bad "connect-again: not back within 10 s ($(grep 'Bench" dropped' "$WORK/connect-again/server.log" | tr '\n' ' '))"
+			fi
+			grep -aq "Connection timed out\|Lost connection" "$WORK/connect-again/client.log" && bad "connect-again: the new connection hung until a timeout" || ok "connect-again: no timeout" ;;
+		restart-signon) # connect again during the signon while nothing reaches the server (the disconnect is lost)
+			# _rs connects again once, however often poll.cfg runs (the
+			# client may be stuck in a long map-loading frame meanwhile)
+			start restart-signon "alias _rs \"echo RESTART; connect 10.88.0.2:26000; alias _rs echo\"\nconnect 10.88.0.2:26000\ndefer 90 quit" ""
+			wait_for "$WORK/restart-signon/client.log" "Connection established" 30 || { bad "restart-signon: no connection"; finish; return; }
+			sleep 0.5 # the server has heard from this connection (acks, keepalives)
+			tc qdisc replace dev cl0 root netem loss 100%
+			c0=$(count "$WORK/restart-signon/server.log" "^Bench connected")
+			echo "_rs" > "$WORK/restart-signon/cl/data/poll.cfg"
+			wait_for "$WORK/restart-signon/client.log" "^RESTART" 30 || bad "restart-signon: the client did not run the restart"
+			sleep 1.5
+			tc qdisc del dev cl0 root
+			[ "$c0" = 0 ] || echo "note restart-signon: the first signon had reached spawn before the restart"
+			if wait_for "$WORK/restart-signon/server.log" "joined again during its signon" 15; then ok "restart-signon: the server saw the restart and started the connection over"; else bad "restart-signon: the server answered with a duplicate accept on the old connection"; fi
+			for _ in $(seq 1 60); do [ "$(count "$WORK/restart-signon/server.log" "^Bench connected")" -gt "$c0" ] && break; sleep 0.5; done
+			if [ "$(count "$WORK/restart-signon/server.log" "^Bench connected")" -gt "$c0" ]; then ok "restart-signon: the join completed after the restart"; else bad "restart-signon: the join hangs after the restart ($(grep 'Bench" dropped' "$WORK/restart-signon/server.log" | tr '\n' ' '))"; fi
+			kill "$CLPID" 2> /dev/null
+			finish ;;
 		*) bad "unknown case $1" ;;
 	esac
 }
 
-[ $# -gt 0 ] || set -- freeze5 freeze-signon away newaddress timeout download freeze60 loss-freeze60 reconnect-away svfreeze-away away-freeze mapchange-away manual-away
+[ $# -gt 0 ] || set -- freeze5 freeze-signon away newaddress timeout download freeze60 loss-freeze60 reconnect-away svfreeze-away away-freeze mapchange-away manual-away connect-again restart-signon
 for c in "$@"; do run "$c"; done
 [ $fail = 0 ] && echo "all away tests passed" || echo "some away tests FAILED"
 exit $fail
