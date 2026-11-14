@@ -108,3 +108,77 @@ for f in files:
         assert zipfile.ZipFile(os.path.join(outs[0], f)).testzip() is None, f
 print(f"map split reproducible: {len(split['maps'])} map packs, core {len(core)} files, extra {len(extra)}")
 PY
+
+# A split set (docs/PHONE_ASSETS.md, "Split set") is staged as it is: twice
+# gives the same manifest and blobs; the manifest carries what the page needs
+# (first play, each map's packs with its own pack last, kinds, priorities);
+# no .bsp but in a map's own pack; and a set with a stand-in .bsp in its
+# core, or a pack that is not the one its manifest lists, is refused.
+python3 -I "$ROOT/tests/web-cache/make-split-set.py" "$tmp/set" >/dev/null
+for n in 1 2; do
+    bash "$ROOT/scripts/stage-web-data.sh" --web "$tmp/set" --slim "$tmp/slim1" --out "$tmp/set-out$n" >/dev/null
+done
+[ "$(cat "$tmp/set-out1/data/web-data.env")" = "$(cat "$tmp/set-out2/data/web-data.env")" ] || { echo "FAIL: split set manifests differ" >&2; exit 1; }
+diff -r "$tmp/set-out1/data/blobs" "$tmp/set-out2/data/blobs" >/dev/null || { echo "FAIL: split set blobs differ" >&2; exit 1; }
+ROOT="$ROOT" SLIM="$tmp/slim1" python3 -I - "$tmp/set" "$tmp/set-out1/data" "$tmp/bad" <<'PY'
+import hashlib, io, json, os, shutil, sys, zipfile
+src, d, bad = sys.argv[1:4]
+data = json.load(open(os.path.join(src, 'godnotic-data.json')))
+p = json.load(open(os.path.join(d, 'profiles.json')))
+assert list(p['profiles']) == ['web'], p  # no stock pk3s: no full profile
+m = json.load(open(os.path.join(d, p['profiles']['web']['manifest'])))
+files = {f['name']: f for f in m['files']}
+assert m['format'] == 5 and m['set'] == data['set'] and m['defaultMap'] == 'alpha', m.get('set')
+by = {q['name']: q for q in data['packs']}
+core = [q['install_as'] for q in data['packs'] if q['kind'] == 'core']
+assert m['firstPlay'] == [by[n]['install_as'] for n in data['first_play'] if by[n]['kind'] != 'core'], m['firstPlay']
+group = {'core': 'core', 'map': 'map', 'shared': 'map', 'music': 'music', 'detail': 'extra', 'extras': 'extra'}
+for q in data['packs']:
+    f = files[q['install_as']]
+    assert (f['group'], f['kind'], f['priority'], f['size'], f['sha256'], f['stock']) == \
+        (group[q['kind']], q['kind'], q['priority'], q['size'], q['sha256'], True), f
+    blob = b''.join(open(os.path.join(d, 'blobs', h + '.bin'), 'rb').read() for h in f['chunks'])
+    assert hashlib.sha256(blob).hexdigest() == q['sha256'], 'staged byte for byte'
+    for n in zipfile.ZipFile(io.BytesIO(blob)).namelist():
+        assert not n.endswith('.bsp') or f.get('map') == n[5:-4], f'{n} in {f["name"]}'
+for name, v in data['maps'].items():
+    need = m['maps'][name]
+    assert need == [by[n]['install_as'] for n in v['needs'] if by[n]['kind'] != 'core'], need
+    assert need[-1] == by[v['pack']]['install_as'] and files[need[-1]]['map'] == name, 'own pack last'
+assert [f['name'] for f in m['files'] if f.get('kind')] == [q['install_as'] for q in sorted(data['packs'], key=lambda q: q['priority'])]
+assert not [n for n in files if '-0core' in n or '-0extra' in n], 'no pack of the map split made here'
+legacy = json.load(open(os.path.join(d, 'manifest.json')))
+assert {f['name'] for f in legacy['files']} == set(files), 'pages before content addressing get every file'
+
+def stage(name, change):
+    """A copy of the set with one thing wrong must not stage."""
+    import subprocess
+    dst = os.path.join(bad, name)
+    shutil.copytree(src, dst)
+    change(dst)
+    r = subprocess.run(['bash', os.path.join(os.environ['ROOT'], 'scripts/stage-web-data.sh'), '--web', dst,
+                        '--slim', os.environ['SLIM'], '--out', os.path.join(bad, name + '-out')], capture_output=True, text=True)
+    assert r.returncode != 0, f'{name}: staged, but should be refused'
+    return r.stderr
+
+def standin(dst):
+    path = os.path.join(dst, core[0])
+    with zipfile.ZipFile(path, 'a') as z:
+        z.writestr('maps/beta.bsp', b'')
+    q = json.load(open(os.path.join(dst, 'godnotic-data.json')))
+    b = open(path, 'rb').read()
+    for x in q['packs']:
+        if x['install_as'] == core[0]:
+            x['size'], x['sha256'] = len(b), hashlib.sha256(b).hexdigest()
+    json.dump(q, open(os.path.join(dst, 'godnotic-data.json'), 'w'))
+err = stage('standin', standin)
+assert "maps/beta.bsp" in err and "own pack only" in err, err
+
+def damaged(dst):
+    with open(os.path.join(dst, by['shared-1']['install_as']), 'r+b') as f:
+        f.seek(100)
+        f.write(b'x')
+err = stage('damaged', damaged)
+assert 'not the pack the manifest lists' in err, err
+print(f"split set staged as it is: {len(data['packs'])} packs, set {m['set']}, first play {len(m['firstPlay']) + len(core)} packs; stand-in .bsp and a damaged pack refused")
+PY

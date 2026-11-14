@@ -1,13 +1,26 @@
 # Web loader tests
 
-Four layers, from fast to real:
+Five layers, from fast to real:
 
 | | What | Needs | Time |
 |---|---|---|---|
-| `scripts/test-web-cache.sh` | `cache.test.mjs`: the store (`web/store.js`) and the page's loader flow (`web/shell.js`) in node against an in-memory OPFS, Cache API and data host; `test-web-cache-repro.sh`: staging and the map split are reproducible | node 22, python3 | seconds (CI runs it) |
+| `scripts/test-web-cache.sh` | `cache.test.mjs`: the store (`web/store.js`) and the page's loader flow (`web/shell.js`) in node against an in-memory OPFS, Cache API and data host; `test-web-cache-repro.sh`: staging and the map split are reproducible, a split set is staged as it is; then `split.sh` where a browser is installed | node 22, python3 | seconds (CI runs it), plus `split.sh` |
+| `split.sh` | the split set (progressive download) in headless Chromium and Firefox: the page's scripts as they are, a made-up split set of 1.6 MB (`make-split-set.py`) staged by `scripts/stage-web-data.sh`, a slow local server, and a stand-in engine (`stub-engine.js`). First visit (what was requested before the engine started), the rest arriving with `fs_mountpack` and reading back right, a kill mid-download, `map` and `dataWant` for a map that is not in yet, a browser holding the older layout | Chromium, Firefox | 1 min per engine |
 | `browser.sh` | `storage.html`: the store against the browser's own OPFS, the browser killed and restarted between steps (Chromium, Firefox); with `--site`: the page in Chromium (persist switch, eviction, damage, new deploy, the app offer, an existing folder) | Chromium, Firefox; a built page for part 2 | 1 min, 5 with a page |
 | `e2e.sh` | one visit in headless GPU Chromium over CDP: download, menu, bot matches, heap and renderer memory, throttling | a built page, Chromium | a minute |
 | `matrix.sh` | every scenario in every engine this host can run (below) | a built page, Chromium, Firefox, Xvfb | 15-30 min per engine |
+
+`split.sh` needs no built page and no game data: a made-up set could not
+start the real engine, so `stub-engine.js` stands in for `godnotic.js`. It
+gives the page the file system calls it makes (a lazy file's `read()` is
+`web/lazyfs.js`'s own, so the synchronous reads from OPFS are real), keeps
+a search path like the engine's (packs found at start in name order, the
+last name first; `fs_mountpack` adds at the end and, like the engine, does
+not see a file younger than its once-a-second directory listing), and
+runs `map` through `Module.xt.needMap` before loading the map's `.bsp` and
+every file that lists. `split-init.js` holds what the steps evaluate (and
+a WebGL context for headless Firefox, which has none). The real engine on
+the real split set is `e2e.sh`, below.
 
 `lazyfs.html` checks the synchronous reads in place (`web/lazyfs.js`) in a
 real browser: serve the repository root and evaluate `lazyfsTest()`.
@@ -33,6 +46,7 @@ display. Both scripts refuse to start while `WAYLAND_DISPLAY` or a desktop
 ## Running
 
 ```bash
+env -u WAYLAND_DISPLAY -u DISPLAY -u XAUTHORITY tests/web-cache/split.sh                     # the split set, both engines
 env -u WAYLAND_DISPLAY -u DISPLAY -u XAUTHORITY tests/web-cache/browser.sh                   # the store, both engines
 # the page too, and an existing folder: DIR holds stock pk3s under their
 # stock names (xonotic-<date>-data.pk3, -maps.pk3, -music.pk3, ...)

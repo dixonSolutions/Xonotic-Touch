@@ -94,7 +94,7 @@ const opfsNames = (prof) => [...(prof.root.dirs.get('xt-data-v1') || new FakeDir
 /** Files -> manifest (format 3) and blobs, served with Range support. */
 function makeHost(fileList, { chunk = CHUNK } = {}) {
   const blobs = new Map();
-  const files = fileList.map(({ name, path, bytes, group = 'core', stock = false, map, hosted = true }) => {
+  const files = fileList.map(({ name, path, bytes, group = 'core', stock = false, map, hosted = true, kind, priority }) => {
     const chunks = [];
     for (let off = 0; off < bytes.length; off += chunk) {
       const piece = bytes.subarray(off, off + chunk);
@@ -105,6 +105,7 @@ function makeHost(fileList, { chunk = CHUNK } = {}) {
     const f = { name, path: path || 'data/' + name, size: bytes.length, sha256: sha(bytes), rev: sha(bytes).slice(0, 16), group, chunks };
     if (stock) f.stock = true;
     if (map) f.map = map;
+    if (kind) { f.kind = kind; f.priority = priority; }
     if (!hosted) { f.hosted = false; for (const h of chunks) blobs.delete(h); }
     return f;
   });
@@ -173,6 +174,7 @@ function makeProfiles(spec, { chunk = CHUNK } = {}) {
     const h = hosts[name];
     const doc = { format: 4, chunk, profile: name, files: h.files };
     if (spec[name].defaultMap) doc.defaultMap = spec[name].defaultMap;
+    if (spec[name].split) Object.assign(doc, spec[name].split, { format: 5 });
     const text = JSON.stringify(doc);
     const id = sha(Buffer.from(text)).slice(0, 20);
     host.extra.set(`m/${id}.json`, text);
@@ -217,7 +219,7 @@ Canvas.prototype.getContext = () => ({ RENDERER: 1, MAX_TEXTURE_SIZE: 2, getPara
  * Load web/store.js and web/shell.js the way the page does, in a fresh
  * context sharing `prof` (storage) with earlier loads: a reload.
  */
-function loadPage(prof, host, { search = '', engine = true, persist = false, astc = false, persistHangs = false, build = '', ua = 'test', platform = '', relatedApps, lazyfs = null } = {}) {
+function loadPage(prof, host, { search = '', engine = true, persist = false, astc = false, persistHangs = false, build = '', ua = 'test', platform = '', relatedApps, lazyfs = null, lazy = false } = {}) {
   const elements = new Map();
   const element = (id) => {
     if (!elements.has(id)) elements.set(id, id === 'canvas' ? new Canvas(id) : new Element(id));
@@ -228,6 +230,7 @@ function loadPage(prof, host, { search = '', engine = true, persist = false, ast
   if (build) config.build = build;
   element('xt-config').textContent = JSON.stringify(config);
   const commands = [];
+  const dataStatus = []; // "touch_data_status ..." lines, apart from the other commands
   const shown = [];
   const statuses = [];
   const mounted = new Map();
@@ -283,6 +286,16 @@ function loadPage(prof, host, { search = '', engine = true, persist = false, ast
     confirm: () => true,
     WebAssembly: {},
   };
+  // lazy: reads in place work here; a mounted file is its stored chunks.
+  if (lazy) {
+    lazyfs = {
+      BLOCK: 1 << 20, stats: {}, cacheBytes: 0,
+      probe: async () => true,
+      create: (FS, path, size, blobs) => mounted.set(path, { size, blobs }),
+      remove: (FS, path) => mounted.delete(path),
+      prefetch: async () => 0, tail: async () => 0, trim() {}, takeTouched: () => ({}),
+    };
+  }
   if (lazyfs) context.XTLazyFS = lazyfs;
   context.window = context;
   context.self = context;
@@ -306,15 +319,18 @@ function loadPage(prof, host, { search = '', engine = true, persist = false, ast
       unlink: (p) => mounted.delete(p),
     };
     context.Module.IDBFS = {};
-    context.Module.ccall = (name, ret, types, args) => { if (name === 'xt_web_command') commands.push(args[0]); };
-    context.Module.callMain = () => { context.__started = true; };
+    context.Module.ccall = (name, ret, types, args) => {
+      if (name !== 'xt_web_command') return;
+      if (args[0].startsWith('touch_data_status ')) dataStatus.push(args[0]); else commands.push(args[0]);
+    };
+    context.Module.callMain = () => { context.__started = true; context.__startLog = host.log.length; };
     context.Module._xt_web_hook_maps = () => 2;
     context.Module._xt_web_refit = () => {};
     context.Module._xt_web_autosave = () => 0;
     context.Module._xt_web_save = () => {};
     setTimeout(() => context.Module.onRuntimeInitialized(), 0);
   }
-  return { context, element, shown, statuses, mounted, commands, page: context.__page };
+  return { context, element, shown, statuses, mounted, commands, dataStatus, page: context.__page };
 }
 
 const until = async (cond, what, ms = 20000) => {
@@ -624,7 +640,8 @@ const splitFiles = (seed = 0) => [
   { name: 'music.pk3', bytes: fill(8000, 27 + seed), stock: true, group: 'music' },
 ];
 const fileOf = (host, name) => host.files.find((f) => f.name === name);
-const fetchedNames = (host) => blobFetches(host).map((l) => {
+const mbText = (n) => (n >= 1e9 ? (n / 1e9).toFixed(2) + ' GB' : Math.round(n / 1e6) + ' MB');
+const fetchedNames = (host, upTo = Infinity) => blobFetches({ log: host.log.slice(0, upTo) }).map((l) => {
   const h = l.path.split('/').pop().slice(0, 64);
   for (const fs of Object.values(host.byProfile || { x: { files: host.files } })) for (const f of fs.files) if (f.chunks.includes(h)) return f.name;
   return h;
@@ -1010,6 +1027,209 @@ await test('a full set missing its unhosted part falls back to the standard prof
   assert.equal(p.page.state.profile, 'web');
   assert.ok(!fetchedNames(host).includes('xonotic-data.pk3'), 'the data pk3 it had is reused');
   assert.ok(!host.log.some((l) => /404/.test(l.path)), 'never asks for unhosted data');
+});
+
+// ------------------------------------------------- the split set (progressive)
+
+// A split set as scripts/stage-web-data.sh stages it (format 5): this
+// build's files, a core pack, shared packs, one pack per map, music, detail
+// and extras, with what a first start waits for and what each map needs.
+const N = (n) => `godnotic-t-${n}.pk3`;
+const setFiles = (seed = 0) => {
+  const pack = (name, kind, priority, size, extra = {}) => Object.assign({
+    name: N(name), bytes: fill(size, 40 + priority + seed), stock: true, kind, priority,
+    group: { core: 'core', map: 'map', shared: 'map', music: 'music' }[kind] || 'extra',
+  }, extra);
+  return [
+    { name: 'zz-progs.pk3', bytes: fill(3000, 1) },
+    { name: 'xonotic.cfg', bytes: fill(100, 2) },
+    pack('core', 'core', 0, 9000),
+    pack('shared-1', 'shared', 1, 2000),
+    pack('map-stormkeep', 'map', 2, 4000, { map: 'stormkeep' }),
+    pack('music', 'music', 3, CHUNK + 5000),
+    pack('shared-2', 'shared', 4, 2500),
+    pack('map-boil', 'map', 5, 6000, { map: 'boil' }),
+    pack('map-dance', 'map', 6, CHUNK + 7, { map: 'dance' }),
+    pack('detail', 'detail', 7, 3000),
+    pack('extras', 'extras', 8, 7000),
+  ];
+};
+const setSpec = (seed = 0, files = setFiles(seed)) => ({
+  files, defaultMap: 'stormkeep',
+  split: {
+    set: 'test-' + seed, firstPlay: [N('shared-1'), N('map-stormkeep')],
+    maps: { stormkeep: [N('shared-1'), N('map-stormkeep')], boil: [N('shared-1'), N('shared-2'), N('map-boil')], dance: [N('shared-2'), N('map-dance')] },
+  },
+});
+const FIRST = ['zz-progs.pk3', 'xonotic.cfg', N('core'), N('shared-1'), N('map-stormkeep')];
+const REST = [N('music'), N('shared-2'), N('map-boil'), N('map-dance'), N('detail'), N('extras')];
+const sizeOf = (host, names) => host.files.filter((f) => names.includes(f.name)).reduce((n, f) => n + f.size, 0);
+const lastStatus = (p) => p.dataStatus[p.dataStatus.length - 1] || '';
+const complete = (p) => until(() => / state complete /.test(lastStatus(p)), 'the whole set');
+const mountpacks = (p) => p.commands.filter((c) => c.startsWith('fs_mountpack ')).map((c) => c.slice(13));
+const STATUS = /^touch_data_status state (fetching|paused|waiting|error|complete|legacy) done_kb \d+ total_kb \d+( want [A-Za-z0-9_.+-]+ want_done_kb \d+ want_total_kb \d+)?( message "[^"]*")?$/;
+
+await test('split set: the game starts after the first-play packs; the rest follows while it runs, announced with fs_mountpack', async () => {
+  const prof = profile();
+  const host = makeProfiles({ web: setSpec() });
+  const p = loadPage(prof, host, { lazy: true });
+  await until(() => p.shown.includes('xt-download'), 'dialog');
+  assert.equal(p.element('xt-dl-size').textContent, mbText(sizeOf(host, FIRST)), 'the question names the first-play size');
+  assert.equal(p.page.state.dlRest, sizeOf(host, REST), 'and knows what follows in the background');
+  p.element('xt-dl-go').onclick();
+  await until(() => p.context.__started, 'the game starts');
+  const before = [...new Set(fetchedNames(host, p.context.__startLog))];
+  assert.deepEqual(before.filter((n) => n.startsWith('godnotic') || n.startsWith('zz') || n.endsWith('.cfg')).sort(), FIRST.slice().sort(),
+    'requested before the start: the first-play files and nothing else ' + JSON.stringify(before));
+  assert.equal(fetchedNames(host, p.context.__startLog).length, FIRST.length, 'one request per first-play chunk');
+  assert.ok(/ state fetching /.test(p.dataStatus[0]), 'the engine hears "fetching" at once: ' + p.dataStatus[0]);
+  await complete(p);
+  for (const l of p.dataStatus) assert.match(l, STATUS);
+  assert.deepEqual(mountpacks(p), REST, 'each pack that landed was announced, in priority order (music first)');
+  assert.ok(!p.commands.some((c) => c.startsWith('fs_rescan')), 'never fs_rescan');
+  for (const n of FIRST.concat(REST)) assert.ok(p.mounted.has('/game/data/' + n), n + ' mounted');
+  const total = Math.round(host.files.reduce((n, f) => n + f.size, 0) / 1024);
+  assert.equal(lastStatus(p), `touch_data_status state complete done_kb ${total} total_kb ${total}`);
+  await until(() => p.page.state.pruned, 'prune, once the set is whole');
+  // A reload: everything mounted before the engine starts, nothing asked.
+  host.log.length = 0;
+  const q = loadPage(prof, host, { lazy: true });
+  await until(() => q.context.__started, 'warm start');
+  assert.equal(host.log.length, 0, 'no requests');
+  assert.equal(q.mounted.size, FIRST.length + REST.length, 'everything mounted before the engine starts');
+  await until(() => q.dataStatus.length, 'status');
+  assert.ok(/ state complete /.test(q.dataStatus[0]) && !q.commands.length, 'complete, no fs_mountpack');
+});
+
+await test('split set: a reload mid-download carries on; a map\'s own pack waits for the packs it needs', async () => {
+  const prof = profile();
+  const host = makeProfiles({ web: setSpec() });
+  // The background stops at the dance pack's second chunk.
+  const dance = fileOf(host, N('map-dance'));
+  host.hold = (h) => h === dance.chunks[1];
+  const p = loadPage(prof, host, { lazy: true });
+  await firstVisit(p);
+  await until(() => opfsNames(prof).includes('c-' + dance.chunks[0]), 'dance, first chunk');
+  await until(() => mountpacks(p).length >= 3, 'the packs before it announced');
+  assert.deepEqual(mountpacks(p), [N('music'), N('shared-2'), N('map-boil')], 'what landed so far');
+  p.context.Module.xt.mapsCommand('pause'); // the page goes away
+  await until(() => / state paused /.test(lastStatus(p)), 'paused');
+  // The browser dropped a shared pack meanwhile: boil's own pack is here, shared-2 is not.
+  prof.root.dirs.get('xt-data-v1').files.delete('c-' + fileOf(host, N('shared-2')).chunks[0]);
+  host.hold = null;
+  host.log.length = 0;
+  const q = loadPage(prof, host, { lazy: true });
+  await until(() => q.context.__started, 'starts with no question');
+  assert.ok(!q.shown.includes('xt-download') && !q.shown.includes('xt-progress'), 'no download page: first play is here');
+  assert.equal(host.log.slice(0, q.context.__startLog).length, 0, 'nothing fetched before the start');
+  assert.ok(q.mounted.has('/game/data/' + N('music')), 'what was stored is mounted at the start');
+  assert.ok(!q.mounted.has('/game/data/' + N('map-boil')), 'but not a map\'s own pack while a pack it needs is missing');
+  await complete(q);
+  assert.deepEqual([...new Set(fetchedNames(host))], [N('shared-2'), N('map-dance'), N('detail'), N('extras')], 'only what was missing');
+  assert.deepEqual(mountpacks(q), [N('shared-2'), N('map-boil'), N('map-dance'), N('detail'), N('extras')], 'shared-2, then the maps that waited for it');
+  assert.equal(blobFetches(host).filter((l) => l.path.includes(dance.chunks[0])).length, 0, 'the chunk that was stored is not fetched again');
+});
+
+await test('split set: a map asked for jumps the queue (needMap runs the command again; dataWant does not)', async () => {
+  const prof = profile();
+  const host = makeProfiles({ web: setSpec() });
+  const music = fileOf(host, N('music'));
+  host.hold = (h, off) => h === music.chunks[0] && off >= (1 << 20); // the background sits in the music
+  const p = loadPage(prof, host, { lazy: true });
+  await firstVisit(p);
+  await until(() => blobFetches(host).some((l) => l.path.includes(music.chunks[0])), 'music started');
+  host.log.length = 0;
+  const xt = p.context.Module.xt;
+  // stormkeep is here: warmed, then run.
+  assert.equal(xt.needMap('stormkeep', 'map "stormkeep"'), 0);
+  await until(() => p.commands.includes('map "stormkeep"'), 'stormkeep');
+  assert.equal(xt.needMap('stormkeep', 'map "stormkeep"'), 1);
+  assert.equal(host.log.length, 0, 'nothing fetched for a map that is here');
+  // boil is not: its packs first, with the card, then the command again.
+  assert.equal(xt.needMap('boil', 'changelevel "boil"'), 0);
+  await until(() => p.commands.includes('changelevel "boil"'), 'boil');
+  assert.deepEqual(p.commands.slice(-3), ['fs_mountpack ' + N('shared-2'), 'fs_mountpack ' + N('map-boil'), 'changelevel "boil"'], 'mounted with fs_mountpack, own pack last, then the command');
+  assert.deepEqual([...new Set(fetchedNames(host))].slice(0, 2), [N('shared-2'), N('map-boil')], 'boil\'s packs were fetched next');
+  assert.ok(p.dataStatus.some((l) => / want boil want_done_kb \d+ want_total_kb 8$/.test(l)), 'the engine heard about the wanted map ' + JSON.stringify(p.dataStatus));
+  assert.ok(!/ want /.test(lastStatus(p)), 'and that it is done');
+  assert.equal(p.element('xt-map').hidden, true, 'card gone');
+  assert.equal(xt.needMap('boil', 'changelevel "boil"'), 1, 'then it goes ahead');
+  // dance, asked for by QuakeC: fetched next, mounted, no command.
+  const n = p.commands.length;
+  await until(() => blobFetches(host).filter((l) => l.path.includes(music.chunks[0])).length >= 1, 'music again');
+  assert.equal(xt.dataWant('dance'), 1);
+  assert.equal(xt.dataWant('nosuchmap'), 0);
+  await until(() => p.commands.includes('fs_mountpack ' + N('map-dance')), 'dance mounted');
+  assert.deepEqual(p.commands.slice(n), ['fs_mountpack ' + N('map-dance')], 'only the mount: the engine runs its own pending command');
+  assert.ok(p.dataStatus.some((l) => / want dance /.test(l)));
+  assert.ok(!p.mounted.has('/game/data/' + N('extras')), 'the rest is still to come');
+  // The rest goes on afterwards.
+  xt.mapsCommand('pause');
+  host.hold = null;
+  xt.mapsCommand('resume');
+  await complete(p);
+  assert.deepEqual(mountpacks(p).sort(), REST.slice().sort());
+});
+
+await test('split set in memory (no reads in place): only the music follows by itself; a map\'s packs come when it is played', async () => {
+  const prof = profile();
+  const host = makeProfiles({ web: setSpec() });
+  const p = loadPage(prof, host);
+  await firstVisit(p);
+  await until(() => p.context.__started, 'started');
+  await until(() => / state paused /.test(lastStatus(p)), 'idle');
+  assert.deepEqual([...new Set(fetchedNames(host))].sort(), FIRST.concat(N('music')).sort(), 'first play and the music, nothing else');
+  assert.ok(p.mounted.has('/game/data/' + N('core')) && !p.mounted.has('/game/data/' + N('map-stormkeep')), 'in memory: map packs mount when played');
+  const xt = p.context.Module.xt;
+  assert.equal(xt.needMap('stormkeep', 'map "stormkeep"'), 0);
+  await until(() => p.commands.includes('fs_rescan\nmap "stormkeep"'), 'stormkeep');
+  assert.ok(p.mounted.has('/game/data/' + N('shared-1')) && p.mounted.has('/game/data/' + N('map-stormkeep')));
+  assert.equal(xt.needMap('stormkeep', 'map "stormkeep"'), 1);
+  assert.equal(xt.needMap('dance', 'map "dance"'), 0);
+  await until(() => p.commands.includes('fs_rescan\nmap "dance"'), 'dance');
+  assert.ok(p.mounted.has('/game/data/' + N('shared-2')) && p.mounted.has('/game/data/' + N('map-dance')), 'dance and what it needs');
+  assert.ok(!p.mounted.has('/game/data/' + N('shared-1')) && !p.mounted.has('/game/data/' + N('map-stormkeep')), 'the last map\'s packs are dropped');
+  assert.ok(!fetchedNames(host).includes(N('extras')) && !fetchedNames(host).includes(N('map-boil')), 'nothing else was fetched');
+});
+
+await test('a new set while the old layout is whole: it keeps playing, the new set arrives in the background, the next start uses it', async () => {
+  // The layout before the split set: xonotic-data, a maps core, a pack per map.
+  const old = makeProfiles({ web: { files: splitFiles(), defaultMap: 'stormkeep' } });
+  const prof = profile();
+  await firstVisit(loadPage(prof, old, { lazy: true }));
+  const oldChunks = old.files.filter((f) => f.stock).flatMap((f) => f.chunks);
+  // A deploy with the split set (no chunk in common) and new game code.
+  const files = setFiles();
+  files[0].bytes = fill(3000, 77);
+  const host = makeProfiles({ web: setSpec(0, files) });
+  const p = loadPage(prof, host, { lazy: true, search: '?small=1000' });
+  await until(() => p.context.__started, 'starts');
+  assert.ok(!p.shown.includes('xt-download'), 'no question');
+  assert.deepEqual(fetchedNames(host, p.context.__startLog), ['zz-progs.pk3', 'xonotic.cfg'], 'before the start: only this build\'s own files (new game code, a config)');
+  assert.ok(p.mounted.has('/game/data/maps-dance.pk3') && p.mounted.has('/game/data/xonotic-data.pk3'), 'the old packs run');
+  assert.ok(![...p.mounted.keys()].some((k) => k.includes('godnotic-t-')), 'none of the new set is mounted');
+  assert.equal(p.context.Module.xt.needMap('dance', 'map "dance"'), 0);
+  await until(() => p.commands.includes('map "dance"'), 'every map it had still plays');
+  await complete(p);
+  assert.equal(mountpacks(p).length, 0, 'the new set is stored, not mounted');
+  assert.deepEqual([...new Set(fetchedNames(host))].sort(), FIRST.concat(REST).sort(), 'the whole new set arrived');
+  await until(() => p.page.state.pruned, 'prune');
+  for (const h of oldChunks) assert.ok(opfsNames(prof).includes('c-' + h), 'old chunks are kept while that set runs');
+  // The next start: the new set, whole, with no request.
+  host.log.length = 0;
+  const q = loadPage(prof, host, { lazy: true, search: '?small=1000' });
+  await until(() => q.context.__started, 'next start');
+  assert.equal(host.log.length, 0, 'no requests');
+  assert.ok(q.mounted.has('/game/data/' + N('map-dance')) && !q.mounted.has('/game/data/maps-dance.pk3'), 'the split set runs');
+  // An old layout with a hole cannot run: the new set's first play, with the question.
+  const prof2 = profile();
+  await firstVisit(loadPage(prof2, old, { lazy: true }));
+  prof2.root.dirs.get('xt-data-v1').files.delete('c-' + fileOf(old, 'maps-boil.pk3').chunks[0]);
+  const same = makeProfiles({ web: setSpec() }); // the game code it already has
+  const r = loadPage(prof2, same, { lazy: true, search: '?small=1000' });
+  await until(() => r.shown.includes('xt-download'), 'question');
+  assert.equal(r.element('xt-dl-title').textContent, 'Finish downloading Godnotic');
+  assert.equal(r.page.state.dlRest, sizeOf(same, REST), 'for the first-play packs; the rest follows');
 });
 
 console.log(`web cache: ${passed} tests passed`);

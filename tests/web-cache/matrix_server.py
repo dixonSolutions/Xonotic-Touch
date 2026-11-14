@@ -8,6 +8,8 @@ GET /__ctl?root=DIR      serve another build from now on (a "deploy")
 GET /__ctl?fault=MODE    MODE: none, 5xx:RATE (blob requests answer 503 at
                          that rate), drop:RATE (the body stops half way),
                          offline (every request is refused)
+GET /__ctl?rate=BYTES    blobs are sent at BYTES a second per connection
+                         (0: as fast as they go)
 GET /__ctl?reset=1       zero the counters
 GET /__stats             {"blobRequests", "blobBytes", "root", "fault"}
 """
@@ -19,6 +21,7 @@ import random
 import socket
 import sys
 import threading
+import time
 import urllib.parse
 import http.server
 
@@ -27,7 +30,7 @@ spec = importlib.util.spec_from_file_location("serve", os.path.join(here, "..", 
 serve = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(serve)
 
-STATE = {"root": "", "fault": "none", "blobRequests": 0, "blobBytes": 0}
+STATE = {"root": "", "fault": "none", "rate": 0, "blobRequests": 0, "blobBytes": 0}
 LOCK = threading.Lock()
 
 
@@ -65,6 +68,8 @@ class Handler(serve.Handler):
                     STATE["root"] = os.path.abspath(q["root"][0])
                 if "fault" in q:
                     STATE["fault"] = q["fault"][0]
+                if "rate" in q:
+                    STATE["rate"] = int(q["rate"][0])
                 if "reset" in q:
                     STATE["blobRequests"] = STATE["blobBytes"] = 0
                 return self._json(dict(STATE))
@@ -94,9 +99,18 @@ class Handler(serve.Handler):
             def write(s, b):
                 if getattr(self, "_drop", False) and s.n > (1 << 20):
                     raise ConnectionResetError("dropped")
-                s.out.write(b)
+                blob = self.path.startswith("/data/blobs/")
+                rate = STATE["rate"] if blob else 0
+                if rate:
+                    # A slow connection: 8 KiB at a time.
+                    for i in range(0, len(b), 8192):
+                        piece = b[i:i + 8192]
+                        s.out.write(piece)
+                        time.sleep(len(piece) / rate)
+                else:
+                    s.out.write(b)
                 s.n += len(b)
-                if self.path.startswith("/data/blobs/"):
+                if blob:
                     with LOCK:
                         STATE["blobBytes"] += len(b)
 

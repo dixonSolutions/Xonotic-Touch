@@ -497,21 +497,23 @@ void Sys_SDL_Init(void)
 
 }
 
-// ---- Maps on demand (docs/WEB.md, "Maps on demand") ----------------------
+// ---- Maps on demand (docs/WEB.md, "Progressive download") ----------------
 //
-// The page starts with the core data and fetches a map's pack when the map
-// is asked for. The menu still lists every map: the core pack has a
-// stand-in .mapinfo (its title says how much there is to download) and an
-// empty .bsp for each, and the map's own pack replaces both once mounted.
+// The page starts the game on part of the data (the core, the first map)
+// and fetches the rest while it runs (docs/DATA_FETCH.md), so a map's packs
+// may not be in yet when the map is asked for. The menu lists every map
+// from its .mapinfo, which the core has; the .bsp comes with the map's own
+// pack, which the page mounts last of the packs the map needs.
 //
 // "map" and "changelevel" (the menu, the console, map rotation and votes,
 // and QuakeC's changelevel builtin all go through them) ask the page first.
-// When the pack is not mounted, the page fetches it with a progress screen
-// and the command returns without doing anything; once the pack is stored
-// and mounted, the page runs "fs_rescan" and the same command again. So the
-// engine never waits on the network: no Asyncify, nothing changed in the
-// loading code, and the commands are wrapped here instead of edited in
-// upstream sv_ccmds.c.
+// When the map's packs are not mounted, the page fetches them with a
+// progress card and the command returns without doing anything; once they
+// are stored and mounted, the page runs "fs_mountpack" for each (or
+// "fs_rescan", where it keeps the packs in memory) and the same command
+// again. So the engine never waits on the network: no Asyncify, nothing
+// changed in the loading code, and the commands are wrapped here instead of
+// edited in upstream sv_ccmds.c.
 
 int xt_web_hook_maps(void);
 

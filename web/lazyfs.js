@@ -237,6 +237,30 @@
     return n;
   }
 
+  /**
+   * Read the last `bytes` of a file (a pk3's directory, which the engine
+   * reads when it mounts the pack) into the cache, asynchronously and
+   * within the cache's limit. Returns the blocks read.
+   */
+  async function tail(path, bytes) {
+    const f = files.get(path);
+    if (!f || !f.size) return 0;
+    const last = Math.floor((f.size - 1) / BLOCK);
+    let n = 0;
+    for (let k = Math.max(0, Math.floor((f.size - bytes) / BLOCK)); k <= last; k++) {
+      const key = f.id + ':' + k;
+      if (cache.has(key)) continue;
+      const c = Math.floor(k * BLOCK / f.chunk);
+      const start = k * BLOCK - c * f.chunk;
+      const end = Math.min(start + BLOCK, f.size - c * f.chunk);
+      const buf = new Uint8Array(await f.blobs[c].slice(start, end).arrayBuffer());
+      if (files.get(path) !== f) return n; // removed meanwhile
+      cachePut(key, buf);
+      n++;
+    }
+    return n;
+  }
+
   /** Shrink the cache to `limit` bytes (least recently used out first). */
   function trim(limit) {
     cacheLimit = limit;
@@ -277,7 +301,7 @@
   }
 
   global.XTLazyFS = {
-    create, remove, probe, prefetch, trim, takeTouched, stats, BLOCK,
+    create, remove, probe, prefetch, tail, trim, takeTouched, stats, BLOCK,
     get cacheBytes() { return cacheBytes; },
     setCacheLimit(n) { cacheLimit = n; },
   };
