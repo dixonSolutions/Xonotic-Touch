@@ -582,6 +582,44 @@ version, What's new and the GitHub links, and it says when the changelog names
 a newer build than the one installed. Download, Install and Skip are disabled
 rather than offered when they cannot work.
 
+### Updates under AndySU
+
+On an AndySU host (every release APK) `AppUpdater` stands down and AndySU delivers the
+updates: signed payloads that apply live or at the next start, and a rollback when a new
+build does not report healthy within the watchdog (`andysu.toml`: `watchdog_ms`). Settings →
+Updates then shows, in this order: one line saying so, the running version with its channel
+and ABI, the download's progress bar (bytes, speed, time left), a staged release with
+**Apply now**, a found release that waits (for Wi-Fi, or because automatic updates are off)
+with **Download now** (it asks first on a metered connection), **Check now** with when the
+last check ran and how it ended, and three switches: **Automatic updates**, **Update on Wi-Fi
+only** and **Apply live**. Linux, the web and an APK without an AndySU host never get these
+rows: the menu shows them only when `andysu-update-status.txt` says AndySU is active.
+
+`AndySUBridge` serves the screen through the same kind of file pair as `UpdateBridge`
+(`andysu-update-status.txt`, `andysu-update-request.txt`; the format is in
+`touch_update_util.qh`), and `AndySUState` holds the decisions (JVM tests:
+`scripts/test-android-updates.sh`). What comes from where (host API level 3):
+
+| Shown or switched | Source | Old hosts |
+| --- | --- | --- |
+| Running version | host: `HostApi.version()` | every level |
+| Staged release | host: `UpdateClient.status()` (`state: staged`, `release`), and `core("state").pending.id` after a restart (the status starts over at idle) | every level |
+| Download progress | app: the host only says `downloading` and `download_bytes`; the bridge watches `no_backup/andysu/blobs/sha256/*.part` grow (and a finished part become its blob) once a second | every level |
+| Last checked | app: the host keeps no time; an `UpdateClient.Listener` (a reflective proxy) notes when a status that ends a check arrives, kept in preferences | polled status changes without a listener |
+| Automatic updates | host: `UpdateClient.setMode` (`auto` / `check_only`), persisted | level 3; hidden below |
+| Wi-Fi only | app: the host's own rule (`network` in its frozen config) is `any`, so the app moves the host to `check_only` while `Net.kind()` is metered | level 3; hidden below |
+| Apply live | host: `UpdateClient.setApplyPolicy` (`live` / `next_start`), persisted | hidden when the method is missing |
+| Notification | app: `UpdateNotice`, on the "Game downloads" channel, while a download runs | every level |
+
+The mode the bridge keeps the host in: automatic off is `check_only` (background checks
+still find releases; nothing downloads or applies unasked, **Check now** fetches with
+`download_only` and **Apply now** applies). Automatic with Wi-Fi only is `auto` on an
+unmetered connection and `check_only` on a metered one, which also stops a download that
+was running when Wi-Fi went away. When the game leaves the screen the app no longer sees the
+network and the host's periodic job runs on any network, so it leaves `check_only` behind,
+except while a release is staged: the host promotes a staged release at the next start only
+in `auto` mode. Wi-Fi only is on by default, like the game data download.
+
 ### What survives an update
 
 Everything the player has. An update is an ordinary same-signature upgrade, so

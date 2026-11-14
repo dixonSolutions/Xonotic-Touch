@@ -73,4 +73,6 @@
     <string name="update_status_paused">The download stopped part-way. It carries on from there.</string>
     <string name="update_status_waiting_wifi">Waiting for Wi-Fi to download the update. Press Download to use mobile data.</string>
     <string name="update_installing">Installing update…</string>
+    <!-- The system notification while AndySU downloads an update (UpdateNotice). -->
+    <string name="update_notice_title">Downloading Godnotic %1$s</string>
 </resources>

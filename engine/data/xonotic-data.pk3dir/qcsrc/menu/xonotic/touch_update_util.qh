@@ -35,7 +35,33 @@ const string TOUCH_UPDATE_STATUS_FILE = "touch/update-status.txt";
  */
 const string TOUCH_UPDATE_REQUEST_FILE = "touch/update-request.txt";
 
-/** AndySU owns payload updates separately from the APK updater above. */
+/** AndySU owns payload updates separately from the APK updater above
+ *  (AndySUBridge.java writes the status, the menu writes one request token).
+ *
+ *  Status lines, in order:
+ *   1  format version, 1
+ *   2  state: unavailable (no AndySU host), incompatible (a host without the update API),
+ *      idle, checking, uptodate, available (found, not downloading: see hold), downloading,
+ *      staged, applying, shell-update (needs a new APK), deferred, error
+ *   3  installed (running) version
+ *   4  the release the state is about (available, downloading, staged)
+ *   5  download percent 0-100
+ *   6  one-line message (an error, a reason)
+ *   7  automatic updates "on" / "off"
+ *   8  the host's effective update mode (auto, download_only, check_only, off)
+ *  then key=value lines, each optional (menus that read only eight lines ignore them):
+ *   staged, available     release versions
+ *   auto, wifi, live      on / off / na (na: this host cannot change it; hide the switch)
+ *   net                   unmetered / metered / offline
+ *   hold                  why an available release waits: wifi, auto, or absent
+ *   size                  bytes the release needs to download
+ *   done, total, speed, eta   download progress: bytes, bytes, bytes per second, seconds (-1 unknown)
+ *   checked_min, checked_result   minutes since the last check, and how it ended (a state)
+ *   api, channel, abi     host API level, release channel, the app's ABI
+ *
+ *  Requests: check | download (fetch an available release on this connection) | apply |
+ *  auto-on | auto-off | wifi-on | wifi-off | live-on | live-off
+ */
 const string TOUCH_ANDYSU_STATUS_FILE = "touch/andysu-update-status.txt";
 const string TOUCH_ANDYSU_REQUEST_FILE = "touch/andysu-update-request.txt";
 const float TOUCH_ANDYSU_FORMAT = 1;
@@ -128,3 +154,13 @@ string TouchAndySU_statusText();
 string TouchUpdate_runningVersion();
 string TouchUpdate_buildLine();
 bool TouchAndySU_request(string token);
+/** One of the key=value lines after line 8, "" when absent. Valid after TouchAndySU_read(). */
+string TouchAndySU_extra(string key);
+/** Re-read the status file; true when anything in it changed since the last call. */
+bool TouchAndySU_changed();
+/** True on an install where AndySU delivers updates (a host with the update API). */
+bool TouchAndySU_active();
+/** "12.3 MB": decimal units, like Android's file sizes. */
+string TouchAndySU_bytes(float n);
+/** "45 s", "3 min", "1 h 5 min". */
+string TouchAndySU_duration(float seconds);

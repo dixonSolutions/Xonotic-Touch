@@ -1,6 +1,6 @@
 {
  "name": "settings-updates",
- "description": "Settings > updates.",
+ "description": "Settings > updates on an AndySU install (Android): what delivers updates, the version and channel, a staged release with Apply now, a newer one downloading, Check now, and the three switches. Elsewhere only the version and What is new.",
  "generated": "engine",
  "caps": {
   "nodes": [],
@@ -301,25 +301,125 @@
      "subtitle": "What is new"
     },
     "children": [
+     "settings/split/updates/andysu",
      "settings/split/updates/version",
-     "settings/split/updates/how"
+     "settings/split/updates/build",
+     "settings/split/updates/download",
+     "settings/split/updates/staged",
+     "settings/split/updates/check",
+     "settings/split/updates/checked",
+     "settings/split/updates/auto",
+     "settings/split/updates/wifi",
+     "settings/split/updates/live"
     ]
+   },
+   {
+    "id": "settings/split/updates/andysu",
+    "type": "text",
+    "props": {
+     "body": "Updates are delivered by AndySU, the updater built into Godnotic. Every update is signed, and if a new version does not start properly, AndySU goes back to the one that worked.",
+     "style": "caption"
+    },
+    "children": []
    },
    {
     "id": "settings/split/updates/version",
     "type": "text",
     "props": {
-     "body": "Version git",
+     "body": "Version 1.2.360",
      "style": "title"
     },
     "children": []
    },
    {
-    "id": "settings/split/updates/how",
+    "id": "settings/split/updates/build",
     "type": "text",
     "props": {
-     "body": "Updates arrive through your app store, Flatpak or the web page; the game data updates itself.",
+     "body": "Channel live-arm64 · arm64-v8a",
      "style": "caption"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/updates/download",
+    "type": "progress",
+    "props": {
+     "label": "Downloading version 1.2.362",
+     "value": 0.349999994,
+     "detail": "14.0 MB of 40.0 MB · 2.1 MB/s · 13 s left"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/updates/staged",
+    "type": "card",
+    "props": {
+     "title": "Version 1.2.361 is ready",
+     "subtitle": "Downloaded and checked. It applies the next time Godnotic starts, or now (the game may restart).",
+     "icon": "update",
+     "primary": {
+      "id": "updates.apply",
+      "label": "Apply now",
+      "icon": "check",
+      "style": "primary"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/updates/check",
+    "type": "button",
+    "props": {
+     "label": "Check now",
+     "action": {
+      "id": "updates.check",
+      "label": "Check now",
+      "icon": "refresh"
+     },
+     "style": "tonal",
+     "enabled": false
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/updates/checked",
+    "type": "text",
+    "props": {
+     "body": "Last checked just now: an update is available",
+     "style": "caption"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/updates/auto",
+    "type": "switch",
+    "props": {
+     "label": "Automatic updates",
+     "bind": "vm:updates.auto",
+     "help": "Download updates and apply them by themselves. Off: Godnotic only tells you when there is one.",
+     "value": true
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/updates/wifi",
+    "type": "switch",
+    "props": {
+     "label": "Update on Wi-Fi only",
+     "bind": "vm:updates.wifi",
+     "help": "Downloads wait for Wi-Fi or another unmetered network",
+     "value": true
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/updates/live",
+    "type": "switch",
+    "props": {
+     "label": "Apply live",
+     "bind": "vm:updates.live",
+     "help": "Swap an update in while you play when it can. Off: updates apply the next time Godnotic starts.",
+     "value": true
     },
     "children": []
    },

@@ -73,6 +73,17 @@ class Engine:
         self.diffs = []
         self.sources = {}
 
+    def andysu_status(self, text):
+        """Write (or, with None, remove) the status AndySUBridge.java publishes on Android."""
+        p = os.path.join(self.ud, "data", "data", "touch", "andysu-update-status.txt")
+        if text is None:
+            if os.path.exists(p):
+                os.remove(p)
+            return
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w") as f:
+            f.write(text)
+
     def send(self, m):
         self.mid += 1
         m = dict({"uib": 1, "id": self.mid}, **m)
@@ -228,6 +239,18 @@ def fixture(e, name, desc, rows=True, steps=None, base=None):
     return f
 
 
+# Settings > Updates as an AndySU install on Android shows it (touch_update_util.qh has the
+# format): 1.2.360 running, 1.2.361 staged, 1.2.362 downloading, every switch available.
+ANDYSU_STATUS = "\n".join([
+    "1", "downloading", "1.2.360", "1.2.362", "35", "", "on", "auto",
+    "staged=1.2.361", "auto=on", "wifi=on", "live=on", "net=unmetered", "api=3",
+    "channel=live-arm64", "abi=arm64-v8a", "size=40000000",
+    "done=14000000", "total=40000000", "speed=2100000", "eta=13",
+    "checked_min=0", "checked_result=available", ""])
+ANDYSU_DESC = ("Settings > updates on an AndySU install (Android): what delivers updates, the version and channel, "
+               "a staged release with Apply now, a newer one downloading, Check now, and the three switches. "
+               "Elsewhere only the version and What is new.")
+
 VOLATILE = {"session", "id", "re", "engine"}
 
 
@@ -318,8 +341,12 @@ def run(args):
         steps += [{"delay": 0.5, "msg": e.take_diff(), "note": "fov 100"}]
         out["seq-setting"] = fixture(e, "seq-setting", "Field of view changed twice: value diffs from the engine.", rows=False, steps=renumber(base, steps), base=base)
         for sec in ("audio", "game", "input", "touch", "esp", "player", "privacy", "updates", "data", "menu", "mods"):
+            if sec == "updates":
+                e.andysu_status(ANDYSU_STATUS)
             e.ev(ev="value", node="settings/split", value=sec)
-            out[f"settings-{sec}"] = fixture(e, f"settings-{sec}", f"Settings > {sec}.")
+            out[f"settings-{sec}"] = fixture(e, f"settings-{sec}", ANDYSU_DESC if sec == "updates" else f"Settings > {sec}.")
+            if sec == "updates":
+                e.andysu_status(None)
         # a mod page (registered at start through uib_modpage, the path the Lua API shares)
         e.ev(ev="value", node="settings/split/mods/tabs", value="pages")
         out["settings-mods-pages"] = fixture(e, "settings-mods-pages", "Settings > Mods > Pages from mods.")
