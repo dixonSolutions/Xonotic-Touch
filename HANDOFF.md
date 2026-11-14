@@ -1,23 +1,52 @@
 # Handoff: progressive data download (`work/datafetch`)
 
 Scratch clone `~/.cache/godnotic-work/datafetch`. The branch is `origin/main`
-(e7c8e9d) with `origin/work/data` (8dbd0e9) merged in, plus this work. The
-contract every client implements is `docs/DATA_FETCH.md`. Nothing is
-published; nothing ran on a device.
+(e7c8e9d) with `origin/work/data` (8dbd0e9) and `origin/work/integration`
+(44e0595, release candidate 1) merged in, plus this work. The contract every
+client implements is `docs/DATA_FETCH.md`. Nothing is published. Android ran
+in CI (assembleRelease) and in the JVM tests only, not on a device (round 2:
+another agent was using the tablet's test package at the time).
+
+## Round 2 (2026-11-14): what changed
+
+- Merged `origin/work/integration` (1c6eb62; one conflict, `BootActivity`:
+  `DataService.start` kept next to the join-link forwarding).
+- Menu (f5951e0): every bridge renderer draws a map tile that is not
+  `ready` dimmed with a label on its picture (`Downloading`, the wanted
+  map's `42%` with a bar along the picture's bottom, `Not downloaded`):
+  `touch_uib_render.qc` (`RB_MapTileState`), GTK `widgets.rs` (`map_state`,
+  an overlay on the picture, 3 CSS rules), Kotlin `ViewRenderer.kt`
+  (`mapState`, a frame over the picture). The hold toast is gone: a held map
+  or join opens the dialog `data.hold` (`touch_data.qc`): "Getting the map
+  boil", then starting or joining, MB and bar, Cancel (`data.cancel` ->
+  `touch_data_cancel`). Back hides it; the command still runs. Hooks in
+  `touch_uib_screens.qc`: three lines (build, action, tick). Home untouched.
+- Sound (7ccd47c): `.opus`-named files take the worker path (`TouchSnd_IsOgg`).
+- Data split (7dcf0dc): `gfx/hud/default/progressbar*` in the core
+  (`HUD_DEFAULT_ALWAYS`; hud.qc names it by path); the set id hashes the split
+  packs too, so a rule change alone is a new set; the split self-test runs in
+  `tests.yml`. First play is now 74,676,756 bytes (+7,151).
+- `_lod1/2.iqm` "not found": examined, harmless. The server precaches the LODs
+  it has (`precache_playermodel` with `fexists`), the client loads the
+  precache list and warns, and the client QuakeC uses a LOD only where its own
+  `fexists` finds it, so the full model stands in. Left in the test's known list.
+- Web (990c530): the status line sends `set <id>`; `vercel-build.sh` split pins
+  are `unpublished` (see Publish order).
+- Fixtures (1363957): map rows carry `state`/`progress`.
 
 ## What is done, and how it was checked
 
 | Area | State | Check |
 | --- | --- | --- |
-| Engine (`touch_datafetch.c`, `touch_fs_mount.h`, `touch_join.h`) | status file or `touch_data_status`, cvars, mounts `landed` packs, `touch_data_want` (request file; `Module.xt.dataWant` on the web), holds `map`/`changelevel`/a join until the map is here, cdtracks on the music pack, `fs_rescan` counts | `scripts/test-datafetch-engine.sh SPLIT`: PASS, 14 checks. Builds: `sdl-release`, `sv-release`, wasm (5,484,423 bytes, built by the web agent from a mirror) |
+| Engine (`touch_datafetch.c`, `touch_fs_mount.h`, `touch_join.h`) | status file or `touch_data_status`, cvars, mounts `landed` packs, `touch_data_want` (request file; `Module.xt.dataWant` on the web), holds `map`/`changelevel`/a join until the map is here, cdtracks on the music pack, `fs_rescan` counts | `scripts/test-datafetch-engine.sh SPLIT`: PASS, 17 checks (round 2: + hold dialog and map rows, Cancel, `.opus` on the workers). Builds: `sdl-release`, `sv-release`, `build-web.sh --engine-only` (round 2, all rc 0) |
 | First-play claim (task 7) | A stormkeep bot match on the 14 `first_play` packs prints no missing-file line the whole set does not; `boil` mounted late likewise; a join to a server on `xoylent` reconnects by itself and signs on | same script |
-| Rust loader core (`fetch/manifest.rs`, `sha256.rs`, `datasets::fetch_all`, `examples/datafetch`) | complete | `cargo test --offline -p godnotic-loader-core --features http-ureq`: 12 + 14 + 15 + 9 pass (the 15 manifest tests also 100 times in 4 parallel loops); clippy `-D warnings` clean with and without the feature; `cargo check` for the three Android targets; CI job Loader green |
+| Rust loader core (`fetch/manifest.rs`, `sha256.rs`, `datasets::fetch_all`, `examples/datafetch`) | complete | `cargo test --offline -p godnotic-loader-core --features http-ureq`: 12 + 14 + 15 + 11 pass (round 2; 12 + 11 without the feature; `-p godnotic-loader-android --no-default-features` 0 failed) (the 15 manifest tests also 100 times in 4 parallel loops); clippy `-D warnings` clean with and without the feature; `cargo check` for the three Android targets; CI job Loader green |
 | End to end (loader + real set + engine) | complete | `scripts/test-datafetch.sh SPLIT PHONE`: PASS, 15 checks |
-| GTK popover (`loader/crates/gtk/src/data_ui.rs`) | uses `fetch_all`, resumes an unfinished split install at start | `loader/build.sh --check` passes; not run in a window |
-| Android (`Data*.java`, `GameData`, `BootActivity`) | complete in code | 24 JVM tests by plain `javac` + JUnit (also after the package move); earlier `gradle --offline :app:testReleaseUnitTest :app:lintVitalRelease` in a scratch copy; CI job Android (assembleRelease) green. Not on a device |
-| Web (stager, page, tests) | complete | `scripts/test-web-cache.sh`: 34 node tests, stager checks, 31 browser steps (Chromium and Firefox, headless). Real engine, n=3, below |
-| Menu QuakeC (`touch_data.qc/.qh`) | state helpers, status line, toast while a map or join is held, map cache follows `fs_mountpack_count` | compiles; exercised only through the engine tests (no screenshot test) |
-| Sound | Opus on the `snd_lazyload_async` workers; `snd_lazyload_maxlength` 4 s by decoded length | timings below |
+| GTK popover (`loader/crates/gtk/src/data_ui.rs`), map tiles (`widgets.rs`) | uses `fetch_all`, resumes an unfinished split install at start; tiles show state and bar | `XT_GNOME_VERSION=50 loader/build.sh --check` passes (SDK 50 is the one installed); `map_tile_download_state` unit test in the SDK; not run in a window |
+| Android (`Data*.java`, `GameData`, `BootActivity`, map tiles in `ViewRenderer.kt`) | complete in code | 24 JVM tests by plain `javac` + JUnit (round 2: OK); CI Android (assembleRelease, 3 ABIs) green on 990c530 (the Kotlin tile change compiles). Not on a device |
+| Web (stager, page, tests) | complete; status line sends `set` | `scripts/test-web-cache.sh`: 34 node tests, stager checks, 31 browser steps (Chromium and Firefox, headless), round 2 all pass. Real engine, n=3, below |
+| Menu (`touch_data.qc/.qh`, tiles in all three renderers) | state helpers, status line, `data.hold` dialog with Cancel, tiles with state and bar, map cache follows `fs_mountpack_count` | engine test checks the dialog, the rows and Cancel; screenshots of the QuakeC renderer looked at by hand (dialog with 40% bar, picker with dimmed tiles); fixtures reseeded |
+| Sound | Opus on the `snd_lazyload_async` workers, also for `.opus` names; `snd_lazyload_maxlength` 4 s by decoded length | timings below; engine test checks an 8 s `.opus` goes to a worker and a 1 s one does not |
 
 Measured (desktop, `taskset`, load 6-10):
 
@@ -25,7 +54,8 @@ Measured (desktop, `taskset`, load 6-10):
   6.41 s (6.28-6.53) at 100 Mbit/s, 30.04 s (29.93-30.11) at 20, 119.63 s
   (119.58-119.99) at 5. The link alone needs 6.0 / 29.9 / 119.5 s for the
   74.7 MB. Unthrottled local: 1.8-1.9 s. Bytes served before the game may
-  start: exactly 74,669,605.
+  start: exactly 74,669,605 (round 2, with the progressbar in the core:
+  74,676,756 of packs; the test passes on split-G3).
 - Web, real wasm engine, headless GPU Chrome, CDP 20 Mbit/s, n=3 medians:
   first play stored 38.0 s, menu 39.7 s (88.3 MB received), stormkeep bot
   match 46.7 s, `map boil` on demand 5.5 s, everything stored 176 s. Before
@@ -55,29 +85,35 @@ Measured (desktop, `taskset`, load 6-10):
   engine run was Chrome only. Existing visitors re-download the whole set
   once (0 chunks in common); a whole old set keeps playing until the new one
   is complete.
-- **Menu**: the bridge screens do not draw the `state`/`progress` cells yet
-  (screens agent). The classic Xonotic map dialog lists only maps whose
-  `.bsp` is here. No Cancel button for a held map or join (`touch_data_cancel`
-  exists).
-- **Sound**: `.opus`-named files (not `.ogg` containers) do not take the
-  async path; tablet timings missing.
+- **Menu**: the classic Xonotic map dialog lists only maps whose `.bsp` is
+  here. The GTK and Kotlin tiles were not seen rendered (GTK compiled and
+  unit-tested, Kotlin compiled in CI).
+- **Sound**: tablet timings missing.
 
 ## Known issues
 
-- `gfx/hud/default/progressbar` was asked for once during a join on the
-  first_play packs and is in `extras`; it belongs in the core (data split).
-- A server that has the `detail` pack names `models/player/*_lod1/2.iqm`;
-  a client without it yet prints 17 "not found" lines. Not seen to break
-  anything; not examined further.
-- The web status line sends no `set` (the engine prints `set ""`).
-- `vercel-build.sh` pins the two local set ids (`XT_SPLIT_SET_ASTC`,
-  `XT_SPLIT_SET_DXT`); CI builds other bytes, so the pins must move (or be
-  emptied) when the real sets are published.
-- The Tests and Web workflows failed on db878d3: `test-web-cache.sh` died
-  where it should skip the browser part. Fixed after that push (verified here
-  with no browser visible: exit 0); see the last CI run of the branch.
+- **Merge forward with `main` is not done.** `main` gained cac2da0 (Home tab
+  bar) after RC1; RC1 (`work/integration`, in this branch) conflicts with it
+  in `touch_uib_screens.qc`, `touch_uib_render.qc`, `widgets.rs`,
+  `ViewRenderer.kt`, `UI_BRIDGE.md` and most fixtures: the Home conflict the
+  integration agent is resolving. This branch's own work merges cleanly with
+  `main` (checked with `git merge-tree`: 502f8a1 into cac2da0, no conflict).
+  Merge the re-based integration branch into this one when it exists (if it
+  is a true rebase with new shas rather than a merge, redo this branch's
+  merge on top of it instead of merging both RC1 histories).
+- `scripts/test-uibridge.sh --engine`: `input_test` fails 14 checks (taps on
+  Home cards, map picker, join flow) here and identically on the RC1
+  integration run (`~/.cache/godnotic-work/integ-logs/uib-engine.log`): not
+  from this branch. Fixture drift after reseeding only the map rows:
+  `welcome` (`minItem` 240 -> 200, RC1's Home) and, timing-dependent,
+  `servers` (`Looking for servers…`); left for the integration owner.
+- `_lod1/2.iqm` "not found" when joining a server that has the detail pack:
+  harmless (see round 2), kept in the test's known list.
 - `fetch_all` writes `<data>/touch/music-ready.txt`: never link the repo's
   `touch/` into a test data dir that a downloader writes to.
+- Local split sets: `data-out/split-G3` is this branch's ASTC split of
+  `packs-G2` (set `20261107-7f8d55483341`); `split-G2` is the older cut
+  (no core progressbar) and `split-D2` the DXT one (old set id rule).
 
 ## Test commands
 
@@ -85,13 +121,15 @@ Measured (desktop, `taskset`, load 6-10):
 cd ~/.cache/godnotic-work/datafetch
 export PATH=~/.cache/xt-assets/bin:$PATH DP_LINK_JPEG=dlopen
 . scripts/lib/xonotic-shlib.sh && xonotic_compile_qc_only && xonotic_compile_engine_only; cd ~/.cache/godnotic-work/datafetch
-S=~/.cache/godnotic-work/data-out/split-G2; P=~/.cache/godnotic-work/data-out/packs-G2
-export LD_LIBRARY_PATH=~/.cache/godnotic-slimtest/lib TMPDIR=~/.cache/godnotic-work/datafetch-tmp/t
-taskset -c 12-19 scripts/test-datafetch-engine.sh $S          # about 5 min
-taskset -c 12-19 scripts/test-datafetch.sh $S $P              # about 3 min; TIMINGS="100 20 5" RUNS=3 adds 9 min
+S=~/.cache/godnotic-work/data-out/split-G3; P=~/.cache/godnotic-work/data-out/packs-G2
+export LD_LIBRARY_PATH=~/.cache/godnotic-slimtest/lib TMPDIR=$PWD/.suite-tmp; mkdir -p $TMPDIR
+taskset -c 0-7 scripts/test-datafetch-engine.sh $S          # about 6 min; PASS 17
+taskset -c 0-7 scripts/test-datafetch.sh $S $P              # about 3 min; PASS 15; TIMINGS="100 20 5" RUNS=3 adds 9 min
+bash scripts/test-data-split.sh && taskset -c 0-7 bash scripts/test-data-split.sh $S $P
+UIB_BASEDIR=~/.cache/godnotic-work/datafetch-base bash scripts/test-uibridge.sh [--engine]   # basedir with THIS clone's pk3dir
 (cd loader && cargo test --offline -p godnotic-loader-core --features http-ureq \
   && cargo test --offline -p godnotic-loader-core \
-  && cargo clippy --offline -p godnotic-loader-core --all-targets -- -D warnings && ./build.sh --check)
+  && cargo clippy --offline -p godnotic-loader-core --all-targets -- -D warnings && XT_GNOME_VERSION=50 ./build.sh --check)
 bash scripts/test-web-cache.sh && bash scripts/test-old-name.sh
 (cd engine/darkplaces && make sv-release DP_LINK_JPEG=dlopen)
 # Android logic on the JVM (JDK in ~/.local/opt/jdk-17.0.21+9, junit and hamcrest jars from ~/.gradle/caches):
@@ -100,8 +138,9 @@ javac -d $OUT -cp $JUNIT:$HAMCREST $P/Data{Manifest,Install,Status,Fetch,Session
 java -cp $OUT:$JUNIT:$HAMCREST org.junit.runner.JUnitCore io.github.dixonsolutions.godnotic.DataFetchTest
 ```
 
-The sound timing rig is `~/.cache/godnotic-work/datafetch-tmp/snd/lt.sh`
-(`xonotic-before` beside it is the engine without the sound change).
+The round-1 sound timing rig (`datafetch-tmp/snd/lt.sh`) was deleted with
+`datafetch-tmp` at the end of round 2; `lt.sh` is short: a cold `map` with
+`touch_loadtime 1`, reading `LOADTIME   sound load/decode` from the log.
 
 ## Edits in other agents' files (each a small hunk, separate commits)
 
@@ -115,6 +154,14 @@ The sound timing rig is `~/.cache/godnotic-work/datafetch-tmp/snd/lt.sh`
 - `menu.qc`, `host.c`, `fs.c`: one `// Touch:` line each (two in `host.c`).
 - `loader/crates/gtk/src/data_ui.rs`: `fetch_all`, resume at start.
 - `web/appdata.js`: accepts a folder in the split layout (`kind: 'set'`).
+- Round 2: `touch_uib_screens.qc` (3 hook lines: build `data.hold`,
+  `TouchData_Action`, `TouchData_UIBTick`), `touch_uib_render.qc`
+  (`RB_MapTileState`, two calls, `state progress` added to the fetched cells),
+  `widgets.rs` (`map_state`, overlay in `card_grid`, a unit test),
+  `style.css` (3 rules), `ViewRenderer.kt` (`mapState`, the tile's picture in
+  a frame with label and bar), `UI_BRIDGE.md` (the `maps` cells),
+  `tests.yml` (one step: the split self-test), map-row fixtures. Nothing on
+  Home.
 - `engine/darkplaces` and `qcsrc` are components: `component-push.sh` was not
   run and `components.json` is untouched; the integrator does both.
 
@@ -143,31 +190,77 @@ source and `appdata.js` accept a folder in which every first_play pack of the
 profile's manifest is present by name and size; packs present are not
 downloaded. The app's set must be the same `set` as the web profile's.
 
-## Publish order
+## Publish order (nothing here was dispatched)
 
-1. Merge `work/data`, then this branch, into `main`; run
-   `component-push.sh` for both components; note the sha. Old clients are
-   unaffected: no manifest exists yet.
-2. In Godnotic-data: commit `workflows/slim-data.yml`, run `mode=build` with
-   `tools_ref=<sha>`, validate the artifacts (`scripts/test-data-split.sh`,
-   then `scripts/test-datafetch-engine.sh` and `scripts/test-datafetch.sh` on
-   CI's bytes).
-3. Release the clients (Android, Flatpak/loader, web with the set pins moved
-   to CI's set ids or emptied). They use the single archive until step 4.
-4. `mode=publish`: the immutable releases `data-astc-20261107-r1` and
-   `data-dxt-20261107-r1` (archives first), then `godnotic-data-astc.json`
-   and `godnotic-data-dxt.json` on `data-slim` last. From that moment new
-   installs are split; complete old installs record `legacy <set>` and fetch
-   nothing. The web deploy must be built after the manifests exist (it stages
-   the split at build time) and its `archive.url` must be reachable from
-   Vercel.
-5. `update_compat=true` only after a tablet load with a released app is
-   acceptable; `--sfx-precache-kib 0` only in a set published after every
-   client in use has this engine, and not for the web profile.
+The workflow is `~/.cache/godnotic-work/data-out/workflows/slim-data.yml`
+("Data sets"); it replaces `.github/workflows/slim-data.yml` in
+Godnotic-data (today that file is the older one-archive "Slim data").
+Godnotic-data is also the game-code component: a commit there touching only
+`.github/` is never imported, but commit it when no component push is racing.
 
-Never publish a manifest whose `archive.url` asset is not up: clients that
-accept the manifest do not fall back to the single archive on a 404 of the
-archive, they wait and retry.
+1. **Merge this branch into `main`** (it carries `work/data` and RC1), run
+   `component-push.sh all`, release. Nothing changes for anyone: no manifest
+   is published, every client falls back to the single archive, and the web
+   build sees 404 for the manifests and stages as today (pins `unpublished`
+   are not consulted on a 404). Note the sha: `tools_ref`.
+2. **Build**: in Godnotic-data, commit the workflow, dispatch `Data sets`
+   with `mode=build`, `source_tag=data-20261107`, `tools_ref=<sha>`,
+   `profiles=astc,dxt`. It downloads `data-20261107` (1.2 GB, inside
+   GitHub), repacks per profile (`repack-phone-assets.py`, default
+   `--sfx-precache-kib 48`), splits (`split-data-packs.py`, runs
+   `test-data-split.sh` on the result) and uploads artifacts `data-astc`
+   (~0.75 GB: `Godnotic-data-astc.zip`, `godnotic-data-astc.json`,
+   `Godnotic-data.zip` old layout, `phone-manifest.json`, sizes, SHA256SUMS)
+   and `data-dxt` (~0.85 GB). Publishes nothing. ~35-45 min.
+3. **Check CI's bytes** before publishing, here or on a runner (they are not
+   these local bytes; libopus differs): `scripts/test-data-split.sh`,
+   `scripts/test-datafetch-engine.sh`, `scripts/test-datafetch.sh` on the
+   unpacked artifact (PUBLISH.md step 3 has the unzip lines). Downloading
+   1.6 GB here needs an unmetered link; otherwise run them in a workflow.
+   Read the two set ids: `jq -r .set godnotic-data-astc.json` and
+   `... dxt.json` (form `20261107-<12 hex>`; the hash covers the source packs
+   and every split pack's sha256, so it names exactly those bytes).
+4. **Move the web pins** to those ids in `scripts/vercel-build.sh`
+   (`SPLIT_SET_ASTC`, `SPLIT_SET_DXT`; or the Vercel env vars
+   `XT_SPLIT_SET_ASTC` / `XT_SPLIT_SET_DXT`) and release that. Until the pins
+   match, a Vercel build after step 5 stops with "the published astc split
+   set is X, the build is pinned to unpublished" and the previous deployment
+   stays up (it carries its own staged data). Android and the loader have no
+   pin: they take whatever `set` the manifest names.
+5. **Publish**: dispatch `mode=publish`, `run_id=<build run>`, `revision=1`,
+   `update_compat=false`. Per profile: creates the immutable prerelease
+   `data-astc-20261107-r1` / `data-dxt-20261107-r1` (refused if the tag holds
+   other bytes), uploads the archive, re-downloads and compares it, then the
+   manifest (with `archive.url` set to that immutable release); then on
+   `data-slim` uploads `godnotic-data-astc.json` and `godnotic-data-dxt.json`
+   beside, swaps by rename, verifies. Archives before manifests: a client
+   that accepted a manifest does not fall back to the single archive.
+   `data-slim/Godnotic-data.zip` and `data-slim-20261107-1` are not touched.
+6. Then: new installs fetch 74.7 MB (ASTC; 229.6 MB DXT) and play, the rest
+   streams in. Complete old installs record `legacy <set>` and fetch nothing.
+   Web visitors holding today's set download the new set once in the
+   background (373 MB ASTC, 846 MB DXT; no chunk in common, only the fork's
+   13.5 MB is shared) while the old set keeps playing. Avoiding that would
+   need per-entry chunks shared by both layouts: not cheap, not done.
+7. Later, separate decisions: `update_compat=true` (same run, replaces
+   `data-slim/Godnotic-data.zip` for released apps) only after a tablet load
+   with a released app is acceptable. `--sfx-precache-kib 0` never as a
+   default, and only in a set built after every engine in use has the
+   threaded Opus path, and never for the web build (no threads).
+
+**What stays working for released clients**: released apps read
+`data-slim/Godnotic-data.zip` (moving, untouched unless `update_compat`);
+the released web build pins `data-slim-20261107-1/Godnotic-data.zip` by
+sha256 (immutable, never touched). Released clients never read the manifests.
+
+**Rollback**: delete `godnotic-data-astc.json` and `godnotic-data-dxt.json`
+from `data-slim` (asset delete; or upload a non-format-1 file). New installs
+and the web build then take the single archive as today. Clients that already
+stored a manifest keep it in charge on a 404 (`Manifest::stored`,
+`DataSession.refresh` ABSENT) and keep fetching from the immutable
+`data-*-20261107-r1` archives, so **never delete those releases**. A bad set
+is replaced by a new `revision` (new tags, new set id), never by changing
+bytes under an existing tag.
 
 ## Tablet checklist
 
