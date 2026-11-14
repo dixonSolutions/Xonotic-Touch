@@ -556,6 +556,10 @@ void Touch_ApplyNotifyPanel(void)
 	// empty: this sits over the look zone, and stale text there is just noise.
 	cvar_set("hud_panel_notify_time", "8");
 	cvar_set("hud_panel_notify_fadetime", "1");
+	// The pickup line ("Small health", "Bullets") sat under the move stick: a
+	// status line over play repeating what the vitals and the weapons strip
+	// show as their numbers change.
+	cvar_set("hud_panel_pickup", "0");
 }
 
 // The transient chat feed is drawn by the engine, and the stock HUD_Chat panel

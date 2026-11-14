@@ -1,0 +1,6 @@
+# Settings (a split with vertical tabs): the sections down the side and the chosen one's content.
+# Run: loader/scripts/drive.sh tests/settings.script <outdir> [WxH]   (FIXTURE=settings)
+wait 2000
+labels OUT/settings-labels.txt
+snapshot OUT/settings.png
+quit

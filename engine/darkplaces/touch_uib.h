@@ -82,4 +82,12 @@ int TouchUIB_NativeAttached(void);
    lines, which the card carries. The console keeps the whole log. */
 int TouchUIB_LoadingCardUp(void);
 
+/* One copy over play. Con_MaskPrint asks this for each line that opens with a
+   chat-box control character (lead: 1 a player speaking, 3 the game's own line,
+   such as "connected", "is now playing" or a frag). Unless
+   touch_chat_system_lines is 1, a game line leaves the chat feed and the notify
+   lines and stays in the console: the loading card, the kill feed and the
+   scoreboard already show it. Player chat is untouched. */
+unsigned TouchUIB_ChatboxMask(char lead, unsigned mask);
+
 #endif

@@ -29,6 +29,8 @@ float rb_touch;        // touch device
 float rb_laid_rev = -1;
 vector rb_laid_scr;
 string rb_laid_top;
+float rb_keys_top;        // where the engine's keys start under the field being edited (rb_scr units), 0: not up
+float rb_laid_keys;
 string rb_top;         // top screen id (stack top)
 string rb_modal;       // top modal id or ""
 float rb_trans;        // 0..1 screen transition
@@ -1237,6 +1239,42 @@ float RB_LayoutSplit(string split, float top, float bottom, float cx, float cw)
 	return y;
 }
 
+// The engine's keys (touch_ui.c, under a menu text field on a touch-only
+// device) cover the lower half of the screen: the field being edited moves
+// above them. A dialog's region stops at the keys and scrolls; a page's view
+// gets shorter. The stock menu does the same (touch_menu_sheet.qc).
+void RB_EnsureVisible(int i);
+void RB_AvoidKeys()
+{
+	if (rb_keys_top <= 0 || rb_edit_id == "")
+		return;
+	int i = -1;
+	for (int j = 0; j < rb_n && i < 0; ++j)
+		if (rb_item[j].rb_id == rb_edit_id && rb_item[j].rb_focus)
+			i = j;
+	if (i < 0)
+		return;
+	int r = rb_item[i].rb_region;
+	float bottom = rb_keys_top - D(8);
+	if (r == 6)
+	{
+		float mh = min(rg_s[6].y, bottom - D(8));
+		rg_o[6].y = max(D(8), min(rg_o[6].y, bottom - mh));
+		rg_s[6].y = mh;
+		rg_max[6] = max(0, rg_content[6] - mh);
+	}
+	else if (r == 0 || r == 4)
+	{
+		vector rs = rg_s[r];
+		rs.y = max(D(48), min(rs.y, bottom - rg_o[r].y));
+		rg_s[r] = rs;
+		rg_max[r] = max(0, rg_content[r] - rs.y);
+	}
+	else
+		return;
+	RB_EnsureVisible(i);
+}
+
 // Home's bar of tabs (a "tabbar" node): one strip along the bottom of the window,
 // its tabs joined edge to edge, no cards and no gaps. The "current" tab (the
 // screen that is open) is a darker shade with an ember line on top. Returns
@@ -1521,6 +1559,7 @@ void RB_Layout()
 		rg_content[6] = my;
 		rg_max[6] = max(0, my - mh);
 	}
+	RB_AvoidKeys();
 	for (int r = 0; r < RB_REGIONS; ++r)
 		rg_scroll[r] = bound(0, rg_scroll[r], rg_max[r]);
 }
@@ -2569,8 +2608,19 @@ void RB_StartEdit(entity e)
 {
 	strcpy(rb_edit_id, e.rb_id);
 	strcpy(rb_edit_text, e.rb_sel ? "" : e.rb_val);
-	if (cvar("vid_touchscreen") && cvar("vid_touchscreen_showkeyboard"))
+	// a touch-only device has no keys: ask for its screen keyboard, placed so
+	// it leaves this field in view (2: shown again even after Back put it away).
+	// It used to ask only when something else had already asked, so tapping
+	// the welcome's Name field on a phone brought up no keyboard at all.
+	if (cvar("vid_touchscreen"))
+	{
+		vector p = RB_ItemPos(e);
+		cvar_set("vid_touchscreen_textinput_x", ftos(p.x));
+		cvar_set("vid_touchscreen_textinput_y", ftos(p.y));
+		cvar_set("vid_touchscreen_textinput_w", ftos(e.rb_s.x));
+		cvar_set("vid_touchscreen_textinput_h", ftos(e.rb_s.y));
 		cvar_set("vid_touchscreen_showkeyboard", "2");
+	}
 }
 
 void RB_EndEdit(bool submit)
@@ -2584,6 +2634,7 @@ void RB_EndEdit(bool submit)
 		RB_SendValue(id, jv);
 	strcpy(rb_edit_id, "");
 	strcpy(rb_edit_text, "");
+	menu_touch_keyboard_hide();   // the screen keyboard goes with the field
 }
 
 // A tap on a row. In a list with selection single or multi one tap chooses the row (kind select)
@@ -3171,8 +3222,11 @@ bool TouchUIB_Draw(float alpha)
 	strcpy(rb_modal, modal);
 	// layout only when the description, the screen or the size changed (and not
 	// in the middle of a press, so the pressed item stays the same item)
-	if ((rev != rb_laid_rev || rb_scr != rb_laid_scr || top != rb_laid_top || rb_n == 0) && !rb_pressed)
+	float kt = cvar("_touch_menu_keys_top");
+	rb_keys_top = (kt > 0 && kt < 1 && rb_edit_id != "") ? kt * rb_scr.y : 0;
+	if ((rev != rb_laid_rev || rb_scr != rb_laid_scr || top != rb_laid_top || rb_keys_top != rb_laid_keys || rb_n == 0) && !rb_pressed)
 	{
+		rb_laid_keys = rb_keys_top;
 		RB_Layout();
 		++rb_dbg_layouts;
 		rb_laid_rev = rev;
