@@ -34,6 +34,7 @@
 #   HTTP_KBPS     per-connection cap of the pack server (default 2048)
 #   CPUS          taskset CPU list for both processes (default 4-9)
 #   W, H          window size (default 1280x720, offscreen SDL)
+#   JOIN_PRE      console commands run with the tap on a server (tests)
 #   PRIME_MAP     the template userdir plays one game here first, as a
 #                 returning player has (default stormkeep; empty = none)
 set -euo pipefail
@@ -152,7 +153,7 @@ run_join() { # server rtt opts run [dlcache]
 			cskbps=*) cskbps=${x#cskbps=} ;;
 		esac
 	done
-	write_job "$u" 1 "fe connect 127.0.0.1:$port"
+	write_job "$u" 1 "${JOIN_PRE:+$JOIN_PRE; }fe connect 127.0.0.1:$port"
 	# shellcheck disable=SC2016,SC2046
 	unshare -rn bash -c '
 		ip link set lo up

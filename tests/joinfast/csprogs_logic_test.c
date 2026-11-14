@@ -33,7 +33,14 @@ int main(void)
 	CHECK(TCPL_FindInt(msg, full, "csqc_progsize ") == 4021257, "size");
 	CHECK(TCPL_FindInt(msg, full, "csqc_progcrc ") == 18349, "crc");
 	// a fragment boundary inside the number: not yet
-	CHECK(TCPL_FindInt(msg, (int)(strstr((char *)msg + 80, "18349") - (char *)msg) + 3, "csqc_progcrc ") == -1, "partial number taken");
+	{
+		// cut the message inside "18349", as a fragment boundary would
+		int at;
+		for (at = 0; at + 5 <= full && memcmp(msg + at, "18349", 5); at++)
+			;
+		CHECK(at + 5 <= full, "test message has no CRC");
+		CHECK(TCPL_FindInt(msg, at + 3, "csqc_progcrc ") == -1, "partial number taken");
+	}
 	CHECK(TCPL_FindInt(msg, 40, "csqc_progcrc ") == -1, "found before it arrived");
 	CHECK(TCPL_FindInt((const unsigned char *)"csqc_progcrc x\n", 15, "csqc_progcrc ") == -1, "not a number");
 	CHECK(TCPL_FindInt((const unsigned char *)"csqc_progcrc \n", 14, "csqc_progcrc ") == -1, "empty number");

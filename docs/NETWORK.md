@@ -166,6 +166,12 @@ bundled CSQC on a server running the same data build, and a csprogs.dat
 downloaded before is found in `dlcache/` by name, size and CRC. The traces
 below show no download on any join to a Godnotic server.
 
+A stock server running an official Xonotic release (0.8.6: a third of the
+public servers) has its CSQC fetched over HTTP from our own release instead
+of its 40 KB/s UDP download, started from the first fragment of its first
+message (`touch_csprogs`, [JOIN_SPEED.md](JOIN_SPEED.md)): a 0.8.6 join at
+100 ms RTT went from 23.7 s to about 4 s.
+
 ### 4. HTTP downloads (a server's map packs, `sv_curl_defaulturl`)
 
 - **Parallel ranges for one large pack** (`touch_curl.h`, included by
@@ -647,6 +653,8 @@ build; these runs were a desktop build of the same network code).
 | `_slist_summary`, `_slist_servers`, `_slist_players`, `_slist_refreshing`, `_slist_saved` | | "N servers · M players" and its parts; a refresh is running; the numbers still include saved rows that have not answered |
 | `net_connect_backoff` | 1 | after four ignored connects, wait out a server's connect flood block once instead of renewing it every second |
 | `_join_fail_serial`, `_join_fail_kind`, `_join_fail_text`, `_join_fail_detail`, `_join_fail_address`, `join_retry` | | the last failed join, for every front end; join it again |
+| `touch_csprogs`, `touch_csprogs_url`, `touch_csprogs_timeout`, `touch_csprogs_status` | 1, our release, 15 | a stock server's CSQC (a known release build) over HTTP instead of its UDP download (JOIN_SPEED.md) |
+| `touch_jointime`, `_touch_jointime`, `_touch_jointime_serial` | 0 | print / keep the phase timeline of each join (JOIN_SPEED.md) |
 | `touch_joinfail_dialog` | 1 | open the menu's Could not join dialog (a native front end that shows its own sets 0) |
 
 Both features are on by default: the loss, reordering and duplication tests

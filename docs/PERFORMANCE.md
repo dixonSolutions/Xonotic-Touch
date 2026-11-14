@@ -35,6 +35,8 @@ those in GODNOTIC.md.
 | `touch_warm 1` | While the menu has had no input for `touch_warm_idle` (2) s, loads the next local game's world model, its `touch_preload` list and the slow persistent pictures (`_touch_warm_pics`), a piece per frame within `touch_warm_budget` (12) ms. The map is `touch_warm_map`, else the last local map played (`_touch_warm_last`). | Play after idling: 1443 -> 847 ms; model load in the load 490 -> 73 ms |
 | `touch_edicts_growth 1` | QuakeC edict storage grows to the size the VM needed before (`_touch_edicts_peak`), or by half, instead of 256 at a time. | server spawn 1035 -> 448 ms; load 1805 -> 1250 ms |
 | `fs_zstd_lazy 1` | A zstd pack entry decodes on its first read, not at open: QuakeC's `fexists()` (open + close) of ~900 models and sounds per load no longer decodes them. | server spawn 759 -> 337 ms, CSQC init 438 -> 219 ms; load 1689 -> 958 ms |
+| `touch_preload_early 1` | Joining a remote server, the per-map preload starts when the precache is done and runs `touch_preload_slice` (15) ms a frame while the server answers prespawn and spawn, instead of all at signon 3. Local games unchanged. | see [JOIN_SPEED.md](JOIN_SPEED.md) |
+| `touch_warm_join 1` | While a join to a remote server waits on the network (a stock server's stop-and-wait first message, a CSQC download), loads the map's preload list (never its world model). | see [JOIN_SPEED.md](JOIN_SPEED.md) |
 | `touch_crc_fast 1` | CRC-16 of progs and csprogs (about 20 MB per map load) eight bytes at a time; identical result (`touch_crc_selftest`). | 4 MB: 31.5 -> 4.1 ms, so about 0.13 s less per load at that rate |
 
 ### touch_warm in detail

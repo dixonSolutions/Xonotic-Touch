@@ -280,6 +280,9 @@ static qbool TW_MayRun(void)
 		return false;
 	if (cls.state != ca_disconnected || sv.active || cls.demoplayback || key_consoleactive)
 		return false;
+	// a join under way (the loading screen is up): its own load comes next
+	if (cls.connect_trying || scr_loading)
+		return false;
 	if (vid_hidden || !vid_activewindow)
 		return false;
 	if (touch_device_thermal.integer >= touch_warm_maxthermal.integer)

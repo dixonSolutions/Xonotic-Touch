@@ -171,6 +171,9 @@ static qbool TCP_Start(int size, int crc)
 	char url[MAX_INPUTLINE];
 	if (tcp.status == TCP_RUNNING && tcp.size == size && tcp.crc == crc)
 		return true;
+#ifndef LINK_TO_ZLIB
+	return false; // no bounded inflate here (the web build): the server's download
+#endif
 	if (!touch_csprogs.integer || cls.demoplayback || (strncmp(touch_csprogs_url.string, "http://", 7) && strncmp(touch_csprogs_url.string, "https://", 8)))
 		return false;
 	if (!(known = TCP_Known(size, crc)) || TCP_Failed(size, crc))

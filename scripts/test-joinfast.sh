@@ -22,6 +22,10 @@
 #   slow       the release is too slow (touch_csprogs_timeout): the server's
 #              download
 #   off        touch_csprogs 0: the server's download, no HTTP request
+#   warmjoin   a tap on a server while the menu warm-up loads the last map:
+#              five joins at 200 ms RTT reach the game (the warm-up used to
+#              load a model from inside the loading screen's redraw in the
+#              middle of its own world model load: 2 crashes in 5 before)
 #
 # Needs unshare -rn and tc (bench-join.sh), python3, and the stock server
 # (STOCK_SERVER / STOCKBASE as in bench-join.sh; SKIP when missing).
@@ -59,8 +63,8 @@ ok() { echo "ok   $*"; }
 bad() { echo "FAIL $*"; fail=1; }
 has() { grep -aq -- "$2" "$1"; }
 
-bench() { # out scenario [extra client args]
-	bash "$ROOT/scripts/bench-join.sh" -n 1 -o "$WORK/$1" ${3:+-e "$3"} "$2" > "$WORK/$1.out" 2>&1
+bench() { # out scenario [extra client args] [runs]
+	bash "$ROOT/scripts/bench-join.sh" -n "${4:-1}" -o "$WORK/$1" ${3:+-e "$3"} "$2" > "$WORK/$1.out" 2>&1
 	ls "$WORK/$1"/*-1.log 2> /dev/null | grep -v '\.sv\.log$' | head -1
 }
 
@@ -86,7 +90,7 @@ if [ -x "$STOCK_SERVER" ] && [ -n "$STOCKDATA" ]; then
 fi
 
 cases=("$@")
-[ ${#cases[@]} -gt 0 ] || cases=(timeline http missing corrupt slow off)
+[ ${#cases[@]} -gt 0 ] || cases=(timeline http missing corrupt slow off warmjoin)
 for c in "${cases[@]}"; do
 	if [ "$c" != timeline ] && [ $have_stock = 0 ]; then echo "SKIP $c: no stock server ($STOCK_SERVER)"; continue; fi
 	case $c in
@@ -139,6 +143,17 @@ for c in "${cases[@]}"; do
 		joined "$log" "off"
 		has "$log" "Downloading new CSQC" && ok "off: the server's download" || bad "off: no download from the server"
 		grep -q GET "$WORK/off"/*.cshttp.log 2> /dev/null && bad "off: asked HTTP anyway" || ok "off: no HTTP request"
+		;;
+	warmjoin)
+		# a returning player (the template played stormkeep) taps a server
+		# 1 s after the menu shows: the warm-up (touch_warm_idle 2 s from
+		# start) begins its world model while the join connects
+		PRIME_MAP=stormkeep bench warmjoin "join:stock:200:csprogs=$WORK/rel" "" 5 > /dev/null
+		n=0
+		for log in "$WORK"/warmjoin/join-*-[0-9].log; do
+			if grep -aq "Engine Crash" "$log"; then bad "warmjoin: crashed ($log)"; elif grep -aq "JOINTIME line" "$log"; then n=$((n + 1)); fi
+		done
+		[ $n = 5 ] && ok "warmjoin: 5 of 5 joins reached the game" || bad "warmjoin: $n of 5 joins reached the game"
 		;;
 	*) bad "unknown case $c" ;;
 	esac
