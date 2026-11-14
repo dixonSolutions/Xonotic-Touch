@@ -358,7 +358,15 @@ static void TW_Frame(void)
 			break;
 	}
 	tw.spent += Sys_DirtyTime() - start;
-	if (tw.next >= tw.count)
+	if (tw.next < tw.count && TW_Reduced() && tw.spent >= touch_warm_saver_work.value)
+	{
+		// battery saver on battery: the costliest items (world, models) and stop
+		tw.done = tw.capped = true;
+		if (developer_loading.integer || Cvar_VariableValue(&cvars_all, "touch_loadtime", ~0))
+			Con_Printf("LOADTIME warm %s reduced (battery saver): %d/%d items, world=%d models=%d, work=%.1f ms\n",
+				tw.map, tw.next, tw.count, tw.loaded[0], tw.loaded[1], tw.spent * 1000.0);
+	}
+	else if (tw.next >= tw.count)
 	{
 		tw.done = true;
 		if (developer_loading.integer || Cvar_VariableValue(&cvars_all, "touch_loadtime", ~0))

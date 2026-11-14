@@ -255,6 +255,21 @@ text, line 3 a download's size/speed/time left):
    Cancel also stops it), and a toast for a "Disconnected by ..." note.
 7. A network change needs nothing: the engine notices it.
 
+Tablet run (Galaxy Tab Active5, Android 15, on the same Wi-Fi as a desktop
+dedicated server, 2026-11-14): joined by a `godnotic://join` link; Home for
+30 s put the player with the spectators and back in the game on return; the
+service ran as `specialUse` with the notification "Connected to ... - map" and
+the "Godnotic:connected" low-latency lock while away (released in front); the
+server frozen for 36 s gave "Connection timed out", then the reconnect bar
+("attempt 1 of 5", "attempt 2 of 5") and the join again once the server
+answered; hosting a LAN game on the tablet and joining it from the desktop
+worked (the LAN popup closed itself when the desktop joined). Not run: screen
+off (the tablet's lock screen), switching networks (not allowed on that
+tablet), a pack download under a speed cap. Found: after an automatic
+reconnect, 11 minutes in the background neither moved the player to the
+spectators nor left the server (the server shows them playing throughout);
+a fresh join does move to the spectators after 20 s.
+
 Battery: a backgrounded connected client runs its loop at `cl_maxidlefps`
 (20 Hz) without rendering (`vid_hidden`), reading packets and sending a
 move per frame. Not measured on a phone; the estimate is that the Wi-Fi
