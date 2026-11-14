@@ -156,6 +156,21 @@ app = next((n for n in nodes if n.get("type") == "app"), {})
 sys.exit(0 if "data.hold" not in app.get("props", {}).get("modal", []) else 1)
 PY
 grep -a -q "Server spawned" "$U/data/qconsole.log" && bad "the match started after Cancel" || true
+# the Create screen's picker (source maps.<mode>, built from MapInfo): the map still
+# to come is a downloading tile, the one that is here is ready
+poll sp.json "set touch_lan_gametype dm" "uib_event {\"ev\":\"action\",\"node\":\"home/tiles/sp\",\"action\":\"sp\"}" "uib_dump sp.json" || true
+sleep 1
+poll picker.json "echo PICKER_ROWS" "uib_send {\"uib\":1,\"t\":\"window\",\"id\":93,\"source\":\"maps.dm\",\"offset\":0,\"limit\":4,\"filter\":\"$MAP2\"}" "uib_send {\"uib\":1,\"t\":\"window\",\"id\":94,\"source\":\"maps.dm\",\"offset\":0,\"limit\":4,\"filter\":\"$MAP1\"}" "uib_dump picker.json" || true
+python3 - "$U/data/qconsole.log" "$MAP2" "$MAP1" <<'PY' && ok "menu: the Create picker (maps.dm) lists $MAP2 as downloading and $MAP1 as ready" || bad "menu: the Create picker has no download state"
+import re, sys
+log = open(sys.argv[1], errors="replace").read().split("PICKER_ROWS")[-1]
+rows = {m.group(1): m.group(2) for m in re.finditer(r'\{"key":"([^"]+)"[^{}]*"cells":\{([^{}]*)\}', log)}
+ok = '"state":"downloading"' in rows.get(sys.argv[2], "") and '"state":"ready"' in rows.get(sys.argv[3], "")
+if not ok:
+    print("     picker rows", {k: rows.get(k) for k in sys.argv[2:4]})
+sys.exit(0 if ok else 1)
+PY
+printf '%s\n' "uib_event {\"ev\":\"back\"}" > "$U/data/poll.cfg"; sleep 1; : > "$U/data/poll.cfg"
 poll hold3.json "map $MAP2" "defer 1 \"uib_dump hold3.json\"" || true
 late=()
 for p in "${NEED2[@]}"; do [ -e "$W/late/data/$p" ] || { cp -l "$SPLIT/$p" "$W/late/data/$p.part" 2>/dev/null || cp "$SPLIT/$p" "$W/late/data/$p.part"; mv "$W/late/data/$p.part" "$W/late/data/$p"; late+=("$p"); status "$U" fetching "${late[@]}"; sleep 0.3; }; done

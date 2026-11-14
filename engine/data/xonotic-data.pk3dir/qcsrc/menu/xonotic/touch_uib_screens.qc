@@ -490,18 +490,23 @@ void UIB_MapInfo(string map)
 // said that no map supports the mode. The bridge builds it itself.
 bool uib_mapinfo_ready;
 float uib_mapinfo_gen;
+float uib_mapinfo_mounts; // fs_mountpack_count when MapInfo was built
 void UIB_MapInfoEnumerate()
 {
 	MapInfo_Cache_Create();
 	MapInfo_Enumerate();
 	uib_mapinfo_ready = true;
+	uib_mapinfo_mounts = cvar("fs_mountpack_count");
 	++uib_mapinfo_gen;
 }
+// Not built yet, or packs of the split data set landed since (docs/DATA_FETCH.md):
+// m_draw's TouchData_MenuFrame never runs while a native front end hides the menu.
+bool UIB_MapInfoStale() { return !uib_mapinfo_ready || uib_mapinfo_mounts != cvar("fs_mountpack_count"); }
 
 // MapInfo's maps for a mode, as Play uses them: MapInfo_count, MapInfo_BSPName_ByID
 float UIB_FilterMaps(Gametype gt)
 {
-	if (!uib_mapinfo_ready)
+	if (UIB_MapInfoStale())
 		UIB_MapInfoEnumerate();
 	MapInfo_FilterGametype(gt, 0, MapInfo_RequiredFlags(), MapInfo_ForbiddenFlags(), 0);
 	return MapInfo_count;
@@ -520,7 +525,7 @@ float uib_modemaps_gen;
 // how many maps Play can start in a mode (0 for a mode MapInfo does not know)
 float UIB_ModeMaps(string id)
 {
-	if (!uib_mapinfo_ready || uib_modemaps_gen != uib_mapinfo_gen)
+	if (UIB_MapInfoStale() || uib_modemaps_gen != uib_mapinfo_gen)
 	{
 		for (int i = 0; i < UIB_NMODES; ++i)
 		{
@@ -537,13 +542,31 @@ float UIB_ModeMaps(string id)
 
 string UIB_MapField(string s, string unset) { return (s == unset) ? "" : s; }
 
+// One picker row from the MapInfo_Map_* globals; state and progress as the
+// engine's "maps" source has them ("ready", or "downloading" with 0..1, -1 queued).
+void UIB_MapRow(string name, string state, float progress)
+{
+	string title = UIB_MapField(MapInfo_Map_title, "<TITLE>");
+	string modes = "";
+	FOREACH(Gametypes, MapInfo_Map_supportedGametypes & it.gametype_flags, modes = strcat(modes, ((modes == "") ? "" : " "), it.mdl));
+	uib_row(name, sprintf("{\"name\":%s,\"title\":%s,\"author\":%s,\"description\":%s,\"modes\":%s,\"state\":%s,\"progress\":%s}", uib_qv(name),
+		uib_qv((title != "") ? title : name), uib_qv(UIB_MapField(MapInfo_Map_author, "<AUTHOR>")),
+		uib_qv(UIB_MapField(MapInfo_Map_description, "<DESCRIPTION>")), uib_qv(modes), uib_qv(state), ftos(progress)), strcat("pk3:maps/", name));
+}
+
 // The picker's rows: source "maps.<mode>", MapInfo's list for the mode (the
 // engine's "maps" source lists every installed map, for the map details).
-string uib_maprows_key;
+string uib_maprows_key, uib_maprows_mode;
 string UIB_MapRows(string mode)
 {
 	string src = strcat("maps.", mode);
-	if (uib_mapinfo_ready && strcat(src, " ", ftos(uib_mapinfo_gen)) == uib_maprows_key)
+	if (UIB_MapInfoStale())
+		UIB_MapInfoEnumerate();
+	string key = strcat(src, " ", ftos(uib_mapinfo_gen));
+	bool fetching = TouchData_Active();
+	if (fetching) // the wanted map's bar moves
+		key = strcat(key, " ", cvar_string("touch_data_want"), " ", ftos(floor(TouchData_MapProgress(cvar_string("touch_data_want")) * 100)));
+	if (key == uib_maprows_key)
 		return src;
 	Gametype gt = MapInfo_Type_FromString(mode, false, false);
 	float n = gt ? UIB_FilterMaps(gt) : 0;
@@ -553,17 +576,45 @@ string UIB_MapRows(string mode)
 		string name = MapInfo_BSPName_ByID(i);
 		if (!MapInfo_Get_ByID(i))
 			continue;
-		string title = UIB_MapField(MapInfo_Map_title, "<TITLE>");
-		string modes = "";
-		FOREACH(Gametypes, MapInfo_Map_supportedGametypes & it.gametype_flags, modes = strcat(modes, ((modes == "") ? "" : " "), it.mdl));
-		uib_row(name, sprintf("{\"name\":%s,\"title\":%s,\"author\":%s,\"description\":%s,\"modes\":%s}", uib_qv(name),
-			uib_qv((title != "") ? title : name), uib_qv(UIB_MapField(MapInfo_Map_author, "<AUTHOR>")),
-			uib_qv(UIB_MapField(MapInfo_Map_description, "<DESCRIPTION>")), uib_qv(modes)), strcat("pk3:maps/", name));
+		UIB_MapRow(name, "ready", -1);
+	}
+	// Maps of the split data set still to come (a .mapinfo in the core pack, no .bsp
+	// yet) are not in MapInfo; they show as downloading tiles, like the engine's
+	// "maps" source: a tap asks for them first, Play waits for them (UIB_StartGame).
+	if (fetching && gt)
+	{
+		float glob = search_begin("maps/*.mapinfo", true, true);
+		float k = (glob >= 0) ? search_getsize(glob) : 0;
+		for (int i = 0; i < k; ++i)
+		{
+			string fn = search_getfilename(glob, i);
+			string name = substring(fn, 5, strlen(fn) - 13); // without maps/ and .mapinfo
+			if (!TouchData_MapDownloading(name) || !MapInfo_Get_ByName(name, 0, NULL))
+				continue;
+			if (!(MapInfo_Map_supportedGametypes & gt.gametype_flags) || (MapInfo_Map_flags & MapInfo_ForbiddenFlags())
+				|| (MapInfo_Map_flags & MapInfo_RequiredFlags()) != MapInfo_RequiredFlags())
+				continue;
+			UIB_MapRow(name, "downloading", TouchData_MapProgress(name));
+		}
+		if (glob >= 0)
+			search_end(glob);
 	}
 	uib_rows_end();
-	// after the filter: a first filter enumerates, which bumps the generation
-	strcpy(uib_maprows_key, strcat(src, " ", ftos(uib_mapinfo_gen)));
+	strcpy(uib_maprows_key, key);
+	strcpy(uib_maprows_mode, mode);
 	return src;
+}
+
+// While Create is on top: packs that land add their maps, the wanted map's bar
+// moves (each bridge tick; nothing is rebuilt while nothing changed).
+void UIB_MapRowsTick()
+{
+	if (uib_maprows_mode == "")
+		return;
+	float gen = uib_mapinfo_gen;
+	UIB_MapRows(uib_maprows_mode);
+	if (gen != uib_mapinfo_gen)
+		UIB_RebuildAll(); // the mode cards follow what can be started now
 }
 
 // A new mode keeps the chosen map when the mode has it, else takes its first map,
@@ -1701,6 +1752,8 @@ void UIB_Tick()
 	TouchData_UIBTick();
 	// time-varying screens
 	string top = UIB_TopScreen();
+	if (top == "sp")
+		UIB_MapRowsTick();
 	if ((top == "home" || top == "mp") && uib_gettime(1) > uib_next_tick)
 	{
 		uib_next_tick = uib_gettime(1) + 0.5;
