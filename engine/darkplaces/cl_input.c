@@ -528,6 +528,7 @@ void CL_Input (void)
 
 	// allow mice or other external controllers to add to the move
 	IN_Move ();
+	TouchHUD_MoveAxes(&cl.cmd.forwardmove, &cl.cmd.sidemove); // Touch: the stick's analog move
 
 	// send mouse move to csqc
 	if (CLVM_prog->loaded && cl_csqc_generatemousemoveevents.integer)

@@ -5,6 +5,13 @@
 # HUD in a local match, and the engine HUD on a dedicated server that runs
 # STOCK Xonotic game code (what every public server is).
 #
+#   input   a slow swipe, FIRE held then dragged, HOP held then dragged and
+#           kept down, the stick, a flick; at a tablet's and a phone's
+#           density. Passes when: dragging off FIRE turns the view while it
+#           keeps firing; the same for HOP; the same swipe in centimetres
+#           turns the same angle at both densities; held HOP jumps again and
+#           again; the stick moves at the thumb's angle and stops on lift; a
+#           flick turns further than a slow drag of the same length.
 #   join    Deathmatch and CTF on the stock server: the join dialog is up
 #           for an observer at match start; Spectate keeps observing and it
 #           does not come back; MENU > Join game reopens it; choosing Join
@@ -16,7 +23,7 @@
 #   local   a local Deathmatch puts the player straight into the game.
 #
 #   BASEDIR=<Godnotic basedir> STOCKBASE=<basedir with upstream Xonotic data only> \
-#       scripts/test-touch-controls-live.sh [join] [rects] [local]
+#       scripts/test-touch-controls-live.sh [input] [join] [rects] [local]
 #
 # Environment: ENGINE (default build/bin/xonotic; it also runs the server),
 # LIBS (extra LD_LIBRARY_PATH), OUT (keep logs and screenshots there), CPUS
@@ -78,6 +85,20 @@ server() { # name port gametype map bots [maplist]
 }
 
 port() { echo $((26700 + RANDOM % 250)); }
+
+case_input() {
+	local p dev
+	for dev in tablet phone; do
+		dims $dev
+		python3 "$T/gen_input.py" $W $DPI 2 > "$WORK/input_$dev.txt"
+		client "input_local_$dev" $dev "$WORK/input_$dev.txt" "$QUIET; set g_warmup 0; set bot_number 0; map stormkeep; defer 16 \"set xt_go 1\"" 70 &
+		p=$(port); server "srv_input_$dev" $p dm stormkeep 0
+		client "input_remote_$dev" $dev "$WORK/input_$dev.txt" "$QUIET; connect 127.0.0.1:$p; defer 35 \"set xt_go 1\"" 90
+		wait %1 2> /dev/null; kill %2 2> /dev/null; wait 2> /dev/null
+	done
+	python3 "$T/check_live.py" input "$WORK/input_local_tablet/client.log" "$WORK/input_local_phone/client.log" || fail=1
+	python3 "$T/check_live.py" input "$WORK/input_remote_tablet/client.log" "$WORK/input_remote_phone/client.log" || fail=1
+}
 
 mark() { echo "$1 cmd echo MARK $2"; echo "$1.05 cmd touch_hud_state"; }
 
@@ -143,8 +164,8 @@ case_local() {
 
 # A case that fails is run once more: these are timed scripts against a
 # real engine, and a machine busy with other work can stall one for a second.
-for c in ${*:-join rects local}; do
-	case $c in join|rects|local) ;; *) echo "unknown case $c"; exit 2 ;; esac
+for c in ${*:-input join rects local}; do
+	case $c in input|join|rects|local) ;; *) echo "unknown case $c"; exit 2 ;; esac
 	fail=0
 	"case_$c" > "$WORK/$c.out" 2>&1
 	if [ $fail != 0 ]; then

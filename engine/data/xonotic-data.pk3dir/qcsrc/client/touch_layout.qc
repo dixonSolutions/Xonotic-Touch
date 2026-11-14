@@ -83,8 +83,8 @@ vector Touch_WidgetCenter(float nx, float ny, float nsize)
 }
 
 // Sizes never go under the dp floors (engine touch_hud.c the same): a circle
-// is a touch target, 44 dp across at least; a pill is drawn 36 dp tall at
-// least and Touch_HitRectPx grows its target to 44 dp.
+// is a touch target, 48 dp across at least; a pill is drawn 36 dp tall at
+// least and Touch_HitRectPx grows its target to 48 dp.
 float Touch_WidgetRadius(float nsize)
 {
 	return max(Touch_ScreenMin() * nsize * 0.5 * Touch_WidgetScale(), TOUCHDP_MIN_TARGET * 0.5 * Touch_DpUnits());

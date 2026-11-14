@@ -1,4 +1,5 @@
 #include "touch_spectate.qh"
+#include "touch_feel.qh"
 
 #include <client/touch_defs.qh>
 #include <client/main.qh>
@@ -90,7 +91,7 @@ vector Touch_Spec_BarCenter(int part)
 vector Touch_Spec_FlyCenter(bool up)
 {
 	vector m = Touch_WidgetCenter(autocvar_touch_move_x, autocvar_touch_move_y, autocvar_touch_move_size);
-	float mr = Touch_WidgetRadius(autocvar_touch_move_size);
+	float mr = Touch_StickRadius();
 	float r = TOUCHDP_MIN_TARGET * 0.5 * Touch_DpUnits();
 	return m + eX * ((autocvar_touch_handedness ? -1 : 1) * (mr + r * 1.6)) + eY * ((up ? -1 : 1) * r * 1.15);
 }
