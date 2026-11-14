@@ -518,6 +518,11 @@ RECENT_ROWS = [
 ]
 
 
+CAPS_PHONE = {"nodes": [], "hints": [], "width": 844, "height": 390, "dpi": 420, "widthClass": "expanded",
+              "heightClass": "compact", "input": ["touch"], "locale": "en", "reducedMotion": False, "powerSave": False,
+              "thermal": "nominal", "insets": {"top": 0, "right": 32, "bottom": 0, "left": 32}}
+
+
 def diff(base, set_nodes=(), dels=()):
     return {"uib": 1, "t": "diff", "id": base + 10, "base": base, "rev": base + 1,
             "set": [strip(n) for n in set_nodes], "del": list(dels)}
