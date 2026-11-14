@@ -180,6 +180,27 @@ class Player:
         self.rev += 1
         return {"uib": 1, "t": "diff", "id": self.mid(), "base": self.rev - 1, "rev": self.rev, "set": [n], "del": []}
 
+    def select(self, ev):
+        """A row chosen in a list with a selection: `selected` follows, and that screen's
+        buttons that waited for a choice (enabled false, the one Join) come on, as in the engine."""
+        n = self.nodes.get(ev.get("node"))
+        if not n or n.get("props", {}).get("selection") not in ("single", "multi"):
+            return {"uib": 1, "t": "error", "id": self.mid(), "re": ev.get("id", 0), "code": "denied",
+                    "msg": "no list with a selection has that id"}
+        n = copy.deepcopy(n)
+        n["props"]["selected"] = [ev.get("row")]
+        self.nodes[n["id"]] = n
+        out = [n]
+        screen = n["id"].split("/")[0] + "/"
+        for i, b in list(self.nodes.items()):
+            if i.startswith(screen) and b["type"] == "button" and b.get("props", {}).get("enabled") is False:
+                b = copy.deepcopy(b)
+                b["props"]["enabled"] = True
+                self.nodes[i] = b
+                out.append(b)
+        self.rev += 1
+        return {"uib": 1, "t": "diff", "id": self.mid(), "base": self.rev - 1, "rev": self.rev, "set": out, "del": []}
+
     def handle(self, m, conn):
         t = m.get("t")
         if "_bad" in m:
@@ -205,6 +226,8 @@ class Player:
             conn.send({"uib": 1, "t": "pong", "id": self.mid(), "re": m.get("id", 0)})
         elif t == "ev" and m.get("ev") == "value":
             conn.send(self.value(m))
+        elif t == "ev" and m.get("ev") == "row" and m.get("kind") == "select":
+            conn.send(self.select(m))
         elif t == "bye":
             return False
         return True

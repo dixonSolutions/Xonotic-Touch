@@ -326,6 +326,7 @@
     "children": [
      "settings/split/menu/size",
      "settings/split/menu/uib",
+     "settings/split/menu/classic",
      "settings/split/menu/quitdialog"
     ]
    },
@@ -350,8 +351,63 @@
     "props": {
      "label": "New menu",
      "bind": "cvar:menu_touch_uib",
-     "help": "The card menu described once and drawn here, on the web and natively",
-     "value": false
+     "help": "Off: the classic Xonotic menu. Turn it on again in its Settings > Mobile > Menu, or with menu_touch_uib 1 in the console",
+     "value": true
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/menu/classic",
+    "type": "section",
+    "props": {
+     "title": "Classic menu",
+     "subtitle": "Screens of the classic menu; closing one brings you back here"
+    },
+    "children": [
+     "settings/split/menu/classic/advanced",
+     "settings/split/menu/classic/media",
+     "settings/split/menu/classic/profile"
+    ]
+   },
+   {
+    "id": "settings/split/menu/classic/advanced",
+    "type": "button",
+    "props": {
+     "label": "Advanced settings",
+     "action": {
+      "id": "settings.advanced",
+      "label": "Advanced settings",
+      "icon": "settings"
+     },
+     "style": "secondary"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/menu/classic/media",
+    "type": "button",
+    "props": {
+     "label": "Demos, screenshots and music",
+     "action": {
+      "id": "classic.media",
+      "label": "Demos, screenshots and music",
+      "icon": "folder"
+     },
+     "style": "secondary"
+    },
+    "children": []
+   },
+   {
+    "id": "settings/split/menu/classic/profile",
+    "type": "button",
+    "props": {
+     "label": "Player model and statistics",
+     "action": {
+      "id": "classic.profile",
+      "label": "Player model and statistics",
+      "icon": "player"
+     },
+     "style": "secondary"
     },
     "children": []
    },

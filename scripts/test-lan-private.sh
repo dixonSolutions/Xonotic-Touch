@@ -16,6 +16,8 @@
 #    is back at its menu, does not rejoin, and the port is free again.
 # 4. LAN on without a password, the host quits the game: the same for the
 #    client; the host process is gone and the port is free.
+# 5. A host that goes through the menu (Create, LAN ticked): its address popup
+#    opens by itself, closes when a second game joins, and the game then runs.
 #
 #   BASEDIR=<basedir with data/*.pk3 and the Touch xonotic-data.pk3dir> scripts/test-lan-private.sh
 # Optional: ENGINE (default engine/darkplaces/darkplaces-sdl), OUT (keep logs),
@@ -261,6 +263,57 @@ ended_checks quit "host quits"
 for _ in $(seq 1 50); do kill -0 "$HOSTJOB" 2> /dev/null || break; sleep 0.2; done
 if kill -0 "$HOSTJOB" 2> /dev/null; then bad "host quits: the host process is still there"; else ok "host quits: no host process left"; fi
 port_free && ok "host quits: UDP 26000 is free" || bad "host quits: UDP 26000 is still bound"
+# ---------------------------------------------------------------- 5. the host's popup closes when someone joins
+# A host that goes through the menu (Multiplayer > Create, LAN ticked, Host): the
+# popup with the addresses opens by itself, a second game joins, the popup
+# leaves with "A player joined your game", and the game is running for both.
+mkdir -p "$WORK/host2/data"
+ev() { printf 'uib_event %s' "$1" | sed 's/"/\\"/g'; }
+cat > "$WORK/host2/data/host2.cfg" <<HOST2
+set menu_touch_uib 1
+set touch_lan_bots 1
+set touch_lan_host_port 26000
+set touch_lan_popup_autoclose 1
+defer 6 "$(ev '{"ev":"action","node":"home/tiles/mp","action":"mp"}')"
+defer 7 "$(ev '{"ev":"action","node":"mp/join/create","action":"create"}')"
+defer 8 "$(ev '{"ev":"value","node":"sp/match/form/lan","value":true}')"
+defer 9 "$(ev '{"ev":"value","node":"sp/match/form/pwon","value":false}')"
+defer 10 "$(ev '{"ev":"action","node":"sp","action":"play"}')"
+alias dumploop "uib_dump; prvm_global server time; defer 2 dumploop"
+defer 12 dumploop
+HOST2
+run_engine host2 host 200 +exec host2.cfg > "$WORK/host2.log" 2>&1 &
+HOST2JOB=$!
+PIDS+=("$HOST2JOB")
+waitlog "$WORK/host2.log" "Server listening on address 0.0.0.0:26000" 90 \
+	&& ok "popup: Create with LAN ticked hosts on 26000" || { bad "popup: the menu's Host did not listen"; tail -5 "$WORK/host2.log"; }
+waitlog "$WORK/host2.log" '"modal":\["lan.host"\]' 40 \
+	&& ok "popup: it opens by itself when the hosted game is up" || bad "popup: it did not open: $(grep -ao '"modal":[^]]*]' "$WORK/host2.log" | tail -1)"
+grep -a '"lan.host/addresses/a0/text"' "$WORK/host2.log" | grep -aq '10.77.0.2:26000' \
+	&& ok "popup: it shows 10.77.0.2:26000" || bad "popup: no address row"
+LINES_BEFORE=$(wc -l < "$WORK/host2.log")
+join popupjoin "" 40 &
+JOINJOB=$!
+PIDS+=("$JOINJOB")
+waitlog "$WORK/popupjoin.log" "Connection established to 10.77.0.2:26000\|Connection accepted to 10.77.0.2:26000" 60 \
+	&& ok "popup: a second game joined" || bad "popup: nobody joined"
+sleep 12
+tail -n +"$LINES_BEFORE" "$WORK/host2.log" > "$WORK/host2-after.txt"
+grep -a '"type":"toast"' "$WORK/host2-after.txt" | grep -aq "A player joined your game" \
+	&& ok "popup: the host is told 'A player joined your game'" || bad "popup: no toast about the join"
+grep -ao '"modal":[^]]*]' "$WORK/host2-after.txt" | tail -1 | grep -aq '"modal":\[\]' \
+	&& ok "popup: it closed by itself" || bad "popup: still up after the join: $(grep -ao '"modal":[^]]*]' "$WORK/host2-after.txt" | tail -1)"
+# the game runs for the joiner: the server's clock moves between two readings
+T=($(grep -a "time" "$WORK/host2-after.txt" | grep -av '"' | grep -ao '[0-9][0-9]*\.[0-9]*' | tail -2))
+if [ "${#T[@]}" = 2 ] && awk "BEGIN{exit !(${T[1]} > ${T[0]} + 0.5)}"; then
+	ok "popup: the game is not left paused (server time ${T[0]} -> ${T[1]})"
+else
+	bad "popup: the server clock did not move after the join: ${T[*]:-no readings}"
+fi
+wait "$JOINJOB"
+kill "$HOST2JOB" 2> /dev/null
+inhost pkill -f "$WORK/host2" 2> /dev/null
+
 ! grep -aq "$PASSWORD" "$WORK"/*.log && ok "the password is in no log" || bad "the password is in a log"
 
 [ "$fail" = 0 ] && echo "PASS" || echo "FAILED"

@@ -996,3 +996,12 @@ for one visit.
 
 "Build and publish" deploys Pages without `web/`, so the shell is missing
 for the few minutes between the two workflows.
+
+## Menu size in the browser
+
+One dp of the menu is one CSS pixel. SDL in a browser reports 96 x devicePixelRatio as the
+display's dpi, and the page may render its canvas at another scale than its CSS size, so
+`touch_display.c` sets `vid_touch_dpi` to 160 x canvas pixels per CSS pixel instead (kept
+current once a second, since the page sizes the canvas after the window is made). Before
+this the menu was about 0.6x on a desktop (96 dpi read as low density) and 1.3x on a
+phone. `tests/uibridge/web_menu.mjs` prints the inputs.
