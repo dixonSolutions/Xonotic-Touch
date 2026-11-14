@@ -1,10 +1,8 @@
 package io.github.dixonsolutions.godnotic;
 
-import android.app.Activity;
-import android.app.Application;
+import android.app.ActivityManager;
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.os.Bundle;
 import android.util.Log;
 
 import org.json.JSONObject;
@@ -66,12 +64,14 @@ final class AndySUBridge {
     private String lastStatusJson = "";
     private String noticeText = "";
     private String channel;
-    private int startedActivities;
 
     /** The mode a player's own check runs in, until it settles; null when none is running. */
     private String manualMode;
     private long manualAt;
-    private volatile boolean manualSawStatus;
+    /** The host has finished the player's check (it went busy, then ended). */
+    private volatile boolean manualDone;
+    /** A check is under way (the host said "checking"); its end is the last-checked time. */
+    private volatile boolean checkRunning;
 
     AndySUBridge(Context context, File baseDir) {
         this.context = context.getApplicationContext();
@@ -83,7 +83,6 @@ final class AndySUBridge {
                 "blobs/sha256");
         prefs = this.context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         listening = AndySUCompat.present() && AndySUCompat.setStatusListener(this::onStatus);
-        watchForeground();
     }
 
     String takeRequest() {
@@ -110,7 +109,7 @@ final class AndySUBridge {
                         AndySUCompat.setMode(manual);
                         manualMode = manual;
                         manualAt = System.currentTimeMillis();
-                        manualSawStatus = false;
+                        manualDone = false;
                     }
                     AndySUCompat.checkNow();
                     break;
@@ -253,7 +252,7 @@ final class AndySUBridge {
                              boolean staged) throws ReflectiveOperationException {
         long now = System.currentTimeMillis();
         if (manualMode != null && !AndySUState.busy(state)
-                && (manualSawStatus || now - manualAt > MANUAL_SETTLE_MS)) {
+                && (manualDone || now - manualAt > MANUAL_SETTLE_MS)) {
             manualMode = null;
         }
         if (manualMode != null && now - manualAt > MANUAL_MAX_MS) manualMode = null;
@@ -265,15 +264,25 @@ final class AndySUBridge {
         return want;
     }
 
-    /** From the host (main thread) for every status it sets; from publish() when it has no listener. */
+    /**
+     * From the host (main thread) for every status it sets; from publish() on a change when the
+     * host takes no listener. Only the end of a check counts as one: not the "up_to_date" a live
+     * swap's commit sets, not an old status read before checkNow() got going.
+     */
     private void onStatus(String statusJson) {
-        manualSawStatus = true;
         try {
             String state = AndySUState.normalize(new JSONObject(statusJson).optString("state", ""));
-            if (AndySUState.endsCheck(state)) {
-                prefs.edit().putLong(PREF_CHECKED_AT, System.currentTimeMillis())
-                        .putString(PREF_CHECKED_RESULT, state).apply();
+            if (AndySUState.busy(state)) {
+                checkRunning = true;
+                return;
             }
+            // without a listener a quick check can pass between two polls: any end counts
+            boolean ended = AndySUState.endsCheck(state) && (checkRunning || !listening || "deferred".equals(state));
+            checkRunning = false;
+            if (!ended) return;
+            manualDone = true;
+            prefs.edit().putLong(PREF_CHECKED_AT, System.currentTimeMillis())
+                    .putString(PREF_CHECKED_RESULT, state).apply();
         } catch (Exception e) {
             Log.w(TAG, "Unreadable AndySU status " + statusJson, e);
         }
@@ -308,31 +317,20 @@ final class AndySUBridge {
         return kind != Net.Kind.UNMETERED && kind != Net.Kind.OFFLINE;
     }
 
-    private synchronized boolean foreground() {
-        return startedActivities > 0;
-    }
-
-    private void watchForeground() {
-        if (!(context instanceof Application)) return;
-        ((Application) context).registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
-            @Override public void onActivityStarted(Activity a) {
-                synchronized (AndySUBridge.this) { startedActivities++; }
-            }
-            @Override public void onActivityStopped(Activity a) {
-                boolean gone;
-                synchronized (AndySUBridge.this) {
-                    startedActivities = Math.max(0, startedActivities - 1);
-                    gone = startedActivities == 0;
-                }
-                // Leaving the game: settle the background mode now; the poll may not run again.
-                if (gone) new Thread(AndySUBridge.this::publish, "godnotic-update-mode").start();
-            }
-            @Override public void onActivityCreated(Activity a, Bundle b) {}
-            @Override public void onActivityResumed(Activity a) {}
-            @Override public void onActivityPaused(Activity a) {}
-            @Override public void onActivitySaveInstanceState(Activity a, Bundle b) {}
-            @Override public void onActivityDestroyed(Activity a) {}
-        });
+    /**
+     * Whether the player has the game on screen. Asked of the system each time rather than
+     * counted from activity callbacks (which never reached the bridge on the test tablet): the
+     * update service polls once a second, so leaving the game settles the background mode
+     * within a second, before Android freezes a cached process.
+     */
+    private static boolean foreground() {
+        ActivityManager.RunningAppProcessInfo info = new ActivityManager.RunningAppProcessInfo();
+        try {
+            ActivityManager.getMyMemoryState(info);
+        } catch (RuntimeException e) {
+            return true;
+        }
+        return info.importance <= ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND;
     }
 
     /** The staged release the core holds, unless it is the one running. */
