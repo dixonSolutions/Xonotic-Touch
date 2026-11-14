@@ -131,6 +131,17 @@ jobs:
       - name: Check updater selection and configuration
         run: bash scripts/test-andysu-release.sh
 
+  web-mods:
+    name: Lua mods from a file on the web (page side)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Pick file and drop-a-zip handshake
+        run: bash scripts/test-web-mods.sh
+
   old-name:
     name: The project's earlier name stays out
     runs-on: ubuntu-latest

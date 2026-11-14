@@ -36,6 +36,7 @@ page.
 | Sound | Web Audio at the device's rate; pauses with the tab |
 | Phones | Landscape lock in fullscreen, screen kept on while playing, on-screen keyboard for chat and console |
 | Install | "Add to Home Screen" or "Install app" gives a fullscreen, landscape app (web manifest) |
+| Lua mods | Client mods, and server mods in the games the page hosts, as on Linux and Android. Installed with **Pick file** in Settings → Mobile → Mods → Install, by dropping a `.zip` on the page, or from a link (the host must allow web pages: CORS). Kept with the settings in IndexedDB. `xt.http` works, to hosts that allow web pages. See "Lua mods" |
 
 Needs a browser with WebAssembly and WebGL 2: current Chrome, Edge, Firefox or
 Safari (16.4+). Desktop GPUs get hardware-compressed textures (S3TC); phones
@@ -706,6 +707,34 @@ packs, and the page could fetch them without any pick.
 
 The hand-over to the app gives the player the installed game with no
 download at all, which is what this route would be for.
+
+## Lua mods
+
+Mods run in the web build as everywhere else: the same Lua runtime, the same
+permission tiers and review, in `/xt-user/mods/` (and `plugins/` for server
+mods), which the page keeps in IndexedDB with the rest of the userdir.
+
+Two things a browser does differently:
+
+- **No file paths.** The Mods tab's *Pick file* asks the page through the
+  same two files Android's `ModImport` answers (`touch/mod-import-request.txt`
+  and `-status.txt`, see `dialog_touch_mods.qh`). `web/mods.js` opens the
+  browser's file picker, copies the `.zip` (at most 8 MB, unopened) to
+  `/xt-user/luastate/incoming/`, and the menu hands it to `lua_mod_install`.
+  A `.zip` dropped on the page goes the same way. The press in the menu is the
+  user activation the picker needs; the page answers within a frame.
+- **No libcurl.** Link installs and `xt.http` download with `fetch()`
+  (`engine/darkplaces/touch_webfetch.h`): https only, redirects included; no
+  cookies, credentials or referrer; the same size limits. The browser adds
+  CORS: a host has to allow requests from other sites. `raw.githubusercontent.com`
+  and most web APIs do; GitHub's release download links do not, and fail with
+  a message that says so and points to *Pick file*. `xt.game.has("http")` is
+  true.
+
+Tests: `scripts/test-web-mods.sh` (the page's half, in node; CI) and
+`tests/web-mods/browser.sh` (the built page in headless Chromium: a link with
+and without CORS, Pick file through the real file chooser, a dropped zip,
+`xt.http` GET and POST).
 
 ## The shell
 
