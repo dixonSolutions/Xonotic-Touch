@@ -1422,6 +1422,9 @@ class ViewRenderer(
         var lastSelected: List<Any?> = emptyList()
         e.bind = { x ->
             val p = x.props
+            // a new source (the map picker after a mode change): drop the old rows, window the new ones
+            val src = p.str("source")
+            if (moveSource(lists, vl, x.source, src)) { x.source = src; vl.reset(-1) }
             // only `selected` changed (a tap's diff): rebind in place, the list keeps its position
             val sel = p["selected"].list()
             if (sel != lastSelected) { lastSelected = sel; vl.refresh() }

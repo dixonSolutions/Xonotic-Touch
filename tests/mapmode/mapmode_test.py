@@ -171,7 +171,7 @@ set _mm_gte 0
 set _mm_gt ""
 alias mm_chk "prvm_globalget server mapname _mm_map; prvm_globalget server MapInfo_LoadedGametype _mm_gte; mm_chk2"
 alias mm_chk2 "prvm_edictget server $_mm_gte mdl _mm_gt; mm_chk3"
-alias mm_chk3 "echo MMCHECK map=$_mm_map gt=$_mm_gt fe=$_fe_state; defer 1 mm_chk"
+alias mm_chk3 "echo MMCHECK map=$_mm_map gt=$_mm_gt fe=$_fe_state bots=$bot_number; defer 1 mm_chk"
 defer 1 mm_chk
 """
 
@@ -187,7 +187,9 @@ def run_case(path, mode, plays, oracle_rows):
     ud = tempfile.mkdtemp(prefix=f"mm-{path}-{mode}-", dir=os.environ.get("TMPDIR"))
     os.makedirs(os.path.join(ud, "data"))
     sock = os.path.join(ud, "run", "uib.sock")
-    pre = "set touch_profile_done 1\nset menu_touch_uib 1\nset touch_lan_bots 0\nset g_warmup 0\n" + PRE_CHECK
+    # Duel asks for three bots: a duel has two places, so Play must start it with one
+    bots = 3 if mode == "duel" else 0
+    pre = f"set touch_profile_done 1\nset menu_touch_uib 1\nset touch_lan_bots {bots}\nset g_warmup 0\n" + PRE_CHECK
     if path.startswith("native"):
         pre += PRE_NATIVE
     if path == "native-restart":
@@ -267,6 +269,9 @@ def run_case(path, mode, plays, oracle_rows):
                 check(got == (mapname, mode), f"Play on {mapname}: the match runs {mapname} in {mode} (server: {got})")
                 news = c.toasts()[ntoast:]
                 check(not news, f"Play on {mapname}: no error toast ({news})")
+                if mode == "duel":
+                    nb = wait_log(r"MMCHECK map=\S+ gt=duel fe=\S* bots=(\d+)", before, 10)
+                    check(nb == "1", f"Play on {mapname}: Duel starts with one bot of the 3 asked (bot_number {nb})")
             else:
                 time.sleep(6)
                 c.settle()
