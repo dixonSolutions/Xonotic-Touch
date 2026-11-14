@@ -5,3 +5,5 @@ author: Godnotic
 description: Shows the round and the time left that the round_timer server mod sends.
 api: 3
 realm: client
+permissions: standard
+reason.standard: shows the round timer a server mod sends

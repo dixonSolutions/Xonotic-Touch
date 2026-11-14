@@ -5,3 +5,5 @@ author: Godnotic
 description: A small radar of the players around you; offline against bots it shows everyone, online only who you can see.
 api: 3
 realm: client
+permissions: standard
+reason.standard: draws a radar of the players around you (the engine limits what it sees online)

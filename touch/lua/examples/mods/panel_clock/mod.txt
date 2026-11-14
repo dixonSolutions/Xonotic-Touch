@@ -5,6 +5,9 @@ author: Godnotic
 description: A clock in a HUD panel the game places clear of the touch controls, with a settings page.
 api: 3
 realm: client
+permissions: standard
+icon: icon.png
+reason.standard: draws a clock panel and keeps its settings
 setting.seconds: bool 1 | Show seconds
 setting.seconds.desc: Show the seconds after the minutes
 setting.seconds.group: Look
