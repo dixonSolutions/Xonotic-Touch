@@ -5,4 +5,6 @@ author: Godnotic
 description: Hides centred messages you chose, and counts them.
 api: 3
 realm: client
+permissions: standard
+reason.standard: hides the centre messages you chose
 setting.words: text Prepare | Hide centre messages containing

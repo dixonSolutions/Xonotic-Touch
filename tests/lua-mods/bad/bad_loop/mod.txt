@@ -1,4 +1,5 @@
 id: bad_loop
 title: Endless loop (test)
 api: 3
+permissions: standard
 realm: server

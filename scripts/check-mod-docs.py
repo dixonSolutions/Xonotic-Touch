@@ -84,6 +84,13 @@ def check_manifest(path, folder, kind):
         elif k == "http":
             if not re.fullmatch(r"[A-Za-z0-9.\-_:, ]+", v):
                 errs.append(f"line {n}: http: host names")
+        elif k == "icon":
+            if not re.fullmatch(r"[A-Za-z0-9_\-][A-Za-z0-9_\-./]{0,58}\.(png|tga)", v, re.I) or ".." in v:
+                errs.append(f"line {n}: icon: a .png or .tga file of the package")
+            elif not os.path.isfile(os.path.join(os.path.dirname(path), v)):
+                errs.append(f"line {n}: icon {v}: no such file in the package")
+            elif os.path.getsize(os.path.join(os.path.dirname(path), v)) > 256 * 1024:
+                errs.append(f"line {n}: icon {v}: over 256 KB")
         elif k == "realm":
             want = {"mods": "client", "plugins": "server"}.get(kind)
             if v not in ("client", "server", "both"):
@@ -97,6 +104,49 @@ def check_manifest(path, folder, kind):
     for p in re.split(r"[,\s]+", keys.get("permissions", "")):
         if p and api and max(TIERS.get(p, 0), ALIASES.get(p, 0)) > api:
             errs.append(f"permission {p} needs a higher api: than {api}")
+    if api >= 3 and "permissions" not in keys:
+        errs.append("api 3 manifest without permissions: (declare at least: permissions: standard)")
+    errs += check_usage(path, api, keys.get("permissions", ""), keys.get("realm", ""))
+    return errs
+
+
+# what a tier allows, as it shows in a script (a heuristic: enough for the examples and the
+# self-test; the engine enforces the real rule on every call)
+USES = {
+    "gamerules": [r"xt\.ents\.spawn\b", r"xt\.match\.\w+\s*\(", r"xt\.bots\.(add|remove)\b", r"xt\.ban\.",
+                  r":(give|take|teleport|respawn|setteam|kick|ban|remove|sethealth|setarmor)\s*\("],
+    "internet": [r"xt\.http\."],
+    "engine_full": [r"xt\.engine\."],
+}
+# api 1/2 scope names and what they come under
+SCOPE_TIER = {"hooks_write": "gamerules", "http": "internet", "engine": "engine_full", "gamerules": "gamerules", "game_rules": "gamerules",
+              "internet": "internet", "engine_full": "engine_full"}
+
+
+# on the server, writing a hook's fields or a player's fields is a game rule
+SERVER_WRITES = [r"\bh\.\w+\s*=(?!=)", r"\.(health|armor|origin|velocity|angles|team|frags|score)\s*=(?!=)"]
+
+
+def check_usage(path, api, perms, realm=""):
+    if api < 3:
+        return []
+    declared = {SCOPE_TIER.get(p, p) for p in re.split(r"[,\s]+", perms) if p}
+    src = ""
+    for d, _, files in os.walk(os.path.dirname(path)):
+        for f in files:
+            if f.endswith(".lua"):
+                src += re.sub(r"--[^\n]*", "", open(os.path.join(d, f), encoding="utf-8").read()) + "\n"
+    errs = []
+    for tier, pats in USES.items():
+        if tier == "gamerules" and realm in ("server", "both"):
+            pats = pats + SERVER_WRITES
+        if tier in declared:
+            continue
+        for pat in pats:
+            m = re.search(pat, src)
+            if m:
+                errs.append(f"uses {m.group(0).strip()} (the {tier} tier) without declaring it in permissions:")
+                break
     return errs
 
 

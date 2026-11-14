@@ -1,5 +1,8 @@
 id: probe_cl
 title: API probe (client, test fixture)
 api: 3
+permissions: standard, internet, engine_full
+reason.internet: checks that xt.http is refused until the tier is granted
+reason.engine_full: checks that xt.engine is refused until the tier is granted
 realm: client
 setting.mode: choice a a b c | Mode

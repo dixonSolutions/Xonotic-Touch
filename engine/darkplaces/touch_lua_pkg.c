@@ -997,10 +997,14 @@ static void tlua_pkg_review(const char *stem)
 		tlua_pkg_fail("the name '%s' is reserved (it clashes with the engine's commands or settings)", m->name);
 		return;
 	}
-	if (manifest[0])
-		TLua_ParseManifest(m, manifest);
-	else
-		m->requested = TLUA_PERM_API1;
+	// a package must say what it is and what it needs: a mod.txt (a folder
+	// copied in by hand may run without one, at the standard tier only)
+	if (!manifest[0])
+	{
+		tlua_pkg_fail("no mod.txt: a package declares what it needs in mod.txt (at least \"api: 3\" and \"permissions: standard\"; docs/MODDING.md)");
+		return;
+	}
+	TLua_ParseManifest(m, manifest);
 	if (m->manifest_error)
 	{
 		tlua_pkg_fail("mod.txt: %s", m->manifest_why);
@@ -1125,7 +1129,7 @@ static void tlua_dl_cb(int status, size_t length, unsigned char *buffer, void *c
 	b = strrchr(tlua_pkg.source, '/');
 	b = b ? b + 1 : tlua_pkg.source;
 	e = strchr(b, '?');
-	dp_strlcpy(stem, b, min(sizeof(stem), (size_t)((e ? e : b + strlen(b)) - b) + 1));
+	TLua_CopyN(stem, sizeof(stem), b, (size_t)((e ? e : b + strlen(b)) - b));
 	if ((e = strstr(stem, ".zip")))
 		stem[e - stem] = 0;
 	tlua_pkg_got(buffer, length, stem);

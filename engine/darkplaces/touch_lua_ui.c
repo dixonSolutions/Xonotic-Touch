@@ -372,11 +372,16 @@ static void tlua_uib_node(char *out, size_t size, const char *mod, int row)
 static void tlua_uib_key(const char *id, char *mod, size_t modsize, char *key, size_t keysize)
 {
 	const char *p = id, *dot;
+	size_t n;
 	qbool server = !strncmp(p, "server.", 7);
 	if (server)
 		p += 7;
 	dot = strchr(p, '.');
-	dp_strlcpy(mod, p, min(modsize, dot ? (size_t)(dot - p) + 1 : modsize));
+	n = dot ? (size_t)(dot - p) : strlen(p); // the part before the dot (dp_strlcpy warns when it cuts)
+	if (n >= modsize)
+		n = modsize - 1;
+	memcpy(mod, p, n);
+	mod[n] = 0;
 	dpsnprintf(key, keysize, "%s%s", server ? "server-" : "", dot ? dot + 1 : "page");
 }
 
@@ -442,9 +447,9 @@ static void tlua_uib_event(const char *mod_id, const char *ev_json, size_t len, 
 	if ((root = tlua_jn_parse(&p, 0)) < 0)
 		return;
 	if ((n = tlua_jn_get(root, "ev")) >= 0 && tlua_jn[n].type == 's')
-		dp_strlcpy(ev, tlua_jn[n].s, min(sizeof(ev), (size_t)tlua_jn[n].len + 1));
+		TLua_CopyN(ev, sizeof(ev), tlua_jn[n].s, (size_t)tlua_jn[n].len);
 	if ((n = tlua_jn_get(root, "node")) >= 0 && tlua_jn[n].type == 's')
-		dp_strlcpy(node, tlua_jn[n].s, min(sizeof(node), (size_t)tlua_jn[n].len + 1));
+		TLua_CopyN(node, sizeof(node), tlua_jn[n].s, (size_t)tlua_jn[n].len);
 	if ((n = tlua_jn_get(root, "value")) >= 0)
 	{
 		if (tlua_jn[n].type == 'a')
@@ -452,7 +457,8 @@ static void tlua_uib_event(const char *mod_id, const char *ev_json, size_t len, 
 		if (n >= 0 && tlua_jn[n].type == 't') dp_strlcpy(value, "1", sizeof(value));
 		else if (n >= 0 && tlua_jn[n].type == 'f') dp_strlcpy(value, "0", sizeof(value));
 		else if (n >= 0 && (tlua_jn[n].type == 's' || tlua_jn[n].type == 'n'))
-			dp_strlcpy(value, tlua_jn[n].s + (tlua_jn[n].type == 's' && tlua_jn[n].s[0] == '#' ? 1 : 0), min(sizeof(value), (size_t)tlua_jn[n].len + 1 - (tlua_jn[n].s[0] == '#' ? 1 : 0)));
+			TLua_CopyN(value, sizeof(value), tlua_jn[n].s + (tlua_jn[n].type == 's' && tlua_jn[n].s[0] == '#' ? 1 : 0),
+				(size_t)tlua_jn[n].len - (tlua_jn[n].type == 's' && tlua_jn[n].s[0] == '#' ? 1 : 0)); // a colour without its #
 	}
 	// node: "mods.page.<mod>.<page key>/<row>[/<row>...]": the page key and the last row
 	slash = strrchr(node, '/');

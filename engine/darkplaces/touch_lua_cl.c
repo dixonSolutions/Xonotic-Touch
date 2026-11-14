@@ -621,7 +621,11 @@ static void tlua_cl_draw(const char *event)
 	DrawQ_ResetClipArea();
 }
 
-void TouchLua_ClientFrame(void)
+// Everything of a client frame but the drawing: loading and unloading mods,
+// timers, coroutines and events, channels, installs, the Mods screen's state,
+// server mods stopped with their server. A frontend that covers the screen and
+// skips drawing it (TouchFE_SkipDraw) calls this instead of the frame below.
+void TouchLua_ClientTick(void)
 {
 	TLua_InitOnce();
 	TLua_FrameStart();
@@ -634,7 +638,12 @@ void TouchLua_ClientFrame(void)
 	if (cls.state == ca_dedicated)
 		return;
 	tlua_cl_frame();
-	if (!tlua_client.loaded)
+}
+
+void TouchLua_ClientFrame(void)
+{
+	TouchLua_ClientTick();
+	if (TLua_Busy() || cls.state == ca_dedicated || !tlua_client.loaded)
 		return;
 	if (tlua_cl_ingame())
 	{

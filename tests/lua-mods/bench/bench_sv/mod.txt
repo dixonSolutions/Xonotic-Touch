@@ -1,3 +1,4 @@
 id: bench_sv
 api: 3
+permissions: standard
 realm: server
