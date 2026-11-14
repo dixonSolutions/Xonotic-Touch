@@ -555,9 +555,14 @@ fn a_pack_without_its_line_is_hashed_and_adopted_or_replaced() {
     i.write(&r.dir);
     // and a file of the right size with the wrong bytes
     std::fs::write(r.dir.join("godnotic-20261107-music.pk3"), vec![7u8; 150_000]).unwrap();
+    // and what a kill leaves behind: a temporary file, chunk state of a pack that is in
+    std::fs::write(r.dir.join("godnotic-20261107-extras.pk3.part.state.tmp123-4"), b"x").unwrap();
+    std::fs::write(r.dir.join("godnotic-20261107-shared-1.pk3.part.state"), b"x").unwrap();
+    std::fs::write(r.dir.join("godnotic-20200101-gone.pk3.part"), b"x").unwrap();
     let before = r.srv.k.served.load(Ordering::SeqCst);
     r.run(Phase::Everything).unwrap();
     assert_eq!(r.srv.k.served.load(Ordering::SeqCst) - before, 900_000 - 410_000, "core adopted, the music fetched");
+    assert!(r.names().iter().all(|n| !n.contains(".part")), "{:?}", r.names());
     r.whole(&r.set.files);
 }
 

@@ -452,6 +452,20 @@ impl<'a> Session<'a> {
             }
             i.set = Some(m.set.clone());
         }
+        // what a killed run left: temporary files of atomic writes, and parts or
+        // chunk state of packs that are installed or no longer listed
+        for n in list(&self.dir) {
+            let stale = if n.contains(".tmp") && (n.starts_with("godnotic-") || n.starts_with(STATE) || n.starts_with(STORED)) {
+                true
+            } else if let Some(base) = n.strip_suffix(".part.state").or_else(|| n.strip_suffix(".part")).filter(|b| b.starts_with("godnotic-")) {
+                m.packs.iter().find(|p| p.install_as == base).is_none_or(|p| i.has(&self.dir, p))
+            } else {
+                false
+            };
+            if stale {
+                let _ = fs::remove_file(self.dir.join(n));
+            }
+        }
         if i != before && !i.write(&self.dir) {
             return Err(Error::Fatal(format!("Cannot write to {}", self.dir.display())));
         }
