@@ -862,6 +862,9 @@ void UIB_StartGame(string map, string mode)
 		return;
 	}
 	int bots = bound(0, cvar("touch_lan_bots"), 32);
+	// Duel has two places: more bots fill both and leave you watching (and a local
+	// game kicks its spectators, so Join ended the match): you and one bot at most
+	if (mode == "duel") bots = min(bots, 1);
 	// a local game has the slots its bots need; only a LAN game has more
 	int slots = lan ? bound(2, max(cvar("touch_lan_maxplayers"), bots + 2), 64) : max(2, bots + 1);
 	if (lan)

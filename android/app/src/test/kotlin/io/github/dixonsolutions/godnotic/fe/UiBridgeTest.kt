@@ -191,4 +191,20 @@ class UiBridgeTest {
         assertNull(FrontendHost.parseJoin("evil;quit"))
         assertNull(FrontendHost.parseJoin("1.2.3.4:99999"))
     }
+
+    /** Create's map picker after a mode change: the list follows its node's new source. */
+    @Test fun listFollowsANewSource() {
+        val lists = HashMap<String, MutableList<String>>()
+        lists.getOrPut("maps.ctf") { ArrayList() }.add("sp/maps/list")
+        assertFalse(moveSource(lists, "sp/maps/list", "maps.ctf", "maps.ctf"))
+        assertTrue(moveSource(lists, "sp/maps/list", "maps.ctf", "maps.duel"))
+        assertEquals(listOf("sp/maps/list"), lists["maps.duel"])
+        assertNull(lists["maps.ctf"]) // rows for the old source reach nobody
+        // the window starts over: the first page of the new source is asked for again
+        val w = ListWindow("sp/maps/list", 60)
+        w.accept(mapOf("offset" to 0.0, "total" to 9.0, "rows" to List(9) { mapOf("key" to "m$it") }))
+        assertNull(w.missing(0, 8))
+        w.invalidate()
+        assertEquals(0..59, w.missing(0, 59))
+    }
 }

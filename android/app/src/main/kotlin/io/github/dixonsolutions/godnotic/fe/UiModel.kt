@@ -249,6 +249,22 @@ class UibClient(private val renderer: UiRenderer, private val send: (String) -> 
 }
 
 /**
+ * Files [item] (a list view) under [to] instead of [from] in [lists], the
+ * renderer's lists by data source. A list node whose `source` changes in a
+ * diff (Create's map picker after a mode change: `maps.ctf` to `maps.duel`)
+ * must take the new source's rows; rows for the new source are sent to the
+ * lists filed under it, so a list left under the old one keeps the old rows.
+ * False when the source did not change.
+ */
+fun <T> moveSource(lists: MutableMap<String, MutableList<T>>, item: T, from: String, to: String): Boolean {
+    if (from == to) return false
+    lists[from]?.remove(item)
+    if (lists[from]?.isEmpty() == true) lists.remove(from)
+    lists.getOrPut(to) { ArrayList() }.add(item)
+    return true
+}
+
+/**
  * A virtualised list's rows, fetched a window at a time: the renderer asks
  * [missing] for what is on screen plus a margin, sends one request for it,
  * and [accept] files the reply. Rows already held are never asked for
