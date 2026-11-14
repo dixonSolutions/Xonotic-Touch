@@ -1490,7 +1490,16 @@ static int fe_covered(void)
 
 qbool TouchFE_SkipDraw(void)
 {
-	return fe_covered() >= 2;
+	extern void TLua_InitOnce(void);
+	extern void TLua_FrameStart(void);
+	if (fe_covered() < 2)
+		return false;
+	// The frame is not drawn, so CL_UpdateScreen's TouchLua_ClientFrame does
+	// not run either: its housekeeping still must (the Mods screen's
+	// _lua_detail, installs from a link, mod pages), its drawing must not.
+	TLua_InitOnce();
+	TLua_FrameStart();
+	return true;
 }
 
 double TouchFE_MaxFPS(double maxfps)
