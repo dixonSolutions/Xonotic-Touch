@@ -45,6 +45,7 @@ static cvar_t touch_load_restless = {CF_CLIENT, "touch_load_restless", "0", "do 
 
 static cvar_t touch_load_lazysbar = {CF_CLIENT, "touch_load_lazysbar", "1", "Xonotic: cache the engine status bar's Quake pictures when the engine HUD is first drawn instead of at every renderer start (Godnotic); 0 = at renderer start"};
 static cvar_t touch_load_lazypics = {CF_CLIENT, "touch_load_lazypics", "1", "the menu's precache_pic only notes a picture that exists; it loads when first drawn (Godnotic); 0 = load at precache"};
+static cvar_t touch_load_fontslices = {CF_CLIENT, "touch_load_fontslices", "1", "joining a remote server, render the pending font sizes a slice per frame while the signon waits on the network instead of all in the frame after the accept (Godnotic)"};
 static cvar_t touch_load_lazydeflate = {CF_SERVER, "touch_load_lazydeflate", "1", "deflate csprogs.dat when a client first downloads it instead of at every map start (Godnotic)"};
 static cvar_t touch_loadtime_menu = {CF_CLIENT | CF_READONLY, "_touch_loadtime_menu", "0", "1 once the main menu has drawn its first frame (for scripts that wait for it)"};
 static cvar_t touch_loadtime_game = {CF_CLIENT | CF_READONLY, "_touch_loadtime_game", "0", "counts loads that reached their first game frame (for scripts that wait for one)"};
@@ -278,6 +279,37 @@ static void TLT_Signons(double now)
 	}
 }
 
+// A join to a remote server waits on the network for most of its signon:
+// the pending font sizes (about 20 of them, 240 ms on a desktop) load a
+// slice per frame in those waits instead of in one frame right after the
+// accept, where they held up reading the server's first message; whatever
+// is left loads at the last signon step, before the first frame, as before.
+// A local game has no waits: all at once.
+static qbool TLT_FontSlices(void)
+{
+	if (sv.active || cls.demoplayback || !touch_load_fontslices.integer)
+		return false;
+	if (cls.state == ca_connected)
+		return cls.signon < SIGNONS - 1;
+	return cls.connect_trying;
+}
+
+static void TLT_FontSlice(double now)
+{
+	double budget = 0.010, rtt;
+	if (cls.state == ca_connected && cls.signon == 0)
+	{
+		// a stock server's first message comes a fragment per round trip:
+		// work only early in each gap, so the next ack is not held up
+		rtt = TouchJoinTime_RTT();
+		if (rtt <= 0.004 || !cls.netcon || now - cls.netcon->lastMessageDirtyTime > rtt * 0.5)
+			return;
+		budget = min(budget, rtt * 0.4);
+	}
+	while (Sys_DirtyTime() - now < budget && TouchFont_LoadPendingOne())
+		;
+}
+
 void TouchLoadTime_Frame(void)
 {
 	double now = Sys_DirtyTime();
@@ -290,7 +322,12 @@ void TouchLoadTime_Frame(void)
 	// loading screen (the HUD draws most of them in its first frame), else
 	// one per frame once the main menu has been up a moment
 	if (scr_loading && (tlt.loading || cls.state == ca_connected))
-		while (TouchFont_LoadPendingOne());
+	{
+		if (TLT_FontSlices())
+			TLT_FontSlice(now);
+		else
+			while (TouchFont_LoadPendingOne());
+	}
 	else if (tlt.menu_reported && key_dest == key_menu && cls.state != ca_connected && now - tlt.menu_time > 0.5)
 		TouchFont_LoadPendingOne();
 
@@ -554,6 +591,7 @@ void TouchLoadTime_Init(void)
 	Cvar_RegisterVariable(&touch_load_lazysbar);
 	Cvar_RegisterVariable(&touch_load_lazypics);
 	Cvar_RegisterVariable(&touch_load_lazydeflate);
+	Cvar_RegisterVariable(&touch_load_fontslices);
 	Cvar_RegisterVariable(&touch_loadtime_menu);
 	Cvar_RegisterVariable(&touch_loadtime_game);
 	TP_Init();
