@@ -772,6 +772,20 @@ int TouchUIB_LoadingCardUp(void)
 #endif
 }
 
+static cvar_t touch_chat_system_lines = {CF_CLIENT | CF_ARCHIVE, "touch_chat_system_lines", "0",
+	"1 shows the game's own messages in the chat feed over play, as stock Xonotic does (\"connected\", \"is now playing\", frags: the lines a game sends to the chat box without a chat sound); 0 keeps them in the console only, so the feed over play carries what players say and the information shows once (the loading card, the kill feed and the scoreboard have it)"};
+
+unsigned TouchUIB_ChatboxMask(char lead, unsigned mask)
+{
+	// \1 is a player speaking (say, say_team, tell, votes: with the chat sound),
+	// \3 the game putting its own line in the chat box (notification_allow_chatboxprint)
+	if (lead != 3 || touch_chat_system_lines.integer)
+		return mask;
+	// an ordinary console line that never shows over play: not in the chat feed,
+	// not in the notify lines, still in the console and the log
+	return (mask & ~CON_MASK_CHAT) | CON_MASK_PRINT | CON_MASK_HIDENOTIFY;
+}
+
 #ifdef CONFIG_MENU
 // uib_input: scripted input for tests of the QuakeC renderer, through the same
 // path a finger, a mouse or a key takes (Key_Event and the window mouse
@@ -1550,6 +1564,30 @@ static void UIB_ModPage_f(cmd_state_t *cmd)
 	Con_Printf("uib_modpage: %s%s\n", r ? "refused: " : "ok", r ? err : "");
 }
 
+// uib_chatfeed: for tests, every line of the console buffer the engine would
+// put over play, as "CHATFEED <line>" (the chat feed: CON_MASK_CHAT) and
+// "NOTIFYLINE <line>" (the notify lines). Collected first: printing adds lines.
+static void UIB_ChatFeed_f(cmd_state_t *cmd)
+{
+	extern conbuffer_t con;
+	char *out = (char *)Z_Malloc(65536);
+	size_t used = 0;
+	int feed = 0, notify = 0;
+	for (int i = 0; i < CONBUFFER_LINES_COUNT(&con); i++)
+	{
+		con_lineinfo_t *l = &CONBUFFER_LINES(&con, i);
+		const char *kind = NULL;
+		if ((l->mask & CON_MASK_CHAT) && !(l->mask & CON_MASK_INPUT))
+			kind = "CHATFEED", feed++;
+		else if (!(l->mask & (CON_MASK_INPUT | CON_MASK_HIDENOTIFY | CON_MASK_CHAT | CON_MASK_DEVELOPER)))
+			kind = "NOTIFYLINE", notify++;
+		if (kind && used + l->len + 16 < 65536)
+			used += dpsnprintf(out + used, 65536 - used, "%s %.*s\n", kind, (int)l->len, l->start);
+	}
+	Con_Printf("%sCHATFEED-END %d feed, %d notify\n", out, feed, notify);
+	Z_Free(out);
+}
+
 // uib_testrows <source> <count> servers|maps [seed]: synthetic rows for stress tests
 static void UIB_TestRows_f(cmd_state_t *cmd)
 {
@@ -1595,12 +1633,14 @@ void TouchUIB_Init(void)
 {
 	Cvar_RegisterVariable(&menu_touch_uib);
 	Cvar_RegisterVariable(&touch_loading_card);
+	Cvar_RegisterVariable(&touch_chat_system_lines);
 	Cvar_RegisterVariable(&uib_version);
 	Cvar_RegisterVariable(&uib_debug);
 	Cmd_AddCommand(CF_CLIENT, "uib_dump", UIB_Dump_f, "UI bridge: write the current snapshot to the console or a file (uib_dump <file>)");
 	Cmd_AddCommand(CF_CLIENT, "uib_send", UIB_Send_f, "UI bridge: deliver a renderer message (JSON) on the console loopback and print the replies");
 	Cmd_AddCommand(CF_CLIENT, "uib_event", UIB_Event_f, "UI bridge: deliver an event, e.g. uib_event {\"ev\":\"action\",\"node\":\"home/hero\",\"action\":\"play\"}");
 	Cmd_AddCommand(CF_CLIENT, "uib_stats", UIB_Stats_f, "UI bridge: node count, rev, snapshot size, renderers");
+	Cmd_AddCommand(CF_CLIENT, "uib_chatfeed", UIB_ChatFeed_f, "for tests: the console lines the engine shows over play (chat feed and notify lines)");
 	Cmd_AddCommand(CF_CLIENT, "uib_testrows", UIB_TestRows_f, "UI bridge: synthetic rows for stress tests (uib_testrows <source> <count> servers|maps [seed])");
 	Cmd_AddCommand(CF_CLIENT, "uib_modpage", UIB_ModPage_f, "UI bridge: register a mod page (uib_modpage <mod> <page> <json>) or remove it (-)");
 #ifdef CONFIG_MENU
