@@ -540,17 +540,19 @@ void UIB_SecContent(string k)
 void UIB_BuildModDetail()
 {
 	string sel = UIB_VM("mods.sel");
-	UIB_Lines(cvar_string("_lua_detail"));
-	string title = sel, state = "", ver = "", author = "", desc = "", err = "";
+	string title = sel, state = "", ver = "", author = "", desc = "", err = "", icon = "";
+	string can = ""; // what turning it on lets it do, for the confirmation
 	bool enabled = false, fromlink = false;
 	if (!UIB_Screen("mods.detail", sel)) return;
+	UIB_Lines(cvar_string("_lua_detail"));
 	uib_s("kind", "detail");
-	// Tiers (docs/LUA_API.md): standard is on with the mod; gamerules and
-	// internet are switches; engine_full is a switch with a strong warning,
-	// and for a mod installed from a link a second confirmation (the engine's
-	// "grant engine_full confirm") on a card of its own.
+	// Tiers (docs/LUA_API.md): only the ones the mod declares, each with the
+	// mod's own reason. Standard comes with turning the mod on; the others are
+	// switches that grant or revoke at once; Full engine access asks first
+	// (the switch's confirm) and, for a mod installed from a link, a second
+	// time on a card of its own (the engine's "grant engine_full confirm").
 	UIB_Open("perms", "section");
-	uib_s("title", _("Permissions"));
+	uib_s("title", _("What it may do"));
 	uib_b("sticky", 1);
 	int np = 0;
 	for (int i = 0; i < uib_tmpn; ++i)
@@ -565,6 +567,7 @@ void UIB_BuildModDetail()
 			case "author": author = v; break;
 			case "description": desc = v; break;
 			case "error": err = v; break;
+			case "icon": icon = v; break;
 			case "enabled": enabled = v == "1"; break;
 			case "fromlink": fromlink = v == "1"; break;
 			case "perm":
@@ -578,45 +581,58 @@ void UIB_BuildModDetail()
 					case "internet": name = _("Internet"); break;
 					case "engine_full": name = _("Full engine access"); break;
 				}
-				UIB_Open(strcat("p", ftos(np++)), "card");
-					uib_s("title", name);
-					uib_s("subtitle", why);
-					uib_s("icon", (v == "engine_full") ? "warning" : ((v == "internet") ? "network" : ((v == "gamerules") ? "gamepad" : "mods")));
+				can = strcat(can, (can == "" ? "" : "\n"), name, ": ", why);
+				UIB_Open(strcat("p", ftos(np++)), "switch");
+					uib_s("label", name);
+					uib_s("help", why);
 					if (v == "standard")
-						uib_push("badges", UIB_Badge("check", (enabled ? _("On with the mod") : _("When the mod is on")), (enabled ? "success" : "neutral")));
+					{
+						// on with the mod itself
+						uib_b("value", enabled);
+						uib_b("enabled", 0);
+					}
 					else
 					{
-						uib_push("badges", (on ? UIB_Badge("check", _("Allowed"), ((v == "engine_full") ? "danger" : "success")) : UIB_Badge("close", _("Not allowed"), "neutral")));
-						if (on)
-							uib_j("primary", UIB_AS(strcat("mod.perm.revoke.", v), _("Take away"), "close", "secondary"));
-						else if (v != "engine_full")
-							uib_j("primary", UIB_AS(strcat("mod.perm.grant.", v), _("Allow"), "check", "primary"));
-						else if (UIB_VM("mods.engine_pending") == sel && fromlink)
-							// second step for a mod installed from a link
-							uib_j("primary", sprintf("{\"id\":\"mod.perm.engine_confirm\",\"label\":%s,\"icon\":\"warning\",\"style\":\"destructive\",\"confirm\":{\"title\":%s,\"body\":%s,\"ok\":%s,\"destructive\":true}}",
-								uib_q(_("Confirm full access")), uib_q(_("This mod came from a link")),
-								uib_q(_("Nobody checked it. With full access it can do anything you can type in the console. Only go on if you trust whoever gave you the link.")),
-								uib_q(_("Give full access"))));
-						else
-							uib_j("primary", sprintf("{\"id\":\"mod.perm.grant.engine_full\",\"label\":%s,\"icon\":\"warning\",\"style\":\"destructive\",\"confirm\":{\"title\":%s,\"body\":%s,\"ok\":%s,\"destructive\":true}}",
-								uib_q(_("Allow")), uib_q(_("Full engine access?")),
+						uib_s("bind", strcat("vm:mods.perm.", v));
+						uib_b("value", on);
+						if (v == "engine_full")
+							uib_j("confirm", sprintf("{\"title\":%s,\"body\":%s,\"ok\":%s,\"destructive\":true}",
+								uib_q(_("Full engine access?")),
 								uib_q(_("The mod can run any console command and change any setting except passwords and keys, as if you typed it. Allow this only for a mod you trust.")),
 								uib_q((fromlink ? _("Continue") : _("Allow")))));
 					}
 				UIB_Close();
+				if (v == "engine_full" && !on && fromlink && UIB_VM("mods.engine_pending") == sel)
+				{
+					// second step for a mod installed from a link
+					UIB_Open("engine_confirm", "card");
+						uib_s("title", _("This mod came from a link"));
+						uib_s("subtitle", _("Nobody checked it. With full access it can do anything you can type in the console."));
+						uib_s("icon", "warning");
+						uib_j("primary", sprintf("{\"id\":\"mod.perm.engine_confirm\",\"label\":%s,\"icon\":\"warning\",\"style\":\"destructive\",\"confirm\":{\"title\":%s,\"ok\":%s,\"destructive\":true}}",
+							uib_q(_("Give full access")), uib_q(_("Give full engine access?")), uib_q(_("Give full access"))));
+					UIB_Close();
+				}
 				break;
 			}
 		}
 	}
-	if (!np) UIB_Text("none", _("Asks for nothing"), "caption");
+	if (!np) UIB_Text("none", _("It declares nothing: it can only do what every mod can."), "caption");
 	UIB_Close();
 	UIB_Open("about", "preview");
 		uib_s("title", title);
 		uib_s("subtitle", sprintf("%s %s", ver, author));
 		uib_s("body", desc);
+		if (icon != "") uib_s("image", icon); // a picture only when the mod brings an icon
 		uib_push("attrs", UIB_Attr(_("State"), state, "info"));
 		if (err != "") uib_push("badges", UIB_Badge("error", err, "danger"));
-		uib_j("primary", enabled ? UIB_AS("mod.disable", _("Turn off"), "close", "secondary") : UIB_AS("mod.enable", _("Turn on"), "check", "primary"));
+		if (enabled)
+			uib_j("primary", UIB_AS("mod.disable", _("Turn off"), "close", "secondary"));
+		else
+			// what it can do, before it runs (one tap for a mod that declares only the standard tier)
+			uib_j("primary", sprintf("{\"id\":\"mod.enable\",\"label\":%s,\"icon\":\"check\",\"style\":\"primary\",\"confirm\":{\"title\":%s,\"body\":%s,\"ok\":%s}}",
+				uib_q(_("Turn on")), uib_q(sprintf(_("Turn on %s?"), title)),
+				uib_q((can == "" ? _("It can only do what every mod can.") : can)), uib_q(_("Turn on"))));
 		uib_push("actions", UIB_AC("mod.uninstall", _("Uninstall"), "delete", "destructive", _("Uninstall this mod?"), _("Uninstall"), true));
 	UIB_Close();
 	UIB_Done();
@@ -766,6 +782,20 @@ bool UIB_SettingsValue(string node, string value)
 			UIB_RebuildAll();
 			return true;
 		case "vm:mods.url": UIB_VMSet("mods.url", value); return true;
+		case "vm:mods.perm.gamerules":
+		case "vm:mods.perm.internet":
+		case "vm:mods.perm.engine_full":
+		{
+			// a tier switch of the mod detail: grant or revoke at once
+			string tier = substring(bind, 13, -1);
+			string pfx = (UIB_VM("mods.realm") == "server") ? "sv_lua_plugin_" : "lua_mod_";
+			bool grant = value == "1" || value == "true";
+			localcmd(sprintf("\n%spermission %s %s %s\n", pfx, UIB_VM("mods.sel"), (grant ? "grant" : "revoke"), tier));
+			// engine_full for a mod from a link: the first grant only warns; the card asks again
+			UIB_VMSet("mods.engine_pending", ((grant && tier == "engine_full") ? UIB_VM("mods.sel") : ""));
+			UIB_RebuildAll();
+			return true;
+		}
 	}
 	if (substring(bind, 0, 7) == "vm:key.")
 	{

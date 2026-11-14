@@ -1252,7 +1252,7 @@ void UIB_Init()
 	UIB_Context();
 }
 
-float uib_next_tick;
+float uib_next_tick; // real time: the menu VM's `time` stands still while a native front end hides the menu
 void UIB_Tick()
 {
 	if (!uib_inited)
@@ -1274,15 +1274,15 @@ void UIB_Tick()
 	UIB_LanPopupTick();
 	// time-varying screens
 	string top = UIB_TopScreen();
-	if (top == "home" && time > uib_next_tick)
+	if (top == "home" && uib_gettime(1) > uib_next_tick)
 	{
-		uib_next_tick = time + 1;
+		uib_next_tick = uib_gettime(1) + 1;
 		if (UIB_ServerSummary())
 			UIB_Build(top);
 	}
-	if ((top == "pause" || top == "lan.host" || top == "mods.detail" || top == "settings.data") && time > uib_next_tick)
+	if ((top == "pause" || top == "lan.host" || top == "mods.detail" || top == "settings.data") && uib_gettime(1) > uib_next_tick)
 	{
-		uib_next_tick = time + 1;
+		uib_next_tick = uib_gettime(1) + 1;
 		UIB_Build(top);
 	}
 }

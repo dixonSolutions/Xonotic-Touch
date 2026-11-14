@@ -795,6 +795,8 @@ class ViewRenderer(
             for (a in p["actions"].list()) actions.addView(actionButton(id, a.obj()))
             img.aspect = aspect(p, 4f / 3f)
             val ref = p.str("image")
+            // no picture (a mod without an icon): the text takes the row
+            img.visibility = if (ref.isEmpty()) View.GONE else View.VISIBLE
             if (ref.isEmpty()) img.none() else picture(img, ref)
         }
         return e
@@ -825,7 +827,9 @@ class ViewRenderer(
             // `role: banner` with `emphasis: high` (Home, docs/UI_BRIDGE.md): large, a
             // quarter to a third of the height; any other banner on Home stays a header
             val h = ctx.resources.displayMetrics.heightPixels
-            if (x.props.str("role") == "banner" && x.props.str("emphasis") == "high") img.maxHeight = (h * 0.3f).toInt()
+            // on a short screen (phone landscape) the banner gives way first: the cards must fit
+            val hdp = h / ctx.resources.displayMetrics.density
+            if (x.props.str("role") == "banner" && x.props.str("emphasis") == "high") img.maxHeight = (h * (if (hdp < 480f) 0.16f else if (hdp < 640f) 0.22f else 0.3f)).toInt()
             else if (img.contain && screenKind(x) == "home") img.maxHeight = (h * 0.11f).toInt()
             img.contentDescription = x.props.str("alt")
             val r = x.props.str("ref")
@@ -916,9 +920,19 @@ class ViewRenderer(
     private fun switchRow(id: String, props: Map<String, Any?>): Entry {
         if (props.str("style") == "checkbox") return checkChip(id, props)
         var muted = false
-        val s = Kit.switch(ctx, props.bool("value"), title(props)) { v -> if (!muted) events.value(id, v) }
         val holder = FrameLayout(ctx)
         val e = Entry(id, "switch", holder, null, props)
+        lateinit var s: android.widget.CompoundButton
+        // `confirm` (an object like an action's): asked before the switch turns on
+        // (a mod's Full engine access); Cancel puts it back
+        s = Kit.switch(ctx, props.bool("value"), title(props)) { v ->
+            if (muted) return@switch
+            val c = e.props["confirm"].obj()
+            if (v && c.isNotEmpty()) {
+                muted = true; s.isChecked = false; muted = false
+                host.confirm(c) { muted = true; s.isChecked = true; muted = false; events.value(id, true) }
+            } else events.value(id, v)
+        }
         e.bind = { x ->
             holder.removeAllViews()
             (s.parent as? ViewGroup)?.removeView(s)
