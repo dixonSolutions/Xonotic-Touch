@@ -9,6 +9,7 @@ int main(void)
 {
 	touchsl_record_t r, q;
 	touchsl_bucket_t b;
+	static touchsl_hosts_t hosts;
 	char line[700], bad[128];
 	float t[10] = {0.9f, 0.1f, 0.5f, 0.3f, 0.7f, 0.2f, 0.4f, 0.6f, 0.8f, 1.0f};
 	int n, i, total;
@@ -71,8 +72,36 @@ int main(void)
 	CHECK(TouchSL_Tries(TOUCHSL_KNOWN_DEAD, 3, 0) == 1, "one that failed before one");
 	CHECK(TouchSL_Tries(TOUCHSL_KNOWN_ALIVE, 3, 1) == 2, "the background refresh at most two");
 	CHECK(TouchSL_Tries(TOUCHSL_UNKNOWN, 1, 0) == 1 && TouchSL_Tries(TOUCHSL_KNOWN_ALIVE, 99, 0) == 8, "net_slist_maxtries bounds");
+	CHECK(TouchSL_Tries(TOUCHSL_KNOWN_SEED, 3, 0) == 2, "a seeded one two, as a master's");
+	CHECK(TouchSL_FirstWave(TOUCHSL_KNOWN_ALIVE) && TouchSL_FirstWave(TOUCHSL_KNOWN_SEED), "the saved and the seeded servers go in the first wave");
+	CHECK(!TouchSL_FirstWave(TOUCHSL_UNKNOWN) && !TouchSL_FirstWave(TOUCHSL_KNOWN_DEAD), "the unknown and the failed ones after it");
+	CHECK(TOUCHSL_BURST_DEFAULT >= TOUCHSL_RATE_DEFAULT / 15, "a 15 fps frame still sends its share of the rate");
+	CHECK(TOUCHSL_FIRST_BURST <= 64 && TOUCHSL_RATE_DEFAULT / 20 >= 200 - TOUCHSL_FIRST_BURST, "the frame the list opens sends a short burst, the first wave of some 250 is out within 50 ms");
 	CHECK(TOUCHSL_RETRY_INTERVAL > 1.0, "a retry waits out the server's 1 s getstatus block");
 	CHECK(TouchSL_FinalWait(420) > 0.42 && TouchSL_FinalWait(420) < 0.6, "the last wait is maxping and a frame");
+
+	// one host: TOUCHSL_HOST_BURST at once, then TOUCHSL_HOST_RATE a second
+	for (n = 0, i = 0; i < 40; i++)
+		n += TouchSL_HostTake(&hosts, 12345, 500.0);
+	CHECK(n == TOUCHSL_HOST_BURST, "a host gets a burst at once");
+	CHECK(TouchSL_HostTake(&hosts, 12345 + TOUCHSL_HOST_SLOTS * 3 + 1, 500.0), "another host is not held up");
+	for (n = 0, i = 0, now = 500.0; i < 100; i++, now += 0.01) // one second, 100 frames
+		n += TouchSL_HostTake(&hosts, 12345, now) + TouchSL_HostTake(&hosts, 12345, now);
+	CHECK(n >= TOUCHSL_HOST_RATE - 2 && n <= TOUCHSL_HOST_RATE + 2, "then its rate over a second");
+	n = 0;
+	for (i = 0; i < 40; i++)
+		n += TouchSL_HostTake(&hosts, 12345 + TOUCHSL_HOST_SLOTS, 600.0); // the same slot, another address
+	CHECK(n == TOUCHSL_HOST_BURST, "an address that takes over a slot starts with a full burst");
+
+	// the seed's first wave: one address per network first
+	{
+		const char *seed[] = {"1.2.3.4:26000", "1.2.3.4:26001", "1.2.9.9:26000", "5.6.7.8:26000", "[2a01:4f8:221:f46:0:0:0:2]:26000", "[2a01:4f8:221:f46:0:0:0:2]:26001", "[2a01:4f8:999:0:0:0:0:1]:26000", "9.9.9.9:53"};
+		int order[8], want[8] = {0, 3, 4, 6, 7, 1, 5, 2};
+		TouchSL_SpreadOrder(seed, 8, order);
+		CHECK(!memcmp(order, want, sizeof(want)), "the seed goes to every network once before any network twice");
+		CHECK(TouchSL_NetKey("1.2.3.4:26000") == TouchSL_NetKey("1.2.200.1:27000") && TouchSL_NetKey("1.2.3.4:1") != TouchSL_NetKey("1.3.3.4:1"), "an IPv4 network is a /16");
+		CHECK(TouchSL_NetKey("[2a01:4f8:221:f46:0:0:0:2]:1") == TouchSL_NetKey("[2a01:4f8:221:0:0:0:0:9]:2") && TouchSL_NetKey("[2a01:4f8:221:0:0:0:0:9]:2") != TouchSL_NetKey("[2a01:4f8:999:0:0:0:0:9]:2"), "an IPv6 network is a /48");
+	}
 
 	// percentiles
 	CHECK(TouchSL_Percentile(t, 10, 50) == 0.5f, "half of ten answers were in by the fifth");

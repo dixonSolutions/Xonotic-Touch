@@ -1,0 +1,54 @@
+name: Server list seed
+
+# Refreshes engine/darkplaces/touch_srvlist_seed.h: the public servers that the
+# first server list a new install opens asks at once, before the masters have
+# answered (docs/NETWORK.md, "The seed"). Monthly, or by hand. When more than a
+# tenth of the servers came or went it pushes a bot/srvlist-seed-<date> branch
+# and opens a pull request; the header is part of the darkplaces component, so
+# it is merged like any engine change (scripts/component-push.sh darkplaces).
+# A push to a ci/srvlist* branch that touches the script only checks that the
+# masters and servers can be reached from a runner.
+on:
+  schedule:
+    - cron: "23 4 1 * *"
+  workflow_dispatch:
+  push:
+    branches: ["ci/srvlist*"]
+    paths: ["scripts/srvlist-seed.py", ".github/workflows/srvlist-seed.yml"]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  seed:
+    name: Ask the masters and the servers
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check only (a ci/ branch)
+        if: github.event_name == 'push'
+        run: python3 scripts/srvlist-seed.py --check
+      - name: Write the seed
+        if: github.event_name != 'push'
+        run: python3 scripts/srvlist-seed.py
+      - name: Open a pull request
+        if: github.event_name != 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if git diff --quiet -- engine/darkplaces/touch_srvlist_seed.h; then
+            echo "The seed is current."
+            exit 0
+          fi
+          branch="bot/srvlist-seed-$(date -u +%Y%m%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add engine/darkplaces/touch_srvlist_seed.h
+          git commit -m "Server list seed: the public servers that answer today"
+          git push origin "$branch"
+          gh pr create --head "$branch" --title "Server list seed: the public servers that answer today" \
+            --body "Written by scripts/srvlist-seed.py from the masters (workflow srvlist-seed). The header is part of the darkplaces component: merge it with scripts/component-push.sh darkplaces." \
+            || echo "Could not open a pull request (Actions may not be allowed to); the branch $branch has the new seed."

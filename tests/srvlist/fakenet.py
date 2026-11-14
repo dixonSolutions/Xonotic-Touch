@@ -15,8 +15,10 @@ process serves a whole scenario) and counters are written back to --report on
 SIGUSR1 and on exit:
   queries, answers, dropped_flood (queries a stock server would have ignored),
   max_per_second (most queries in any 1 s window), min_gap_same_server,
-  min_gap_same_host, first_query, first_answer (seconds since the master was
-  first asked), master_queries.
+  min_gap_same_host, max_host_burst (most queries to one IP address from one
+  client within 100 ms), first_query, first_answer (seconds since the master
+  was first asked), master_queries.
+The state may carry master_delay: seconds the master waits before answering.
 """
 import argparse, heapq, json, os, random, select, signal, socket, struct, sys, time
 
@@ -41,9 +43,10 @@ def main():
     state = {"servers": [], "hold_answers": 0}
     state_mtime = 0
     stats = {"queries": 0, "answers": 0, "dropped_flood": 0, "max_per_second": 0, "min_gap_same_server": None,
-             "min_gap_same_host": None, "first_query": None, "first_answer": None, "master_queries": 0, "lost": 0}
+             "min_gap_same_host": None, "max_host_burst": 0, "first_query": None, "first_answer": None, "master_queries": 0, "lost": 0}
     last_query = {}  # (server, client) -> time
     last_host = {}   # (ip, client ip) -> time
+    host_window = {} # (ip, client) -> query times within the last 100 ms
     window = []      # query times within the last second
     t_master = [None]
     pending = []     # heap of (due, n, sock, data, addr, is_answer)
@@ -68,12 +71,12 @@ def main():
                 socks[key] = so
                 by_fd[so.fileno()] = (so, key)
         # a reload starts a new measurement
-        for k in ("queries", "answers", "dropped_flood", "max_per_second", "master_queries", "lost"):
+        for k in ("queries", "answers", "dropped_flood", "max_per_second", "max_host_burst", "master_queries", "lost"):
             stats[k] = 0
         for k in ("min_gap_same_server", "min_gap_same_host", "first_query", "first_answer"):
             stats[k] = None
         stats["flood_examples"] = []
-        last_query.clear(); last_host.clear(); window.clear(); t_master[0] = None
+        last_query.clear(); last_host.clear(); host_window.clear(); window.clear(); t_master[0] = None
 
     def report(*_):
         tmp = a.report + ".tmp"
@@ -103,6 +106,11 @@ def main():
         while window and window[0] < now - 1.0:
             window.pop(0)
         stats["max_per_second"] = max(stats["max_per_second"], len(window))
+        hw = host_window.setdefault((key[0], addr), [])
+        hw.append(now)
+        while hw and hw[0] < now - 0.1:
+            hw.pop(0)
+        stats["max_host_burst"] = max(stats["max_host_burst"], len(hw))
         q = (key, addr)
         if q in last_query:
             gap = now - last_query[q]
@@ -147,7 +155,7 @@ def main():
         for i in range(0, max(1, len(entries)), 100):
             chunk = b"".join(entries[i:i + 100])
             last = i + 100 >= len(entries)
-            send_later(a.master_latency, master, head + chunk + (EOT if last else b""), addr)
+            send_later(a.master_latency + state.get("master_delay", 0), master, head + chunk + (EOT if last else b""), addr)
 
     while True:
         load_state()
