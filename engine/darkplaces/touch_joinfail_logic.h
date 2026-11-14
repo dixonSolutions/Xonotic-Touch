@@ -44,8 +44,11 @@ sentences a player can act on.
 // address, and each ignored connect renews the block. A client that keeps
 // asking once a second is never let in. After this many challenges answered
 // with a connect and no accept, the client stays quiet for a little longer
-// than the block, then asks again.
-#define TOUCHJOIN_BACKOFF_AFTER    3
+// than the block, then asks again. Not before the fourth: up to three lost
+// connects the join is exactly as fast as stock (one second apart), and four
+// in a row with every challenge answered is the block, not packet loss. The
+// pause counts from the last connect sent (the one that renewed the block).
+#define TOUCHJOIN_BACKOFF_AFTER    4
 #define TOUCHJOIN_BACKOFF_SECONDS  5.6
 #define TOUCHJOIN_BACKOFF_TRIES    5   // tries left after the pause
 
