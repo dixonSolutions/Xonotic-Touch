@@ -136,11 +136,75 @@ any earlier crashed in the lightmap upload and stalled the join in tests),
 and never while the server's own packs download (they may replace what the
 list names). The replay then finds the entries loaded.
 
+### Fonts in the waits (`touch_load_fontslices`)
+
+Font sizes the menu did not need yet (`r_font_lazysizes`) were all rendered
+in the frame after the `accept` (about 20 sizes, 240 ms on the desktop),
+before the client read the server's first message. Joining a remote server
+they now render 10 ms a frame while the signon waits on the network (at
+signon 0 only early in each round trip, as the warm-up); what is left
+renders at the last signon step as before. Local games: unchanged.
+
 ## Results
 
-(See the before/after tables below; desktop, SDL offscreen, `taskset -c
-4-9`, split data set G3 plus this checkout's game code, a returning player,
-median of 5.)
+Desktop (Intel, Mesa, SDL offscreen 1280x720), client and servers pinned to
+`taskset -c 4-9`, the split data set (G3) plus this checkout's game code, a
+returning player (one game on stormkeep played before), stormkeep, median of
+5 (spread in brackets), 2026-11-14. "Before" is `origin/main` + net2 +
+srvlist2 with only the timeline added; "after" is this branch. Stock server:
+the real Xonotic 0.8.6 `xonotic-dedicated`; the CSQC release is a local HTTP
+server behind the same netem delay (no TLS: GitHub adds a redirect and two
+TLS handshakes, a few round trips, all of it inside the stock server's
+serverinfo time at these RTTs). `scripts/bench-join.sh`, scenarios in
+parentheses.
+
+| scenario | before: first frame | after: first frame | |
+|---|---|---|---|
+| stock 0.8.6 server, 100 ms RTT (`join:stock:100`) | 23676 ms (23545-23872) | **3744 ms** (3682-3784) | -84 % |
+| stock 0.8.6 server, 200 ms RTT | 26570 ms, **2 of 5 crashed** | **6365 ms** (6340-6425), 5 of 5 | -76 % |
+| stock 0.8.6, CSQC already in dlcache (`cached`) | 3977 ms (3941-4024) | 3689 ms (3648-3698) | -7 % |
+| stock server on a build we do not have (UDP CSQC) | 23676 ms | 23308 ms (23103-23317) | -2 % |
+| Godnotic server, 100 ms RTT (`join:gn:100`) | 1481 ms (1380-1499) | 1305 ms (1175-1333) | -12 % |
+| local game, Play after 3 s on the menu (`local:stormkeep`) | 761 ms (724-835) | 785 ms (726-810) | same |
+| local game, Play 0.3 s after the menu shows | 1546 ms (1485-1623) | 1551 ms (1505-1673) | same |
+
+"Playable" (ten smooth frames) equals the first frame in every join above
+except the warm local start (849 before, 870 after: one 50+ ms frame right
+after the first).
+
+Phase by phase, stock 0.8.6 server at 100 ms RTT (ms from the tap):
+
+| event | before | after | |
+|---|---|---|---|
+| challenge_rx | 113 | 109 | one round trip |
+| accept | 250 | 242 | two |
+| csprogs_begin | 3034 (UDP, after signon 1) | **244** (HTTP, from the first fragment) | |
+| signon1 | 2761 | 2863 | the stock server's 22 fragments, one per round trip |
+| csprogs_end | 22409 | **1582** | 0.78 MB at 40 KB/s, against HTTP |
+| csqc_begin / csqc_end | 22640 / 22932 | 3153 / 3323 | CSQC init |
+| precache_end | 22945 | 3352 | |
+| signon2 / signon3 | 23046 / 23181 | 3437 / 3572 | one round trip each |
+| signon4 | 23588 | 3705 | the preload: 407 ms before, overlapped now (133 = a round trip) |
+| first_frame | 23637 | 3744 | |
+
+Godnotic server at 100 ms RTT: the preload runs during prespawn and spawn
+and the fonts during the waits (signon3 to signon4 366 to 187 ms). Local
+games are unchanged: nothing waits on a network there, and the earlier
+passes (warm-up, lazy loading) already cover them; their cost is server
+spawn (290-400 ms), CSQC init (180-280 ms), the preload replay and, for a
+Play right after start-up, rendering font sizes (240 ms).
+
+**A crash fixed on the way**: tapping a server while the menu's warm-up was
+loading the last map's world model crashed in `R_LoadTexture2D` (2 of 5
+joins at 200 ms RTT before, 0 of 5 after; `test-joinfast.sh warmjoin`).
+`TouchWarm_Frame` runs after every drawn frame, and a loader redraws the
+loading screen from inside a load (`CL_KeepaliveMessage`), so a second model
+load started inside the world model's and took over the global `loadmodel`.
+The warm-up now never runs inside another load or during a join.
+
+Not measured: the tablet (shared with another agent's work at the time), a
+real GitHub download of the release (it is not published yet), real public
+servers after the change.
 
 ## What is still slow, and why
 

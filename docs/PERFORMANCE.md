@@ -37,6 +37,7 @@ those in GODNOTIC.md.
 | `fs_zstd_lazy 1` | A zstd pack entry decodes on its first read, not at open: QuakeC's `fexists()` (open + close) of ~900 models and sounds per load no longer decodes them. | server spawn 759 -> 337 ms, CSQC init 438 -> 219 ms; load 1689 -> 958 ms |
 | `touch_preload_early 1` | Joining a remote server, the per-map preload starts when the precache is done and runs `touch_preload_slice` (15) ms a frame while the server answers prespawn and spawn, instead of all at signon 3. Local games unchanged. | see [JOIN_SPEED.md](JOIN_SPEED.md) |
 | `touch_warm_join 1` | While a join to a remote server waits on the network (a stock server's stop-and-wait first message, a CSQC download), loads the map's preload list (never its world model). | see [JOIN_SPEED.md](JOIN_SPEED.md) |
+| `touch_load_fontslices 1` | Joining a remote server, the pending font sizes render 10 ms a frame during the signon's network waits instead of all in the frame after the accept. | see [JOIN_SPEED.md](JOIN_SPEED.md) |
 | `touch_crc_fast 1` | CRC-16 of progs and csprogs (about 20 MB per map load) eight bytes at a time; identical result (`touch_crc_selftest`). | 4 MB: 31.5 -> 4.1 ms, so about 0.13 s less per load at that rate |
 
 ### touch_warm in detail
