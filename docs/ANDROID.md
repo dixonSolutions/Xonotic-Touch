@@ -347,6 +347,20 @@ native components; the engine side of the transport is
   Lists and card grids are `RecyclerView`s over windows of rows; sticky header,
   toolbar, section headers and action bar; vector icons (`Icons.kt`); headings in
   Xolonium from the game data.
+* **In a match.** Xonotic's join dialog (`app.modal == ["join"]` in context
+  `game`, docs/CONTROLS.md "Joining") opens by itself for an observer: the
+  overlay shows that dialog alone over the running match (the pause page under
+  it in the bridge's stack is hidden, the engine keeps drawing: `fe screen join
+  0`, a light scrim), with no tap needed. Back or a tap outside goes to the
+  engine (`back`), which closes it and hides the menu; so does any described
+  dialog, while the host's own confirms close locally. The rule is
+  `Driver::over_game` (Rust) and `UibClient.overGame` (Kotlin).
+* **One loading presentation.** While attached the host keeps
+  `_touch_loading_card 1` (UI_BRIDGE.md 4.13): its loading card is then the
+  only place the step, file, speed and notify lines show; the engine applies it
+  only during a join or load. It goes back to 0 when the native layer falls
+  back. It is not toggled per card because a local map load blocks the engine
+  from its first frame, before a `set` sent with the card could run.
 * **Without the engine's UI bridge** (a build without `touch_uib*.c`), the
   bridge's own Home and pause descriptions ship as assets (`assets/fe/`) and
   their actions map to engine commands; Singleplayer, Multiplayer, Settings and

@@ -97,7 +97,33 @@ impl Driver {
             .app()
             .and_then(|a| a.props.get("reserved").cloned())
             .unwrap_or(json!([]));
-        json!({"top": top, "kind": kind, "canBack": can_back, "modal": self.store.modal(), "hero": hero, "reserved": reserved, "rev": self.store.rev})
+        let context = self
+            .store
+            .app()
+            .and_then(|a| a.str("context"))
+            .unwrap_or_default();
+        json!({"top": top, "kind": kind, "canBack": can_back, "modal": self.store.modal(), "hero": hero, "reserved": reserved, "rev": self.store.rev,
+            "context": context, "overGame": self.over_game()})
+    }
+
+    /// The dialog on top is shown over the running match, not on the pause
+    /// page under it: Xonotic's join dialog (`join`, docs/CONTROLS.md
+    /// "Joining"), which the engine opens by itself for an observer and
+    /// which, when it closes, returns to the match rather than to the pause
+    /// menu (`UIB_JoinClose`). The platform then hides the screen beneath,
+    /// lets the engine keep drawing the match (`fe screen ... 0`), and dims
+    /// it only lightly.
+    pub fn over_game(&self) -> bool {
+        let Some(app) = self.store.app() else {
+            return false;
+        };
+        if app.str("context").as_deref() != Some("game") {
+            return false;
+        }
+        match self.store.modal().last() {
+            Some(top) => top == "join" && self.store.node(top).is_some(),
+            None => false,
+        }
     }
 
     // ------------------------------------------------------------ to the engine
@@ -504,6 +530,54 @@ mod tests {
         let b = d.feed(r#"{"uib":1,"t":"diff","base":2,"rev":3,"del":["mp"],
             "set":[{"id":"app","type":"app","props":{"stack":["home"],"modal":[]},"children":["home"]}]}"#);
         assert_eq!(ops(&b), ["begin ", "remove mp", "navigate home", "end "]);
+    }
+
+    /// The join dialog as the engine published it over a running match: a
+    /// stock DM server, a Godnotic client with a native front end attached
+    /// (uib_dump from the controls agent's probe, tests/join-over-game.json).
+    const JOIN: &str = include_str!("../tests/join-over-game.json");
+
+    #[test]
+    fn the_join_dialog_shows_over_the_match() {
+        let mut d = Driver::new();
+        let b = d.feed(JOIN);
+        let o = ops(&b);
+        assert!(o.contains(&"create join".to_string()), "{o:?}");
+        assert!(o.contains(&"create join/spectate".to_string()), "{o:?}");
+        assert!(o.contains(&"dialog join".to_string()), "{o:?}");
+        assert!(o.contains(&"navigate pause".to_string()), "{o:?}");
+        let st = d.state();
+        assert_eq!(st["modal"], json!(["join"]));
+        assert_eq!(st["context"], "game");
+        assert_eq!(st["overGame"], true);
+        // Spectate: the popup goes and the match is back (the engine hides the menu)
+        let rev = st["rev"].as_i64().unwrap();
+        let b = d.feed(&format!(
+            r#"{{"uib":1,"t":"diff","base":{rev},"rev":{},"del":["join","join/spectate"],
+            "set":[{{"id":"app","type":"app","props":{{"title":"Godnotic","stack":["pause"],"modal":[],"canBack":true,"context":"game"}},"children":["pause"]}}]}}"#,
+            rev + 1
+        ));
+        let o = ops(&b);
+        assert!(o.contains(&"dialog ".to_string()), "{o:?}");
+        assert!(o.contains(&"remove join".to_string()), "{o:?}");
+        assert_eq!(d.state()["overGame"], false);
+        assert_eq!(d.state()["modal"], json!([]));
+    }
+
+    #[test]
+    fn a_dialog_on_the_pause_page_or_in_the_menu_is_not_over_the_game() {
+        let mut d = Driver::new();
+        d.feed(r#"{"uib":1,"t":"snapshot","rev":1,"nodes":[
+            {"id":"app","type":"app","props":{"stack":["pause"],"modal":["dialog.quit"],"context":"game"},"children":["pause","dialog.quit"]},
+            {"id":"pause","type":"screen","props":{"title":"Paused","kind":"game"},"children":[]},
+            {"id":"dialog.quit","type":"screen","props":{"title":"Quit?","presentation":"dialog"},"children":[]}]}"#);
+        assert_eq!(d.state()["overGame"], false);
+        let mut d = Driver::new();
+        d.feed(r#"{"uib":1,"t":"snapshot","rev":1,"nodes":[
+            {"id":"app","type":"app","props":{"stack":["home"],"modal":["join"],"context":"menu"},"children":["home","join"]},
+            {"id":"home","type":"screen","props":{"title":"Home"},"children":[]},
+            {"id":"join","type":"screen","props":{"title":"Join game","presentation":"dialog"},"children":[]}]}"#);
+        assert_eq!(d.state()["overGame"], false);
     }
 
     #[test]
