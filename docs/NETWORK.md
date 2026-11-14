@@ -296,9 +296,21 @@ while away, the clean disconnect at the away limit. Now:
   disconnect, and drops the player who just joined again; the new
   connection then hangs until a timeout, about 30 s. A stock client still
   does this against any server;
-- the away timers are re-armed whenever the client is back at signon 4 (a
-  new connection or a new map). The player goes to the spectators again
-  while away, and the away time still counts from when the app left.
+- away, the client asks for the spectators not once but whenever the
+  scoreboard says it plays (frags other than -666), at most every 5 s and
+  three refused requests in a row. A rejoin or a map change is checked again
+  at once. On a fresh slot Xonotic makes the player an observer, and a
+  request sent then does nothing, so a single request at signon 4 was lost
+  to anything that joined the player later (a slot the server kept, an
+  auto-join). An observer by choice is left alone, and on return only a
+  player the client moved is joined again. The away time still counts from
+  when the app left;
+- the short silence limit after a freeze (3 s for 10 s) runs on the wall
+  clock. A freeze usually lands inside a frame, whose `host.realtime` was
+  taken before it, so the window counted from realtime had ended by the
+  next frame. The silence after the freeze was then judged by the 30 s
+  limit, and the away limit could come first: its clean disconnect went to
+  a server that had dropped the player long before (`away-freeze`).
 
 `scripts/test-net-away.sh` covers these with `svfreeze-away`,
 `reconnect-away`, `away-freeze`, `mapchange-away`, `manual-away`,
