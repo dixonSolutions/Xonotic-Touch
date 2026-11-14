@@ -637,7 +637,14 @@ fn control_row(app: &App, n: &Node) -> gtk::Widget {
                 }
             });
             let r2 = r.clone();
-            register_updater(app, &n.id, Rc::new(move |n: &Node| r2.set_value(n.f64("value").unwrap_or(0.0))));
+            register_updater(app, &n.id, Rc::new(move |n: &Node| {
+                // the range can change with the screen (Bots: 0-15, Duel 0-1); the value after it
+                let (lo, hi) = (n.f64("min").unwrap_or(0.0), n.f64("max").unwrap_or(100.0));
+                if r2.adjustment().lower() != lo || r2.adjustment().upper() != hi {
+                    r2.set_range(lo, hi);
+                }
+                r2.set_value(n.f64("value").unwrap_or(lo));
+            }));
             r.upcast()
         }
         "slider" => {

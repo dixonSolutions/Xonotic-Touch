@@ -103,6 +103,16 @@ bool UIB_JoinBack()
 	return true;
 }
 
+// The game's Welcome dialog (a newer server's game code opens it on connect:
+// the server's name and message, Join! and Spectate) is a stock dialog, which a
+// native renderer cannot draw. There the join popup asks instead: the engine
+// keeps it owed (no touch_join_answered) and opens it once the player is an
+// observer with the screen free, as on any other server.
+bool UIB_WelcomeNative()
+{
+	return UIB_EngineHasBridge() && uib_native();
+}
+
 // Every tick: the popup goes once the player is in the game.
 void UIB_JoinTick()
 {

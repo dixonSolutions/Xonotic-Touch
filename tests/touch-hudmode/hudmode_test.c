@@ -227,6 +227,15 @@ static void check_join_dialog(void)
 	run_dialog(&d, TOUCHMODE_OFF, 0, 0, 0, 1, 1, 0, 1, NULL);
 	CHECK_INT(0, run_dialog(&d, TOUCHMODE_OBSERVING, 0, 0, 0, 0, 1, 1, 10, NULL), "the menu has the screen: waits");
 	CHECK_INT(1, run_dialog(&d, TOUCHMODE_OBSERVING, 0, 0, 0, 1, 1, 10, 12, NULL), "the menu closed: opens");
+	// joining a match under way: the server's questions (statistics, its message) hold the
+	// screen first, the view follows a player; the dialog is owed all the same
+	memset(&d, 0, sizeof(d));
+	run_dialog(&d, TOUCHMODE_OFF, TOUCHMODE_F_TEAMS, 0, 0, 1, 1, 0, 1, NULL);
+	run_dialog(&d, TOUCHMODE_DEAD, TOUCHMODE_F_TEAMS, 0, 0, 0, 1, 1, 1.5, NULL);
+	CHECK_INT(0, run_dialog(&d, TOUCHMODE_FOLLOWING, TOUCHMODE_F_TEAMS, 0, 0, 0, 1, 1.5, 9, NULL), "mid-match join, a question has the screen: waits");
+	CHECK_INT(1, run_dialog(&d, TOUCHMODE_FOLLOWING, TOUCHMODE_F_TEAMS, 0, 0, 1, 1, 9, 40, NULL), "mid-match join: the dialog once the screen is free");
+	TouchJoinDlg_Answered(&d);   // Spectate
+	CHECK_INT(0, run_dialog(&d, TOUCHMODE_OBSERVING, TOUCHMODE_F_TEAMS, 0, 0, 1, 1, 40, 90, NULL), "mid-match join, Spectate chosen: no nagging");
 	// switched off (touch_join_dialog_auto 0, or a desk without a touchscreen)
 	memset(&d, 0, sizeof(d));
 	run_dialog(&d, TOUCHMODE_OFF, 0, 0, 0, 1, 0, 0, 1, NULL);
