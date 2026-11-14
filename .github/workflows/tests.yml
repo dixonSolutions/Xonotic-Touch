@@ -188,6 +188,8 @@ jobs:
         run: bash scripts/test-web-cache.sh
       - name: Safe component imports
         run: bash scripts/test-components.sh
+      - name: Component pushes never undo work that landed in a component repository
+        run: bash scripts/test-component-push.sh
       - name: Engine and game code match their pinned component commits
         # Only main: a work branch changes the engine before its commit exists
         # in the component repository (scripts/component-push.sh runs at merge).
