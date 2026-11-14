@@ -52,7 +52,7 @@ else
 fi
 
 labels seq-download 1280x800
-n=$(count seq-download-1280x800 Cancel); j=$(count seq-download-1280x800 "Joining Clan Wars #12")
+n=$(count seq-download-1280x800 Cancel); j=$(count seq-download-1280x800 "Joining Clan Wars #12 (203.0.113.12:26000)")
 if [ "$n" = 1 ] && [ "$j" = 1 ] && grep -q "^Downloading map · .* MB of 40 MB" "$WORK/seq-download-1280x800.txt"; then
 	ok "Loading: one card with the step, size and speed, one Cancel, the title once (no banner repeating it)"
 else

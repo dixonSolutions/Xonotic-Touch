@@ -6,6 +6,7 @@ import re
 import sys
 
 log, address = sys.argv[1], sys.argv[2]
+name = sys.argv[3] if len(sys.argv) > 3 else ""   # the server's hostname, colour codes out
 text = open(log, encoding="utf-8", errors="replace").read().splitlines()
 phase, modal, hud, nodes = "start", {}, {}, {}
 for line in text:
@@ -34,7 +35,8 @@ want("join" in modal.get("asked", []), f"the join popup opened by itself, modal 
 want(hud.get("after") == "spectating" and "join" not in modal.get("after", ["join"]),
      f"Spectate closes it and is respected (mode {hud.get('after')}, modal {modal.get('after')})")
 card = nodes.get("paused", {}).get("pause/match", {}).get("props", {})
-want(card.get("title") == address, f"the pause page's card names the server joined ({card.get('title')!r})")
+label = f"{name} ({address})" if name else address
+want(card.get("title") == label, f"the pause page's card names the server joined, \"name (address)\" ({card.get('title')!r})")
 want(card.get("subtitle", "").startswith("LAN game"), f"... as a LAN game, not \"Online game\" ({card.get('subtitle')!r})")
 want("primary" not in card, "... and has no action, so no renderer shows a chevron that does nothing")
 sys.exit(1 if errors else 0)

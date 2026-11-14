@@ -26,8 +26,17 @@
 #             not come back), and the pause page names the game: the address
 #             joined, "LAN game", no action on the card.
 #
+#   joinname  Every join screen names the server: "Joining <name> (<address>)".
+#             The server's hostname has colour codes and is long; a relay
+#             (tests/native-menu/udp_delay.py) holds its challenge back 4 s and
+#             its info answer 2 s, as a far server would. Joined from the server
+#             list, the loading card names it from the first frame; joined by a
+#             typed address, it shows the address, then the name once the server
+#             says it. The connect topic's label, and the pause page's card,
+#             follow. Colour codes are gone and the name ends in an ellipsis.
+#
 #   BASEDIR=<Godnotic basedir> STOCKBASE=<basedir with upstream Xonotic data only> \
-#       scripts/test-native-menu-live.sh [uid2name] [joinmid]
+#       scripts/test-native-menu-live.sh [uid2name] [joinmid] [joinname]
 #
 # Environment: ENGINE (default build/bin/xonotic; it also runs the server),
 # LIBS (extra LD_LIBRARY_PATH), OUT (keep logs there), CPUS (a taskset list).
@@ -55,11 +64,11 @@ fail=0
 # one `fe ui <message>` line: the message percent-encoded, as fe/FeArgs.kt sends it
 ui() { python3 -c 'import json,sys,urllib.parse; print("fe ui " + urllib.parse.quote(json.dumps(json.loads(sys.argv[1]), separators=(",", ":")), safe=""))' "$1"; }
 
-server() { # name port [basedir: default the stock game code]
+server() { # name port [basedir: default the stock game code] [hostname]
 	local d="$WORK/$1"
 	mkdir -p "$d"
 	"${RUN[@]}" "$ENGINE" -dedicated -xonotic -basedir "${3:-$STOCKBASE}" -userdir "$d" +set port "$2" +set sv_public 0 \
-		+set bot_number 2 +set skill 1 +set g_warmup 0 +map stormkeep > "$d/server.log" 2>&1 &
+		+set bot_number 2 +set skill 1 +set g_warmup 0 ${4:++set} ${4:+hostname} ${4:+"$4"} +map stormkeep > "$d/server.log" 2>&1 &
 	local n; for n in $(seq 1 600); do grep -q "Server spawned" "$d/server.log" 2> /dev/null && break; sleep 0.1; done
 	sleep 2
 }
@@ -113,7 +122,7 @@ case_uid2name() {
 case_joinmid() {
 	local p d
 	p=$((26700 + RANDOM % 250))
-	server srv_joinmid $p "$BASEDIR"
+	server srv_joinmid $p "$BASEDIR" "^3Joinmid^7 test"
 	sleep 10   # the match is under way
 	d="$WORK/joinmid"
 	mkdir -p "$d/data"
@@ -144,11 +153,57 @@ case_joinmid() {
 		+set _touch_assets_ready 1 +set touch_setup_done 1 +set touch_profile_done 1 +set touch_native_frontend 1 \
 		+exec tour.cfg > "$d/client.log" 2>&1
 	kill %1 2> /dev/null; wait 2> /dev/null
-	python3 "$ROOT/tests/native-menu/check_joinmid.py" "$d/client.log" "127.0.0.1:$p" || fail=1
+	python3 "$ROOT/tests/native-menu/check_joinmid.py" "$d/client.log" "127.0.0.1:$p" "Joinmid test" || fail=1
+}
+
+# A server with a long, coloured name behind a slow relay: one port the server list
+# knows (a favourite), one typed into Multiplayer's address field.
+JOINNAME_HOST='^1Red^7 ^x0f0Green^7 Test Server with a very long name indeed'
+case_joinname() {
+	local p q1 q2 d t
+	p=$((26700 + RANDOM % 250)); q1=$((p + 300)); q2=$((p + 301))
+	server srv_joinname $p "$BASEDIR" "$JOINNAME_HOST"   # this game code: no csprogs to download
+	python3 "$ROOT/tests/native-menu/udp_delay.py" $p $q1,$q2 --info 2 --challenge 4 &
+	d="$WORK/joinname"
+	mkdir -p "$d/data"
+	{
+		echo 'set touch_join_dialog_auto 0; set cl_allow_uid2name 0; set developer 1; set fe_echo 1'
+		# no master server: the list is the one favourite, asked directly
+		for m in sv_master1 sv_master2 sv_master3 sv_master4 sv_masterextra1 sv_masterextra2 sv_masterextra3; do echo "$m \"\""; done
+		echo "set net_slist_favorites \"127.0.0.1:$q1\""
+		echo 'alias xbeat "fe beat; defer 1 xbeat"'
+		ui '{"uib":1,"t":"hello","id":1,"schema":"1.0","renderer":{"name":"test"},"caps":{"widthClass":"expanded"}}' | sed 's/^/alias xhello "/; s/$/"/'
+		ui '{"uib":1,"t":"ev","id":4,"ev":"action","node":"home/tiles/mp","action":"mp"}' | sed 's/^/alias xmp "/; s/$/"/'
+		ui "{\"uib\":1,\"t\":\"ev\",\"id\":5,\"ev\":\"row\",\"node\":\"mp/servers\",\"row\":\"127.0.0.1:$q1\",\"kind\":\"select\"}" | sed 's/^/alias xsel "/; s/$/"/'
+		ui "{\"uib\":1,\"t\":\"ev\",\"id\":6,\"ev\":\"row\",\"node\":\"mp/servers\",\"row\":\"127.0.0.1:$q1\",\"kind\":\"activate\"}" | sed 's/^/alias xact "/; s/$/"/'
+		ui "{\"uib\":1,\"t\":\"ev\",\"id\":7,\"ev\":\"value\",\"node\":\"mp/join/address\",\"value\":\"127.0.0.1:$q2\"}" | sed 's/^/alias xaddr "/; s/$/"/'
+		ui '{"uib":1,"t":"ev","id":8,"ev":"action","node":"mp/join/go","action":"join"}' | sed 's/^/alias xgo "/; s/$/"/'
+		echo 'defer 1 "fe attach 1; xbeat; xhello"'
+		echo 'defer 3 "echo MARK mp; xmp"'
+		echo 'defer 9 "echo MARK list; uib_dump; xsel"'
+		echo 'defer 10 "xact"'
+		for t in 10.4 10.9 11.4 11.9 12.4 12.9 13.4; do echo "defer $t uib_dump"; done
+		echo 'defer 24 "echo MARK listpause; menu_showgamemenudialog"'
+		echo 'defer 25.5 "uib_dump"'
+		echo 'defer 26 "echo MARK leave; disconnect"'
+		echo 'defer 28 "xmp"'
+		echo 'defer 29 "xaddr"'
+		echo 'defer 30 "echo MARK typed; xgo"'
+		for t in 30.4 30.9 31.4 31.9 32.4 32.9 33.4; do echo "defer $t uib_dump"; done
+		echo 'defer 44 "echo MARK typedpause; menu_showgamemenudialog"'
+		echo 'defer 45.5 "uib_dump"'
+		echo 'defer 46 "echo MARK end; quit"'
+	} > "$d/data/tour.cfg"
+	timeout -k 5 100 "${RUN[@]}" "$ENGINE" -xonotic -basedir "$BASEDIR" -userdir "$d" \
+		+vid_fullscreen 0 +vid_width 1920 +vid_height 1200 +set vid_touchscreen 1 +set vid_touchscreen_detected 1 \
+		+set _touch_assets_ready 1 +set touch_setup_done 1 +set touch_profile_done 1 +set touch_native_frontend 1 \
+		+exec tour.cfg > "$d/client.log" 2>&1
+	kill %1 %2 2> /dev/null; wait 2> /dev/null
+	python3 "$ROOT/tests/native-menu/check_joinname.py" "$d/client.log" "$JOINNAME_HOST" "127.0.0.1:$q1" "127.0.0.1:$q2" || fail=1
 }
 
 cases=("$@")
-[ ${#cases[@]} -eq 0 ] && cases=(uid2name joinmid)
+[ ${#cases[@]} -eq 0 ] && cases=(uid2name joinmid joinname)
 for c in "${cases[@]}"; do "case_$c"; done
 [ $fail = 0 ] && echo "native menu live: all checks passed" || echo "native menu live: FAILED (OUT=<dir> keeps the logs)"
 exit $fail

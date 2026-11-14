@@ -52,7 +52,7 @@
     "type": "status",
     "props": {
      "icon": "download",
-     "title": "Joining Clan Wars #12",
+     "title": "Joining Clan Wars #12 (203.0.113.12:26000)",
      "body": "Connecting",
      "progress": 0.0,
      "primary": {
@@ -107,7 +107,7 @@
       "type": "status",
       "props": {
        "icon": "download",
-       "title": "Joining Clan Wars #12",
+       "title": "Joining Clan Wars #12 (203.0.113.12:26000)",
        "body": "Downloading map · 2.0 MB of 40 MB · 3.2 MB/s · 11 s left",
        "progress": 0.05,
        "primary": {
@@ -163,7 +163,7 @@
       "type": "status",
       "props": {
        "icon": "download",
-       "title": "Joining Clan Wars #12",
+       "title": "Joining Clan Wars #12 (203.0.113.12:26000)",
        "body": "Downloading map · 8.0 MB of 40 MB · 3.2 MB/s · 10 s left",
        "progress": 0.2,
        "primary": {
@@ -219,7 +219,7 @@
       "type": "status",
       "props": {
        "icon": "download",
-       "title": "Joining Clan Wars #12",
+       "title": "Joining Clan Wars #12 (203.0.113.12:26000)",
        "body": "Downloading map · 18.0 MB of 40 MB · 3.2 MB/s · 6 s left",
        "progress": 0.45,
        "primary": {
@@ -275,7 +275,7 @@
       "type": "status",
       "props": {
        "icon": "download",
-       "title": "Joining Clan Wars #12",
+       "title": "Joining Clan Wars #12 (203.0.113.12:26000)",
        "body": "Downloading map · 28.0 MB of 40 MB · 3.2 MB/s · 3 s left",
        "progress": 0.7,
        "primary": {
@@ -331,7 +331,7 @@
       "type": "status",
       "props": {
        "icon": "download",
-       "title": "Joining Clan Wars #12",
+       "title": "Joining Clan Wars #12 (203.0.113.12:26000)",
        "body": "Downloading map · 38.0 MB of 40 MB · 3.2 MB/s · 0 s left",
        "progress": 0.95,
        "primary": {
@@ -387,7 +387,7 @@
       "type": "status",
       "props": {
        "icon": "download",
-       "title": "Joining Clan Wars #12",
+       "title": "Joining Clan Wars #12 (203.0.113.12:26000)",
        "body": "Loading map · 40.0 MB of 40 MB · 3.2 MB/s · 0 s left",
        "progress": 1.0,
        "primary": {

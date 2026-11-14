@@ -10,7 +10,9 @@
 #                      and every retry renews that; both must get in (the
 #                      second after its back-off).
 #      no-backoff      the same with net_connect_backoff 0: the second fails
-#                      and is told the server answered but did not let it in.
+#                      and is told the server answered but did not let it in,
+#                      naming it "<name> (<address>)": its hostname, colour
+#                      codes out (touch_joinname.c asks the server for it).
 #      no-answer       a port nobody listens on: "No answer from ...".
 #      full            a server with one slot taken: the server's own words.
 #
@@ -71,13 +73,13 @@ if cat "$d/a.log" "$d/b.log" | grep -aq "waiting .* for its connect flood block"
 
 # --- the same without the back-off: the stock behaviour, and what the player is told
 port=$((port + 1)); d="$WORK/nobackoff"; mkdir -p "$d"
-server "$d/sv" $port
+server "$d/sv" $port +set hostname "^2Busy^x0f0 test"
 client "$d/a" 127.0.0.1:$port 22 +set net_connect_backoff 0; pa=$!
 client "$d/b" 127.0.0.1:$port 22 +set net_connect_backoff 0; pb=$!
 wait $pa $pb
 kill %1 2> /dev/null; wait 2> /dev/null
-if cat "$d/a.log" "$d/b.log" | grep -aq "Join failed (busy): 127.0.0.1:$port answered but did not let you in"; then
-	ok "no back-off: the blocked client is told the server answered but did not let it in"
+if cat "$d/a.log" "$d/b.log" | grep -aq "Join failed (busy): Busy test (127.0.0.1:$port) answered but did not let you in"; then
+	ok "no back-off: the blocked client is told the server (by name and address) answered but did not let it in"
 else
 	bad "no back-off: no 'busy' report (logs: $d)"
 fi

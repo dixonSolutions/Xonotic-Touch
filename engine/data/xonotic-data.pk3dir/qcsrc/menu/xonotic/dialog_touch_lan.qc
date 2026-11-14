@@ -329,9 +329,13 @@ void GodnoticLanPasswordDialog_readInputArgs(entity me, int argsbuf)
 	string kind = bufstr_get(argsbuf, 0);
 	string addr = bufstr_get(argsbuf, 1);
 	strcpy(me.lanAddress, addr);
+	// named as every join screen names it: "<name> (<address>)" once the engine knows the name
+	string who = addr;
+	if (addr == cvar_string("_touch_join_address") && cvar_string("_touch_join_name") != "")
+		who = sprintf(_("%s (%s)"), cvar_string("_touch_join_name"), addr);
 	string msg = (kind == "wrong")
-		? sprintf(_("^1Wrong password^7 for %s. Try again."), addr)
-		: sprintf(_("%s needs a password to join."), addr);
+		? sprintf(_("^1Wrong password^7 for %s. Try again."), who)
+		: sprintf(_("%s needs a password to join."), who);
 	TouchLan_LabelText(me.lanMessage, msg);
 	me.lanInput.setText(me.lanInput, "");
 }

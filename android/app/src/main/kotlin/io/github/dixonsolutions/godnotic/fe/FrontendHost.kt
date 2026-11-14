@@ -273,7 +273,10 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
             "files" -> "Missing game files"
             else -> "Could not join"
         }
-        val body = listOf(a.str("join_fail_text"), a.str("join_fail_detail"), a.str("join_fail_address"))
+        // the sentence names the server already ("name (address)"): the address again only when it does not
+        val text = a.str("join_fail_text")
+        val addr = a.str("join_fail_address").takeUnless { text.contains(it) } ?: ""
+        val body = listOf(text, a.str("join_fail_detail"), serverLabel(addr))
             .filter { it.isNotEmpty() }.distinct().joinToString("\n")
         main.postDelayed({
             confirm(mapOf("title" to title, "body" to body, "ok" to "Retry", "cancel" to "Close")) {
@@ -294,7 +297,18 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
      * by Android on its own thread, so the player always sees it moving
      * (an indeterminate bar) with the step and the percentage.
      */
+    /** The last server joined and how the engine names it ("name (address)", touch_joinname.c). */
+    private var joinAddress = ""
+    private var joinLabel = ""
+
+    /** "name (address)" once the engine knows the name of the server at [addr], else [addr]. */
+    private fun serverLabel(addr: String): String =
+        if (addr.isNotEmpty() && addr == joinAddress && joinLabel.isNotEmpty()) joinLabel else addr
+
     private fun onConnect(c: Map<String, Any?>) {
+        // the snapshot names the server only while joining or playing: keep it for the
+        // password prompt and the Could not join dialog that come after
+        if (c.str("address").isNotEmpty()) { joinAddress = c.str("address"); joinLabel = c.str("label") }
         val stage = c.str("stage")
         val busy = stage in setOf("connecting", "downloading", "loading", "signon") && !failed
         if (!busy || root.visibility == View.VISIBLE) {
@@ -348,7 +362,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         val map = app.str("map")
         loadingTitle?.text = when {
             c.bool("local") -> if (map.isNotEmpty()) "Starting ${map.replaceFirstChar { it.uppercase() }}" else "Starting the match"
-            c.str("address").isNotEmpty() -> "Joining ${c.str("address")}"
+            c.str("address").isNotEmpty() -> "Joining ${serverLabel(c.str("address"))}"
             else -> "Joining"
         }
         val load = c.str("load")
@@ -942,7 +956,8 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     private fun passwordPrompt(addr: String, wrong: Boolean) {
         val col = Kit.column(activity, 14f)
         col.addView(Kit.text(activity, if (wrong) "Wrong password" else "Password needed", Theme.SP_HEADLINE, if (wrong) Theme.BAD else Theme.TEXT, bold = true).apply { typeface = Theme.display })
-        col.addView(Kit.text(activity, if (wrong) "$addr refused that password. Try again." else "$addr needs a password to join.", Theme.SP_BODY, Theme.TEXT_MUTED))
+        val who = serverLabel(addr)
+        col.addView(Kit.text(activity, if (wrong) "$who refused that password. Try again." else "$who needs a password to join.", Theme.SP_BODY, Theme.TEXT_MUTED))
         var field: android.widget.EditText? = null
         val join = {
             val pw = field?.text?.toString() ?: ""

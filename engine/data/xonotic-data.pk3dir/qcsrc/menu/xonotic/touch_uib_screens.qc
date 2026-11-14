@@ -1060,6 +1060,38 @@ bool UIB_FindServer(string address)
 	return false;
 }
 
+// How every screen of a join names a server: "<name> (<address>)", the address alone
+// while no name is known. The engine keeps the name (touch_joinname.c: the server list's,
+// else the server's own hostname once it answers), colour codes out, cut to 32 characters.
+// Before the join starts (a locked server's password prompt) the server list's name the
+// join recorded stands in.
+string UIB_CapName(string n)
+{
+	n = strdecolorize(n);
+	return (strlen(n) > 32) ? strcat(substring(n, 0, 31), "…") : n;
+}
+
+string UIB_ServerLabel(string addr)
+{
+	if (addr == "")
+		return "";
+	string n = "";
+	if (addr == cvar_string("_touch_join_address"))
+		n = cvar_string("_touch_join_name");
+	if (n == "" && addr == UIB_VM("mp.joining"))
+		n = UIB_CapName(cvar_string("_uib_server_name"));
+	return (n != "") ? sprintf(_("%s (%s)"), n, addr) : addr;
+}
+
+// the server being joined or played on ("" in a local game)
+string UIB_JoinAddress()
+{
+	if (isserver())
+		return "";
+	string a = cvar_string("_touch_join_address");
+	return (a != "") ? a : UIB_VM("mp.joining");
+}
+
 void UIB_BuildPassword()
 {
 	if (!UIB_Screen("mp.password", _("Password")))
@@ -1068,7 +1100,7 @@ void UIB_BuildPassword()
 	uib_b("dismissable", 1);
 	// a button as well as Enter: the dialog's main action (renderers put it in the action bar)
 	uib_j("primary", UIB_AS("password.join", _("Join"), "play", "primary"));
-	UIB_Text("text", sprintf(_("%s needs a password."), UIB_VM("mp.joining")), "");
+	UIB_Text("text", sprintf(_("%s needs a password."), UIB_ServerLabel(UIB_VM("mp.joining"))), "");
 	UIB_Open("form", "form");
 		uib_j("submit", UIB_AS("password.join", _("Join"), "play", "primary"));
 		UIB_Open("pw", "field");
@@ -1275,14 +1307,15 @@ void UIB_BuildPause()
 		}
 		else
 		{
-			// someone else's game: the server's name from the list (else its address), and
-			// whether it is on this network. Nothing to open: the card has no action.
-			string sname = cvar_string("_uib_server_name"), saddr = UIB_VM("mp.joining");
-			string snet = cvar_string("_uib_server_net");
+			// someone else's game, named as the join named it: "<name> (<address>)", the
+			// address alone while its name is unknown; and whether it is on this network.
+			// Nothing to open: the card has no action.
+			string saddr = UIB_JoinAddress();
+			string snet = (saddr == UIB_VM("mp.joining")) ? cvar_string("_uib_server_net") : "";
 			if (snet == "") snet = UIB_AddrNet(saddr);
 			string kind = (snet == "lan" || snet == "vpn") ? _("LAN game") : _("Online game");
-			uib_s("title", (sname != "") ? sname : ((saddr != "") ? saddr : _("Match")));
-			uib_s("subtitle", (sname != "" && saddr != "") ? sprintf(_("%s · %s"), kind, saddr) : kind);
+			uib_s("title", (saddr != "") ? UIB_ServerLabel(saddr) : _("Match"));
+			uib_s("subtitle", kind);
 			uib_s("icon", (snet == "lan" || snet == "vpn") ? "lan" : "server");
 		}
 		uib_s("aspect", "21:9");
@@ -1460,7 +1493,8 @@ void UIB_BuildLoading()
 	uib_s("background", "asset:loading");
 	UIB_Open("status", "status");
 		uib_s("icon", state == "downloading" ? "download" : "server");
-		uib_s("title", (cvar_string("_uib_server_name") != "") ? sprintf(_("Joining %s"), cvar_string("_uib_server_name")) : _("Joining"));
+		string who = UIB_ServerLabel(UIB_JoinAddress());
+		uib_s("title", (who != "") ? sprintf(_("Joining %s"), who) : _("Joining"));
 		// one card: the step with its size and speed, one bar, one Cancel (a
 		// second "progress" node repeated the step, the bar and Cancel below it)
 		uib_s("body", (detail != "") ? strcat(stage, " · ", detail) : stage);
