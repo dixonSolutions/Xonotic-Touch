@@ -538,6 +538,7 @@ static void chip_place(float *cx, float *cy, float *r)
 	float chy = max(s * cv("touch_chat_size", 0.060f) * scale * 0.5f, TOUCHDP_PILL_HEIGHT * 0.5f * dpu);
 	float chx = chy * max(1.0f, cv("touch_chat_aspect", 2.4f));
 	float cxp, margin;
+	{ float tx, ty, tw, th; if (TouchHUD_TopBarRect(1, &tx, &ty, &tw, &th)) { *r = min(tw, th) * 0.5f; *cx = tx + tw * 0.5f; *cy = ty + th * 0.5f; return; } } // the top bar's slot (touch_topbar.h)
 	if (flip)
 	{
 		mx = 1 - mx;

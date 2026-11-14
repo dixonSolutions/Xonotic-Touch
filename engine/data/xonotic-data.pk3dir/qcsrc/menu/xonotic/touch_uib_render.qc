@@ -3110,6 +3110,13 @@ bool TouchUIB_Draw(float alpha)
 		if (uib_inited && !cvar("touch_joinfail_dialog")) cvar_set("touch_joinfail_dialog", "1");
 		return false;
 	}
+	// m_draw publishes the menu's alpha as _menu_alpha only when it draws the
+	// stock menu itself, and the game's HUD fades out by it. After a stock
+	// dialog over the bridge menu (the game menu, the join dialog) closed,
+	// this renderer has the frames of the fade-out, the cvar stayed at 1 and
+	// the HUD (clock, scores, scoreboard, map vote) never came back.
+	if (cvar("_menu_alpha") != alpha)
+		cvar_set("_menu_alpha", ftos(alpha));
 	if (!uib_inited)
 		UIB_Init();
 	if (time > rb_tick_next)

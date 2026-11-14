@@ -231,7 +231,7 @@ string Touch_Spec_CommandLabel(string command)
 	if (st == TOUCH_SPEC_NONE || !Touch_Active())
 		return "";
 	if (command == "+jump")
-		return (st == TOUCH_SPEC_OBSERVING || st == TOUCH_SPEC_FOLLOWING) ? "SWIPE UP" : "";
+		return (st == TOUCH_SPEC_OBSERVING || st == TOUCH_SPEC_FOLLOWING) ? "MENU" : "";
 	if (command == "+fire" || command == "+attack")
 		return Touch_Spec_Flying(st) ? "FOLLOW" : ">";
 	// flying, next / previous weapon change the speed: no button for that
