@@ -188,6 +188,8 @@ jobs:
         run: bash scripts/test-web-cache.sh
       - name: Safe component imports
         run: bash scripts/test-components.sh
+      - name: Component pushes never undo work that landed in a component repository
+        run: bash scripts/test-component-push.sh
       - name: Engine and game code match their pinned component commits
         # Only main: a work branch changes the engine before its commit exists
         # in the component repository (scripts/component-push.sh runs at merge).
@@ -200,3 +202,7 @@ jobs:
           done
       - name: Missing maps stop signon with a visible recovery console
         run: bash scripts/test-join-world.sh
+      - name: A failed join says why (classification, wording, connect back-off)
+        run: bash scripts/test-joinfail.sh
+      - name: Server list rules (saved list format, query budget, tries)
+        run: bash scripts/test-srvlist.sh

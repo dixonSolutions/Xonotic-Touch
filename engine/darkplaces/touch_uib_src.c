@@ -3,7 +3,6 @@ Godnotic UI bridge: data sources, read by window (offset, limit, sort, filter), 
 2,000-server list never crosses the bridge at once.
 
   servers, servers.lan, servers.fav   the engine's server list (Internet, LAN, VPN)
-  players:<address>                   a server's players from its status reply
   maps, maps:<mode>                   installed maps from the maps/ mapinfo files
   anything else                       rows the menu VM sets (modes, recent, mods ...)
 
@@ -14,6 +13,7 @@ tree shows them; a change bumps the source's rev and every renderer gets a `sour
 #include "quakedef.h"
 #include "netconn.h"
 #include "touch_lan_logic.h"
+#include "touch_srvlist.h"
 #include "touch_uib_int.h"
 
 typedef struct
@@ -37,7 +37,7 @@ struct uibrow_s
 typedef struct
 {
 	char name[160];
-	int kind;               // 0 static, 1 servers, 2 maps, 3 players
+	int kind;               // 0 static, 1 servers, 2 maps
 	uibrow_t *rows;
 	int nrows, maxrows;
 	int64_t rev;
@@ -85,8 +85,6 @@ static source_t *getsource(const char *name, int create)
 		s->kind = 1;
 	else if (!strcmp(name, "maps") || !strncmp(name, "maps:", 5))
 		s->kind = 2;
-	else if (!strncmp(name, "players:", 8))
-		s->kind = 3;
 	s->notified_rev = s->rev;
 	return s;
 }
@@ -131,6 +129,19 @@ void UIBSrc_Param(const char *source, const char *key, const char *value)
 	s->rev++;
 	s->sig = 0;
 	s->next_poll = 0;
+}
+
+void UIBSrc_HoldNode(const char *nodeid, int touching)
+{
+	uibnode_t *n = UIBS_Find(nodeid);
+	size_t l;
+	const char *sj = n ? UIBS_PropJSON(n, "source", &l) : NULL;
+	char name[160];
+	if (!sj || l < 3 || l > sizeof(sources[0].name))
+		return;
+	dpsnprintf(name, sizeof(name), "%.*s", (int)(l - 2), sj + 1);
+	if (!strncmp(name, "servers", 7))
+		UIBSrc_Param(name, "hold", touching ? "1" : "0");
 }
 
 // ---------------------------------------------------------------- row building
@@ -214,6 +225,7 @@ static const char *server_net(const char *cname)
 static unsigned server_sig(void)
 {
 	unsigned h = 2166136261u ^ serverlist_cachecount;
+	h = (h ^ TouchSrvList_Serial()) * 16777619u;  // rows added, answered, gone stale or removed
 	for (unsigned i = 0; i < serverlist_cachecount; i++)
 	{
 		const serverlist_info_t *in = &serverlist_cache[i].info;
@@ -254,9 +266,8 @@ static void build_servers(source_t *s)
 			continue;
 		if (!showlaggy && in->ping >= laggyms)
 			continue;
-		char img[64];
-		dpsnprintf(img, sizeof(img), "pk3:maps/%s", in->map);
-		uibrow_t *r = addrow(s, in->cname, in->map[0] ? img : NULL);
+		// no row image: the server list is text, dense (no map previews)
+		uibrow_t *r = addrow(s, in->cname, NULL);
 		cell_s(r, "name", in->name, in->name_len);
 		cell_s(r, "map", in->map, in->map_len);
 		char mode[32] = "";
@@ -276,52 +287,8 @@ static void build_servers(source_t *s)
 		const char *ve = strchr(ver, ':');
 		size_t vl = ve ? (size_t)(ve - ver) : strlen(ver);
 		cell_s(r, "version", ver, vl < 32 ? vl : 31);
-	}
-}
-
-static void build_players(source_t *s)
-{
-	freerows(s);
-	const char *addr = s->name + 8;
-	for (unsigned i = 0; i < serverlist_cachecount; i++)
-	{
-		const serverlist_info_t *in = &serverlist_cache[i].info;
-		if (strcmp(in->cname, addr))
-			continue;
-		// "frags ping \"name\" team" per line
-		const char *p = in->players;
-		int n = 0;
-		while (*p && n < 256)
-		{
-			int frags = 0, ping = 0, team = 0;
-			char name[160] = "";
-			const char *eol = strchr(p, '\n');
-			size_t ll = eol ? (size_t)(eol - p) : strlen(p);
-			char line[256];
-			if (ll >= sizeof(line)) ll = sizeof(line) - 1;
-			memcpy(line, p, ll);
-			line[ll] = 0;
-			char *q1 = strchr(line, '"'), *q2 = q1 ? strrchr(q1 + 1, '"') : NULL;
-			if (q1 && q2)
-			{
-				sscanf(line, "%d %d", &frags, &ping);
-				dpsnprintf(name, sizeof(name), "%.*s", (int)(q2 - q1 - 1), q1 + 1);
-				sscanf(q2 + 1, "%d", &team);
-				char key[16];
-				dpsnprintf(key, sizeof(key), "p%d", n++);
-				uibrow_t *r = addrow(s, key, NULL);
-				cell_s(r, "name", name, strlen(name));
-				cell_n(r, "score", frags);
-				cell_n(r, "ping", ping);
-				char t[8];
-				dpsnprintf(t, sizeof(t), "%d", team);
-				cell_s(r, "team", team > 0 ? t : "", team > 0 ? strlen(t) : 0);
-			}
-			if (!eol)
-				break;
-			p = eol + 1;
-		}
-		break;
+		// from the saved list, not answered yet this refresh (touch_srvlist.c)
+		cell_b(r, "stale", TouchSrvList_IsStale(i));
 	}
 }
 
@@ -331,7 +298,6 @@ static void build_players(source_t *s)
 // Dedicated server (make sv-release): there is no server browser cache.
 static unsigned server_sig(void) { return 1; }
 static void build_servers(source_t *s) { freerows(s); }
-static void build_players(source_t *s) { freerows(s); }
 #endif
 
 static void build_maps(source_t *s)
@@ -464,14 +430,18 @@ static void refresh(source_t *s, int force)
 	if (!force && now < s->next_poll)
 		return;
 	s->next_poll = now + (s->kind == 2 ? 3600 : 0.25);
-	if (s->kind == 1 || s->kind == 3)
+	if (s->kind == 1)
 	{
+		// A finger on the list (the QuakeC renderer: the engine sees it) or a
+		// renderer that set the source's "hold" param: the rows stay exactly
+		// where they are, and the source catches up on release.
+		if (s->kind == 1 && s->nrows && (TouchSrvList_Hold() || atoi(param(s, "hold", "0"))))
+			return;
 		unsigned sig = server_sig();
 		if (sig == s->sig)
 			return;
 		s->sig = sig;
-		if (s->kind == 1) build_servers(s);
-		else build_players(s);
+		build_servers(s);
 		s->rev++;
 	}
 	else if (s->kind == 2)
@@ -637,7 +607,7 @@ void UIBSrc_Window(uibbuf_t *b, int msgid, int64_t re, const char *source, int o
                    const char *sort, int desc, const char *filter, int hasfilter)
 {
 	source_t *s = getsource(source, 0);
-	if (!s && (!strncmp(source, "servers", 7) || !strncmp(source, "maps", 4) || !strncmp(source, "players:", 8)))
+	if (!s && (!strncmp(source, "servers", 7) || !strncmp(source, "maps", 4)))
 		s = getsource(source, 1);
 	if (!s)
 	{

@@ -62,6 +62,9 @@ the commit pinned in `components.json`. CI fails a `main` whose copy differs fro
   either directory, run `scripts/component-push.sh darkplaces|data|all "<message>"`: it
   commits that directory to the component repository, pushes, and writes the pin. Commit
   `components.json` in the same commit as the change.
+- It refuses when the component repository's `main` has moved past your pin (another
+  agent pushed meanwhile): exporting would undo their work. Merge it in as the message
+  says and run it again; never reach for `COMPONENT_PUSH_OVER` to get past it.
 - A commit made directly in a component repository is built inside this one by that
   repository's workflow, then imported, merged and released by
   `.github/workflows/component-sync.yml` (half-hourly, or at once with a

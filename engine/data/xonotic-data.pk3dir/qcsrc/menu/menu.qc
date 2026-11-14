@@ -1188,6 +1188,7 @@ void m_setpointerfocus(entity wnd)
 void m_goto(string itemname, bool hide_menu_on_close)
 {
 	itemname = TouchGameMenu_Route(itemname); // Touch: finger-sized game menu on a touchscreen
+	TouchUIB_Classic(itemname); // Touch: the bridge renderer steps aside for a stock dialog
 	if (!menuInitialized)
 	{
 		strcpy(m_goto_buffer, itemname);

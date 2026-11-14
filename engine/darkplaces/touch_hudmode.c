@@ -279,6 +279,23 @@ static void TouchAction_f(cmd_state_t *cmd)
 	Cbuf_AddText(cmd_local, "\n");
 }
 
+// touch_hud_state: what the mode was derived from (to tell a wrong mode on
+// a server apart from a wrong signal).
+static void TouchHudState_f(cmd_state_t *cmd)
+{
+	int me = cl.realplayerentity, i;
+	TouchHudMode_Update();
+	Con_Printf("TOUCHHUD mode=%s join=%s flags=%d spec=%d me=%d playerentity=%d viewentity=%d maxclients=%d frags=%d colors=%d health=%d csqc=%d ours=%d\n",
+		pub_mode.string, pub_join.string, current.flags, TouchUI_SpectatorState(), me, cl.playerentity, cl.viewentity, cl.maxclients,
+		cl.scores && me >= 1 && me <= cl.maxclients ? cl.scores[me - 1].frags : 12345,
+		cl.scores && me >= 1 && me <= cl.maxclients ? cl.scores[me - 1].colors : -1,
+		cl.stats[STAT_HEALTH], CLVM_prog->loaded, cl_touch_csqc_active);
+	if (Cmd_Argc(cmd) > 1 && cl.scores)
+		for (i = 0; i < cl.maxclients; i++)
+			if (cl.scores[i].name[0])
+				Con_Printf("TOUCHHUD   slot %d frags=%d colors=%d name=%s\n", i + 1, cl.scores[i].frags, cl.scores[i].colors, cl.scores[i].name);
+}
+
 void TouchHudMode_Init(void)
 {
 	int act;
@@ -293,5 +310,6 @@ void TouchHudMode_Init(void)
 	Cvar_RegisterVariable(&hint_round);
 	Cvar_RegisterVariable(&hint_carry);
 	Cvar_RegisterVariable(&hint_queued);
+	Cmd_AddCommand(CF_CLIENT, "touch_hud_state", TouchHudState_f, "print what the touch HUD mode is derived from (any argument: every scoreboard slot too)");
 	Cmd_AddCommand(CF_CLIENT, "touch_action", TouchAction_f, "run an in-match menu action: resume, join, spectate, team, settings, leave [confirm] (_touch_hud_actions lists them)");
 }

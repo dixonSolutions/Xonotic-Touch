@@ -29,6 +29,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "mdfour.h"
 #include "touch_lan.h" // Touch: LAN games
 #include "touch_net.h" // Touch: windowed reliable channel, fast signon
+#include "touch_srvlist.h" // Touch: the fast server list
 #include <time.h>
 
 #define QWMASTER_PORT 27000
@@ -634,6 +635,8 @@ static inline void ServerList_BuildDPServerQuery(char *buffer, size_t buffersize
 	dpsnprintf(buffer, buffersize, "\377\377\377\377getstatus %.22s%" PRIx64, hash, timestamp);
 }
 void TouchLAN_BuildQuery(char *buffer, size_t buffersize, double querytime) { ServerList_BuildDPServerQuery(buffer, buffersize, querytime); } // Touch:
+void TouchSrvList_ViewInsert(serverlist_entry_t *entry) { ServerList_ViewList_Insert(entry); } // Touch:
+void TouchSrvList_ViewRemove(serverlist_entry_t *entry) { ServerList_ViewList_Remove(entry); } // Touch:
 
 static void NetConn_BuildChallengeString(char *buffer, int bufferlength);
 void ServerList_QueryList(qbool resetcache, qbool querydp, qbool queryqw, qbool consoleoutput)
@@ -733,6 +736,7 @@ void ServerList_QueryList(qbool resetcache, qbool querydp, qbool queryqw, qbool 
 			// search LAN for QuakeWorld servers
 			NetConn_WriteString(cl_sockets[i], "\377\377\377\377status\n", &broadcastaddress);
 	}
+	TouchSrvList_Refresh(resetcache); // Touch: the fast server list starts here
 }
 #endif
 
@@ -1845,6 +1849,7 @@ static int NetConn_ClientParsePacket_ServerList_ProcessReply(const char *address
 		serverreplycount++;
 	}
 	entry->responded = true;
+	TouchSrvList_Replied(n); // Touch: server list timings, saved rows
 
 	// other server info is updated by the caller
 	return n;
@@ -1921,6 +1926,7 @@ static qbool NetConn_ClientParsePacket_ServerList_PrepareQuery(int protocol, con
 
 	return true;
 }
+qbool TouchSrvList_AddServer(const char *address, qbool isfavorite) { return NetConn_ClientParsePacket_ServerList_PrepareQuery(PROTOCOL_DARKPLACES7, address, isfavorite); } // Touch:
 
 static void NetConn_ClientParsePacket_ServerList_ParseDPList(lhnetaddress_t *masteraddress, const char *masteraddressstring, const unsigned char *data, int length, qbool isextended)
 {
@@ -2590,6 +2596,7 @@ void NetConn_QueryQueueFrame(void)
 	static unsigned pass = 0, server = 0;
 	unsigned queriesperserver = bound(1, net_slist_maxtries.integer, 8);
 
+	if (TouchSrvList_QueryFrame()) return; // Touch: the fast server list sends its own queries
 	if (!serverlist_querystage)
 		return;
 

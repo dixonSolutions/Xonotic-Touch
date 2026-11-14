@@ -6,12 +6,13 @@ docs/UI_BRIDGE.md is the contract; touch_uib_store.c holds the tree.
 #include "thread.h"
 #include "touch_uib_int.h"
 #include "touch_shellbtn.h"
+#include "touch_display.h"
 #ifdef __linux__
 #include <sys/eventfd.h>
 #include <unistd.h>
 #endif
 
-cvar_t menu_touch_uib = {CF_CLIENT | CF_ARCHIVE, "menu_touch_uib", "0", "Godnotic: 1 draws the menu from the UI bridge descriptions (touch_uib_*.qc) with the QuakeC renderer; 0 keeps the touch menu"};
+cvar_t menu_touch_uib = {CF_CLIENT | CF_ARCHIVE, "menu_touch_uib", "1", "Godnotic: 1 (default) draws the menu from the UI bridge descriptions (touch_uib_*.qc) with the QuakeC renderer wherever no native renderer shows it, and lets the classic menu draw the dialogs it has no screen for; 0 is the classic touch menu everywhere"};
 static cvar_t uib_version = {CF_CLIENT | CF_READONLY, "uib_version", TOUCHUIB_SCHEMA, "Godnotic UI bridge schema version (the menu VM checks it before using the bridge builtins)"};
 static cvar_t uib_debug = {CF_CLIENT, "uib_debug", "0", "Godnotic UI bridge: 1 logs messages, 2 also logs their text"};
 
@@ -591,6 +592,9 @@ static void handle_event(int conn, int64_t re, uibj_t *m, const char *raw, size_
 	{
 		char arg[64];
 		dpsnprintf(arg, sizeof(arg), "%d %d", (int)UIBJ_Num(m, "offset", 0), (int)UIBJ_Num(m, "limit", 0));
+		// optional "touching": a finger is on the list, its source keeps its rows where they are
+		if (UIBJ_Get(m, "touching"))
+			UIBSrc_HoldNode(nodeid, UIBJ_Bool(m, "touching", 0));
 		UIBM_Event("visible", nodeid, arg, "");
 		return;
 	}
@@ -752,8 +756,132 @@ static void UIB_WatchReserved(void)
 		UIBS_SetReserved(NULL, 0);
 }
 
+#ifdef CONFIG_MENU
+// uib_input: scripted input for tests of the QuakeC renderer, through the same
+// path a finger, a mouse or a key takes (Key_Event and the window mouse
+// position), so a test never calls into the menu behind the renderer's back.
+//   uib_input key <name>            a key press and release (ESCAPE, ENTER, DOWNARROW, TAB ...)
+//   uib_input text <string>         typed characters
+//   uib_input tap <id>              press and release on the middle of that node's item
+//   uib_input doubletap <id>        two taps
+//   uib_input drag <id> <dx> <dy>   press on it, move by (dx, dy) window pixels in steps, release
+//   uib_input tapxy <fx> <fy>       a tap at a fraction of the window (stock dialogs)
+// The renderer says where a node is: _uib_r_find is the id asked for,
+// _uib_r_found its rect ("x y w h" as fractions of the window, empty if not on screen).
+static cvar_t uib_r_find = {CF_CLIENT, "_uib_r_find", "", "test: the node id whose on-screen rect the QuakeC renderer reports in _uib_r_found"};
+static cvar_t uib_r_found = {CF_CLIENT, "_uib_r_found", "", "test: \"x y w h\" (fractions of the window) of the item of _uib_r_find"};
+static struct { int kind, step, taps; float dx, dy, fx, fy; double next; } uin;   // kind 0 none, 1 tap, 2 drag
+
+static cvar_t uib_r_pointer = {CF_CLIENT, "_uib_r_pointer", "", "test: where uib_input holds the pointer, \"fx fy\" as fractions of the window; empty: the real pointer"};
+static void UIB_InputMouse(float fx, float fy)
+{
+	char t[64];
+	in_windowmouse_x = fx * vid.mode.width;
+	in_windowmouse_y = fy * vid.mode.height;
+	dpsnprintf(t, sizeof(t), "%.5f %.5f", fx, fy);
+	Cvar_SetQuick(&uib_r_pointer, t);
+}
+
+static void UIB_InputFrame(void)
+{
+	float x, y, w, h;
+	if (!uin.kind || host.realtime < uin.next)
+		return;
+	uin.next = host.realtime + 0.05;
+	if (uin.step == 0)
+	{
+		// where is it?
+		if (uin.fx < 0)
+		{
+			if (sscanf(uib_r_found.string, "%f %f %f %f", &x, &y, &w, &h) != 4)
+			{
+				if (++uin.taps > 60) { Con_Printf("uib_input: %s is not on screen\n", uib_r_find.string); uin.kind = 0; }
+				return;
+			}
+			uin.fx = x + w * 0.5f;
+			uin.fy = y + h * 0.5f;
+		}
+		UIB_InputMouse(uin.fx, uin.fy);
+		uin.step = 1;
+		return;
+	}
+	if (uin.step == 1)
+	{
+		Key_Event(K_MOUSE1, 0, true);
+		uin.step = 2;
+		return;
+	}
+	if (uin.kind == 2 && uin.step >= 2 && uin.step < 10)
+	{
+		float f = (uin.step - 1) / 8.0f;
+		UIB_InputMouse(uin.fx + uin.dx * f / vid.mode.width, uin.fy + uin.dy * f / vid.mode.height);
+		uin.step++;
+		if (uin.step == 10)
+			uin.next = host.realtime + 0.25;   // the finger rests: no fling
+		return;
+	}
+	Key_Event(K_MOUSE1, 0, false);
+	Con_Printf("uib_input: done\n");
+	if (uin.kind == 1 && uin.dx > 0)
+	{
+		// the second tap of a double tap
+		uin.dx = 0;
+		uin.step = 1;
+		uin.next = host.realtime + 0.12;
+		return;
+	}
+	uin.kind = 0;
+	Cvar_SetQuick(&uib_r_find, "");
+	Cvar_SetQuick(&uib_r_pointer, "");
+}
+
+static void UIB_Input_f(cmd_state_t *cmd)
+{
+	const char *what = Cmd_Argc(cmd) > 1 ? Cmd_Argv(cmd, 1) : "";
+	const char *a = Cmd_Argc(cmd) > 2 ? Cmd_Argv(cmd, 2) : "";
+	if (!strcmp(what, "key") && a[0])
+	{
+		int k = Key_StringToKeynum(a);
+		if (k <= 0) { Con_Printf("uib_input: no key %s\n", a); return; }
+		Key_Event(k, 0, true);
+		Key_Event(k, 0, false);
+	}
+	else if (!strcmp(what, "text"))
+	{
+		for (; *a; a++)
+		{
+			Key_Event(*a, *a, true);
+			Key_Event(*a, *a, false);
+		}
+	}
+	else if ((!strcmp(what, "tap") || !strcmp(what, "doubletap") || !strcmp(what, "drag")) && a[0])
+	{
+		memset(&uin, 0, sizeof(uin));
+		uin.kind = !strcmp(what, "drag") ? 2 : 1;
+		uin.fx = uin.fy = -1;
+		uin.dx = uin.kind == 2 ? (float)atof(Cmd_Argv(cmd, 3)) : (!strcmp(what, "doubletap") ? 1.0f : 0.0f);
+		uin.dy = uin.kind == 2 ? (float)atof(Cmd_Argv(cmd, 4)) : 0;
+		Cvar_SetQuick(&uib_r_found, "");
+		Cvar_SetQuick(&uib_r_find, a);
+		uin.next = host.realtime + 0.1;
+	}
+	else if (!strcmp(what, "tapxy") && Cmd_Argc(cmd) > 3)
+	{
+		memset(&uin, 0, sizeof(uin));
+		uin.kind = 1;
+		uin.fx = (float)atof(a);
+		uin.fy = (float)atof(Cmd_Argv(cmd, 3));
+	}
+	else
+		Con_Printf("usage: uib_input key <name> | text <string> | tap <id> | doubletap <id> | drag <id> <dx> <dy> | tapxy <fx> <fy>\n");
+}
+#endif
+
 void TouchUIB_Frame(void)
 {
+#ifdef CONFIG_MENU
+	UIB_InputFrame();
+#endif
 	if (!uib.up)
 		return;
 	UIBStream_Frame();
@@ -795,6 +923,18 @@ void TouchUIB_Frame(void)
 	if (now >= uib.next_watch)
 	{
 		uib.next_watch = now + 0.1;
+#ifdef __EMSCRIPTEN__
+		{
+			// the page resizes its canvas after the window is made: keep the
+			// menu's dp (touch_display.c: one dp is one CSS pixel) current
+			static double next_dpi;
+			if (now >= next_dpi)
+			{
+				next_dpi = now + 1;
+				TouchDisplay_Update(0);
+			}
+		}
+#endif
 		UIB_WatchReserved();
 		UIBS_WatchTick();
 		if (uibm_tick_wanted || UIB_ConnCount())
@@ -1446,6 +1586,12 @@ void TouchUIB_Init(void)
 	Cmd_AddCommand(CF_CLIENT, "uib_stats", UIB_Stats_f, "UI bridge: node count, rev, snapshot size, renderers");
 	Cmd_AddCommand(CF_CLIENT, "uib_testrows", UIB_TestRows_f, "UI bridge: synthetic rows for stress tests (uib_testrows <source> <count> servers|maps [seed])");
 	Cmd_AddCommand(CF_CLIENT, "uib_modpage", UIB_ModPage_f, "UI bridge: register a mod page (uib_modpage <mod> <page> <json>) or remove it (-)");
+#ifdef CONFIG_MENU
+	Cvar_RegisterVariable(&uib_r_find);
+	Cvar_RegisterVariable(&uib_r_found);
+	Cvar_RegisterVariable(&uib_r_pointer);
+	Cmd_AddCommand(CF_CLIENT, "uib_input", UIB_Input_f, "UI bridge tests: scripted input for the QuakeC renderer (uib_input key <name> | text <s> | tap <id> | doubletap <id> | drag <id> <dx> <dy> | tapxy <fx> <fy>)");
+#endif
 	uib.mutex = Thread_CreateMutex();
 	uib.loopback = -1;
 	uib.up = 1;

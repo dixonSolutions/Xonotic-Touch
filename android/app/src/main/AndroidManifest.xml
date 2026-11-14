@@ -105,6 +105,21 @@
             android:name="asset_statements"
             android:resource="@string/asset_statements" />
 
+        <!-- The game data, read only, in the system file picker ("Godnotic"),
+             so the web game can take the packs this app downloaded instead of
+             downloading them again (GameDataProvider, docs/WEB.md). Only the
+             system's document UI may query it. -->
+        <provider
+            android:name=".GameDataProvider"
+            android:authorities="${applicationId}.gamedata"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
+
         <service
             android:name=".KeepAliveService"
             android:exported="false"

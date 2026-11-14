@@ -407,7 +407,13 @@ void UIB_SecData()
 void UIB_SecMenuSettings()
 {
 	UIB_Slider("size", _("Menu size"), "cvar:menu_touch_size", 0.7, 1.5, 0.05, "x", _("Applies the next time the menu opens"));
-	UIB_Switch("uib", _("New menu"), "cvar:menu_touch_uib", _("The card menu described once and drawn here, on the web and natively"));
+	UIB_Switch("uib", _("New menu"), "cvar:menu_touch_uib", _("Off: the classic Xonotic menu. Turn it on again in its Settings > Mobile > Menu, or with menu_touch_uib 1 in the console"));
+	UIB_Section("classic", _("Classic menu"), false);
+		uib_s("subtitle", _("Screens of the classic menu; closing one brings you back here"));
+		UIB_Button("advanced", _("Advanced settings"), UIB_A("settings.advanced", _("Advanced settings"), "settings"), "secondary");
+		UIB_Button("media", _("Demos, screenshots and music"), UIB_A("classic.media", _("Demos, screenshots and music"), "folder"), "secondary");
+		UIB_Button("profile", _("Player model and statistics"), UIB_A("classic.profile", _("Player model and statistics"), "player"), "secondary");
+	UIB_Close();
 	UIB_Switch("quitdialog", _("Ask before quitting"), "cvar:menu_showquitdialog", "");
 }
 
@@ -666,7 +672,9 @@ bool UIB_SettingsAction(string node, string a, string payload)
 	switch (a)
 	{
 		case "settings": UIB_Push("settings"); return true;
-		case "settings.advanced": m_goto("", true); m_goto("settings", true); return true;
+		case "settings.advanced": m_goto("settings", false); return true;
+		case "classic.media": m_goto("media", false); return true;
+		case "classic.profile": m_goto("profile", false); return true;
 		case "settings.model": m_goto("profile", true); return true;
 		case "touch.preset":
 			localcmd(strcat("exec touch/profiles/", cvar_string("touch_preset"), ".cfg\n"));

@@ -229,6 +229,7 @@
     "type": "card",
     "props": {
      "title": "Deathmatch",
+     "a11y": "Deathmatch",
      "subtitle": "Score as many frags as you can",
      "image": "pk3:gfx/menu/luma/gametype_dm",
      "aspect": "1:1",
@@ -244,8 +245,9 @@
     "id": "sp/modes/grid/tdm",
     "type": "card",
     "props": {
-     "title": "Team Deathmatch",
-     "subtitle": "Help your team score the most frags",
+     "title": "Team DM",
+     "a11y": "Team Deathmatch",
+     "subtitle": "Team Deathmatch: Help your team score the most frags",
      "image": "pk3:gfx/menu/luma/gametype_tdm",
      "aspect": "1:1",
      "primary": {
@@ -259,8 +261,9 @@
     "id": "sp/modes/grid/ctf",
     "type": "card",
     "props": {
-     "title": "Capture the Flag",
-     "subtitle": "Bring the enemy flag to your base",
+     "title": "CTF",
+     "a11y": "Capture the Flag",
+     "subtitle": "Capture the Flag: Bring the enemy flag to your base",
      "image": "pk3:gfx/menu/luma/gametype_ctf",
      "aspect": "1:1",
      "primary": {
@@ -275,6 +278,7 @@
     "type": "card",
     "props": {
      "title": "Clan Arena",
+     "a11y": "Clan Arena",
      "subtitle": "Wipe out the other team to win the round",
      "image": "pk3:gfx/menu/luma/gametype_ca",
      "aspect": "1:1",
@@ -290,6 +294,7 @@
     "type": "card",
     "props": {
      "title": "Duel",
+     "a11y": "Duel",
      "subtitle": "One on one",
      "image": "pk3:gfx/menu/luma/gametype_duel",
      "aspect": "1:1",
@@ -305,6 +310,7 @@
     "type": "card",
     "props": {
      "title": "Freeze Tag",
+     "a11y": "Freeze Tag",
      "subtitle": "Freeze the enemy team, thaw your own",
      "image": "pk3:gfx/menu/luma/gametype_ft",
      "aspect": "1:1",
@@ -320,6 +326,7 @@
     "type": "card",
     "props": {
      "title": "Domination",
+     "a11y": "Domination",
      "subtitle": "Capture and hold the control points",
      "image": "pk3:gfx/menu/luma/gametype_dom",
      "aspect": "1:1",
@@ -335,6 +342,7 @@
     "type": "card",
     "props": {
      "title": "Keepaway",
+     "a11y": "Keepaway",
      "subtitle": "Hold the ball to score",
      "image": "pk3:gfx/menu/luma/gametype_ka",
      "aspect": "1:1",
@@ -350,6 +358,7 @@
     "type": "card",
     "props": {
      "title": "Key Hunt",
+     "a11y": "Key Hunt",
      "subtitle": "Gather all the keys to win the round",
      "image": "pk3:gfx/menu/luma/gametype_kh",
      "aspect": "1:1",
@@ -364,8 +373,9 @@
     "id": "sp/modes/grid/lms",
     "type": "card",
     "props": {
-     "title": "Last Man Standing",
-     "subtitle": "Survive until the others run out of lives",
+     "title": "Last Man",
+     "a11y": "Last Man Standing",
+     "subtitle": "Last Man Standing: Survive until the others run out of lives",
      "image": "pk3:gfx/menu/luma/gametype_lms",
      "aspect": "1:1",
      "primary": {

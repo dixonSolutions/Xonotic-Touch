@@ -63,9 +63,11 @@
       <div id="xt-app" hidden>
         <p class="adw-caption dim" id="xt-app-text" hidden>Godnotic is installed on this device, with the game data and your settings: no download needed.</p>
         <div class="adw-buttons">
+          <button class="adw-btn adw-pill" id="xt-app-data" type="button" hidden>Use the game data from the Godnotic app</button>
           <a class="adw-btn adw-pill" id="xt-app-open" href="godnotic://open" hidden>Open the Godnotic app</a>
           <button class="adw-btn adw-pill adw-suggested" id="xt-folder-use" type="button" hidden>Use the Godnotic folder</button>
         </div>
+        <p class="adw-caption dim" id="xt-app-data-hint" hidden></p>
       </div>
     </section>
 
@@ -131,7 +133,7 @@
   <div class="adw-menu">
     <button class="adw-btn adw-flat" id="xt-install" type="button" hidden>Install app</button>
     <button class="adw-btn adw-flat" id="xt-verify" type="button">Verify data</button>
-    <button class="adw-btn adw-flat" id="xt-folder" type="button" hidden>Use an existing Godnotic folder</button>
+    <button class="adw-btn adw-flat" id="xt-folder" type="button" hidden>Use an installed Godnotic’s game data</button>
     <button class="adw-btn adw-flat" id="xt-folder-stop" type="button" hidden>Stop using the folder</button>
     <button class="adw-btn adw-flat" id="xt-import" type="button">Import settings</button>
     <button class="adw-btn adw-flat adw-destructive" id="xt-clear" type="button">Clear data</button>
@@ -156,6 +158,7 @@
 
 <script src="store.js"></script>
 <script src="lazyfs.js"></script>
+<script src="appdata.js"></script>
 <script src="shell.js"></script>
 <script src="mods.js"></script>
 </body>

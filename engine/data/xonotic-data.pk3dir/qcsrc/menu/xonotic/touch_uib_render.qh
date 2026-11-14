@@ -26,4 +26,5 @@
 bool TouchUIB_Draw(float alpha);           // true: the bridge drew (or a native renderer shows) the menu
 bool TouchUIB_KeyDown(float key, float ascii);
 bool TouchUIB_KeyUp(float key, float ascii);
+void TouchUIB_Classic(string itemname);    // m_goto opens a stock dialog: the bridge renderer steps aside until it closes
 bool TouchUIB_Active();                    // menu_touch_uib on and the engine has the bridge

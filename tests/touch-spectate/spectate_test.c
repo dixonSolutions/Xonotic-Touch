@@ -31,6 +31,25 @@ static int failures;
 
 int main(void)
 {
+	// The state from the scoreboard marker, the view and the health stat
+	// (values as seen on 0.8.2, 0.8.5, 0.8.6 and git servers).
+	CHECK_INT(TOUCHSPEC_OBSERVING, TouchSpec_StateFrom(-666, 3, 3, 16, -666), "spectator marker, own view, observer health: free-fly");
+	CHECK_INT(TOUCHSPEC_OBSERVING, TouchSpec_StateFrom(-666, 3, 3, 16, 0), "the same before the first stats");
+	CHECK_INT(TOUCHSPEC_FOLLOWING, TouchSpec_StateFrom(-666, 3, 7, 16, 100), "view in another player: following (their health)");
+	CHECK_INT(TOUCHSPEC_NONE, TouchSpec_StateFrom(0, 3, 3, 16, 100), "0.8.6 player (frags 0): playing");
+	CHECK_INT(TOUCHSPEC_NONE, TouchSpec_StateFrom(-1, 3, 3, 16, 100), "git player (FRAGS_PLAYER -1): playing");
+	CHECK_INT(TOUCHSPEC_NONE, TouchSpec_StateFrom(0, 3, 3, 16, -99900), "dead player: not a spectator");
+	CHECK_INT(TOUCHSPEC_NONE, TouchSpec_StateFrom(-1, 3, 3, 16, 0), "dead in CTF waiting to respawn: not a spectator");
+	CHECK_INT(TOUCHSPEC_NONE, TouchSpec_StateFrom(25, 3, 3, 16, 100), "a real score: playing");
+	CHECK_INT(TOUCHSPEC_OUT, TouchSpec_StateFrom(-616, 3, 5, 16, 80), "out of the round, watching");
+	CHECK_INT(TOUCHSPEC_OUT, TouchSpec_StateFrom(-669, 3, 5, 16, 80), "the same with the 0.8.6+ marker");
+	CHECK_INT(TOUCHSPEC_OUT_FREE, TouchSpec_StateFrom(-669, 3, 3, 16, -666), "out of the round, free-flying");
+	// failing toward play: alive with our own view is playing, whatever the marker says
+	CHECK_INT(TOUCHSPEC_NONE, TouchSpec_StateFrom(-666, 3, 3, 16, 100), "stale spectator marker but alive in our own view: play controls");
+	CHECK_INT(TOUCHSPEC_NONE, TouchSpec_StateFrom(-616, 3, 3, 16, 100), "the same for the out-of-round marker");
+	CHECK_INT(TOUCHSPEC_OBSERVING, TouchSpec_StateFrom(-666, 3, 0, 16, -666), "a view entity that is no player counts as our own");
+	CHECK_INT(TOUCHSPEC_OBSERVING, TouchSpec_StateFrom(-666, 3, 40, 16, -666), "nor one beyond the player slots");
+
 	touchspec_join_t j;
 	int state, part, jumped;
 	double t;

@@ -167,6 +167,30 @@ impl Player {
                 let id = self.mid();
                 vec![obj(json!({"uib": 1, "t": "diff", "id": id, "base": self.rev - 1, "rev": self.rev, "set": [n], "del": []}))]
             }
+            // A row was chosen in a list that tells choosing from activating: like the engine,
+            // the list's `selected` becomes that row, and the buttons of that screen that were
+            // waiting for a choice (`enabled: false`, the one Join) come on.
+            Some("ev") if m.str_of("ev").as_deref() == Some("row") && m.str_of("kind").as_deref() == Some("select") => {
+                let (node, row) = (m.str_of("node").unwrap_or_default(), m.str_of("row").unwrap_or_default());
+                let Some(mut n) = self.nodes.get(&node).cloned().filter(|n| matches!(n.pointer("/props/selection").and_then(Value::as_str), Some("single") | Some("multi"))) else {
+                    let id = self.mid();
+                    return vec![obj(json!({"uib": 1, "t": "error", "id": id, "re": re, "code": "denied", "msg": "no list with a selection has that id"}))];
+                };
+                n["props"]["selected"] = json!([row]);
+                let mut set = vec![n.clone()];
+                self.nodes.insert(node.clone(), n);
+                let screen = format!("{}/", node.split('/').next().unwrap_or_default());
+                let waiting: Vec<String> = self.nodes.iter().filter(|(id, b)| id.starts_with(&screen) && b["type"] == "button" && b.pointer("/props/enabled") == Some(&json!(false))).map(|(id, _)| id.clone()).collect();
+                for id in waiting {
+                    if let Some(b) = self.nodes.get_mut(&id) {
+                        b["props"]["enabled"] = json!(true);
+                        set.push(b.clone());
+                    }
+                }
+                self.rev += 1;
+                let id = self.mid();
+                vec![obj(json!({"uib": 1, "t": "diff", "id": id, "base": self.rev - 1, "rev": self.rev, "set": set, "del": []}))]
+            }
             _ => vec![],
         }
     }
