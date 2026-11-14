@@ -13,6 +13,7 @@ tree shows them; a change bumps the source's rev and every renderer gets a `sour
 #include "quakedef.h"
 #include "netconn.h"
 #include "touch_lan_logic.h"
+#include "touch_srvlist.h"
 #include "touch_uib_int.h"
 
 typedef struct
@@ -130,6 +131,19 @@ void UIBSrc_Param(const char *source, const char *key, const char *value)
 	s->next_poll = 0;
 }
 
+void UIBSrc_HoldNode(const char *nodeid, int touching)
+{
+	uibnode_t *n = UIBS_Find(nodeid);
+	size_t l;
+	const char *sj = n ? UIBS_PropJSON(n, "source", &l) : NULL;
+	char name[160];
+	if (!sj || l < 3 || l > sizeof(sources[0].name))
+		return;
+	dpsnprintf(name, sizeof(name), "%.*s", (int)(l - 2), sj + 1);
+	if (!strncmp(name, "servers", 7))
+		UIBSrc_Param(name, "hold", touching ? "1" : "0");
+}
+
 // ---------------------------------------------------------------- row building
 
 static uibrow_t *addrow(source_t *s, const char *key, const char *image)
@@ -211,6 +225,7 @@ static const char *server_net(const char *cname)
 static unsigned server_sig(void)
 {
 	unsigned h = 2166136261u ^ serverlist_cachecount;
+	h = (h ^ TouchSrvList_Serial()) * 16777619u;  // rows added, answered, gone stale or removed
 	for (unsigned i = 0; i < serverlist_cachecount; i++)
 	{
 		const serverlist_info_t *in = &serverlist_cache[i].info;
@@ -251,9 +266,8 @@ static void build_servers(source_t *s)
 			continue;
 		if (!showlaggy && in->ping >= laggyms)
 			continue;
-		char img[64];
-		dpsnprintf(img, sizeof(img), "pk3:maps/%s", in->map);
-		uibrow_t *r = addrow(s, in->cname, in->map[0] ? img : NULL);
+		// no row image: the server list is text, dense (no map previews)
+		uibrow_t *r = addrow(s, in->cname, NULL);
 		cell_s(r, "name", in->name, in->name_len);
 		cell_s(r, "map", in->map, in->map_len);
 		char mode[32] = "";
@@ -273,6 +287,8 @@ static void build_servers(source_t *s)
 		const char *ve = strchr(ver, ':');
 		size_t vl = ve ? (size_t)(ve - ver) : strlen(ver);
 		cell_s(r, "version", ver, vl < 32 ? vl : 31);
+		// from the saved list, not answered yet this refresh (touch_srvlist.c)
+		cell_b(r, "stale", TouchSrvList_IsStale(i));
 	}
 }
 
@@ -416,6 +432,11 @@ static void refresh(source_t *s, int force)
 	s->next_poll = now + (s->kind == 2 ? 3600 : 0.25);
 	if (s->kind == 1)
 	{
+		// A finger on the list (the QuakeC renderer: the engine sees it) or a
+		// renderer that set the source's "hold" param: the rows stay exactly
+		// where they are, and the source catches up on release.
+		if (s->kind == 1 && s->nrows && (TouchSrvList_Hold() || atoi(param(s, "hold", "0"))))
+			return;
 		unsigned sig = server_sig();
 		if (sig == s->sig)
 			return;

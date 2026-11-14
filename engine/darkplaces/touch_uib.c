@@ -592,6 +592,9 @@ static void handle_event(int conn, int64_t re, uibj_t *m, const char *raw, size_
 	{
 		char arg[64];
 		dpsnprintf(arg, sizeof(arg), "%d %d", (int)UIBJ_Num(m, "offset", 0), (int)UIBJ_Num(m, "limit", 0));
+		// optional "touching": a finger is on the list, its source keeps its rows where they are
+		if (UIBJ_Get(m, "touching"))
+			UIBSrc_HoldNode(nodeid, UIBJ_Bool(m, "touching", 0));
 		UIBM_Event("visible", nodeid, arg, "");
 		return;
 	}

@@ -97,6 +97,7 @@
 #include <menu/xonotic/dialog_touch_launcher.qh> // Touch
 #include <menu/xonotic/dialog_touch_mods.qh> // Touch: Lua mods tab
 #include <menu/xonotic/dialog_touch_lan.qh> // Touch: LAN games
+#include <menu/xonotic/dialog_touch_joinfail.qh> // Touch: a failed join says why
 #include <menu/xonotic/dialog_touch_privacy.qh> // Touch
 #include <menu/xonotic/dialog_uid2name.qh>
 #include <menu/xonotic/dialog_welcome.qh>

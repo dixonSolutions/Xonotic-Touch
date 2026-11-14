@@ -2,6 +2,7 @@
  * Touch text-sheet: keyboard layers, command palette, console/chat/preview layout.
  */
 #include "quakedef.h"
+#include "touch_spectate.h"
 #include "touch_ui.h"
 #include "touch_shellbtn.h"
 #include "draw.h"
@@ -264,18 +265,12 @@ static touchui_specmode_t TouchUI_SpectatorMode(void)
 	if (cl.intermission || !cl.scores || me < 1 || me > cl.maxclients)
 		return TOUCHUI_SPEC_NONE;
 	/* Nexuiz-derived games mark spectators -666 and players out of the round
-	 * -616 (touch_aim.c, cl_collision.c). A spectator's view is moved to the
-	 * player they watch with svc_setview. */
+	 * -616 / -669 (touch_aim.c, cl_collision.c); a spectator's view is moved to
+	 * the player they watch with svc_setview. The rule, and how it fails toward
+	 * playing, is TouchSpec_StateFrom (touch_spectate.h): its numbers are this
+	 * enum's. */
 	frags = cl.scores[me - 1].frags;
-	/* Xonotic since 0.8.6 marks a player out of the round -669
-	 * (FRAGS_PLAYER_OUT_OF_GAME): the same as -616 here. */
-	if (frags == -669)
-		frags = -616;
-	if (frags != -666 && frags != -616)
-		return TOUCHUI_SPEC_NONE;
-	if (cl.viewentity != me && cl.viewentity >= 1 && cl.viewentity <= cl.maxclients)
-		return frags == -666 ? TOUCHUI_SPEC_WATCHING : TOUCHUI_SPEC_OUT;
-	return frags == -666 ? TOUCHUI_SPEC_OBSERVING : TOUCHUI_SPEC_OUT_FREE;
+	return (touchui_specmode_t)TouchSpec_StateFrom(frags, me, cl.viewentity, cl.maxclients, cl.stats[STAT_HEALTH]);
 }
 
 /* Observing or watching: jump means "join" there, not a hop (touch_hud.c). */

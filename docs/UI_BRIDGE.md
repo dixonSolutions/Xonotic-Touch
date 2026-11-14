@@ -380,7 +380,7 @@ Nothing else in a description can open a URL or a file.
 
 | Source | Rows | Notes |
 | --- | --- | --- |
-| `servers` | every server the engine knows: Internet, LAN, VPN | cells: `name`, `map`, `mode`, `players`, `max`, `bots`, `ping`, `lock`, `fav`, `address`, `net` (`internet`, `lan`, `vpn`), `version` |
+| `servers` | every server the engine knows: Internet, LAN, VPN | cells: `name`, `map`, `mode`, `players`, `max`, `bots`, `ping`, `lock`, `fav`, `address`, `net` (`internet`, `lan`, `vpn`), `version`, `stale` (bool: shown from the saved list, not answered yet this refresh; draw it dimmed). No row `image`: the list is text |
 | `servers.lan` | LAN and VPN rows only | as above (the Servers screen keeps source `servers` and its LAN checkbox filters it engine-side) |
 | `servers.fav` | favourites | as above |
 | `maps` | installed maps | `name`, `title`, `author`, `modes` (space-separated mode ids), `players` (recommended, string), `size` (`small`, `medium`, `large`); row `image` is the preview ref |
@@ -391,6 +391,33 @@ Nothing else in a description can open a URL or a file.
 | `campaign` | the campaign's levels up to the first locked one; keys are level indices | `n`, `title`, `map`, `mode`, `modeName`, `state` (`done`, `next`, `locked`), `locked` (bool); row `image` is the level's map picture |
 
 Row `key`s are stable for a row across revisions (a server's address, a map's name).
+
+**The server list is live** (docs/NETWORK.md, "The server list"). When the Servers screen
+opens, the rows of the last session are there in the first window, `stale: true`, and each
+turns `stale: false` in place as its server answers; new servers are inserted where the sort
+puts them and silent ones are removed. Every such change bumps the source's `rev` (a
+`source` notice at most 4 times a second), so a renderer just re-reads its window. While a
+finger is on the list the engine holds the source still (no rev, no reorder) and catches up
+on release: the QuakeC renderer needs nothing for that (the engine sees its fingers); a
+native renderer adds `"touching": true` to the list's `visible` event when a touch or a
+drag begins on the list and `"touching": false` when it ends (a fling after the release is
+not a touch). A renderer that keeps its scroll position by row `key` across a `rows` reply
+never moves a row under a finger.
+
+The Multiplayer card's subtitle binds to the engine value `cvar:_slist_summary`
+("212 servers · 37 players"; empty until something is known). It is filled from the saved
+list in the first frame of the session and live from the first refresh on. Its parts:
+`_slist_servers`, `_slist_players` (humans), `_slist_refreshing` (a refresh is running: a
+spinner), `_slist_saved` (1 while the numbers still include rows that have not answered:
+show them dimmed or with "last seen"). All read-only. `refreshhostcache(false)` every 10 s
+or more while the screen is shown keeps it live at a gentle rate; the engine throttles it.
+
+A failed join is published the same way for every renderer: `_join_fail_serial` counts up,
+`_join_fail_kind` (`timeout`, `busy`, `refused`, `network`, `dropped`, `files`, `error`),
+`_join_fail_text`, `_join_fail_detail` and `_join_fail_address` describe it, and the
+command `join_retry` joins that address again. A renderer shows a dialog with the two
+sentences, Retry and Close when the serial changes (the QuakeC touch menu already does,
+`dialog_touch_joinfail.qc`; set `touch_joinfail_dialog 0` when the renderer shows its own).
 
 ### 4.9 Bindings
 
@@ -633,7 +660,7 @@ All events are messages `{"uib":1, "t":"ev", "id":n, "ev":"<kind>", ...}`.
 | `shown` / `hidden` | `node` (screen id) | the screen became visible / was covered or left; the engine pauses work for hidden screens (server pings, previews) |
 | `back` | — | system back, Escape, swipe back |
 | `dismiss` | `node` (sheet, dialog or toast) | closed by tapping outside, swiping down, or a toast timing out |
-| `visible` | `node` (the list), `offset`, `limit` | the visible window of a list (lets the engine prioritise pings for those rows) |
+| `visible` | `node` (the list), `offset`, `limit`, optional `touching` (bool) | the visible window of a list (lets the engine prioritise pings for those rows); `touching` says a finger is on the list: its `servers` source holds still until `touching: false` |
 
 ### 6.1 Choosing and activating a row
 

@@ -1,4 +1,5 @@
 #include "dialog_touch_lan.qh"
+#include "dialog_touch_joinfail.qh"
 
 #include "checkbox.qh"
 #include "inputbox.qh"
@@ -477,6 +478,7 @@ void TouchLan_ConfigureDialogs(entity me)
 	i = NEW(GodnoticLanPasswordDialog);
 	i.configureDialog(i);
 	me.addItemCentered(me, i, i.intendedWidth * eX + i.intendedHeight * eY, SKINALPHAS_MAINMENU_z);
+	TouchJoinFailed_Configure(me); // dialog_touch_joinfail.qc
 }
 
 // ---------------------------------------------------------------- Create: LAN

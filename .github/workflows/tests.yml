@@ -202,3 +202,7 @@ jobs:
           done
       - name: Missing maps stop signon with a visible recovery console
         run: bash scripts/test-join-world.sh
+      - name: A failed join says why (classification, wording, connect back-off)
+        run: bash scripts/test-joinfail.sh
+      - name: Server list rules (saved list format, query budget, tries)
+        run: bash scripts/test-srvlist.sh
