@@ -70,8 +70,8 @@ API = [
     fn("both", "menu.page", "xt.menu.page(desc) -> page", "Registers a page of its own in the Mods menu; same rows as settings pages.", limits="as settings.page"),
     fn("both", "page.get", "xt.page.get(pageid) -> page|nil", "A page this mod registered, to update it (page:set(row, field, value), page:rows(rows), page:remove())."),
     fn("both", "top", "xt.top() -> {cpu_ms, calls, mem_kb, throttled}", "This mod's own cost over the last second (lua_mod_top shows all mods)."),
-    fn("both", "http.get", "xt.http.get(url, fn [, {headers}])", "HTTPS GET to a host the manifest lists (`http: host, host`); fn(status, body) runs when it is done. Plain http only to localhost.", tier=NET, web=False, limits="256 KB response, 15 s, 4 at a time and 30 a minute per mod"),
-    fn("both", "http.post", "xt.http.post(url, body, fn [, {type=..., headers}])", "HTTPS POST, as http.get.", tier=NET, web=False, limits="body up to 64 KB, as http.get"),
+    fn("both", "http.get", "xt.http.get(url, fn [, {headers}])", "HTTPS GET to a host the manifest lists (`http: host, host`); fn(status, body) runs when it is done. Plain http only to localhost. On the web the host must also allow web pages (CORS); a refused request answers -1.", tier=NET, limits="256 KB response, 15 s, 4 at a time and 30 a minute per mod"),
+    fn("both", "http.post", "xt.http.post(url, body, fn [, {type=..., headers}])", "HTTPS POST, as http.get.", tier=NET, limits="body up to 64 KB, as http.get"),
     fn("both", "engine.cmd", "xt.engine.cmd(line)", "Full engine access: runs any console command (queued like typed input). `$` expansion is refused.", tier=FULL, limits="16 per call, 1024 characters"),
     fn("both", "engine.cvar", "xt.engine.cvar(name) -> string|nil", "Full engine access: reads any cvar that is not private.", tier=FULL),
     fn("both", "engine.setcvar", "xt.engine.setcvar(name, value) -> bool", "Full engine access: sets any cvar that is not private or read-only.", tier=FULL),
@@ -200,6 +200,6 @@ CLIENT_WRITABLE = {"HUD_Draw_overlay", "DrawCrosshair", "DrawScoreboard", "DrawI
 TIERS = [
     ("standard", "on with the mod", "events and hooks (read), drawing, HUD panels, touch buttons and binds, sounds and effects, its own settings, storage and pages, reading game settings, the curated console commands, chat and notifications, messages with the server you joined"),
     ("gamerules", "a switch", "server: hook outputs and cancelling, changing players and entities, spawning, votes, map and match control, bots, kicks and bans (only in games you host)"),
-    ("internet", "a switch", "HTTPS to the hosts the manifest lists (`http:`), not on the web build"),
+    ("internet", "a switch", "HTTPS to the hosts the manifest lists (`http:`); on the web build, hosts that allow web pages (CORS)"),
     ("engine_full", "a switch with a warning; never by \"grant all\"; a mod installed from a link needs a second confirmation", "any console command, any cvar that is not private (passwords and keys stay hidden)"),
 ]

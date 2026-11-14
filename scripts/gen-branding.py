@@ -237,9 +237,13 @@ def main():
     render(banner, banner_png, BANNER_W, BANNER_H)
     img = Image.open(banner_png).convert("RGBA")
     img.save(banner_png, optimize=True)
-    for dest in ("web/godnotic-banner.png", "touch/gfx/xonotic_logo.png",
-                 "branding/game-gfx/xonotic_logo.png"):
+    for dest in ("touch/gfx/xonotic_logo.png", "branding/game-gfx/xonotic_logo.png"):
         img.save(os.path.join(ROOT, dest), optimize=True)
+    # The web page's copy: trimmed to the glow, 960 px wide, WebP with alpha
+    # (47 KB instead of 434 KB), on the page's own background.
+    web = img.crop((46, 2, 2131, 722))
+    web = web.resize((960, round(web.height * 960 / web.width)), Image.LANCZOS)
+    web.save(os.path.join(ROOT, "web", "godnotic-banner.webp"), quality=80, method=6, alpha_quality=85)
 
     # Loading screen: the banner centred on the stock picture's 2:1 sheet. Its
     # name is ours alone (touch/xonotic.cfg points scr_loadingscreen_picture at

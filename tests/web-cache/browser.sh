@@ -218,13 +218,13 @@ JS
 
     # The installed app (Chromium on Android reports it): offered on the first visit.
     cat >"$OUT/app.js" <<'JS'
-navigator.getInstalledRelatedApps = async () => [{ platform: 'play', id: 'io.github.dixonsolutions.xonotictouch' }];
+navigator.getInstalledRelatedApps = async () => [{ platform: 'play', id: 'io.github.dixonsolutions.godnotic' }];
 JS
     P="$OUT/p-app"
     start_browser "$E" "$P"
     step installed-app-offer "$E" --init "$OUT/app.js" --url "$M/" --until '!document.getElementById("xt-download").hidden' \
         --eval '({ app: !document.getElementById("xt-app").hidden, says: !document.getElementById("xt-app-text").hidden, label: document.getElementById("xt-app-open").textContent, href: document.getElementById("xt-app-open").getAttribute("href"), started: xt.state.started })' \
-        --expect 'r.app && r.says && r.label === "Open the Godnotic app" && /^(godnotic:\/\/open|intent:\/\/open#Intent;scheme=godnotic;package=io\.github\.dixonsolutions\.xonotictouch;)/.test(r.href) && !r.started'
+        --expect 'r.app && r.says && r.label === "Open the Godnotic app" && /^(godnotic:\/\/open|intent:\/\/open#Intent;scheme=godnotic;package=io\.github\.dixonsolutions\.godnotic;)/.test(r.href) && !r.started'
     stop_browser KILL
 
     # The worker writer through the whole page.
@@ -250,7 +250,7 @@ JS
         P="$OUT/p-folder"
         start_browser "$E" "$P"
         step folder-fill "$E" --init "$OUT/picker.js" --url "$M/" --until '!document.getElementById("xt-download").hidden' --timeout 600 \
-            --eval "(async () => { const root = await (await navigator.storage.getDirectory()).getDirectoryHandle('picked-install', { create: true }); const dir = await (await (await root.getDirectoryHandle('data', { create: true })).getDirectoryHandle('xonotic-touch', { create: true })).getDirectoryHandle('data', { create: true }); for (const n of $NAMES) { const w = await (await dir.getFileHandle(n, { create: true })).createWritable(); await (await fetch('/__install/' + n)).body.pipeTo(w); } const w = await (await dir.getFileHandle('config.cfg', { create: true })).createWritable(); await w.write('seta _cl_name \"FromTheFolder\"\\n'); await w.close(); return true; })()" \
+            --eval "(async () => { const root = await (await navigator.storage.getDirectory()).getDirectoryHandle('picked-install', { create: true }); const dir = await (await (await root.getDirectoryHandle('data', { create: true })).getDirectoryHandle('godnotic', { create: true })).getDirectoryHandle('data', { create: true }); for (const n of $NAMES) { const w = await (await dir.getFileHandle(n, { create: true })).createWritable(); await (await fetch('/__install/' + n)).body.pipeTo(w); } const w = await (await dir.getFileHandle('config.cfg', { create: true })).createWritable(); await w.write('seta _cl_name \"FromTheFolder\"\\n'); await w.close(); return true; })()" \
             --expect 'r === true'
         reset
         # Pick it in the Storage popover: the page checks it, restarts, fetches

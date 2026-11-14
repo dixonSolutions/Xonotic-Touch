@@ -74,7 +74,7 @@ mod jni_api {
     }
 
     #[no_mangle]
-    pub extern "system" fn Java_io_github_dixonsolutions_xonotictouch_fe_RustCore_nativeProtocol(
+    pub extern "system" fn Java_io_github_dixonsolutions_godnotic_fe_RustCore_nativeProtocol(
         _env: JNIEnv,
         _c: JClass,
     ) -> jint {
@@ -82,7 +82,7 @@ mod jni_api {
     }
 
     #[no_mangle]
-    pub extern "system" fn Java_io_github_dixonsolutions_xonotictouch_fe_RustCore_nativeStart(
+    pub extern "system" fn Java_io_github_dixonsolutions_godnotic_fe_RustCore_nativeStart(
         _env: JNIEnv,
         _c: JClass,
     ) -> jlong {
@@ -90,7 +90,7 @@ mod jni_api {
     }
 
     #[no_mangle]
-    pub extern "system" fn Java_io_github_dixonsolutions_xonotictouch_fe_RustCore_nativeStop(
+    pub extern "system" fn Java_io_github_dixonsolutions_godnotic_fe_RustCore_nativeStop(
         _env: JNIEnv,
         _c: JClass,
         h: jlong,
@@ -102,7 +102,7 @@ mod jni_api {
     }
 
     #[no_mangle]
-    pub extern "system" fn Java_io_github_dixonsolutions_xonotictouch_fe_RustCore_nativeIgnoreRows(
+    pub extern "system" fn Java_io_github_dixonsolutions_godnotic_fe_RustCore_nativeIgnoreRows(
         _env: JNIEnv,
         _c: JClass,
         h: jlong,
@@ -114,7 +114,7 @@ mod jni_api {
     }
 
     #[no_mangle]
-    pub extern "system" fn Java_io_github_dixonsolutions_xonotictouch_fe_RustCore_nativeHello<
+    pub extern "system" fn Java_io_github_dixonsolutions_godnotic_fe_RustCore_nativeHello<
         'l,
     >(
         mut env: JNIEnv<'l>,
@@ -135,7 +135,7 @@ mod jni_api {
     }
 
     #[no_mangle]
-    pub extern "system" fn Java_io_github_dixonsolutions_xonotictouch_fe_RustCore_nativeSync<'l>(
+    pub extern "system" fn Java_io_github_dixonsolutions_godnotic_fe_RustCore_nativeSync<'l>(
         mut env: JNIEnv<'l>,
         _c: JClass<'l>,
         h: jlong,
@@ -148,7 +148,7 @@ mod jni_api {
     }
 
     #[no_mangle]
-    pub extern "system" fn Java_io_github_dixonsolutions_xonotictouch_fe_RustCore_nativeFeed<'l>(
+    pub extern "system" fn Java_io_github_dixonsolutions_godnotic_fe_RustCore_nativeFeed<'l>(
         mut env: JNIEnv<'l>,
         _c: JClass<'l>,
         h: jlong,
@@ -170,7 +170,7 @@ mod jni_api {
     }
 
     #[no_mangle]
-    pub extern "system" fn Java_io_github_dixonsolutions_xonotictouch_fe_RustCore_nativeEvent<
+    pub extern "system" fn Java_io_github_dixonsolutions_godnotic_fe_RustCore_nativeEvent<
         'l,
     >(
         mut env: JNIEnv<'l>,
@@ -196,7 +196,7 @@ mod jni_api {
 
     #[no_mangle]
     #[allow(clippy::too_many_arguments)]
-    pub extern "system" fn Java_io_github_dixonsolutions_xonotictouch_fe_RustCore_nativeWindow<
+    pub extern "system" fn Java_io_github_dixonsolutions_godnotic_fe_RustCore_nativeWindow<
         'l,
     >(
         mut env: JNIEnv<'l>,
@@ -233,7 +233,7 @@ mod jni_api {
     }
 
     #[no_mangle]
-    pub extern "system" fn Java_io_github_dixonsolutions_xonotictouch_fe_RustCore_nativeImage<
+    pub extern "system" fn Java_io_github_dixonsolutions_godnotic_fe_RustCore_nativeImage<
         'l,
     >(
         mut env: JNIEnv<'l>,

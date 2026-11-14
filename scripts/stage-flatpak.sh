@@ -38,17 +38,17 @@ chmod 644 "$DEST/share/xonotic/version.txt"
 # show the download wizard instead of a missing-texture menu.
 bash "$ROOT/scripts/stage-slim-data.sh" "$DEST/data"
 
-install -m 644 "$ROOT/flatpak/io.github.dixonSolutions.XonoticTouch.desktop" \
-    "$DEST/share/applications/io.github.dixonSolutions.XonoticTouch.desktop"
-install -m 644 "$ROOT/flatpak/io.github.dixonSolutions.XonoticTouch.metainfo.xml" \
-    "$DEST/share/metainfo/io.github.dixonSolutions.XonoticTouch.metainfo.xml"
+install -m 644 "$ROOT/flatpak/io.github.dixonSolutions.Godnotic.desktop" \
+    "$DEST/share/applications/io.github.dixonSolutions.Godnotic.desktop"
+install -m 644 "$ROOT/flatpak/io.github.dixonSolutions.Godnotic.metainfo.xml" \
+    "$DEST/share/metainfo/io.github.dixonSolutions.Godnotic.metainfo.xml"
 
 ICON_SRC="$ROOT/branding"
 install -m 644 "$ICON_SRC/godnotic-icon-128.png" \
-    "$DEST/share/icons/hicolor/128x128/apps/io.github.dixonSolutions.XonoticTouch.png"
+    "$DEST/share/icons/hicolor/128x128/apps/io.github.dixonSolutions.Godnotic.png"
 install -m 644 "$ICON_SRC/godnotic-icon-256.png" \
-    "$DEST/share/icons/hicolor/256x256/apps/io.github.dixonSolutions.XonoticTouch.png"
+    "$DEST/share/icons/hicolor/256x256/apps/io.github.dixonSolutions.Godnotic.png"
 install -m 644 "$ICON_SRC/godnotic-icon-512.png" \
-    "$DEST/share/icons/hicolor/512x512/apps/io.github.dixonSolutions.XonoticTouch.png"
+    "$DEST/share/icons/hicolor/512x512/apps/io.github.dixonSolutions.Godnotic.png"
 
 echo "Staged Flatpak tree to $DEST"

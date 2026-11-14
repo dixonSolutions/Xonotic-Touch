@@ -4,14 +4,14 @@
 # partial zips; notifies and optionally re-opens the app when packs are ready.
 set -euo pipefail
 
-USER_BASE="${XONOTIC_TOUCH_USER_BASE:?XONOTIC_TOUCH_USER_BASE required}"
+USER_BASE="${GODNOTIC_USER_BASE:?GODNOTIC_USER_BASE required}"
 USER_DATA="${USER_BASE}/data"
-LIB_DIR="${XONOTIC_TOUCH_LIB_DIR:-${USER_BASE}/lib}"
+LIB_DIR="${GODNOTIC_LIB_DIR:-${USER_BASE}/lib}"
 PROGRESS_FILE="${XONOTIC_ASSET_FETCH_PROGRESS:-${USER_DATA}/touch/asset-progress.txt}"
 PIDFILE="${USER_BASE}/fetchd.pid"
-FLATPAK_ID="${XONOTIC_TOUCH_FLATPAK_ID:-io.github.dixonSolutions.XonoticTouch}"
-AUTO_OPEN="${XONOTIC_TOUCH_AUTO_OPEN_ON_READY:-1}"
-NOTIFY="${XONOTIC_TOUCH_NOTIFY_ON_READY:-1}"
+FLATPAK_ID="${GODNOTIC_FLATPAK_ID:-io.github.dixonSolutions.Godnotic}"
+AUTO_OPEN="${GODNOTIC_AUTO_OPEN_ON_READY:-1}"
+NOTIFY="${GODNOTIC_NOTIFY_ON_READY:-1}"
 
 mkdir -p "$USER_DATA/touch" "$USER_BASE"
 
@@ -59,8 +59,8 @@ else
     xonotic_fetch_game_assets "$USER_DATA"
 fi
 
-if [ -x "${LIB_DIR}/sync-bundle-data.sh" ] && [ -d "${XONOTIC_TOUCH_BUNDLE_DATA:-}" ]; then
-    "${LIB_DIR}/sync-bundle-data.sh" "$XONOTIC_TOUCH_BUNDLE_DATA" "$USER_DATA" || true
+if [ -x "${LIB_DIR}/sync-bundle-data.sh" ] && [ -d "${GODNOTIC_BUNDLE_DATA:-}" ]; then
+    "${LIB_DIR}/sync-bundle-data.sh" "$GODNOTIC_BUNDLE_DATA" "$USER_DATA" || true
 fi
 
 notify_ready() {
@@ -81,7 +81,7 @@ notify_ready() {
 
 engine_running() {
     pgrep -f '/bin/xonotic( |$)' >/dev/null 2>&1 \
-        || pgrep -f 'xonotic-touch.*/bin/xonotic' >/dev/null 2>&1
+        || pgrep -f 'godnotic.*/bin/xonotic' >/dev/null 2>&1
 }
 
 open_app() {
@@ -92,8 +92,8 @@ open_app() {
         nohup flatpak run "$FLATPAK_ID" >/dev/null 2>&1 &
         return 0
     fi
-    if [ -x "${XONOTIC_TOUCH_APP_ROOT:-}/bin/start.sh" ]; then
-        nohup "${XONOTIC_TOUCH_APP_ROOT}/bin/start.sh" >/dev/null 2>&1 &
+    if [ -x "${GODNOTIC_APP_ROOT:-}/bin/start.sh" ]; then
+        nohup "${GODNOTIC_APP_ROOT}/bin/start.sh" >/dev/null 2>&1 &
     fi
 }
 

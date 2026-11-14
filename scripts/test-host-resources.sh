@@ -6,8 +6,8 @@
 # back). App code goes through HostRes and builds its views in code instead.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-src=android/app/src/main/java/io/github/dixonsolutions/xonotictouch
-kt=android/app/src/main/kotlin/io/github/dixonsolutions/xonotictouch
+src=android/app/src/main/java/io/github/dixonsolutions/godnotic
+kt=android/app/src/main/kotlin/io/github/dixonsolutions/godnotic
 bad=$(grep -rnE '(^|[^.[:alnum:]_])R\.[a-z]+\.[A-Za-z_]' "$src" "$kt" --include='*.java' --include='*.kt' | grep -v '^[^:]*HostRes\.java:' || true)
 if [ -n "$bad" ]; then
     echo "App code uses R.* ids, which point into the installed host's resource table:" >&2

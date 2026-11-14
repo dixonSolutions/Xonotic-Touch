@@ -10,12 +10,12 @@ def appCode      = (project.findProperty('version_code') ?: '1').toInteger()
 def keystorePath = project.findProperty('keystore')      ?: ''
 
 android {
-    namespace 'io.github.dixonsolutions.xonotictouch'
+    namespace 'io.github.dixonsolutions.godnotic'
     compileSdk 35
     ndkVersion project.findProperty('ndk_version') ?: '27.3.13750724'
 
     defaultConfig {
-        applicationId 'io.github.dixonsolutions.xonotictouch'
+        applicationId 'io.github.dixonsolutions.godnotic'
         minSdk 21
         targetSdk 35
         versionCode appCode

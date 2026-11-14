@@ -3,8 +3,8 @@ package xt.core
 
 /**
  * A touch/profiles/<name>.cfg file. Layout presets (standard, left, ...) go to
- * start.sh as XONOTIC_TOUCH_PROFILE, performance ones (battery, thermal, ...)
- * as XONOTIC_TOUCH_PERF_PROFILE. helpers.cfg is a building block, not a choice.
+ * start.sh as GODNOTIC_PROFILE, performance ones (battery, thermal, ...)
+ * as GODNOTIC_PERF_PROFILE. helpers.cfg is a building block, not a choice.
  */
 data class Profile(val id: String, val title: String, val summary: String, val kind: Kind) {
     enum class Kind { LAYOUT, PERFORMANCE, PART }

@@ -1,6 +1,6 @@
 # Web leaderboard
 
-The Internet tier: `xt.http.post` to a host the manifest's `http:` line names, with the answer in a callback, and `xt.game.has("http")` to feature-test (the web build has no HTTP).
+The Internet tier: `xt.http.post` to a host the manifest's `http:` line names, with the answer in a callback, and `xt.game.has("http")` to feature-test (the web build uses the browser's `fetch()`, so there the leaderboard host must also allow web pages: CORS).
 
 ## Tier
 
@@ -15,7 +15,7 @@ Server mods run on a server this game hosts (a local match, or a dedicated serve
   `sv_lua_plugin_install /path/to/leaderboard_http.zip`, then `lua_install_confirm`).
 - **Dedicated server**: copy `touch/lua/examples/plugins/leaderboard_http` to
   `<userdir>/plugins/leaderboard_http` and run `sv_lua_plugin_enable leaderboard_http`.
-- **Web**: the web build hosts local matches too; install as on Linux from the console.
+- **Web**: the web build hosts local matches too; install with *Pick file* in the Mods tab, or drop the zip on the page.
 
 Turn it on with `sv_lua_plugin_enable leaderboard_http` (or the switch in Settings > Mods).
 

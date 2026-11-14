@@ -35,14 +35,15 @@ xt.command("greet", function(who) print("hi " .. (who or "there")) end, "say hi"
 
 | Where you play | Mods folder |
 |---|---|
-| Android | `Android/data/io.github.dixonsolutions.xonotictouch/files/userdata/mods/` (the app's files folder; many file managers cannot open it, so installing the zip is easier) |
+| Android | `Android/data/io.github.dixonsolutions.godnotic/files/userdata/mods/` (the app's files folder; many file managers cannot open it, so installing the zip is easier) |
 | Linux, Flatpak | `~/.xonotic/mods/` (the Flatpak uses the same folder) |
-| Web build | no folder you can reach from outside the browser, and no `https://` downloads (no libcurl): write and test mods on Android or Linux |
+| Web build | `/xt-user/mods/` inside the browser's own storage, which nothing outside the browser can open: install the zip instead (**Pick file**, or drop the `.zip` on the page) |
 
 The console command `lua_mods` prints the folder this game reads. Or zip the folder
 and **install** it: in the Mods manager (Settings → Mobile → Mods) press **Install...**
-and give a path or an `https://` link to the `.zip` (on Android, **Pick file** opens the
-system file picker), or type `lua_mod_install /path/to/hello.zip` (a folder path works
+and give a path or an `https://` link to the `.zip` (on Android and in the browser,
+**Pick file** opens the system file picker; in the browser a `.zip` dropped on the page
+goes the same way), or type `lua_mod_install /path/to/hello.zip` (a folder path works
 too while you develop) and then `lua_install_confirm`. Either way you see what it asks
 for before anything is written.
 
