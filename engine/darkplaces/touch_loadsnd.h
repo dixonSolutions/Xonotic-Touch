@@ -122,6 +122,14 @@ static double TouchSnd_OggSeconds(const char *path, fs_offset_t size)
 	return max(0, (double)granule - skip) / rate;
 }
 
+// An Ogg file by its name: .ogg (Vorbis or Opus), or .opus (the name
+// TouchSnd_File and Touch_Opus_LoadFile also try for a .ogg)
+static qbool TouchSnd_IsOgg(const char *path)
+{
+	size_t len = strlen(path);
+	return (len >= 4 && !strcasecmp(path + len - 4, ".ogg")) || (len >= 5 && !strcasecmp(path + len - 5, ".opus"));
+}
+
 // snd_ogg.c (touch_loadogg.h): big Vorbis and Opus files decoded on worker threads
 void TouchOgg_Init(void);
 qbool TouchOgg_StartAsync(sfx_t *sfx, const char *filename);
@@ -149,10 +157,9 @@ static qbool TouchSnd_Defer(sfx_t *sfx)
 	{
 		// By decoded length where it can be told: at 32 kbit/s and up, a file
 		// of maxlength * 4000 bytes or less cannot be longer than maxlength.
-		size_t len = strlen(path);
 		double seconds = -1;
 		big = size > snd_lazyload_maxsize.value * 1024;
-		if (snd_lazyload_maxlength.value > 0 && len >= 4 && !strcasecmp(path + len - 4, ".ogg"))
+		if (snd_lazyload_maxlength.value > 0 && TouchSnd_IsOgg(path))
 		{
 			if (size <= snd_lazyload_maxlength.value * 4000)
 				big = false;
@@ -163,8 +170,7 @@ static qbool TouchSnd_Defer(sfx_t *sfx)
 	if (big)
 	{
 		// decoded on a worker thread while the load goes on
-		size_t len = strlen(path);
-		if (len < 4 || strcasecmp(path + len - 4, ".ogg") || !TouchOgg_StartAsync(sfx, path))
+		if (!TouchSnd_IsOgg(path) || !TouchOgg_StartAsync(sfx, path))
 			return false;
 	}
 	sfx->flags |= TOUCH_SFXFLAG_DEFERRED;

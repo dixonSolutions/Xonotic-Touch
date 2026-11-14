@@ -193,6 +193,7 @@ queue:
 	touchogg_queuetail = job;
 	Thread_UnlockMutex(touchogg_mutex);
 	TouchOgg_Workers();
+	Con_DPrintf("snd_lazyload_async: %s (%s) decodes on a worker\n", filename, job->opus ? "Opus" : "Vorbis");
 	return true;
 }
 
