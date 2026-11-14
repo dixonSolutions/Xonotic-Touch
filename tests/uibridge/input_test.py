@@ -39,8 +39,11 @@ step("escape", "uib_input key ESCAPE")
 step("tap-multiplayer", "uib_input tap home/tiles/mp")
 step("tap-address", "uib_input tap mp/join/address")
 step("type-address", "uib_input text 127.0.0.1:9")
-step("enter-joins", "uib_input key ENTER", 1.2)
-step("cancel-join", "disconnect; _touch_cancel_join", 1.5)
+step("enter-joins", "uib_input key ENTER", 14.0)
+step("joinfail", "echo", 0.5)
+step("joinfail-retry", "uib_input tap dialog.joinfail", 14.0)
+step("joinfail-again", "echo", 0.5)
+step("cancel-join", "uib_input key ESCAPE", 1.2)
 step("home-again", "uib_input key ESCAPE", 1.0)
 step("arrow", "uib_input key DOWNARROW", 0.6)
 step("enter-opens", "uib_input key ENTER")
@@ -143,6 +146,13 @@ check(app("tap-multiplayer").get("stack") == ["home", "mp"] and node("tap-multip
       "Multiplayer opens with Join off")
 check("127.0.0.1:9" in log.split("STEP type-address")[-1].split("STEP cancel-join")[0],
       "typing an address and Enter joins it (the engine was asked for 127.0.0.1:9)")
+jf = node("joinfail", "dialog.joinfail/text").get("body", "")
+check(app("joinfail").get("modal") == ["dialog.joinfail"] and "127.0.0.1" in jf and app("joinfail").get("context") == "menu",
+      f"the join fails: the Could not join dialog says why ({jf!r}; {node('joinfail', 'dialog.joinfail/detail').get('body', '')[:60]!r})")
+between = log.split("STEP joinfail\n")[-1].split("STEP joinfail-again")[0]
+check("127.0.0.1:9" in between and app("joinfail-again").get("modal") == ["dialog.joinfail"],
+      "Retry on the dialog joins the same address again, and the dialog comes back when that fails too")
+check(app("cancel-join").get("modal") == [] and app("cancel-join").get("stack") == ["home", "mp"], "Escape closes the dialog; Multiplayer is under it")
 check(app("home-again").get("stack") == ["home"] and app("home-again").get("context") == "menu" and not app("home-again").get("busy"),
       "after the join is given up the menu is back at Home, nothing left loading")
 check(app("enter-opens").get("stack") == ["home", "sp"], f"Down and Enter open the first card ({app('enter-opens').get('stack')})")

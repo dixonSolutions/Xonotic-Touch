@@ -106,7 +106,6 @@ void UIB_BuildSettingsRoot()
 			UIB_Close();
 		}
 	UIB_Close();
-	UIB_Button("advanced", _("Advanced settings"), UIB_A("settings.advanced", _("Advanced settings"), "more"), "link");
 	UIB_Done();
 }
 
@@ -347,7 +346,6 @@ void UIB_SecPlayer()
 		uib_f("maxLength", 32);
 		UIB_Apply("reconnect");
 	UIB_Close();
-	UIB_Button("model", _("Player model"), UIB_A("settings.model", _("Player model"), "player"), "tonal");
 	}
 	UIB_Close();
 	if (UIB_SubTab("colours", _("Colours")))
@@ -408,13 +406,16 @@ void UIB_SecMenuSettings()
 {
 	UIB_Slider("size", _("Menu size"), "cvar:menu_touch_size", 0.7, 1.5, 0.05, "x", _("Applies the next time the menu opens"));
 	UIB_Switch("uib", _("New menu"), "cvar:menu_touch_uib", _("Off: the classic Xonotic menu. Turn it on again in its Settings > Mobile > Menu, or with menu_touch_uib 1 in the console"));
-	UIB_Section("classic", _("Classic menu"), false);
-		uib_s("subtitle", _("Screens of the classic menu; closing one brings you back here"));
-		UIB_Button("advanced", _("Advanced settings"), UIB_A("settings.advanced", _("Advanced settings"), "settings"), "secondary");
-		UIB_Button("media", _("Demos, screenshots and music"), UIB_A("classic.media", _("Demos, screenshots and music"), "folder"), "secondary");
-		UIB_Button("profile", _("Player model and statistics"), UIB_A("classic.profile", _("Player model and statistics"), "player"), "secondary");
-	UIB_Close();
 	UIB_Switch("quitdialog", _("Ask before quitting"), "cvar:menu_showquitdialog", "");
+	// the one place that leads to the classic menu's dialogs: one row, last on this tab
+	UIB_Open("classic", "row");
+		uib_s("label", _("Classic menu"));
+		uib_b("wrap", 1);
+		UIB_Button("advanced", _("Advanced settings"), UIB_A("settings.advanced", _("Advanced settings"), "settings"), "secondary");
+		UIB_Button("media", _("Media"), UIB_A("classic.media", _("Demos, screenshots and music"), "folder"), "secondary");
+		UIB_Button("profile", _("Player model"), UIB_A("classic.profile", _("Player model and statistics"), "player"), "secondary");
+		UIB_Button("credits", _("Xonotic credits"), UIB_A("classic.credits", _("Everyone who made Xonotic"), "credits"), "secondary");
+	UIB_Close();
 }
 
 // ---------------------------------------------------------------- mods
@@ -691,6 +692,7 @@ bool UIB_SettingsAction(string node, string a, string payload)
 		case "settings.advanced": m_goto("settings", false); return true;
 		case "classic.media": m_goto("media", false); return true;
 		case "classic.profile": m_goto("profile", false); return true;
+		case "classic.credits": m_goto("Credits", false); return true;
 		case "settings.model": m_goto("profile", true); return true;
 		case "touch.preset":
 			localcmd(strcat("exec touch/profiles/", cvar_string("touch_preset"), ".cfg\n"));

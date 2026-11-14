@@ -142,6 +142,13 @@ await shot('web-03-map-chosen');
 n = await snapshot();
 const sel = n['sp/maps/list'] && n['sp/maps/list'].props.selected;
 check(JSON.stringify(stack(n)) === '["home","sp"]' && sel && sel[0] && n.app.props.context === 'menu', `one ${touch ? 'tap' : 'click'} on a map tile chooses it (${sel}) and starts nothing`);
+if (!touch) {
+  // the pointer resting on another tile: its picture stays a picture
+  const q = await rectOf('sp/maps/list#6');
+  if (q) await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: q.x, y: q.y });
+  await sleep(1500);
+  await shot('web-03b-pointer-on-a-tile');
+}
 await key('Escape', 'Escape', 27);
 await sleep(1500);
 n = await snapshot();

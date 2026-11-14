@@ -26,6 +26,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <time.h>
 
 #include "quakedef.h"
+#include "touch_uib.h" // Touch: one loading presentation
 #include "thread.h"
 #include "touch_ui.h" // Touch: touch_conback_picture
 
@@ -1948,6 +1949,7 @@ void Con_DrawNotify (void)
 	float x, v;
 	float chatstart, notifystart, inputsize, height;
 	float align;
+	if (TouchUIB_LoadingCardUp()) return; // Touch: no notify lines under a front end's loading card (the console keeps them)
 	int numChatlines;
 	int chatpos;
 

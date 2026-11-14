@@ -103,7 +103,7 @@
     "id": "home/tiles",
     "type": "grid",
     "props": {
-     "minItem": 240,
+     "minItem": 200,
      "maxColumns": 3
     },
     "children": [
@@ -206,8 +206,7 @@
      "title": "Xonotic"
     },
     "children": [
-     "credits/xonotic/text",
-     "credits/xonotic/list"
+     "credits/xonotic/text"
     ]
    },
    {
@@ -215,20 +214,6 @@
     "type": "text",
     "props": {
      "body": "Xonotic is made by the Xonotic team and its many contributors."
-    },
-    "children": []
-   },
-   {
-    "id": "credits/xonotic/list",
-    "type": "button",
-    "props": {
-     "label": "Everyone who made Xonotic",
-     "action": {
-      "id": "credits.full",
-      "label": "Everyone who made Xonotic",
-      "icon": "credits"
-     },
-     "style": "link"
     },
     "children": []
    },
