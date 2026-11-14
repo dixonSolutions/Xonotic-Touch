@@ -51,7 +51,13 @@ import java.io.File
 class FrontendHost(private val activity: Activity, private val baseDir: File?) : ViewRenderer.Host, UiEvents {
     private val tag = "Godnotic"
     private val main = Handler(Looper.getMainLooper())
-    val root = FrameLayout(activity)
+    val root: FrameLayout = object : FrameLayout(activity) {
+        override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+            // the engine's console button under the pause scrim takes its own touches (4.12)
+            if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN && passThrough(ev.x, ev.y)) return false
+            return super.dispatchTouchEvent(ev)
+        }
+    }
     private val screenLayer = FrameLayout(activity)
     private val dialogLayer = FrameLayout(activity)
     private val toastLayer = FrameLayout(activity)
@@ -201,6 +207,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
             "image" -> Json.parseOrNull(json).obj().let { renderer?.imageReady(it.str("ref"), it.str("path")) }
             "ui" -> if (!failed) client?.receiveText(json)
             "mods" -> onMods(Json.parseOrNull(json).obj())
+            "connect" -> onConnect(Json.parseOrNull(json).obj())
         }
     }
 
@@ -227,8 +234,60 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         }
         reportPower("_android_idle_home", if (state == "menu" && root.visibility == View.VISIBLE) "1" else "0")
         showReconnect(a.str("reconnect"))
+        if (state != "loading" && state != "connecting" && loadingStrip != null) onConnect(mapOf("stage" to "idle"))
         val note = a.str("reconnect_note")
         if (note != lastReconnectNote) { lastReconnectNote = note; if (note.isNotEmpty() && note.startsWith("Disconnected")) toast(note, "warning") }
+    }
+
+    private var loadingStrip: android.widget.LinearLayout? = null
+    private var loadingText: android.widget.TextView? = null
+    private var loadingBar: android.widget.ProgressBar? = null
+
+    /**
+     * A join or a map load: the engine publishes its progress from inside the
+     * blocking load (TouchFE_Loading, a few times a second). The engine's own
+     * loading screen stops redrawing during a long item; this strip is drawn
+     * by Android on its own thread, so the player always sees it moving
+     * (an indeterminate bar) with the step and the percentage.
+     */
+    private fun onConnect(c: Map<String, Any?>) {
+        val stage = c.str("stage")
+        val busy = stage in setOf("connecting", "downloading", "loading", "signon") && !failed
+        if (!busy || root.visibility == View.VISIBLE) {
+            loadingStrip?.let { (it.parent as? ViewGroup)?.removeView(it) }
+            loadingStrip = null; loadingText = null; loadingBar = null
+            return
+        }
+        if (loadingStrip == null) {
+            val strip = android.widget.LinearLayout(activity)
+            strip.orientation = android.widget.LinearLayout.VERTICAL
+            val p = Theme.dp(activity, 12f)
+            strip.setPadding(Theme.dp(activity, 20f), p, Theme.dp(activity, 20f), p)
+            strip.background = Theme.rounded(0xE60B1730.toInt(), Theme.dp(activity, 14f).toFloat(), Theme.dp(activity, 1f), Theme.BLUE)
+            val t = Kit.text(activity, "", Theme.SP_BODY, Theme.TEXT, bold = true, lines = 1)
+            t.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+            val bar = android.widget.ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal)
+            bar.isIndeterminate = true
+            bar.indeterminateTintList = android.content.res.ColorStateList.valueOf(Theme.EMBER)
+            strip.addView(t)
+            strip.addView(bar, android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(activity, 6f)).apply { topMargin = Theme.dp(activity, 8f) })
+            val lp = FrameLayout.LayoutParams(Theme.dp(activity, 520f), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+            lp.bottomMargin = Theme.dp(activity, 56f)
+            activity.addContentView(strip, lp)
+            loadingStrip = strip; loadingText = t; loadingBar = bar
+        }
+        val pct = when (stage) {
+            "downloading" -> c.num("download_progress")
+            "loading" -> c.num("load_progress")
+            else -> 0.0
+        }
+        val what = when (stage) {
+            "connecting" -> "Connecting to ${c.str("address")}"
+            "downloading" -> "Downloading ${c.str("file").substringAfterLast('/')}"
+            "signon" -> "Joining the game"
+            else -> c.str("load").ifEmpty { "Loading the map" }
+        }
+        loadingText?.text = if (pct > 0.0) "$what  ${(pct * 100).toInt()}%" else what
     }
 
     private var reconnectBar: View? = null
@@ -649,6 +708,21 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
 
     override fun canBack(): Boolean = client?.canBack ?: false
 
+    override fun reserved(): List<Map<String, Any?>> = client?.reserved ?: emptyList()
+
+    /**
+     * A touch in a reserved rect (the engine's console button) while the game
+     * shows through the pause scrim: the overlay lets it go to the engine.
+     */
+    fun passThrough(xPx: Float, yPx: Float): Boolean {
+        if (client?.topKind != "game" || dialogLayer.visibility == View.VISIBLE) return false
+        val d = activity.resources.displayMetrics.density
+        return reserved().any { r ->
+            val x = xPx / d; val y = yPx / d
+            x >= r.num("x") && x < r.num("x") + r.num("w") && y >= r.num("y") && y < r.num("y") + r.num("h")
+        }
+    }
+
     override fun platformAction(node: String, action: Map<String, Any?>): Boolean {
         when (action.str("kind")) {
             "file" -> { pickFile(node, action); return true }
@@ -757,6 +831,16 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     }
 
     private fun askJoin(addr: String) {
+        // in a match the overlay is hidden: open the pause menu first, then ask over it
+        if (app.str("state") == "ingame") {
+            NativeBridge.enqueue(FeArgs.command("menu", "open"))
+            main.postDelayed({ askJoinNow(addr) }, 600)
+            return
+        }
+        askJoinNow(addr)
+    }
+
+    private fun askJoinNow(addr: String) {
         main.post {
             confirm(mapOf("title" to "Join this game?", "body" to addr, "ok" to "Join")) {
                 NativeBridge.enqueue(FeArgs.command("connect", addr))

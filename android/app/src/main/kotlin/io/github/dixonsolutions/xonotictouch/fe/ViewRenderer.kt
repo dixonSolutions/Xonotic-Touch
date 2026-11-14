@@ -45,6 +45,8 @@ class ViewRenderer(
         /** link / share / copy actions handled natively; true when handled. */
         fun platformAction(node: String, action: Map<String, Any?>): Boolean
         fun confirm(confirm: Map<String, Any?>, ok: () -> Unit)
+        /** `app.reserved` rects (dp) while the engine's own controls show through (4.12); empty otherwise. */
+        fun reserved(): List<Map<String, Any?>> = emptyList()
     }
 
     class Entry(val id: String, val type: String, val view: View, val children: ViewGroup?, var props: Map<String, Any?>) {
@@ -173,7 +175,7 @@ class ViewRenderer(
         "section" -> section(id, props)
         "toolbar" -> group(id, type, props, Kit.row(ctx, 10f).apply { setPadding(0, dp(4f), 0, dp(4f)) })
         "actionbar" -> group(id, type, props, Kit.row(ctx, 12f).apply { gravity = Gravity.END or Gravity.CENTER_VERTICAL })
-        "row" -> if (props.bool("wrap")) group(id, type, props, FlowGrid(ctx, 0, dp(10f), wrap = true)) else group(id, type, props, Kit.row(ctx, 12f).apply {
+        "row" -> if (props.bool("wrap")) group(id, type, props, FlowGrid(ctx, 0, dp(10f), wrap = true)) else labelledRow(id, props, Kit.row(ctx, 12f).apply {
             gravity = when (props.str("align")) { "center" -> Gravity.CENTER; "end" -> Gravity.END or Gravity.CENTER_VERTICAL; else -> Gravity.START or Gravity.CENTER_VERTICAL }
         })
         "split" -> split(id, props)
@@ -318,6 +320,14 @@ class ViewRenderer(
             titleV.visibility = if (kindHome) View.INVISIBLE else View.VISIBLE // Home shows the banner instead
             back.visibility = if (host.canBack() && !kindHome && !modal) View.VISIBLE else View.GONE
             if (p["header"].obj().bool("compact")) titleV.textSize = Theme.SP_TITLE
+            // over the game (a scrim) the engine's console button shows through: the
+            // header's actions keep clear of its rect plus 8 dp (docs/UI_BRIDGE.md 4.12)
+            var endPad = pad
+            if (p.str("kind") == "game") for (r in host.reserved()) {
+                val wdp = ctx.resources.displayMetrics.widthPixels / ctx.resources.displayMetrics.density
+                if (r.num("y") < 72.0) endPad = maxOf(endPad, dp((wdp - r.num("x")).toFloat() + 8f))
+            }
+            bar.setPadding(bar.paddingLeft, bar.paddingTop, endPad, bar.paddingBottom)
             trailing.removeAllViews()
             // header actions are quiet (Quit must not compete with Play)
             for (a in p["actions"].list()) { val m = a.obj(); trailing.addView(Kit.quiet(ctx, m.str("label"), m.str("icon")) { invoke(id, m) }) }
@@ -447,6 +457,28 @@ class ViewRenderer(
     }
 
     private fun group(id: String, type: String, props: Map<String, Any?>, g: ViewGroup) = Entry(id, type, g, g, props)
+
+    /**
+     * A row with a `label` (the LAN popup's "Wi-Fi", "VPN (tailscale0)", "Link"):
+     * the label with its icon in a fixed column, then the children.
+     */
+    private fun labelledRow(id: String, props: Map<String, Any?>, inner: LinearLayout): Entry {
+        val outer = Kit.row(ctx, 16f)
+        outer.gravity = Gravity.CENTER_VERTICAL
+        val label = Kit.text(ctx, "", Theme.SP_BODY, Theme.TEXT_MUTED, bold = true, lines = 2)
+        label.compoundDrawablePadding = dp(8f)
+        outer.addView(label, LinearLayout.LayoutParams(dp(200f), ViewGroup.LayoutParams.WRAP_CONTENT))
+        outer.addView(inner, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val e = Entry(id, "row", outer, inner, props)
+        e.bind = { x ->
+            val t = x.props.str("label")
+            label.text = t
+            label.setCompoundDrawablesRelative(Icons.drawable(x.props.str("icon"), dp(20f), Theme.TEXT_MUTED), null, null, null)
+            label.visibility = if (t.isEmpty()) View.GONE else View.VISIBLE
+            label.contentDescription = t
+        }
+        return e
+    }
 
     /** Cards in as many columns as fit at minItem dp; scroll "horizontal" makes a carousel. */
     private fun grid(id: String, props: Map<String, Any?>): Entry {
@@ -789,8 +821,11 @@ class ViewRenderer(
             img.contain = x.props.str("fit") == "contain"
             // a banner or picture never takes more than a fifth (contain) or two fifths of the screen's height
             img.maxHeight = (ctx.resources.displayMetrics.heightPixels * if (img.contain) 0.2f else 0.4f).toInt()
-            // Home's banner is a compact header there: the cards must fit below it
-            if (img.contain && screenKind(x) == "home") img.maxHeight = (ctx.resources.displayMetrics.heightPixels * 0.11f).toInt()
+            // `role: banner` with `emphasis: high` (Home, docs/UI_BRIDGE.md): large, a
+            // quarter to a third of the height; any other banner on Home stays a header
+            val h = ctx.resources.displayMetrics.heightPixels
+            if (x.props.str("role") == "banner" && x.props.str("emphasis") == "high") img.maxHeight = (h * 0.3f).toInt()
+            else if (img.contain && screenKind(x) == "home") img.maxHeight = (h * 0.11f).toInt()
             img.contentDescription = x.props.str("alt")
             val r = x.props.str("ref")
             if (r.isEmpty()) img.none() else picture(img, r)
@@ -1184,7 +1219,8 @@ class ViewRenderer(
                     (c.card.layoutParams as? ViewGroup.MarginLayoutParams)?.let { lp ->
                         // `rows: N`: fixed tiles in rows that scroll sideways
                         val f = e.list?.fit
-                        val w = f?.width ?: ViewGroup.LayoutParams.MATCH_PARENT
+                        val carousel = e.list?.carouselWidth ?: 0
+                        val w = f?.width ?: if (carousel > 0) carousel - gap else ViewGroup.LayoutParams.MATCH_PARENT
                         val h = f?.height ?: ViewGroup.LayoutParams.WRAP_CONTENT
                         if (lp.width != w || lp.height != h) { lp.width = w; lp.height = h; c.card.layoutParams = lp }
                     }
@@ -1269,8 +1305,12 @@ class ViewRenderer(
         lists.getOrPut(e.source) { ArrayList() }.add(vl)
         e.list = vl
         var lastQuery = ""
+        var lastSelected: List<Any?> = emptyList()
         e.bind = { x ->
             val p = x.props
+            // only `selected` changed (a tap's diff): rebind in place, the list keeps its position
+            val sel = p["selected"].list()
+            if (sel != lastSelected) { lastSelected = sel; vl.refresh() }
             if (cards) {
                 // `rows: 2`: the map picker shows two whole rows of tiles (docs/UI_BRIDGE.md)
                 val rows = fitRows(p)

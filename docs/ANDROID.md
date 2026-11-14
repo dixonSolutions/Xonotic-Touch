@@ -190,9 +190,15 @@ service with a notification ("Godnotic is staying connected: Connected
 to <server> - <map>") and holds a partial wake lock. Without it Android
 freezes a background app's process within seconds (Android 14+), can kill it
 for memory, and lets the CPU sleep with the screen off. The service stops as
-soon as the engine is idle. Android 12+ only lets it start while the app is in
+soon as the engine is idle while the game is in front, and 60 s after the last
+busy state while it is away (a map change or reconnect that reads idle for one
+poll must not lose it: Android 12+ only lets it start while the app is in
 front, which is when a join starts; later changes only update the
-notification. If notifications are denied (Android 13+) the service still
+notification). The notification shows a download's size, speed and time left
+under the state; a join that finishes while away posts "Ready to play". While
+busy in the background a low-latency Wi-Fi lock keeps the radio out of power
+save. The automatic reconnect (docs/NETWORK.md) shows as a bar over the game
+with Cancel. If notifications are denied (Android 13+) the service still
 runs, without a visible notification.
 
 The launcher icon brings a running game back as it was: the boot screen does
@@ -318,9 +324,26 @@ native components; the engine side of the transport is
   only after its banner's first frame. Home replaces the banner with one fade.
   Measured on the Tab Active5: `am start -W` TotalTime 230-330 ms, banner drawn
   50-140 ms after `XonoticActivity.onCreate`, Home at 0.8-1.2 s.
-* **Renderer.** `UibClient` reads the bridge's snapshots and diffs into a store
-  and drives `ViewRenderer` through `UiRenderer` (create/update/remove, navigate,
-  dialog, toast, rows, images): the seam the Rust loader core will drive later.
+* **Renderer and the Rust core.** The Rust loader core (`loader/crates/android`,
+  `libgodnotic_android.so`, the same `godnotic-loader-core` store as the Linux
+  app) reads the bridge's snapshots and diffs and answers each message with the
+  operations of the `UiRenderer` seam (create/update/remove, navigate, dialog,
+  toast, rows, images) and the messages for the engine; `fe/RustCore.kt` plays
+  them on `ViewRenderer`. One JSON string in and one out per JNI call, on the UI
+  thread; Rust holds no Java reference and never calls into Java; a panic is
+  caught at the boundary and the native layer then falls back. A build without
+  the library (`GODNOTIC_RUST_JNILIBS` unset), or `<basedir>/fe-kotlin-core`,
+  uses the Kotlin reader `UibClient` instead, which follows the same rules
+  (`cargo test -p godnotic-loader-android` plays every fixture and sequence of
+  tests/uibridge/fixtures through the Rust driver; the Gradle unit tests do the
+  same for `UibClient`). The library is a host library like
+  `libnativeui.so`: an AndySU engine swap does not replace it.
+  Lists with `selection` single or multi select on a tap (drawn at once, event
+  `row`/`select`) and activate on a double tap, Enter or the accessibility
+  action (`row`/`activate`); a card grid with `rows: N` shows N rows that
+  scroll sideways, tiles sized from the height. Over the pause scrim the
+  header keeps clear of `app.reserved` (the engine's console button) and a
+  touch on that rect goes to the engine.
   Lists and card grids are `RecyclerView`s over windows of rows; sticky header,
   toolbar, section headers and action bar; vector icons (`Icons.kt`); headings in
   Xolonium from the game data.

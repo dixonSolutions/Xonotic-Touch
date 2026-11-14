@@ -36,6 +36,8 @@ pub struct Driver {
     built: HashSet<String>,
     shown_stack: Vec<String>,
     shown_modal: Vec<String>,
+    /// Toasts already shown (they have no view to update or remove).
+    toasts: HashSet<String>,
     /// Rows come from elsewhere (test builds generate them).
     pub ignore_rows: bool,
 }
@@ -66,8 +68,16 @@ impl Driver {
     /// its kind, whether back goes somewhere, the hero picture (touch_warm).
     pub fn state(&self) -> Value {
         let top = self.store.stack().last().cloned().unwrap_or_default();
-        let kind = self.store.node(&top).and_then(|n| n.str("kind")).unwrap_or_default();
-        let can_back = self.store.app().and_then(|a| a.bool("canBack")).unwrap_or(false);
+        let kind = self
+            .store
+            .node(&top)
+            .and_then(|n| n.str("kind"))
+            .unwrap_or_default();
+        let can_back = self
+            .store
+            .app()
+            .and_then(|a| a.bool("canBack"))
+            .unwrap_or(false);
         let hero = self
             .store
             .to_snapshot_nodes()
@@ -75,13 +85,19 @@ impl Driver {
             .find(|n| n.kind == "hero")
             .and_then(|n| n.str("image"))
             .unwrap_or_default();
-        json!({"top": top, "kind": kind, "canBack": can_back, "modal": self.store.modal(), "hero": hero, "rev": self.store.rev})
+        let reserved = self
+            .store
+            .app()
+            .and_then(|a| a.props.get("reserved").cloned())
+            .unwrap_or(json!([]));
+        json!({"top": top, "kind": kind, "canBack": can_back, "modal": self.store.modal(), "hero": hero, "reserved": reserved, "rev": self.store.rev})
     }
 
     // ------------------------------------------------------------ to the engine
 
     pub fn hello(&mut self, caps: Value) -> String {
-        self.client.hello("godnotic-android-rust", env!("CARGO_PKG_VERSION"), caps)
+        self.client
+            .hello("godnotic-android-rust", env!("CARGO_PKG_VERSION"), caps)
     }
 
     pub fn sync(&mut self) -> String {
@@ -93,19 +109,47 @@ impl Driver {
     pub fn event(&mut self, ev: &str, body: &Map<String, Value>) -> String {
         let node = str_of(body, "node");
         match ev {
-            "action" => self.client.action(&node, &str_of(body, "action"), body.get("payload").cloned()),
-            "value" => self.client.value(&node, body.get("value").cloned().unwrap_or(Value::Null)),
-            "submit" => self.client.submit(&node, body.get("value").cloned().unwrap_or(Value::Null)),
+            "action" => {
+                self.client
+                    .action(&node, &str_of(body, "action"), body.get("payload").cloned())
+            }
+            "value" => self
+                .client
+                .value(&node, body.get("value").cloned().unwrap_or(Value::Null)),
+            "submit" => self
+                .client
+                .submit(&node, body.get("value").cloned().unwrap_or(Value::Null)),
             "row" => {
                 let kind = str_of(body, "kind");
-                self.client.row(&node, &str_of(body, "row"), if kind.is_empty() { "activate" } else { &kind })
+                self.client.row(
+                    &node,
+                    &str_of(body, "row"),
+                    if kind.is_empty() { "activate" } else { &kind },
+                )
             }
-            _ => self.client.simple(ev, if node.is_empty() { None } else { Some(&node) }),
+            _ => self
+                .client
+                .simple(ev, if node.is_empty() { None } else { Some(&node) }),
         }
     }
 
-    pub fn window(&mut self, source: &str, offset: usize, limit: usize, sort: &str, desc: bool, filter: &str) -> String {
-        self.client.window(source, offset, limit, if sort.is_empty() { None } else { Some(sort) }, desc, Some(filter))
+    pub fn window(
+        &mut self,
+        source: &str,
+        offset: usize,
+        limit: usize,
+        sort: &str,
+        desc: bool,
+        filter: &str,
+    ) -> String {
+        self.client.window(
+            source,
+            offset,
+            limit,
+            if sort.is_empty() { None } else { Some(sort) },
+            desc,
+            Some(filter),
+        )
     }
 
     pub fn image(&mut self, r: &str, w: u32, h: u32) -> String {
@@ -117,7 +161,9 @@ impl Driver {
     /// One engine message (JSON text): the operations it causes.
     pub fn feed(&mut self, text: &str) -> Batch {
         let mut b = Batch::default();
-        let Ok(Value::Object(m)) = serde_json::from_str::<Value>(text) else { return b };
+        let Ok(Value::Object(m)) = serde_json::from_str::<Value>(text) else {
+            return b;
+        };
         match str_of(&m, "t").as_str() {
             "rows" => {
                 if !self.ignore_rows {
@@ -145,7 +191,11 @@ impl Driver {
                 Change::Set(ids) => set.extend(ids),
                 Change::Deleted(ids) => deleted.extend(ids),
                 Change::NeedSync => need_sync = true,
-                Change::Image { reference, path, .. } => b.ops.push(json!({"op": "image", "ref": reference, "path": path.unwrap_or_default()})),
+                Change::Image {
+                    reference, path, ..
+                } => b.ops.push(
+                    json!({"op": "image", "ref": reference, "path": path.unwrap_or_default()}),
+                ),
                 Change::ImageMissing(r) => b.ops.push(json!({"op": "image", "ref": r, "path": ""})),
                 _ => {}
             }
@@ -163,7 +213,9 @@ impl Driver {
     }
 
     fn op_create(&mut self, b: &mut Batch, id: &str, parent: Option<&str>, index: i64) {
-        let Some(n) = self.store.node(id).cloned() else { return };
+        let Some(n) = self.store.node(id).cloned() else {
+            return;
+        };
         let hints = n.props.get("hints").cloned().unwrap_or(json!({}));
         b.ops.push(json!({"op": "create", "id": n.id, "parent": parent, "index": index, "type": n.kind, "props": n.props, "hints": hints}));
         self.built.insert(n.id.clone());
@@ -174,7 +226,12 @@ impl Driver {
 
     fn rebuild_all(&mut self, b: &mut Batch) {
         b.ops.push(json!({"op": "begin"}));
-        let roots: Vec<String> = self.shown_stack.iter().chain(self.shown_modal.iter()).cloned().collect();
+        let roots: Vec<String> = self
+            .shown_stack
+            .iter()
+            .chain(self.shown_modal.iter())
+            .cloned()
+            .collect();
         let mut old: Vec<String> = self.built.iter().cloned().collect();
         old.sort();
         for id in old {
@@ -193,7 +250,12 @@ impl Driver {
         if self.built.contains(root) {
             b.ops.push(json!({"op": "remove", "id": root}));
         }
-        let gone: Vec<String> = self.built.iter().filter(|id| self.store.node(id).is_none() || id.as_str() == root).cloned().collect();
+        let gone: Vec<String> = self
+            .built
+            .iter()
+            .filter(|id| self.store.node(id).is_none() || id.as_str() == root)
+            .cloned()
+            .collect();
         for g in gone {
             self.built.remove(&g);
         }
@@ -203,8 +265,18 @@ impl Driver {
         if self.store.app().is_none() {
             return;
         }
-        let stack: Vec<String> = self.store.stack().into_iter().filter(|s| self.store.node(s).is_some()).collect();
-        let modal: Vec<String> = self.store.modal().into_iter().filter(|s| self.store.node(s).is_some()).collect();
+        let stack: Vec<String> = self
+            .store
+            .stack()
+            .into_iter()
+            .filter(|s| self.store.node(s).is_some())
+            .collect();
+        let modal: Vec<String> = self
+            .store
+            .modal()
+            .into_iter()
+            .filter(|s| self.store.node(s).is_some())
+            .collect();
         if force || stack != self.shown_stack {
             if let Some(top) = stack.last().cloned() {
                 if !self.built.contains(&top) {
@@ -219,7 +291,8 @@ impl Driver {
                 } else {
                     "replace"
                 };
-                b.ops.push(json!({"op": "navigate", "screen": top, "transition": transition}));
+                b.ops
+                    .push(json!({"op": "navigate", "screen": top, "transition": transition}));
             }
             let old = std::mem::take(&mut self.shown_stack);
             for o in &old {
@@ -249,11 +322,18 @@ impl Driver {
             .store
             .toasts()
             .iter()
-            .map(|t| (t.id.clone(), t.str("text").unwrap_or_default(), t.str("kind").unwrap_or_else(|| "info".into())))
+            .map(|t| {
+                (
+                    t.id.clone(),
+                    t.str("text").unwrap_or_default(),
+                    t.str("kind").unwrap_or_else(|| "info".into()),
+                )
+            })
             .collect();
         for (id, text, kind) in toasts {
-            if self.built.insert(id) {
-                b.ops.push(json!({"op": "toast", "text": text, "kind": kind}));
+            if self.toasts.insert(id) {
+                b.ops
+                    .push(json!({"op": "toast", "text": text, "kind": kind}));
             }
         }
     }
@@ -269,8 +349,11 @@ impl Driver {
             if id == "app" || !self.built.contains(id) {
                 continue; // built when its parent shows it
             }
-            let Some(n) = self.store.node(id).cloned() else { continue };
-            b.ops.push(json!({"op": "update", "id": id, "props": n.props}));
+            let Some(n) = self.store.node(id).cloned() else {
+                continue;
+            };
+            b.ops
+                .push(json!({"op": "update", "id": id, "props": n.props}));
             for (i, c) in n.children.iter().enumerate() {
                 if !self.built.contains(c) {
                     self.op_create(b, c, Some(id), i as i64);
@@ -279,8 +362,16 @@ impl Driver {
         }
         // views of nodes nothing refers to any more
         let all = self.store.to_snapshot_nodes();
-        let referenced: HashSet<&str> = all.iter().flat_map(|n| n.children.iter().map(String::as_str)).collect();
-        let shown: HashSet<String> = self.store.stack().into_iter().chain(self.store.modal()).collect();
+        let referenced: HashSet<&str> = all
+            .iter()
+            .flat_map(|n| n.children.iter().map(String::as_str))
+            .collect();
+        let shown: HashSet<String> = self
+            .store
+            .stack()
+            .into_iter()
+            .chain(self.store.modal())
+            .collect();
         let mut orphans: Vec<String> = self
             .built
             .iter()
@@ -309,7 +400,19 @@ mod tests {
     use super::*;
 
     fn ops(b: &Batch) -> Vec<String> {
-        b.ops.iter().map(|o| format!("{} {}", o["op"].as_str().unwrap(), o.get("id").or(o.get("screen")).and_then(Value::as_str).unwrap_or(""))).collect()
+        b.ops
+            .iter()
+            .map(|o| {
+                format!(
+                    "{} {}",
+                    o["op"].as_str().unwrap(),
+                    o.get("id")
+                        .or(o.get("screen"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                )
+            })
+            .collect()
     }
 
     const SNAP: &str = r#"{"uib":1,"t":"snapshot","rev":1,"nodes":[
@@ -322,7 +425,18 @@ mod tests {
     fn snapshot_creates_the_top_screen_and_navigates() {
         let mut d = Driver::new();
         let b = d.feed(SNAP);
-        assert_eq!(ops(&b), ["begin ", "create home", "create home/hero", "create home/play", "navigate home", "dialog ", "end "]);
+        assert_eq!(
+            ops(&b),
+            [
+                "begin ",
+                "create home",
+                "create home/hero",
+                "create home/play",
+                "navigate home",
+                "dialog ",
+                "end "
+            ]
+        );
         assert_eq!(d.state()["hero"], "pk3:maps/stormkeep");
         assert_eq!(d.state()["top"], "home");
     }
@@ -334,7 +448,16 @@ mod tests {
         let b = d.feed(r#"{"uib":1,"t":"diff","base":1,"rev":2,"del":["home/hero"],
             "set":[{"id":"home","type":"screen","props":{"title":"Home"},"children":["home/play"]},
                    {"id":"home/play","type":"button","props":{"label":"Play now"},"children":[]}]}"#);
-        assert_eq!(ops(&b), ["begin ", "remove home/hero", "update home", "update home/play", "end "]);
+        assert_eq!(
+            ops(&b),
+            [
+                "begin ",
+                "remove home/hero",
+                "update home",
+                "update home/play",
+                "end "
+            ]
+        );
     }
 
     #[test]

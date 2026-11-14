@@ -92,6 +92,8 @@ interface UiClient {
     val modal: List<String>
     /** The hero's picture ref (Home's Play map). */
     val hero: String
+    /** `app.reserved` (docs/UI_BRIDGE.md 4.12): rects in dp the engine draws its own controls in. */
+    val reserved: List<Map<String, Any?>>
     fun close() {}
 }
 
@@ -107,6 +109,7 @@ class UibClient(private val renderer: UiRenderer, private val send: (String) -> 
     override val canBack: Boolean get() = store.app?.bool("canBack") ?: false
     override val modal: List<String> get() = store.app?.props?.get("modal").list().map { it.toString() }
     override val hero: String get() = store.nodes.values.firstOrNull { it.type == "hero" }?.str("image") ?: ""
+    override val reserved: List<Map<String, Any?>> get() = store.app?.props?.get("reserved").list().map { it.obj() }
     override fun receiveText(json: String) = receive(Json.parseOrNull(json).obj())
 
     private fun msg(t: String, body: Map<String, Any?>): String =

@@ -22,6 +22,7 @@ class RustCore private constructor(private val renderer: UiRenderer, private val
     override val canBack: Boolean get() = state.bool("canBack")
     override val modal: List<String> get() = state["modal"].list().map { it.toString() }
     override val hero: String get() = state.str("hero")
+    override val reserved: List<Map<String, Any?>> get() = state["reserved"].list().map { it.obj() }
 
     private fun out(msg: String?) { if (!msg.isNullOrEmpty()) send(msg) }
 
@@ -37,6 +38,8 @@ class RustCore private constructor(private val renderer: UiRenderer, private val
         val answer = nativeFeed(handle, json)
         if (answer.isNullOrEmpty()) throw IllegalStateException("the Rust core gave no answer")
         val r = Json.parse(answer).obj()
+        // the state first: views bound by these operations read it (canBack, reserved)
+        state = r["state"].obj()
         var changed = false
         for (o in r["ops"].list()) {
             val op = o.obj()
@@ -53,7 +56,6 @@ class RustCore private constructor(private val renderer: UiRenderer, private val
                 "image" -> renderer.imageReady(op.str("ref"), op.str("path"))
             }
         }
-        state = r["state"].obj()
         for (m in r["send"].list()) out(m as? String)
         if (changed) onChanged?.invoke()
     }

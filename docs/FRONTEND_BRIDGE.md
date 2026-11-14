@@ -84,7 +84,7 @@ only the frame rate drops.
 
 | Topic | Sent | Content |
 |---|---|---|
-| `app` | on change, checked every frame (a few integers) | `proto`, `enabled`, `attached`, `owns_menu`, `advanced`, `state` (`menu`, `connecting`, `loading`, `ingame`, `paused`), `menu`, `console`, `local`, `paused`, `hosting`, `maxclients`, `map`, `server`, `demo`, `version`, `ui_bridge` (the engine describes screens through the UI bridge) |
+| `app` | on change, checked every frame (a few integers) | `proto`, `enabled`, `attached`, `owns_menu`, `advanced`, `state` (`menu`, `connecting`, `loading`, `ingame`, `paused`), `menu`, `console`, `local`, `paused`, `hosting`, `maxclients`, `map`, `server`, `demo`, `version`, `ui_bridge` (the engine describes screens through the UI bridge), `reconnect` (what the automatic reconnect of touch_net.c is doing, "Reconnecting to ... (attempt n of 5)"; empty when none runs), `reconnect_note` (why it gave up, `_net_reconnect_state`) |
 | `connect` | every frame of a join or a load (on change), once more when it ends | `stage` (`connecting`, `downloading`, `loading`, `signon`, `idle`), `status` (cl_connect_status), `address`, `signon`, `signons`, `downloads`, `file`, `download_progress`, `speed`, `load`, `load_progress`, `local` |
 | `cvars` | 4 Hz while a native screen shows, on change | the watched cvars (`fe watch`), `null` for one outside the schema |
 | `servers` | 4 Hz while subscribed, on change | `refreshing`, `lan_only`, `favorites`, `rows` (`a` address, `n` name, `m` map, `g`, `mod`, `p` ping, `h` humans, `b` bots, `x` max, `pr`, `q` qcstatus, `l` locked, `f` favourite, `lan`), `count` |
@@ -103,7 +103,7 @@ only the frame rate drops.
 |---|---|---|
 | `attach` | protocol | attaches (refused with an event on another protocol) |
 | `detach` | reason | lets go; the QuakeC menu is in charge |
-| `beat` | | heartbeat (desktop; Android uses `NativeBridge.frontendBeat`) |
+| `beat` | | heartbeat (desktop; Android uses `NativeBridge.frontendBeat`). The engine detaches a UI that has not beaten for 30 s, but not while its window is inactive (the app is in the background and does not beat); the UI attaches again when the `app` topic says it is detached |
 | `screen` | name, cover 0/1/2 | what the UI shows (`none` when nothing); see Drawing |
 | `sub` / `get` | topic [0/1] | subscribe to a slow topic / publish one now |
 | `watch`, `watch_add` | cvar... | the cvars topic's set |
@@ -112,7 +112,8 @@ only the frame rate drops.
 | `favorite` | address, 0/1 | edits `net_slist_favorites` |
 | `connect` | address | `connect "<address>"` |
 | `password` | address, password, [remember 0/1] | the password prompt's Join: the password only goes into the private cvar touch_lan.c answers the challenge from |
-| `cancel` | | cancels a join (the loading screen's CANCEL path); during a map load `NativeBridge.frontendCancel()` is read between items |
+| `cancel` | | cancels a join (the loading screen's CANCEL path) and the automatic reconnect; during a map load `NativeBridge.frontendCancel()` is read between items |
+| `reconnect_cancel` | | `net_reconnect_cancel`: the reconnect bar's Cancel |
 | `portcheck` | port | `_touch_lan_portcheck` |
 | `host` | name, mode, map, bots, slots, port, assist, [password], [remember] | the Host screen's Start (dialog_touch_lan.qc), port check included (`host_failed` with `suggest`) |
 | `stophost`, `clear_host_password` | | |
@@ -126,7 +127,9 @@ only the frame rate drops.
 
 Kotlin also sets, through `fe set`, what the menu-idle warm-up (touch_warm.c) reads:
 `touch_device_thermal` (`PowerManager.getCurrentThermalStatus()`, on every change),
-`touch_device_powersave` (battery saver, on its broadcast) and `touch_warm_map` (the
+`touch_device_powersave` (battery saver, on its broadcast), `touch_device_charging`
+(plugged in, on ACTION_POWER_CONNECTED/DISCONNECTED; under battery saver touch_warm
+runs fully while charging and otherwise one reduced pass, `touch_warm_saver`) and `touch_warm_map` (the
 map Home's Play starts), plus `_android_idle_home`. `onTrimMemory`/`onLowMemory`
 send `touch_warm_drop`. Behind an opaque native Home nothing is drawn but the
 warm-up still runs (the `CL_UpdateScreen` hook calls `TouchWarm_Frame` before it
