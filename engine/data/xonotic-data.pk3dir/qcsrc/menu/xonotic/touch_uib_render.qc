@@ -1237,12 +1237,14 @@ float RB_LayoutSplit(string split, float top, float bottom, float cx, float cw)
 	return y;
 }
 
-// Home's bar (a "tabbar" node: Settings, Credits, Quit): one strip along the
-// bottom of the window, its buttons joined edge to edge like tabs, no cards and
-// no gaps. The "current" one (its screen is open), a pressed one and the
-// focused one are a darker shade. Returns the bar's height.
+// Home's bar of tabs (a "tabbar" node): one strip along the bottom of the window,
+// its tabs joined edge to edge, no cards and no gaps. The "current" tab (the
+// screen that is open) is a darker shade with an ember line on top. Returns
+// the bar's height.
 float RB_LayoutTabBar(string id, float W, float H)
 {
+	// the bar holds Settings, Credits and Quit (buttons); a pressed or focused one
+	// is darker too (RB_DrawItem, "navtab")
 	string cur = uib_get(id, "current");
 	float th = D(rb_short ? 48 : 56);
 	rg_o[7] = eY * (H - th);
