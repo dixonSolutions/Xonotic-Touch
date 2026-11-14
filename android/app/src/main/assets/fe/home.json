@@ -108,9 +108,9 @@
    },
    {
     "id": "home/tiles",
-    "type": "grid",
+    "type": "tabbar",
     "props": {
-     "minItem": 200
+     "current": ""
     },
     "children": [
      "home/tiles/sp",
@@ -127,7 +127,6 @@
      "subtitle": "Bots, your rules",
      "icon": "singleplayer",
      "image": "pk3:gfx/menu/luma/gametype_dm",
-     "aspect": "16:9",
      "primary": {
       "id": "sp",
       "label": "Open",
@@ -144,7 +143,6 @@
      "subtitle": "Internet, LAN and hosting",
      "icon": "multiplayer",
      "image": "pk3:gfx/menu/luma/gametype_ctf",
-     "aspect": "16:9",
      "primary": {
       "id": "mp",
       "label": "Open",

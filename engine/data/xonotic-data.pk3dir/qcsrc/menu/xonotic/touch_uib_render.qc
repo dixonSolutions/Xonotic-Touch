@@ -50,7 +50,8 @@ int rb_n;
 .float rb_region, rb_style, rb_sel, rb_dis, rb_focus, rb_y1, rb_hs, rb_min, rb_max, rb_step, rb_size, rb_list;
 .vector rb_o, rb_s, rb_col;
 
-// regions: 0 main, 1 header, 2 toolbar, 3 action bar, 4 side list, 5 detail tab strip, 6 modal
+// regions: 0 main, 1 header, 2 toolbar, 3 action bar, 4 side list, 5 detail tab strip, 6 modal,
+// 7 Home's bar of tabs (along the bottom, under the action bar)
 const int RB_REGIONS = 8;
 vector rg_o[RB_REGIONS];
 vector rg_s[RB_REGIONS];
@@ -557,66 +558,25 @@ float RB_LayoutGrid(string id, float x, float y, float w, float region)
 	int cols = max(1, floor((w + gap) / (minw + gap)));
 	if (stof(uib_get(id, "maxColumns")) > 0) cols = min(cols, stof(uib_get(id, "maxColumns")));
 	bool featured = n && uib_get(first, "featured") == "1";
-	float maxc = stof(uib_get(id, "maxColumns"));
-	// the big cards of Home: always one row, side by side (never stacked)
-	if (featured && n <= 4 && (maxc <= 0 || n <= maxc)) cols = n;
+	// the big cards of Home: side by side whenever three fit at 150 dp each
+	if (featured && n <= 4 && w >= n * D(150) + (n - 1) * gap) cols = n;
 	float cw = (w - (cols - 1) * gap) / cols;
 	float rowy = y, rowh = 0;
 	// ... and as tall as the page allows, so Home needs no scrolling
 	float fit = rg_s[0].y - y - D(30) - D(62);
 	int rowfirst = rb_n;
 	// one image height for the whole grid, so images and icons line up
-	bool anyimg = false, anyactions = false, actstack = false;
-	float actextra = 0;
+	bool anyimg = false;
 	for (int i = 0; i < n; ++i)
-	{
-		string gc = uib_child(id, i);
-		if (uib_get(gc, "image") != "") anyimg = true;
-		int gna = stof(uib_get(gc, "actions.#"));
-		if (gna > 0)
-		{
-			anyactions = true;
-			// the card's buttons sit side by side while their labels fit, else one
-			// under the other inside the card
-			float each = (cw - D(20) - (gna - 1) * D(8)) / gna;
-			for (int ai = 0; ai < gna; ++ai)
-				if (RB_ButtonW(uib_get(gc, sprintf("actions.%d.label", ai)), "") - D(22) > each) actstack = true;
-			actextra = max(actextra, actstack ? gna * D(46) + D(4) : D(54));
-		}
-	}
+		if (uib_get(uib_child(id, i), "image") != "") anyimg = true;
 	for (int i = 0; i < n; ++i)
 	{
 		string c = uib_child(id, i);
 		float ih = anyimg ? RB_AspectH(uib_get(c, "aspect"), cw) * 0.62 : 0;
 		if (featured && anyimg)
-		{
-			if (cols == n)
-				ih = bound(D(72), fit - actextra, RB_AspectH(uib_get(c, "aspect"), cw));
-			else
-			{
-				// stacked (the compact Home): every card's picture shares the height the page has
-				float each = (rg_s[0].y - y - D(30) - n * D(62) - (n - 1) * gap - (anyactions ? D(54) : 0)) / n;
-				ih = bound(D(72), each, min(RB_AspectH(uib_get(c, "aspect"), cw), D(190)));
-			}
-		}
+			ih = (cols == n) ? bound(D(84), fit, RB_AspectH(uib_get(c, "aspect"), cw)) : min(RB_AspectH(uib_get(c, "aspect"), cw), D(150));
 		if (i % cols == 0) rowfirst = rb_n;
 		float hh = RB_LayoutCard(c, x + (i % cols) * (cw + gap), rowy, cw, region, ih);
-		int cna = stof(uib_get(c, "actions.#"));
-		if (featured && cna > 0)
-		{
-			// the card's actions (Home's Play card: Singleplayer, Campaign): buttons
-			// across the bottom of the card
-			float cx0 = x + (i % cols) * (cw + gap) + D(10);
-			float bwid = (cw - D(20) - (cna - 1) * D(8)) / cna;
-			for (int ai = 0; ai < cna; ++ai)
-			{
-				entity ab;
-				if (actstack) ab = RB_Item("button", c, region, eX * cx0 + eY * (rowy + hh + ai * D(46)), eX * (cw - D(20)) + eY * D(40));
-				else ab = RB_Item("button", c, region, eX * (cx0 + ai * (bwid + D(8))) + eY * (rowy + hh), eX * bwid + eY * D(44));
-				if (ab) { ab.rb_style = ai ? 2 : 1; RB_SetAction(ab, c, strcat("actions.", ftos(ai))); ab.rb_style = ai ? 2 : 1; strcpy(ab.rb_icon, ""); }
-			}
-		}
-		if (featured && anyactions) hh += actextra;
 		rowh = max(rowh, hh);
 		if (i % cols == cols - 1 || i == n - 1)
 		{
@@ -1070,14 +1030,10 @@ float RB_LayoutNode(string id, float x, float y, float w, float region)
 		{
 			float ih = RB_AspectH(uib_get(id, "aspect"), w);
 			if (uib_get(id, "role") == "banner")
-				// the Home banner: about a quarter of the page, never a thin strip
-			{
-				// the banner gives way before the cards do: the cards keep a 96 dp
-				// picture and their two lines of text, the banner takes what is left
-				// (never under 44 dp), up to 30% of the page
-				float room = rg_s[0].y - D(14 + 16 + 30 + 62 + 96);
-				ih = min(ih, bound(D(44), min(rg_s[0].y * 0.3, room), D(260)));
-			}
+				// the Home banner, at the top: scaled to the window, most of the
+				// height between the header and the bar of tabs, as wide as the
+				// content allows (the picture keeps its own shape inside)
+				ih = max(D(44), min(w * 9 / 21, rg_s[0].y * 0.78 - D(8)));
 			else if (uib_get(id, "fit") == "contain") ih = min(ih, D(120));
 			e = RB_Item("image", id, region, eX * x + eY * y, eX * w + eY * ih);
 			if (e) { strcpy(e.rb_img, uib_get(id, "ref")); e.rb_sel = uib_get(id, "fit") == "contain"; }
@@ -1319,6 +1275,50 @@ void RB_AvoidKeys()
 	RB_EnsureVisible(i);
 }
 
+// Home's bar of tabs (a "tabbar" node): one strip along the bottom of the window,
+// its tabs joined edge to edge, no cards and no gaps. The "current" tab (the
+// screen that is open) is a darker shade with an ember line on top. Returns
+// the bar's height.
+float RB_LayoutTabBar(string id, float W, float H)
+{
+	string cur = uib_get(id, "current");
+	float th = D(rb_short ? 52 : 64);
+	// a short window (a phone on its side): on the three screens themselves the
+	// tabs are one line each, so the screen keeps its room
+	if (rb_short && cur != "") th = D(44);
+	if (H - D(58) - th < D(160)) th = D(44);
+	rg_o[7] = eY * (H - th);
+	rg_s[7] = eX * W + eY * th;
+	int n = uib_count(id);
+	int k = 0;
+	for (int i = 0; i < n; ++i)
+		if (uib_get(uib_child(id, i), "hidden") != "1") ++k;
+	if (!k) return th;
+	float tw = W / k;
+	int j = 0;
+	for (int i = 0; i < n; ++i)
+	{
+		string c = uib_child(id, i);
+		if (uib_get(c, "hidden") == "1") continue;
+		entity e = RB_Item("navtab", c, 7, eX * floor(j * tw) + eY * 0, eX * (floor((j + 1) * tw) - floor(j * tw)) + eY * th);
+		++j;
+		if (!e) break;
+		strcpy(e.rb_t1, uib_get(c, "title"));
+		strcpy(e.rb_t2, uib_get(c, "subtitle"));
+		strcpy(e.rb_img, uib_get(c, "image"));
+		strcpy(e.rb_icon, uib_get(c, "icon"));
+		bool bycur = (cur != "") && (substring(c, strlen(c) - strlen(cur) - 1, -1) == strcat("/", cur));
+		if (bycur || uib_get(c, "selected") == "1") e.rb_sel = 1;
+		e.rb_style = j - 1;   // 0 = the first tab (no divider on its left)
+		if (uib_has(c, "primary"))
+		{
+			strcpy(e.rb_val, "primary");
+			e.rb_focus = 1;
+		}
+	}
+	return th;
+}
+
 void RB_Layout()
 {
 	rb_n = 0;
@@ -1330,7 +1330,7 @@ void RB_Layout()
 	if (uib_narrow != rb_narrow)
 	{
 		// the compact breakpoint changed (first layout, a resize, a rotation):
-		// the screens that describe themselves by it (Home, Settings) follow
+		// the screens that describe themselves by it (Settings) follow
 		uib_narrow = rb_narrow;
 		UIB_RebuildAll();
 	}
@@ -1384,7 +1384,7 @@ void RB_Layout()
 	float cw = min(W - 2 * pad, D(1100));
 	float cx = (W - cw) / 2;
 	int n = uib_count(sc);
-	string toolbar = "", actionbar = "", split = "";
+	string toolbar = "", actionbar = "", split = "", tabbar = "";
 	for (int i = 0; i < n; ++i)
 	{
 		string c = uib_child(sc, i);
@@ -1392,6 +1392,7 @@ void RB_Layout()
 		if (t == "toolbar") toolbar = c;
 		else if (t == "actionbar") actionbar = c;
 		else if (t == "split") split = c;
+		else if (t == "tabbar" && uib_get(c, "hidden") != "1") tabbar = c;
 	}
 	if (toolbar != "")
 	{
@@ -1423,10 +1424,12 @@ void RB_Layout()
 		top += rg_s[2].y;
 	}
 	float bottom = H;
+	if (tabbar != "")
+		bottom -= RB_LayoutTabBar(tabbar, W, H);
 	if (actionbar != "" || uib_has(sc, "primary"))
 	{
 		float bh = D(66);
-		rg_o[3] = eY * (H - bh);
+		rg_o[3] = eY * (bottom - bh);
 		rg_s[3] = eX * W + eY * bh;
 		if (actionbar != "")
 		{
@@ -1464,7 +1467,7 @@ void RB_Layout()
 			entity b = RB_Item("button", sc, 3, eX * (cx + cw - bw) + eY * D(9), eX * bw + eY * D(48));
 			if (b) { RB_SetAction(b, sc, "primary"); b.rb_style = 1; }
 		}
-		bottom = H - bh;
+		bottom -= bh;
 	}
 	rg_o[0] = eY * top;
 	rg_s[0] = eX * W + eY * (bottom - top);
@@ -1475,7 +1478,7 @@ void RB_Layout()
 		for (int i = 0; i < n; ++i)
 		{
 			string c = uib_child(sc, i);
-			if (c == split || uib_type(c) == "toolbar" || uib_type(c) == "actionbar") continue;
+			if (c == split || uib_type(c) == "toolbar" || uib_type(c) == "actionbar" || uib_type(c) == "tabbar") continue;
 			if (rb_narrow && UIB_VMf("settings.open")) continue;
 			if (rb_narrow)
 				y += D(10) + RB_LayoutNode(c, cx, y + D(10), cw, 0);
@@ -1492,34 +1495,12 @@ void RB_Layout()
 		{
 			string c = uib_child(sc, i);
 			string t = uib_type(c);
-			if (t == "toolbar" || t == "actionbar" || uib_get(c, "hidden") == "1") continue;
+			if (t == "toolbar" || t == "actionbar" || t == "tabbar" || uib_get(c, "hidden") == "1") continue;
 			float h = RB_LayoutNode(c, cx - rg_o[0].x, y, cw, 0);
 			if (h > 0) y += h + D(16);
 		}
 	}
 	rg_content[0] = y + D(28);
-	if (uib_get(sc, "kind") == "home" && split == "" && rg_content[0] < rg_s[0].y)
-	{
-		// Home with room to spare: most of it goes to the banner, the rest
-		// above it, so the page sits centred with a large banner
-		float slack = rg_s[0].y - rg_content[0];
-		float grow = 0, before = 0;
-		for (int i = 0; i < rb_n; ++i)
-		{
-			entity it = rb_item[i];
-			if (it.rb_region != 0) continue;
-			if (it.rb_kind == "image" && uib_get(it.rb_id, "role") == "banner" && !grow)
-			{
-				grow = min(slack * 0.7, max(0, min(D(340), it.rb_s.x * 9 / 21) - it.rb_s.y));
-				before = (slack - grow) * 0.4;
-				it.rb_o_y += before;
-				it.rb_s_y += grow;
-				continue;
-			}
-			it.rb_o_y += before + grow;
-		}
-		rg_content[0] += before + grow;
-	}
 	rg_max[0] = max(0, rg_content[0] - rg_s[0].y);
 	rg_max[4] = max(0, rg_content[4] - rg_s[4].y);
 	// the top modal (dialog or sheet)
@@ -2133,6 +2114,36 @@ void RB_DrawItem(entity e, int idx)
 			}
 			break;
 		}
+		case "navtab":
+		{
+			// one tab of Home's bar: flat, joined to its neighbours; the open one darker
+			vector fill = e.rb_sel ? RB_BG : ((hot || pressed) ? RB_CARD_HI : RB_CARD);
+			RB_Fill(p, s, fill, a);
+			if (e.rb_img != "")
+			{
+				// the mode's map preview, faint behind the label
+				RB_Image(e.rb_img, p, s, (e.rb_sel ? 0.16 : 0.3) * a, false);
+				RB_Fill(p, s, fill, 0.35 * a);
+			}
+			if (e.rb_style > 0) RB_Fill(p, eX * max(1, D(1)) + eY * s.y, RB_BLUE, 0.3 * a);
+			if (e.rb_sel)
+				RB_Fill(p, eX * s.x + eY * max(2, D(3)), RB_EMBER, a);
+			else
+				RB_Fill(p, eX * s.x + eY * 1, RB_BLUE, 0.35 * a);
+			string lbl = strcat(RB_Glyph(e.rb_icon), "  ", e.rb_t1);
+			bool two = s.y >= D(52) && e.rb_t2 != "";
+			float ly = p.y + (two ? (s.y - D(16) - D(18)) / 2 : (s.y - D(16)) / 2);
+			drawfont = FONT_USER + 3;
+			string fl = RB_Fit(lbl, D(16), s.x - D(20));
+			RB_Text(eX * (p.x + (s.x - RB_TextW(fl, D(16))) / 2) + eY * ly, fl, D(16), (e.rb_sel ? RB_EMBER : RB_TEXT), a);
+			drawfont = FONT_USER;
+			if (two)
+			{
+				string sl = RB_Fit(e.rb_t2, D(12), s.x - D(20));
+				RB_Text(eX * (p.x + (s.x - RB_TextW(sl, D(12))) / 2) + eY * (ly + D(22)), sl, D(12), (e.rb_sel ? RB_TEXT : RB_MUTED), a);
+			}
+			break;
+		}
 		case "hero":
 		{
 			RB_Card(p, s, D(20), RB_CARD, a, RB_EMBER, 0.95 * a);
@@ -2494,7 +2505,7 @@ bool RB_In(vector m, vector o, vector s)
 
 int RB_HitItem(vector m)
 {
-	for (int pass = 0; pass < 7; ++pass)
+	for (int pass = 0; pass < 8; ++pass)
 	{
 		int r = 0;
 		switch (pass)
@@ -2503,9 +2514,10 @@ int RB_HitItem(vector m)
 			case 1: r = 1; break;
 			case 2: r = 2; break;
 			case 3: r = 5; break;
-			case 4: r = 3; break;
-			case 5: r = 4; break;
-			case 6: r = 0; break;
+			case 4: r = 7; break;
+			case 5: r = 3; break;
+			case 6: r = 4; break;
+			case 7: r = 0; break;
 		}
 		if (rb_modal != "" && r != 6) return -1;
 		if (rg_s[r].x <= 0 || !RB_In(m, rg_o[r], rg_s[r]))
@@ -2688,6 +2700,9 @@ void RB_Activate(int idx, vector m)
 		case "back": RB_Send("{\"ev\":\"back\"}"); return;
 		case "button": case "card": case "hero":
 			if (e.rb_val != "" && !e.rb_dis) RB_Invoke(e.rb_id, e.rb_val);
+			return;
+		case "navtab":
+			if (e.rb_val != "" && !e.rb_sel) RB_Invoke(e.rb_id, e.rb_val);
 			return;
 		case "switch": case "check":
 			RB_SendValue(e.rb_id, e.rb_sel ? "false" : "true");
@@ -3258,6 +3273,7 @@ bool TouchUIB_Draw(float alpha)
 	RB_DrawRegion(2);
 	RB_DrawRegion(5);
 	RB_DrawRegion(3);
+	RB_DrawRegion(7);
 	rb_a = alpha;
 	if (rb_modal != "")
 	{
@@ -3342,9 +3358,15 @@ bool TouchUIB_Draw(float alpha)
 int RB_NextFocus(int from, float dir)
 {
 	if (from < 0 && dir > 0 && rb_modal == "")
+	{
 		for (int j = 0; j < rb_n; ++j)
 			if (rb_item[j].rb_focus && rb_item[j].rb_region == 0)
 				return j;
+		// a page with nothing to focus (Home: the banner alone): the bar of tabs
+		for (int j = 0; j < rb_n; ++j)
+			if (rb_item[j].rb_focus && rb_item[j].rb_region == 7)
+				return j;
+	}
 	int i = from;
 	for (int k = 0; k < rb_n; ++k)
 	{

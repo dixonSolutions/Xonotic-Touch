@@ -63,10 +63,9 @@
    },
    {
     "id": "home/tiles",
-    "type": "grid",
+    "type": "tabbar",
     "props": {
-     "minItem": 240,
-     "maxColumns": 3
+     "current": ""
     },
     "children": [
      "home/tiles/sp",
@@ -82,8 +81,6 @@
      "subtitle": "A local game against bots (opens in the game)",
      "icon": "singleplayer",
      "image": "pk3:maps/stormkeep",
-     "aspect": "16:9",
-     "featured": true,
      "primary": {
       "id": "sp",
       "label": "Open"
@@ -99,8 +96,6 @@
      "subtitle": "Fight your way through the levels (opens in the game)",
      "icon": "trophy",
      "image": "pk3:maps/afterslime",
-     "aspect": "16:9",
-     "featured": true,
      "primary": {
       "id": "campaign",
       "label": "Open"
@@ -116,8 +111,6 @@
      "subtitle": "Join by address or link, browse servers, host a LAN game",
      "icon": "multiplayer",
      "image": "pk3:maps/xoylent",
-     "aspect": "16:9",
-     "featured": true,
      "primary": {
       "id": "mp",
       "label": "Open"
