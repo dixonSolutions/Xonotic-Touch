@@ -620,7 +620,8 @@ class ViewRenderer(
         val titleV = Kit.text(ctx, "", Theme.SP_TITLE - 1f, Theme.TEXT, bold = true, lines = 1)
         titleV.typeface = Theme.display
         titleV.maxLines = 2
-        if (android.os.Build.VERSION.SDK_INT >= 26) { titleV.ellipsize = null; titleV.setAutoSizeTextTypeUniformWithConfiguration(14, 19, 1, android.util.TypedValue.COMPLEX_UNIT_SP) }
+        titleV.ellipsize = null
+        Kit.fitWords(titleV, Theme.SP_TITLE - 1f, 13f) // "Team Deathmatch" on a narrow card: smaller, never "Dea|thmatch"
         val subtitle = Kit.text(ctx, "", Theme.SP_CAPTION + 1f, Theme.TEXT_MUTED, lines = 2)
         val badges = FlowGrid(ctx, 0, dp(6f), wrap = true)
         val meta = FlowGrid(ctx, 0, dp(12f), wrap = true)
