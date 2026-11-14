@@ -307,7 +307,7 @@ def run(args):
         e.ev(ev="back")
         e.ev(ev="back")
         # settings: vertical tabs, a setting changing (recorded), sub-tabs
-        e.ev(ev="action", node="home", action="settings")
+        e.ev(ev="action", node="home/nav/settings", action="settings")
         out["settings"] = fixture(e, "settings", "Settings: vertical tabs (split) with Video selected and its horizontal sub-tabs.")
         e.ev(ev="value", node="settings/split/video/tabs", value="view")
         base = e.snapshot_msg()
@@ -327,7 +327,7 @@ def run(args):
         out["mod-page"] = fixture(e, "mod-page", "A page contributed by a mod (origin mod:radar).")
         e.ev(ev="back")
         e.ev(ev="back")
-        e.ev(ev="action", node="home", action="credits")
+        e.ev(ev="action", node="home/nav/credits", action="credits")
         out["credits"] = fixture(e, "credits", "Credits and licence.")
         e.ev(ev="back")
         report["snapshot_bytes_max"] = max(e.sizes["snapshot"])

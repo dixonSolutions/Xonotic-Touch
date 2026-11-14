@@ -31,24 +31,13 @@
     "props": {
      "title": "Godnotic",
      "kind": "home",
-     "background": "asset:background",
-     "actions": [
-      {
-       "id": "quit",
-       "label": "Quit",
-       "icon": "quit",
-       "style": "secondary",
-       "confirm": {
-        "title": "Quit Godnotic?",
-        "ok": "Quit"
-       }
-      }
-     ]
+     "background": "asset:background"
     },
     "children": [
      "home/banner",
      "home/hero",
-     "home/tiles"
+     "home/tiles",
+     "home/nav"
     ]
    },
    {
@@ -108,9 +97,9 @@
    },
    {
     "id": "home/tiles",
-    "type": "tabbar",
+    "type": "grid",
     "props": {
-     "current": ""
+     "minItem": 150
     },
     "children": [
      "home/tiles/sp",
@@ -127,6 +116,7 @@
      "subtitle": "Bots, your rules",
      "icon": "singleplayer",
      "image": "pk3:gfx/menu/luma/gametype_dm",
+     "aspect": "16:9",
      "primary": {
       "id": "sp",
       "label": "Open",
@@ -143,6 +133,7 @@
      "subtitle": "Internet, LAN and hosting",
      "icon": "multiplayer",
      "image": "pk3:gfx/menu/luma/gametype_ctf",
+     "aspect": "16:9",
      "primary": {
       "id": "mp",
       "label": "Open",
@@ -177,6 +168,62 @@
       "id": "credits",
       "label": "Open",
       "icon": "chevron"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/nav",
+    "type": "tabbar",
+    "props": {
+     "current": ""
+    },
+    "children": [
+     "home/nav/settings",
+     "home/nav/credits",
+     "home/nav/quit"
+    ]
+   },
+   {
+    "id": "home/nav/settings",
+    "type": "button",
+    "props": {
+     "label": "Settings",
+     "action": {
+      "id": "settings",
+      "label": "Settings",
+      "icon": "settings"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/nav/credits",
+    "type": "button",
+    "props": {
+     "label": "Credits",
+     "action": {
+      "id": "credits",
+      "label": "Credits",
+      "icon": "credits"
+     }
+    },
+    "children": []
+   },
+   {
+    "id": "home/nav/quit",
+    "type": "button",
+    "props": {
+     "label": "Quit",
+     "action": {
+      "id": "quit",
+      "label": "Quit",
+      "icon": "quit",
+      "style": "secondary",
+      "confirm": {
+       "title": "Quit Godnotic?",
+       "ok": "Quit"
+      }
      }
     },
     "children": []

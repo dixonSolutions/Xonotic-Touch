@@ -267,13 +267,55 @@ bool UIB_ServerSummary()
 	return true;
 }
 
-// Home's three modes as one bar of joined tabs along the bottom (a "tabbar"
-// node, id "tiles"): Singleplayer, Campaign, Multiplayer. The bar is on Home and
-// on each of those three screens, where the open one is "current" (drawn a
-// darker shade); a tap on another tab swaps the screen in place (UIB_OpenTab).
-// Each tab keeps its map preview, icon and one line of state.
-void UIB_HomeTabs(string current)
+// Home's bar along the bottom (a "tabbar" node, id "nav"): Settings, Credits and
+// Quit joined edge to edge, like tabs. It is on Home and on the Settings and
+// Credits screens it opens (while the menu is not over a match), where the open
+// one is "current" (drawn a darker shade); a tap on the other swaps the screen
+// in place (UIB_OpenTab). Quit asks first.
+bool UIB_HomeBarHere()
 {
+	// no tokenize here: the screens call this while building, inside callers that
+	// still read their own argv (a settings value event)
+	if (uibn_context == "game" || substring(uibn_stack, 0, 4) != "home") return false;
+	return strlen(uibn_stack) == 4 || substring(uibn_stack, 4, 1) == " ";
+}
+
+void UIB_HomeBarTab(string key, string label, string actionjson)
+{
+	UIB_Open(key, "button");
+		uib_s("label", label);
+		uib_j("action", actionjson);
+	UIB_Close();
+}
+
+void UIB_HomeBar(string current)
+{
+	UIB_Open("nav", "tabbar");
+		uib_s("current", current);
+		UIB_HomeBarTab("settings", _("Settings"), UIB_A("settings", _("Settings"), "settings"));
+		UIB_HomeBarTab("credits", _("Credits"), UIB_A("credits", _("Credits"), "credits"));
+		UIB_HomeBarTab("quit", _("Quit"), UIB_AC("quit", _("Quit"), "quit", "secondary", _("Quit Godnotic?"), _("Quit"), false));
+	UIB_Close();
+}
+
+// Home: the banner at the top, scaled to the window, the three cards in one row
+// under it, and the bar of Settings, Credits and Quit along the bottom.
+void UIB_BuildHome()
+{
+	if (!UIB_Screen("home", _("Godnotic")))
+		return;
+	uib_s("kind", "home");
+	uib_s("background", "asset:background");
+
+	UIB_Open("banner", "image");
+		uib_s("ref", "asset:banner");
+		uib_s("role", "banner");
+		uib_s("emphasis", "high");
+		uib_s("aspect", "21:9");
+		uib_s("fit", "contain");
+		uib_s("alt", "Godnotic");
+	UIB_Close();
+
 	string map = cvar_string("touch_lan_map");
 	if (map == "") map = "stormkeep";
 	string mode = cvar_string("touch_lan_gametype");
@@ -282,15 +324,18 @@ void UIB_HomeTabs(string current)
 	if (!uib_camp_loaded)
 		UIB_CampaignLoad();
 	UIB_ServerSummary();
-	UIB_Open("tiles", "tabbar");
-		uib_s("current", current);
+	// always one horizontal row of three, never stacked and never scrolled down to
+	UIB_Open("tiles", "grid");
+		uib_f("minItem", 150);
+		uib_f("maxColumns", 3);
 		UIB_Open("sp", "card");
 			uib_s("title", _("Singleplayer"));
 			uib_s("subtitle", sprintf(_("%s · %s · %d bots"), UIB_MapTitle(map), UIB_ModeName(mode), bots));
 			uib_s("icon", "singleplayer");
 			uib_s("image", strcat("pk3:maps/", map));
-			if (current == "sp") uib_b("selected", 1);
-			uib_j("primary", UIB_A("sp", _("Singleplayer"), "singleplayer"));
+			uib_s("aspect", "16:9");
+			uib_b("featured", 1);
+			uib_j("primary", UIB_A("sp", _("Open"), "chevron"));
 		UIB_Close();
 		UIB_Open("campaign", "card");
 			uib_s("title", _("Campaign"));
@@ -306,53 +351,32 @@ void UIB_HomeTabs(string current)
 				uib_s("image", "pk3:maps/afterslime");
 			}
 			uib_s("icon", "trophy");
-			if (current == "campaign") uib_b("selected", 1);
-			uib_j("primary", UIB_A("campaign", _("Campaign"), "trophy"));
+			uib_s("aspect", "16:9");
+			uib_b("featured", 1);
+			uib_j("primary", UIB_A("campaign", _("Open"), "chevron"));
 		UIB_Close();
 		UIB_Open("mp", "card");
 			uib_s("title", _("Multiplayer"));
 			uib_s("subtitle", (uib_mp_summary != "") ? uib_mp_summary : _("Join a server, or create a game"));
 			uib_s("icon", "multiplayer");
 			uib_s("image", "pk3:maps/xoylent");
+			uib_s("aspect", "16:9");
+			uib_b("featured", 1);
 			uib_b("live", 1);
-			if (current == "mp") uib_b("selected", 1);
-			uib_j("primary", UIB_A("mp", _("Multiplayer"), "multiplayer"));
+			uib_j("primary", UIB_A("mp", _("Open"), "chevron"));
 		UIB_Close();
 	UIB_Close();
-}
 
-// Home: the banner at the top, scaled to the window, and the bar of the three
-// modes at the bottom. Settings, Credits and Quit are the screen's actions
-// (small, in the header).
-void UIB_BuildHome()
-{
-	if (!UIB_Screen("home", _("Godnotic")))
-		return;
-	uib_s("kind", "home");
-	uib_s("background", "asset:background");
-	uib_push("actions", UIB_A("settings", _("Settings"), "settings"));
-	uib_push("actions", UIB_A("credits", _("Credits"), "credits"));
-	uib_push("actions", UIB_AC("quit", _("Quit"), "quit", "secondary", _("Quit Godnotic?"), _("Quit"), false));
-
-	UIB_Open("banner", "image");
-		uib_s("ref", "asset:banner");
-		uib_s("role", "banner");
-		uib_s("emphasis", "high");
-		uib_s("aspect", "21:9");
-		uib_s("fit", "contain");
-		uib_s("alt", "Godnotic");
-	UIB_Close();
-
-	UIB_HomeTabs("");
+	UIB_HomeBar("");
 	UIB_Done();
 }
 
-// A tab of Home's bar: from one of the three screens it replaces that screen
-// (Back still goes Home), from anywhere else it opens on top.
+// A tab of Home's bar: from Settings or Credits it replaces that screen (Back
+// still goes Home), from anywhere else it opens on top.
 void UIB_OpenTab(string id)
 {
 	if (uibn_modal == "" && tokenize_console(uibn_stack) == 2 && argv(0) == "home"
-		&& (argv(1) == "sp" || argv(1) == "campaign" || argv(1) == "mp"))
+		&& (argv(1) == "settings" || argv(1) == "credits"))
 	{
 		if (argv(1) == id)
 		{
@@ -377,7 +401,6 @@ void UIB_BuildCampaign()
 	uib_s("kind", "page");
 	if (campaign_title != "") uib_s("subtitle", campaign_title);
 	uib_j("header", "{\"collapsible\":true}");
-	UIB_HomeTabs("campaign");
 	if (campaign_entries <= 0)
 	{
 		UIB_Open("none", "status");
@@ -479,7 +502,6 @@ void UIB_BuildCreate()
 	uib_s("subtitle", lan ? _("On your network: others can join") : _("Local game: only you and the bots"));
 	uib_j("header", "{\"collapsible\":true}");
 	uib_j("primary", lan ? UIB_AS("play", _("Host on LAN"), "host", "primary") : UIB_AS("play", _("Play"), "play", "primary"));
-	if (!frommp) UIB_HomeTabs("sp");
 
 	UIB_Section("modes", _("Game mode"), false);
 		UIB_Open("grid", "grid");
@@ -761,7 +783,6 @@ void UIB_BuildServers()
 	else if (cvar("_slist_refreshing"))
 		uib_s("subtitle", _("Looking for servers…"));
 	uib_j("header", "{\"collapsible\":true}");
-	UIB_HomeTabs("mp");
 	UIB_Open("bar", "toolbar");
 		UIB_Open("search", "field");
 			uib_s("label", _("Search"));
@@ -1245,6 +1266,7 @@ void UIB_BuildCredits()
 		UIB_Text("text", _("The engine and game code are free software under the GNU General Public License, version 2 or later. Game data is under its authors' licences (see each pack's licence file)."), "caption");
 		UIB_Button("source", _("Source code"), UIB_ALink("credits.source", _("Source code"), "link", "https://github.com/dixonSolutions/Godnotic"), "link");
 	UIB_Close();
+	if (UIB_HomeBarHere()) UIB_HomeBar("credits");
 	UIB_Done();
 }
 
@@ -1445,12 +1467,12 @@ void UIB_Action(string node, string a, string payload)
 		return;
 	switch (a)
 	{
-		case "sp": UIB_VMSet("create.from", "home"); UIB_OpenTab("sp"); return;
+		case "sp": UIB_VMSet("create.from", "home"); UIB_Push("sp"); return;
 		case "campaign":
 			UIB_CampaignLoad();
 			UIB_CampaignRows();
 			UIB_VMSet("campaign.sel", ftos(uib_camp_index));
-			UIB_OpenTab("campaign");
+			UIB_Push("campaign");
 			return;
 		case "campaign.play": UIB_StartCampaign(bound(0, UIB_VMf("campaign.sel"), uib_camp_index)); return;
 		case "map.preview": UIB_VMSet("map.sel", cvar_string("touch_lan_map")); UIB_Push("sp.map"); return;
@@ -1458,8 +1480,8 @@ void UIB_Action(string node, string a, string payload)
 		case "host.close": UIB_LanPopupClose(true); return;
 		case "host.copy": case "host.copylink": case "host.share": return;   // the renderer copied or shared the text
 		case "create": UIB_VMSet("create.from", "mp"); UIB_Push("sp"); return;
-		case "mp": UIB_VMSet("mp.server", ""); UIB_OpenTab("mp"); UIB_Refresh(); uib_mp_next_refresh = uib_gettime(1) + 10; return;
-		case "credits": UIB_Push("credits"); return;
+		case "mp": UIB_VMSet("mp.server", ""); UIB_Push("mp"); UIB_Refresh(); uib_mp_next_refresh = uib_gettime(1) + 10; return;
+		case "credits": UIB_OpenTab("credits"); return;
 		case "quit": localcmd("\nquit\n"); return;   // the renderer already confirmed
 		case "quit.confirm": localcmd("\nquit\n"); return;
 		case "dialog.cancel": UIB_Back(); return;

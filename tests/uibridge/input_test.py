@@ -58,7 +58,10 @@ step("keys-in-list", "uib_input key DOWNARROW", 0.5)
 step("keys-in-list2", "uib_input key DOWNARROW", 0.5)
 step("keys-right", "uib_input key RIGHTARROW; uib_input key RIGHTARROW", 0.8)
 step("escape2", "uib_input key ESCAPE")
-step("open-settings", 'uib_event {\\"ev\\":\\"action\\",\\"node\\":\\"home\\",\\"action\\":\\"settings\\"}', 1.0)
+# Home's bar along the bottom: Settings, then Credits and back in place
+step("open-settings", "uib_input tap home/nav/settings", 1.2)
+step("tab-credits", "uib_input tap settings/nav/credits", 1.2)
+step("tab-settings", "uib_input tap credits/nav/settings", 1.2)
 step("open-classic", 'uib_event {\\"ev\\":\\"value\\",\\"node\\":\\"settings/split\\",\\"value\\":\\"menu\\"}', 1.0)
 step("classic-up", "uib_input tap settings/split/menu/classic/advanced", 2.5)
 step("classic-hold", "echo", 1.0)
@@ -179,6 +182,11 @@ ksel = node("keys-right", "sp/maps/list").get("selected")
 check(ksel and ksel != node("enter-opens", "sp/maps/list").get("selected") and app("keys-right").get("stack") == ["home", "sp"],
       f"arrow keys reach the map picker and move its cursor, which chooses the map ({ksel})")
 check(app("escape2").get("stack") == ["home"], "Escape closes it")
+check(app("open-settings").get("stack") == ["home", "settings"] and node("open-settings", "settings/nav").get("current") == "settings",
+      "a tap on Settings in Home's bottom bar opens Settings, its segment current")
+check(app("tab-credits").get("stack") == ["home", "credits"] and node("tab-credits", "credits/nav").get("current") == "credits",
+      "a tap on Credits in the bar swaps the screen in place (Back still goes Home)")
+check(app("tab-settings").get("stack") == ["home", "settings"], "and Settings swaps back")
 frames = lambda s: int((state.get(s, {}).get("r", "") + " frames=0").split("frames=")[1].split()[0])
 check(app("classic-hold").get("stack") == ["home", "settings"] and frames("classic-hold") == frames("classic-up"),
       f"Advanced settings: the classic dialog draws and the bridge renderer stands aside ({frames('classic-hold') - frames('classic-up')} bridge frames in the next second)")

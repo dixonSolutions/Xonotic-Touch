@@ -25,7 +25,7 @@ wait 900
 back
 wait 900
 snapshot OUT/nav-07-back-home.png
-click home:settings
+click home/nav/settings
 wait 1200
 click settings/sections/mods
 wait 1200

@@ -61,17 +61,16 @@ columnview.gn-dense { font-size: 14px; }
 .gn-filters checkbutton { min-height: 40px; }
 .gn-banner { margin: 6px 0 0 0; }
 
-/* Home's bar of tabs along the bottom: joined, flat, no card; the open one darker. */
+/* Home's bar along the bottom (Settings, Credits, Quit): joined, flat, no cards; the open,
+ * pressed or focused one darker. */
 .gn-tabbar { border-top: 1px solid alpha(@gn_blue, 0.35); background: alpha(currentColor, 0.06); }
-.gn-tabbar button.gn-tab { border-radius: 0; padding: 0; margin: 0; background: alpha(currentColor, 0.07); box-shadow: none; }
+.gn-tabbar button.gn-tab { border-radius: 0; padding: 0 8px; margin: 0; background: alpha(currentColor, 0.07); box-shadow: none; }
 .gn-tabbar button.gn-tab + button.gn-tab { border-left: 1px solid alpha(@gn_blue, 0.3); }
 .gn-tabbar button.gn-tab:hover { background: alpha(currentColor, 0.13); }
-.gn-tabbar button.gn-tab .gn-tab-pic { opacity: 0.28; }
+.gn-tabbar button.gn-tab:active, .gn-tabbar button.gn-tab:focus-visible { background: alpha(black, 0.45); }
 .gn-tabbar button.gn-tab.gn-tab-current { background: alpha(black, 0.45); box-shadow: inset 0 3px 0 @gn_ember; }
-.gn-tabbar button.gn-tab.gn-tab-current .gn-tab-pic { opacity: 0.12; }
 .gn-tabbar button.gn-tab.gn-tab-current .gn-tab-title { color: @gn_ember; }
 .gn-tab-title { font-weight: 800; font-size: 15px; }
-.gn-tab-sub { font-size: 12px; opacity: 0.75; }
 .gn-from-mod { font-size: 12px; opacity: 0.75; }
 
 /* Narrow windows (phones): comfortable thumbs. */
