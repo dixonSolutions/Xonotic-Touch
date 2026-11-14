@@ -878,6 +878,23 @@ fn card(app: &App, n: &Node) -> gtk::Button {
         t.append(&pb);
     }
     v.append(&t);
+    if n.bool("featured").unwrap_or(false) {
+        // Home's cards stay side by side at every width, never stacked: on a phone each has a
+        // third of it. The picture shrinks and the subtitle and title end in an ellipsis
+        // rather than hold the row wider than the window (a word set the minimum).
+        let mut c = t.first_child();
+        while let Some(w) = c {
+            if let Some(l) = w.downcast_ref::<gtk::Label>() {
+                if l.has_css_class("gn-card-title") {
+                    l.set_wrap(false);
+                } else {
+                    l.set_lines(2);
+                }
+                l.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            }
+            c = w.next_sibling();
+        }
+    }
     b.set_child(Some(&v));
     b.set_sensitive(n.enabled());
     if let Some(p) = n.obj("primary").cloned() {
@@ -944,11 +961,13 @@ fn grid(app: &App, store: &Store, n: &Node) -> gtk::Widget {
     let f = gtk::FlowBox::new();
     f.set_selection_mode(gtk::SelectionMode::None);
     f.set_homogeneous(true);
-    f.set_column_spacing(12);
     f.set_row_spacing(12);
     let min = n.f64("minItem").unwrap_or(160.0);
     let kids = store.children(&n.id);
     let featured = kids.first().is_some_and(|k| k.bool("featured").unwrap_or(false));
+    // Home's row on a phone: a little less between the cards, more for each
+    f.set_column_spacing(if featured && app.narrow.get() { 8 } else { 12 });
+    let compact_strip = n.str("scroll").as_deref() == Some("horizontal") && !featured && window_height(app) < SHORT_WINDOW;
     // Home's cards: always one row, side by side at every width, never stacked
     f.set_min_children_per_line(if featured { kids.len().clamp(1, 4) as u32 } else if app.narrow.get() { 1 } else { 2 });
     f.set_max_children_per_line(n.f64("maxColumns").map(|m| m as u32).unwrap_or(((1100.0 / (min + 12.0)) as u32).clamp(1, 6)));
@@ -958,6 +977,9 @@ fn grid(app: &App, store: &Store, n: &Node) -> gtk::Widget {
         }
         let w = node(app, store, k);
         w.set_size_request(if app.narrow.get() || featured { 0 } else { min as i32 }, -1);
+        if compact_strip {
+            compact_card(&w);
+        }
         f.append(&w);
     }
     if n.str("scroll").as_deref() == Some("horizontal") {
@@ -967,6 +989,31 @@ fn grid(app: &App, store: &Store, n: &Node) -> gtk::Widget {
         return s.upcast();
     }
     f.upcast()
+}
+
+/// A card in a strip on a short window (the game modes over the map picker): a chip with its name
+/// only, no artwork and no subtitle (that stays as the tooltip), as the QuakeC renderer's strip on
+/// a short page.
+fn compact_card(card: &gtk::Widget) {
+    let Some(v) = card.first_child() else { return };
+    let mut c = v.first_child();
+    while let Some(w) = c {
+        if w.is::<gtk::Picture>() {
+            w.set_visible(false);
+        } else if w.has_css_class("gn-card-text") {
+            let mut l = w.first_child();
+            while let Some(x) = l {
+                if !x.has_css_class("gn-card-title") {
+                    if let Some(t) = x.downcast_ref::<gtk::Label>() {
+                        card.set_tooltip_text(Some(&t.text()));
+                    }
+                    x.set_visible(false);
+                }
+                l = x.next_sibling();
+            }
+        }
+        c = w.next_sibling();
+    }
 }
 
 /// Small items side by side; `wrap` rows (the filter checkboxes) wrap on narrow widths.
@@ -1354,7 +1401,8 @@ fn list(app: &App, store: &Store, n: &Node) -> gtk::Widget {
         Some(rows) => {
             let sw = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Automatic).vscrollbar_policy(gtk::PolicyType::Never)
                 .kinetic_scrolling(true).overlay_scrolling(false).child(&view).build();
-            let h = rows as i32 * (sideways_tile_height(app, rows) + 26) + 26;
+            let (rows, tile) = sideways_fit(app, rows);
+            let h = rows as i32 * (tile + 26) + 26;
             sw.set_min_content_height(h);
             sw.set_height_request(h);
             sw.set_propagate_natural_height(true);
@@ -1620,18 +1668,35 @@ fn sideways_rows(n: &Node) -> Option<u32> {
     (n.str("scroll").as_deref() == Some("horizontal")).then(|| n.f64("rows")).flatten().map(|r| (r as u32).clamp(1, 4))
 }
 
-/// The height of one tile of a sideways list: N rows fill the room the window has under the
-/// header, the mode strip and the section title, and above the action bar.
-fn sideways_tile_height(app: &App, rows: u32) -> i32 {
-    let win_h = app.ui.borrow().as_ref().map(|u| u.win.height()).filter(|h| *h > 0).unwrap_or(760);
-    let room = win_h - if app.narrow.get() { 190 } else { 440 };
-    (room / rows as i32 - 26).clamp(96, 170)
+/// The window's height, before the first allocation its default one.
+fn window_height(app: &App) -> i32 {
+    app.ui.borrow().as_ref().map(|u| if u.win.height() > 0 { u.win.height() } else { u.win.default_height() }).filter(|h| *h > 0).unwrap_or(760)
+}
+
+/// A short window (a phone on its side, 480 high): the strip of game modes is chips, as in the
+/// QuakeC renderer on a short page (touch_uib_render.qc), so the maps under it keep their room.
+const SHORT_WINDOW: i32 = 540;
+
+/// The rows and the height of one tile of a sideways list: up to N rows fill the room the window
+/// has under the header, the mode strip and the section title, and above the action bar. When N
+/// rows would be under the smallest legible tile there, fewer and taller ones: a row reached
+/// only by scrolling the page leaves the visible one a sliver.
+fn sideways_fit(app: &App, rows: u32) -> (u32, i32) {
+    let win_h = window_height(app);
+    let above = if app.narrow.get() { 190 } else if win_h < SHORT_WINDOW { 310 } else { 440 };
+    let room = win_h - above;
+    let mut r = rows.max(1);
+    while r > 1 && room / r as i32 - 26 < 96 {
+        r -= 1;
+    }
+    (r, (room / r as i32 - 26).clamp(96, 170))
 }
 
 fn card_grid(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
     let model = lv.borrow().model.clone();
     let f = gtk::SignalListItemFactory::new();
-    let tile = sideways_rows(n).map(|r| sideways_tile_height(app, r));
+    let fit = sideways_rows(n).map(|r| sideways_fit(app, r));
+    let tile = fit.map(|(_, h)| h);
     f.connect_setup(move |_, item| {
         let item = item.downcast_ref::<gtk::ListItem>().expect("list item");
         let v = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -1727,8 +1792,8 @@ fn card_grid(app: &App, n: &Node, lv: &Rc<RefCell<ListView>>) -> gtk::Widget {
     gv.set_single_click_activate(true);
     gv.set_min_columns(if app.narrow.get() { 1 } else { 2 });
     gv.set_max_columns(n.f64("maxColumns").map(|m| m as u32).unwrap_or(6));
-    if let Some(rows) = sideways_rows(n) {
-        // `rows: N`, scrolling sideways: the grid runs left to right in N rows.
+    if let Some((rows, _)) = fit {
+        // `rows: N`, scrolling sideways: the grid runs left to right in N rows (fewer on a short window).
         gv.set_orientation(gtk::Orientation::Horizontal);
         gv.set_min_columns(rows);
         gv.set_max_columns(rows);
