@@ -283,6 +283,7 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
     private var loadingStrip: android.widget.LinearLayout? = null
     private var loadingText: android.widget.TextView? = null
     private var loadingBar: android.widget.ProgressBar? = null
+    private var loadingTitle: android.widget.TextView? = null
 
     /**
      * A join or a map load: the engine publishes its progress from inside the
@@ -296,39 +297,74 @@ class FrontendHost(private val activity: Activity, private val baseDir: File?) :
         val busy = stage in setOf("connecting", "downloading", "loading", "signon") && !failed
         if (!busy || root.visibility == View.VISIBLE) {
             loadingStrip?.let { (it.parent as? ViewGroup)?.removeView(it) }
-            loadingStrip = null; loadingText = null; loadingBar = null
+            loadingStrip = null; loadingText = null; loadingBar = null; loadingTitle = null
             return
         }
         if (loadingStrip == null) {
-            val strip = android.widget.LinearLayout(activity)
-            strip.orientation = android.widget.LinearLayout.VERTICAL
-            val p = Theme.dp(activity, 12f)
-            strip.setPadding(Theme.dp(activity, 20f), p, Theme.dp(activity, 20f), p)
-            strip.background = Theme.rounded(0xE60B1730.toInt(), Theme.dp(activity, 14f).toFloat(), Theme.dp(activity, 1f), Theme.BLUE)
-            val t = Kit.text(activity, "", Theme.SP_BODY, Theme.TEXT, bold = true, lines = 1)
+            // one presentation of a join or a load: an opaque Android screen over
+            // the engine's own loading screen and status text (they stay in the
+            // console), drawn by Android so it moves during a blocking load
+            val screen = android.widget.LinearLayout(activity)
+            screen.orientation = android.widget.LinearLayout.VERTICAL
+            screen.gravity = Gravity.CENTER_HORIZONTAL
+            screen.setBackgroundColor(android.graphics.Color.BLACK)
+            screen.isClickable = true // nothing reaches the engine underneath
+            val banner = BootSplash.view(activity, 0.5f, 720)
+            screen.addView(banner, android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            val card = android.widget.LinearLayout(activity)
+            card.orientation = android.widget.LinearLayout.VERTICAL
+            val p = Theme.dp(activity, 16f)
+            card.setPadding(Theme.dp(activity, 24f), p, Theme.dp(activity, 24f), p)
+            card.background = Theme.rounded(0xFF0B1730.toInt(), Theme.dp(activity, 18f).toFloat(), Theme.dp(activity, 1f), Theme.BLUE)
+            val title = Kit.text(activity, "", Theme.SP_TITLE, Theme.TEXT, bold = true, lines = 1)
+            title.typeface = Theme.display
+            val t = Kit.text(activity, "", Theme.SP_BODY, Theme.TEXT_MUTED, lines = 1)
             t.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
             val bar = android.widget.ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal)
             bar.isIndeterminate = true
             bar.indeterminateTintList = android.content.res.ColorStateList.valueOf(Theme.EMBER)
-            strip.addView(t)
-            strip.addView(bar, android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(activity, 6f)).apply { topMargin = Theme.dp(activity, 8f) })
-            val lp = FrameLayout.LayoutParams(Theme.dp(activity, 520f), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
-            lp.bottomMargin = Theme.dp(activity, 56f)
-            activity.addContentView(strip, lp)
-            loadingStrip = strip; loadingText = t; loadingBar = bar
+            val cancel = Kit.button(activity, "Cancel") { NativeBridge.enqueue(FeArgs.command("cancel")) }
+            val row = Kit.row(activity, 16f)
+            row.gravity = Gravity.CENTER_VERTICAL
+            val texts = Kit.column(activity, 4f)
+            texts.addView(title); texts.addView(t)
+            row.addView(texts, android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(cancel)
+            card.addView(row)
+            card.addView(bar, android.widget.LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Theme.dp(activity, 6f)).apply { topMargin = Theme.dp(activity, 12f) })
+            screen.addView(card, android.widget.LinearLayout.LayoutParams(Theme.dp(activity, 640f).coerceAtMost(activity.resources.displayMetrics.widthPixels - Theme.dp(activity, 32f)), ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = Theme.dp(activity, 48f) })
+            activity.addContentView(screen, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            reconnectBar?.bringToFront()
+            loadingStrip = screen; loadingText = t; loadingBar = bar; loadingTitle = title
         }
         val pct = when (stage) {
             "downloading" -> c.num("download_progress")
             "loading" -> c.num("load_progress")
             else -> 0.0
         }
-        val what = when (stage) {
-            "connecting" -> "Connecting to ${c.str("address")}"
-            "downloading" -> "Downloading ${c.str("file").substringAfterLast('/')}"
-            "signon" -> "Joining the game"
-            else -> c.str("load").ifEmpty { "Loading the map" }
+        val map = app.str("map")
+        loadingTitle?.text = when {
+            c.bool("local") -> if (map.isNotEmpty()) "Starting ${map.replaceFirstChar { it.uppercase() }}" else "Starting the match"
+            c.str("address").isNotEmpty() -> "Joining ${c.str("address")}"
+            else -> "Joining"
         }
-        loadingText?.text = if (pct > 0.0) "$what  ${(pct * 100).toInt()}%" else what
+        val load = c.str("load")
+        val what = when (stage) {
+            "connecting" -> "Waiting for the server"
+            "downloading" -> {
+                val kib = c.num("speed") / 1024.0
+                "Downloading ${c.str("file").substringAfterLast('/')}" + if (kib > 0) "  ·  ${kib.toInt()} KiB/s" else ""
+            }
+            "signon" -> "Entering the game"
+            // the engine's step names are file names ("progs/bolt.mdl", "*1"): say it plainly
+            else -> when {
+                load.isEmpty() || load.startsWith("*") -> "Loading the map"
+                load.contains('/') -> "Loading " + load.substringAfterLast('/').substringBeforeLast('.')
+                else -> load.replaceFirstChar { it.uppercase() }
+            }
+        }
+        // the engine reports 1% for most of a map load: a number only once it says something
+        loadingText?.text = if (pct >= 0.02) "$what  ·  ${(pct * 100).toInt()}%" else what
     }
 
     private var reconnectBar: View? = null
