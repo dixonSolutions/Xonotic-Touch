@@ -374,9 +374,6 @@ artifacts first, publish a chosen run second, immutable
 
 - Measure the slim set on the Galaxy Tab (load time, memory, fps) and tune the
   block sizes against how it actually looks.
-- Opus effects on the worker-thread decode path, and the lazy-load threshold
-  by decoded length instead of file size (an Opus file holds about twice the
-  audio per KiB that Vorbis does).
 - Not adopted, measured: music at 56 or 48 kbit/s (-5.8 / -11.6 MB, band error
   +0.08-0.13 / +0.15-0.33 dB over 64k on every track: no listening test, so
   64k stays); zstd 22 and long mode for models and textures (0.0-0.01 MB);

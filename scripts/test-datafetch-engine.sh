@@ -62,7 +62,7 @@ run() { # basedir userdir seconds args...
 # rig has no gfx/touch (the packages stage it), a server that has the detail
 # pack names LOD meshes the client does not have yet, and one picture of the
 # default HUD skin that the data split left in extras.
-KNOWN='BGM track|gfx/touch|_lod\.iqm|gfx/hud/default/progressbar'
+KNOWN='BGM track|gfx/touch|_lod[0-9]*\.iqm|gfx/hud/default/progressbar'
 missing() { grep -a -i -E 'not found|couldn.t load|could not load|failed to load|missing' "$1" | grep -a -v -E 'config\.cfg|autoexec|cdtracks|crypto|libcurl|d0_blind|\.so|server\.cfg|touch\.layout|font_size_snapping|userkey' | grep -a -v -E "$KNOWN" | sed -E 's/[0-9]+(\.[0-9]+)?//g' | sort -u || true; }
 known() { grep -a -i -E "$KNOWN" "$1" | sed -E 's/\^[0-9]//g' | sort | uniq -c | sed 's/^/     note: /' | head -20 || true; }
 status() { # userdir state [landed...]

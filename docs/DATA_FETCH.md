@@ -172,9 +172,38 @@ and no `.bsp`. While `touch_data_state` is `fetching`, `paused`, `waiting` or
 - A server whose map is such a map: instead of the "cannot load map" error the
   client disconnects, asks for the map, keeps `connect <address>` in
   `touch_data_pending` and reconnects when the map is there.
-- The menu lists maps from `maps/*.mapinfo`, shows these as downloading (with
-  `touch_data_want_*` progress for the wanted one) and refreshes when
-  `fs_mountpack_count` changes.
+- The map list is the engine's `maps` list source (`touch_uib_src.c`), built
+  from `maps/*.mapinfo`. Each row has `state` (`ready`, `downloading`, or
+  `missing` when nothing is fetching it) and `progress` (0..1 for the wanted
+  map, -1 while it is only queued); the source rebuilds when a pack is mounted,
+  the downloader starts or stops, or the wanted map moves on. Choosing a
+  downloading map asks for it (`touch_data_want`); starting one says that it
+  is next instead of starting another map. `TouchData_MapState()` in
+  `touch_datafetch.h` is the same for a native front end, and
+  `qcsrc/menu/xonotic/touch_data.qh` for QuakeC (`TouchData_StatusLine()`
+  gives "Getting the rest of the maps: 180 of 300 MB").
+- A join that waits for its map is not a failed join: `touch_joinfail.c` stays
+  quiet while `touch_data_pending` holds the `connect`.
+
+`fs_mountpack` also runs the music pack's `cdtracks.cfg` when the pack that
+carries it lands (the configs exec it once at start-up, before the pack is
+there), and `fs_rescan` counts in `fs_mountpack_count`.
 
 On the web the page's own `needMap` hook does the first of these (it existed
 before the split); it mounts with `fs_mountpack` instead of `fs_rescan`.
+
+## Tests
+
+- `scripts/test-datafetch-engine.sh SPLITDIR`: a headless engine on the
+  `first_play` packs only; a second map landing while it runs; a join to a
+  server on a third. Missing-file lines are compared with the whole set's.
+- `scripts/test-datafetch.sh SPLITDIR [PHONEDIR]`: the loader's downloader
+  against `tests/datafetch/linksrv.py` (explicit ranges, 501 for suffix ranges,
+  one shared link of N Mbit/s): exact first-play bytes, SIGKILL and resume, a
+  pack served damaged once, a whole install asking for nothing, a new set id,
+  an old install left alone, the engine playing a late map while the rest
+  comes in; `TIMINGS="5 20 100"` adds time to first play per link speed.
+- `loader/crates/core/tests/fetch_manifest.rs` and
+  `android/app/src/test/java/.../DataFetchTest.java`: the same rules on small
+  made-up sets, in Rust and on the JVM.
+- `scripts/test-web-cache.sh`: the web stager and page (docs/WEB.md).
