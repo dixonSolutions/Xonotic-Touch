@@ -111,5 +111,13 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Keeps the player's connection to a multiplayer game server open while the game is in the background, so returning to the app does not drop them from the match." />
         </service>
+
+        <!-- DataService: the rest of the split data set (the other maps, the
+             music) downloads behind the running game and carries on while
+             the app is in the background (docs/DATA_FETCH.md). -->
+        <service
+            android:name=".DataService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>
