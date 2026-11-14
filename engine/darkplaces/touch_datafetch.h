@@ -12,4 +12,17 @@ void TouchData_Frame(void); // Host_Frame, after Cbuf_Frame
 /// the player.
 qbool TouchData_JoinNeedsMap(const char *worldmodel, char *text, size_t textsize);
 
+/// True while a join waits for its map: the join did not fail (touch_joinfail.c).
+qbool TouchData_JoinPending(void);
+
+/// For map lists (touch_uib_src.c, the native front ends): 0 the map can be
+/// played, 1 its pack is still downloading (`progress` 0..1 when it is the
+/// wanted map, else -1), 2 it is not here and nothing is fetching it.
+int TouchData_MapState(const char *map, float *progress);
+
+/// Changes whenever a map list built from TouchData_MapState is out of date
+/// (a pack was mounted, the downloader started or stopped, the wanted map
+/// moved on by a quarter MiB).
+unsigned TouchData_Generation(void);
+
 #endif

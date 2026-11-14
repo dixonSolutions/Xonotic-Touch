@@ -1,0 +1,38 @@
+#pragma once
+
+// The progressive data download, seen from the menu (docs/DATA_FETCH.md).
+//
+// The app downloads the split data set while the game runs; the engine
+// (touch_datafetch.c) publishes how far it is in read-only cvars and mounts
+// each pack as it lands. A map of the set whose pack is not here yet has its
+// .mapinfo (in the core pack) and no .bsp.
+//
+//   touch_data_state         "" (no downloader), fetching, paused, waiting,
+//                            error, complete, legacy
+//   touch_data_done_kb, touch_data_total_kb      the whole set
+//   touch_data_want, touch_data_want_done_kb, touch_data_want_total_kb
+//                            the map being fetched ahead of the rest
+//   touch_data_pending, touch_data_pending_map   a "map"/"connect" command
+//                            the engine holds until that map is here
+//   fs_mountpack_count       counts packs mounted since the start
+//
+// The engine's "maps" list source carries the same per map: cells "state"
+// (ready, downloading, missing) and "progress" (0..1, -1 when queued).
+
+/** The downloader is at work (or stuck): maps without a .bsp are still to come. */
+bool TouchData_Active();
+
+/** This map's pack is still to come. */
+bool TouchData_MapDownloading(string map);
+
+/** Ask the downloader to fetch this map's packs before the rest. */
+void TouchData_Want(string map);
+
+/** 0..1 for the wanted map, -1 for any other. */
+float TouchData_MapProgress(string map);
+
+/** "Getting the rest of the maps: 180 of 300 MB", or "" when there is nothing to say. */
+string TouchData_StatusLine();
+
+/** Once a frame (menu.qc): packs that landed make the map list stale. */
+void TouchData_MenuFrame();

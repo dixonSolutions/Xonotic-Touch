@@ -316,6 +316,36 @@ qbool TouchData_JoinNeedsMap(const char *worldmodel, char *text, size_t textsize
 	return true;
 }
 
+qbool TouchData_JoinPending(void)
+{
+	return !strncmp(touch_data_pending.string, "connect ", 8);
+}
+
+int TouchData_MapState(const char *map, float *progress)
+{
+	char name[MAX_QPATH];
+	if (progress)
+		*progress = -1;
+	dpsnprintf(name, sizeof(name), "maps/%s.bsp", map);
+	if (FS_FileExists(name))
+		return 0;
+	if (!TouchData_Active())
+		return 2;
+	if (progress && !strcmp(map, touch_data_want.string) && touch_data_want_total_kb.value > 0)
+		*progress = bound(0, touch_data_want_done_kb.value / touch_data_want_total_kb.value, 1);
+	return 1;
+}
+
+unsigned TouchData_Generation(void)
+{
+	unsigned g = (unsigned)Cvar_VariableValue(&cvars_all, "fs_mountpack_count", ~0);
+	const char *p;
+	g = g * 31 + (TouchData_Active() ? 1 : 0);
+	for (p = touch_data_want.string; *p; p++)
+		g = g * 31 + (unsigned char)*p;
+	return g * 31 + (unsigned)(touch_data_want_done_kb.integer / 256);
+}
+
 void TouchData_Frame(void)
 {
 	char name[MAX_QPATH], line[MAX_INPUTLINE];
