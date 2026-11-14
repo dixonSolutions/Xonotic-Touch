@@ -1,6 +1,7 @@
 #include "touch_data.qh"
 
 #include <common/mapinfo.qh>
+#include "touch_uib_api.qh"
 
 float touchdata_mounts = -1;
 
@@ -52,8 +53,27 @@ string TouchData_StatusLine()
 	return "";
 }
 
+float touchdata_told;
+
+// A "map" or a join the engine holds until its map is here: say so, and how far it is.
+void TouchData_PendingNotice()
+{
+	string map = cvar_string("touch_data_pending_map");
+	if (map == "" || time < touchdata_told)
+		return;
+	touchdata_told = time + 3;
+	bool join = substring(cvar_string("touch_data_pending"), 0, 8) == "connect ";
+	string how = TouchData_Active() ? TouchData_StatusLine() : _("Waiting for the download");
+	float total = cvar("touch_data_want_total_kb");
+	if (map == cvar_string("touch_data_want") && total > 0 && cvar_string("touch_data_state") == "fetching")
+		how = sprintf(_("%d of %d MB"), cvar("touch_data_want_done_kb") / 1024, ceil(total / 1024));
+	string what = join ? _("Getting the map %s, then joining: %s") : _("Getting the map %s, then starting: %s");
+	uib_toast(sprintf(what, map, how), "info", "download", 3.5);
+}
+
 void TouchData_MenuFrame()
 {
+	TouchData_PendingNotice();
 	float n = cvar("fs_mountpack_count");
 	if (n == touchdata_mounts)
 		return;
