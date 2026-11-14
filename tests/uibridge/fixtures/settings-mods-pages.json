@@ -103,7 +103,7 @@
     "id": "home/tiles",
     "type": "grid",
     "props": {
-     "minItem": 240,
+     "minItem": 200,
      "maxColumns": 3
     },
     "children": [
@@ -176,8 +176,7 @@
      "kind": "page"
     },
     "children": [
-     "settings/split",
-     "settings/advanced"
+     "settings/split"
     ]
    },
    {
@@ -469,20 +468,6 @@
       "label": "Open",
       "icon": "chevron"
      }
-    },
-    "children": []
-   },
-   {
-    "id": "settings/advanced",
-    "type": "button",
-    "props": {
-     "label": "Advanced settings",
-     "action": {
-      "id": "settings.advanced",
-      "label": "Advanced settings",
-      "icon": "more"
-     },
-     "style": "link"
     },
     "children": []
    }

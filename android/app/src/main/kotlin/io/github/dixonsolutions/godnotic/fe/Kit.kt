@@ -82,6 +82,33 @@ object Kit {
     }
 
     /** A pill button: primary in ember, the rest navy with a blue outline. */
+    /**
+     * The largest size from [maxSp] down to [minSp] at which every word of the
+     * text fits the view's width: a long word shrinks the text instead of
+     * being broken in the middle. Applied on every layout (text or width change).
+     */
+    fun fitWords(t: TextView, maxSp: Float, minSp: Float) {
+        t.addOnLayoutChangeListener { v, l, _, r, _, ol, _, or, _ ->
+            val tv = v as TextView
+            val avail = (r - l) - tv.paddingLeft - tv.paddingRight
+            if (avail <= 0) return@addOnLayoutChangeListener
+            val key = "${tv.text}|$avail"
+            if (tv.getTag(R_FIT) == key) return@addOnLayoutChangeListener
+            tv.setTag(R_FIT, key)
+            val words = tv.text.split(' ', '\n').filter { it.isNotEmpty() }
+            val paint = android.text.TextPaint(tv.paint)
+            val dm = tv.resources.displayMetrics
+            var sp = maxSp
+            while (sp > minSp) {
+                paint.textSize = sp * dm.scaledDensity
+                if (words.all { paint.measureText(it) <= avail }) break
+                sp -= 0.5f
+            }
+            if (Math.abs(tv.textSize - sp * dm.scaledDensity) > 0.5f) tv.post { tv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, sp) }
+        }
+    }
+    private val R_FIT = 0x7f0f1701
+
     fun button(ctx: Context, label: String, primary: Boolean = false, iconName: String = "", onClick: (View) -> Unit): TextView =
         TextView(ctx).apply {
             text = label

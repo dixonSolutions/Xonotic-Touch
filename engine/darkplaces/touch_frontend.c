@@ -42,6 +42,7 @@ Everything works on the desktop too, without a sink, for headless tests
 #include "touch_frontend.h"
 #include "touch_hud.h"
 #include "touch_lan.h"
+#include "touch_net.h"
 
 extern uint8_t serverlist_querystage; // netconn.c
 
@@ -373,6 +374,21 @@ static void publish_app(void)
 	jb_kbool(&b, "demo", cls.demoplayback);
 	jb_kstr(&b, "version", engineversion);
 	jb_kbool(&b, "ui_bridge", fe_verb("ui") != NULL || uib_present());
+	{
+		// the automatic reconnect (touch_net.c): what it is doing, or why it gave up
+		const char *rc = TouchNet_ReconnectState();
+		jb_kstr(&b, "reconnect", rc ? rc : "");
+		jb_kstr(&b, "reconnect_note", rc ? "" : Cvar_VariableString(&cvars_all, "_net_reconnect_state", ~0));
+	}
+	// the last join that failed (touch_joinfail.c, when built in): a native front end shows its own dialog
+	if (Cvar_FindVar(&cvars_all, "_join_fail_serial", ~0))
+	{
+		jb_kint(&b, "join_fail_serial", (int)Cvar_VariableValue(&cvars_all, "_join_fail_serial", ~0));
+		jb_kstr(&b, "join_fail_kind", Cvar_VariableString(&cvars_all, "_join_fail_kind", ~0));
+		jb_kstr(&b, "join_fail_text", Cvar_VariableString(&cvars_all, "_join_fail_text", ~0));
+		jb_kstr(&b, "join_fail_detail", Cvar_VariableString(&cvars_all, "_join_fail_detail", ~0));
+		jb_kstr(&b, "join_fail_address", Cvar_VariableString(&cvars_all, "_join_fail_address", ~0));
+	}
 	jb_raw(&b, "}");
 	fe_send(FE_APP, &b, false);
 }
@@ -1258,9 +1274,13 @@ static void TouchFE_Cmd_f(cmd_state_t *cmd)
 		if (!TouchHUD_LoadingBack())
 		{
 			cls.connect_trying = false;
-			Cbuf_AddText(cmd_local, "\ndisconnect\n");
+			Cbuf_AddText(cmd_local, "\nnet_reconnect_cancel\ndisconnect\n");
 		}
 	}
+	else if (!strcmp(verb, "join_retry"))
+		Cbuf_AddText(cmd_local, "\njoin_retry\n"); // the native Could not join dialog's Retry (touch_joinfail.c)
+	else if (!strcmp(verb, "reconnect_cancel"))
+		Cbuf_AddText(cmd_local, "\nnet_reconnect_cancel\n"); // stop the automatic reconnect (touch_net.c)
 	else if (!strcmp(verb, "portcheck"))
 	{
 		fe_set_cvar("_touch_lan_portcheck", va(line, sizeof(line), "%d", atoi(arg(cmd, 2))));
@@ -1430,7 +1450,8 @@ void TouchFE_Frame(void)
 		uib_drain(NULL);
 	publish_app();
 	watch_status();
-	if (fe.attached && beat_age() > 30 && !cls.demoplayback)
+	// in the background the UI does not beat (the activity is paused): not a dead UI
+	if (fe.attached && beat_age() > 30 && !cls.demoplayback && vid_activewindow)
 		fe_detach("no heartbeat for 30 s");
 	fe_update_state();
 	joining = cls.connect_trying || (cls.state == ca_connected && cls.signon < SIGNONS) || scr_loading;
@@ -1469,7 +1490,16 @@ static int fe_covered(void)
 
 qbool TouchFE_SkipDraw(void)
 {
-	return fe_covered() >= 2;
+	extern void TLua_InitOnce(void);
+	extern void TLua_FrameStart(void);
+	if (fe_covered() < 2)
+		return false;
+	// The frame is not drawn, so CL_UpdateScreen's TouchLua_ClientFrame does
+	// not run either: its housekeeping still must (the Mods screen's
+	// _lua_detail, installs from a link, mod pages), its drawing must not.
+	TLua_InitOnce();
+	TLua_FrameStart();
+	return true;
 }
 
 double TouchFE_MaxFPS(double maxfps)

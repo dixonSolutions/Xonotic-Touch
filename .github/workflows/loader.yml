@@ -36,6 +36,11 @@ jobs:
       - name: Clippy
         working-directory: loader
         run: cargo clippy --locked -p godnotic-loader-core --features http-ureq --all-targets -- -D warnings
+      - name: Android driver tests
+        working-directory: loader
+        run: |
+          cargo test --locked -p godnotic-loader-android --no-default-features
+          cargo clippy --locked -p godnotic-loader-android --all-targets -- -D warnings
       - name: Android targets
         working-directory: loader
         run: |

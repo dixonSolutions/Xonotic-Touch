@@ -44,6 +44,7 @@ foreground service while there is something to keep alive.
 #include "touch_lan.h"
 #include "touch_lan_logic.h"
 #include "touch_net.h"
+#include "touch_lua.h"
 
 static qbool away;
 static EGLDisplay away_display = EGL_NO_DISPLAY;
@@ -53,9 +54,39 @@ static qbool load_held, load_resume;
 static qbool netstate_busy;      // connected, joining or downloading
 void CL_ResumeHeldLoad(void);    // cl_parse.c
 
+// xt.vibrate for client mods (touch_lua.h): SDL's haptic device for the
+// phone's own vibrator (SDLControllerManager's VIBRATOR_SERVICE, needs the
+// VIBRATE permission). Opened on the first call; never in the background.
+static SDL_Haptic *ta_haptic;
+static qbool ta_haptic_tried;
+
+static qbool TA_Vibrate(int ms)
+{
+	int i, n;
+	if (!vid_activewindow)
+		return false;
+	if (!ta_haptic_tried)
+	{
+		ta_haptic_tried = true;
+		if (SDL_InitSubSystem(SDL_INIT_HAPTIC) == 0)
+			for (i = 0, n = SDL_NumHaptics(); i < n && !ta_haptic; i++)
+			{
+				ta_haptic = SDL_HapticOpen(i);
+				if (ta_haptic && SDL_HapticRumbleInit(ta_haptic) != 0)
+				{
+					SDL_HapticClose(ta_haptic);
+					ta_haptic = NULL;
+				}
+			}
+		Con_DPrintf("Android: vibrator %s\n", ta_haptic ? "ready" : "not available");
+	}
+	return ta_haptic && SDL_HapticRumblePlay(ta_haptic, 1.0f, (Uint32)bound(1, ms, 1000)) == 0;
+}
+
 void TouchAndroid_Init(void)
 {
 	SDL_SetHint(SDL_HINT_ANDROID_BLOCK_ON_PAUSE, "0");
+	TouchLua_VibrateHook = TA_Vibrate;
 }
 
 void TouchAndroid_Background(qbool goaway)

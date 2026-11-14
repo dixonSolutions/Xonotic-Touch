@@ -23,6 +23,7 @@
 // we have to include snd_main.h here only to get access to snd_renderbuffer->format.speed when writing the AVI headers
 #include "snd_main.h"
 #include "touch_net.h" // Touch: download size and time left
+#include "touch_uib.h" // Touch: one loading presentation
 
 cvar_t scr_viewsize = {CF_CLIENT | CF_ARCHIVE, "viewsize","100", "how large the view should be, 110 disables inventory bar, 120 disables status bar"};
 cvar_t scr_fov = {CF_CLIENT | CF_ARCHIVE, "fov","90", "field of vision, 1-170 degrees, default 90, some players use 110-130"};
@@ -702,6 +703,7 @@ SCR_DrawInfobar
 static void SCR_DrawInfobar(void)
 {
 	unsigned int offset = 0;
+	if (TouchUIB_LoadingCardUp()) return; // Touch: a front end's loading card already shows the status and download lines
 	offset += SCR_DrawQWDownload(offset);
 	offset += SCR_DrawCurlDownload(offset);
 	if(scr_infobartime_off > 0)
@@ -2089,6 +2091,7 @@ static void SCR_DrawLoadingStack(void)
 	float verts[12];
 	float colors[16];
 
+	if (!TouchUIB_LoadingCardUp()) // Touch: the step's text is on the front end's loading card
 	SCR_DrawLoadingStack_r(loadingscreenstack, vid_conheight.integer, scr_loadingscreen_barheight.value);
 	if(loadingscreenstack)
 	{

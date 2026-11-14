@@ -180,6 +180,7 @@ public final class XonoticActivity extends SDLActivity {
 
     @Override
     protected void onPause() {
+        inFront = false;
         if (frontend != null) {
             frontend.onPause();
         }
@@ -188,6 +189,9 @@ public final class XonoticActivity extends SDLActivity {
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (frontend != null && frontend.onActivityResult(requestCode, resultCode, data)) {
+            return; // the native Mods screen's Install from file
+        }
         if (modImport != null && modImport.onActivityResult(requestCode, resultCode, data)) {
             return;
         }
@@ -219,6 +223,7 @@ public final class XonoticActivity extends SDLActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        inFront = true;
         if (frontend != null) {
             frontend.onResume();
         }
@@ -791,37 +796,69 @@ public final class XonoticActivity extends SDLActivity {
      * stops as soon as the engine is idle. Started while the game is in front,
      * the only time Android 12+ allows it, and kept through the background.
      */
+    /** The activity is in front (between onResume and onPause). */
+    private volatile boolean inFront = true;
+    /** Keep the foreground service this long after the last busy state while away (docs/NETWORK.md). */
+    private static final long KEEP_AFTER_BUSY_MS = 60_000;
+
     private void watchNetState() {
         File state = new File(GameData.userDir(new File(baseDir)), "data/touch_netstate");
         // Left by a process that was killed while connected: not this session's.
         state.delete();
         netStateWatch = new Thread(() -> {
             String shown = "";
+            String lastKind = "idle";
+            long lastBusy = 0;
             while (!Thread.currentThread().isInterrupted()) {
                 String kind = "idle";
                 String text = "";
+                String detail = "";
                 try (BufferedReader reader = new BufferedReader(new FileReader(state))) {
                     String line = reader.readLine();
                     if (line != null) {
                         kind = line.trim();
                         String second = reader.readLine();
                         text = second != null ? second.trim() : "";
+                        // the third line: a download's size, speed and time left (TouchNet_CurlText)
+                        String third = reader.readLine();
+                        detail = third != null ? third.trim() : "";
                     }
                 } catch (IOException e) {
                     // Not written yet: nothing to keep alive.
                 }
-                String now = kind + "\n" + text;
                 boolean idle = kind.equals("idle") || kind.isEmpty();
-                LanLocks.hosting(this, kind.equals("hosting")); // LAN game: Wi-Fi locks while hosting
-                KeepAliveService.engineBusy = !idle;
-                if (!now.equals(shown)) {
-                    if (idle) {
-                        KeepAliveService.stop(this);
-                    } else {
-                        KeepAliveService.show(this, KeepAliveService.KIND_CONNECTION, text);
-                    }
-                    shown = now;
+                long now = android.os.SystemClock.elapsedRealtime();
+                if (!idle) {
+                    lastBusy = now;
                 }
+                boolean front = inFront;
+                LanLocks.hosting(this, kind.equals("hosting")); // LAN game: Wi-Fi and multicast locks while hosting
+                // connected, joining or downloading while away: keep the radio out of power save
+                LanLocks.connected(this, !idle && !front);
+                KeepAliveService.engineBusy = !idle;
+                // A map change, a reconnect or a finished download can read idle
+                // for a poll; the service could not be started again from the
+                // background (Android 12+), so it stays 60 s after the last busy
+                // state while away, and stops at once when the player is in front.
+                boolean keep = !idle || (!front && lastBusy != 0 && now - lastBusy < KEEP_AFTER_BUSY_MS);
+                String key = kind + "\n" + text + "\n" + detail;
+                if (!key.equals(shown) || (!keep && KeepAliveService.isRunning())) {
+                    if (!keep) {
+                        KeepAliveService.stop(this);
+                    } else if (!idle) {
+                        KeepAliveService.show(this, KeepAliveService.KIND_CONNECTION,
+                                detail.isEmpty() ? text : text + "\n" + detail);
+                    }
+                    shown = key;
+                }
+                // joined while away: say so
+                if (kind.equals("connected") && lastKind.equals("joining") && !front) {
+                    KeepAliveService.readyToPlay(this, text);
+                }
+                if (front) {
+                    KeepAliveService.clearReady(this);
+                }
+                lastKind = kind;
                 try {
                     Thread.sleep(NETSTATE_POLL_MS);
                 } catch (InterruptedException e) {

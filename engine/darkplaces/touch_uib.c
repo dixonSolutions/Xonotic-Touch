@@ -756,6 +756,22 @@ static void UIB_WatchReserved(void)
 		UIBS_SetReserved(NULL, 0);
 }
 
+static cvar_t touch_loading_card = {CF_CLIENT, "_touch_loading_card", "0",
+	"set to 1 by a front end while its own loading card is up (step, file, size, speed, time left, Cancel) and back to 0 when it leaves: the engine then leaves out its own status line, download lines and notify lines during the join or map load, so the information shows once"};
+
+int TouchUIB_LoadingCardUp(void)
+{
+#ifdef CONFIG_MENU
+	extern qbool scr_loading;
+	if (!touch_loading_card.integer || cls.state == ca_dedicated)
+		return 0;
+	// only while something is loading: a value left at 1 hides nothing in a match or in the menu
+	return scr_loading || cls.connect_trying || (cls.state == ca_connected && cls.signon < SIGNONS);
+#else
+	return 0;
+#endif
+}
+
 #ifdef CONFIG_MENU
 // uib_input: scripted input for tests of the QuakeC renderer, through the same
 // path a finger, a mouse or a key takes (Key_Event and the window mouse
@@ -1578,6 +1594,7 @@ static void UIB_TestRows_f(cmd_state_t *cmd)
 void TouchUIB_Init(void)
 {
 	Cvar_RegisterVariable(&menu_touch_uib);
+	Cvar_RegisterVariable(&touch_loading_card);
 	Cvar_RegisterVariable(&uib_version);
 	Cvar_RegisterVariable(&uib_debug);
 	Cmd_AddCommand(CF_CLIENT, "uib_dump", UIB_Dump_f, "UI bridge: write the current snapshot to the console or a file (uib_dump <file>)");

@@ -75,4 +75,11 @@ int TouchUIB_NativeAttached(void);
 }
 #endif
 
+/* One loading presentation. True while a front end shows its own loading card
+   (it sets _touch_loading_card 1 when the card goes up and 0 when it leaves) and
+   a join or a map load is in fact under way: the engine then draws its loading
+   picture and bar without the status line, the download lines and the notify
+   lines, which the card carries. The console keeps the whole log. */
+int TouchUIB_LoadingCardUp(void);
+
 #endif

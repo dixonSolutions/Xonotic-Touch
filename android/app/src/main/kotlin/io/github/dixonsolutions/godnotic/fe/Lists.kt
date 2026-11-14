@@ -39,6 +39,19 @@ class VirtualList(
     private val adapter = Adapter()
     private var spans = 1
 
+    /** Grid fitted to `rows`: rows, picture width and tile height (px, without the gaps). */
+    data class Fit(val rows: Int, val width: Int, val height: Int)
+
+    /** `rows: N` on a card grid; 0 sizes the columns by [minCellPx]. */
+    var fitRows = 0
+    var cellAspect = 16f / 9f
+    /** Space between tiles (px, the cell margins). */
+    var cellGap = 0
+    /** A tile's height besides its picture (text, padding): measured by the renderer. */
+    var cellChrome: () -> Int = { 0 }
+    var fit: Fit? = null
+        private set
+
     abstract class Cell(v: View) : RecyclerView.ViewHolder(v) {
         open fun recycled() {}
     }
@@ -53,15 +66,57 @@ class VirtualList(
         view.layoutManager = if (grid) GridLayoutManager(ctx, 1) else LinearLayoutManager(ctx)
         adapter.setHasStableIds(true)
         view.adapter = adapter
-        if (grid) view.addOnLayoutChangeListener { _, l, _, r, _, _, _, _, _ ->
-            val n = max(1, (r - l) / max(1, minCellPx))
+        if (grid) view.addOnLayoutChangeListener { _, l, t, r, b, _, _, _, _ ->
             val lm = view.layoutManager
-            if (n != spans && lm is GridLayoutManager) { spans = n; lm.spanCount = n }
+            if (lm !is GridLayoutManager) return@addOnLayoutChangeListener
+            if (fitRows > 0 && b - t > 0) {
+                // `rows: N`: N rows that scroll sideways (docs/UI_BRIDGE.md); the
+                // tiles take their height from the list's, the picture's aspect
+                // kept, so a smaller screen shows fewer columns, never a cut row
+                val pitch = (b - t - view.paddingTop - view.paddingBottom) / fitRows
+                val pic = max(1, pitch - cellChrome() - cellGap)
+                val spec = Fit(fitRows, (pic * cellAspect).toInt(), pitch - cellGap)
+                if (lm.orientation != RecyclerView.HORIZONTAL || lm.spanCount != fitRows) {
+                    lm.orientation = RecyclerView.HORIZONTAL
+                    lm.spanCount = fitRows
+                    spans = fitRows
+                    view.isVerticalScrollBarEnabled = false
+                    view.isHorizontalScrollBarEnabled = true
+                }
+                if (spec != fit) { fit = spec; view.post { adapter.notifyDataSetChanged() } }
+                return@addOnLayoutChangeListener
+            }
+            if (lm.orientation != RecyclerView.VERTICAL) { lm.orientation = RecyclerView.VERTICAL; fit = null; view.isVerticalScrollBarEnabled = true; view.isHorizontalScrollBarEnabled = false }
+            val n = max(1, (r - l) / max(1, minCellPx))
+            if (n != spans) { spans = n; lm.spanCount = n }
         }
         view.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) = ask()
+            override fun onScrollStateChanged(rv: RecyclerView, state: Int) {
+                if (state == RecyclerView.SCROLL_STATE_IDLE && !touching) onVisible?.invoke(shown(), null)
+            }
+        })
+        // a finger on the list: the engine holds its source still (docs/UI_BRIDGE.md, `visible`)
+        view.addOnItemTouchListener(object : RecyclerView.SimpleOnItemTouchListener() {
+            override fun onInterceptTouchEvent(rv: RecyclerView, e: android.view.MotionEvent): Boolean {
+                when (e.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN -> if (!touching) { touching = true; onVisible?.invoke(shown(), true) }
+                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> if (touching) { touching = false; onVisible?.invoke(shown(), false) }
+                }
+                return false
+            }
         })
         if (!grid) view.addItemDecoration(StickySections())
+    }
+
+    private var touching = false
+    /** The rows on screen and whether a finger is on the list (null: unchanged). */
+    var onVisible: ((IntRange, Boolean?) -> Unit)? = null
+
+    private fun shown(): IntRange {
+        val lm = view.layoutManager as? LinearLayoutManager ?: return 0..0
+        val first = max(0, lm.findFirstVisibleItemPosition())
+        return first..max(first, lm.findLastVisibleItemPosition())
     }
 
     /** The window around what is on screen, asked for once (ListWindow keeps track). */

@@ -43,8 +43,10 @@ class ViewRenderer(
         fun toast(text: String, kind: String)
         fun canBack(): Boolean
         /** link / share / copy actions handled natively; true when handled. */
-        fun platformAction(action: Map<String, Any?>): Boolean
+        fun platformAction(node: String, action: Map<String, Any?>): Boolean
         fun confirm(confirm: Map<String, Any?>, ok: () -> Unit)
+        /** `app.reserved` rects (dp) while the engine's own controls show through (4.12); empty otherwise. */
+        fun reserved(): List<Map<String, Any?>> = emptyList()
     }
 
     class Entry(val id: String, val type: String, val view: View, val children: ViewGroup?, var props: Map<String, Any?>) {
@@ -173,7 +175,7 @@ class ViewRenderer(
         "section" -> section(id, props)
         "toolbar" -> group(id, type, props, Kit.row(ctx, 10f).apply { setPadding(0, dp(4f), 0, dp(4f)) })
         "actionbar" -> group(id, type, props, Kit.row(ctx, 12f).apply { gravity = Gravity.END or Gravity.CENTER_VERTICAL })
-        "row" -> if (props.bool("wrap")) group(id, type, props, FlowGrid(ctx, 0, dp(10f), wrap = true)) else group(id, type, props, Kit.row(ctx, 12f).apply {
+        "row" -> if (props.bool("wrap")) group(id, type, props, FlowGrid(ctx, 0, dp(10f), wrap = true)) else labelledRow(id, props, Kit.row(ctx, 12f).apply {
             gravity = when (props.str("align")) { "center" -> Gravity.CENTER; "end" -> Gravity.END or Gravity.CENTER_VERTICAL; else -> Gravity.START or Gravity.CENTER_VERTICAL }
         })
         "split" -> split(id, props)
@@ -218,7 +220,7 @@ class ViewRenderer(
         if (a.isEmpty() || (a.containsKey("enabled") && !a.bool("enabled"))) return
         val go = {
             if (a.str("kind") == "back") events.back()
-            else if (!host.platformAction(a)) events.action(node, a)
+            else if (!host.platformAction(node, a)) events.action(node, a)
         }
         val c = a["confirm"].obj()
         if (c.isNotEmpty()) host.confirm(c, go) else go()
@@ -263,7 +265,7 @@ class ViewRenderer(
         val body = Kit.column(ctx, 18f)
         body.setPadding(pad, dp(8f), pad, dp(28f))
         val stickyHost = FrameLayout(ctx)
-        val sv = ScrollView(ctx)
+        val sv = PageScroll(ctx)
         sv.isFillViewport = true
         sv.isVerticalScrollBarEnabled = true
         sv.scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
@@ -275,6 +277,9 @@ class ViewRenderer(
         pinned.setPadding(pad + dp(4f), dp(8f), pad, dp(8f))
         pinned.visibility = View.GONE
         stickyHost.addView(pinned, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
+        // a list scrolled to the top sits under the pinned section title
+        pinned.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        sv.topInset = pinned.measuredHeight
         root.addView(stickyHost, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         val fill = FrameLayout(ctx)
         fill.visibility = View.GONE
@@ -315,6 +320,14 @@ class ViewRenderer(
             titleV.visibility = if (kindHome) View.INVISIBLE else View.VISIBLE // Home shows the banner instead
             back.visibility = if (host.canBack() && !kindHome && !modal) View.VISIBLE else View.GONE
             if (p["header"].obj().bool("compact")) titleV.textSize = Theme.SP_TITLE
+            // over the game (a scrim) the engine's console button shows through: the
+            // header's actions keep clear of its rect plus 8 dp (docs/UI_BRIDGE.md 4.12)
+            var endPad = pad
+            if (p.str("kind") == "game") for (r in host.reserved()) {
+                val wdp = ctx.resources.displayMetrics.widthPixels / ctx.resources.displayMetrics.density
+                if (r.num("y") < 72.0) endPad = maxOf(endPad, dp((wdp - r.num("x")).toFloat() + 8f))
+            }
+            bar.setPadding(bar.paddingLeft, bar.paddingTop, endPad, bar.paddingBottom)
             trailing.removeAllViews()
             // header actions are quiet (Quit must not compete with Play)
             for (a in p["actions"].list()) { val m = a.obj(); trailing.addView(Kit.quiet(ctx, m.str("label"), m.str("icon")) { invoke(id, m) }) }
@@ -367,6 +380,23 @@ class ViewRenderer(
     private fun nestList(e: Entry) {
         val vl = e.list ?: return
         val lp = e.view.layoutParams
+        if (e.props.str("display") == "cards" && fitRows(e.props) > 0) {
+            // `rows: N` in a scrolling page: N rows that scroll sideways, as
+            // tall as the page's visible area under the pinned section title,
+            // so scrolled to them all N rows show whole
+            val frame = (vl.view.layoutParams as? LinearLayout.LayoutParams)
+            frame?.let { it.weight = 0f; it.height = ctx.resources.displayMetrics.heightPixels / 2; vl.view.layoutParams = it }
+            lp?.height = ViewGroup.LayoutParams.WRAP_CONTENT
+            e.view.layoutParams = lp
+            var top: Entry? = e
+            while (top != null && top.type != "screen") top = top.parent?.let { nodes[it] }
+            top?.scroller?.addOnLayoutChangeListener { sv, _, t, _, b, _, _, _, _ ->
+                val h = b - t - sv.paddingTop - sv.paddingBottom - ((sv as? PageScroll)?.topInset ?: 0)
+                val l = vl.view.layoutParams
+                if (h > dp(120f) && l != null && l.height != h) { l.height = h; vl.view.post { vl.view.layoutParams = l } }
+            }
+            return
+        }
         if (e.props.str("display") == "cards") {
             val w = dp(e.props.num("minItem", 220.0).toFloat()) + dp(14f)
             vl.carousel(w)
@@ -379,6 +409,8 @@ class ViewRenderer(
         }
         e.view.layoutParams = lp
     }
+
+    private fun fitRows(p: Map<String, Any?>) = listOf(p.int("rows"), p["style"].obj().int("rows"), p["hints"].obj().int("rows")).firstOrNull { it > 0 } ?: 0
 
     private fun fillChain(list: Entry) {
         var cur: Entry? = list
@@ -426,6 +458,28 @@ class ViewRenderer(
 
     private fun group(id: String, type: String, props: Map<String, Any?>, g: ViewGroup) = Entry(id, type, g, g, props)
 
+    /**
+     * A row with a `label` (the LAN popup's "Wi-Fi", "VPN (tailscale0)", "Link"):
+     * the label with its icon in a fixed column, then the children.
+     */
+    private fun labelledRow(id: String, props: Map<String, Any?>, inner: LinearLayout): Entry {
+        val outer = Kit.row(ctx, 16f)
+        outer.gravity = Gravity.CENTER_VERTICAL
+        val label = Kit.text(ctx, "", Theme.SP_BODY, Theme.TEXT_MUTED, bold = true, lines = 2)
+        label.compoundDrawablePadding = dp(8f)
+        outer.addView(label, LinearLayout.LayoutParams(dp(200f), ViewGroup.LayoutParams.WRAP_CONTENT))
+        outer.addView(inner, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val e = Entry(id, "row", outer, inner, props)
+        e.bind = { x ->
+            val t = x.props.str("label")
+            label.text = t
+            label.setCompoundDrawablesRelative(Icons.drawable(x.props.str("icon"), dp(20f), Theme.TEXT_MUTED), null, null, null)
+            label.visibility = if (t.isEmpty()) View.GONE else View.VISIBLE
+            label.contentDescription = t
+        }
+        return e
+    }
+
     /** Cards in as many columns as fit at minItem dp; scroll "horizontal" makes a carousel. */
     private fun grid(id: String, props: Map<String, Any?>): Entry {
         val gap = dp(16f)
@@ -438,7 +492,12 @@ class ViewRenderer(
             return Entry(id, "grid", hs, row, props)
         }
         val g = FlowGrid(ctx, dp(props.num("minItem", 160.0).toFloat()), gap)
-        return Entry(id, "grid", g, g, props)
+        val e = Entry(id, "grid", g, g, props)
+        // Home's cards: always side by side in one row, whatever the width (the
+        // owner's rule); they shrink, and the description joins two when three
+        // do not fit (`compact`)
+        e.bind = { x -> val one = screenKind(x) == "home"; if (g.singleRow != one) { g.singleRow = one; g.requestLayout() } }
+        return e
     }
 
     private fun tabs(id: String, props: Map<String, Any?>): Entry {
@@ -566,7 +625,8 @@ class ViewRenderer(
         val titleV = Kit.text(ctx, "", Theme.SP_TITLE - 1f, Theme.TEXT, bold = true, lines = 1)
         titleV.typeface = Theme.display
         titleV.maxLines = 2
-        if (android.os.Build.VERSION.SDK_INT >= 26) { titleV.ellipsize = null; titleV.setAutoSizeTextTypeUniformWithConfiguration(14, 19, 1, android.util.TypedValue.COMPLEX_UNIT_SP) }
+        titleV.ellipsize = null
+        Kit.fitWords(titleV, Theme.SP_TITLE - 1f, 13f) // "Team Deathmatch" on a narrow card: smaller, never "Dea|thmatch"
         val subtitle = Kit.text(ctx, "", Theme.SP_CAPTION + 1f, Theme.TEXT_MUTED, lines = 2)
         val badges = FlowGrid(ctx, 0, dp(6f), wrap = true)
         val meta = FlowGrid(ctx, 0, dp(12f), wrap = true)
@@ -740,6 +800,8 @@ class ViewRenderer(
             for (a in p["actions"].list()) actions.addView(actionButton(id, a.obj()))
             img.aspect = aspect(p, 4f / 3f)
             val ref = p.str("image")
+            // no picture (a mod without an icon): the text takes the row
+            img.visibility = if (ref.isEmpty()) View.GONE else View.VISIBLE
             if (ref.isEmpty()) img.none() else picture(img, ref)
         }
         return e
@@ -767,8 +829,13 @@ class ViewRenderer(
             img.contain = x.props.str("fit") == "contain"
             // a banner or picture never takes more than a fifth (contain) or two fifths of the screen's height
             img.maxHeight = (ctx.resources.displayMetrics.heightPixels * if (img.contain) 0.2f else 0.4f).toInt()
-            // Home's banner is a compact header there: the cards must fit below it
-            if (img.contain && screenKind(x) == "home") img.maxHeight = (ctx.resources.displayMetrics.heightPixels * 0.11f).toInt()
+            // `role: banner` with `emphasis: high` (Home, docs/UI_BRIDGE.md): large, a
+            // quarter to a third of the height; any other banner on Home stays a header
+            val h = ctx.resources.displayMetrics.heightPixels
+            // on a short screen (phone landscape) the banner gives way first: the cards must fit
+            val hdp = h / ctx.resources.displayMetrics.density
+            if (x.props.str("role") == "banner" && x.props.str("emphasis") == "high") img.maxHeight = (h * (if (hdp < 480f) 0.16f else if (hdp < 640f) 0.22f else 0.3f)).toInt()
+            else if (img.contain && screenKind(x) == "home") img.maxHeight = (h * 0.11f).toInt()
             img.contentDescription = x.props.str("alt")
             val r = x.props.str("ref")
             if (r.isEmpty()) img.none() else picture(img, r)
@@ -858,9 +925,19 @@ class ViewRenderer(
     private fun switchRow(id: String, props: Map<String, Any?>): Entry {
         if (props.str("style") == "checkbox") return checkChip(id, props)
         var muted = false
-        val s = Kit.switch(ctx, props.bool("value"), title(props)) { v -> if (!muted) events.value(id, v) }
         val holder = FrameLayout(ctx)
         val e = Entry(id, "switch", holder, null, props)
+        lateinit var s: android.widget.CompoundButton
+        // `confirm` (an object like an action's): asked before the switch turns on
+        // (a mod's Full engine access); Cancel puts it back
+        s = Kit.switch(ctx, props.bool("value"), title(props)) { v ->
+            if (muted) return@switch
+            val c = e.props["confirm"].obj()
+            if (v && c.isNotEmpty()) {
+                muted = true; s.isChecked = false; muted = false
+                host.confirm(c) { muted = true; s.isChecked = true; muted = false; events.value(id, true) }
+            } else events.value(id, v)
+        }
         e.bind = { x ->
             holder.removeAllViews()
             (s.parent as? ViewGroup)?.removeView(s)
@@ -1159,8 +1236,16 @@ class ViewRenderer(
                     val ref = row?.str("image") ?: ""
                     if (ref.isEmpty()) { if (row == null) c.img.set(null) else c.img.none() } else picture(c.img, ref)
                     c.card.isSelected = row != null && e.props["selected"].list().contains(row.str("key"))
+                    (c.card.layoutParams as? ViewGroup.MarginLayoutParams)?.let { lp ->
+                        // `rows: N`: fixed tiles in rows that scroll sideways
+                        val f = e.list?.fit
+                        val carousel = e.list?.carouselWidth ?: 0
+                        val w = f?.width ?: if (carousel > 0) carousel - gap else ViewGroup.LayoutParams.MATCH_PARENT
+                        val h = f?.height ?: ViewGroup.LayoutParams.WRAP_CONTENT
+                        if (lp.width != w || lp.height != h) { lp.width = w; lp.height = h; c.card.layoutParams = lp }
+                    }
                     c.card.contentDescription = row?.let { "${c.titleV.text}. ${c.sub.text}" } ?: "Loading"
-                    c.card.setOnClickListener { v -> row?.let { Kit.haptic(v); events.row(id, VirtualList.keyOf(it)) } }
+                    bindTap(c.card, e, id, row)
                 },
                 makeCell = { _ ->
                     val card = Kit.card(ctx, clickable = true, radiusDp = 16f)
@@ -1179,6 +1264,18 @@ class ViewRenderer(
                     card.layoutParams = lp
                     CardCell(card, img, t, s, b)
                 })
+            vl.cellGap = gap
+            vl.cellChrome = {
+                // one tile measured with a typical row: its height less the picture's
+                val probe = Kit.column(ctx)
+                val t = Kit.text(ctx, "Map", Theme.SP_BODY, Theme.TEXT, bold = true, lines = 1)
+                val sub = Kit.text(ctx, "2-4", Theme.SP_CAPTION, Theme.TEXT_MUTED, lines = 1)
+                val badges = FlowGrid(ctx, 0, dp(4f), wrap = true).apply { addView(badge(mapOf("text" to "DM"))) }
+                probe.setPadding(dp(12f), dp(8f), dp(12f), dp(12f))
+                probe.addView(t); probe.addView(sub); probe.addView(badges)
+                probe.measure(View.MeasureSpec.makeMeasureSpec(dp(300f), View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                probe.measuredHeight + dp(12f) // the badges row measures short outside a card
+            }
             box.addView(empty)
             box.addView(vl.view, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         } else {
@@ -1195,9 +1292,14 @@ class ViewRenderer(
                     if (r.childCount != columns.size) rebuildRow(r, columns, rowH)
                     val cells = data?.get("cells").obj()
                     for ((i, c) in columns.withIndex()) bindCell(r.getChildAt(i) as TextView, c, cells, data == null)
-                    r.alpha = if (data?.bool("disabled") == true) 0.5f else 1f
-                    r.contentDescription = if (data == null) "Loading" else columns.joinToString(", ") { c -> "${c.str("label")} ${cells.str(c.str("key"))}" }
-                    r.setOnClickListener { v -> data?.let { Kit.haptic(v); events.row(id, VirtualList.keyOf(it)) } }
+                    // `stale`: a saved server not answered yet this refresh (drawn dimmed)
+                    r.alpha = if (data?.bool("disabled") == true) 0.5f else if (cells.bool("stale") || data?.bool("stale") == true) 0.55f else 1f
+                    val on = data != null && e.props["selected"].list().any { it.toString() == VirtualList.keyOf(data) }
+                    r.isSelected = on
+                    r.background = if (on) Theme.rounded(0xFF1D3A73.toInt(), dp(8f).toFloat(), max(1, dp(1.5f)), Theme.EMBER)
+                        else Theme.surface(ctx, Color.TRANSPARENT, 0f, Color.TRANSPARENT)
+                    r.contentDescription = if (data == null) "Loading" else columns.joinToString(", ") { c -> "${c.str("label")} ${cells.str(c.str("key"))}" } + if (on) ", selected" else ""
+                    bindTap(r, e, id, data)
                 },
                 makeCell = { _ ->
                     val r = Kit.row(ctx)
@@ -1223,9 +1325,20 @@ class ViewRenderer(
         }
         lists.getOrPut(e.source) { ArrayList() }.add(vl)
         e.list = vl
+        vl.onVisible = { r, touching -> events.visible(id, r.first, r.last - r.first + 1, touching) }
         var lastQuery = ""
+        var lastSelected: List<Any?> = emptyList()
         e.bind = { x ->
             val p = x.props
+            // only `selected` changed (a tap's diff): rebind in place, the list keeps its position
+            val sel = p["selected"].list()
+            if (sel != lastSelected) { lastSelected = sel; vl.refresh() }
+            if (cards) {
+                // `rows: 2`: the map picker shows two whole rows of tiles (docs/UI_BRIDGE.md)
+                val rows = fitRows(p)
+                val asp = aspect(mapOf("aspect" to p.str("aspectItem", "16:9")), 16f / 9f)
+                if (rows != vl.fitRows || asp != vl.cellAspect) { vl.fitRows = rows; vl.cellAspect = asp; vl.view.requestLayout() }
+            }
             val newCols = visibleColumns(p["columns"].list().map { it.obj() })
             val colsChanged = newCols != columns
             columns = newCols
@@ -1262,6 +1375,52 @@ class ViewRenderer(
             bindEmpty(x)
         }
         return e
+    }
+
+    private val a11yActions = java.util.WeakHashMap<View, Int>()
+    private var lastTapKey = ""
+    private var lastTapAt = 0L
+
+    /**
+     * Rows and cards of a list. With `selection` single or multi, a tap
+     * selects (event row/select, drawn at once) and a double tap, Enter or
+     * the accessibility "Activate" action activates (event row/activate:
+     * joins the server, starts the map); without selection a tap activates.
+     */
+    private fun bindTap(v: View, e: Entry, id: String, row: Map<String, Any?>?) {
+        if (row == null) { v.setOnClickListener(null); v.setOnKeyListener(null); return }
+        val key = VirtualList.keyOf(row)
+        val selecting = e.props.str("selection") in setOf("single", "multi")
+        v.setOnClickListener { x ->
+            Kit.haptic(x)
+            if (!selecting) { events.row(id, key, "activate"); return@setOnClickListener }
+            val now = android.os.SystemClock.uptimeMillis()
+            val second = key == lastTapKey && now - lastTapAt <= android.view.ViewConfiguration.getDoubleTapTimeout() + 100
+            lastTapKey = if (second) "" else key
+            lastTapAt = now
+            if (second) {
+                if (e.props.str("selection") == "multi") select(e, id, key, true) // the first tap's toggle undone
+                events.row(id, key, "activate")
+            } else select(e, id, key, true)
+        }
+        v.setOnKeyListener { _, code, ev ->
+            if (ev.action == android.view.KeyEvent.ACTION_UP && (code == android.view.KeyEvent.KEYCODE_ENTER || code == android.view.KeyEvent.KEYCODE_DPAD_CENTER || code == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+                events.row(id, key, "activate"); true
+            } else false
+        }
+        // recycled cells: the previous row's action goes first
+        a11yActions.remove(v)?.let { androidx.core.view.ViewCompat.removeAccessibilityAction(v, it) }
+        if (selecting) {
+            androidx.core.view.ViewCompat.replaceAccessibilityAction(v, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_CLICK, "Select", null)
+            a11yActions[v] = androidx.core.view.ViewCompat.addAccessibilityAction(v, e.props["rowPrimary"].obj().str("label", "Activate")) { _, _ -> events.row(id, key, "activate"); true }
+        }
+    }
+
+    private fun select(e: Entry, id: String, key: String, send: Boolean) {
+        val cur = e.props["selected"].list().map { it.toString() }
+        val next = if (e.props.str("selection") == "multi") (if (key in cur) cur - key else cur + key) else listOf(key)
+        if (next != cur) { e.props = e.props + mapOf("selected" to next); e.list?.refresh() }
+        if (send) events.row(id, key, "select")
     }
 
     private fun bindEmpty(e: Entry) {
@@ -1320,6 +1479,46 @@ class ViewRenderer(
     }
 }
 
+/**
+ * A screen's page. A list scrolling inside it (a `rows: N` map grid, as tall
+ * as the page's visible area) gets the drag only once the page has brought
+ * it to the top: until then the page scrolls, so the grid is never scrolled
+ * half off screen. Coming back up the grid scrolls to its start first
+ * (the platform's nested scrolling), then the page.
+ */
+class PageScroll(ctx: Context) : ScrollView(ctx) {
+    init { isNestedScrollingEnabled = true }
+
+    /** The pinned section title's height: a list stops under it. */
+    var topInset = 0
+
+    private fun topOf(target: View): Int {
+        var y = 0
+        var v: View? = target
+        while (v != null && v !== this) { y += v.top; v = v.parent as? View }
+        return y - scrollY - topInset
+    }
+
+    override fun onStartNestedScroll(child: View, target: View, axes: Int): Boolean =
+        (axes and View.SCROLL_AXIS_VERTICAL) != 0
+
+    override fun onNestedPreScroll(target: View, dx: Int, dy: Int, consumed: IntArray) {
+        if (dy > 0) {
+            val gap = topOf(target)
+            if (gap > 0 && canScrollVertically(1)) {
+                val d = minOf(dy, gap)
+                scrollBy(0, d)
+                consumed[1] = d
+            }
+        }
+    }
+
+    override fun onNestedPreFling(target: View, velocityX: Float, velocityY: Float): Boolean {
+        if (velocityY > 0 && topOf(target) > 0 && canScrollVertically(1)) { fling(velocityY.toInt()); return true }
+        return false
+    }
+}
+
 /** Children side by side at a fixed card width, for horizontal carousels. */
 class CarouselRow(ctx: Context, private val item: Int, private val gap: Int) : ViewGroup(ctx) {
     override fun onMeasure(w: Int, h: Int) {
@@ -1348,6 +1547,8 @@ class CarouselRow(ctx: Context, private val item: Int, private val gap: Int) : V
  * (or, with [wrap], at their own widths like words in a line).
  */
 class FlowGrid(ctx: Context, private val minChild: Int, private val gap: Int, private val wrap: Boolean = false) : ViewGroup(ctx) {
+    /** Every child in one row (Home's cards), however narrow. */
+    var singleRow = false
     override fun onMeasure(wSpec: Int, hSpec: Int) {
         val width = MeasureSpec.getSize(wSpec)
         if (wrap) {
@@ -1363,7 +1564,8 @@ class FlowGrid(ctx: Context, private val minChild: Int, private val gap: Int, pr
             setMeasuredDimension(width, y + line)
             return
         }
-        val cols = max(1, (width + gap) / (max(1, minChild) + gap))
+        val visible = (0 until childCount).count { getChildAt(it).visibility != GONE }
+        val cols = if (singleRow) max(1, visible) else max(1, (width + gap) / (max(1, minChild) + gap))
         val cw = (width - gap * (cols - 1)) / cols
         var y = 0; var rowH = 0; var col = 0
         for (i in 0 until childCount) {
@@ -1392,9 +1594,9 @@ class FlowGrid(ctx: Context, private val minChild: Int, private val gap: Int, pr
             }
             return
         }
-        val cols = max(1, (width + gap) / (max(1, minChild) + gap))
-        val cw = (width - gap * (cols - 1)) / cols
         val visible = (0 until childCount).map { getChildAt(it) }.filter { it.visibility != GONE }
+        val cols = if (singleRow) max(1, visible.size) else max(1, (width + gap) / (max(1, minChild) + gap))
+        val cw = (width - gap * (cols - 1)) / cols
         var y = 0
         var i = 0
         while (i < visible.size) {

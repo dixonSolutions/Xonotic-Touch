@@ -1,6 +1,6 @@
 [package]
 name = "godnotic-loader-android"
-description = "Godnotic loader on Android: the JNI surface for the Kotlin UI (stub; filled on work/androidui)"
+description = "Godnotic loader on Android: the core drives the Kotlin views over JNI (fe/RustCore.kt)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,5 +10,13 @@ rust-version.workspace = true
 name = "godnotic_android"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = ["jni"]
+# The JNI entry points (fe/RustCore.kt). Off: the driver alone, for host tests without a JVM.
+jni = ["dep:jni"]
+
 [dependencies]
 godnotic-loader-core = { path = "../core" }
+serde_json = "1"
+# JNI types and string conversion only (no invocation API): a small, common crate.
+jni = { version = "0.21", optional = true, default-features = false }

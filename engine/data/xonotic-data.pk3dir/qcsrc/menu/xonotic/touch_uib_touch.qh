@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#pragma once
+
+#include "touch_uib_screens.qh"
+
+// Godnotic UI bridge: what the in-match touch HUD adds to the descriptions.
+// The file is touch_uib_join.qc; the hooks that call it are single lines in
+// touch_uib_screens.qc (UIB_Build, UIB_Action, UIB_Back, UIB_Tick, the pause
+// screen's buttons).
+
+// The join popup, id "join": Xonotic's join dialog as a description.
+void UIB_BuildJoin();
+bool UIB_JoinOpen();                 // true: a bridge renderer shows the menu and the popup is up
+bool UIB_JoinAction(string action);  // join.open, join.auto, join.red ... join.spectate
+bool UIB_JoinBack();                 // Back on the popup: closes to the match, not to the pause menu
+void UIB_JoinTick();                 // closes it once the player is in the game
+
+// from touch_uib_screens.qc
+void UIB_DropLast(bool modal);
+void UIB_Nav();
+void UIB_Build(string id);
